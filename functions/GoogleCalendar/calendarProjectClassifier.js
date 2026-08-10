@@ -9,11 +9,12 @@ const {
     buildOpenAiPromptCacheKey,
     getCachedEnvFunctions,
     getOpenAiCacheUsage,
-    getOpenAIClient,
     logOpenAiCacheUsage,
     normalizeModelKey,
 } = require('../Assistant/assistantHelper')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
+const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
+const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
     "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
@@ -32,6 +33,11 @@ const GPT5_REASONING_MODEL_KEYS = new Set([
 
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
+    // Models served through OpenRouter resolve from the shared routing table. Checked first so the
+    // `gpt-5.2` fallback at the bottom — which exists for genuinely unknown keys — can never quietly
+    // swallow a known non-OpenAI model and bill the user for a model they did not select.
+    const openRouterModelId = getOpenRouterAssistantModelId(normalizedKey)
+    if (openRouterModelId) return openRouterModelId
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
     if (normalizedKey === 'MODEL_GPT4') return 'gpt-4'
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
@@ -182,8 +188,12 @@ function buildCalendarClassifierRequestParams({
     definitions,
     normalizedEvent,
     enableCacheWrite = true,
+    isOpenRouter = false,
 }) {
-    const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
+    // `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are OpenAI extensions
+    // with no equivalent on OpenRouter's Chat Completions surface, so they are omitted there rather
+    // than sent speculatively. See the matching note in `gmailPromptClassifier`.
+    const supportsExplicitCaching = !isOpenRouter && selectedModel.startsWith('gpt-5.6')
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const staticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
@@ -220,7 +230,10 @@ function buildCalendarClassifierRequestParams({
             },
             { role: 'user', content: dynamicUserContent },
         ],
-        prompt_cache_key: promptCacheKey,
+    }
+
+    if (!isOpenRouter) {
+        requestParams.prompt_cache_key = promptCacheKey
     }
 
     if (supportsExplicitCaching) {
@@ -242,6 +255,7 @@ function buildCalendarClassifierRepairRequestParams({
     normalizedEvent,
     previousResult,
     retryReason,
+    isOpenRouter = false,
 }) {
     const requestParams = buildCalendarClassifierRequestParams({
         selectedModel,
@@ -252,6 +266,7 @@ function buildCalendarClassifierRepairRequestParams({
         // Repair calls are sparse, so writing their prefix to the explicit cache
         // costs more than it saves. Keep explicit mode but omit the breakpoint.
         enableCacheWrite: false,
+        isOpenRouter,
     })
 
     requestParams.messages.push({
@@ -313,6 +328,7 @@ function getCalendarClassificationRetryReason(result) {
 async function classifyCalendarEventProject({ config, event, projectDefinitions, calendarEmail = '' }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
+    const openRouterKey = envFunctions?.OPENROUTER_API_KEY
     const definitions = (Array.isArray(projectDefinitions) ? projectDefinitions : [])
         .slice()
         .sort((a, b) => String(a?.projectId || a?.id || '').localeCompare(String(b?.projectId || b?.id || '')))
@@ -333,7 +349,13 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
         }
     }
 
-    const openai = getOpenAIClient(openAiKey)
+    // First pass and repair pass resolve their client independently: the first pass is
+    // user-selectable (and may be DeepSeek via OpenRouter) while the repair pass defaults to a
+    // strong OpenAI model, so they can legitimately sit on different providers.
+    const { client: openai, isOpenRouter } = resolveClassifierClient(config?.model, {
+        openAiKey,
+        openRouterKey,
+    })
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
 
@@ -344,6 +366,10 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
     const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
+    const { client: auditOpenai, isOpenRouter: auditIsOpenRouter } = resolveClassifierClient(auditModelKey, {
+        openAiKey,
+        openRouterKey,
+    })
 
     const normalizedEvent = normalizeCalendarEventForClassifier(event, calendarEmail)
     const cacheConfig = {
@@ -359,6 +385,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
             config: cacheConfig,
             definitions,
             normalizedEvent,
+            isOpenRouter,
         })
     )
     const firstResult = coerceCalendarProjectResult(
@@ -376,7 +403,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     }
 
     const repairCompletion = await runCalendarClassifierCompletion(
-        openai,
+        auditOpenai,
         buildCalendarClassifierRepairRequestParams({
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
@@ -385,6 +412,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
             normalizedEvent,
             previousResult: firstCompletion.parsed,
             retryReason,
+            isOpenRouter: auditIsOpenRouter,
         })
     )
 

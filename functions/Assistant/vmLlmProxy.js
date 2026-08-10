@@ -24,7 +24,6 @@ const crypto = require('crypto')
 const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
-const { resolveJobCredentialProvider } = require('./vmModelRouting')
 const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
@@ -39,9 +38,6 @@ const PROVIDERS = {
         routePrefix: '/anthropic',
         upstreamBase: 'https://api.anthropic.com',
         expectedAgent: 'claude',
-        // Which BYOK key slot may be spent on this route. Distinct from `expectedAgent` because the
-        // OpenAI and OpenRouter routes share the `codex` agent but take different credentials.
-        byokProvider: 'claude',
         realKeyField: 'ANTHROPIC_API_KEY',
         // Claude Code sends the key as the `x-api-key` header.
         authHeader: 'x-api-key',
@@ -54,7 +50,6 @@ const PROVIDERS = {
         routePrefix: '/openai',
         upstreamBase: 'https://api.openai.com',
         expectedAgent: 'codex',
-        byokProvider: 'codex',
         realKeyField: 'OPEN_AI_KEY',
         // Codex / OpenAI SDK sends `Authorization: Bearer <key>`.
         authHeader: 'authorization',
@@ -66,19 +61,16 @@ const PROVIDERS = {
     // OpenRouter models for the Codex harness (AT-2230). Same agent, same token, different
     // upstream: the per-job token is minted for `codex`, so a leaked token is no more useful here
     // than on the OpenAI route, and the platform OpenRouter key stays server-side exactly as the
-    // other two do.
-    //
-    // BYOK is keyed on `byokProvider`, not on the agent. Keying it on the agent is what forced the
-    // original `supportsByok: false`: an OpenAI key cannot authenticate against OpenRouter, so
-    // "codex BYOK" had to mean the OpenAI key and an OpenRouter run had to be platform-billed. With
-    // a separate `openrouter` key slot the user can bring their own here too.
+    // other two do. `supportsByok: false` because BYOK stores per-*agent* keys (an OpenAI key
+    // cannot authenticate against OpenRouter) — an OpenRouter run is always platform-billed, which
+    // startVmJob enforces by pinning credentialMode to 'api'.
     openrouter: {
         routePrefix: '/openrouter',
         upstreamBase: 'https://openrouter.ai/api',
         expectedAgent: 'codex',
-        byokProvider: 'openrouter',
         realKeyField: 'OPENROUTER_API_KEY',
         authHeader: 'authorization',
+        supportsByok: false,
         readToken: req => (req.get('authorization') || '').replace(/^Bearer\s+/i, ''),
         applyRealKey: (headers, realKey) => {
             headers['authorization'] = `Bearer ${realKey}`
@@ -161,18 +153,10 @@ function getProxyBaseUrl(env) {
 
 /**
  * Mint a short-lived, per-job token the sandbox uses in place of the real API key.
- * The token is an HMAC-signed { cid, agent, uid, cm, cp, exp } payload — self-contained, so the
- * proxy verifies it with no database read.
- *
- * `cp` (credential provider) is what stops a token minted for one upstream being spent on another:
- * the OpenAI and OpenRouter routes share `agent: 'codex'`, so `agent` alone cannot tell them apart.
- * It is inside the signed payload, so the sandbox cannot alter it. Omitted on a legacy token, in
- * which case the proxy falls back to the route's own provider — i.e. previous behaviour exactly.
+ * The token is an HMAC-signed { cid, agent, uid, cm, exp } payload — self-contained, so the proxy
+ * verifies it with no database read.
  */
-function mintProxyToken(
-    { correlationId, agent, userId, credentialMode = 'api', credentialProvider = '', expiresAtMs },
-    env
-) {
+function mintProxyToken({ correlationId, agent, userId, credentialMode = 'api', expiresAtMs }, env) {
     const secret = getSigningSecret(env)
     if (!secret) throw new Error('VM_PROXY_SIGNING_SECRET is not configured; cannot mint a proxy token')
     const payload = base64UrlEncode(
@@ -181,7 +165,6 @@ function mintProxyToken(
             agent: agent || '',
             uid: userId || '',
             cm: credentialMode === 'byok' ? 'byok' : 'api',
-            cp: credentialProvider || '',
             exp: Math.floor((Number(expiresAtMs) || 0) / 1000),
         })
     )
@@ -261,40 +244,22 @@ async function handleProxyRequest(req, res) {
             res.status(401).send('Unauthorized')
             return
         }
-        const credentialMode = verdict.payload.cm === 'byok' ? 'byok' : 'api'
-        // A legacy token predates `cp`; its route is its provider, which is what it meant then.
-        const tokenCredentialProvider = verdict.payload.cp || config.byokProvider
-
-        // A BYOK job may only ever spend its own key slot. Without this check a Codex-BYOK job could
-        // call the /openrouter route: the token is valid (same agent), the job is flagged
-        // tokenBillingExempt, and the request would have fallen back to the PLATFORM OpenRouter key
-        // — Alldone paying for tokens it charges no Gold for. Rejecting is right rather than
-        // silently platform-billing, because a mismatch means the sandbox went somewhere the run
-        // was never routed to.
-        if (credentialMode === 'byok' && tokenCredentialProvider !== config.byokProvider) {
-            console.warn('🔐 VM PROXY: rejected BYOK request on a mismatched route', {
-                route: config.routePrefix,
-                routeProvider: config.byokProvider,
-                tokenProvider: tokenCredentialProvider,
-            })
-            res.status(403).send('VM proxy credential route does not match this job')
-            return
-        }
-
         const continuity = await checkProxyJobCanContinue({
             correlationId: verdict.payload.cid,
             userId: verdict.payload.uid,
-            credentialMode,
-            credentialProvider: tokenCredentialProvider,
+            credentialMode: verdict.payload.cm || 'api',
         })
         if (!continuity.allowed) {
             res.status(402).send(continuity.message || 'VM task stopped because the user ran out of Gold')
             return
         }
 
-        const usePersonalKey = credentialMode === 'byok'
+        const credentialMode = verdict.payload.cm === 'byok' ? 'byok' : 'api'
+        // A route that does not support BYOK is always platform-billed; the personal key stored for
+        // this agent belongs to a different provider and would simply be rejected upstream.
+        const usePersonalKey = credentialMode === 'byok' && config.supportsByok !== false
         const realKey = usePersonalKey
-            ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.byokProvider)
+            ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
             : env[config.realKeyField]
         if (!realKey) {
             console.error('🔐 VM PROXY: upstream key missing', {
@@ -304,7 +269,7 @@ async function handleProxyRequest(req, res) {
             res.status(503).send(
                 usePersonalKey
                     ? 'Personal API key is missing. Add or replace it in Settings → Integrations.'
-                    : `Upstream key not configured (${config.realKeyField})`
+                    : 'Upstream key not configured'
             )
             return
         }
@@ -336,7 +301,7 @@ async function handleProxyRequest(req, res) {
 
         if (usePersonalKey && (upstream.status === 401 || upstream.status === 403)) {
             require('./vmApiKeyAuth')
-                .markVmApiKeyRejected(verdict.payload.uid, config.byokProvider)
+                .markVmApiKeyRejected(verdict.payload.uid, config.expectedAgent)
                 .catch(() => {})
         }
 
@@ -425,13 +390,7 @@ function normalizeUsage(usage = {}) {
     }
 }
 
-async function checkProxyJobCanContinue({
-    correlationId,
-    userId,
-    credentialMode = 'api',
-    credentialProvider = '',
-    db = admin.firestore(),
-}) {
+async function checkProxyJobCanContinue({ correlationId, userId, credentialMode = 'api', db = admin.firestore() }) {
     if (!correlationId || !userId) return { allowed: false, message: 'Invalid VM proxy token' }
     const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
     const userRef = db.doc(`users/${userId}`)
@@ -443,16 +402,6 @@ async function checkProxyJobCanContinue({
     const expectedMode = credentialMode === 'byok' ? 'byok' : 'api'
     if ((pendingData.credentialMode || 'api') !== expectedMode) {
         return { allowed: false, message: 'VM proxy credential route no longer matches this job' }
-    }
-    // Belt to the signed `cp` braces: compare against what the JOB says it was launched with, so the
-    // authoritative answer to "whose key pays for this?" is server-side persisted state and never
-    // anything the sandbox — or a model-authored tool argument — supplied. Derived for a job doc
-    // written before `credentialProvider` existed, which keeps old runs working unchanged.
-    if (credentialProvider) {
-        const jobProvider = resolveJobCredentialProvider(pendingData)
-        if (jobProvider !== credentialProvider) {
-            return { allowed: false, message: 'VM proxy credential route no longer matches this job' }
-        }
     }
     if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pendingData.status)) {
         return { allowed: false, message: 'VM job is no longer active' }
@@ -724,15 +673,7 @@ async function chargeProxyTokenGold({
  * Build the sandbox credential descriptor for a run. The sandbox gets only a per-job token + the
  * proxy base URL (NO real key). If the proxy is not configured, fail closed.
  */
-function buildVmAgentCredentials({
-    vmJob,
-    agent,
-    realApiKey,
-    credentialMode = 'api',
-    credentialProvider = '',
-    ttlMs,
-    env = null,
-}) {
+function buildVmAgentCredentials({ vmJob, agent, realApiKey, credentialMode = 'api', ttlMs, env = null }) {
     const resolved = resolveEnv(env)
     if (!isProxyEnabled(resolved)) {
         throw new Error('VM task cannot run: VM_PROXY_SIGNING_SECRET is not configured.')
@@ -747,21 +688,17 @@ function buildVmAgentCredentials({
         throw new Error('VM task cannot run: upstream model API key is not configured.')
     }
 
-    // Derived from the job when not supplied, so a caller that has not been updated still mints a
-    // correctly-scoped token rather than a legacy unscoped one.
-    const resolvedProvider = credentialProvider || resolveJobCredentialProvider(vmJob)
     const token = mintProxyToken(
         {
             correlationId: vmJob.correlationId,
             agent,
             userId: vmJob.requestUserId,
             credentialMode,
-            credentialProvider: resolvedProvider,
             expiresAtMs: Date.now() + (Number(ttlMs) || 0),
         },
         resolved
     )
-    return { apiKey: token, baseUrl, mode: 'proxy', credentialMode, credentialProvider: resolvedProvider }
+    return { apiKey: token, baseUrl, mode: 'proxy', credentialMode }
 }
 
 module.exports = {

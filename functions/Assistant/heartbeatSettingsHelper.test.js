@@ -9,10 +9,17 @@ const {
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 } = require('./heartbeatSettingsHelper')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 describe('heartbeatSettingsHelper', () => {
-    test('only allows Sol, Terra, and Luna as heartbeat selections', () => {
-        expect(HEARTBEAT_MODEL_OPTIONS).toEqual(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])
+    test('allows exactly the shared selectable models as heartbeat selections', () => {
+        expect(HEARTBEAT_MODEL_OPTIONS).toEqual(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
+        expect(HEARTBEAT_MODEL_OPTIONS).toEqual([
+            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT5_6_TERRA',
+            'MODEL_GPT5_6_LUNA',
+            'MODEL_DEEPSEEK_V4_FLASH',
+        ])
     })
 
     test('rounds and clamps heartbeat interval to the supported range', () => {

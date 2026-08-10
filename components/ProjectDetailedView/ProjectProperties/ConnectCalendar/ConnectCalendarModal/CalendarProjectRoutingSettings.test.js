@@ -2,8 +2,10 @@ const {
     DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
     buildProjectDefinitionsFromProjects,
     normalizeCalendarProjectRoutingConfig,
+    normalizeCalendarRoutingModel,
     sanitizeCalendarProjectRoutingConfigForSave,
 } = require('./CalendarProjectRoutingSettings.helpers')
+const { SELECTABLE_ASSISTANT_MODELS } = require('../../../../../functions/Assistant/selectableAssistantModels')
 
 describe('CalendarProjectRoutingSettings helpers', () => {
     test('defaults routing to disabled with the default prompt', () => {
@@ -11,7 +13,11 @@ describe('CalendarProjectRoutingSettings helpers', () => {
 
         expect(config.enabled).toBe(false)
         expect(config.prompt).toBe(DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT)
-        expect(config.model).toBe('MODEL_GPT5_4_NANO')
+        // Was 'MODEL_GPT5_4_NANO' — a key outside the selectable set that the server's key→model
+        // mapper did not know, so it fell through to `gpt-5.2`. Calendar routing therefore ran on a
+        // model nobody had chosen. The default is now the shared low-cost model, which the server
+        // recognises, so the stored value and the model actually invoked agree.
+        expect(config.model).toBe('MODEL_GPT5_6_LUNA')
         expect(config.calendarEmail).toBe('person@example.com')
     })
 
@@ -25,7 +31,26 @@ describe('CalendarProjectRoutingSettings helpers', () => {
 
         expect(config.enabled).toBe(true)
         expect(config.confidenceThreshold).toBe(1)
-        expect(config.model).toBe('MODEL_GPT5_4_NANO')
+        expect(config.model).toBe('MODEL_GPT5_6_LUNA')
+    })
+
+    test('keeps a selectable model choice, including the OpenRouter-served one', () => {
+        expect(normalizeCalendarRoutingModel('MODEL_DEEPSEEK_V4_FLASH')).toBe('MODEL_DEEPSEEK_V4_FLASH')
+        expect(sanitizeCalendarProjectRoutingConfigForSave({ model: 'MODEL_DEEPSEEK_V4_FLASH' }).model).toBe(
+            'MODEL_DEEPSEEK_V4_FLASH'
+        )
+
+        SELECTABLE_ASSISTANT_MODELS.forEach(option => {
+            expect(normalizeCalendarRoutingModel(option.model)).toBe(option.model)
+        })
+    })
+
+    test('coerces an unselectable or missing model to the default rather than passing it through', () => {
+        // The pass-through was the bug: an unknown key reached the server, missed every mapper
+        // branch and silently became `gpt-5.2`.
+        expect(normalizeCalendarRoutingModel('MODEL_GPT5_4_NANO')).toBe('MODEL_GPT5_6_LUNA')
+        expect(normalizeCalendarRoutingModel('nonsense')).toBe('MODEL_GPT5_6_LUNA')
+        expect(normalizeCalendarRoutingModel(undefined)).toBe('MODEL_GPT5_6_LUNA')
     })
 
     test('builds active project context and removes project description prefix', () => {

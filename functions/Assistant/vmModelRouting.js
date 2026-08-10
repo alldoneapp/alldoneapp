@@ -83,40 +83,6 @@ function isOpenRouterRun(agent, agentModel) {
 }
 
 /**
- * Which *credential* slot a run authenticates with (AT-2230 BYOK).
- *
- * Deliberately NOT the same thing as the agent. BYOK/subscription credentials are stored per
- * upstream provider, and an OpenRouter run drives the Codex harness against a completely different
- * upstream: the user's OpenAI key or ChatGPT subscription cannot authenticate against OpenRouter,
- * and their OpenRouter key cannot authenticate against OpenAI. Keying credentials on the agent
- * would therefore spend the wrong key — a Codex-BYOK job would reach for the OpenAI key on the
- * OpenRouter route and vice versa.
- *
- * Derived from `agent` + `agentModel`, both of which are already validated and persisted on the
- * job, so the answer is reproducible from job state alone and cannot drift from the model actually
- * being run. `resolveJobCredentialProvider` prefers the explicitly persisted value and falls back
- * to this derivation for a job doc written before the field existed.
- */
-const CREDENTIAL_PROVIDERS = ['claude', 'codex', 'openrouter']
-
-function resolveCredentialProvider(agent, agentModel) {
-    const source = resolveModelRoute(agent, agentModel).source
-    if (source === 'openrouter') return 'openrouter'
-    return agent === 'codex' ? 'codex' : 'claude'
-}
-
-function resolveJobCredentialProvider(jobData = {}) {
-    const persisted = jobData && jobData.credentialProvider
-    if (CREDENTIAL_PROVIDERS.includes(persisted)) return persisted
-    return resolveCredentialProvider(jobData.agent || 'claude', jobData.agentModel || '')
-}
-
-/** Only OpenAI/Anthropic sell the consumer plans the subscription route consumes. */
-function providerSupportsSubscription(provider) {
-    return provider === 'claude' || provider === 'codex'
-}
-
-/**
  * Human label for an OpenRouter id: 'deepseek/deepseek-v3.2' → 'DeepSeek V3.2 (OpenRouter)'.
  * Used for status text, where the discovered catalog label is not available synchronously.
  */
@@ -178,8 +144,4 @@ module.exports = {
     resolveModelRoute,
     isOpenRouterRun,
     formatOpenRouterModelLabel,
-    CREDENTIAL_PROVIDERS,
-    resolveCredentialProvider,
-    resolveJobCredentialProvider,
-    providerSupportsSubscription,
 }

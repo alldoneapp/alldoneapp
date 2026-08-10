@@ -313,7 +313,7 @@ export default function DefaultVmAgentSection() {
             {loaded && activeModelSource === OPENROUTER_SOURCE && (
                 <Text style={localStyles.hint}>
                     {translate(
-                        'OpenRouter models run through the Codex harness but authenticate separately: they use the OpenRouter route in AI agent authentication below — your own OpenRouter API key, or Alldone Gold. Your Claude or ChatGPT subscription and your OpenAI key do not apply to them.'
+                        'OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.'
                     )}
                 </Text>
             )}
