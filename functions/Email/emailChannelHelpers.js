@@ -17,6 +17,9 @@ const EMAIL_CREATE_GMAIL_DRAFT_KEY = 'create_gmail_draft'
 const EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY = 'create_gmail_reply_draft'
 const EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY = 'calendar_availability'
 const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
+const MAX_QUOTED_REPLY_TEXT_LENGTH = 4000
+const QUOTED_REPLY_CONTEXT_HEADER = '--- Quoted earlier message (context only) ---'
+const QUOTED_REPLY_TRUNCATION_NOTICE = '[... quoted history truncated ...]'
 
 function normalizeEmailAddress(value = '') {
     const normalized = String(value || '').trim()
@@ -296,24 +299,54 @@ function stripHtmlToText(html = '') {
         .trim()
 }
 
-function trimQuotedReplyText(text = '') {
+// Attribution lines introducing a quoted reply ("On <date> <person> wrote:", "Am <date>
+// schrieb <person>:"). Gmail hard-wraps these across two lines, so the line break before
+// the closing verb must be tolerated - otherwise the attribution survives as an orphan
+// line that promises a quote which was already cut away.
+const QUOTE_ATTRIBUTION_PATTERNS = [
+    /^[ \t]*On\b[^\n]*(?:\n[^\n]*)?\bwrote:[ \t]*$/im,
+    /^[ \t]*Am\b[^\n]*(?:\n[^\n]*)?\bschrieb\b[^\n]*:[ \t]*$/im,
+]
+
+const QUOTE_SEPARATOR_PATTERNS = [
+    /^[ \t]*-{2,}[ \t]*Original Message[ \t]*-{2,}[ \t]*$/im,
+    /^[ \t]*Begin forwarded message:[ \t]*$/im,
+    /^[ \t]*>+/m,
+]
+
+// A bare "To:"/"Subject:"/"Sent:" line is ordinary prose ("To: be discussed tomorrow") far
+// more often than it is a quote boundary, so those are only honoured as part of a real
+// Outlook-style header block: a "From:" line followed closely by another header line.
+function findQuoteHeaderBlockIndex(text = '') {
+    const lines = String(text || '').split('\n')
+    let offset = 0
+
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index]
+        if (/^[ \t]*From:[ \t]*\S/i.test(line)) {
+            const lookahead = lines.slice(index + 1, index + 5)
+            if (lookahead.some(next => /^[ \t]*(?:Sent|Date|To|Cc|Subject):[ \t]*\S/i.test(next))) {
+                return offset
+            }
+        }
+        offset += line.length + 1
+    }
+
+    return -1
+}
+
+// Splits an inbound reply into the text the sender just wrote and the quoted history they
+// replied on top of. The quoted part is deliberately RETURNED rather than discarded: it
+// routinely carries the only copy of the details the sender is implicitly pointing at
+// (proposed meeting date/time, amounts, addresses). See AT-2232.
+function splitQuotedReplyText(text = '') {
     const normalized = String(text || '')
         .replace(/\r/g, '')
         .trim()
-    if (!normalized) return ''
-
-    const patterns = [
-        /^\s*On .+ wrote:\s*$/im,
-        /^\s*From:\s.+$/im,
-        /^\s*Sent:\s.+$/im,
-        /^\s*To:\s.+$/im,
-        /^\s*Subject:\s.+$/im,
-        /^\s*-{2,}\s*Original Message\s*-{2,}\s*$/im,
-        /^\s*Begin forwarded message:\s*$/im,
-        /^\s*>+/im,
-    ]
+    if (!normalized) return { newText: '', quotedText: '' }
 
     let cutIndex = normalized.length
+    const patterns = [...QUOTE_ATTRIBUTION_PATTERNS, ...QUOTE_SEPARATOR_PATTERNS]
     patterns.forEach(pattern => {
         const match = pattern.exec(normalized)
         if (match && typeof match.index === 'number') {
@@ -321,7 +354,31 @@ function trimQuotedReplyText(text = '') {
         }
     })
 
-    return normalized.slice(0, cutIndex).trim()
+    const headerBlockIndex = findQuoteHeaderBlockIndex(normalized)
+    if (headerBlockIndex >= 0) {
+        cutIndex = Math.min(cutIndex, headerBlockIndex)
+    }
+
+    return {
+        newText: normalized.slice(0, cutIndex).trim(),
+        quotedText: normalized.slice(cutIndex).trim(),
+    }
+}
+
+function trimQuotedReplyText(text = '') {
+    return splitQuotedReplyText(text).newText
+}
+
+function buildQuotedReplyContext(quotedText = '') {
+    const normalized = String(quotedText || '').trim()
+    if (!normalized) return ''
+
+    const body =
+        normalized.length > MAX_QUOTED_REPLY_TEXT_LENGTH
+            ? `${normalized.slice(0, MAX_QUOTED_REPLY_TEXT_LENGTH).trim()}\n${QUOTED_REPLY_TRUNCATION_NOTICE}`
+            : normalized
+
+    return `${QUOTED_REPLY_CONTEXT_HEADER}\n${body}`
 }
 
 function looksLikeForwardedEmail(subject = '', body = '') {
@@ -340,9 +397,14 @@ function looksLikeForwardedEmail(subject = '', body = '') {
 function buildEmailCommentText(subject = '', textBody = '', htmlBody = '') {
     const normalizedSubject = String(subject || '').trim()
     const rawBody = String(textBody || '').trim() || stripHtmlToText(htmlBody)
-    const normalizedBody = looksLikeForwardedEmail(normalizedSubject, rawBody)
-        ? rawBody.trim()
-        : trimQuotedReplyText(rawBody)
+
+    let normalizedBody
+    if (looksLikeForwardedEmail(normalizedSubject, rawBody)) {
+        normalizedBody = rawBody.trim()
+    } else {
+        const { newText, quotedText } = splitQuotedReplyText(rawBody)
+        normalizedBody = [newText, buildQuotedReplyContext(quotedText)].filter(Boolean).join('\n\n')
+    }
 
     if (normalizedSubject && normalizedBody) {
         return `Subject: ${normalizedSubject}\n\n${normalizedBody}`
@@ -547,6 +609,7 @@ module.exports = {
     buildDailyEmailParticipantKey,
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildQuotedReplyContext,
     buildParticipantScopedDailyEmailTitle,
     buildReplyAllRecipients,
     computeWebhookSignature,
@@ -560,6 +623,7 @@ module.exports = {
     pickActionableAttachment,
     looksLikeForwardedEmail,
     splitEmailHeaderEntries,
+    splitQuotedReplyText,
     stripHtmlToText,
     trimQuotedReplyText,
     summarizeAttachments,

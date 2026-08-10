@@ -4,7 +4,6 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-nati
 import Button from '../../UIControls/Button'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import { IntegrationsPendingContent, useIsInsideIntegrationsLoadingRegion } from './IntegrationsLoadingRegion'
 import {
     connectVmSubscription,
     disconnectVmSubscription,
@@ -301,24 +300,24 @@ export default function AgentSubscriptionsSection() {
         loadStatus()
     }, [])
 
-    const isPending = !status && !error
-    const insideLoadingRegion = useIsInsideIntegrationsLoadingRegion()
-
     return (
-        <IntegrationsPendingContent loadingKey="vmAgentSubscriptions" pending={isPending} style={localStyles.section}>
+        <View style={localStyles.section}>
             <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('AI agent authentication')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
                     'Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
                 )}
             </Text>
-            {/* Inside Settings > Integrations the region owns the single, bigger spinner. */}
-            {isPending && !insideLoadingRegion && <ActivityIndicator size="small" color={colors.Primary100} />}
-            {!!error && <Text style={localStyles.error}>{error}</Text>}
-            {/* Rendered while loading too (dimmed by the wrapper) so the cards do not pop in. */}
-            <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
-            <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
-        </IntegrationsPendingContent>
+            {!status && !error ? (
+                <ActivityIndicator size="small" color={colors.Primary100} />
+            ) : (
+                <>
+                    {!!error && <Text style={localStyles.error}>{error}</Text>}
+                    <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
+                    <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
+                </>
+            )}
+        </View>
     )
 }
 

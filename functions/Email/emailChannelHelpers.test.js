@@ -5,6 +5,7 @@ const {
     buildDailyEmailParticipantKey,
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildQuotedReplyContext,
     buildCurrentEmailParticipants,
     buildParticipantScopedDailyEmailTitle,
     buildReplyAllRecipients,
@@ -17,6 +18,7 @@ const {
     normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
     pickActionableAttachment,
+    splitQuotedReplyText,
     stripHtmlToText,
     trimQuotedReplyText,
     verifyInboundEmailSignature,
@@ -220,13 +222,103 @@ describe('emailChannelHelpers', () => {
         ).toBe('Please do this')
     })
 
-    test('builds comment text without quoted reply history', () => {
+    test('builds comment text with quoted reply history kept under a context marker', () => {
         expect(
             buildEmailCommentText(
                 'Re: Test',
                 'Newest request\n\nFrom: Anna <anna@alldoneapp.com>\nSent: today\nOlder thread'
             )
-        ).toBe('Subject: Re: Test\n\nNewest request')
+        ).toBe(
+            'Subject: Re: Test\n\nNewest request\n\n--- Quoted earlier message (context only) ---\n' +
+                'From: Anna <anna@alldoneapp.com>\nSent: today\nOlder thread'
+        )
+    })
+
+    // AT-2232: a reply asking Anna to book a meeting lost the quoted message that carried the
+    // proposed date and time, so she had to ask for details the sender had already supplied.
+    test('keeps the quoted proposal of a Gmail reply so date and time stay visible', () => {
+        const body = [
+            'Hi Ralf,',
+            '',
+            '@Anna at Alldone <anna@alldoneapp.com>  - trag mal bitte in meinen Kalender',
+            'ein.',
+            '',
+            'Karsten',
+            '',
+            'On Mon, Aug 10, 2026 at 12:16 PM Ralf Lämmel <rl@schneider-laemmel.com>',
+            'wrote:',
+            '',
+            '> Hallo Karsten,',
+            '>',
+            '> passt Ihnen Donnerstag, 13.08.2026 um 15:00 Uhr für 60 Minuten?',
+        ].join('\n')
+
+        const result = buildEmailCommentText('Re: Agentic AI Leaderschip', body)
+
+        expect(result).toContain('Donnerstag, 13.08.2026 um 15:00 Uhr')
+        expect(result).toContain('--- Quoted earlier message (context only) ---')
+        expect(result).toContain('trag mal bitte in meinen Kalender')
+    })
+
+    // The Gmail attribution wraps onto a second line, so it must be treated as the start of
+    // the quote rather than surviving as an orphan "wrote:" that introduces nothing.
+    test('treats a line-wrapped attribution as the start of the quoted block', () => {
+        const { newText, quotedText } = splitQuotedReplyText(
+            'Please book it\n\nOn Mon, Aug 10, 2026 at 12:16 PM Ralf Lämmel <rl@example.com>\nwrote:\n\n> Thursday at 15:00'
+        )
+
+        expect(newText).toBe('Please book it')
+        expect(quotedText).toContain('On Mon, Aug 10, 2026')
+        expect(quotedText).toContain('Thursday at 15:00')
+    })
+
+    test('treats a German attribution line as the start of the quoted block', () => {
+        const { newText, quotedText } = splitQuotedReplyText(
+            'Bitte eintragen\n\nAm 10.08.2026 um 12:16 schrieb Ralf Lämmel <rl@example.com>:\n\n> Donnerstag 15:00'
+        )
+
+        expect(newText).toBe('Bitte eintragen')
+        expect(quotedText).toContain('Donnerstag 15:00')
+    })
+
+    // Previously "To:"/"Subject:"/"Sent:" matched anywhere at a line start, so ordinary prose
+    // silently truncated the rest of the message.
+    test('does not treat prose starting with a header-like word as a quote boundary', () => {
+        const body = [
+            'Hi Anna,',
+            'To: be discussed tomorrow, please prepare the agenda.',
+            'Subject: matter experts should join as well.',
+            'Sent: the invites already.',
+            'Thanks!',
+        ].join('\n')
+
+        const { newText, quotedText } = splitQuotedReplyText(body)
+
+        expect(newText).toBe(body)
+        expect(quotedText).toBe('')
+    })
+
+    test('still cuts a real Outlook style quoted header block', () => {
+        const { newText, quotedText } = splitQuotedReplyText(
+            'Newest request\n\nFrom: Anna <anna@alldoneapp.com>\nSent: today\nTo: Karsten\nOlder thread'
+        )
+
+        expect(newText).toBe('Newest request')
+        expect(quotedText).toContain('Older thread')
+    })
+
+    test('caps very long quoted history and marks the truncation', () => {
+        const quoted = `> ${'x'.repeat(9000)}`
+        const result = buildQuotedReplyContext(quoted)
+
+        expect(result).toContain('[... quoted history truncated ...]')
+        expect(result.length).toBeLessThan(4200)
+    })
+
+    test('keeps a reply that is only quoted history usable', () => {
+        const result = buildEmailCommentText('Re: Test', '> Donnerstag um 15:00 Uhr')
+
+        expect(result).toContain('Donnerstag um 15:00 Uhr')
     })
 
     test('detects forwarded emails from subject or body markers', () => {
@@ -328,6 +420,24 @@ describe('emailChannelHelpers', () => {
         const value = computeWebhookSignature(secret, timestamp, payload)
 
         expect(verifyInboundEmailSignature(secret, { timestamp, value }, payload)).toEqual({ valid: true })
+    })
+
+    // AT-2232: without this the assistant is told the mail arrived whenever the queue drained.
+    test('captures the sender Date header as sentAt', () => {
+        const payload = normalizeInboundEmailPayload(
+            { messageId: 'msg-date', from: 'user@example.com', headers: { date: 'Mon, 10 Aug 2026 12:16:00 +0200' } },
+            {}
+        )
+
+        expect(payload.sentAt).toBe(Date.parse('Mon, 10 Aug 2026 12:16:00 +0200'))
+    })
+
+    test('falls back to null sentAt when the Date header is missing or unparseable', () => {
+        expect(normalizeInboundEmailPayload({ messageId: 'a', from: 'u@e.com' }, {}).sentAt).toBeNull()
+        expect(
+            normalizeInboundEmailPayload({ messageId: 'b', from: 'u@e.com', headers: { date: 'not a date' } }, {})
+                .sentAt
+        ).toBeNull()
     })
 
     test('normalizes inbound email payload shape', () => {

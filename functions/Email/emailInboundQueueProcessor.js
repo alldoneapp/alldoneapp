@@ -72,6 +72,7 @@ async function processQueueItem(userId, item) {
             ccEmails: data.ccEmails || [],
             subject: data.subject || '',
             messageId,
+            sentAt: Number(data.sentAt) > 0 ? Number(data.sentAt) : null,
             replyTo: data.threadHeaders?.replyTo || '',
             inReplyTo: data.threadHeaders?.inReplyTo || '',
             references: data.threadHeaders?.references || '',
