@@ -116,7 +116,8 @@ export function watchProjectChatNotifications(projectId) {
 
 export function watchProjectsChatNotifications() {
     const { loggedUser } = store.getState()
-    loggedUser.projectIds.forEach(projectId => {
+    const projectIds = Array.isArray(loggedUser?.projectIds) ? loggedUser.projectIds : []
+    projectIds.forEach(projectId => {
         watchProjectChatNotifications(projectId)
     })
 }
@@ -241,7 +242,8 @@ export const unwatchProjectData = projectId => {
 }
 
 export const unwatchProjectsData = projectIds => {
-    projectIds.forEach(projectId => {
+    const ids = Array.isArray(projectIds) ? projectIds : []
+    ids.forEach(projectId => {
         unwatchProjectData(projectId)
     })
 }
@@ -275,7 +277,9 @@ export function convertAnonymousProjectsIntoSharedProjects(
     } = store.getState()
 
     let nextIndex = projects.length
-    anonymousLoggedUserProjects.forEach(project => {
+    const anonymousProjects = Array.isArray(anonymousLoggedUserProjects) ? anonymousLoggedUserProjects : []
+    anonymousProjects.forEach(project => {
+        if (!project || !project.id) return
         const sharedProject = { ...project, index: nextIndex }
         if (!projectsMap[sharedProject.id]) {
             projects.push(sharedProject)
