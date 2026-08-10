@@ -1529,6 +1529,20 @@ describe('assistant attachment handoff helpers', () => {
         expect(typeof messages[breakpointIndex][1]).toBe('string')
     })
 
+    test('tells the model that square-bracket context tags are metadata, not content', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', [], 120)
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('[Sent at ...]')
+        expect(systemMessages).toContain('must never be copied into your reply')
+    })
+
     test('allows restrained proactive research when web search is enabled', async () => {
         const messages = []
 
@@ -1596,6 +1610,53 @@ describe('assistant attachment handoff helpers', () => {
             expect.objectContaining({
                 isLoading: false,
                 isThinking: false,
+            })
+        )
+    })
+
+    test('marks a max-token-truncated answer incomplete and adds a visible cutoff marker', async () => {
+        mockDocGet.mockResolvedValue({ data: () => ({}) })
+
+        const result = await storeBotAnswerStream(
+            'project-1',
+            'topics',
+            'chat-1',
+            [
+                { content: 'The answer starts here', additional_kwargs: {} },
+                { content: '', finishReason: 'length', additional_kwargs: {} },
+            ],
+            ['user-1'],
+            ['PUBLIC'],
+            null,
+            'assistant-1',
+            ['user-1'],
+            'Anna',
+            'user-1',
+            null,
+            [['user', 'Please continue']],
+            'MODEL_DEEPSEEK_V4_FLASH',
+            'TEMPERATURE_NORMAL',
+            [],
+            {
+                project: { name: 'Project A' },
+                chat: { title: 'Chat A' },
+                chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+            },
+            null,
+            null,
+            {},
+            null,
+            { runId: 'run-truncated', kind: 'chat' }
+        )
+
+        expect(result).toContain('The answer starts here')
+        expect(result).toContain("⚠️ The response was cut off because it hit the model's length limit.")
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: expect.stringContaining(
+                    "⚠️ The response was cut off because it hit the model's length limit."
+                ),
+                assistantRun: expect.objectContaining({ status: 'incomplete' }),
             })
         )
     })
@@ -5470,6 +5531,76 @@ describe('assistant thread compaction tool', () => {
         await expect(
             getAssistantThreadStateContextMessage('project-1', 'topics', 'chat-1', 'assistant-1')
         ).resolves.toContain('Operations done. Marketing next.')
+    })
+
+    test('keeps [Sent at ...] off assistant turns so the model cannot mimic the tag', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ name: 'Operations', description: 'Project context.' }),
+                })
+            }
+            return Promise.resolve({
+                exists: false,
+                data: () => ({}),
+            })
+        })
+
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'user-turn',
+                    ref: { path: 'user-turn-ref' },
+                    data: () => ({
+                        commentText: 'Follow up please.',
+                        fromAssistant: false,
+                        created: 500,
+                        lastChangeDate: 500,
+                    }),
+                },
+                {
+                    id: 'assistant-turn',
+                    ref: { path: 'assistant-turn-ref' },
+                    data: () => ({
+                        commentText: 'Here is my previous answer.',
+                        fromAssistant: true,
+                        created: 400,
+                        lastChangeDate: 400,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'user-turn',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            null,
+            'assistant-1'
+        )
+
+        const assistantMessages = contextMessages.filter(message => message[0] === 'assistant')
+        const userMessages = contextMessages.filter(message => message[0] === 'user')
+
+        expect(assistantMessages.length).toBeGreaterThan(0)
+        expect(userMessages.length).toBeGreaterThan(0)
+        for (const message of assistantMessages) {
+            const text = typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])
+            expect(text).not.toContain('[Sent at')
+            expect(text).toContain('Here is my previous answer.')
+        }
+        for (const message of userMessages) {
+            const text = typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])
+            expect(text).toContain('[Sent at')
+        }
     })
 })
 

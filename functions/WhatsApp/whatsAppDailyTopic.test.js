@@ -144,4 +144,23 @@ describe('WhatsApp daily topic media history', () => {
             },
         ])
     })
+
+    test('leaves assistant turns untouched so the model cannot mimic [Sent at ...]', async () => {
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'assistant-turn',
+                    data: () => ({
+                        fromAssistant: true,
+                        created: Date.UTC(2026, 2, 31, 8, 15, 0),
+                        commentText: 'Here is my previous answer.',
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 60)
+
+        expect(history).toEqual([['assistant', 'Here is my previous answer.']])
+    })
 })
