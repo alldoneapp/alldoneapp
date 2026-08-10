@@ -55,6 +55,21 @@ jest.mock('./vmApiKeyAuth', () => ({
     resolveVmCredentialMode: mockResolveVmCredentialMode,
 }))
 
+// Deterministic model catalog — discovery itself is covered by vmAgentModelCatalog.test.js.
+// Mirrors the real contract: Claude alias families resolve to the alias, Codex to a concrete id.
+jest.mock('./vmAgentModelCatalog', () => ({
+    // Keep the real helpers (vmAgentSettings imports isValidFamilyId from here); stub only the
+    // network-backed resolver.
+    ...jest.requireActual('./vmAgentModelCatalog'),
+    resolveFamilyToModel: jest.fn(async (provider, family) => {
+        const catalog = {
+            claude: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'claude-fable-5' },
+            codex: { sol: 'gpt-5.6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-5.6-luna' },
+        }
+        return (catalog[provider] || {})[family] || null
+    }),
+}))
+
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
@@ -193,13 +208,13 @@ describe('startVmJob', () => {
             requestUserId: 'user-1',
         })
 
-        // No model/effort passed → the per-agent defaults (Codex: gpt-5.6-sol · medium) are surfaced.
+        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 5.6 · medium).
         expect(createInitialStatusMessage).toHaveBeenCalledWith(
             'project-1',
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (gpt-5.6-sol · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 5.6 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -404,7 +419,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (sonnet · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -448,6 +463,94 @@ describe('startVmJob', () => {
         expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
 
+    // AT-2221: the label is family-aware for every tier, not just Opus — otherwise picking
+    // "Sonnet" in Settings would show a raw id while "Opus" showed a friendly version.
+    test.each([
+        ['sonnet', 'Sonnet latest; resolving version…'],
+        ['haiku', 'Haiku latest; resolving version…'],
+        ['claude-sonnet-5', 'Sonnet 5.0'],
+        ['claude-sonnet-4-6', 'Sonnet 4.6'],
+        ['claude-haiku-4-5', 'Haiku 4.5'],
+        ['claude-fable-5', 'Fable 5.0'],
+        ['gpt-5.6-sol', 'Sol 5.6'],
+        ['gpt-5.6-terra', 'Terra 5.6'],
+        ['gpt-5.6-luna', 'Luna 5.6'],
+    ])('names the model tier for %s', (model, expectedLabel) => {
+        expect(formatAgentModelLabel(model)).toBe(expectedLabel)
+    })
+
+    test('leaves an unrecognised model id untouched rather than mangling it', () => {
+        expect(formatAgentModelLabel('o3-mini')).toBe('o3-mini')
+        expect(formatAgentModelLabel('')).toBe('')
+    })
+
+    describe('default model family resolution (AT-2221)', () => {
+        const baseArgs = {
+            objective: 'Change the code',
+            taskType: 'prototype',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        }
+
+        test("applies the user's saved family for the selected agent", async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'terra' } }),
+            })
+
+            await startVmJob({ ...baseArgs, agent: 'claude' })
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'claude', agentModel: 'sonnet' })
+            )
+        })
+
+        test('resolves a Codex family to the newest concrete id', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'terra' } }),
+            })
+
+            await startVmJob({ ...baseArgs, agent: 'codex' })
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-terra' })
+            )
+        })
+
+        test('lets an explicit agentModel override the saved family', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { claude: 'sonnet' } }),
+            })
+
+            await startVmJob({ ...baseArgs, agent: 'claude', agentModel: 'haiku' })
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agentModel: 'haiku' })
+            )
+        })
+
+        test('keeps the built-in default for a user with no saved family (backwards compatible)', async () => {
+            await startVmJob({ ...baseArgs, agent: 'claude' })
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agentModel: 'opus' })
+            )
+        })
+
+        test('falls back to the agent default when the saved family cannot be resolved', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { codex: 'nonexistent' } }),
+            })
+
+            await startVmJob({ ...baseArgs, agent: 'codex' })
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
+            )
+        })
+    })
+
     test('clamps legacy Codex minimal effort requests to low', async () => {
         await startVmJob({
             objective: 'Reply briefly',
@@ -466,7 +569,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (gpt-5.6-sol · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 5.6 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
