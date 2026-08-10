@@ -10,11 +10,7 @@ Alldone is a React Native/Firebase productivity platform supporting tasks, goals
 
 ```bash
 # Development
-npm start                    # Start Metro bundler
-npm run web                  # Start web version (Expo)
-npm run android              # Run on Android
-npm run ios                  # Run on iOS
-npm run start-clean          # Start with cache reset
+npm run web-webpack          # Dev server on the webpack pipeline (port 19006)
 
 # Firebase Functions (local)
 firebase emulators:start --only functions --inspect-functions
@@ -26,21 +22,24 @@ npm run coverage             # Generate test coverage
 npm run update-snapshots     # Update Jest snapshots
 
 # Build & Deploy
-npm run build-web            # Build for web production (legacy expo pipeline, Node 14)
-npm run build-web-webpack    # Build for web production (webpack 5 pipeline, Node 22 — see web-bundler/)
-npm run web-webpack          # Dev server on the webpack pipeline (Node 22, port 19006)
+npm run build-web-webpack    # Build for web production (webpack 5 — see web-bundler/)
 npm run format-code          # Format with Prettier
 ```
 
-**Required versions**: Node 14.21.3, npm 6.14.18, expo-cli 6.1.0, firebase-tools 13.29.3
+**Required versions**: Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
+Since migration Stage 5 the whole repo — installs (lockfile v3, `.npmrc` with
+legacy-peer-deps), Jest, the web-bundler build, and Cloud Functions work — runs on
+Node 22; the Node 14 / npm 6 / expo-cli era is over. The RN-era scripts still in
+package.json (`start`, `web`, `android`, `ios`, `build-web`, `start-clean`) are dead:
+they need the retired expo/metro toolchain and cannot run under Node 22.
 
-**web-bundler exception (migration Stage 0)**: `web-bundler/` is the standalone webpack 5
-replacement for `expo build:web` and runs on **Node 22** (own `.nvmrc` + lockfile v3, like
-the Cloudflare worker's Node 20 carve-out). It builds the unchanged app source against the
-root `node_modules` (still installed under Node 14 / npm 6) and reproduces the exact
-`web-build/` output contract. Env injection stays sed-based outside the bundler; the
-`replacement_node_modules` swap still applies before building. **Since 2026-08-04 this IS
-the deployed pipeline**: `build_web_production` (master) and `build_web_staging` (develop)
+**web-bundler (migration Stage 0)**: `web-bundler/` is the standalone webpack 5
+replacement for `expo build:web` (own lockfile, its own babel config). Since Stage 5 it is
+no longer a Node-version carve-out — the whole repo is Node 22 — and it builds the app
+source against the root `node_modules` (now also installed under Node 22 / npm 10) while
+reproducing the exact `web-build/` output contract. Env injection stays sed-based outside
+the bundler; the `replacement_node_modules` swap still applies before building. **Since
+2026-08-04 this IS the deployed pipeline**: `build_web_production` (master) and `build_web_staging` (develop)
 build through web-bundler on the Node 22 tooling image; `build_web_webpack_check` gives
 feature branches compile signal + a manual preview-channel deploy
 (`deploy:web-webpack-preview`, channel `webpack-<ref>` on the staging project). The expo
@@ -52,7 +51,7 @@ zero console errors — write `const Name = (...); export default Name` instead.
 components were fixed for this during Stage 0; grep before assuming a blank page is a
 bundler problem.
 
-**Cloudflare worker exception**: The repo stays on Node 14.21.3 for the main app and Firebase work, but `cloudflare/email-worker/` uses Node 20 for Wrangler. That directory has its own `.nvmrc`; use `nvm use 20` inside `cloudflare/email-worker/`, then switch back to `nvm use 14` at the repo root for normal app work.
+**Cloudflare worker exception**: `cloudflare/email-worker/` pins Node 20 for Wrangler via its own `.nvmrc`; use `nvm use 20` inside that directory, then `nvm use` (Node 22 from the root `.nvmrc`) back at the repo root.
 
 ## Architecture Overview
 
@@ -290,30 +289,42 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 
 ### Code Style
 
-- Prettier enforces formatting (4-space indent, single quotes, trailing commas)
+- Prettier 3 enforces formatting (4-space indent, single quotes, trailing commas);
+  `.prettierignore` deliberately shields email/invoice HTML templates, the build-injected
+  index.html files, and the quill-derived editor CSS — do not format those
 - PascalCase for components (`ProjectDetailedView.js`)
 - camelCase for hooks/helpers (`useComments.js`, `taskActions.js`)
-- Husky runs `pretty-quick --staged` on commit
+- Husky 9 (`.husky/pre-commit`) runs `pretty-quick --staged` on commit
 
 ### Testing
 
-- Jest with React Native preset and JSDOM environment
-- Tests in `__tests__/` mirror component structure
+- Jest 30 on Node 22, jsdom environment (pinned explicitly in the config — jest 25's
+  default, which suites depend on), babel-jest through the root `babel.config.js`
+- Tests in `__tests__/` mirror component structure; newer tests sit next to their code
 - Firebase mocks in `__mocks__/`
 - Maintain 10% coverage thresholds
-- Many tests fail due to native module mocking issues (ExpoLocalization, etc.) - this is a known limitation
-- **Functions suites run under Node 22, NOT the web-pinned Node 14**:
-  `nvm use 22 && npx jest --config ci/jest.functions.config.js`. That config skips Babel
-  for `functions/node_modules` (firebase-admin 14 / firebase-functions 7 ship modern CJS —
-  class static blocks, `node:`-prefixed requires — that the pinned web Babel 7.12 cannot
-  parse and Node 14 cannot execute) and maps `node:crypto` through `ci/nodeShims/`. The old
-  `npm test -- --testPathPattern="functions/"` under Node 14 no longer works for functions.
-  CI's `test:web:changed` job excludes `functions/` entirely, so this is a local check.
-  The root `npm test` (Node 14) now also excludes `functions/` plus three web-located
-  "bridge" suites that require functions code (`__tests__/TwilioWhatsAppService.test.js`,
-  `__tests__/Chats/copyChatToOtherProject.test.js`,
-  `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) — those run in the functions
-  config instead (`BRIDGE_SUITES` in `ci/jest.functions.config.js`).
+- **Transforms are allowlisted, not blanket** (Stage 5): `transformIgnorePatterns` in
+  package.json names the only node_modules that go through babel — the ESM chain
+  (`quill*`, `parchment`, `react-quill-new`, `lodash-es`, `lib0`, `y-*`, `yjs`) and the
+  RN-era untranspiled dialect (`react-native*`, `expo*`, `@react-native*`…). A new dep
+  that throws `SyntaxError: Unexpected token 'export'` in tests belongs in that allowlist.
+  The old transform-everything hack died with jest 30 (jest loads its own runner through
+  the transforming runtime). Root `babel.config.js` is an explicit web config on modern
+  @babel/core mirroring web-bundler's shipped semantics — sloppy-mode CJS, block-scoping
+  to var, set-semantics class fields, flow without pragma, classic JSX — plus
+  transform-runtime with the real runtime version so `import * as X` namespace objects are
+  shared across modules (suites that mutate a mock through a namespace import rely on it).
+- **Functions suites**: `npx jest --config ci/jest.functions.config.js` (same Node 22).
+  That config skips Babel for `functions/node_modules` (modern CJS runs natively) and
+  resolves exports maps with the **node** conditions — under jsdom's default browser
+  condition, jest 30 would resolve e.g. jwks-rsa's `jose` to its browser ESM build and
+  fail at require time. CI's `test:web:changed` excludes `functions/` entirely, so the
+  functions suite is a local check — drift CAN land on master unnoticed (it has: three
+  suites carry stale assertions from AT-2199-era commits, tracked separately). Three
+  web-located "bridge" suites that require functions code
+  (`__tests__/TwilioWhatsAppService.test.js`, `__tests__/Chats/copyChatToOtherProject.test.js`,
+  `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) run in the functions config
+  instead (`BRIDGE_SUITES` in `ci/jest.functions.config.js`).
 - **firebase-admin is pinned to ^13 — do NOT bump to 14 casually.** v14's top-level
   `require('firebase-admin')` export is only the `app` module: the entire legacy namespace
   API (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, `admin.database()`,
@@ -327,17 +338,18 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 
 ### Verifying Code Changes
 
-To verify syntax and compilation without running the full test suite:
+To verify syntax and compilation without running the full test suite, compile through
+the shipped pipeline:
 
 ```bash
-# Start Metro bundler - this will catch syntax errors and import issues
-npm run start-clean
-
-# If Metro starts successfully without errors, the code compiles correctly
-# Look for "Running Metro Bundler on port 8081" message
+# Webpack 5 production build — catches syntax errors and unresolvable imports
+npm run build-web-webpack
 ```
 
-Note: Standard syntax checkers like `acorn` may fail on modern JavaScript features (optional chaining `?.`, nullish coalescing `??`) that are fully supported by the project's Babel/Metro configuration.
+A clean compile ends with `webpack compiled with 3 warnings` (the three known RNGH
+DrawerLayoutAndroid warnings are expected; anything else is a real finding). Remember the
+Stage 0 lesson: a clean compile proves little about runtime — boot the artifact in a
+browser before trusting a bigger change.
 
 ### Environment Configuration
 
