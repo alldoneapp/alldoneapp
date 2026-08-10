@@ -2238,18 +2238,19 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['claude', 'codex'],
                         description:
-                            'Optional. Which coding agent runs in the VM. An explicit choice overrides the user setting. ' +
-                            'When omitted, the requesting user\'s default VM agent is used, falling back to "codex" for users without a preference. ' +
-                            'Use "claude" (Claude Code) for research, writing, analysis and general tasks; ' +
-                            'consider "codex" (OpenAI Codex) for heavy coding / repository work. If unsure, omit it.',
+                            'Optional. Which coding agent runs in the VM. Both agents handle every task type well, and neither is ' +
+                            'preferred for coding, research, writing or repository work. ' +
+                            'ONLY set this when the user explicitly named an agent for this run (e.g. "use codex", "run it with Claude"). ' +
+                            'Never infer it from the kind of work, the task type, or the repository involved. ' +
+                            "When omitted, the requesting user's own default VM agent from Settings > Integrations is used, " +
+                            'falling back to "codex" for users without a preference. If in doubt, omit it — omitting it respects the user\'s setting.',
                     },
                     agentModel: {
                         type: 'string',
                         description:
-                            'Optional. The specific model to use inside the VM agent. An explicit choice overrides the ' +
-                            "requesting user's default model family (Settings → Integrations). When omitted and the user has " +
-                            'no saved default, falls back to the best available model per agent ' +
-                            '(Claude Code: moving "opus" alias; Codex: latest GPT model). ' +
+                            'Optional. The specific model to use inside the VM agent. ' +
+                            'ONLY set this when the user explicitly named a model for this run; otherwise omit it and the best available ' +
+                            'model per agent is used (Claude Code: moving "opus" alias; Codex: latest GPT model). ' +
                             'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "fable", "claude-opus-4-8") only when agent="claude"; ' +
                             'the runtime-resolved concrete Claude model is shown in the VM status. ' +
                             'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex".',
@@ -2258,8 +2259,11 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['low', 'medium', 'high', 'xhigh'],
                         description:
-                            'Optional. Effort/reasoning setting for the VM agent. An explicit value overrides the user setting. ' +
-                            'When omitted, the requesting user\'s default VM effort is used, falling back to "medium" for users without a preference. ' +
+                            'Optional. Effort/reasoning setting for the VM agent. ' +
+                            'ONLY set this when the user explicitly asked for a different effort/reasoning level for this run. ' +
+                            'Never infer it from how hard the task looks — a harder task is not a reason to set it. ' +
+                            "When omitted, the requesting user's default VM effort from Settings > Integrations is used, " +
+                            'falling back to "medium" for users without a preference. ' +
                             'The minimum is "low" because Codex Responses requests can include tools that are incompatible with "minimal". ' +
                             'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
                     },
@@ -2282,8 +2286,9 @@ const toolSchemas = {
                             '"balanced" additionally auto-approves the operations Alldone itself instructs the agent to perform ' +
                             '(pushing a feature branch, opening a merge/pull request) and read-only API calls. ' +
                             '"permissive" also auto-approves merging a merge/pull request and arbitrary outbound HTTP. ' +
-                            'When omitted, the requesting user\'s saved default is used (falling back to "balanced"). ' +
-                            'Set this only when the user explicitly asks for a different approval strictness for this run.',
+                            'ONLY set this when the user explicitly asked for a different approval strictness for this run. ' +
+                            'Never infer it from how risky the work looks. ' +
+                            'When omitted, the requesting user\'s saved default from Settings > Integrations is used (falling back to "balanced").',
                     },
                     context_object_ids: {
                         type: 'array',

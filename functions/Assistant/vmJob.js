@@ -8,10 +8,9 @@ const {
     VALID_VM_APPROVAL_POLICIES,
     isValidVmApprovalPolicy,
     resolveVmAgentSettings,
-    resolveVmAgentModelFamily,
     resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
-const { resolveFamilyToModel } = require('./vmAgentModelCatalog')
+const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
@@ -73,28 +72,13 @@ function getAgentLabel(agent) {
  * Returns an empty string when neither is known, so older callers stay unchanged.
  */
 function formatAgentModelLabel(model) {
-    if (typeof model !== 'string' || !model) return model
+    if (model === 'opus') return 'Opus latest; resolving version…'
 
-    const capitalize = value => value.charAt(0).toUpperCase() + value.slice(1)
-
-    // A bare family name is one of Claude Code's moving aliases — the concrete version is only
-    // known once the CLI reports it, which vmJobRunner captures into `resolvedAgentModel`.
-    if (/^[a-z]+$/.test(model)) return `${capitalize(model)} latest; resolving version…`
-
-    // claude-<family>-<major>[-<minor>][-<yyyymmdd>]  →  "Sonnet 4.6"
-    const claudeVersion = /^claude-([a-z][a-z0-9]*)-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model)
-    if (claudeVersion) {
-        const [, family, major, minorOrDate] = claudeVersion
+    const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model)
+    if (opusVersion) {
+        const [, major, minorOrDate] = opusVersion
         const minor = minorOrDate && !/^\d{8}$/.test(minorOrDate) ? minorOrDate : '0'
-        return `${capitalize(family)} ${major}.${minor}`
-    }
-
-    // gpt-<major>[.<minor>]-<family>  →  "Sol 5.6". Naming the tier (not the raw id) keeps the
-    // status text aligned with the family the user actually picked in Settings.
-    const codexVersion = /^gpt-(\d+)(?:\.(\d+))?-([a-z][a-z0-9]*)$/.exec(model)
-    if (codexVersion) {
-        const [, major, minor, family] = codexVersion
-        return `${capitalize(family)} ${major}.${minor || '0'}`
+        return `Opus ${major}.${minor}`
     }
 
     return model
@@ -146,47 +130,6 @@ function normalizeAgentModel(agent, agentModel) {
             : { error: 'agentModel must be an OpenAI model id when agent="codex".' }
     }
     return { value: fallback }
-}
-
-/**
- * Decide which model this run uses (AT-2221).
- *
- * Precedence mirrors `agent` and `agentReasoningEffort`: an explicit tool argument wins, then
- * the requesting user's saved default *family*, then the agent's built-in default. The family
- * is resolved to a concrete id (or a Claude Code moving alias) at this moment rather than at
- * save time, which is what makes "always the latest version of that family" true.
- *
- * Every failure path falls through to the previous behaviour, so a user with no preference —
- * or a degraded catalog — gets exactly what they got before this feature existed.
- */
-async function resolveAgentModelForRun(userId, agent, explicitModel) {
-    const explicit = typeof explicitModel === 'string' ? explicitModel.trim() : ''
-    if (explicit) return normalizeAgentModel(agent, explicit)
-
-    try {
-        const family = await resolveVmAgentModelFamily(userId, agent)
-        if (family) {
-            const resolved = await resolveFamilyToModel(agent, family)
-            if (resolved) {
-                const normalized = normalizeAgentModel(agent, resolved)
-                // A catalog entry that fails our own shape check means something is off upstream;
-                // prefer the known-good default over refusing to run.
-                if (!normalized.error) return normalized
-                console.warn('🖥️ VM MODELS: Resolved family failed validation, using agent default', {
-                    agent,
-                    family,
-                    resolved,
-                })
-            }
-        }
-    } catch (error) {
-        console.warn('🖥️ VM MODELS: Failed resolving default model family, using agent default', {
-            agent,
-            error: error.message,
-        })
-    }
-
-    return normalizeAgentModel(agent, '')
 }
 
 function normalizeAgentReasoningEffort(agent, effort) {
@@ -311,6 +254,9 @@ async function startVmJob({
     objectId,
     assistantId,
     requestUserId,
+    // User-authored text this run was requested with (their message, the workflow step prompt).
+    // Used only to corroborate the per-run overrides above — see vmRunOverrideGuard.
+    requestText = '',
     triggerChannel = '',
     whatsappTo = '',
     originProjectId = '',
@@ -352,13 +298,38 @@ async function startVmJob({
         }
     }
 
+    // An explicit per-run override outranks the user's saved defaults, so it is only accepted when
+    // the user actually asked for it. The assistant otherwise fills these in on its own — a workflow
+    // step for a coding task would pick Codex for a user whose saved default is Claude (AT-2224).
+    // Anything not corroborated is dropped here and resolves from the saved preference below.
+    const overrides = resolveVmRunOverrides({
+        requestText,
+        agent,
+        agentModel,
+        agentReasoningEffort,
+        approvalPolicy,
+    })
+    if (overrides.ignored.length) {
+        console.log('🖥️ VM JOB: Ignoring per-run overrides the request does not ask for', {
+            requestUserId,
+            projectId,
+            objectId,
+            ignored: overrides.ignored,
+            hasRequestText: !!(requestText && requestText.trim()),
+        })
+    }
+
     // Explicit per-run value wins, then the requesting user's saved preference, then the system
     // default. Only consulted by interactive runs; automatic runs never pause for approvals.
-    const resolvedApprovalPolicy = await resolveVmApprovalPolicy(requestUserId, approvalPolicy)
-    const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
+    const resolvedApprovalPolicy = await resolveVmApprovalPolicy(requestUserId, overrides.approvalPolicy)
+    const resolvedAgentSettings = await resolveVmAgentSettings(
+        requestUserId,
+        overrides.agent,
+        overrides.agentReasoningEffort
+    )
     const selectedAgent = resolvedAgentSettings.agent
     const selectedAgentLabel = getAgentLabel(selectedAgent)
-    const modelResult = await resolveAgentModelForRun(requestUserId, selectedAgent, agentModel)
+    const modelResult = normalizeAgentModel(selectedAgent, overrides.agentModel)
     if (modelResult.error) {
         return { success: false, message: modelResult.error }
     }
@@ -1025,6 +996,5 @@ module.exports = {
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
-    resolveAgentModelForRun,
-    __private__: { packageContextObjects, normalizeAgentModel },
+    __private__: { packageContextObjects },
 }

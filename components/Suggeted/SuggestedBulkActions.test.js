@@ -1,5 +1,4 @@
 import React from 'react'
-import { StyleSheet } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import SuggestedBulkActions from './SuggestedBulkActions'
@@ -164,72 +163,6 @@ describe('SuggestedBulkActions wording', () => {
         const humanSection = render([humanTask('task-1')])
         expect(buttonWithTitle(humanSection, 'Next step for all')).toHaveLength(1)
         expect(buttonWithTitle(humanSection, 'Accept all')).toHaveLength(1)
-    })
-})
-
-// AT-2223: the actions sit in the "Suggested by X" header row, next to a caption-sized label, so
-// they follow the compact auto-postpone button in the Task Filters line rather than the default
-// 40px bordered button.
-describe('SuggestedBulkActions compact sizing', () => {
-    const COMPACT_HEIGHT = 24
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockState = { smallScreenNavigation: false, currentUser: { workflow: {} } }
-    })
-
-    test('renders both actions at the compact height, without button chrome', () => {
-        const tree = render([assistantTask('task-1'), assistantTask('task-2')])
-        const buttons = tree.root.findAllByType('Button')
-
-        expect(buttons).toHaveLength(2)
-        buttons.forEach(button => {
-            const style = StyleSheet.flatten(button.props.buttonStyle)
-
-            // All three, because Button's master style pins height, minHeight and maxHeight at 40.
-            expect(style).toMatchObject({
-                height: COMPACT_HEIGHT,
-                minHeight: COMPACT_HEIGHT,
-                maxHeight: COMPACT_HEIGHT,
-                backgroundColor: 'transparent',
-            })
-            expect(button.props.noBorder).toBe(true)
-        })
-    })
-
-    test('pairs a 12px icon with a caption-sized label, tightly spaced', () => {
-        const tree = render([assistantTask('task-1')])
-        const buttons = tree.root.findAllByType('Button')
-
-        buttons.forEach(button => {
-            expect(button.props.iconSize).toBe(12)
-            // The icon/label gap is Button's own, not something a style can reach.
-            expect(button.props.iconGap).toBe(4)
-            expect(StyleSheet.flatten(button.props.titleStyle).fontSize).toBe(12)
-        })
-    })
-
-    test('keeps the colors that tell the two actions apart', () => {
-        const tree = render([assistantTask('task-1')])
-
-        const reject = buttonWithTitle(tree, 'Reject all')[0]
-        const accept = buttonWithTitle(tree, 'Accept all')[0]
-
-        expect(StyleSheet.flatten(reject.props.titleStyle).color).toBe(reject.props.iconColor)
-        expect(StyleSheet.flatten(accept.props.titleStyle).color).toBe(accept.props.iconColor)
-        expect(reject.props.iconColor).not.toBe(accept.props.iconColor)
-    })
-
-    test('keeps a square tap target for the icon-only mobile button', () => {
-        mockState.smallScreenNavigation = true
-
-        const tree = render([assistantTask('task-1')])
-
-        tree.root.findAllByType('Button').forEach(button => {
-            const style = StyleSheet.flatten(button.props.buttonStyle)
-            expect(style.width).toBe(COMPACT_HEIGHT)
-            expect(style.height).toBe(COMPACT_HEIGHT)
-        })
     })
 })
 

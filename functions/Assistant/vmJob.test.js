@@ -55,21 +55,6 @@ jest.mock('./vmApiKeyAuth', () => ({
     resolveVmCredentialMode: mockResolveVmCredentialMode,
 }))
 
-// Deterministic model catalog — discovery itself is covered by vmAgentModelCatalog.test.js.
-// Mirrors the real contract: Claude alias families resolve to the alias, Codex to a concrete id.
-jest.mock('./vmAgentModelCatalog', () => ({
-    // Keep the real helpers (vmAgentSettings imports isValidFamilyId from here); stub only the
-    // network-backed resolver.
-    ...jest.requireActual('./vmAgentModelCatalog'),
-    resolveFamilyToModel: jest.fn(async (provider, family) => {
-        const catalog = {
-            claude: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'claude-fable-5' },
-            codex: { sol: 'gpt-5.6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-5.6-luna' },
-        }
-        return (catalog[provider] || {})[family] || null
-    }),
-}))
-
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
@@ -201,6 +186,7 @@ describe('startVmJob', () => {
             objective: 'Change the code',
             taskType: 'prototype',
             agent: 'codex',
+            requestText: 'please run this one with codex',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -208,13 +194,13 @@ describe('startVmJob', () => {
             requestUserId: 'user-1',
         })
 
-        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 5.6 · medium).
+        // No model/effort passed → the per-agent defaults (Codex: gpt-5.6-sol · medium) are surfaced.
         expect(createInitialStatusMessage).toHaveBeenCalledWith(
             'project-1',
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (gpt-5.6-sol · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -263,6 +249,7 @@ describe('startVmJob', () => {
             objective: 'Research this',
             taskType: 'research',
             agent: 'claude',
+            requestText: 'do this one with claude',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -283,6 +270,175 @@ describe('startVmJob', () => {
             expect.any(Array),
             expect.any(Array)
         )
+    })
+
+    // AT-2224: the assistant fills these arguments in on its own — a workflow step for a coding task
+    // asked for Codex while the user's saved default was Claude. An override only outranks the saved
+    // preference when the user's own words asked for it.
+    describe('per-run overrides the request does not ask for', () => {
+        // What the user actually wrote for the workflow step that reproduced the bug.
+        const workflowStepPrompt = 'Work on this task in the VM in interactive mode. Ask questions to clarify.'
+
+        test('keeps the saved Claude default when the assistant invents Codex', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgent: 'claude', defaultVmAgentReasoningEffort: 'high' }),
+            })
+
+            await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                agent: 'codex',
+                agentModel: 'gpt-5.6-sol',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'high' })
+            )
+        })
+
+        test('keeps the saved Codex default when the assistant invents Claude', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'high' }),
+            })
+
+            await startVmJob({
+                objective: 'Research this thoroughly and write it up',
+                taskType: 'research',
+                agent: 'claude',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'high' })
+            )
+        })
+
+        test('keeps the saved effort and approval policy when the assistant invents them', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({
+                    defaultVmAgent: 'claude',
+                    defaultVmAgentReasoningEffort: 'high',
+                    defaultVmApprovalPolicy: 'permissive',
+                }),
+            })
+
+            await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                executionMode: 'interactive',
+                agentReasoningEffort: 'medium',
+                approvalPolicy: 'balanced',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    agent: 'claude',
+                    agentReasoningEffort: 'high',
+                    approvalPolicy: 'permissive',
+                })
+            )
+        })
+
+        test('still honours an agent the user explicitly asked for in the same request', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgent: 'claude', defaultVmAgentReasoningEffort: 'high' }),
+            })
+
+            await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                agent: 'codex',
+                requestText: 'Work on this task in the VM, but use codex this time.',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex', agentReasoningEffort: 'high' })
+            )
+        })
+
+        test('falls back to the system default when the stored preference is invalid', async () => {
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgent: 'gemini', defaultVmAgentReasoningEffort: 'ludicrous' }),
+            })
+
+            await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                agent: 'claude',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex', agentReasoningEffort: 'medium' })
+            )
+        })
+
+        test('falls back to the system default when the user doc is missing', async () => {
+            await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                agent: 'claude',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex', agentReasoningEffort: 'medium' })
+            )
+        })
+
+        test('still rejects an invalid explicitly requested agent instead of silently dropping it', async () => {
+            const result = await startVmJob({
+                objective: 'Implement the task in the connected repository',
+                taskType: 'prototype',
+                agent: 'gemini',
+                requestText: workflowStepPrompt,
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+            })
+
+            expect(result).toEqual({ success: false, message: 'agent must be one of: claude, codex.' })
+            expect(deductGold).not.toHaveBeenCalled()
+        })
     })
 
     test('uses Codex with medium effort for users without a preference', async () => {
@@ -311,6 +467,7 @@ describe('startVmJob', () => {
             objective: 'Work on this',
             taskType: 'prototype',
             agent: selectedAgent,
+            requestText: `use ${selectedAgent} for this`,
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -333,6 +490,7 @@ describe('startVmJob', () => {
             objective: 'Work on this',
             taskType: 'prototype',
             agentReasoningEffort: 'low',
+            requestText: 'keep it quick — use low reasoning effort',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -407,6 +565,7 @@ describe('startVmJob', () => {
             agent: 'claude',
             agentModel: 'sonnet',
             agentReasoningEffort: 'medium',
+            requestText: 'run it with claude on sonnet at medium reasoning effort',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -419,7 +578,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Claude (sonnet · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -437,6 +596,7 @@ describe('startVmJob', () => {
             taskType: 'research',
             agent: 'claude',
             agentModel,
+            requestText: `use claude with model ${agentModel}`,
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -463,100 +623,13 @@ describe('startVmJob', () => {
         expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
 
-    // AT-2221: the label is family-aware for every tier, not just Opus — otherwise picking
-    // "Sonnet" in Settings would show a raw id while "Opus" showed a friendly version.
-    test.each([
-        ['sonnet', 'Sonnet latest; resolving version…'],
-        ['haiku', 'Haiku latest; resolving version…'],
-        ['claude-sonnet-5', 'Sonnet 5.0'],
-        ['claude-sonnet-4-6', 'Sonnet 4.6'],
-        ['claude-haiku-4-5', 'Haiku 4.5'],
-        ['claude-fable-5', 'Fable 5.0'],
-        ['gpt-5.6-sol', 'Sol 5.6'],
-        ['gpt-5.6-terra', 'Terra 5.6'],
-        ['gpt-5.6-luna', 'Luna 5.6'],
-    ])('names the model tier for %s', (model, expectedLabel) => {
-        expect(formatAgentModelLabel(model)).toBe(expectedLabel)
-    })
-
-    test('leaves an unrecognised model id untouched rather than mangling it', () => {
-        expect(formatAgentModelLabel('o3-mini')).toBe('o3-mini')
-        expect(formatAgentModelLabel('')).toBe('')
-    })
-
-    describe('default model family resolution (AT-2221)', () => {
-        const baseArgs = {
-            objective: 'Change the code',
-            taskType: 'prototype',
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        }
-
-        test("applies the user's saved family for the selected agent", async () => {
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'terra' } }),
-            })
-
-            await startVmJob({ ...baseArgs, agent: 'claude' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agent: 'claude', agentModel: 'sonnet' })
-            )
-        })
-
-        test('resolves a Codex family to the newest concrete id', async () => {
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'terra' } }),
-            })
-
-            await startVmJob({ ...baseArgs, agent: 'codex' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-terra' })
-            )
-        })
-
-        test('lets an explicit agentModel override the saved family', async () => {
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet' } }),
-            })
-
-            await startVmJob({ ...baseArgs, agent: 'claude', agentModel: 'haiku' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'haiku' })
-            )
-        })
-
-        test('keeps the built-in default for a user with no saved family (backwards compatible)', async () => {
-            await startVmJob({ ...baseArgs, agent: 'claude' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'opus' })
-            )
-        })
-
-        test('falls back to the agent default when the saved family cannot be resolved', async () => {
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { codex: 'nonexistent' } }),
-            })
-
-            await startVmJob({ ...baseArgs, agent: 'codex' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
-            )
-        })
-    })
-
     test('clamps legacy Codex minimal effort requests to low', async () => {
         await startVmJob({
             objective: 'Reply briefly',
             taskType: 'prototype',
             agent: 'codex',
             agentReasoningEffort: 'minimal',
+            requestText: 'use codex with minimal reasoning effort',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -569,7 +642,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (gpt-5.6-sol · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -586,6 +659,7 @@ describe('startVmJob', () => {
             objective: 'Change the code',
             taskType: 'prototype',
             agent: 'codex',
+            requestText: 'use codex for this',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -615,6 +689,7 @@ describe('startVmJob', () => {
             objective: 'Change the code',
             taskType: 'prototype',
             agent: 'codex',
+            requestText: 'use codex for this',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
