@@ -57,8 +57,11 @@ describe('VM agent settings', () => {
             effectiveDefaultAgent: 'codex',
             defaultReasoningEffort: null,
             effectiveDefaultReasoningEffort: 'medium',
+            defaultApprovalPolicy: null,
+            effectiveDefaultApprovalPolicy: 'balanced',
             validAgents: ['claude', 'codex'],
             validReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+            validApprovalPolicies: ['strict', 'balanced', 'permissive'],
         })
         await expect(resolveVmAgentSettings('user-1')).resolves.toEqual({
             agent: 'codex',
