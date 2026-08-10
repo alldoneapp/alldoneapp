@@ -234,7 +234,6 @@ class Button extends Component {
             onlyLayout,
             customIcon,
             iconSize,
-            iconGap,
             accessible,
             projectId,
             ...props
@@ -253,13 +252,8 @@ class Button extends Component {
                 </View>
             )
         } else {
-            // The gap between the icon and the label is part of the button's size, so a compact
-            // button (a 12px icon next to a 12px label) needs a tighter one than the default 40px
-            // button. `iconGap` stays optional and defaults to the historical 12 — every existing
-            // call site renders byte-identically.
             const contentMargin = {
-                marginLeft:
-                    (icon == null || icon === '') && (color == null || color === '') && !customIcon ? 0 : iconGap,
+                marginLeft: (icon == null || icon === '') && (color == null || color === '') && !customIcon ? 0 : 12,
             }
             content =
                 title != null &&
@@ -347,7 +341,6 @@ Button.propTypes = {
     numberTitleLines: PropTypes.number,
     onlyLayout: PropTypes.bool,
     accessible: PropTypes.bool,
-    iconGap: PropTypes.number,
 }
 
 Button.defaultProps = {
@@ -366,7 +359,6 @@ Button.defaultProps = {
     numberTitleLines: 1,
     onlyLayout: false,
     accessible: false,
-    iconGap: 12,
 }
 
 const styles = StyleSheet.create({
