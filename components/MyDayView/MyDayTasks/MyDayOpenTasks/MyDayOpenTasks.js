@@ -29,14 +29,17 @@ export default function MyDayOpenTasks() {
 
     const needToShowEmptyBoardPicture = selectedTasksAmount === 0 && myDayOtherTasksAmount === 0
     const showMoreTaskLine = activeDragTaskModeInMyDay ? myDaySortingOtherTasksAmount > 0 : myDayOtherTasksAmount > 0
+    // AT-2262: the congrats renders right under the assistant line (which also shows the
+    // latest comment) instead of at the very bottom of the page, so it is visible without
+    // scrolling — but it never pushes the assistant composer / last comment down.
+    const showEmptyInbox = tasksLoaded && needToShowEmptyBoardPicture
 
     return (
         <>
             <AllProjectsLine />
             <AssistantLine useAssistantProjectContext={false} />
-            {tasksLoaded && needToShowEmptyBoardPicture ? (
-                <AllProjectsEmptyInbox />
-            ) : (
+            {showEmptyInbox && <AllProjectsEmptyInbox />}
+            {!showEmptyInbox && (
                 <DragDropContext onDragEnd={onDragEnd} onBeforeCapture={onBeforeCapture}>
                     <View style={{ marginTop: 16, marginBottom: 32 }}>
                         <>
