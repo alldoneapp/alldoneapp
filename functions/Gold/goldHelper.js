@@ -367,10 +367,9 @@ const refundGold = async (userId, gold, context = {}) => {
         direction: 'refund',
         source,
         context,
-        idempotencyKey: context.idempotencyKey,
     })
 
-    if (result.success && !result.alreadyProcessed) {
+    if (result.success) {
         await logGoldAnalytics(userId, 'refund_gold', result.amount, source, context)
     }
 
