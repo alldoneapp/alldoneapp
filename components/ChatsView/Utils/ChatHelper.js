@@ -171,9 +171,21 @@ export const onOpenChat = (projectId, chat) => {
     }
 }
 
-// Moved to a leaf module so lightweight consumers (the comment popup) can read a
-// message time without importing this file's redux/URL/firestore graph.
-export { getTimestampInMilliseconds } from './messageTimestamps'
+export const getTimestampInMilliseconds = timestamp => {
+    if (!timestamp && timestamp !== 0) return undefined
+    if (typeof timestamp === 'number') return timestamp
+    if (typeof timestamp === 'string') {
+        const parsed = Date.parse(timestamp)
+        return Number.isNaN(parsed) ? undefined : parsed
+    }
+    if (typeof timestamp?.seconds === 'number') return timestamp.seconds * 1000
+    if (typeof timestamp?._seconds === 'number') return timestamp._seconds * 1000
+    if (typeof timestamp?.toDate === 'function') {
+        const date = timestamp.toDate()
+        return date instanceof Date && !Number.isNaN(date.getTime()) ? date.getTime() : undefined
+    }
+    return undefined
+}
 
 export const parseLastEdited = (serverTime, lastEdition) => {
     const tablet = store.getState().isMiddleScreen

@@ -493,7 +493,6 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
                     'filterOnly(id)',
                     'filterOnly(isPublicFor)',
                     'filterOnly(ownerId)',
-                    'filterOnly(creatorId)',
                     'filterOnly(lockKey)',
                     'filterOnly(lastEditionDate)',
                     'filterOnly(canBeInactive)',
