@@ -129,6 +129,7 @@ const ContactObjectHeader = ({ projectId, feed }) => {
             </View>
 
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}

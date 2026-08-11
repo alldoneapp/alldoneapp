@@ -24,10 +24,12 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
     const showModalRef = useRef(false)
 
     const openModal = () => {
-        console.debug('GoalCommentsWrapper: openModal called', {
-            goalId: goal?.id,
-            isUnmounted: isUnmountedRef.current,
-        })
+        if (__DEV__) {
+            console.debug('GoalCommentsWrapper: openModal called', {
+                goalId: goal?.id,
+                isUnmounted: isUnmountedRef.current,
+            })
+        }
         if (!isUnmountedRef.current) {
             setShowModal(true)
             dispatch(showFloatPopup())
@@ -35,12 +37,14 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
     }
 
     const closeModal = () => {
-        console.debug('GoalCommentsWrapper: closeModal called', {
-            goalId: goal?.id,
-            isUnmounted: isUnmountedRef.current,
-            isQuillTagEditorOpen,
-            openModals,
-        })
+        if (__DEV__) {
+            console.debug('GoalCommentsWrapper: closeModal called', {
+                goalId: goal?.id,
+                isUnmounted: isUnmountedRef.current,
+                isQuillTagEditorOpen,
+                openModals,
+            })
+        }
         if (
             !isUnmountedRef.current &&
             !isQuillTagEditorOpen &&
@@ -55,12 +59,16 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
     }
 
     const handleClickOutside = () => {
-        console.debug('GoalCommentsWrapper: onClickOutside', { goalId: goal?.id, isUnmounted: isUnmountedRef.current })
+        if (__DEV__)
+            console.debug('GoalCommentsWrapper: onClickOutside', {
+                goalId: goal?.id,
+                isUnmounted: isUnmountedRef.current,
+            })
         closeModal()
     }
 
     useEffect(() => {
-        console.debug('GoalCommentsWrapper: mounted', { goalId: goal?.id })
+        if (__DEV__) console.debug('GoalCommentsWrapper: mounted', { goalId: goal?.id })
         showModalRef.current = showModal
     }, [showModal])
 
@@ -69,18 +77,21 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
             isUnmountedRef.current = true
             // Close modal immediately to prevent any pending operations
             if (showModalRef.current) {
-                console.debug('GoalCommentsWrapper: unmount cleanup, hiding float popup', { goalId: goal?.id })
+                if (__DEV__)
+                    console.debug('GoalCommentsWrapper: unmount cleanup, hiding float popup', { goalId: goal?.id })
                 dispatch(hideFloatPopup())
             }
-            console.debug('GoalCommentsWrapper: unmounted', { goalId: goal?.id })
+            if (__DEV__) console.debug('GoalCommentsWrapper: unmounted', { goalId: goal?.id })
         }
     }, [dispatch])
 
     const addComment = async (comment, mentions, isPrivate, hasKarma, explicitAssistantEnabled) => {
-        console.debug('GoalCommentsWrapper: addComment start', {
-            goalId: goal?.id,
-            isUnmounted: isUnmountedRef.current,
-        })
+        if (__DEV__) {
+            console.debug('GoalCommentsWrapper: addComment start', {
+                goalId: goal?.id,
+                isUnmounted: isUnmountedRef.current,
+            })
+        }
         if (
             !isUnmountedRef.current &&
             !isQuillTagEditorOpen &&
@@ -106,7 +117,11 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                 closeModal()
             }
         }
-        console.debug('GoalCommentsWrapper: addComment end', { goalId: goal?.id, isUnmounted: isUnmountedRef.current })
+        if (__DEV__)
+            console.debug('GoalCommentsWrapper: addComment end', {
+                goalId: goal?.id,
+                isUnmounted: isUnmountedRef.current,
+            })
     }
 
     return showModal && !isUnmountedRef.current ? (

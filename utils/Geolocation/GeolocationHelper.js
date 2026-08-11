@@ -10,7 +10,7 @@ import { runHttpsCallableFunction } from '../backends/firestore'
 
 export const initIpRegistry = () => {
     // No longer needed - using cloud function
-    console.log('IP Registry now uses cloud function')
+    if (__DEV__) console.log('IP Registry now uses cloud function')
 }
 
 const getCurrentLocationInfo = async () => {

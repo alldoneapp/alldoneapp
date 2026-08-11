@@ -482,15 +482,17 @@ export async function initFirebase(onComplete) {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')
 
-    console.log('🔍 Firebase emulator connection check:', {
-        hostname: window.location.hostname,
-        isLocalhost,
-        __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
-        NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
-        forceEmulator,
-        useEmulator,
-        environment: CURRENT_ENVIORNMENT,
-    })
+    if (__DEV__) {
+        console.log('🔍 Firebase emulator connection check:', {
+            hostname: window.location.hostname,
+            isLocalhost,
+            __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
+            NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
+            forceEmulator,
+            useEmulator,
+            environment: CURRENT_ENVIORNMENT,
+        })
+    }
 
     if (useEmulator) {
         try {
@@ -523,25 +525,27 @@ export async function initFirebase(onComplete) {
         } catch (error) {
             console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message, error)
         }
-    } else {
+    } else if (__DEV__) {
         console.log('🌐 Using production Firebase Functions')
     }
 
     // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
+    // Sign-in tracing stays behind __DEV__: it runs on every load and names the user's email.
     redirectResultSettled = firebase
         .auth()
         .getRedirectResult()
         .then(result => {
-            console.log('🔐 getRedirectResult called:', {
-                hasResult: !!result,
-                hasUser: !!result?.user,
-                email: result?.user?.email,
-                isNewUser: result?.additionalUserInfo?.isNewUser,
-            })
+            if (__DEV__) {
+                console.log('🔐 getRedirectResult called:', {
+                    hasResult: !!result,
+                    hasUser: !!result?.user,
+                    email: result?.user?.email,
+                    isNewUser: result?.additionalUserInfo?.isNewUser,
+                })
+            }
             if (result && result.user) {
-                console.log('✅ User signed in via redirect:', result.user.email)
+                if (__DEV__) console.log('✅ User signed in via redirect:', result.user.email)
                 if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-                    console.log('🆕 New user signed in via redirect')
                     store.dispatch(setRegisteredNewUser(true))
                 }
             }
@@ -551,7 +555,7 @@ export async function initFirebase(onComplete) {
         })
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
-        console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
+        if (__DEV__) console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
         const result = onComplete(firebaseUser)
         if (result && typeof result.catch === 'function') {
             result.catch(error => console.error('Error in auth callback:', error))
@@ -570,8 +574,8 @@ function loadDeferredFirebaseModules() {
         require('firebase/compat/functions')
         if (!functions) {
             functions = firebase.app().functions('europe-west1')
-            console.log('🌐 Using production Firebase Functions (europe-west1)')
-        } else {
+            if (__DEV__) console.log('🌐 Using production Firebase Functions (europe-west1)')
+        } else if (__DEV__) {
             console.log('🔧 Functions already configured (emulator), not overwriting')
         }
 
@@ -588,7 +592,7 @@ function loadDeferredFirebaseModules() {
         // Load database
         require('firebase/compat/database')
 
-        console.log('Deferred Firebase modules loaded')
+        if (__DEV__) console.log('Deferred Firebase modules loaded')
     } catch (error) {
         console.warn('Error loading deferred Firebase modules:', error)
     }
@@ -2863,6 +2867,11 @@ export const getAdministratorUser = async () => {
     const userId = (await db.doc('roles/administrator').get()).data()?.userId
     if (!userId) return {}
     const doc = await db.doc(`users/${userId}`).get()
+    // The referenced user document can be absent (deleted account, or a roles/administrator
+    // pointer carried into an environment where that user was never created). doc.data() is then
+    // undefined and mapUserData dereferences it, which threw out of the whole global-data load
+    // and sent it into its five-attempt retry loop — for a value the app treats as optional.
+    if (!doc.exists) return {}
     return mapUserData(doc.id, doc.data())
 }
 
@@ -7370,69 +7379,63 @@ let gmailSyncLock = Promise.resolve()
 const SYNC_COOLDOWN_MS = 1 * 60 * 1000 // 1 minute
 
 export async function checkIfCalendarConnected(projectId) {
-    console.log('═══════════════════════════════════════════════════════════')
-    console.log('[Calendar Sync] 🚀 SYNC REQUESTED')
-    console.log('[Calendar Sync] projectId:', projectId)
-    console.log('[Calendar Sync] Timestamp:', new Date().toISOString())
+    // Kept behind __DEV__ like the Gmail sync tracing below: this runs on every project on
+    // every load, and the apisConnected dump carries the user's connected mail addresses.
+    if (__DEV__) {
+        console.log('[Calendar Sync] 🚀 SYNC REQUESTED, projectId:', projectId)
+    }
 
     // Check if this project was recently synced
     const lastSyncTime = calendarSyncCache.get(projectId)
     const timeSinceLastSync = lastSyncTime ? Date.now() - lastSyncTime : null
     const cooldownRemaining = lastSyncTime ? Math.max(0, SYNC_COOLDOWN_MS - timeSinceLastSync) : 0
 
-    console.log('[Calendar Sync] Last sync time:', lastSyncTime ? new Date(lastSyncTime).toISOString() : 'Never')
-    console.log(
-        '[Calendar Sync] Time since last sync:',
-        timeSinceLastSync ? `${Math.round(timeSinceLastSync / 1000)}s` : 'N/A'
-    )
-    console.log('[Calendar Sync] Cooldown period:', `${SYNC_COOLDOWN_MS / 1000}s (${SYNC_COOLDOWN_MS / 60000} minutes)`)
-
     if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
-        console.log('[Calendar Sync] ⏸️  SKIPPED - Still in cooldown period')
-        console.log(
-            '[Calendar Sync] ⏱️  Time remaining in cooldown:',
-            `${Math.round(cooldownRemaining / 1000)}s (${Math.round((cooldownRemaining / 60000) * 10) / 10} min)`
-        )
-        console.log('[Calendar Sync] 💡 Tip: Wait', Math.round(cooldownRemaining / 1000), 'seconds before next sync')
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log(
+                '[Calendar Sync] ⏸️  SKIPPED - in cooldown,',
+                `${Math.round(cooldownRemaining / 1000)}s remaining`
+            )
+        }
         return
     }
 
     const { apisConnected, uid } = store.getState().loggedUser
-    console.log('[Calendar Sync] User ID:', uid)
-    console.log('[Calendar Sync] APIs connected:', JSON.stringify(apisConnected, null, 2))
+    if (__DEV__) {
+        console.log('[Calendar Sync] User ID:', uid)
+        console.log('[Calendar Sync] APIs connected:', JSON.stringify(apisConnected, null, 2))
+    }
 
     if (!apisConnected) {
-        console.log('[Calendar Sync] ❌ FAILED: No apisConnected')
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) console.log('[Calendar Sync] ❌ FAILED: No apisConnected')
         return
     }
 
     if (!apisConnected[projectId]) {
-        console.log('[Calendar Sync] ❌ FAILED: No config for projectId', projectId)
-        console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log('[Calendar Sync] ❌ FAILED: No config for projectId', projectId)
+            console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        }
         return
     }
 
     if (!apisConnected[projectId]?.calendar) {
-        console.log('[Calendar Sync] ❌ FAILED: Calendar not connected for project', projectId)
-        console.log('[Calendar Sync] Project config:', apisConnected[projectId])
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log('[Calendar Sync] ❌ FAILED: Calendar not connected for project', projectId)
+            console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        }
         return
     }
 
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
-    console.log('[Calendar Sync] ✅ Cooldown cache updated for project:', projectId)
 
     try {
-        console.log('[Calendar Sync] 📡 Calling server-side sync function...')
-        console.log('[Calendar Sync] Function: syncCalendarEventsSecondGen')
-        console.log('[Calendar Sync] Parameters:', { projectId, daysAhead: 30 })
+        if (__DEV__) {
+            console.log('[Calendar Sync] 📡 Calling syncCalendarEventsSecondGen:', { projectId, daysAhead: 30 })
+        }
 
         store.dispatch(startLoadingData())
-        console.log('[Calendar Sync] ⏳ Loading indicator started')
 
         const startTime = Date.now()
 
@@ -7442,21 +7445,19 @@ export async function checkIfCalendarConnected(projectId) {
             daysAhead: 30,
         })
 
-        const duration = Date.now() - startTime
-        console.log('[Calendar Sync] ✅ Server-side sync completed')
-        console.log('[Calendar Sync] Duration:', duration, 'ms')
-        console.log('[Calendar Sync] Result:', JSON.stringify(result, null, 2))
+        if (__DEV__) {
+            console.log(
+                '[Calendar Sync] ✅ Server-side sync completed in',
+                Date.now() - startTime,
+                'ms:',
+                JSON.stringify(result, null, 2)
+            )
+        }
 
         store.dispatch(stopLoadingData())
-        console.log('[Calendar Sync] ⏹️  Loading indicator stopped')
-        console.log('═══════════════════════════════════════════════════════════')
     } catch (error) {
-        console.error('[Calendar Sync] ❌ ERROR syncing calendar events')
-        console.error('[Calendar Sync] Error details:', error)
-        console.error('[Calendar Sync] Error message:', error.message)
-        console.error('[Calendar Sync] Error stack:', error.stack)
+        console.error('[Calendar Sync] Error syncing calendar events:', error?.message || error)
         store.dispatch(stopLoadingData())
-        console.log('═══════════════════════════════════════════════════════════')
     }
 }
 
@@ -7743,17 +7744,18 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     const func = functions.httpsCallable(functionName, callableOptions)
     const result = await func(data)
 
-    // Debug logging for Firebase function calls
-    console.log(`🔧 Firebase function ${functionName} raw result:`, result)
+    // Debug logging for Firebase function calls. Every callable in the app goes through here,
+    // so this is three lines of console noise per call in production without the guard.
+    if (__DEV__) console.log(`🔧 Firebase function ${functionName} raw result:`, result)
 
     // In Firebase v8, callable functions return the data directly
     // But let's check if it's wrapped in a .data property just in case
     if (result && typeof result.data !== 'undefined') {
-        console.log(`🔧 Firebase function ${functionName} has .data property, using result.data`)
+        if (__DEV__) console.log(`🔧 Firebase function ${functionName} has .data property, using result.data`)
         return result.data
     }
 
-    console.log(`🔧 Firebase function ${functionName} returning result directly`)
+    if (__DEV__) console.log(`🔧 Firebase function ${functionName} returning result directly`)
     return result
 }
 

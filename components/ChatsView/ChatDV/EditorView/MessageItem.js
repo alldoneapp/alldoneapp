@@ -129,6 +129,7 @@ export default function MessageItem({
         <View style={{ paddingVertical: 8, marginLeft: 14 }}>
             <SwipeAreasContainer pointerEvents="none" style={{ paddingBottom: 16 }} leftText="Quote" />
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 leftThreshold={80}
                 enabled={accessGranted && dismissibleRef.current && !dismissibleRef.current.modalIsVisible()}

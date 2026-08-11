@@ -3,9 +3,9 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistration().then(registrations => {
             if (!registrations) {
                 navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).then(
-                    function (registration) {
-                        // Registration was successful
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope)
+                    function () {
+                        // Registration was successful — nothing to report. This file is copied in
+                        // as-is rather than bundled, so it has no __DEV__ to gate a log behind.
                     },
                     function (err) {
                         // registration failed :(

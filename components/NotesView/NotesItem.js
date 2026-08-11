@@ -88,7 +88,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 clearTimeout(rightSwipeTimeoutRef.current)
             }
             // Debug: track unmount to diagnose setState-after-unmount
-            console.debug('NotesItem unmounted', { noteId: note.id })
+            if (__DEV__) console.debug('NotesItem unmounted', { noteId: note.id })
         }
     }, [])
 
@@ -230,6 +230,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             </View>
 
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}

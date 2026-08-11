@@ -467,6 +467,7 @@ export default class GoalItemPresentation extends PureComponent {
                 <View style={localStyles.container}>
                     <GoalsSwipeBackground needToShowReminderButton={isInTaskList} />
                     <Swipeable
+                        useNativeAnimations={false}
                         ref={this.itemSwipe}
                         rightThreshold={80}
                         leftThreshold={80}
