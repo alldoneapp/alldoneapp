@@ -42,15 +42,9 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
 }
 
 const localStyles = {
-    // AT-2262: this block is rendered directly under the All Projects line, i.e.
-    // ABOVE the assistant composer / email line / task filters, so the congrats
-    // is visible without scrolling. As a middle child it must size to its own
-    // content: `flex: 1` would let it stretch into any spare height of the
-    // scroll container and push the assistant composer off-screen (and shrink
-    // the block when the content is taller than the viewport).
     emptyInbox: {
+        flex: 1,
         marginTop: 12,
-        marginBottom: 24,
         alignItems: 'center',
     },
     emptyInboxOverview: {
