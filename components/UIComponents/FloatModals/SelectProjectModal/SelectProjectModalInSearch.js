@@ -23,7 +23,6 @@ import EmptyResults from '../EmptyResults'
 import { translate } from '../../../../i18n/TranslationService'
 import HeaderInSearch from './HeaderInSearch'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import useEscapeKey from '../../../../hooks/useEscapeKey'
 
 export const ALL_PROJECTS_OPTION = 'ALL_PROJECTS'
 
@@ -172,15 +171,6 @@ export default function SelectProjectModalInSearch({
         }
     })
 
-    // Escape closes only this picker (AT-2257). It used to be an `esc` binding on
-    // the Hotkeys wrapper below, which goes through hotkeys-js' bubble-phase
-    // `document` listener — dead whenever a react-native-web TextInput has focus,
-    // and, when it did fire, unable to stop the modal underneath (the search
-    // popup, the rich create-task modal) from closing on the same keypress:
-    // `stopPropagation` does not stop sibling listeners on `document`. The escape
-    // stack is LIFO, so this picker mounts last, wins the key, and consumes it.
-    useEscapeKey(closePopover)
-
     useEffect(() => {
         filterProjects()
     }, [projectId, projects])
@@ -273,6 +263,12 @@ export default function SelectProjectModalInSearch({
                 onPressEnter(e)
                 break
             }
+            case 'esc': {
+                e.preventDefault()
+                e.stopPropagation()
+                closePopover()
+                break
+            }
         }
     }
 
@@ -296,7 +292,7 @@ export default function SelectProjectModalInSearch({
             ]}
         >
             <View style={localStyles.heading}>
-                <Hotkeys keyName={'up,down,enter'} onKeyDown={onKeyPress} filter={e => true}>
+                <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
                     <View style={localStyles.title}>
                         <Text style={[styles.title7, { color: 'white' }]}>{header}</Text>
                         <Text style={[styles.body2, { color: colors.Text03 }]}>{subheader}</Text>
