@@ -1,5 +1,0 @@
-# Paths whose change requires rebuilding the vm-job-runner Cloud Run Job image.
-#
-# The runner executes functions/ source (notably Assistant/vmJobRunner.js) from its own
-# baked image, so a plain `firebase deploy --only functions` does not update it.
-^functions/

@@ -66,10 +66,13 @@ export default function OpenTasksViewAllProjects() {
             ]}
         >
             <AllProjectsLine showEmailLabels={true} />
+            {/* AT-2262: the empty-inbox congrats sits directly under the All Projects
+                line — above the assistant composer, the email line and the task
+                filters — so it is visible without scrolling when the inbox is empty. */}
+            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             <AssistantLine useAssistantProjectContext={false} />
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {
