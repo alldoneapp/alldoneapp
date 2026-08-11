@@ -68,7 +68,7 @@
         },
         "testPathIgnorePatterns": [
             "/node_modules/",
-            "/.claude/",
+            "<rootDir>/.claude/",
             "<rootDir>/functions/",
             "<rootDir>/cloudflare/",
             "__tests__/TwilioWhatsAppService.test.js",
