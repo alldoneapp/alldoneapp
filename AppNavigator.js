@@ -46,6 +46,7 @@ import AdminPanelView from './components/AdminPanel/AdminPanelView'
 import AssistantDetailedView from './components/AssistantDetailedView/AssistantDetailedView'
 import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
+import { installEscapeStack } from './utils/escapeStack'
 
 const onLayoutChange = layout => {
     const {
@@ -211,6 +212,14 @@ export class AppContainer extends React.Component {
         // reason as the listeners above — this is the one component that mounts
         // once for the whole app and owns its document-level listeners.
         this.stopVirtualKeyboardViewport = startVirtualKeyboardViewport()
+        // Escape-to-close (AT-2257): react-native-web's TextInput stops
+        // propagation of every keydown, so a bubble-phase document listener —
+        // which is what every popup in this app uses — never sees Escape while a
+        // field has focus. The dispatcher listens in the CAPTURE phase instead.
+        // Installed here for the same reason as the listeners above: this is the
+        // one component that mounts once for the whole app and owns its
+        // document-level listeners.
+        this.stopEscapeStack = installEscapeStack()
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -228,6 +237,7 @@ export class AppContainer extends React.Component {
         document.removeEventListener('mousedown', this.handleDomPointerDown, true)
         document.removeEventListener('touchstart', this.handleDomPointerDown, { capture: true })
         this.stopVirtualKeyboardViewport && this.stopVirtualKeyboardViewport()
+        this.stopEscapeStack && this.stopEscapeStack()
     }
 
     // Feeds every press on the page into the dismissible-modal system with the
