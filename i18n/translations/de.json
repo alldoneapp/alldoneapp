@@ -2179,5 +2179,7 @@
     "Could not save the default VM approval policy.": "Die VM-Freigaberichtlinie konnte nicht gespeichert werden.",
     "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Wähle eine Route für diesen Provider. Mit deinem eigenen API-Key rechnet OpenRouter die Modellnutzung direkt mit dir ab und es fällt kein Token-Gold an; Alldone Gold nutzt Alldones OpenRouter-Key und berechnet Gold pro Modell-Token. Die Grundgebühr von 20 Gold und 10 Gold pro angefangener VM-Minute gelten für beide Routen.",
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Wird verwendet, wenn du ein DeepSeek- oder anderes OpenRouter-Modell für die Codex-Umgebung auswählst. Dein Key wird vor dem Speichern gegen OpenRouter validiert.",
-    "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)"
+    "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)",
+    "One earlier unread message": "1 frühere ungelesene Nachricht",
+    "Amount earlier unread messages": "%{amount} frühere ungelesene Nachrichten"
 }
