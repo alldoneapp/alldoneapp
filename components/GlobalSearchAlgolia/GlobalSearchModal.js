@@ -36,7 +36,7 @@ import {
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
-import { FEED_PUBLIC_FOR_ALL } from '../Feeds/Utils/FeedsConstants'
+import { buildSearchFilters } from './searchFilters'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
 import ProjectFilter from './Filter/ProjectFilter'
@@ -55,43 +55,8 @@ import {
 import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
-import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
-
-const getProjectAccessIds = (loggedUser, projectId) => {
-    if (loggedUser.isAnonymous) return [FEED_PUBLIC_FOR_ALL]
-
-    const workstreamIds = loggedUser.workstreams?.[projectId]
-    const projectWorkstreamIds = Array.isArray(workstreamIds) ? workstreamIds : []
-    return [...new Set([FEED_PUBLIC_FOR_ALL, loggedUser.uid, DEFAULT_WORKSTREAM_ID, ...projectWorkstreamIds])]
-}
-
-// Algolia's filter parser rejects unquoted facet values that contain special
-// characters (e.g. workstream ids like `ws@default`). Quote string values so
-// they parse correctly; leave numeric values (e.g. FEED_PUBLIC_FOR_ALL) as-is
-// so they still match the numeric facet.
-const formatFacetValue = value => (typeof value === 'number' ? value : `"${value}"`)
-
-// Algolia only supports flat CNF filters: `(OR…) AND (OR…)`. It rejects ORing
-// AND-groups together (`(X AND Y) OR Z`) and nested AND-groups. We therefore
-// can't scope access per project inside the filter. Instead we union every
-// searched project's access ids into a single OR-group. This is equivalent to
-// per-project scoping because workstream ids are globally unique, so an item in
-// one project can't accidentally match another project's workstream id.
-const buildProjectsAccessFilter = (projects, loggedUser) => {
-    if (!projects.length) return ''
-
-    const projectIdsFilter = projects.map(project => `projectId:${formatFacetValue(project.id)}`).join(' OR ')
-
-    const accessIds = new Set()
-    projects.forEach(project => {
-        getProjectAccessIds(loggedUser, project.id).forEach(id => accessIds.add(id))
-    })
-    const accessFilter = [...accessIds].map(id => `isPublicFor:${formatFacetValue(id)}`).join(' OR ')
-
-    return `(${projectIdsFilter}) AND (${accessFilter})`
-}
 
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
@@ -131,6 +96,11 @@ export default function GlobalSearchModal() {
     const [activeItemData, setActiveItemData] = useState({ projectId: '', activeIndex: -1 })
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
     const [selectedProject, setSelectedProject] = useState({ id: ALL_PROJECTS_OPTION })
+    // AT-2258 — "only objects I created". Deliberately component state and not
+    // redux/user settings: the modal is unmounted while hidden, so the filter
+    // resets to off every time Search is opened and the default search
+    // behaviour is unchanged.
+    const [createdByMeOnly, setCreatedByMeOnly] = useState(false)
     const searchInstanceIdRef = useRef(v4())
     const modalRef = useRef(null)
     const searchInputRef = useRef(null)
@@ -530,23 +500,20 @@ export default function GlobalSearchModal() {
         const algoliaIndex = client.initIndex(indexPrefix)
 
         const projectsToSearch = inSelectedProject ? [selectedProject] : projects
-        const projectsAccessFilter = buildProjectsAccessFilter(projectsToSearch, loggedUser)
+        const filters = buildSearchFilters({
+            indexPrefix,
+            projects: projectsToSearch,
+            loggedUser,
+            createdByMeOnly,
+        })
 
         // Nothing to search against (no accessible projects) — avoid an empty
         // filter, which would either error or leak unscoped results.
-        if (!projectsAccessFilter) {
+        if (!filters) {
             setProcessing(processing => {
                 return { ...processing, [tab]: false }
             })
             return
-        }
-
-        // Keep the filter flat (`(OR…) AND (OR…) AND …`). Do NOT wrap
-        // `projectsAccessFilter` in extra parens — it already contains an AND,
-        // and Algolia rejects nested AND-groups.
-        let filters = projectsAccessFilter
-        if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            filters = `${projectsAccessFilter} AND isAssistant:false`
         }
 
         try {
@@ -736,6 +703,16 @@ export default function GlobalSearchModal() {
         }
     }
 
+    // Toggling "only objects I created" re-runs the current search immediately,
+    // so the user sees the narrowed list without retyping. Skipped on mount:
+    // the filter starts off and there is nothing searched yet.
+    const createdByMeAppliedRef = useRef(createdByMeOnly)
+    useEffect(() => {
+        if (createdByMeAppliedRef.current === createdByMeOnly) return
+        createdByMeAppliedRef.current = createdByMeOnly
+        if (localText.trim() !== '') onSearch()
+    }, [createdByMeOnly])
+
     const activateFullSearch = async () => {
         setIndexing(true)
         const { loggedUser } = store.getState()
@@ -775,6 +752,8 @@ export default function GlobalSearchModal() {
                     }}
                     projects={projects}
                     setSelectedProjectId={updateSelectedProject}
+                    createdByMeOnly={createdByMeOnly}
+                    setCreatedByMeOnly={setCreatedByMeOnly}
                     showGuideTab={!!activeFullSearchDate}
                     showTemplateTab={realTemplateProjectsAmount > 0}
                     showArchivedTab={true}
@@ -790,6 +769,7 @@ export default function GlobalSearchModal() {
                             setShowSelectProjectModal(true)
                         }}
                         selectedProject={selectedProject}
+                        createdByMeOnly={createdByMeOnly}
                         containerStyle={inSelectedProject && { marginBottom: 16 }}
                         disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
                     />

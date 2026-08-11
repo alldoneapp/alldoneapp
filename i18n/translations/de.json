@@ -1638,9 +1638,6 @@
     "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "Sie haben nicht genug Gold, um dieses Audio zu transkribieren. Bitte upgraden Sie oder kaufen Sie mehr Gold.",
     "Transcribe": "Transkribieren",
     "Stop": "Stopp",
-    "Stop assistant": "Assistent stoppen",
-    "Stopping assistant": "Wird gestoppt…",
-    "Could not stop assistant": "Assistent konnte nicht gestoppt werden: {{error}}",
     "Please ensure you share audio when selecting the screen/tab.": "Bitte stellen Sie sicher, dass Sie Audio teilen, wenn Sie den Bildschirm/Tab auswählen.",
     "transcription_active_banner": "Transkription aktiv. Tab im Vordergrund halten",
     "transcription_header": "Transkription",
@@ -2182,5 +2179,8 @@
     "Could not save the default VM approval policy.": "Die VM-Freigaberichtlinie konnte nicht gespeichert werden.",
     "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Wähle eine Route für diesen Provider. Mit deinem eigenen API-Key rechnet OpenRouter die Modellnutzung direkt mit dir ab und es fällt kein Token-Gold an; Alldone Gold nutzt Alldones OpenRouter-Key und berechnet Gold pro Modell-Token. Die Grundgebühr von 20 Gold und 10 Gold pro angefangener VM-Minute gelten für beide Routen.",
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Wird verwendet, wenn du ein DeepSeek- oder anderes OpenRouter-Modell für die Codex-Umgebung auswählst. Dein Key wird vor dem Speichern gegen OpenRouter validiert.",
-    "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)"
+    "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)",
+    "Only objects I created": "Nur von mir erstellte Objekte",
+    "Hides objects created by other people": "Blendet von anderen Personen erstellte Objekte aus",
+    "Created by me": "Von mir erstellt"
 }

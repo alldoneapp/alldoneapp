@@ -7,8 +7,9 @@ import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { removeWatchersForOneStreamAndUser, STREAM_AND_USER_TASKS_INDEX } from '../../utils/backends/openTasks'
 import { updateWorkstreamLastVisitedBoardDate } from '../../utils/backends/Workstreams/workstreamsFirestore'
 
-export const WORKSTREAM_ID_PREFIX = 'ws@'
-export const DEFAULT_WORKSTREAM_ID = 'ws@default'
+import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from './WorkstreamConstants'
+
+export { WORKSTREAM_ID_PREFIX, DEFAULT_WORKSTREAM_ID }
 
 export const getDefaultMainWorkstream = (projectId, creatorId) => {
     const workstream = getNewDefaultWorkstream(projectId, creatorId)

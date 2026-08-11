@@ -5,10 +5,18 @@ import { useSelector } from 'react-redux'
 
 import Icon from '../../Icon'
 import ScopeTag from './ScopeTag'
+import CreatedByMeTag from './CreatedByMeTag'
 import styles from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 
-export default function ProjectFilter({ setShowSelectProjectModal, selectedProject, containerStyle, disabled, text }) {
+export default function ProjectFilter({
+    setShowSelectProjectModal,
+    selectedProject,
+    containerStyle,
+    disabled,
+    text,
+    createdByMeOnly,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const currentText = text ? text : smallScreenNavigation ? 'Select scope' : 'Select search scope'
@@ -23,7 +31,10 @@ export default function ProjectFilter({ setShowSelectProjectModal, selectedProje
                     <Icon name="icon-circle" size={24} color="#ffffff" />
                     <Text style={localStyles.text}>{translate(currentText)}</Text>
                 </View>
-                <ScopeTag selectedProject={selectedProject} />
+                <View style={[localStyles.rowContainer, { flexWrap: 'wrap' }]}>
+                    <ScopeTag selectedProject={selectedProject} />
+                    {!!createdByMeOnly && <CreatedByMeTag />}
+                </View>
             </View>
             <Hotkeys keyName={'alt+1'} onKeyDown={setShowSelectProjectModal} filter={e => true} />
         </TouchableOpacity>
