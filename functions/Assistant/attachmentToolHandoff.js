@@ -3,6 +3,7 @@ const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
 const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
 const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
 const GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS = 50
+const BINARY_TOOL_ARG_KEY_PATTERN = /(?:^|_)(?:file_?)?base64(?:$|_)|(?:^|_)(?:data_?url|content_?bytes)(?:$|_)/i
 
 function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -237,10 +238,10 @@ function buildConversationSafeToolArgs(toolName, toolArgs, pendingAttachmentPayl
     if (!isObject(toolArgs)) return toolArgs
 
     if (isGmailDraftToolName(toolName)) {
-        return buildConversationSafeDraftToolArgs(toolArgs, pendingAttachmentPayload)
+        return redactBinaryToolArgs(buildConversationSafeDraftToolArgs(toolArgs, pendingAttachmentPayload))
     }
 
-    if (!isExternalIntegrationToolName(toolName)) return toolArgs
+    if (!isExternalIntegrationToolName(toolName)) return redactBinaryToolArgs(toolArgs)
 
     const safeToolArgs = { ...toolArgs }
     const pendingFileBase64 = pendingAttachmentPayload?.fileBase64 || ''
@@ -257,7 +258,30 @@ function buildConversationSafeToolArgs(toolName, toolArgs, pendingAttachmentPayl
         }
     }
 
-    return safeToolArgs
+    return redactBinaryToolArgs(safeToolArgs)
+}
+
+function redactBinaryToolArgs(value) {
+    if (Array.isArray(value)) return value.map(item => redactBinaryToolArgs(item))
+    if (!isObject(value)) return value
+
+    const safeValue = {}
+    for (const [key, item] of Object.entries(value)) {
+        if (typeof item === 'string' && item.trim() && isBinaryToolArg(key, item)) {
+            safeValue[key] = REDACTED_FILE_BASE64_PLACEHOLDER
+            const lengthKey = `${key}Length`
+            safeValue[lengthKey] = Number(value[lengthKey]) || item.length
+            continue
+        }
+        safeValue[key] = redactBinaryToolArgs(item)
+    }
+    return safeValue
+}
+
+function isBinaryToolArg(keyName, value) {
+    if (!BINARY_TOOL_ARG_KEY_PATTERN.test(String(keyName || ''))) return false
+    if (value === REDACTED_FILE_BASE64_PLACEHOLDER) return false
+    return looksLikeBase64(value) || /^data:[^;,]+;base64,/i.test(value) || value.length > 1024
 }
 
 function buildConversationSafeDraftToolArgs(toolArgs, pendingAttachmentPayload) {
