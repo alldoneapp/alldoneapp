@@ -93,6 +93,67 @@ stages:
 #        - rm -rf node_modules/
 #    allow_failure: true
 
+# Decide ONCE per production pipeline what still has to ship, and publish the answer as an
+# artifact every later job reads. See ci/deployScope.sh for the full reasoning; the short
+# version is that scoping a deploy with `rules: changes:` asks "what did THIS push touch",
+# which is the wrong question as soon as ci/assertNewestCommit.sh starts skipping
+# superseded pipelines:
+#
+#   push A (functions/ only) -> its pipeline is superseded and skips its functions deploy
+#   push B (components/ only) -> its pipeline never had a functions deploy job to begin with
+#
+# and A's change is deployed by nobody, with both pipelines green. Comparing against the
+# last commit each target actually DEPLOYED makes the next pipeline pick up whatever the
+# skipped one left behind, so the work always lands.
+#
+# Jobs read the artifact rather than each deciding for themselves so that a build, its
+# tests and its deploy can never disagree about whether they are shipping.
+deploy_scope:
+    stage: build_base
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    script:
+        # A cached older build_firebase:latest may predate git being baked in; the guard
+        # jobs install it the same way. No-ops on every image that already has git.
+        - command -v git >/dev/null 2>&1 || apk add --no-cache git
+        - sh ci/deployScope.sh compute
+    artifacts:
+        expire_in: 1 week
+        paths:
+            - deploy-scope.env
+    rules:
+        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Mirror master to GitHub. This used to be build_web_production's before_script, which is
+# the only reason that ~9-minute production build carried `interruptible: false` — so every
+# superseded master push paid for a full production build just to reach this script. As its
+# own job the build becomes cancellable again and the mirror still always runs.
+#
+# It also now runs on EVERY master push rather than only web-relevant ones: the mirror is a
+# copy of the repository, so scoping it to web paths meant a functions-only push never
+# reached GitHub until some later commit happened to touch the web.
+#
+# GIT_DEPTH: 0 because pushing real history to a repository that has it requires a complete
+# local history; the old script paid for that with an --unshallow plus a gc/repack.
+mirror:github:
+    stage: build_base
+    image:
+        name: alpine/git
+        entrypoint: ['']
+    variables:
+        GIT_DEPTH: 0
+    # Pushes to an external system, so it must finish once started.
+    interruptible: false
+    # Two mirror jobs at once would race on the same branch; serialize them and let the
+    # newest-commit guard drop the superseded one (its content is a strict subset).
+    resource_group: github-mirror
+    script:
+        - sh ci/assertNewestCommit.sh mirror:github
+        - sh ci/github-push.sh
+    allow_failure:
+        exit_codes: 75
+    rules:
+        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 modules_cache:
     stage: build_base
     image:
@@ -282,12 +343,23 @@ test:web:full:
         # placeholders every suite reaching utils/backends/firestore.js fails to parse.
         - node ci/writeTestEnv.js
     script:
+        # Scoped by the deploy marker rather than by `changes:` on master, for the reason
+        # in deploy_scope's comment: this job gates deploy:web through `needs`, so it has
+        # to exist in every pipeline that might deploy the web — including one whose own
+        # push touched nothing web-relevant but which has to ship what a superseded
+        # pipeline left behind. Exit 76 = "web is already up to date", declared allowed
+        # below so the skip is visible without reddening the pipeline.
+        - sh ci/deployScope.sh require web-production
         # No selection step here — this is the whole web suite by design.
         # ci/jest.web.config.js excludes functions/, whose separate dependency
         # tree this image does not carry.
         - npm test -- --config ci/jest.web.config.js --runInBand
+    # Only 76. A real test failure is any other non-zero code and still blocks deploy:web.
+    allow_failure:
+        exit_codes: 76
     rules:
-        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+        - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
 
 build_web_staging:
@@ -374,32 +446,34 @@ build_web_webpack_check:
 build_web_production:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_web_bundler:latest
-    # The before_script mirrors master to GitHub, so unlike pure build jobs this
-    # job has an external side effect and must finish once started.
-    interruptible: false
+    # This job used to mirror master to GitHub in its before_script, which gave it an
+    # external side effect and therefore `interruptible: false` — so a superseded master
+    # push still burned a full ~9-minute production build. The mirror is now the separate
+    # `mirror:github` job, leaving this a pure build that can be auto-cancelled again.
     before_script:
+        # Scoped by the deploy marker, not by `changes:` — see deploy_scope. Exit 76 means
+        # the live site already has this commit's web content; declared allowed below.
+        - sh ci/deployScope.sh require web-production
         - pwd
         - ls -la ci/
-        - chmod +x ci/github-push.sh ci/replace-envs.sh
-        - sh ci/github-push.sh
+        - chmod +x ci/replace-envs.sh
         - sh ci/replace-envs.sh
     script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
         - ln -s /bundler/node_modules web-bundler/node_modules
         - cd web-bundler && npm run build
-    after_script:
-        # here used to be the github push
-
     artifacts:
         expire_in: 1 days
         when: on_success
         paths:
             - web-build/
             - firebase.json
+    # Only 76 (nothing to deploy). A real build failure still blocks deploy:web.
+    allow_failure:
+        exit_codes: 76
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes: *web-relevant-paths
 
 # Manual QA gate for the webpack pipeline (migration Stage 0 acceptance): publish
 # the shadow build's artifact to a Firebase Hosting preview channel on the staging
@@ -477,25 +551,35 @@ deploy:web:
         # Blocking on purpose: a test job outside `needs` only turns red next to
         # a deploy that has already shipped.
         - 'test:web:full'
+        # Carries deploy-scope.env. An explicit `needs` list replaces the default
+        # "artifacts from every earlier stage", so without this the scope check below
+        # would find no artifact and fall back to deploying unconditionally.
+        - 'deploy_scope'
     script:
         # build_firebase:latest only gains git once firebase_cmd_cache rebuilds it, and that
         # happens in this same pipeline — a runner holding a cached :latest would otherwise
         # hit a guard that cannot probe and correctly fails closed, blocking a legitimate
         # deploy. This no-ops on every image that already has git.
         - command -v git >/dev/null 2>&1 || apk add --no-cache git
+        # Exit 76 = the live site already serves this content. Checked before the newest-
+        # commit guard so a no-op pipeline reports "nothing to do" rather than "superseded".
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production
         # A stale pipeline would replace the live bundle with an older build. See
         # ci/assertNewestCommit.sh; exit 75 means "superseded", declared allowed below.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web
         - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        # Only after the deploy actually succeeded: this is what lets the NEXT pipeline
+        # tell what production is really running, including anything a superseded pipeline
+        # never shipped.
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh record web-production
     environment:
         name: production
     interruptible: false
     allow_failure:
-        exit_codes: 75
+        exit_codes: [75, 76]
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes: *web-relevant-paths
 
 deploy:web-dev:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
@@ -506,10 +590,18 @@ deploy:web-dev:
         - 'test:web:full'
     script:
         - firebase --version
+        # develop is dormant, so pushes there rarely race — but the guard costs one
+        # `git ls-remote` and staging is still last-writer-wins over a whole environment.
+        # Staging deliberately keeps `rules: changes:` scoping rather than deploy markers:
+        # with no concurrent pushes there is nothing for a marker to catch up.
+        - command -v git >/dev/null 2>&1 || apk add --no-cache git
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web-dev
         - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
     environment:
         name: staging
     interruptible: false
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
@@ -549,9 +641,14 @@ deploy:cloud:functions:staging:
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
+        # Same reasoning as deploy:web-dev — `--force` prunes functions absent from the
+        # source being deployed, so an out-of-order staging deploy deletes work too.
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:staging
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes:
@@ -568,7 +665,15 @@ deploy:cloud:functions:production:
     # overwriting the newer code (last writer wins per function).
     resource_group: functions-production-deploy
     interruptible: false
+    # Without this the job downloads every earlier-stage artifact, i.e. the whole
+    # web-build/ bundle it has no use for. It only needs the scope file.
+    dependencies:
+        - 'deploy_scope'
     before_script:
+        # First, before any of the setup below: exit 76 when the deployed functions already
+        # match this commit. Scoped by the deploy marker rather than `changes:` so this job
+        # also ships what a superseded pipeline skipped — see deploy_scope.
+        - sh ci/deployScope.sh require functions-production
         - echo "Environment variables for MCP functions (PROD):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_PROD:0:20}...
         - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD
@@ -601,15 +706,14 @@ deploy:cloud:functions:production:
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
+        # Only after a successful deploy. The path list lives in
+        # ci/deploy-scope/functions-production.paths (functions/ plus firebase.json, which
+        # carries the runtime, region and ignore list).
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-production
     allow_failure:
-        exit_codes: 75
+        exit_codes: [75, 76]
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - functions/**/*
-              # firebase.json carries the functions runtime, region and ignore list,
-              # so a change there has to redeploy them too.
-              - firebase.json
 
 # Rebuild the vm-job-runner Cloud Run Job image whenever functions code changes, so VM
 # jobs run the current functions/ code (esp. vmJobRunner.js). The job runs from this image,
@@ -638,8 +742,12 @@ deploy:cloud:runner:staging:
             const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV"'"\
             const MCP_BASE_URL = "'"$MCP_BASE_URL_DEV"'"' functions/MCP/config/environments.js
     script:
+        - command -v git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq git)
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:runner:staging
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonestaging firebase-adminsdk-9idaq@alldonestaging.iam.gserviceaccount.com
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes:
@@ -650,7 +758,12 @@ deploy:cloud:runner:production:
     stage: deploy_web
     resource_group: runner-production-deploy
     interruptible: false
+    dependencies:
+        - 'deploy_scope'
     before_script:
+        # Exit 76 when the baked runner image already matches this commit's functions/
+        # source. Marker-scoped, so it also covers what a superseded pipeline skipped.
+        - sh ci/deployScope.sh require runner-production
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > /tmp/runner-deploy-sa.json
         - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > functions/env_functions.json
@@ -674,12 +787,11 @@ deploy:cloud:runner:production:
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:runner:production
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh record runner-production
     allow_failure:
-        exit_codes: 75
+        exit_codes: [75, 76]
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - functions/**/*
 
 # Report drift between firestore.indexes.json and the live Firestore indexes.
 #
@@ -701,6 +813,8 @@ deploy:cloud:runner:production:
 check:firestore:indexes:staging:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
+    # Read-only drift report; it needs no build artifacts.
+    dependencies: []
     script:
         - firebase --version
         # Staging legitimately holds indexes production does not, so report drift
@@ -714,6 +828,7 @@ check:firestore:indexes:staging:
 check:firestore:indexes:production:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
+    dependencies: []
     script:
         - firebase --version
         # The file mirrors production, so any difference here is real drift worth
@@ -733,11 +848,33 @@ update:version:staging:
     script:
         - curl "$NEW_APP_VERSION_FUNCTION_DEV"
 
+# Tells the live app a new version is available, which makes clients reload. It therefore
+# has to fire only when a web deploy actually happened: it used to run on every master
+# push, including pushes that changed no web file at all and pushes whose deploy was
+# skipped as superseded, so users were being asked to reload for a bundle that had not
+# changed.
+#
+# The guard needs git. Its GitLab API fallback cannot stand in for that here: CI_JOB_TOKEN
+# is only accepted on a small allowlist of endpoints, and `/repository/branches/:branch` is
+# not one of them, so the probe 401s and the guard correctly fails CLOSED (exit 1, which is
+# not in allow_failure). On `curlimages/curl` that made the job fail on every master push —
+# and because this job is what tells clients to reload, a broken version bump leaves users
+# on a stale bundle, which is exactly the symptom the guard was added to avoid. Use an image
+# where both git and curl can be installed (curlimages/curl runs as a non-root user, so it
+# cannot apk add).
 update:version:production:
-    image: curlimages/curl
+    image: alpine:3.20
     stage: 'update_version'
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     interruptible: false
+    dependencies:
+        - 'deploy_scope'
+    before_script:
+        - apk add --no-cache git curl
     script:
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh update:version:production
         - curl "$NEW_APP_VERSION_FUNCTION_PROD"
+    allow_failure:
+        exit_codes: [75, 76]

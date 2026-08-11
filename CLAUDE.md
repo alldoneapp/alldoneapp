@@ -521,6 +521,60 @@ browser before trusting a bigger change.
   `__tests__/CiDeployGuard.test.js` fails the build if a job that deploys on the default branch
   lacks the guard, the allowed exit code, `interruptible: false` or a `resource_group`, so a new
   production deploy job cannot quietly opt out.
+- **Production deploy scope comes from what SHIPPED, not from what the push touched
+  (`ci/deployScope.sh`).** Scoping a deploy with `rules: changes:` asks "did _this_ push
+  touch `functions/`", which stops being the right question the moment the guard above starts
+  skipping superseded pipelines — the two combine into a hole that loses a release and closes
+  silently. Push A touches only `functions/`; push B lands three minutes later touching only
+  `components/`; A's pipeline is superseded and skips its functions deploy, and B's pipeline
+  **never contained a functions deploy job at all**, because B's own diff has no `functions/`
+  path. Nobody deploys A. Every job in both pipelines is green and the only symptom is
+  production running one merge behind. Master takes ~11 pushes/day with a median gap of 26
+  minutes and **28% landing within 10 minutes of another**, so this is the ordinary case: 45
+  days of history contain ~34 functions-side and ~30 web-side occurrences. Each target now
+  keeps a marker — a git tag `deployed/<target>` moved **only after a successful deploy** — and
+  its scope is `git diff <marker> <HEAD>` against `ci/deploy-scope/<target>.paths`. That is
+  inherently catch-up: whatever a skipped pipeline left behind is still missing from the
+  marker, so the next pipeline ships it alongside its own change, and a target whose paths
+  have not moved is still skipped, so the steady-state deploy count is unchanged. `compute`
+  runs once per pipeline (`deploy_scope`) and publishes `deploy-scope.env`, so a build, its
+  tests and its deploy can never disagree about whether they are shipping — which is why
+  `build_web_production` and `test:web:full` are no longer `changes:`-scoped on master either
+  (they feed `deploy:web` through `needs`, so being absent from the catch-up pipeline would
+  make `needs` unresolvable). Exit `76` means "already up to date", declared alongside `75` in
+  `allow_failure.exit_codes`. **Every uncertain path resolves to deploying**, never to
+  skipping: a redundant deploy is visible and cheap, a silently skipped one ships nothing.
+  Note a job with an explicit `needs` list loses the default "artifacts from all earlier
+  stages", so it must name `deploy_scope` or it silently falls back to deploying always.
+  **Recording a marker pushes a tag, which `CI_JOB_TOKEN` may not do** — it needs a project
+  access token with `write_repository` in the masked CI/CD variable `DEPLOY_MARKER_TOKEN`.
+  Until that exists `record` warns and no-ops, every target falls back to the old push-range
+  comparison, and behaviour is exactly what it was before (hole included); the first
+  successful deploy after the variable is added lays the marker and switches catch-up on.
+  Tag pushes cannot trigger pipelines here — the `workflow` rules only admit pipelines that
+  have `$CI_COMMIT_BRANCH`. Pinned by `__tests__/CiDeployScope.test.js`, which also fails the
+  build if `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+- **`resource_group` process mode is an API-only setting and defaults to `unordered`.** With
+  the guard and the markers in place the default is safe (an out-of-order job skips and the
+  next pipeline catches up), but `newest_first` gets the current commit live sooner and wastes
+  fewer queued slots:
+  `curl --request PUT --header "PRIVATE-TOKEN: <token>" "$CI_API_V4_URL/projects/<id>/ci/resource_groups/functions-production-deploy" --data "process_mode=newest_first"`
+  — repeat per resource group (`web-production-deploy`, `runner-production-deploy`,
+  `github-mirror`). It cannot be set from `.gitlab-ci.yml`.
+- **The GitHub mirror is its own job (`mirror:github`), not part of the production build.**
+  It used to run in `build_web_production`'s `before_script`, which gave that ~9-minute build
+  an external side effect and therefore `interruptible: false` — so **every** superseded master
+  push paid for a full production build purely to reach the mirror. Splitting it out is the
+  single biggest CI-capacity win available here, since 28% of pushes are superseded within ten
+  minutes. It also now runs on every master push rather than only web-relevant ones: the mirror
+  is a copy of the repository, so the old scoping meant a functions-only push never reached
+  GitHub until some later commit happened to touch web paths. `ci/github-push.sh` appends only
+  new commits (keyed on the `github-mirror` marker) using `git commit-tree`, instead of
+  replaying all 2,524 post-cutoff commits through an orphan branch on every deploy; it falls
+  back to a full rebuild and force-push whenever the mirror is not where the marker claims, so
+  it is self-correcting. `commit-tree` also fixed a latent bug: the old
+  `git checkout <c> -- . && git add -A` loop restored files but never removed them, so the
+  public mirror had been accumulating files master had deleted.
 - **CI images bake `node_modules`, so a branch that changes dependencies needs its own
   image.** `build_base` (node:12, `npm ci` on the v1 lockfile) and `build_web_bundler`
   (node:22 tooling + the app tree copied from the base image) are built by the
