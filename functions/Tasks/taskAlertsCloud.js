@@ -4,7 +4,6 @@ const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
-const { shouldSendWhatsAppReminder, ALERT_NOTIFICATION_TYPE } = require('./reminderChannels')
 
 // Robust environment URL resolver (aligns with TwilioWhatsAppService)
 function getBaseUrl() {
@@ -332,7 +331,7 @@ async function checkAndTriggerTaskAlerts() {
                                     userIds: [user.uid],
                                     body,
                                     link: taskLink,
-                                    type: ALERT_NOTIFICATION_TYPE,
+                                    type: 'Alert Notification',
                                     messageTimestamp: nowTs,
                                     projectId,
                                     chatId: taskId,
@@ -351,10 +350,8 @@ async function checkAndTriggerTaskAlerts() {
                                 })
                             }
 
-                            // WhatsApp (independent dispatch via queue).
-                            // Sent when the user opted in globally OR when the reminder was
-                            // explicitly requested on WhatsApp (AT-2211).
-                            if (shouldSendWhatsAppReminder(user, task)) {
+                            // WhatsApp (independent dispatch via queue)
+                            if (user.receiveWhatsApp && user.phone) {
                                 await db.collection('whatsAppNotifications').add({
                                     userId: user.uid,
                                     userPhone: user.phone,

@@ -71,18 +71,6 @@ export default function MainSection({
     const thereAreHiddenNotMainTasks = useSelector(state =>
         state.thereAreHiddenNotMainTasks[instanceKey] ? state.thereAreHiddenNotMainTasks[instanceKey] : false
     )
-    // Get calendar task info from the first day (if it exists)
-    const hasOnlyCalendarTasks = useSelector(state => {
-        if (!state.filteredOpenTasksStore[instanceKey] || !state.filteredOpenTasksStore[instanceKey][dateIndex])
-            return false
-
-        const firstDay = state.filteredOpenTasksStore[instanceKey][dateIndex]
-        // If the day has calendar tasks but no other non-calendar tasks
-        return (
-            firstDay.hasCalendarTasks &&
-            (firstDay.nonCalendarTasksCount === 0 || firstDay.nonCalendarTasksCount === undefined)
-        )
-    })
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
@@ -568,8 +556,8 @@ export default function MainSection({
                     />
                 )}
 
-            {/* Only show the down arrow if we have more tasks to show or there are hidden tasks (not just calendar-only days) */}
-            {(showMainListShowMore || (thereAreHiddenNotMainTasks && !hasOnlyCalendarTasks)) && (
+            {/* Only show the down arrow if we have more tasks to show or there are hidden tasks */}
+            {(showMainListShowMore || thereAreHiddenNotMainTasks) && (
                 <ShowMoreButton
                     expanded={pressedShowMoreMainSection}
                     contract={contractTasks}
