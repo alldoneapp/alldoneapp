@@ -309,6 +309,46 @@ Handle event propagation carefully. Set proper z-index and container `<div>` ele
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
 
+### Task reminders and the channel they come back on (AT-2211)
+
+A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`
+de-dupe latch on the task. `checkTaskAlertsSecondGen` (every 5 min,
+`functions/Tasks/taskAlertsCloud.js`) scans `alertEnabled == true && dueDate <= now && done == false`,
+writes the in-app feed, sets `alertTriggered: true`, and fans out to push / email / WhatsApp
+according to the user's **global** Notification Settings (`pushNotificationsStatus`,
+`receiveEmails`, `receiveWhatsApp` + `phone`). Each channel drains through its own 1–5 min
+scheduled queue; WhatsApp goes via a `whatsAppNotifications` doc and an **approved Twilio
+content template**, so it is not bound by the 24-hour session window.
+
+**A reminder asked for inside WhatsApp is delivered back over WhatsApp regardless of the
+global toggle.** Purely global routing was wrong here: "Erinnere mich morgen um 10 Uhr" plainly
+means "send me a WhatsApp at 10", and with `receiveWhatsApp: false` (the default) it silently
+became a push notification — the feature looked broken while every stage was in fact working.
+The origin channel is therefore stamped on the task as `alertChannels` (e.g. `['whatsapp']`)
+and `shouldSendWhatsAppReminder` in `functions/Tasks/reminderChannels.js` treats it as an
+**additional** reason to deliver. It is strictly additive — it can only turn a channel on for
+a task that explicitly requested it, and never disables or reroutes push/email/in-app. Both
+`sourceChannel: 'whatsapp'` (text bridge) and `'whatsapp_call'` (realtime voice) count, since
+from the user's side they are one conversation on one phone.
+
+The stamp is written in `setTaskAlertCloud` (`functions/shared/AlertService.js`), the single
+funnel both `create_task` and `update_task` reach, rather than at each call site. Omitting the
+option leaves any existing routing alone (so an unrelated `update_task` cannot clobber it),
+while an explicit **disable** clears it — otherwise re-enabling the alert from the web UI would
+silently inherit a channel the user never asked for. The frontend `setTaskAlert` deliberately
+does not touch `alertChannels`, so moving a WhatsApp-set reminder's time in the app preserves
+the original intent.
+
+**Do not add a second WhatsApp send in the push path.** `taskAlertsCloud` writes _both_ a
+`whatsAppNotifications` doc and a `pushNotifications` doc, and `getChatPushNotifications` reads
+that collection **unfiltered** while `processPushNotifications` calls `sendWhatsAppForNotifications`
+on everything in it. The alert doc carries no `initiatorId`, so the `userId !== initiatorId`
+guard does not suppress it, and `parsePushBody` happily parses the alert's 3-line body — the
+result was two near-identical WhatsApp messages per reminder the moment the toggle was on.
+`sendWhatsAppForNotifications` now skips docs whose `type` is `ALERT_NOTIFICATION_TYPE`, a
+constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
+literal.
+
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. `functions/firebaseConfig.js` initializes admin with `admin.credential.cert(serviceAccountKey.json)` (in CI, `serv_account_key_<env>.json` is copied to `serviceAccountKey.json` by `service_accounts/setup_functions.sh`). Because of that explicit cert credential, **every firebase-admin call that hits a Google Cloud API authenticates as the `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account — NOT the Cloud Run / `<projectNumber>-compute@developer.gserviceaccount.com` runtime SA** that `gcloud run services describe` reports. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing (cost us ~an hour of "still denied" past propagation). IAM changes also take up to ~7 min to propagate — wait before re-testing.
