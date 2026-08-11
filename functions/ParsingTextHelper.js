@@ -190,6 +190,11 @@ const mapChatData = (chatId, algoliaObjectId, chat, projectId, customData) => {
         cleanName: parseTextForSearch(title, true),
         cleanLastComment: parseTextForSearch(lastComment, true),
         cleanComments,
+        // Creator of the topic, so global search can filter to "only objects I
+        // created" (AT-2258). Declared as `filterOnly(creatorId)` in
+        // `configAlgoliaIndex`. Records indexed before that change carry no
+        // `creatorId`, so they simply don't match the filter until reindexed.
+        creatorId: chat.creatorId ? chat.creatorId : '',
         lastEditionDate: chat.lastEditionDate ? chat.lastEditionDate : Date.now(),
         isPublicFor: chat.isPublicFor ? chat.isPublicFor : [FEED_PUBLIC_FOR_ALL],
         ...customData,
