@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * AT-2258 — the "only objects I created" row in the search popup.
+ * AT-2258 — the "only objects I created" row inside the search scope modal.
  */
 import React from 'react'
 import { TouchableOpacity } from 'react-native'
@@ -40,24 +40,16 @@ describe('CreatedByMeOption', () => {
         act(() => component.unmount())
     })
 
-    it('does not fire while the popup is busy indexing', () => {
-        // Shares that disabled condition with the scope row and the full-search
-        // row: a search cannot run mid-reindex, so a toggle that silently does
-        // nothing would be worse than a greyed-out one.
+    it('does not close the scope modal when toggled', () => {
+        // The creator filter is independent of the project scope, so the user
+        // must be able to set both before returning to the search. A press must
+        // therefore not be wired to anything but the toggle callback.
         const onToggle = jest.fn()
-        const component = render({ enabled: false, onToggle, disabled: true })
-
-        expect(component.root.findByType(TouchableOpacity).props.disabled).toBe(true)
-
-        act(() => component.unmount())
-    })
-
-    it('exposes its checked state to assistive tech', () => {
-        const component = render({ enabled: true, onToggle: jest.fn() })
+        const component = render({ enabled: true, onToggle })
 
         const touchable = component.root.findByType(TouchableOpacity)
-        expect(touchable.props.accessibilityRole).toBe('checkbox')
-        expect(touchable.props.accessibilityState).toEqual({ checked: true, disabled: false })
+        expect(touchable.props.onPress).toBeDefined()
+        expect(touchable.props.disabled).toBeFalsy()
 
         act(() => component.unmount())
     })

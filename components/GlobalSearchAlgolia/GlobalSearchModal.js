@@ -40,7 +40,6 @@ import { buildSearchFilters } from './searchFilters'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
 import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeOption from './Filter/CreatedByMeOption'
 import ActiveFullSearch from './Filter/ActiveFullSearch'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
@@ -761,6 +760,8 @@ export default function GlobalSearchModal() {
                     }}
                     projects={projects}
                     setSelectedProjectId={updateSelectedProject}
+                    createdByMeOnly={createdByMeOnly}
+                    setCreatedByMeOnly={setCreatedByMeOnly}
                     showGuideTab={!!activeFullSearchDate}
                     showTemplateTab={realTemplateProjectsAmount > 0}
                     showArchivedTab={true}
@@ -776,13 +777,8 @@ export default function GlobalSearchModal() {
                             setShowSelectProjectModal(true)
                         }}
                         selectedProject={selectedProject}
+                        createdByMeOnly={createdByMeOnly}
                         containerStyle={inSelectedProject && { marginBottom: 16 }}
-                        disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
-                    />
-
-                    <CreatedByMeOption
-                        enabled={createdByMeOnly}
-                        onToggle={() => setCreatedByMeOnly(!createdByMeOnly)}
                         disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
                     />
 
