@@ -813,4 +813,7 @@ module.exports = {
     configAlgoliaIndex,
     uploadObjectsToAlgolia,
     createAlgoliaIndexes,
+    getIndexName,
+    GOALS_OBJECTS_TYPE,
+    CHATS_OBJECTS_TYPE,
 }

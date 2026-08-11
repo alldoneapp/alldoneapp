@@ -1565,6 +1565,41 @@ exports.indexProjectsRecordsInAlgoliaSecondGen = onCall(
     }
 )
 
+// AT-2258 — repairs the "Only objects I created" filter for the goals and chats
+// indexes (facet never declared in production + records never backfilled).
+// Idempotent via a `systemMigrations` marker, so the schedule below runs it once
+// and then costs a single document read forever after. The callable exists for
+// an operator who needs it NOW, scoped to specific projects, or forced.
+exports.reindexAlgoliaCreatorFacetsSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const { runCreatorFacetReindex } = require('./Algolia/creatorFacetReindex')
+        const { projectIds, force } = data || {}
+        return runCreatorFacetReindex({ projectIds, force: !!force })
+    }
+)
+
+exports.backfillAlgoliaCreatorFacetsSecondGen = onSchedule(
+    {
+        schedule: 'every 30 minutes',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { runCreatorFacetReindex } = require('./Algolia/creatorFacetReindex')
+        return runCreatorFacetReindex()
+    }
+)
+
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     {
         timeoutSeconds: 540,

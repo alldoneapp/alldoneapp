@@ -5,10 +5,15 @@
  * have created."
  *
  * `searchFilters.test.js` pins the filter STRINGS. This suite pins the WIRING
- * that produces them: that the option offered in the scope modal reaches
- * `algoliaIndex.search` for every index, that toggling it re-runs the query,
- * and — most importantly — that it stays off until the user asks for it, so
- * ordinary searching is untouched.
+ * that produces them: that the option reaches `algoliaIndex.search` for every
+ * index, that toggling it re-runs the query, and — most importantly — that it
+ * stays off until the user asks for it, so ordinary searching is untouched.
+ *
+ * It also pins WHERE the option lives. It first shipped inside the "Select
+ * search scope" modal and was immediately reported as missing ("I don't see any
+ * new filters in the search popup"), so `renders the option in the popup itself`
+ * below is a regression test for discoverability, not a rendering detail: the
+ * toggle must be reachable without opening any other modal.
  */
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
@@ -19,7 +24,7 @@ import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
 import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeTag from './Filter/CreatedByMeTag'
+import CreatedByMeOption from './Filter/CreatedByMeOption'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
 
 const searchCalls = []
@@ -110,13 +115,14 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
     const openScopeModal = async () =>
         act(async () => component.root.findByType(ProjectFilter).props.setShowSelectProjectModal())
 
-    const setCreatedByMe = async value =>
-        act(async () => component.root.findByType(SelectProjectModalInSearch).props.setCreatedByMeOnly(value))
+    const createdByMeOption = () => component.root.findByType(CreatedByMeOption)
 
-    // The scope modal REPLACES the search popup's body while it is open, so the
-    // popup (and its tags) only exists again once it is closed.
-    const closeScopeModal = async () =>
-        act(async () => component.root.findByType(SelectProjectModalInSearch).props.closePopover())
+    // Presses the row the way the user does, rather than calling a state setter,
+    // so the assertion covers the wiring and not just the reducer.
+    const setCreatedByMe = async value => {
+        if (createdByMeOption().props.enabled === value) return
+        await act(async () => createdByMeOption().props.onToggle())
+    }
 
     beforeEach(() => {
         searchCalls.length = 0
@@ -137,13 +143,26 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         })
     })
 
-    it('offers the option in the scope modal, off by default', async () => {
+    it('renders the option in the popup itself, off by default', async () => {
+        await mount()
+
+        // No scope modal opened first: this is the whole point of the follow-up.
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(createdByMeOption().props.enabled).toBe(false)
+        expect(typeof createdByMeOption().props.onToggle).toBe('function')
+    })
+
+    it('keeps the scope modal free of the creator filter', async () => {
+        // The scope modal REPLACES the popup body while open. Leaving a second
+        // copy of the toggle in there would mean two controls for one piece of
+        // state, only one of which is ever visible.
         await mount()
         await openScopeModal()
 
         const modal = component.root.findByType(SelectProjectModalInSearch)
-        expect(modal.props.createdByMeOnly).toBe(false)
-        expect(typeof modal.props.setCreatedByMeOnly).toBe('function')
+        expect(modal.props.createdByMeOnly).toBeUndefined()
+        expect(modal.props.setCreatedByMeOnly).toBeUndefined()
+        expect(component.root.findAllByType(CreatedByMeOption)).toHaveLength(0)
     })
 
     it('re-runs the search filtered to the logged user, on every index', async () => {
@@ -151,7 +170,6 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await search('invoice')
         searchCalls.length = 0
 
-        await openScopeModal()
         await setCreatedByMe(true)
 
         expect(searchCalls).toHaveLength(5)
@@ -170,7 +188,6 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await search('invoice')
         searchCalls.length = 0
 
-        await openScopeModal()
         await setCreatedByMe(true)
 
         const contacts = searchCalls.find(call => call.indexName === 'dev_contacts')
@@ -179,32 +196,25 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
     it('does not fire a search when toggled with an empty search box', async () => {
         await mount()
-        await openScopeModal()
         await setCreatedByMe(true)
 
         expect(searchCalls).toHaveLength(0)
     })
 
-    it('surfaces the active filter as a tag, and removes it when turned back off', async () => {
+    it('shows the active state on the row, and clears it when turned back off', async () => {
         await mount()
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(0)
+        expect(createdByMeOption().props.enabled).toBe(false)
 
-        await openScopeModal()
         await setCreatedByMe(true)
-        await closeScopeModal()
-        expect(component.root.findByType(ProjectFilter).props.createdByMeOnly).toBe(true)
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(1)
+        expect(createdByMeOption().props.enabled).toBe(true)
 
-        await openScopeModal()
         await setCreatedByMe(false)
-        await closeScopeModal()
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(0)
+        expect(createdByMeOption().props.enabled).toBe(false)
     })
 
     it('reverts to unfiltered results when the option is turned back off', async () => {
         await mount()
         await search('invoice')
-        await openScopeModal()
         await setCreatedByMe(true)
         searchCalls.length = 0
 
