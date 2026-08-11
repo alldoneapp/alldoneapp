@@ -100,11 +100,16 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
     })
 
     // Without this, a superseded pipeline turns red for doing exactly the right thing.
+    // Deploy jobs also carry 76 ("this target is already up to date", see ci/deployScope.sh),
+    // so assert 75 is present rather than that it is the only allowed code — but keep
+    // asserting that a plain `allow_failure: true` is never used, which would swallow a
+    // genuine deploy failure.
     it('declares the superseded exit code as an allowed failure', () => {
         for (const [name, job] of productionDeployJobs()) {
             if (EXEMPT_JOBS[name]) continue
             const exitCodes = [].concat((job.allow_failure && job.allow_failure.exit_codes) || [])
-            expect(`${name}:${exitCodes.join(',')}`).toBe(`${name}:${SUPERSEDED_EXIT_CODE}`)
+            expect(`${name}:${exitCodes.includes(SUPERSEDED_EXIT_CODE)}`).toBe(`${name}:true`)
+            expect(`${name}:${job.allow_failure === true}`).toBe(`${name}:false`)
         }
     })
 
@@ -116,6 +121,40 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
             expect(`${name}:${job.interruptible}`).toBe(`${name}:false`)
             expect(`${name}:${Boolean(job.resource_group)}`).toBe(`${name}:true`)
         }
+    })
+})
+
+// Every job that runs the guard must be able to run its PRIMARY probe, `git ls-remote`.
+// The guard's GitLab API fallback is not a substitute: CI_JOB_TOKEN is only accepted on a
+// small allowlist of endpoints and `/repository/branches/:branch` is not among them, so the
+// probe 401s and the guard fails CLOSED with exit 1 — which is deliberately NOT in
+// allow_failure. `update:version:production` shipped on `curlimages/curl` (no git, and a
+// non-root user so it cannot install any) and failed on every master push, leaving clients
+// on a stale bundle because nothing bumped the app version.
+describe('every guarded job can actually run the guard', () => {
+    // Images known to ship git, so they need no install line.
+    const IMAGES_WITH_GIT = [/build_functions/, /build_web_bundler/, /build_base/, /alpine\/git/]
+
+    const guardedJobs = () => jobEntries().filter(([, job]) => job.script.some(l => l.includes('assertNewestCommit')))
+
+    const makesGitAvailable = job => {
+        const image = typeof job.image === 'string' ? job.image : (job.image && job.image.name) || ''
+        if (IMAGES_WITH_GIT.some(re => re.test(image))) return true
+        const lines = [].concat(job.before_script || [], job.script || []).join('\n')
+        // Either an unconditional install, or the `command -v git || install` fallback.
+        return /apk add[^\n]*\bgit\b|apt-get install[^\n]*\bgit\b/.test(lines)
+    }
+
+    it('finds the guarded jobs at all, so this test cannot pass vacuously', () => {
+        expect(guardedJobs().length).toBeGreaterThan(0)
+    })
+
+    it('gives git to every job that runs the guard', () => {
+        const withoutGit = guardedJobs()
+            .filter(([, job]) => !makesGitAvailable(job))
+            .map(([name]) => name)
+
+        expect(withoutGit).toEqual([])
     })
 })
 
