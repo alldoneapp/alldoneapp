@@ -12,16 +12,14 @@ export default function MyDayWorkflowTasks() {
     const tasksLoaded = useSelector(state => state.myDayWorkflowTasksByProject.loaded)
 
     const needToShowEmptyBoardPicture = myDayWorkflowTasksAmount === 0
-    // AT-2262: show the congrats right under the All Projects line (above the
-    // assistant composer) so it is visible without scrolling.
-    const showEmptyInbox = tasksLoaded && needToShowEmptyBoardPicture
 
     return (
         <>
             <AllProjectsLine />
-            {showEmptyInbox && <AllProjectsEmptyInbox />}
             <AssistantLine useAssistantProjectContext={false} />
-            {!showEmptyInbox && (
+            {tasksLoaded && needToShowEmptyBoardPicture ? (
+                <AllProjectsEmptyInbox />
+            ) : (
                 <View style={{ marginTop: 16, marginBottom: 32 }}>
                     <MyDayWorkflowTasksList />
                 </View>

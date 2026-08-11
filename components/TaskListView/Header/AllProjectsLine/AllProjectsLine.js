@@ -73,8 +73,12 @@ const localStyles = StyleSheet.create({
     },
     leftContainer: {
         flexDirection: 'row',
+        alignItems: 'center',
         height: 24,
         maxHeight: 24,
+        // Never squeezed by the title block on its left: the title shrinks and truncates instead,
+        // otherwise the actions' own labels overflow this container and draw over it (AT-2263).
+        flexShrink: 0,
     },
     rightContainer: {
         flex: 1,
