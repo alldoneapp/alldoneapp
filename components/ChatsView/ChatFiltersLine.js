@@ -26,6 +26,11 @@ export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly 
             <View style={localStyles.header}>
                 <Icon name="filter" size={14} color={colors.Text03} style={localStyles.headerIcon} />
                 <Text style={[styles.caption1, localStyles.headerText]}>{translate('Chat Filters')}</Text>
+                {unreadOnly && (
+                    <View style={localStyles.activeCount} testID="chat-filter-active-count">
+                        <Text style={localStyles.activeCountText}>1</Text>
+                    </View>
+                )}
             </View>
             <View style={localStyles.filtersRow}>
                 <FilterChip
@@ -66,6 +71,17 @@ const localStyles = StyleSheet.create({
     header: { minHeight: 24, flexDirection: 'row', alignItems: 'center' },
     headerIcon: { marginRight: 6 },
     headerText: { flex: 1, color: colors.Text03, marginRight: 8 },
+    activeCount: {
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Primary200,
+        marginRight: 8,
+    },
+    activeCountText: { ...styles.caption2, color: 'white' },
     filtersRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', marginTop: 8 },
     filterItem: {
         flexDirection: 'row',

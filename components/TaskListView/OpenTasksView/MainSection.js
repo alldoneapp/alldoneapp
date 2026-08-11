@@ -40,7 +40,6 @@ import TasksHelper from '../Utils/TasksHelper'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { createSectionRenderBudget } from './sectionRenderBudget'
 import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
-import { holdTaskGrouping } from './taskPlacementHold'
 
 export default function MainSection({
     projectId,
@@ -63,13 +62,8 @@ export default function MainSection({
     // Section pinned to the top by the focus task in the last idle render, held
     // across renders so an opening editor cannot un-pin it. See focusSectionPin.js.
     const pinnedSectionRef = useRef(undefined)
-    // Which goal section each already-mounted task was rendered in, held while
-    // the user types so a background `parentGoalId` write cannot re-bucket the
-    // row and unmount the open editor with it (AT-2267). See taskPlacementHold.js.
-    const taskGroupingRef = useRef(undefined)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
-    const liveMainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
-    const mainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
+    const mainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
     const emptyGoalsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
@@ -257,14 +251,6 @@ export default function MainSection({
 
     const tmpGoals = Object.values(tmpGoalsById)
 
-    // A task held in the goal section it was rendered in (AT-2267) keeps that
-    // section populated, while the live snapshot already reports the goal as
-    // having no tasks and therefore lists it among the empty goals. Rendering
-    // both would show the same goal twice, so the held section wins until the
-    // next idle render puts everything back in sync.
-    const heldSectionIds = mainTasks === liveMainTasks ? null : new Set(mainTasks.map(([sectionId]) => sectionId))
-    const visibleEmptyGoals = heldSectionIds ? emptyGoals.filter(goal => !heldSectionIds.has(goal.id)) : emptyGoals
-
     const { mainItemsAmount, showMainListShowMore } = getMainItemsData()
     const showTheFullList = !showMainListShowMore || pressedShowMoreMainSection
     let globalAmountToRender = showTheFullList ? mainItemsAmount + tmpGoals.length : numberTodayTasks
@@ -276,7 +262,7 @@ export default function MainSection({
         doneMilestones,
         goalsByIdWithTmpGoals,
         currentUserId,
-        [...mainTasks, ...visibleEmptyGoals.map(goal => [goal.id]), ...tmpGoals.map(goal => [goal.id])]
+        [...mainTasks, ...emptyGoals.map(goal => [goal.id]), ...tmpGoals.map(goal => [goal.id])]
     )
 
     if (!goalsPositionId) return null
@@ -290,7 +276,7 @@ export default function MainSection({
 
     let sortedMainTasks = [
         ...mainTasks,
-        ...visibleEmptyGoals.map(goal => [goal.id, goal]),
+        ...emptyGoals.map(goal => [goal.id, goal]),
         ...tmpGoals.map(goal => [goal.id, goal]),
     ]
 
