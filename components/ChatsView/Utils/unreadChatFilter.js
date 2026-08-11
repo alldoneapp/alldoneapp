@@ -45,6 +45,28 @@ export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
         )
         .map(({ chatId }) => chatId)
 
+/**
+ * The unread notifications of a single chat, for the active tab, oldest first.
+ *
+ * Mirrors `isUnreadChat`'s tab rule so the preview under a topic (AT-2256) can never disagree with
+ * the row's own unread badge: the Followed tab only ever counts followed notifications, the All tab
+ * counts both. Entries are `{ commentId, date }`; legacy notification docs without a `commentId`
+ * are dropped because there is no comment for them to point at.
+ */
+export const getUnreadNotifications = (chatNotifications, chatsActiveTab) => {
+    if (!chatNotifications) return []
+
+    const followed = chatNotifications.followedNotifications || []
+    const unfollowed = chatsActiveTab === ALL_TAB ? chatNotifications.unfollowedNotifications || [] : []
+
+    return [...followed, ...unfollowed]
+        .filter(notification => !!notification?.commentId)
+        .sort((a, b) => (Number(a.date) || 0) - (Number(b.date) || 0))
+}
+
+export const getUnreadCommentIds = (chatNotifications, chatsActiveTab) =>
+    getUnreadNotifications(chatNotifications, chatsActiveTab).map(({ commentId }) => commentId)
+
 export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActiveTab) =>
     Object.keys(chatsByDate).reduce((filteredChats, date) => {
         const unreadChats = chatsByDate[date].filter(chat =>
