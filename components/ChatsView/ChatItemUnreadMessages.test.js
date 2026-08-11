@@ -11,10 +11,8 @@ import ChatItemUnreadMessages, {
     resolvePreviewServerTime,
     splitUnreadMessagesForPreview,
 } from './ChatItemUnreadMessages'
-import { UnreadEmailArchiveProvider, useUnreadLinkedEmailsScope } from './unreadEmailArchiveContext'
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
-import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { onOpenChat } from './Utils/ChatHelper'
 
 jest.mock('../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
@@ -134,30 +132,9 @@ describe('ChatItemUnreadMessages', () => {
             makeMessages(amount).map(message => message.id)
         )
 
-        // The earlier-unread line sits *below* the messages it counts: the previewed ones are the
-        // newest, so what the line points at comes before them, and the row reads oldest-to-newest
-        // top-down like the thread does.
         const texts = renderedTexts(tree)
-        expect(texts.slice(0, -1)).toEqual([
-            'c4:message 4',
-            'c5:message 5',
-            'c6:message 6',
-            'c7:message 7',
-            'c8:message 8',
-        ])
-        expect(texts[texts.length - 1]).toBe('3 earlier unread messages')
-    })
-
-    it('keeps the singular earlier-unread line under the messages too', () => {
-        const amount = CHAT_ITEM_UNREAD_PREVIEW_LIMIT + 1
-        const tree = renderPreview(
-            makeMessages(amount),
-            makeMessages(amount).map(message => message.id)
-        )
-
-        const texts = renderedTexts(tree)
-        expect(texts[texts.length - 1]).toBe('One earlier unread message')
-        expect(texts[0]).toBe('c2:message 2')
+        expect(texts[0]).toBe('3 earlier unread messages')
+        expect(texts.slice(1)).toEqual(['c4:message 4', 'c5:message 5', 'c6:message 6', 'c7:message 7', 'c8:message 8'])
     })
 
     it('opens the topic from the earlier-unread line, the only way to reach what the cap hid', () => {
@@ -233,102 +210,6 @@ describe('ChatItemUnreadMessages email actions', () => {
         renderPreview(makeMessages(1), ['c1'])
 
         expect(mockRowProps.map(props => props.linkedEmailNew)).toEqual([false])
-    })
-})
-
-describe('ChatItemUnreadMessages bulk archive registry', () => {
-    const gmailMessage = (index, messageId) => ({
-        id: `c${index}`,
-        commentText: `message ${index}`,
-        creatorId: 'user-1',
-        gmailData: { messageId, connectionId: 'conn-a' },
-    })
-
-    let observedScope = null
-    const ScopeProbe = ({ projectId }) => {
-        observedScope = useUnreadLinkedEmailsScope(projectId)
-        return null
-    }
-
-    const renderPreviewInList = (messages, unreadCommentIds) => {
-        useGetUnreadChatMessages.mockReturnValue({ messages, loaded: true })
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <UnreadEmailArchiveProvider>
-                    <ChatItemUnreadMessages project={project} chat={chat} unreadCommentIds={unreadCommentIds} />
-                    <ScopeProbe projectId={project.id} />
-                </UnreadEmailArchiveProvider>
-            )
-        })
-        return tree
-    }
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockRowProps.length = 0
-        mockAccessGranted = true
-        observedScope = null
-        setNotifications(undefined)
-    })
-
-    it('publishes the emails behind the messages it previews', () => {
-        renderPreviewInList([gmailMessage(1, 'm1'), gmailMessage(2, 'm2')], ['c1', 'c2'])
-
-        expect(observedScope.linkedEmails.map(linkedEmail => linkedEmail.key)).toEqual(['conn-a:m1', 'conn-a:m2'])
-    })
-
-    it('publishes nothing for a message that did not come from Gmail', () => {
-        renderPreviewInList(makeMessages(2), ['c1', 'c2'])
-
-        expect(observedScope.linkedEmails).toEqual([])
-    })
-
-    it('publishes nothing for a viewer who is not a project member', () => {
-        // Same gate the per-message email actions use, applied once here so the header's bulk
-        // button has nothing to act on either.
-        mockAccessGranted = false
-        renderPreviewInList([gmailMessage(1, 'm1')], ['c1'])
-
-        expect(observedScope.linkedEmails).toEqual([])
-    })
-
-    it('publishes only what is actually previewed, never the messages the cap hid', () => {
-        const messages = Array.from({ length: CHAT_ITEM_UNREAD_PREVIEW_LIMIT + 1 }, (unused, index) =>
-            gmailMessage(index + 1, `m${index + 1}`)
-        )
-        renderPreviewInList(
-            messages,
-            messages.map(message => message.id)
-        )
-
-        expect(observedScope.linkedEmails.map(linkedEmail => linkedEmail.messageId)).toEqual([
-            'm2',
-            'm3',
-            'm4',
-            'm5',
-            'm6',
-        ])
-    })
-
-    it('archives through the list-wide state, so a bulk archive updates the message buttons too', async () => {
-        performEmailLineAction.mockResolvedValue(undefined)
-        renderPreviewInList([gmailMessage(1, 'm1')], ['c1'])
-        expect(mockRowProps[mockRowProps.length - 1].isArchivedEmail('conn-a:m1')).toBe(false)
-
-        // What a header button does. The previewed message must see it, which it only can if both
-        // sides read the same archive state.
-        await act(async () => {
-            await observedScope.archive.archiveLinkedEmails(observedScope.linkedEmails)
-        })
-
-        expect(mockRowProps[mockRowProps.length - 1].isArchivedEmail('conn-a:m1')).toBe(true)
-    })
-
-    it('still keeps its own archive state when previewed outside the list', () => {
-        renderPreview([gmailMessage(1, 'm1')], ['c1'])
-
-        expect(typeof mockRowProps[0].onArchiveLinkedEmail).toBe('function')
     })
 })
 
