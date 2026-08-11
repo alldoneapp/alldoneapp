@@ -18,13 +18,13 @@
 jest.mock('firebase-admin', () => ({ firestore: () => ({}) }), { virtual: true })
 jest.mock('algoliasearch', () => () => ({ initIndex: () => ({}) }), { virtual: true })
 
-const { mapChatData } = require('./ParsingTextHelper')
+const { mapChatData, mapGoalData } = require('./ParsingTextHelper')
 const { configAlgoliaIndex } = require('./searchHelper')
 
 // Mirrors CREATOR_ATTRIBUTE_BY_INDEX in components/GlobalSearchAlgolia/searchFilters.js.
 const CREATOR_ATTRIBUTE_BY_OBJECT_TYPE = {
     tasks: 'userId',
-    goals: 'ownerId',
+    goals: 'creatorId',
     notes: 'userId',
     contacts: 'recorderUserId',
     chats: 'creatorId',
@@ -73,6 +73,32 @@ describe('mapChatData creator attribute', () => {
         expect(record.cleanName).toBeDefined()
         expect(record.cleanLastComment).toBeDefined()
         expect(record.projectId).toBe('project-1')
+    })
+})
+
+describe('mapGoalData creator attribute', () => {
+    it('indexes the goal creator so goals can be filtered by creator', () => {
+        const record = mapGoalData('goal-1', 'goal-1project-1', { name: 'Ship it', creatorId: 'user-1' }, 'project-1')
+
+        expect(record.creatorId).toBe('user-1')
+    })
+
+    it('falls back to an empty string rather than undefined for a creatorless goal', () => {
+        const record = mapGoalData('goal-1', 'goal-1project-1', { name: 'Ship it' }, 'project-1')
+
+        expect(record.creatorId).toBe('')
+    })
+
+    it('does not confuse the creator with ownerId, which is the ALL_USERS sentinel', () => {
+        // Regression guard for the original AT-2258 mapping. Every goal in the
+        // production index carries `ownerId: "ALL_USERS"`, so filtering the goals
+        // tab on `ownerId` matched nothing at all. `ownerId` must keep its own
+        // meaning and must not be overwritten with the creator.
+        const record = mapGoalData('goal-1', 'goal-1project-1', { name: 'Ship it', creatorId: 'user-1' }, 'project-1')
+
+        expect(record.ownerId).toBe('ALL_USERS')
+        expect(record.creatorId).toBe('user-1')
+        expect(record.creatorId).not.toBe(record.ownerId)
     })
 })
 
