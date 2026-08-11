@@ -26,6 +26,7 @@ import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
+import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 
 function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -105,9 +106,21 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                 projectId={project.id}
                 customRight={
                     isInAllProjects ? (
-                        <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                        <View style={localStyles.headerActions}>
+                            {/* Archives the emails behind this project's previewed unread messages.
+                                Renders nothing when the previews hold no email. */}
+                            <ArchiveUnreadEmailsButton
+                                projectId={project.id}
+                                containerStyle={localStyles.archiveEmailsInline}
+                            />
+                            <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                        </View>
                     ) : (
                         <View style={localStyles.headerActions}>
+                            <ArchiveUnreadEmailsButton
+                                projectId={project.id}
+                                containerStyle={localStyles.archiveEmailsInline}
+                            />
                             <MarkAsRead
                                 projectId={project.id}
                                 userId={loggedUser.uid}
@@ -191,6 +204,9 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
     },
     markAsReadInline: {
+        marginRight: 8,
+    },
+    archiveEmailsInline: {
         marginRight: 8,
     },
     moreButtonWrapper: {
