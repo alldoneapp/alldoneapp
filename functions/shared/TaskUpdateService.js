@@ -165,7 +165,8 @@ class TaskUpdateService {
             projectName,
             normalizedUpdateFields,
             userId,
-            feedUser
+            feedUser,
+            options
         )
 
         if (normalizedUpdateFields.comment) {
@@ -387,7 +388,8 @@ class TaskUpdateService {
                     taskProjectName,
                     updateFields,
                     userId,
-                    feedUser
+                    feedUser,
+                    options
                 )
                 let commentResult = null
                 if (updateFields.comment) {
@@ -560,7 +562,7 @@ class TaskUpdateService {
     /**
      * Perform the actual task update
      */
-    async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser) {
+    async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser, options = {}) {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
 
         try {
@@ -671,9 +673,13 @@ class TaskUpdateService {
                 if (finalDueDate) {
                     // Import server-side alert updater
                     const { setTaskAlertCloud } = require('./AlertService')
+                    const { resolveReminderChannelsFromSource } = require('../Tasks/reminderChannels')
 
                     // Convert UTC timestamp to moment with user's timezone for setTaskAlert
                     const alertMoment = this.options.moment(finalDueDate).utcOffset(timezoneOffset)
+
+                    // A reminder asked for inside WhatsApp is delivered back over WhatsApp (AT-2211)
+                    const alertChannels = resolveReminderChannelsFromSource(options.sourceChannel)
 
                     console.log('🔄 TaskUpdateService: Calling setTaskAlert', {
                         taskId: currentTask.id,
@@ -681,13 +687,23 @@ class TaskUpdateService {
                         alertEnabled: updateFields.alertEnabled,
                         alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
                         dueDate: finalDueDate,
+                        alertChannels,
                     })
 
                     // Update alert server-side (Cloud)
-                    await setTaskAlertCloud(projectId, currentTask.id, updateFields.alertEnabled, alertMoment, {
-                        ...currentTask,
-                        dueDate: finalDueDate,
-                    })
+                    await setTaskAlertCloud(
+                        projectId,
+                        currentTask.id,
+                        updateFields.alertEnabled,
+                        alertMoment,
+                        {
+                            ...currentTask,
+                            dueDate: finalDueDate,
+                        },
+                        // Only stamp channels when the reminder actually came from a routed
+                        // channel; otherwise leave any existing routing untouched.
+                        alertChannels.length > 0 ? { alertChannels } : {}
+                    )
 
                     console.log('🔄 TaskUpdateService: Alert updated successfully')
                 }
