@@ -14,7 +14,7 @@ const {
     mapAssistantData,
 } = require('./ParsingTextHelper')
 const { mapUsersInProject, getProject } = require('./Firestore/generalFirestoreCloud')
-const { checkIfObjectIsLockedForUser, DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
+const { DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
 const { getProjectUsers } = require('./Users/usersFirestore')
 const { BatchWrapper } = require('./BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('./envFunctionsHelper')
@@ -216,14 +216,28 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
         object = mapChatData(objectId, algoliaObjectId, baseObject, projectId, { cleanComments })
     }
 
-    let isLocked = false
-    if (objectsType === TASKS_OBJECTS_TYPE || objectsType === GOALS_OBJECTS_TYPE) {
-        isLocked = checkIfObjectIsLockedForUser(object, usersMap)
-    }
-
-    const parsedObject = isLocked
-        ? null
-        : parseObject(objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive)
+    // NOTE: a guide-lock check used to sit here, as
+    // `checkIfObjectIsLockedForUser(object, usersMap)`. Its signature is
+    // `(projectId, lockKey, user)`, so the mapped object arrived as `projectId`,
+    // `usersMap` as `lockKey` — always a truthy object, so the `if (lockKey)`
+    // branch was always taken — and `user` as `undefined`, which the body
+    // immediately destructures. It therefore threw a TypeError for EVERY task
+    // and EVERY goal it ever saw. Because `processObject` is async that surfaced
+    // as a rejected promise, and the callers did not await it, so it was
+    // swallowed as an unhandled rejection: bulk reindexation of tasks and goals
+    // silently produced nothing at all. (AT-2258 measured it: the goals creator
+    // backfill reindexed 634 records and populated 0.)
+    //
+    // It is removed rather than repaired because there is no correct argument to
+    // give it here. The check asks "is this locked for THIS user", and the bulk
+    // path indexes a project once for everybody — there is no such user, only a
+    // map of them. More to the point, index-time locking was never actually in
+    // force: the per-object create/update path never applied it and writes
+    // almost every record in production, and the client does not filter on
+    // `lockKey` either. Reinstating it here would not restore a behaviour, it
+    // would introduce a new one — silently changing what every user can find —
+    // and that belongs in its own change.
+    const parsedObject = parseObject(objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive)
     if (objectsType === NOTES_OBJECTS_TYPE && parsedObject) {
         console.log(`Final parsed note object for Algolia:`, {
             objectID: parsedObject.objectID,
@@ -263,39 +277,62 @@ const addChatsToList = async (projectId, usersMap, objectsList, activeFullSearch
     await Promise.all(promises)
 }
 
+// `processObject` is ASYNC (the chats branch awaits the topic's comments). A
+// caller that forgets to await it pushes a PROMISE into the upload list, and
+// `saveObjects` then serialises `{}` — the reindex "succeeds" and writes junk,
+// or throws far away from the mistake. `addNotesToList` / `addChatsToList`
+// await it; the four builders below did not, which silently broke bulk
+// reindexation for tasks, goals, contacts and assistants (found via AT-2258:
+// the goals creator backfill reindexed 634 records and populated none of them,
+// while chats — the one type that awaits — populated 327 of 337).
+//
+// Collecting promises and resolving them here keeps each builder's structure
+// and its `if (object)` skip for locked objects, which `processObject` returns
+// as null.
+const collectProcessedObjects = async (pendingObjects, objectsList) => {
+    const objects = await Promise.all(pendingObjects)
+    objects.forEach(object => {
+        if (object) objectsList.push(object)
+    })
+}
+
 const addAssistantsToList = async (projectId, usersMap, objectsList, db) => {
     const docs = await db.collection(`assistants/${projectId}/items`).get()
 
+    const pendingObjects = []
     const tryAddAssistant = doc => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, ASSISTANTS_OBJECTS_TYPE, baseObject, usersMap, false)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, ASSISTANTS_OBJECTS_TYPE, baseObject, usersMap, false))
     }
 
     docs.forEach(doc => {
         tryAddAssistant(doc)
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addContactsToList = async (projectId, usersMap, objectsList, db) => {
     const docs = await db.collection(`projectsContacts/${projectId}/contacts`).get()
 
+    const pendingObjects = []
     const tryAddContact = doc => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, CONTACTS_OBJECTS_TYPE, baseObject, usersMap, false)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, CONTACTS_OBJECTS_TYPE, baseObject, usersMap, false))
     }
 
     docs.forEach(doc => {
         tryAddContact(doc)
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addTasksToList = async (projectId, usersMap, objectsList, activeFullSearch, db) => {
+    const pendingObjects = []
     const tryAddTask = (doc, canBeInactive) => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, TASKS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, TASKS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive))
     }
 
     const mainRef = db.collection(`items/${projectId}/tasks`)
@@ -348,13 +385,15 @@ const addTasksToList = async (projectId, usersMap, objectsList, activeFullSearch
             tryAddTask(doc, true)
         })
     }
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addGoalsToList = async (projectId, usersMap, objectsList, activeFullSearch, db) => {
+    const pendingObjects = []
     const tryAddGoal = (doc, canBeInactive) => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, GOALS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, GOALS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive))
     }
 
     const mainRef = db.collection(`goals/${projectId}/items`)
@@ -403,6 +442,8 @@ const addGoalsToList = async (projectId, usersMap, objectsList, activeFullSearch
             tryAddGoal(doc, true)
         }
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 function chunkArray(initialArray, chunkSize) {
@@ -810,6 +851,11 @@ module.exports = {
     getNoteContent,
     processObject,
     addNotesToList,
+    addGoalsToList,
+    addTasksToList,
+    addContactsToList,
+    addAssistantsToList,
+    addChatsToList,
     configAlgoliaIndex,
     uploadObjectsToAlgolia,
     createAlgoliaIndexes,
