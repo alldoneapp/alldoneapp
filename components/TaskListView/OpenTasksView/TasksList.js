@@ -13,6 +13,7 @@ import {
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
+import { holdTaskOrder } from './taskPlacementHold'
 
 export default function TasksList({
     projectId,
@@ -51,6 +52,13 @@ export default function TasksList({
     const heldFocusTaskIdRef = useRef(undefined)
     const effectiveFocusTaskId = holdWhileEditing(liveFocusTaskId || null, isUserEditing, heldFocusTaskIdRef)
 
+    // AT-2267 - the same guard, one level down. Assigning a goal in the background also regenerates
+    // `sortIndex`, and a background priority change re-sorts too, so the rendered order of an
+    // otherwise untouched list can change under an open editor. React reorders a keyed list by moving
+    // DOM nodes and moving a node blurs what is focused inside it, so hold the order the rows were
+    // last rendered in. See taskPlacementHold.js.
+    const heldTaskOrderRef = useRef(undefined)
+
     const priorityTaskListIndexes = [
         MAIN_TASK_INDEX,
         MENTION_TASK_INDEX,
@@ -59,9 +67,13 @@ export default function TasksList({
         STREAM_AND_USER_TASKS_INDEX,
     ]
     const shouldSortByPriority = priorityTaskListIndexes.includes(taskListIndex)
-    const sortedTaskList = shouldSortByPriority
-        ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
-        : [...taskList]
+    const sortedTaskList = holdTaskOrder(
+        shouldSortByPriority
+            ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
+            : [...taskList],
+        isUserEditing,
+        heldTaskOrderRef
+    )
 
     return (
         <View style={[localStyles.container, containerStyle]}>
