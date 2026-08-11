@@ -24,7 +24,8 @@ import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
 import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeOption from './Filter/CreatedByMeOption'
+import CreatedByMeOption, { CREATED_BY_ME_OPTION_LABEL } from './Filter/CreatedByMeOption'
+import { translate } from '../../i18n/TranslationService'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
 
 const searchCalls = []
@@ -85,8 +86,10 @@ const CREATOR_ATTRIBUTE_BY_INDEX = {
 describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
     let component
 
-    const mount = async () => {
-        store.dispatch(overrideStore({ ...store.getState(), loggedUser, loggedUserProjects: [PROJECT] }))
+    const mount = async (storeOverrides = {}) => {
+        store.dispatch(
+            overrideStore({ ...store.getState(), loggedUser, loggedUserProjects: [PROJECT], ...storeOverrides })
+        )
         store.dispatch(showGlobalSearchPopup(false))
         await act(async () => {
             component = renderer.create(
@@ -150,6 +153,19 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
         expect(createdByMeOption().props.enabled).toBe(false)
         expect(typeof createdByMeOption().props.onToggle).toBe('function')
+    })
+
+    it('renders the row into the MOBILE popup output, where it was reported missing', async () => {
+        // The two reports on this task were both screenshots of the phone popup,
+        // and the popup takes a different width branch (`POPOVER_MOBILE_WIDTH`)
+        // there. Finding the component by type — as the test above does — would
+        // still pass if the row were width-gated or pushed out of the rendered
+        // tree, so this one asserts the translated LABEL reaches rendered output
+        // with `smallScreenNavigation` on, without opening any other modal.
+        await mount({ smallScreenNavigation: true })
+
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(CREATED_BY_ME_OPTION_LABEL))
     })
 
     it('keeps the scope modal free of the creator filter', async () => {
