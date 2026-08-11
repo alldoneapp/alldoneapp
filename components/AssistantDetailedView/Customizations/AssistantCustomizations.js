@@ -37,7 +37,6 @@ import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
 import HeartbeatStatusProperty from './Heartbeat/HeartbeatStatusProperty'
-import InboundEmailModelProperty from './AssistantEmail/InboundEmailModelProperty'
 import EmailSignatureProperty from './EmailSignature/EmailSignatureProperty'
 import UpdateFromTemplate from './UpdateFromTemplate/UpdateFromTemplate'
 
@@ -77,7 +76,7 @@ export default function AssistantCustomizations({
 
     const hasTalkToAssistantTool =
         Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes('talk_to_assistant')
-    const canConfigureAssistantEmail = defaultAssistantId === assistant.uid
+    const canConfigureEmailSignature = defaultAssistantId === assistant.uid
 
     const updateIsFromTemplate = templateProject => {
         setIsFromTemplateProject(templateProject ? templateProject.globalAssistantIds.includes(assistant.uid) : false)
@@ -160,6 +159,13 @@ export default function AssistantCustomizations({
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <RealtimeVoiceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    {canConfigureEmailSignature && (
+                        <EmailSignatureProperty
+                            disabled={!canEditAssitant}
+                            projectId={projectId}
+                            assistant={assistant}
+                        />
+                    )}
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <SkillsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <McpServersAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
@@ -177,33 +183,6 @@ export default function AssistantCustomizations({
                     />
                 </View>
             </View>
-            {canConfigureAssistantEmail && (
-                <>
-                    <CustomizationsHeader text="Assistant email" />
-                    <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
-                        <View
-                            style={{
-                                flex: 1,
-                                marginRight: smallScreen ? 0 : 72,
-                                width: smallScreen ? '100%' : '50%',
-                            }}
-                        >
-                            <InboundEmailModelProperty
-                                disabled={!canEditAssitant}
-                                projectId={projectId}
-                                assistant={assistant}
-                            />
-                        </View>
-                        <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
-                            <EmailSignatureProperty
-                                disabled={!canEditAssitant}
-                                projectId={projectId}
-                                assistant={assistant}
-                            />
-                        </View>
-                    </View>
-                </>
-            )}
             <CustomizationsHeader text="Assistant heartbeat" />
             <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
                 <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>

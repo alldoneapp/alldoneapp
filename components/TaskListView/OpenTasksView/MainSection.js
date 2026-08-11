@@ -39,6 +39,7 @@ import { unwatch } from '../../../utils/backends/firestore'
 import TasksHelper from '../Utils/TasksHelper'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { createSectionRenderBudget } from './sectionRenderBudget'
+import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 
 export default function MainSection({
     projectId,
@@ -58,6 +59,9 @@ export default function MainSection({
     // Last section render sizes observed while the user was NOT editing. Used
     // as a floor during editing so no mounted section can drop out.
     const renderedAmountsRef = useRef({})
+    // Section pinned to the top by the focus task in the last idle render, held
+    // across renders so an opening editor cannot un-pin it. See focusSectionPin.js.
+    const pinnedSectionRef = useRef(undefined)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const mainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
     const emptyGoalsAmount = useSelector(
@@ -357,16 +361,11 @@ export default function MainSection({
     // Pinning the focused section to the top reorders the keyed section list.
     // React handles that by MOVING the existing DOM nodes, and moving a node
     // blurs whatever is focused inside it - so a background change to
-    // `inFocusTaskId` would yank the caret out of an open editor. Defer the
-    // reorder until the user is done; it re-applies on the next idle render.
-    if (focusedTaskSectionId && !isUserEditing) {
-        const focusedSectionIndex = sortedMainTasks.findIndex(data => data[0] === focusedTaskSectionId)
-        if (focusedSectionIndex > 0) {
-            // Move focused section to the top
-            const [focusedSection] = sortedMainTasks.splice(focusedSectionIndex, 1)
-            sortedMainTasks.unshift(focusedSection)
-        }
-    }
+    // `inFocusTaskId` must not yank the caret out of an open editor. While the
+    // user edits we therefore hold the last pin decision taken while idle
+    // instead of dropping it: an already pinned section stays pinned (AT-2249),
+    // a *new* pin waits for the next idle render (AT-2203). See focusSectionPin.js.
+    pinSectionToTop(sortedMainTasks, resolvePinnedSectionId(focusedTaskSectionId, isUserEditing, pinnedSectionRef))
     // --- End: Focus logic ---
 
     const isTemplateProject = templateProjectIds.includes(projectId)

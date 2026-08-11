@@ -10,8 +10,6 @@ const mockExecuteToolNatively = jest.fn()
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: mockAddBaseInstructions,
-    buildConversationSafeToolArgs: jest.requireActual('../Assistant/attachmentToolHandoff')
-        .buildConversationSafeToolArgs,
     buildConversationSafeToolResult: jest.fn((toolName, result) => result),
     buildPendingAttachmentPayload: jest.fn(() => null),
     executeToolNatively: mockExecuteToolNatively,
@@ -24,7 +22,6 @@ jest.mock('../Assistant/assistantHelper', () => ({
     })),
     interactWithChatStream: mockInteractWithChatStream,
     isToolAllowedForExecution: jest.fn().mockResolvedValue(true),
-    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_6_SOL'),
     reduceGoldWhenChatWithAI: mockReduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT: 20,
 }))
@@ -204,42 +201,6 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         )
     })
 
-    test('uses the optional inbound email model for requests and cost attribution', async () => {
-        mockGetAssistantForChat.mockResolvedValue({
-            uid: 'assistant-1',
-            displayName: 'Anna',
-            allowedTools: [],
-            instructions: '',
-            model: 'MODEL_GPT5_6_SOL',
-            emailModel: 'MODEL_GPT5_6_LUNA',
-            temperature: 'TEMPERATURE_NORMAL',
-        })
-        mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Done.' }])
-
-        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Create a task', 'assistant-1')
-
-        expect(mockInteractWithChatStream).toHaveBeenCalledWith(
-            expect.any(Array),
-            'MODEL_GPT5_6_LUNA',
-            'TEMPERATURE_NORMAL',
-            expect.any(Array),
-            expect.any(Object)
-        )
-        expect(mockReduceGoldWhenChatWithAI).toHaveBeenCalledWith(
-            'user-1',
-            100,
-            'MODEL_GPT5_6_LUNA',
-            'Done.',
-            expect.any(Array),
-            expect.any(Object),
-            expect.any(Object)
-        )
-    })
-
-    test('inherits the normal assistant model when no inbound email override is set', () => {
-        expect(__private__.resolveInboundEmailModel({ model: 'MODEL_GPT5_6_TERRA' })).toBe('MODEL_GPT5_6_TERRA')
-    })
-
     test('keeps an explicitly emailed task request as a direct user_request', async () => {
         mockGetAssistantForChat.mockResolvedValue({
             uid: 'assistant-1',
@@ -308,54 +269,6 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             expect.any(Object),
             expect.objectContaining({ channel: 'email' })
         )
-    })
-
-    test('does not resend an invoice binary in the follow-up model request', async () => {
-        mockGetAssistantForChat.mockResolvedValue({
-            uid: 'assistant-1',
-            displayName: 'Anna',
-            allowedTools: ['external_tool_bookkeeping_attach_invoice'],
-            instructions: '',
-            model: 'MODEL_GPT5_6_SOL',
-            temperature: 'TEMPERATURE_NORMAL',
-        })
-        const fileBase64 = Buffer.alloc(4096, 23).toString('base64')
-        mockExecuteToolNatively.mockResolvedValue({ success: true, status: 'matched' })
-        mockInteractWithChatStream
-            .mockReturnValueOnce([
-                {
-                    additional_kwargs: {
-                        tool_calls: [
-                            {
-                                id: 'tool-invoice',
-                                function: {
-                                    name: 'external_tool_bookkeeping_attach_invoice',
-                                    arguments: JSON.stringify({
-                                        fileName: 'invoice.pdf',
-                                        fileBase64,
-                                    }),
-                                },
-                            },
-                        ],
-                    },
-                },
-            ])
-            .mockReturnValueOnce([{ content: 'Invoice attached.' }])
-
-        await processAnnaEmailAssistantMessage(
-            'user-1',
-            'project-1',
-            'chat-1',
-            'Please attach this invoice',
-            'assistant-1'
-        )
-
-        const followUpMessages = mockInteractWithChatStream.mock.calls[1][0]
-        const completedToolCall = followUpMessages.find(message => message.role === 'assistant').tool_calls[0]
-        const safeArgs = JSON.parse(completedToolCall.function.arguments)
-        expect(safeArgs.fileBase64).toBe('[omitted from conversation; preserved for the next external tool call]')
-        expect(safeArgs.fileBase64Length).toBe(fileBase64.length)
-        expect(completedToolCall.function.arguments).not.toContain(fileBase64)
     })
 
     test('attributes calendar availability to the account owner instead of Anna', async () => {

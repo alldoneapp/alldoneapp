@@ -948,18 +948,6 @@ export function updateAssistantEmailSignature(projectId, assistant, emailSignatu
     )
 }
 
-export function updateAssistantEmailModel(projectId, assistant, emailModel) {
-    const normalizedModel = typeof emailModel === 'string' ? emailModel.trim() : ''
-    updateAssistantData(
-        projectId,
-        assistant.uid,
-        {
-            emailModel: normalizedModel || firebase.firestore.FieldValue.delete(),
-        },
-        null
-    )
-}
-
 export function updateAssistantLastVisitedBoardDate(
     projectId,
     assistantId,
@@ -1555,7 +1543,6 @@ export async function resolveAssistantTemplateConflicts(projectId, assistantId, 
 
 // Update assistant properties from a global/template assistant
 export async function updateAssistantFromTemplate(projectId, localAssistant, globalAssistant) {
-    const templateHasEmailModel = Object.prototype.hasOwnProperty.call(globalAssistant, 'emailModel')
     const updatePayload = {
         displayName: globalAssistant.displayName,
         description: globalAssistant.description,
@@ -1568,7 +1555,6 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
                 ? globalAssistant.emailSignature
                 : DEFAULT_EMAIL_SIGNATURE,
         model: globalAssistant.model,
-        emailModel: templateHasEmailModel ? globalAssistant.emailModel : firebase.firestore.FieldValue.delete(),
         heartbeatModel: globalAssistant.heartbeatModel ?? globalAssistant.model,
         reasoningEffort: normalizeAssistantReasoningEffort(globalAssistant.reasoningEffort),
         ...(Object.prototype.hasOwnProperty.call(globalAssistant, 'heartbeatReasoningEffort')
@@ -1603,9 +1589,7 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
 
     await updateAssistantData(projectId, localAssistant.uid, updatePayload, null)
     console.log(`✅ Updated assistant ${localAssistant.uid} from template ${globalAssistant.uid}`)
-    const updatedAssistant = { ...localAssistant, ...updatePayload }
-    if (!templateHasEmailModel) delete updatedAssistant.emailModel
-    return updatedAssistant
+    return { ...localAssistant, ...updatePayload }
 }
 
 // Sync pre-configured tasks from a global/template assistant

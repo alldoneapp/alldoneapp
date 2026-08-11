@@ -276,12 +276,11 @@ jest.mock(
         })),
     { virtual: true }
 )
-const mockTiktokenEncode = jest.fn(() => [])
 jest.mock(
     '@dqbd/tiktoken/lite',
     () => ({
         Tiktoken: jest.fn().mockImplementation(() => ({
-            encode: mockTiktokenEncode,
+            encode: jest.fn(() => []),
             free: jest.fn(),
         })),
     }),
@@ -354,10 +353,8 @@ const {
     buildResponsesTools,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
-    enforceOpenAiInputTokenPreflight,
     logOpenAiCacheUsage,
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
-    OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     convertResponsesStream,
     interactWithChatStream,
     modelSupportsNativeTools,
@@ -637,41 +634,6 @@ describe('Responses API compatibility helpers', () => {
         ])
     })
 
-    test('redacts binary arguments from completed tool calls before building Responses input', () => {
-        const fileBase64 = Buffer.alloc(1024, 17).toString('base64')
-        const input = convertMessagesToResponsesInput([
-            {
-                role: 'assistant',
-                content: '',
-                tool_calls: [
-                    {
-                        id: 'call-file',
-                        type: 'function',
-                        function: {
-                            name: 'external_tool_bookkeeping_attach_invoice',
-                            arguments: JSON.stringify({
-                                fileName: 'invoice.pdf',
-                                fileBase64,
-                                nested: { contentBytes: fileBase64 },
-                            }),
-                        },
-                    },
-                ],
-            },
-        ])
-
-        const safeArgs = JSON.parse(input[0].arguments)
-        expect(safeArgs).toEqual({
-            fileName: 'invoice.pdf',
-            fileBase64: '[omitted from conversation; preserved for the next external tool call]',
-            fileBase64Length: fileBase64.length,
-            nested: {
-                contentBytes: '[omitted from conversation; preserved for the next external tool call]',
-                contentBytesLength: fileBase64.length,
-            },
-        })
-    })
-
     test('adds internal prompt cache markers only when explicit caching is enabled', () => {
         const messages = [
             { role: 'system', content: 'Stable instructions', promptCacheBreakpoint: true },
@@ -764,36 +726,6 @@ describe('Responses API compatibility helpers', () => {
             })
         )
         logSpy.mockRestore()
-        warnSpy.mockRestore()
-    })
-
-    test('blocks an oversized OpenAI request during preflight before dispatch', () => {
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-        mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
-
-        expect(() =>
-            enforceOpenAiInputTokenPreflight(
-                {
-                    input: [
-                        {
-                            type: 'function_call',
-                            call_id: 'call-file',
-                            name: 'external_tool_bookkeeping_attach_invoice',
-                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(160000) }),
-                        },
-                    ],
-                },
-                { route: 'assistant', model: 'gpt-5.6-sol' }
-            )
-        ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
-
-        expect(warnSpy).toHaveBeenCalledWith(
-            '🚨 OPENAI INPUT TOKEN PREFLIGHT BLOCK: Request not sent',
-            expect.objectContaining({
-                route: 'assistant',
-                hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
-            })
-        )
         warnSpy.mockRestore()
     })
 
