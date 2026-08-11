@@ -27,9 +27,7 @@ beforeAll(() => {
         OBSERVED_TASKS_INDEX: 7,
         STREAM_AND_USER_TASKS_INDEX: 8,
         ACTIVE_GOALS_INDEX: 9,
-        CALENDAR_TASK_INDEX: 10,
-        EMAIL_TASK_INDEX: 11,
-        EMPTY_SECTION_INDEX: 12,
+        EMPTY_SECTION_INDEX: 10,
     })
 })
 
@@ -78,9 +76,7 @@ const makeSection = (date, { mainTasks = [], observedTasks = [], emptyGoals = []
     section[7] = observedTasks // OBSERVED_TASKS_INDEX
     section[8] = [] // STREAM_AND_USER_TASKS_INDEX
     section[9] = activeGoals // ACTIVE_GOALS_INDEX
-    section[10] = [] // CALENDAR_TASK_INDEX
-    section[11] = [] // EMAIL_TASK_INDEX
-    section[12] = emptyGoals // EMPTY_SECTION_INDEX
+    section[10] = emptyGoals // EMPTY_SECTION_INDEX
     return section
 }
 
