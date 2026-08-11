@@ -5,8 +5,6 @@
 import React from 'react'
 import { ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
-import { Provider } from 'react-redux'
-import { createStore } from 'redux'
 
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider, useRegisterUnreadLinkedEmails } from './unreadEmailArchiveContext'
@@ -35,21 +33,16 @@ const PreviewRegistration = ({ sourceKey, projectId, linkedEmails }) => {
     return null
 }
 
-// `smallScreenNavigation` drives the icon-only mobile variant of the button (AT-2263); it is
-// undefined - i.e. the desktop, labelled variant - unless a case opts in.
-const renderButton = ({ projectId, registrations = [], smallScreenNavigation = false }) => {
-    const store = createStore(() => ({ smallScreenNavigation }))
+const renderButton = ({ projectId, registrations = [] }) => {
     let tree
     act(() => {
         tree = renderer.create(
-            <Provider store={store}>
-                <UnreadEmailArchiveProvider>
-                    {registrations.map(registration => (
-                        <PreviewRegistration key={registration.sourceKey} {...registration} />
-                    ))}
-                    <ArchiveUnreadEmailsButton projectId={projectId} />
-                </UnreadEmailArchiveProvider>
-            </Provider>
+            <UnreadEmailArchiveProvider>
+                {registrations.map(registration => (
+                    <PreviewRegistration key={registration.sourceKey} {...registration} />
+                ))}
+                <ArchiveUnreadEmailsButton projectId={projectId} />
+            </UnreadEmailArchiveProvider>
         )
     })
     return tree
@@ -121,49 +114,27 @@ describe('ArchiveUnreadEmailsButton visibility', () => {
         expect(labelsOf(tree)).toEqual(['Archive emails'])
     })
 
-    // AT-2263: "Archive all emails" is the widest label on the line and is what overlapped the
-    // project title on a phone. On mobile only the archive icon is drawn.
-    it('shows the icon without its label on mobile, keeping the wording as the accessible name', () => {
-        const tree = renderButton({
-            projectId: 'project-1',
-            registrations: [
-                { sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [email('conn-a', 'm1')] },
-            ],
-            smallScreenNavigation: true,
-        })
-
-        expect(labelsOf(tree)).toEqual([])
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Archive emails')
-        // Still one press away, and still the same press.
-        expect(buttonOf(tree).props.disabled).toBe(false)
-    })
-
     it('disappears again when the last preview holding an email unmounts', () => {
-        const store = createStore(() => ({ smallScreenNavigation: false }))
         let tree
         act(() => {
             tree = renderer.create(
-                <Provider store={store}>
-                    <UnreadEmailArchiveProvider>
-                        <PreviewRegistration
-                            sourceKey="project-1:chat-1"
-                            projectId="project-1"
-                            linkedEmails={[email('conn-a', 'm1')]}
-                        />
-                        <ArchiveUnreadEmailsButton projectId="project-1" />
-                    </UnreadEmailArchiveProvider>
-                </Provider>
+                <UnreadEmailArchiveProvider>
+                    <PreviewRegistration
+                        sourceKey="project-1:chat-1"
+                        projectId="project-1"
+                        linkedEmails={[email('conn-a', 'm1')]}
+                    />
+                    <ArchiveUnreadEmailsButton projectId="project-1" />
+                </UnreadEmailArchiveProvider>
             )
         })
         expect(tree.toJSON()).not.toBeNull()
 
         act(() => {
             tree.update(
-                <Provider store={store}>
-                    <UnreadEmailArchiveProvider>
-                        <ArchiveUnreadEmailsButton projectId="project-1" />
-                    </UnreadEmailArchiveProvider>
-                </Provider>
+                <UnreadEmailArchiveProvider>
+                    <ArchiveUnreadEmailsButton projectId="project-1" />
+                </UnreadEmailArchiveProvider>
             )
         })
 
@@ -306,9 +277,6 @@ describe('ArchiveUnreadEmailsButton states', () => {
         expect(labelsOf(tree)).toEqual(['Archived'])
         expect(buttonOf(tree).props.disabled).toBe(true)
         expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0)
-        // The accessible name follows the state, because on mobile the swapped icon is the only
-        // other thing that reports it (AT-2263).
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Archived')
     })
 
     it('never sends an already archived email again', async () => {

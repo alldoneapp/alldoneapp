@@ -19,14 +19,9 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-start',
         flexDirection: 'row',
-        // Views do not shrink by default in flexbox, so without this the title would overflow the
-        // header row (and run under the action buttons) instead of truncating (AT-2263).
-        flexShrink: 1,
-        minWidth: 0,
     },
     text: {
         ...styles.subtitle1,
         color: colors.Text01,
-        flexShrink: 1,
     },
 })
