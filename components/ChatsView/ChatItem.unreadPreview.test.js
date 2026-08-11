@@ -109,7 +109,7 @@ describe('ChatItem unread message preview (AT-2256)', () => {
         expect(ChatItemLastComment).not.toHaveBeenCalled()
     })
 
-    it('previews the same messages on the Followed tab, so it cannot disagree with the row badge', () => {
+    it('follows the active tab, so the preview cannot disagree with the row badge', () => {
         renderChatItem(buildState(UNREAD, FOLLOWED_TAB))
 
         expect(previewProps().unreadCommentIds).toEqual(['f1', 'f2'])
@@ -117,18 +117,6 @@ describe('ChatItem unread message preview (AT-2256)', () => {
 
     it('previews unfollowed messages when they are what the badge is counting', () => {
         renderChatItem(buildState({ totalFollowed: 0, totalUnfollowed: 1, unfollowedNotifications: UNFOLLOWED_ONLY }))
-
-        expect(previewProps().unreadCommentIds).toEqual(['u1'])
-    })
-
-    it('previews unfollowed messages on the Followed tab too (AT-2256 follow-up)', () => {
-        // A Gmail informational email is an *unfollowed* (grey) notification on a chat the user
-        // follows, so its topic is listed on the Followed tab with a grey badge. Previewing
-        // nothing under that badge is what hid every email - and with it the header's "Archive
-        // emails" / "Archive all emails" buttons, which act on exactly what the previews publish.
-        renderChatItem(
-            buildState({ totalFollowed: 0, totalUnfollowed: 1, unfollowedNotifications: UNFOLLOWED_ONLY }, FOLLOWED_TAB)
-        )
 
         expect(previewProps().unreadCommentIds).toEqual(['u1'])
     })

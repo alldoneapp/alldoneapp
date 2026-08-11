@@ -48,40 +48,35 @@ export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
 /**
  * The unread notifications of a single chat, oldest first, for the preview under a topic (AT-2256).
  *
- * Reproduces the row badge's own rule - `totalFollowed || totalUnfollowed`, i.e. followed if there
- * are any, otherwise unfollowed - rather than merging both sets. A user who started following a
- * topic part-way through has both kinds, and merging them would preview more messages than the
- * number printed next to them, which reads as a bug in the count.
+ * Deliberately reproduces the row badge's own rule - `totalFollowed || totalUnfollowed`, i.e.
+ * followed if there are any, otherwise unfollowed - rather than merging both sets. A user who
+ * started following a topic part-way through has both kinds, and merging them would preview more
+ * messages than the number printed next to them, which reads as a bug in the count.
  *
- * It is deliberately NOT narrowed by the active tab. That narrowing is what hid every email preview
- * (and, with it, the "Archive emails" / "Archive all emails" buttons that read the previews) on the
- * Followed tab: a Gmail informational email writes an *unfollowed* (grey) chat notification while
- * still adding the user to the chat's `usersFollowing`, so its "Daily emails ..." topic is listed on
- * the Followed tab, prints its grey unread badge there - and previewed nothing underneath it. The
- * badge in `ChatItem` is tab-independent, so anything that previews less than the badge counts
- * contradicts the row it sits in. `isUnreadChat` stays tab-scoped: it answers a different question
- * (does this chat count as unread *for this tab* - the unread-only filter and the tab's counters),
- * and previewing is about what a row that is already on screen is showing.
- *
- * Deciding on the counters rather than the arrays keeps it aligned with the badge even for legacy
- * notification docs that carry no `commentId` - those are dropped here, because there is no comment
- * for them to point at, but they must not flip the choice of set.
+ * The tab still constrains it: the Followed tab never previews unfollowed notifications, matching
+ * `isUnreadChat`. Deciding on the counters rather than the arrays keeps it aligned with the badge
+ * even for legacy notification docs that carry no `commentId` - those are dropped here, because
+ * there is no comment for them to point at, but they must not flip the choice of set.
  */
-export const getUnreadNotifications = chatNotifications => {
+export const getUnreadNotifications = (chatNotifications, chatsActiveTab) => {
     if (!chatNotifications) return []
 
     const usesFollowed = (chatNotifications.totalFollowed || 0) > 0
-    const notifications = usesFollowed
-        ? chatNotifications.followedNotifications || []
-        : chatNotifications.unfollowedNotifications || []
+    let notifications = []
+
+    if (usesFollowed) {
+        notifications = chatNotifications.followedNotifications || []
+    } else if (chatsActiveTab === ALL_TAB) {
+        notifications = chatNotifications.unfollowedNotifications || []
+    }
 
     return notifications
         .filter(notification => !!notification?.commentId)
         .sort((a, b) => (Number(a.date) || 0) - (Number(b.date) || 0))
 }
 
-export const getUnreadCommentIds = chatNotifications =>
-    getUnreadNotifications(chatNotifications).map(({ commentId }) => commentId)
+export const getUnreadCommentIds = (chatNotifications, chatsActiveTab) =>
+    getUnreadNotifications(chatNotifications, chatsActiveTab).map(({ commentId }) => commentId)
 
 export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActiveTab) =>
     Object.keys(chatsByDate).reduce((filteredChats, date) => {

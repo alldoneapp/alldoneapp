@@ -458,6 +458,20 @@ const createAlgoliaIndexes = async () => {
     await Promise.all(promises)
 }
 
+// Pushes each index's Algolia settings. Two things to know before adding an
+// attribute to `attributesForFaceting` here (both learned from AT-2258):
+//
+//  1. THIS FUNCTION IS NOT CALLED BY A DEPLOY. It runs only from
+//     `createAlgoliaIndexes` and the bulk-upload path, so shipping a new
+//     `filterOnly(...)` line does not make that attribute filterable in
+//     production — the settings have to be pushed explicitly.
+//  2. DECLARING A FACET DOES NOT BACKFILL IT. Records indexed before the
+//     matching `map*Data` change carry no such attribute, so they simply never
+//     match. Existing objects need a reindex
+//     (`startProjectIndexationInAlgolia` in AlgoliaGlobalSearchHelper.js).
+//
+// Both failures are silent: Algolia answers a filter that matches nothing with
+// an empty result set, not an error, so the tab just renders "no results".
 const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
     if (objectsType === TASKS_OBJECTS_TYPE) {
         await algoliaIndex.setSettings(
@@ -493,6 +507,7 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
                     'filterOnly(id)',
                     'filterOnly(isPublicFor)',
                     'filterOnly(ownerId)',
+                    'filterOnly(creatorId)',
                     'filterOnly(lockKey)',
                     'filterOnly(lastEditionDate)',
                     'filterOnly(canBeInactive)',
