@@ -100,11 +100,16 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
     })
 
     // Without this, a superseded pipeline turns red for doing exactly the right thing.
+    // Deploy jobs also carry 76 ("this target is already up to date", see ci/deployScope.sh),
+    // so assert 75 is present rather than that it is the only allowed code — but keep
+    // asserting that a plain `allow_failure: true` is never used, which would swallow a
+    // genuine deploy failure.
     it('declares the superseded exit code as an allowed failure', () => {
         for (const [name, job] of productionDeployJobs()) {
             if (EXEMPT_JOBS[name]) continue
             const exitCodes = [].concat((job.allow_failure && job.allow_failure.exit_codes) || [])
-            expect(`${name}:${exitCodes.join(',')}`).toBe(`${name}:${SUPERSEDED_EXIT_CODE}`)
+            expect(`${name}:${exitCodes.includes(SUPERSEDED_EXIT_CODE)}`).toBe(`${name}:true`)
+            expect(`${name}:${job.allow_failure === true}`).toBe(`${name}:false`)
         }
     })
 
