@@ -45,6 +45,7 @@ import SkillDetailedView from './components/SkillDetailedView/SkillDetailedView'
 import AdminPanelView from './components/AdminPanel/AdminPanelView'
 import AssistantDetailedView from './components/AssistantDetailedView/AssistantDetailedView'
 import { scrollDocumentToTop } from './utils/scrollUtils'
+import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 
 const onLayoutChange = layout => {
     const {
@@ -205,6 +206,11 @@ export class AppContainer extends React.Component {
         // reads coordinates and never calls preventDefault) so Chrome does not
         // have to wait on it before scrolling.
         document.addEventListener('touchstart', this.handleDomPointerDown, { capture: true, passive: true })
+        // Mobile virtual keyboard (AT-2248): shrink the shell by the keyboard
+        // inset and keep the focused input visible. Installed here for the same
+        // reason as the listeners above — this is the one component that mounts
+        // once for the whole app and owns its document-level listeners.
+        this.stopVirtualKeyboardViewport = startVirtualKeyboardViewport()
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -221,6 +227,7 @@ export class AppContainer extends React.Component {
         this.unsubscribe && this.unsubscribe()
         document.removeEventListener('mousedown', this.handleDomPointerDown, true)
         document.removeEventListener('touchstart', this.handleDomPointerDown, { capture: true })
+        this.stopVirtualKeyboardViewport && this.stopVirtualKeyboardViewport()
     }
 
     // Feeds every press on the page into the dismissible-modal system with the
