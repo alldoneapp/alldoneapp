@@ -57,6 +57,7 @@ import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
 import { taskEditorLayout } from './TaskEditorLayout'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -145,6 +146,13 @@ export default function EditTask({
         adding ? generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) : cloneDeep(task)
     )
     const [newTaskInFocus, setNewTaskInFocus] = useState(false)
+
+    // The task exactly as it was when this editor opened. `tmpTask` starts as a copy of it and only
+    // ever diverges through the user's own actions, so the two together say precisely which fields
+    // this editing session owns - which is what lets a save keep the background updates that landed
+    // meanwhile instead of reverting them. See mergeBackgroundTaskUpdates.js (AT-2267).
+    const openedTaskRef = useRef(undefined)
+    if (openedTaskRef.current === undefined) openedTaskRef.current = adding || !task ? null : cloneDeep(task)
 
     const inputTask = useRef(null)
     // Opening a task line replaces a one-line row with a much taller editor, so
@@ -446,6 +454,13 @@ export default function EditTask({
     const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment) => {
         updatedTask.name = updatedTask.name.trim()
         updatedTask.extendedName = updatedTask.extendedName.trim()
+
+        // The editor now stays open across background updates (AT-2267), so by the time this runs
+        // the live task may already carry a goal an assistant assigned, a due date a colleague
+        // moved, and so on. `updatedTask` descends from the clone taken when the editor opened and
+        // `updateTask` writes the whole document, so saving it verbatim would revert all of it.
+        // Send only what this editing session actually changed, on top of the live task.
+        updatedTask = mergeBackgroundTaskUpdates(openedTaskRef.current, updatedTask, task)
 
         if (followUpData) {
             const { inBacklog, date } = followUpData
