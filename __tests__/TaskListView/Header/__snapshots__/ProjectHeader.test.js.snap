@@ -67,7 +67,7 @@ exports[`ProjectHeader component ProjectHeader snapshot test should render corre
       </div>
     </div>
     <div
-      className="css-view-g5y9jx r-flexDirection-18u37iz r-height-1472mwg r-maxHeight-1tsbciq"
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1q142lx r-height-1472mwg r-maxHeight-1tsbciq"
       dir={null}
     />
   </div>

@@ -12,17 +12,14 @@ export default function MyDayWorkflowTasks() {
     const tasksLoaded = useSelector(state => state.myDayWorkflowTasksByProject.loaded)
 
     const needToShowEmptyBoardPicture = myDayWorkflowTasksAmount === 0
-    // AT-2262: the congrats renders right under the assistant line (which also shows the
-    // latest comment) instead of at the very bottom of the page, so it is visible without
-    // scrolling — but it never pushes the assistant composer / last comment down.
-    const showEmptyInbox = tasksLoaded && needToShowEmptyBoardPicture
 
     return (
         <>
             <AllProjectsLine />
             <AssistantLine useAssistantProjectContext={false} />
-            {showEmptyInbox && <AllProjectsEmptyInbox />}
-            {!showEmptyInbox && (
+            {tasksLoaded && needToShowEmptyBoardPicture ? (
+                <AllProjectsEmptyInbox />
+            ) : (
                 <View style={{ marginTop: 16, marginBottom: 32 }}>
                     <MyDayWorkflowTasksList />
                 </View>

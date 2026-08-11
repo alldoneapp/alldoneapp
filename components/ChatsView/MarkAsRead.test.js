@@ -14,8 +14,9 @@ jest.mock('../../i18n/TranslationService', () => ({
     translate: text => text,
 }))
 
-const renderButton = props => {
-    const store = createStore(() => ({ chatsActiveTab: 'followed' }))
+const renderButton = ({ smallScreenNavigation = false, ...props } = {}) => {
+    // `smallScreenNavigation` drives the icon-only mobile variant of the button (AT-2263).
+    const store = createStore(() => ({ chatsActiveTab: 'followed', smallScreenNavigation }))
     return renderer.create(
         <Provider store={store}>
             <MarkAsRead userId="user-1" {...props} />
@@ -94,5 +95,44 @@ describe('MarkAsRead', () => {
 
         expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe('mark as read')
         expect(tree.root.findAllByType(Text).some(item => item.props.children === 'mark as read')).toBe(true)
+    })
+
+    // AT-2263: the label is what overflowed the project line and drew over the project title on a
+    // phone. On mobile it goes, and the wording survives as the accessible name (react-native-web
+    // renders `accessibilityLabel` as a real `aria-label`).
+    it('drops the label on mobile and keeps the wording as the accessible name', () => {
+        const tree = renderButton({ projectIds: ['project-1', 'project-2'], smallScreenNavigation: true })
+        const button = tree.root.findByType(TouchableOpacity)
+
+        expect(tree.root.findAllByType(Text).some(item => item.props.children === 'mark all as read')).toBe(false)
+        expect(button.props.accessibilityLabel).toBe('mark all as read')
+    })
+
+    it('still presses through and still reports failures when the label is hidden on mobile', async () => {
+        markMessagesAsRead.mockRejectedValueOnce(new Error('offline'))
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const tree = renderButton({ projectId: 'project-1', smallScreenNavigation: true })
+
+        await act(async () => {
+            await tree.root.findByType(TouchableOpacity).props.onPress()
+        })
+
+        expect(markMessagesAsRead).toHaveBeenCalledWith('project-1', 'user-1', 'followed')
+        // "try again" has nowhere to render, so the failure has to be legible from the accessible
+        // name instead - hence the full sentence rather than the short label.
+        expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(
+            'Could not mark as read. Try again'
+        )
+        consoleError.mockRestore()
+    })
+
+    it('never lets the actions be squeezed by the title next to them', () => {
+        const desktop = renderButton({ projectId: 'project-1' })
+        const mobile = renderButton({ projectId: 'project-1', smallScreenNavigation: true })
+
+        const flatten = tree => Object.assign({}, ...tree.root.findByType(TouchableOpacity).props.style.flat())
+
+        expect(flatten(desktop).flexShrink).toBe(0)
+        expect(flatten(mobile).flexShrink).toBe(0)
     })
 })
