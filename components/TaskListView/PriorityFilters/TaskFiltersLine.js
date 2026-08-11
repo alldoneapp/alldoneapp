@@ -169,6 +169,11 @@ export default function TaskFiltersLine({ projectId }) {
             <View style={localStyles.header}>
                 <Icon name="filter" size={14} color={colors.Text03} style={localStyles.headerIcon} />
                 <Text style={[styles.caption1, localStyles.headerText]}>{translate('Task Filters')}</Text>
+                {activeFilterCount > 0 && (
+                    <View style={localStyles.activeCount} testID="task-filter-active-count">
+                        <Text style={localStyles.activeCountText}>{activeFilterCount}</Text>
+                    </View>
+                )}
                 {priorityData.prioritized > 0 &&
                     (showAutoPostpone ? (
                         <Popover
@@ -307,6 +312,17 @@ const localStyles = StyleSheet.create({
     header: { minHeight: 24, flexDirection: 'row', alignItems: 'center' },
     headerIcon: { marginRight: 6 },
     headerText: { flex: 1, color: colors.Text03, marginRight: 8 },
+    activeCount: {
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Primary200,
+        marginRight: 8,
+    },
+    activeCountText: { ...styles.caption2, color: 'white' },
     filtersScroll: { marginTop: 8 },
     filtersRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center' },
     group: { flexDirection: 'row', alignItems: 'center' },

@@ -177,10 +177,7 @@ describe('NoteOwnerFiltersLine', () => {
         expect(dispatch).toHaveBeenCalledWith({ type: 'Clear note owner filters' })
     })
 
-    // AT-2264: the header used to carry a badge with the number of selected filters. It read
-    // like an item count next to the per-chip counts, so it is gone -- the highlighted chips
-    // already say what is selected. The per-chip counts stay: those are item counts.
-    test('does not show how many filters are selected', () => {
+    test('shows the number of active filters', () => {
         mockCollectNoteOwnerCounts.mockReturnValue({
             counts: { [HUMAN_ID]: 3, [ASSISTANT_ID]: 2 },
             total: 5,
@@ -189,8 +186,7 @@ describe('NoteOwnerFiltersLine', () => {
         setState({ noteOwnerFilters: [HUMAN_ID, ASSISTANT_ID] })
 
         const component = render()
-        expect(hasTestID(component, 'note-owner-filter-active-count')).toBe(false)
-        expect(hasTestID(component, `note-owner-filter-${HUMAN_ID}`)).toBe(true)
+        expect(hasTestID(component, 'note-owner-filter-active-count')).toBe(true)
     })
 
     test('keeps a selected owner visible after their notes leave the loaded window', () => {

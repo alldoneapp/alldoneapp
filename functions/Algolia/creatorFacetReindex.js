@@ -29,7 +29,13 @@
  */
 const admin = require('firebase-admin')
 
-const MIGRATION_MARKER = 'systemMigrations/AT-2258-creator-facet-reindex'
+// Bumped to -v2 deliberately. The v1 run completed (86 projects, 172 reindexes
+// queued) and fixed chats — 0 of 337 records to 327 — but populated only 1 of
+// 634 goals, because the goals bulk path was throwing on every document
+// (see the removed lock check in `searchHelper.processObject`). The marker is
+// the only thing that would stop the repaired code from running, so renaming it
+// is what makes the fix self-applying instead of needing a forced manual call.
+const MIGRATION_MARKER = 'systemMigrations/AT-2258-creator-facet-reindex-v2'
 
 // Only these two need repairing. Tasks/notes/contacts are already correct in
 // production and reindexing them would be a large, pointless Algolia burst.
