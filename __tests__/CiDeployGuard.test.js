@@ -124,6 +124,40 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
     })
 })
 
+// Every job that runs the guard must be able to run its PRIMARY probe, `git ls-remote`.
+// The guard's GitLab API fallback is not a substitute: CI_JOB_TOKEN is only accepted on a
+// small allowlist of endpoints and `/repository/branches/:branch` is not among them, so the
+// probe 401s and the guard fails CLOSED with exit 1 — which is deliberately NOT in
+// allow_failure. `update:version:production` shipped on `curlimages/curl` (no git, and a
+// non-root user so it cannot install any) and failed on every master push, leaving clients
+// on a stale bundle because nothing bumped the app version.
+describe('every guarded job can actually run the guard', () => {
+    // Images known to ship git, so they need no install line.
+    const IMAGES_WITH_GIT = [/build_functions/, /build_web_bundler/, /build_base/, /alpine\/git/]
+
+    const guardedJobs = () => jobEntries().filter(([, job]) => job.script.some(l => l.includes('assertNewestCommit')))
+
+    const makesGitAvailable = job => {
+        const image = typeof job.image === 'string' ? job.image : (job.image && job.image.name) || ''
+        if (IMAGES_WITH_GIT.some(re => re.test(image))) return true
+        const lines = [].concat(job.before_script || [], job.script || []).join('\n')
+        // Either an unconditional install, or the `command -v git || install` fallback.
+        return /apk add[^\n]*\bgit\b|apt-get install[^\n]*\bgit\b/.test(lines)
+    }
+
+    it('finds the guarded jobs at all, so this test cannot pass vacuously', () => {
+        expect(guardedJobs().length).toBeGreaterThan(0)
+    })
+
+    it('gives git to every job that runs the guard', () => {
+        const withoutGit = guardedJobs()
+            .filter(([, job]) => !makesGitAvailable(job))
+            .map(([name]) => name)
+
+        expect(withoutGit).toEqual([])
+    })
+})
+
 describe('ci/assertNewestCommit.sh', () => {
     it('allows the deploy when the commit is the branch tip', () => {
         const result = runGuard({ ...baseEnv, CI_COMMIT_SHA: NEWEST }, { fakeGitSha: NEWEST })
