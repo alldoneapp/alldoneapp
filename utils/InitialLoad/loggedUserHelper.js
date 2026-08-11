@@ -35,7 +35,6 @@ import { storeVersion } from '../Observers'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
-import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
 import UserDataCache from '../UserDataCache'
 import {
     haveSameProjectIds,
@@ -271,14 +270,11 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     const userData = await getDataForUpdateUser(loggedUser)
 
-    // Check premium status with Stripe in background (non-blocking)
-    checkUserPremiumStatusStripe()
-        .then(() => {
-            if (__DEV__) console.log('Premium status check completed (background)')
-        })
-        .catch(error => {
-            console.warn('Premium status check failed during login:', error)
-        })
+    // No premium check on login. It discarded its result — premium.status is read from the user
+    // document, written by the Stripe webhook and reconciled by dailyPremiumStatusCheck — so this
+    // only cost a callable per login and surfaced its failures in the console. The signup flow
+    // still calls it directly, where the result is actually used (tracking-ID linking and the
+    // premium initial-gold grant).
 
     store.dispatch(initLogInForLoggedUser({ ...loggedUser, ...userData }))
 
