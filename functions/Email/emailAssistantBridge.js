@@ -2,6 +2,7 @@
 
 const {
     addBaseInstructions,
+    buildConversationSafeToolArgs,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     executeToolNatively,
@@ -11,6 +12,7 @@ const {
     interactWithChatStream,
     isToolAllowedForExecution,
     getToolResultFollowUpPrompt,
+    normalizeModelKey,
     reduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
@@ -34,6 +36,7 @@ const MAX_TOOL_ITERATIONS = 50
 async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messageText, assistantId, options = {}) {
     const user = await getUserData(userId)
     const assistant = await getAssistantForChat(projectId, assistantId, userId)
+    const emailModel = resolveInboundEmailModel(assistant)
 
     if (!user || user.gold <= 0) {
         const responseText = 'I could not process this email because the account has no remaining credits.'
@@ -127,7 +130,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
 
     const stream = await interactWithChatStream(
         messages,
-        assistant.model,
+        emailModel,
         assistant.temperature,
         allowedTools,
         toolRuntimeContext
@@ -137,7 +140,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         responseText = await collectStreamWithToolCalls(
             stream,
             messages,
-            assistant.model,
+            emailModel,
             assistant.temperature,
             allowedTools,
             projectId,
@@ -167,7 +170,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         const { Tiktoken } = require('@dqbd/tiktoken/lite')
         const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
         const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-        await reduceGoldWhenChatWithAI(userId, user.gold, assistant.model, responseText, messages, encoder, {
+        await reduceGoldWhenChatWithAI(userId, user.gold, emailModel, responseText, messages, encoder, {
             projectId,
             objectId: chatId,
             objectType: 'topics',
@@ -178,6 +181,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     }
 
     return responseText
+}
+
+function resolveInboundEmailModel(assistant = {}) {
+    return normalizeModelKey(assistant.emailModel || assistant.model)
 }
 
 async function collectStreamWithToolCalls(
@@ -284,6 +291,7 @@ async function collectStreamWithToolCalls(
                 }
 
                 const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext)
+                const conversationSafeToolArgs = buildConversationSafeToolArgs(toolName, toolArgs, null)
 
                 currentConversation = [
                     ...currentConversation,
@@ -296,7 +304,7 @@ async function collectStreamWithToolCalls(
                                 type: 'function',
                                 function: {
                                     name: toolName,
-                                    arguments: JSON.stringify(toolArgs),
+                                    arguments: JSON.stringify(conversationSafeToolArgs),
                                 },
                             },
                         ],
@@ -478,5 +486,6 @@ module.exports = {
         buildSafeActionContextFromToolResult,
         enforceCalendarOwnershipResponse,
         getEmailAccountOwnerName,
+        resolveInboundEmailModel,
     },
 }
