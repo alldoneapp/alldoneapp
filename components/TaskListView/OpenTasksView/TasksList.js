@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
@@ -13,6 +13,8 @@ import {
     SUGGESTED_TASK_INDEX,
 } from '../../../utils/backends/openTasks'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
+import { useIsUserEditing } from '../../../utils/editingGuard'
+import { holdWhileEditing } from './focusSectionPin'
 
 export default function TasksList({
     projectId,
@@ -39,8 +41,17 @@ export default function TasksList({
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
 
     // When optimistic state is active for this project, use it (even if null = no task focused yet)
-    const effectiveFocusTaskId =
+    const liveFocusTaskId =
         optimisticFocusActive && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
+
+    // AT-2249 - the focus task is boosted to the top of its list, and that boost reorders a keyed
+    // list: React moves the DOM nodes and blurs whatever is focused inside them. So while the user
+    // is busy, hold the boost exactly as it was in the last idle render. An applied boost stays
+    // applied (opening an editor never moves a task), and a focus change arriving from elsewhere is
+    // deferred to the next idle render instead of yanking the caret. See focusSectionPin.js.
+    const isUserEditing = useIsUserEditing()
+    const heldFocusTaskIdRef = useRef(undefined)
+    const effectiveFocusTaskId = holdWhileEditing(liveFocusTaskId || null, isUserEditing, heldFocusTaskIdRef)
 
     const priorityTaskListIndexes = [
         MAIN_TASK_INDEX,
