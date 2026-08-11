@@ -212,6 +212,10 @@ export default class Backend {
         return bridge.isMobileDevice()
     }
 
+    static isLocalDevHost() {
+        return bridge.isLocalDevHost()
+    }
+
     static signInWithGoogleRedirect() {
         return bridge.signInWithGoogleRedirect()
     }

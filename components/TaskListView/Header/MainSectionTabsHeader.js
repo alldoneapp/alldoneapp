@@ -21,7 +21,11 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 
-export default function MainSectionTabsHeader({ showSectionToggle, renderSectionToggle, renderRightAccessory }) {
+export default function MainSectionTabsHeader({
+    showSectionToggle = false,
+    renderSectionToggle = null,
+    renderRightAccessory = null,
+}) {
     const dispatch = useDispatch()
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -186,12 +190,6 @@ MainSectionTabsHeader.propTypes = {
     showSectionToggle: PropTypes.bool,
     renderSectionToggle: PropTypes.func,
     renderRightAccessory: PropTypes.func,
-}
-
-MainSectionTabsHeader.defaultProps = {
-    showSectionToggle: false,
-    renderSectionToggle: null,
-    renderRightAccessory: null,
 }
 
 const localStyles = StyleSheet.create({

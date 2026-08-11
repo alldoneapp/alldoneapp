@@ -34,7 +34,12 @@ import {
 import { createChat } from '../../utils/backends/Chats/chatsComments'
 import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 
-const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
+const EditChat = ({
+    formType,
+    projectId,
+    onCancelAction,
+    chat = { assistantId: '', title: '', hasStar: '#FFFFFF', stickyData: { days: 0, stickyEndDate: 0 } },
+}) => {
     const submitOnce = useSingleFlightSubmit(submission => submission())
     let inputRef = useRef()
     const dispatch = useDispatch()
@@ -391,9 +396,5 @@ const localStyles = StyleSheet.create({
         marginRight: 32,
     },
 })
-
-EditChat.defaultProps = {
-    chat: { assistantId: '', title: '', hasStar: '#FFFFFF', stickyData: { days: 0, stickyEndDate: 0 } },
-}
 
 export default EditChat

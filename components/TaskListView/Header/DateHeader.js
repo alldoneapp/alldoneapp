@@ -8,13 +8,13 @@ import { translate } from '../../../i18n/TranslationService'
 import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 
 export default function DateHeader({
-    dateText,
-    isToday,
-    isOverdue,
+    dateText = 'Today',
+    isToday = false,
+    isOverdue = false,
     estimation,
     date,
     firstDateSection,
-    amountTasks,
+    amountTasks = 0,
     projectId,
 }) {
     const weekdays = [
@@ -57,13 +57,6 @@ export default function DateHeader({
             </View>
         </View>
     )
-}
-
-DateHeader.defaultProps = {
-    dateText: 'Today',
-    isToday: false,
-    isOverdue: false,
-    amountTasks: 0,
 }
 
 const localStyles = StyleSheet.create({

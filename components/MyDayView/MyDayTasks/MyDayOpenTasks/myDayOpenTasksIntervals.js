@@ -110,6 +110,21 @@ const roundTimeToNextHalfHour = time => {
     }
 }
 
+// A task can name a project that is absent from the logged user's project map — one that is
+// still loading, was archived, or that the user no longer belongs to. These comparators run
+// inside a single orderBy over every My Day task, so one unmapped task used to throw and take
+// the whole loader down to the ErrorBoundary. Unmapped projects sort last instead.
+const getProjectSortIndex = (task, user, loggedUserProjectsMap) => {
+    const project = loggedUserProjectsMap[task.projectId]
+    const sortIndex = project && project.sortIndexByUser ? project.sortIndexByUser[user.uid] : undefined
+    return sortIndex == null ? -Infinity : sortIndex
+}
+
+const getProjectSortName = (task, loggedUserProjectsMap) => {
+    const project = loggedUserProjectsMap[task.projectId]
+    return project && project.name ? project.name.toLowerCase() : ''
+}
+
 const groupNonCalendarTaskByProject = (nonCalendarTasks, user, loggedUserProjectsMap) => {
     const { guideProjectIds } = user
 
@@ -119,8 +134,8 @@ const groupNonCalendarTaskByProject = (nonCalendarTasks, user, loggedUserProject
             task => task.id === user.inFocusTaskId,
             task => task.projectId === user.inFocusTaskProjectId,
             task => guideProjectIds.includes(task.projectId),
-            task => loggedUserProjectsMap[task.projectId].sortIndexByUser[user.uid],
-            task => loggedUserProjectsMap[task.projectId].name.toLowerCase(),
+            task => getProjectSortIndex(task, user, loggedUserProjectsMap),
+            task => getProjectSortName(task, loggedUserProjectsMap),
             task => getTaskPriorityRank(task.priority),
         ],
         ['desc', 'desc', 'asc', 'desc', 'asc', 'desc']
@@ -133,8 +148,8 @@ const groupNonCalendarTaskByProjectForSortingMode = (nonCalendarTasks, user, log
     const sortedNonCalendarTasks = orderBy(
         nonCalendarTasks,
         [
-            task => loggedUserProjectsMap[task.projectId].sortIndexByUser[user.uid],
-            task => loggedUserProjectsMap[task.projectId].name.toLowerCase(),
+            task => getProjectSortIndex(task, user, loggedUserProjectsMap),
+            task => getProjectSortName(task, loggedUserProjectsMap),
             task => getTaskPriorityRank(task.priority),
         ],
         ['desc', 'asc', 'desc']

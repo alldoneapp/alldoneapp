@@ -366,9 +366,17 @@ const backlinksCounterUnsub = {}
 const unsubHastagsColors = {}
 let noteRevisionHistoryCopiesUnsub = () => {}
 
+// Firebase's redirect sign-in hands off through a cross-origin helper iframe on the auth domain,
+// and that gapi handshake never completes in embedded browsers — signInWithRedirect then hangs
+// with no navigation and no error. Pointing authDomain at the dev origin makes the handler
+// same-origin (the dev server proxies /__/auth/* to the real auth domain), removing the iframe.
+// Only when the dev server is actually serving https, because Firebase hardcodes that scheme
+// when it builds the handler URL; plain http://localhost keeps the normal auth domain.
+const useLocalAuthHandler = () => isLocalDevHost() && window.location.protocol === 'https:'
+
 const firebaseConfig = {
     apiKey: GOOGLE_FIREBASE_WEB_API_KEY,
-    authDomain: GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+    authDomain: useLocalAuthHandler() ? window.location.host : GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
     databaseURL: GOOGLE_FIREBASE_WEB_DATABASE_URL,
     projectId: GOOGLE_FIREBASE_WEB_PROJECT_ID,
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
@@ -430,6 +438,11 @@ async function clearAllFirebaseIndexedDB() {
         console.warn('⚠️  Error clearing Firebase IndexedDB:', error.message)
     }
 }
+
+// Resolves once getRedirectResult() has settled, i.e. once a sign-in that came back from the
+// Google redirect has been applied to firebase.auth(). Anything that would sign the user in as
+// somebody else must wait for this first — see loginWithGoogleWebAnonymously.
+let redirectResultSettled = Promise.resolve(null)
 
 export async function initFirebase(onComplete) {
     // Determine if we should use Firebase emulators BEFORE initializing
@@ -515,7 +528,7 @@ export async function initFirebase(onComplete) {
     }
 
     // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
-    firebase
+    redirectResultSettled = firebase
         .auth()
         .getRedirectResult()
         .then(result => {
@@ -747,6 +760,13 @@ export function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
 }
 
+// Helper to detect the local development server.
+export function isLocalDevHost() {
+    if (typeof window === 'undefined') return false
+    const hostname = window.location.hostname
+    return hostname === 'localhost' || hostname === '127.0.0.1'
+}
+
 // Sign in with Google using popup
 // Note: Redirect doesn't work on custom domains (my.alldone.app) because Firebase Auth
 // uses firebaseapp.com for the OAuth handler, and cookies don't transfer back properly.
@@ -756,6 +776,17 @@ export async function signInWithGoogleRedirect() {
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+
+    // The custom-domain problem above does not apply to the dev server: localhost is an
+    // authorized redirect origin for the firebaseapp.com auth domain. Redirect needs no
+    // popup, which is what makes sign-in usable in embedded/automated browsers that block
+    // window.open. getRedirectResult() already runs on boot and completes the sign-in.
+    if (isLocalDevHost()) {
+        console.log('🔐 Local dev host: using Google sign-in with redirect (no popup)...')
+        await firebase.auth().signInWithRedirect(provider)
+        // The page navigates away; nothing after this runs on the outgoing document.
+        return null
+    }
 
     try {
         console.log('🔐 Trying Google sign-in with popup...')
@@ -3036,7 +3067,19 @@ export async function offOnTaskFeedChange(projectId, taskId, callback) {
     onTaskFeedChangeHandlerUnsub()
 }
 
+// The login screen signs in anonymously so it can read project data before the user has an
+// account. signInAnonymously() replaces whoever is currently signed in, so it must never run
+// on top of a real sign-in: with the redirect flow the login screen mounts again on the way
+// back from Google, and an unguarded call here mints a fresh anonymous user that clobbers the
+// credential the redirect just delivered — leaving the user staring at the login page.
 export async function loginWithGoogleWebAnonymously() {
+    await redirectResultSettled.catch(() => null)
+
+    const currentUser = firebase.auth().currentUser
+    if (currentUser && !currentUser.isAnonymous) {
+        return
+    }
+
     await firebase.auth().signInAnonymously()
 }
 

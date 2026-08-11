@@ -4,7 +4,7 @@ import * as PropTypes from 'prop-types'
 import Button from './Button'
 import { colors } from '../styles/global'
 
-function GhostButton({ pressed, ...props }, ref) {
+function GhostButton({ pressed = false, ...props }, ref) {
     const [titleStyle, setTitleStyle] = useState(props.titleStyle)
     const [noBorder, setNoBorder] = useState(true)
 
@@ -49,10 +49,6 @@ const GhostButtonWithRef = forwardRef(GhostButton)
 
 GhostButtonWithRef.propTypes = {
     pressed: PropTypes.bool,
-}
-
-GhostButtonWithRef.defaultProps = {
-    pressed: false,
 }
 
 export default GhostButtonWithRef
