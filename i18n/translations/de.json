@@ -2187,8 +2187,6 @@
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Wird verwendet, wenn du ein DeepSeek- oder anderes OpenRouter-Modell für die Codex-Umgebung auswählst. Dein Key wird vor dem Speichern gegen OpenRouter validiert.",
     "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)",
     "Only objects I created": "Nur von mir erstellte Objekte",
-    "Hides objects created by other people": "Blendet von anderen Personen erstellte Objekte aus",
-    "Created by me": "Von mir erstellt",
     "One earlier unread message": "1 frühere ungelesene Nachricht",
     "Amount earlier unread messages": "%{amount} frühere ungelesene Nachrichten"
 }
