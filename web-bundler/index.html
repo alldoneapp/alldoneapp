@@ -29,7 +29,7 @@
  -->
         <meta
             name="viewport"
-            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content"
+            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no"
         />
         <meta
             viewport="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -203,32 +203,6 @@
                 flex-grow: 1;
                 display: flex;
                 flex: 1;
-            }
-
-            /* Mobile virtual keyboard (AT-2248).
-               On iOS Safari the keyboard does not resize the layout viewport, it
-               covers it — so the shell above stays full height and every inner
-               CustomScrollView still believes a composer behind the keyboard is
-               visible. utils/virtualKeyboard.js measures the covered strip with
-               `visualViewport`, publishes it as --app-keyboard-inset and adds
-               this class; shrinking the shell by it is what makes each pane's
-               clientHeight equal the ACTUALLY visible area, so the ordinary
-               minimal scroll correction works and bottom-anchored composers ride
-               above the keyboard.
-               Only <html> takes the subtraction — body and #root resolve their
-               100% against it, so applying the calc to all three would shrink
-               twice. min-height has to be released as well, or the 100% above
-               (which resolves against the FULL viewport) would win over the
-               height and nothing would move. */
-            html.app-keyboard-open {
-                height: calc(100% - var(--app-keyboard-inset, 0px));
-                min-height: 0;
-            }
-
-            html.app-keyboard-open body,
-            html.app-keyboard-open #root {
-                height: 100%;
-                min-height: 0;
             }
 
             html {
