@@ -27,14 +27,10 @@ async function assertProjectAccess(db, userId, projectId) {
     if (!userId) throw new Error('Authenticated user is required')
     if (!projectId) throw new Error('projectId is required')
 
-    const [userData, projectDoc] = await Promise.all([
-        getUserDataOrThrow(db, userId),
-        db.collection('projects').doc(projectId).get(),
-    ])
-    const projectUserIds =
-        projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
+    const userData = await getUserDataOrThrow(db, userId)
+    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
 
-    if (!projectUserIds.includes(userId)) {
+    if (!accessibleProjectIds.includes(projectId)) {
         throw new Error('User does not have access to this project')
     }
 
@@ -71,9 +67,6 @@ function getObjectDocPath(projectId, objectType, objectId) {
         case 'skills':
         case 'skill':
             return `skills/${projectId}/items/${objectId}`
-        case 'artifacts':
-        case 'artifact':
-            return `artifactItems/${projectId}/artifacts/${objectId}`
         case 'chats':
         case 'topics':
         case 'chat':

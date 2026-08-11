@@ -25,7 +25,6 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
         jest.resetModules()
         delete process.env.FUNCTIONS_EMULATOR
         delete process.env.OPENROUTER_API_KEY
-        delete process.env.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY
     })
 
     afterEach(() => {
@@ -44,18 +43,9 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
 
     test('is read from env_functions.json, which is what CI writes the GitLab blob into', () => {
         // Skip rather than clobber a real env_functions.json in a working deploy checkout.
-        if (
-            !writeEnvJson({
-                OPENROUTER_API_KEY: 'or-json-key',
-                TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: 'typesense-parent-key',
-                PERPLEXITY_API_KEY: 'real-perplexity-value',
-            })
-        )
-            return
+        if (!writeEnvJson({ OPENROUTER_API_KEY: 'or-json-key', PERPLEXITY_API_KEY: 'real-perplexity-value' })) return
 
-        const env = load()
-        expect(env.OPENROUTER_API_KEY).toBe('or-json-key')
-        expect(env.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY).toBe('typesense-parent-key')
+        expect(load().OPENROUTER_API_KEY).toBe('or-json-key')
     })
 
     test('falls back to process.env when the JSON has no entry for it', () => {
@@ -85,12 +75,6 @@ describe('getEnvFunctions OPENROUTER_API_KEY plumbing (AT-2230)', () => {
         process.env.OPENROUTER_API_KEY = 'or-no-json-key'
 
         expect(load().OPENROUTER_API_KEY).toBe('or-no-json-key')
-    })
-
-    test('resolves the scoped Typesense parent key from process.env when JSON does not contain it', () => {
-        process.env.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY = 'typesense-process-key'
-
-        expect(load().TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY).toBe('typesense-process-key')
     })
 
     // The key travels to the Cloud Run runner image through the SAME variable (CI writes

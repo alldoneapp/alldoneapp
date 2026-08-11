@@ -1,5 +1,4 @@
 import React from 'react'
-import { getFollowedFeedAmount } from '../../../utils/notificationBadges'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
@@ -18,14 +17,14 @@ import store from '../../../redux/store'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import { ALL_TAB, FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
-import { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_PROJECTS_INDEX, checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
 import ChatsButton from '../ChatsButton'
 
-export default function MobileNotificationArea({ expandSecondaryBar, compact }) {
+export default function MobileNotificationArea({ expandSecondaryBar }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const followedFeedsAmount = useSelector(getFollowedFeedAmount)
+    const followedFeedsAmount = useSelector(state => state.followedFeedsAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile.MobileNotificationArea')
@@ -40,7 +39,7 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
     }
 
     const onPressUpdates = e => {
-        const { route, expandedNavPicker } = store.getState()
+        const { selectedProjectIndex, route, expandedNavPicker } = store.getState()
 
         dismissAllPopups(true, true, true)
 
@@ -48,7 +47,9 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
             hideFloatPopup(),
             setReloadGlobalFeeds(true),
             navigateToUpdates({
-                selectedProjectIndex: ALL_PROJECTS_INDEX,
+                selectedProjectIndex: checkIfSelectedProject(selectedProjectIndex)
+                    ? selectedProjectIndex
+                    : ALL_PROJECTS_INDEX,
             }),
         ])
 
@@ -63,17 +64,20 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
 
     const feedAmount = followedFeedsAmount === 0 ? allFeedsAmount : followedFeedsAmount
     const activeFeedTab = followedFeedsAmount === 0 && allFeedsAmount > 0 ? ALL_TAB : FOLLOWED_TAB
-    const buttonStyle = [localStyles.button, compact && { marginLeft: 4 }]
 
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity style={[buttonStyle, { marginLeft: 0 }]} onPress={onPressSearch} accessible={false}>
+            <TouchableOpacity
+                style={[localStyles.button, { marginLeft: 0 }]}
+                onPress={onPressSearch}
+                accessible={false}
+            >
                 <Icon size={24} name={'search'} color={theme.searchIcon} />
             </TouchableOpacity>
 
-            <ChatsButton color={theme.searchIcon} style={buttonStyle} onNavigate={collapseSecondaryBar} />
+            <ChatsButton color={theme.searchIcon} style={localStyles.button} onNavigate={collapseSecondaryBar} />
 
-            <TouchableOpacity style={buttonStyle} onPress={onPressUpdates} accessible={false}>
+            <TouchableOpacity style={localStyles.button} onPress={onPressUpdates} accessible={false}>
                 <Icon size={24} name={'bell'} color={theme.bellIcon} />
 
                 {feedAmount > 0 && (
@@ -83,7 +87,7 @@ export default function MobileNotificationArea({ expandSecondaryBar, compact }) 
                 )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={buttonStyle} onPress={expandSecondaryBar} accessible={false}>
+            <TouchableOpacity style={localStyles.button} onPress={expandSecondaryBar} accessible={false}>
                 <Icon size={24} name={'more-vertical'} color={theme.moreVerticalIcon} />
             </TouchableOpacity>
         </View>

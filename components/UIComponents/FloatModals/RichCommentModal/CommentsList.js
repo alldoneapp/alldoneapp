@@ -1,16 +1,11 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { View } from 'react-native'
 
 import Comment from '../../../Feeds/FeedsModals/ListCommentsComponents/Comment'
 import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import VmInteractionCard from '../../../ChatsView/ChatDV/EditorView/VmInteractionCard'
-import {
-    isAwaitingVmInteraction,
-    resolveEffectiveMessageLoading,
-} from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
+import { isAwaitingVmInteraction } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
-import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAssistantRunButton'
-import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/messageTimestamps'
 
 export default function CommentsList({
     projectId,
@@ -27,31 +22,12 @@ export default function CommentsList({
     return (
         <View>
             {comments.map((item, index) => {
-                const linkedEmail = getLinkedEmailFromMessage(item, { projectId, chatId: objectId })
+                const linkedEmail = getLinkedEmailFromMessage(item)
                 const showVmInteraction = isAwaitingVmInteraction(item.assistantRun)
-                // Same stale-spinner rule as the full chat view, so the popup cannot
-                // offer a Stop button (or a progress story) for a run that timed out.
-                const effectiveIsLoading = resolveEffectiveMessageLoading(
-                    item,
-                    getTimestampInMilliseconds(item.lastChangeDate)
-                )
                 const showAssistantProgress =
-                    effectiveIsLoading &&
+                    item.isLoading === true &&
                     item.assistantRun?.kind === 'chat' &&
                     ['running', 'cancel_requested'].includes(item.assistantRun?.status)
-                const stopButton = (
-                    <StopAssistantRunButton
-                        projectId={projectId}
-                        objectType={objectType}
-                        objectId={objectId}
-                        commentId={item.id}
-                        assistantRun={item.assistantRun}
-                        isLoading={effectiveIsLoading}
-                        appearance="dark"
-                        variant={showAssistantProgress ? 'card' : 'standalone'}
-                        style={!showAssistantProgress && localStyles.stopButton}
-                    />
-                )
                 return (
                     <React.Fragment key={item.id}>
                         <Comment
@@ -68,13 +44,9 @@ export default function CommentsList({
                                 showAssistantProgress ? (
                                     <AssistantProgress
                                         activity={item.assistantRun?.activity}
-                                        activityHistory={item.assistantRun?.activityHistory}
-                                        runId={item.assistantRun?.runId}
                                         compact={true}
                                         appearance="dark"
-                                    >
-                                        {stopButton}
-                                    </AssistantProgress>
+                                    />
                                 ) : null
                             }
                             containerStyle={{
@@ -96,16 +68,9 @@ export default function CommentsList({
                                 assistantRun={item.assistantRun}
                             />
                         )}
-                        {!showAssistantProgress && stopButton}
                     </React.Fragment>
                 )
             })}
         </View>
     )
 }
-
-const localStyles = StyleSheet.create({
-    stopButton: {
-        marginBottom: 8,
-    },
-})

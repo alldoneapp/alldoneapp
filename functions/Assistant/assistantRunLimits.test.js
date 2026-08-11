@@ -2,12 +2,6 @@ const fs = require('fs')
 const path = require('path')
 
 const {
-    WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS,
-    WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-    WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
-    WRITING_FUNCTION_TIMEOUT_SECONDS,
-    WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
     ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
@@ -41,30 +35,14 @@ const SCHEDULE_TRIGGER_MAX_TIMEOUT_SECONDS = 1800
 // there. Add a function here when it starts executing prompts; the assertions below then hold it to
 // a transport that can actually carry that run.
 const ASSISTANT_RUN_HOSTS = [
-    {
-        name: 'processWhatsAppInboundQueueItemSecondGen',
-        maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-        boundedEventTrigger: true,
-    },
-    { name: 'recoverWhatsAppInboundQueues', maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS },
-    {
-        name: 'processMenubarWritingRunSecondGen',
-        maxRunWallClockMs: WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
-        boundedEventTrigger: true,
-    },
     { name: 'askToBotSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     { name: 'generatePreConfigTaskResultSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
-    // Hosts the contact "Enrich profile" research run inside the contact's chat.
-    { name: 'enrichContactProfileSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     // Deliberately shorter: these execute inline inside an onSchedule function, so they are sized to
     // Cloud Scheduler's attempt deadline rather than to what the function timeout would allow.
     { name: 'checkRecurringAssistantTasks', maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     { name: 'runWorkflowAiStepsSecondGen', maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     // Deliberately shorter: sized to the Cloud Tasks dispatch ceiling it is delivered through.
     { name: 'runAssistantHeartbeat', maxRunWallClockMs: HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
-    { name: 'runAssistantCommentReply', maxRunWallClockMs: HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
-    // Project wiki ingest: model conversations of its own, delivered through Cloud Tasks.
-    { name: 'runKnowledgeBaseIngest', maxRunWallClockMs: HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
 ]
 
 // index.js cannot be require()d here (it registers every function and pulls in the whole runtime), so
@@ -84,8 +62,6 @@ const readFunctionRegistrations = () => {
 }
 
 const RESOLVED_TIMEOUTS = {
-    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
-    WRITING_FUNCTION_TIMEOUT_SECONDS,
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
@@ -108,14 +84,6 @@ describe('assistant run limits', () => {
         expect(SCHEDULED_FUNCTION_TIMEOUT_SECONDS).toBe(
             transportTimeoutSecondsFor(SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS)
         )
-    })
-
-    it('fits consecutive project routing and writing within the Eventarc transport', () => {
-        expect(WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS).toBe(
-            WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS + WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS
-        )
-        expect(WRITING_FUNCTION_TIMEOUT_SECONDS).toBe(transportTimeoutSecondsFor(WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS))
-        expect(WRITING_FUNCTION_TIMEOUT_SECONDS).toBeLessThanOrEqual(EVENT_TRIGGER_MAX_TIMEOUT_SECONDS)
     })
 
     it('keeps every timeout within what its platform actually allows', () => {
@@ -142,16 +110,10 @@ describe('functions hosting an assistant run', () => {
         expect(timeoutSeconds).toBeGreaterThanOrEqual(transportTimeoutSecondsFor(maxRunWallClockMs))
     })
 
-    it.each(cases)('%s uses a transport that can carry its complete run', (name, host) => {
-        if (host.boundedEventTrigger) {
-            // Only explicitly bounded short runs may use Eventarc; include all consecutive prompts.
-            expect(EVENT_TRIGGERS).toContain(registrations.get(name).trigger)
-            expect(transportTimeoutSecondsFor(host.maxRunWallClockMs)).toBeLessThanOrEqual(
-                EVENT_TRIGGER_MAX_TIMEOUT_SECONDS
-            )
-        } else {
-            expect(EVENT_TRIGGERS).not.toContain(registrations.get(name).trigger)
-        }
+    it.each(cases)('%s is not behind an event trigger', name => {
+        // This is the assertion that would have caught runWorkflowAiStep: an assistant run cannot
+        // live inside a 540s Eventarc delivery, and asking for more is rejected at deploy time.
+        expect(EVENT_TRIGGERS).not.toContain(registrations.get(name).trigger)
     })
 })
 

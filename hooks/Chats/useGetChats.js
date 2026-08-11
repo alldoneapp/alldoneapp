@@ -1,32 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import moment from 'moment'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
-import { subscribeWithLoading } from '../../utils/redux/loadingOperation'
+import { startLoadingData, stopLoadingData } from '../../redux/actions'
+import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import useSelectorHashtagFilters from '../../components/HashtagFilters/UseSelectorHashtagFilters'
 import { filterChats } from '../../components/HashtagFilters/FilterHelpers/FilterChats'
 import { getDb } from '../../utils/backends/firestore'
-import { getChatAccessQueryArgs } from '../../utils/backends/Chats/chatAccessQuery'
-import {
-    buildSecondaryViewCacheKey,
-    getSecondaryViewCacheEntry,
-    getSecondaryViewCacheEntrySync,
-    SECONDARY_VIEW_CHATS,
-    setSecondaryViewCacheEntry,
-} from '../../utils/InitialLoad/secondaryViewCache'
 
-export const getChatsViewCacheKey = ({ projectId, chatsActiveTab, toRender, filtersArray, sticky = false }) =>
-    buildSecondaryViewCacheKey(projectId, chatsActiveTab, toRender, filtersArray, sticky ? 'sticky' : 'regular')
-
-export default function useGetChats(projectId, toRender, chatsActiveTab, cacheEnabled = true) {
-    const { uid: loggedUserId, isAnonymous } = useSelector(state => state.loggedUser)
-    const [, filtersArray] = useSelectorHashtagFilters()
-    const filtersKey = JSON.stringify(filtersArray)
-    const cacheKey = getChatsViewCacheKey({ projectId, chatsActiveTab, toRender, filtersArray })
-    const initialCachedSnapshot = cacheEnabled
-        ? getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey)
-        : null
-    const [chats, setChats] = useState(() => initialCachedSnapshot?.chats || {})
+export default function useGetChats(projectId, toRender, chatsActiveTab) {
+    const dispatch = useDispatch()
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const [chats, setChats] = useState({})
+    const [filters, filtersArray] = useSelectorHashtagFilters()
+    const isLoadingStartedRef = useRef(false)
 
     useEffect(() => {
         // Guard clause: Don't proceed if projectId is invalid
@@ -35,73 +22,46 @@ export default function useGetChats(projectId, toRender, chatsActiveTab, cacheEn
             return
         }
 
-        let active = true
-        let liveSnapshotDelivered = false
-        const applyCachedSnapshot = snapshot => {
-            if (
-                !active ||
-                liveSnapshotDelivered ||
-                snapshot?.projectId !== projectId ||
-                snapshot.chatsActiveTab !== chatsActiveTab ||
-                snapshot.toRender !== toRender ||
-                snapshot.filtersKey !== filtersKey ||
-                !snapshot.chats
-            ) {
-                return
+        dispatch(startLoadingData())
+        isLoadingStartedRef.current = true
+        let query = getDb().collection(`chatObjects/${projectId}/chats/`)
+        query =
+            chatsActiveTab === ALL_TAB
+                ? query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+                : query.where('usersFollowing', 'array-contains', loggedUserId)
+        query = query.where('stickyData.days', '==', 0).orderBy('lastEditionDate', 'desc').limit(toRender)
+        const unsubscribe = query.onSnapshot(handleSnapshot, error => {
+            console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
+            if (isLoadingStartedRef.current) {
+                dispatch(stopLoadingData())
+                isLoadingStartedRef.current = false
             }
-            setChats(snapshot.chats)
-        }
-        const sessionSnapshot = cacheEnabled
-            ? getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey)
-            : null
-        if (cacheEnabled) {
-            if (sessionSnapshot) applyCachedSnapshot(sessionSnapshot)
-            else getSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey).then(applyCachedSnapshot)
-        }
-
-        const unsubscribe = subscribeWithLoading(
-            'chats',
-            (next, error) => {
-                let query = getDb().collection(`chatObjects/${projectId}/chats/`)
-                query = query.where(...getChatAccessQueryArgs({ activeTab: chatsActiveTab, loggedUserId, isAnonymous }))
-                query = query.where('stickyData.days', '==', 0).orderBy('lastEditionDate', 'desc').limit(toRender)
-                return query.onSnapshot(next, error)
-            },
-            chatDocs => {
-                liveSnapshotDelivered = true
-                const chatsByDate = {}
-                chatDocs.forEach(doc => {
-                    const chat = { ...doc.data(), id: doc.id }
-                    const date = moment(chat.lastEditionDate).format('YYYYMMDD')
-                    if (!chatsByDate[date]) chatsByDate[date] = []
-                    chatsByDate[date].push(chat)
-                })
-
-                const nextChats = filtersArray.length > 0 ? filterChats(chatsByDate) : chatsByDate
-                setChats(nextChats)
-                if (cacheEnabled) {
-                    setSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey, {
-                        projectId,
-                        chatsActiveTab,
-                        toRender,
-                        filtersKey,
-                        chats: nextChats,
-                    })
-                }
-            },
-            {
-                enabled: !sessionSnapshot,
-                onError: error => {
-                    console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
-                },
-            }
-        )
+        })
 
         return () => {
-            active = false
+            if (isLoadingStartedRef.current) {
+                dispatch(stopLoadingData())
+                isLoadingStartedRef.current = false
+            }
             unsubscribe()
         }
-    }, [projectId, toRender, chatsActiveTab, loggedUserId, isAnonymous, filtersKey, cacheKey, cacheEnabled])
+    }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
+
+    async function handleSnapshot(chatDocs) {
+        const chatsByDate = {}
+        chatDocs.forEach(doc => {
+            const chat = { ...doc.data(), id: doc.id }
+            const date = moment(chat.lastEditionDate).format('YYYYMMDD')
+            if (!chatsByDate[date]) chatsByDate[date] = []
+            chatsByDate[date].push(chat)
+        })
+
+        setChats(filtersArray.length > 0 ? filterChats(chatsByDate) : chatsByDate)
+        if (isLoadingStartedRef.current) {
+            dispatch(stopLoadingData())
+            isLoadingStartedRef.current = false
+        }
+    }
 
     return chats
 }

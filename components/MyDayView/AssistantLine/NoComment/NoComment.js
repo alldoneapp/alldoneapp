@@ -8,12 +8,9 @@ import { translate } from '../../../../i18n/TranslationService'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ProjectTagIndicator from '../LastComment/ProjectTagIndicator'
-import { LAST_COMMENT_PREVIEW_HEIGHT } from '../LastComment/lastCommentLayout'
-import { useProjectSectionLastCommentTint } from '../../../TaskListView/TaskHierarchy'
 
 export default function NoComment({ projectId, assistant }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const projectLastCommentTint = useProjectSectionLastCommentTint()
 
     const createNewChat = () => {
         createBotQuickTopic(assistant)
@@ -23,10 +20,7 @@ export default function NoComment({ projectId, assistant }) {
 
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity
-                onPress={createNewChat}
-                style={[localStyles.container2, projectLastCommentTint && { backgroundColor: projectLastCommentTint }]}
-            >
+            <TouchableOpacity onPress={createNewChat} style={[localStyles.container2]}>
                 <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
                 <View style={localStyles.textContainer}>
                     <Text numberOfLines={2} style={localStyles.title}>
@@ -46,9 +40,10 @@ const localStyles = StyleSheet.create({
     container: {
         alignContent: 'flex-start',
         flex: 1,
+        marginLeft: 16,
     },
     container2: {
-        height: LAST_COMMENT_PREVIEW_HEIGHT,
+        minHeight: 100,
         backgroundColor: colors.Grey300,
         borderRadius: 12,
         flexDirection: 'row',

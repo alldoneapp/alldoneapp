@@ -64,9 +64,7 @@ const STATE_BASE = {
 }
 
 const mockState = optimisticGoalPostpones => {
-    useSelector.mockImplementation(selector =>
-        selector({ ...STATE_BASE, goalsByProjectInTasks: {}, optimisticGoalPostpones })
-    )
+    useSelector.mockImplementation(selector => selector({ ...STATE_BASE, optimisticGoalPostpones }))
 }
 
 const render = element => {
@@ -93,21 +91,6 @@ describe('AT-2160 optimistic goal postpone hides the goal immediately', () => {
 
         it('renders the goal and its tasks when no postpone is in flight', () => {
             mockState({})
-            const tree = render(element()).toJSON()
-            expect(tree).not.toBeNull()
-            expect(JSON.stringify(tree)).toContain('TasksList')
-        })
-
-        it('renders a restored goal before the live watcher answers', () => {
-            useSelector.mockImplementation(selector =>
-                selector({
-                    ...STATE_BASE,
-                    goalsByProjectInTasks: { 'project-1': { 'goal-1': GOAL } },
-                    optimisticGoalPostpones: {},
-                })
-            )
-            mockWatchGoal.mockImplementation(() => {})
-
             const tree = render(element()).toJSON()
             expect(tree).not.toBeNull()
             expect(JSON.stringify(tree)).toContain('TasksList')

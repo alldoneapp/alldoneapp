@@ -23,8 +23,7 @@ import SelectProjectModal from '../../SelectProjectModal/SelectProjectModal'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import useGetTaskWorkflow from '../../../../../utils/useGetTaskWorkflow'
 import StatusPicker from '../../../../TaskDetailedView/Properties/StatusPicker'
-import FollowingModalItem from '../Common/FollowingModalItem'
-import { FOLLOWER_TASKS_TYPE } from '../../../../Followers/FollowerConstants'
+import FollowingModalItem from './FollowingModalItem'
 import GenericModalItem from '../Common/GenericModalItem'
 import CopyLinkModalItem from '../Common/CopyLinkModalItem'
 import TaskParentGoalModal from '../../TaskParentGoalModal/TaskParentGoalModal'
@@ -46,7 +45,6 @@ import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUti
 import ModalItem from '../Common/ModalItem'
 import TaskPriorityModal from '../../TaskPriorityModal/TaskPriorityModal'
 import useFloatPopupLock from '../../../../../hooks/useFloatPopupLock'
-import PrepareMeetingsItem from '../../PrepareMeetings/PrepareMeetingsItem'
 
 export default function TaskMoreButton({
     formType,
@@ -126,7 +124,7 @@ export default function TaskMoreButton({
     }
 
     const hideEstimationPopup = () => {
-        hidePopups(setShowEstimation, ESTIMATIONS_MODAL_ID)
+        hidePopups(setShowEstimation)
         dismissModal()
     }
 
@@ -212,11 +210,6 @@ export default function TaskMoreButton({
             removeModal(TASK_WORKFLOW_MODAL_ID)
             popupLock.release()
         }
-        if (showEstimation) {
-            setShowEstimation(false)
-            removeModal(ESTIMATIONS_MODAL_ID)
-            popupLock.release()
-        }
         if (showHighlight) {
             setShowHighlight(false)
             removeModal(HIGHLIGHT_MODAL_ID)
@@ -231,26 +224,13 @@ export default function TaskMoreButton({
     const renderItems = () => {
         const list = []
 
-        if (editing && task.id && task.calendarData) {
-            list.push(shortcut => (
-                <PrepareMeetingsItem
-                    key="mbtn-prepare-meetings"
-                    projectId={projectId}
-                    tasks={[task]}
-                    specificTask={true}
-                    shortcut={shortcut}
-                    closeModal={hideNoModalsProperties}
-                />
-            ))
-        }
-
         if (editing) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem
                         key={'mbtn-priority'}
                         icon={'flag'}
-                        text={'Priority'}
+                        text={translate('Priority')}
                         visibilityData={{ openPopup, visibilityFn: setShowPriority }}
                         shortcut={shortcut}
                     />
@@ -382,9 +362,7 @@ export default function TaskMoreButton({
                     <FollowingModalItem
                         key={'mbtn-following'}
                         projectId={projectId}
-                        followObjectsType={FOLLOWER_TASKS_TYPE}
-                        followObjectId={task.id}
-                        followObject={task}
+                        task={task}
                         closeModal={hideNoModalsProperties}
                         shortcut={shortcut}
                     />
@@ -436,7 +414,8 @@ export default function TaskMoreButton({
     const handleGoalSelection = (goal, goalProjectId) => {
         // If updateActiveGoal prop was provided, use it
         if (updateActiveGoal) {
-            return updateActiveGoal(goal, goalProjectId)
+            updateActiveGoal(goal, goalProjectId)
+            return
         }
 
         // Otherwise handle internally: update local state and save to backend
@@ -451,12 +430,11 @@ export default function TaskMoreButton({
             const currentProject = ProjectHelper.getProjectById(projectId)
             const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
             if (currentProject && newProject) {
-                return setTaskProjectWithGoal(currentProject, newProject, task, goal)
+                setTaskProjectWithGoal(currentProject, newProject, task, goal)
             }
-            return false
         } else {
             // Same project, just update the parent goal
-            return setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+            setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
         }
     }
 

@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatItemUnreadMessages, {
@@ -15,41 +15,15 @@ import { UnreadEmailArchiveProvider, useUnreadLinkedEmailsScope } from './unread
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
-import { syncEmailCommentsReadState } from '../../utils/backends/EmailLine/emailCommentReadSync'
 import { onOpenChat } from './Utils/ChatHelper'
-import {
-    CHAT_AVATAR_COLUMN_GUTTER,
-    CHAT_AVATAR_COLUMN_TOTAL_WIDTH,
-    CHAT_PREVIEW_MOBILE_INDENT,
-    CHAT_PREVIEW_RAIL_WIDTH,
-} from './chatRowLayout'
 
 jest.mock('../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
 
-// `smallScreenNavigation` is merged in at selection time rather than baked into `mockState`, which
-// the notification helper rebuilds from scratch: the mobile layout tests (AT-2361) set the flag
-// after `beforeEach` has already reset the notifications.
-jest.mock('react-redux', () => ({
-    useSelector: selector => selector({ ...mockState, smallScreenNavigation: mockMobile }),
-}))
+jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 
 jest.mock('../../utils/SharedHelper', () => ({ accessGranted: () => mockAccessGranted }))
 
-jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({
-    performEmailLineAction: jest.fn(),
-    // The provider reconciles previewed emails against the mailbox (AT-2376); it must not reach
-    // the real callable from a row test.
-    fetchEmailLineMessageStates: jest.fn(async () => []),
-}))
-jest.mock('../../utils/backends/EmailLine/emailCommentReadSync', () => ({
-    syncEmailCommentsReadState: jest.fn(),
-}))
-jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
-    markAlldoneChatsReadForLinkedEmails: jest.fn(),
-    markChatCommentsAsReadByMessageIds: jest.fn(),
-    // Archiving clears the comment's unread state first and gets a rollback back (AT-2424).
-    clearChatCommentsForLinkedEmails: jest.fn(async () => async () => {}),
-}))
+jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markChatMessagesAsRead: jest.fn(),
@@ -96,7 +70,6 @@ const chat = { id: 'chat-1', type: 'topics' }
 
 let mockState = { loggedUser: { uid: 'user-1' }, projectChatNotifications: {} }
 let mockAccessGranted = true
-let mockMobile = false
 const mockRowProps = []
 
 const setNotifications = chatNotifications => {
@@ -131,7 +104,6 @@ describe('ChatItemUnreadMessages', () => {
         jest.clearAllMocks()
         mockRowProps.length = 0
         mockAccessGranted = true
-        mockMobile = false
         setNotifications(undefined)
     })
 
@@ -139,14 +111,6 @@ describe('ChatItemUnreadMessages', () => {
         const tree = renderPreview(makeMessages(3), ['c1', 'c2', 'c3'])
 
         expect(renderedTexts(tree)).toEqual(['c1:message 1', 'c2:message 2', 'c3:message 3'])
-    })
-
-    it('opens the corresponding topic when a message preview is pressed', () => {
-        renderPreview(makeMessages(2), ['c1', 'c2'])
-
-        act(() => mockRowProps[1].onPress())
-
-        expect(onOpenChat).toHaveBeenCalledWith('project-1', chat)
     })
 
     it('subscribes to the chat with the unread comment ids it was given', () => {
@@ -223,98 +187,11 @@ describe('ChatItemUnreadMessages', () => {
     })
 })
 
-// AT-2361. On a phone the row's 64px avatar column is empty for the whole height of the preview,
-// and every previewed line - sender, subject, body, and the email action buttons - paid for it.
-describe('ChatItemUnreadMessages mobile width', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockRowProps.length = 0
-        mockAccessGranted = true
-        mockMobile = false
-        setNotifications(undefined)
-    })
-
-    const flattenedContainerStyle = tree => {
-        const style = tree.root.findByType(View).props.style
-        return (Array.isArray(style) ? style : [style]).filter(Boolean).reduce(
-            (merged, entry) => ({
-                ...merged,
-                ...(typeof entry === 'number' ? StyleSheet.flatten(entry) : entry),
-            }),
-            {}
-        )
-    }
-
-    it('steps out of the row avatar column on mobile, cancelling it exactly', () => {
-        mockMobile = true
-        const tree = renderPreview(makeMessages(1), ['c1'])
-
-        // Exactly the column, not a hand-tuned number: anything else leaves the preview visibly
-        // off the row's own left edge.
-        expect(flattenedContainerStyle(tree).marginLeft).toBe(-CHAT_AVATAR_COLUMN_TOTAL_WIDTH)
-    })
-
-    it('keeps the thread rail on mobile so the messages still read as one topic', () => {
-        mockMobile = true
-        const tree = renderPreview(makeMessages(1), ['c1'])
-        const style = flattenedContainerStyle(tree)
-
-        expect(style.borderLeftWidth).toBe(CHAT_PREVIEW_RAIL_WIDTH)
-        // Tightened, but never gone - the rail needs a gutter to read as one.
-        expect(style.paddingLeft).toBeGreaterThan(0)
-    })
-
-    // AT-2368. Stepping out of the avatar column is right; landing 10px from the screen edge is
-    // not - the text then hugs the rail and stops reading as part of the row above it.
-    it('balances the preview against the row edge instead of sitting flush on it', () => {
-        mockMobile = true
-        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
-
-        // What the reader actually perceives is rail + gutter, so that is what is pinned. The
-        // avatar column is cancelled exactly (asserted above), so this IS the distance from the
-        // row's own left edge to the first pixel of text.
-        expect(style.borderLeftWidth + style.paddingLeft).toBe(CHAT_PREVIEW_MOBILE_INDENT)
-        // The same 16px the rest of the row is spaced by - balanced, not a hand-tuned number.
-        expect(CHAT_PREVIEW_MOBILE_INDENT).toBe(CHAT_AVATAR_COLUMN_GUTTER)
-    })
-
-    it('keeps the width AT-2361 recovered: the indent stays a rounding error on a phone', () => {
-        mockMobile = true
-        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
-
-        // A 390px phone, minus the list's own 16px margins. Anything over ~5% of that starts
-        // costing the email subject and the action-button row the lines AT-2361 gave back.
-        const listWidth = 390 - 2 * CHAT_AVATAR_COLUMN_GUTTER
-        expect((style.borderLeftWidth + style.paddingLeft) / listWidth).toBeLessThan(0.05)
-    })
-
-    it('drops the per-message avatar indent on mobile and keeps it on desktop', () => {
-        mockMobile = true
-        renderPreview(makeMessages(2), ['c1', 'c2'])
-        expect(mockRowProps.map(props => props.compact)).toEqual([true, true])
-
-        mockMobile = false
-        mockRowProps.length = 0
-        renderPreview(makeMessages(2), ['c1', 'c2'])
-        expect(mockRowProps.map(props => props.compact)).toEqual([false, false])
-    })
-
-    it('leaves the desktop layout exactly where it was', () => {
-        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
-
-        // Desktop keeps the avatar column: the width is there, and the alignment with the topic
-        // title above is the whole point of the indent.
-        expect(style.marginLeft).toBe(2)
-        expect(style.paddingLeft).toBe(12)
-    })
-})
-
 describe('ChatItemUnreadMessages email actions', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         mockRowProps.length = 0
         mockAccessGranted = true
-        mockMobile = false
         setNotifications(undefined)
     })
 
@@ -432,25 +309,6 @@ describe('ChatItemUnreadMessages bulk archive registry', () => {
             'm5',
             'm6',
         ])
-    })
-
-    it('hands every unread email to the Gmail read sync, including the ones the cap hid', async () => {
-        // AT-2376: a "Daily emails" topic holds a whole day in one row, so reconciling only the
-        // previewed five against the mailbox would leave the older ones unread for good. The bulk
-        // archive buttons still act on the previewed set only (test above).
-        const messages = Array.from({ length: CHAT_ITEM_UNREAD_PREVIEW_LIMIT + 1 }, (unused, index) =>
-            gmailMessage(index + 1, `m${index + 1}`)
-        )
-        await act(async () => {
-            renderPreviewInList(
-                messages,
-                messages.map(message => message.id)
-            )
-        })
-
-        const syncedMessageIds = syncEmailCommentsReadState.mock.calls[0][0].map(linkedEmail => linkedEmail.messageId)
-        expect(syncedMessageIds).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'])
-        expect(observedScope.linkedEmails.map(linkedEmail => linkedEmail.messageId)).not.toContain('m1')
     })
 
     it('archives through the list-wide state, so a bulk archive updates the message buttons too', async () => {

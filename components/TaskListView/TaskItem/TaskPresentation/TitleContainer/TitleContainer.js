@@ -1,11 +1,10 @@
-import React, { useRef } from 'react'
+import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
 import { isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import GmailTag from '../../../../Tags/GmailTag'
-import TaskCompletionProgress from './TaskCompletionProgress'
 
 export default function TitleContainer({
     task,
@@ -21,10 +20,8 @@ export default function TitleContainer({
     showVerticalEllipsisInByTime,
     leadingVmStatusTag,
     leadingPriorityTag,
-    leadingReminderTag,
     useCommentPopupTextColor,
     setTaskTitleIsMultiline,
-    completionProgress,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
         <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
@@ -34,21 +31,14 @@ export default function TitleContainer({
     // (TaskTagsContainerByTime); here it leads the title so it sits next to the calendar tag.
     const leftCustomElement = (
         <>
-            {!inMyDayAndNotSubtask && leadingReminderTag}
             {!inMyDayAndNotSubtask && leadingPriorityTag}
             {gmailTag}
         </>
     )
 
-    // AT-2404 — kept in a ref rather than state: the progress overlay only mounts on a completion,
-    // which is itself a re-render, so the latest measurement is always available by then. Holding
-    // it in state instead would re-render every title on every reflow to serve a 700ms effect.
-    const titleHeightRef = useRef(0)
-
     const onTaskTitleLayout = ({ nativeEvent: { layout } }) => {
         const lineHeight = task.isSubtask ? styles.body2.lineHeight : styles.body1.lineHeight
         const wrappedTextVerticalMargins = 6
-        titleHeightRef.current = layout.height
         setTaskTitleIsMultiline(layout.height > lineHeight + wrappedTextVerticalMargins)
     }
 
@@ -94,18 +84,6 @@ export default function TitleContainer({
                         : task.name
                     : ''}
             </SocialText>
-            {completionProgress && (
-                <TaskCompletionProgress
-                    progress={completionProgress.progress}
-                    pulse={completionProgress.pulse}
-                    opacity={completionProgress.opacity}
-                    measuredHeight={titleHeightRef.current}
-                    isSubtask={task.isSubtask}
-                    // Same DOM id `TasksHelper.showWrappedTaskEllipsis` already measures this title
-                    // by, so the sweep can size itself to the text instead of to the flex column.
-                    elementId={`social_text_${projectId}_${task.id}_${isObservedTask}`}
-                />
-            )}
         </View>
     )
 }

@@ -2,14 +2,24 @@
 
 const admin = require('firebase-admin')
 const { buildQuery, encodePath, getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
-const {
-    EMAIL_PROVIDER_MICROSOFT,
-    listEmailConnections,
-    normalizeEmailAddress,
-} = require('../../Integrations/providerConnections')
+const { normalizeEmailAddress, resolveEmailConnection } = require('../../Integrations/providerConnections')
 
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
+
+function getActiveProjectIds(userData = {}) {
+    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
+    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
+    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
+    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
+    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
+    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
+    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
+        activeProjectIds.unshift(defaultProjectId)
+    }
+    return activeProjectIds
+}
 
 function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
@@ -24,10 +34,6 @@ function normalizeRecipientList(value) {
         .split(',')
         .map(item => item.trim())
         .filter(Boolean)
-}
-
-function accountMatchesKey(account = {}, key = '') {
-    return !!key && (account.projectId === key || account.connectionProjectId === key)
 }
 
 function toGraphRecipients(value) {
@@ -106,20 +112,42 @@ async function getConnectedMicrosoftEmailAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    return listEmailConnections(userData)
-        .filter(connection => connection.provider === EMAIL_PROVIDER_MICROSOFT)
-        .map(connection => {
-            const emailAddress = normalizeEmailAddress(connection.emailAddress)
-            return {
-                projectId: connection.connectionId,
-                connectionProjectId: connection.defaultProjectId || '',
-                provider: EMAIL_PROVIDER_MICROSOFT,
+    const activeProjectIds = getActiveProjectIds(userData)
+    const accountIndexByKey = new Map()
+    const accounts = []
+
+    activeProjectIds.forEach(projectId => {
+        const connection = userData.apisConnected?.[projectId]
+        const resolved = resolveEmailConnection(connection)
+        if (!resolved.connected || resolved.provider !== 'microsoft') return
+
+        const emailAddress = normalizeEmailAddress(resolved.emailAddress)
+        const dedupeKey = emailAddress || projectId
+        if (accountIndexByKey.has(dedupeKey)) {
+            if (!resolved.isDefault) return
+            accounts[accountIndexByKey.get(dedupeKey)] = {
+                projectId,
+                provider: 'microsoft',
                 gmailEmail: emailAddress || null,
                 emailAddress: emailAddress || null,
-                gmailDefault: connection.isDefaultAccount,
-                emailDefault: connection.isDefaultAccount,
+                gmailDefault: resolved.isDefault,
+                emailDefault: resolved.isDefault,
             }
+            return
+        }
+
+        accountIndexByKey.set(dedupeKey, accounts.length)
+        accounts.push({
+            projectId,
+            provider: 'microsoft',
+            gmailEmail: emailAddress || null,
+            emailAddress: emailAddress || null,
+            gmailDefault: resolved.isDefault,
+            emailDefault: resolved.isDefault,
         })
+    })
+
+    return accounts
 }
 
 async function searchConnectedAccount({ userId, account, query, limit, includeBodies }) {
@@ -257,8 +285,8 @@ async function getMicrosoftEmailAttachmentForAssistantRequest({
     const accounts = await getConnectedMicrosoftEmailAccounts(userId)
     const candidateAccounts = projectId
         ? [
-              ...accounts.filter(account => accountMatchesKey(account, projectId)),
-              ...accounts.filter(account => !accountMatchesKey(account, projectId)),
+              ...accounts.filter(account => account.projectId === projectId),
+              ...accounts.filter(account => account.projectId !== projectId),
           ]
         : accounts
 
@@ -303,23 +331,18 @@ async function getMicrosoftEmailAttachmentForAssistantRequest({
     throw new Error('The requested email attachment could not be found in the connected Microsoft accounts')
 }
 
-async function createMicrosoftDraftForAssistantRequest({ userId, to, cc, bcc, subject, body, attachments }) {
+async function createMicrosoftDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body, attachments }) {
     const accounts = await getConnectedMicrosoftEmailAccounts(userId)
-    const account = accounts.find(item => item.emailDefault) || (accounts.length === 1 ? accounts[0] : null)
-    if (!account) {
-        if (accounts.length > 1) {
-            return {
-                success: false,
-                code: 'email_account_ambiguous',
-                message:
-                    'Multiple Microsoft email accounts are connected and no saved default is available. Please set a default Email account.',
-            }
-        }
+    const account =
+        accounts.find(item => item.emailDefault) ||
+        accounts.find(item => item.projectId === projectId) ||
+        accounts[0] ||
+        null
+    if (!account)
         return {
             success: false,
             message: 'No connected Microsoft email account was found. Please connect Email first.',
         }
-    }
 
     const toRecipients = toGraphRecipients(to)
     const normalizedSubject = String(subject || '').trim()
@@ -395,8 +418,8 @@ async function createMicrosoftReplyDraftForAssistantRequest({
         })
         const match = searchResult.results?.[0]
         if (match?.messageId) {
-            const account = (await getConnectedMicrosoftEmailAccounts(userId)).find(item =>
-                accountMatchesKey(item, match.projectId)
+            const account = (await getConnectedMicrosoftEmailAccounts(userId)).find(
+                item => item.projectId === match.projectId
             )
             const client = await getMicrosoftGraphClient(userId, account.projectId, 'email')
             const message = await client.request(`/me/messages/${encodePath(match.messageId)}`)
@@ -512,8 +535,8 @@ async function updateMicrosoftEmailForAssistantRequest({
     const accounts = await getConnectedMicrosoftEmailAccounts(userId)
     const candidateAccounts = projectId
         ? [
-              ...accounts.filter(account => accountMatchesKey(account, projectId)),
-              ...accounts.filter(account => !accountMatchesKey(account, projectId)),
+              ...accounts.filter(account => account.projectId === projectId),
+              ...accounts.filter(account => account.projectId !== projectId),
           ]
         : accounts
 
@@ -584,7 +607,7 @@ async function updateMicrosoftEmailForAssistantRequest({
 
 async function getUnreadMicrosoftInboxCount(userId, projectId) {
     const accounts = await getConnectedMicrosoftEmailAccounts(userId)
-    const account = accounts.find(item => accountMatchesKey(item, projectId))
+    const account = accounts.find(item => item.projectId === projectId)
     if (!account) throw new Error('No connected Microsoft email account was found for this project.')
 
     const client = await getMicrosoftGraphClient(userId, account.projectId, 'email')

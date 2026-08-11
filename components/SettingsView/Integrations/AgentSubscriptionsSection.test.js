@@ -27,17 +27,10 @@ jest.mock('../../styles/global', () => ({
         Primary100: '#00f',
         UtilityGreen100: '#efe',
         UtilityGreen300: '#080',
-        UtilityRed100: '#fee',
         UtilityRed200: '#f00',
     },
 }))
-jest.mock('../../../i18n/TranslationService', () => ({
-    translate: (value, interpolations = {}) =>
-        Object.entries(interpolations).reduce(
-            (translated, [key, replacement]) => translated.replace(`%{${key}}`, replacement),
-            value
-        ),
-}))
+jest.mock('../../../i18n/TranslationService', () => ({ translate: value => value }))
 jest.mock('../../../utils/backends/firestore', () => ({
     connectVmSubscription: jest.fn(async () => ({})),
     disconnectVmSubscription: jest.fn(async () => ({})),
@@ -73,24 +66,6 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         expect(output).toContain('Using your personal API key')
         expect(output).toContain('API key saved and validated')
         expect(output).not.toContain(rawKey)
-    })
-
-    test('places web credential fields in forms and disables browser autofill', () => {
-        const tree = renderer.create(
-            <ProviderAuthCard
-                provider="claude"
-                connection={{ activeMode: 'api', apiKey: { connected: false } }}
-                onChanged={onChanged}
-            />
-        )
-
-        const forms = tree.root.findAllByType('form')
-        const inputs = tree.root.findAllByType(TextInput)
-        expect(forms).toHaveLength(2)
-        expect(forms.every(form => form.props.autoComplete === 'off')).toBe(true)
-        expect(inputs).toHaveLength(2)
-        expect(inputs.every(input => input.props.autoComplete === 'off')).toBe(true)
-        expect(inputs.every(input => input.props.secureTextEntry)).toBe(true)
     })
 
     test('validates and saves a replacement, then clears it from component state', async () => {
@@ -194,28 +169,6 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         })
         expect(input.props.value).toBe('')
         expect(onChanged).toHaveBeenCalled()
-    })
-
-    test('shows a prominent reconnect warning for a rejected subscription login', () => {
-        const tree = renderer.create(
-            <ProviderAuthCard
-                provider="codex"
-                connection={{
-                    connected: true,
-                    activeMode: 'subscription',
-                    authInvalid: true,
-                    authInvalidAt: 123,
-                    apiKey: { connected: false },
-                }}
-                onChanged={onChanged}
-            />
-        )
-
-        const output = JSON.stringify(tree.toJSON())
-        expect(tree.root.findAllByProps({ testID: 'subscription-auth-alert' })).toHaveLength(1)
-        expect(output).toContain('Subscription login rejected — reconnect required')
-        expect(output).toContain('The saved Codex subscription login was rejected')
-        expect(output).not.toContain('Subscription connected')
     })
 })
 

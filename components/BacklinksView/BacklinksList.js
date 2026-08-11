@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { setBacklinkSection, setInBacklinksView } from '../../redux/actions'
+import { resetLoadingData, setBacklinkSection, setInBacklinksView, startLoadingData } from '../../redux/actions'
 import Backend from '../../utils/BackendBridge'
 import NotesItem from '../NotesView/NotesItem'
 import DismissibleItem from '../UIComponents/DismissibleItem'
@@ -30,6 +30,7 @@ const BacklinksList = ({ listType, project, linkedParentObject, setAmountObj }) 
         setAmountObj(prevState => {
             return { ...prevState, notes: notesList.length }
         })
+        dispatch(resetLoadingData())
     }
 
     const updateTasks = tasksDocs => {
@@ -45,9 +46,11 @@ const BacklinksList = ({ listType, project, linkedParentObject, setAmountObj }) 
         setAmountObj(prevState => {
             return { ...prevState, tasks: taskList.length }
         })
+        dispatch(resetLoadingData())
     }
 
     useEffect(() => {
+        dispatch(startLoadingData(2))
         Backend.unwatchLinkedTasks()
         Backend.unwatchLinkedNotes(project.id, currentUser.uid)
         Backend.watchLinkedNotes(project.id, currentUser.uid, linkedParentObject, updateNotes)
@@ -55,7 +58,7 @@ const BacklinksList = ({ listType, project, linkedParentObject, setAmountObj }) 
         dispatch(setInBacklinksView(true))
 
         return () => {
-            Backend.unwatchLinkedNotes(project.id, currentUser.uid)
+            Backend.unwatchLinkedNotes()
             Backend.unwatchLinkedTasks()
             dispatch(setInBacklinksView(false))
         }

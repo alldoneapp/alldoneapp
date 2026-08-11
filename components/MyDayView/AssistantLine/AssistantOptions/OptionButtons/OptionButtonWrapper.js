@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OptionButton from './OptionButton'
@@ -41,7 +41,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     return (
         <>
             {isOpen ? (
-                <AppPopover
+                <Popover
                     content={
                         gold > 0 ? (
                             <PreConfigTaskGeneratorModal
@@ -68,7 +68,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                         onPress={openModal}
                         disabled={isExecuting === task?.name}
                     />
-                </AppPopover>
+                </Popover>
             ) : (
                 <OptionButton
                     text={text}

@@ -1,10 +1,15 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
-import { setForceCloseGoalEditionId, setGoalsActiveTab, setNavigationRoute } from '../../redux/actions'
+import {
+    resetLoadingData,
+    setForceCloseGoalEditionId,
+    setGoalsActiveTab,
+    setNavigationRoute,
+} from '../../redux/actions'
 
 import {
     exitsOpenModals,
@@ -23,7 +28,6 @@ import GoalsViewAllProjects from './GoalsViewAllProjects'
 import store from '../../redux/store'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
-import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 
 export default function GoalsView() {
     const dispatch = useDispatch()
@@ -37,18 +41,15 @@ export default function GoalsView() {
     const forceCloseGoalEditionId = useSelector(state => state.forceCloseGoalEditionId)
     const dismissibleRefs = useRef({})
 
-    // These only ever touch a ref and the store, so they are stable for the lifetime of the view.
-    // Keeping their identity stable is what lets `React.memo(MilestonesListByProject)` actually
-    // bail out of re-rendering every project row (AT-2336).
-    const setDismissibleRefs = useCallback((ref, dismissibleId) => {
+    const setDismissibleRefs = (ref, dismissibleId) => {
         if (ref) dismissibleRefs.current[dismissibleId] = ref
-    }, [])
+    }
 
-    const unsetDismissibleRefs = useCallback(dismissibleId => {
+    const unsetDismissibleRefs = dismissibleId => {
         delete dismissibleRefs?.current?.[dismissibleId]
-    }, [])
+    }
 
-    const closeEdition = useCallback(dismissibleId => {
+    const closeEdition = dismissibleId => {
         if (
             !exitsOpenModals([
                 TASK_DESCRIPTION_MODAL_ID,
@@ -63,29 +64,26 @@ export default function GoalsView() {
         ) {
             dismissibleRefs.current[dismissibleId].closeModal()
         }
-    }, [])
+    }
 
-    const closeAllEdition = useCallback(() => {
+    const closeAllEdition = () => {
         for (let dismissibleId in dismissibleRefs.current) {
             if (dismissibleRefs.current[dismissibleId].modalIsVisible()) closeEdition(dismissibleId)
         }
-    }, [closeEdition])
+    }
 
-    const checkIfAnyDismissibleIsOpen = useCallback(() => {
+    const checkIfAnyDismissibleIsOpen = () => {
         for (let dismissibleId in dismissibleRefs.current) {
             if (dismissibleRefs.current[dismissibleId].modalIsVisible()) return true
         }
         return false
-    }, [])
+    }
 
-    const openEdition = useCallback(
-        dismissibleId => {
-            const { showFloatPopup } = store.getState()
-            if (showFloatPopup === 0) closeAllEdition()
-            if (!checkIfAnyDismissibleIsOpen()) dismissibleRefs.current[dismissibleId].openModal()
-        },
-        [closeAllEdition, checkIfAnyDismissibleIsOpen]
-    )
+    const openEdition = dismissibleId => {
+        const { showFloatPopup } = store.getState()
+        if (showFloatPopup === 0) closeAllEdition()
+        if (!checkIfAnyDismissibleIsOpen()) dismissibleRefs.current[dismissibleId].openModal()
+    }
 
     useEffect(() => {
         if (dismissibleRefs.current[forceCloseGoalEditionId]) {
@@ -93,6 +91,15 @@ export default function GoalsView() {
             dispatch(setForceCloseGoalEditionId(''))
         }
     }, [forceCloseGoalEditionId])
+
+    useEffect(() => {
+        setTimeout(() => {
+            dispatch(resetLoadingData())
+        })
+        return () => {
+            dispatch(resetLoadingData())
+        }
+    }, [loggedUserProjectsAmount, currentUserId, selectedProjectIndex, goalsActiveTab])
 
     useEffect(() => {
         dispatch(setNavigationRoute(DV_TAB_ROOT_GOALS))
@@ -115,8 +122,7 @@ export default function GoalsView() {
                 activeDragGoalMode && { marginBottom: 48 },
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
-            {inAllProjects && <AllProjectsAssistantLine />}
+            {inAllProjects && <AllProjectsLine showActions={false} />}
             <HashtagFiltersView />
 
             {inAllProjects ? (

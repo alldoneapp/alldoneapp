@@ -1,8 +1,5 @@
 .git
 node_modules
-.env
-.env.*
-.runtimeconfig.json
 env_functions*.json
 service_accounts/
 **/*.log

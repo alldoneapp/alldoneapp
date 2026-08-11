@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Dimensions, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -159,7 +159,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
     const content = <PopupDismissSurface onDismiss={close}>{popupContent}</PopupDismissSurface>
 
     return (
-        <AppPopover
+        <Popover
             content={content}
             isOpen={open}
             position={['bottom', 'left', 'right', 'top']}
@@ -181,7 +181,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
                         : `${translate('Suggested')}: ${shrinkTagText(goalName, 8)}`}
                 </Text>
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }
 

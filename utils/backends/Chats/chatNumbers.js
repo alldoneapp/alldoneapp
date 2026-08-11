@@ -1,6 +1,6 @@
 import { getDb, globalWatcherUnsub } from '../firestore'
 import store from '../../../redux/store'
-import { getChatAccessQueryArgs } from './chatAccessQuery'
+import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
 /**
  * Caps the chats-amount query at `visibleAmount + 1` documents.
@@ -27,27 +27,20 @@ export const getChatsAmountQueryLimit = visibleAmount =>
 
 export const watchChatsAmount = (projectId, watcherKey, callback, activeTab, visibleAmount) => {
     const { loggedUser } = store.getState()
-    const { uid: loggedUserId, isAnonymous } = loggedUser
+    const { uid: loggedUserId } = loggedUser
 
     let query = getDb().collection(`chatObjects/${projectId}/chats`)
-    query = query.where(...getChatAccessQueryArgs({ activeTab, loggedUserId, isAnonymous }))
+    query =
+        activeTab === ALL_TAB
+            ? query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            : query.where('usersFollowing', 'array-contains', loggedUserId)
 
     const limit = getChatsAmountQueryLimit(visibleAmount)
     if (limit !== null) query = query.limit(limit)
 
-    globalWatcherUnsub[watcherKey] = query.onSnapshot(
-        snapshot => {
-            callback(snapshot.docs.length)
-        },
-        error => {
-            // The amount only controls Show more/Collapse. If a project disappears during a
-            // membership transition, degrade to zero instead of leaving an uncaught listener.
-            if (process.env.NODE_ENV !== 'production') {
-                console.warn(`Unable to watch chat amount for ${projectId}:`, error)
-            }
-            callback(0)
-        }
-    )
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
+        callback(snapshot.docs.length)
+    })
 }
 
 export const unwatchChatsAmount = watcherKey => {

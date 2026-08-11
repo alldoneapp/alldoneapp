@@ -45,15 +45,10 @@ export const launchImageLibraryAsync = ({ mediaTypes = MediaTypeOptions.Images }
         document.body.appendChild(input)
 
         let settled = false
-        let selectionStarted = false
-        let focusBackTimer
-        const stopClickPropagation = event => event.stopPropagation()
         const settle = result => {
             if (settled) return
             settled = true
-            clearTimeout(focusBackTimer)
             window.removeEventListener('focus', onFocusBack)
-            input.removeEventListener('click', stopClickPropagation)
             input.remove()
             resolve(result)
         }
@@ -61,16 +56,12 @@ export const launchImageLibraryAsync = ({ mediaTypes = MediaTypeOptions.Images }
         // The file dialog gives no cancel event; when focus returns without a
         // change event having fired shortly after, treat it as a cancel.
         const onFocusBack = () => {
-            clearTimeout(focusBackTimer)
-            focusBackTimer = setTimeout(() => {
-                if (!selectionStarted) settle({ cancelled: true })
-            }, 400)
+            setTimeout(() => settle({ cancelled: true }), 400)
         }
 
         input.onchange = async () => {
             const file = input.files && input.files[0]
             if (!file) return settle({ cancelled: true })
-            selectionStarted = true
             try {
                 const uri = await readFileAsDataUrl(file)
                 const isImage = /^image\//.test(file.type)
@@ -82,9 +73,5 @@ export const launchImageLibraryAsync = ({ mediaTypes = MediaTypeOptions.Images }
         }
 
         window.addEventListener('focus', onFocusBack)
-        // The input lives outside portal-based popovers. Its programmatic click
-        // must not reach their global outside-click handlers and close the
-        // picker owner before the selected file is returned.
-        input.addEventListener('click', stopClickPropagation)
         input.click()
     })

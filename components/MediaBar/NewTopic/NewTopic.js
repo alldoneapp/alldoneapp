@@ -1,4 +1,3 @@
-import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
@@ -15,7 +14,7 @@ import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../../Feeds/Utils/He
 import PrivacyModal from '../../UIComponents/FloatModals/PrivacyModal/PrivacyModal'
 import { FEED_CHAT_OBJECT_TYPE, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import { getId } from '../../../utils/backends/firestore'
-import { setAssistantEnabled } from '../../../redux/actions'
+import { setAssistantEnabled, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
@@ -24,6 +23,7 @@ import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/as
 
 export default function NewTopic({ projectId, propFiles, close }) {
     const dispatch = useDispatch()
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const { uid } = useSelector(state => state.loggedUser)
     const openModals = useSelector(state => state.openModals)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -119,28 +119,31 @@ export default function NewTopic({ projectId, propFiles, close }) {
     }
 
     const submitTopic = useSingleFlightSubmit(() => {
+        dispatch(startLoadingData())
         const chatId = getId()
         const assistantId = getDefaultAssistantInProjectById(projectId)
-        const creation = runWithLoading('create_topic', async () => {
-            await createChat(
-                chatId,
-                projectId,
-                uid,
-                '',
-                'topics',
-                'New Topic',
-                isPublicForRef.current,
-                '#FFFFFF',
-                null,
-                null,
-                '',
-                assistantId,
-                STAYWARD_COMMENT,
-                uid
-            )
-            const commentWithAttachments = await updateNewAttachmentsData(projectId, textRef.current)
-            await createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null)
-            window.open(`${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`, '_blank')
+        const creation = createChat(
+            chatId,
+            projectId,
+            uid,
+            '',
+            'topics',
+            'New Topic',
+            isPublicForRef.current,
+            '#FFFFFF',
+            null,
+            null,
+            '',
+            assistantId,
+            STAYWARD_COMMENT,
+            uid
+        ).then(async () => {
+            updateNewAttachmentsData(projectId, textRef.current).then(commentWithAttachments => {
+                createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null).then(() => {
+                    dispatch(stopLoadingData())
+                    window.open(`${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`, '_blank')
+                })
+            })
         })
 
         closeModal()
@@ -157,7 +160,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                 <AttachmentsSelectorModal
                     closeModal={setShowFileSelector}
                     addAttachmentTag={addAttachmentTag}
-                    style={localStyles.parent}
+                    style={[localStyles.parent, mobile && localStyles.mobile]}
                     projectId={projectId}
                 />
             ) : showPrivacyModalRef.current ? (
@@ -168,7 +171,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                     closePopover={setShowPrivacyModal}
                     delayClosePopover={setShowPrivacyModal}
                     savePrivacyBeforeSaveObject={setPrivacy}
-                    style={localStyles.parent}
+                    style={[localStyles.parent, mobile && localStyles.mobile]}
                 />
             ) : (
                 <AddTopicModal
@@ -197,8 +200,11 @@ const localStyles = StyleSheet.create({
         flex: 1,
         position: 'fixed',
         zIndex: 1,
-        left: '50%',
+        left: '48.5%',
         top: '50%',
-        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
+    },
+    mobile: {
+        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
     },
 })

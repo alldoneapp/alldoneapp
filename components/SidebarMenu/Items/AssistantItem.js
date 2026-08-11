@@ -27,11 +27,6 @@ import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import Icon from '../../Icon'
 import { colors } from '../../styles/global'
 import { setAssistantLastVisitedBoardDate } from '../../../utils/backends/Assistants/assistantsFirestore'
-import {
-    getAssistantTemplateReviewCount,
-    getAssistantTemplateReviewLabelKey,
-} from '../../AssistantDetailedView/Customizations/UpdateFromTemplate/templateReview'
-import { translate } from '../../../i18n/TranslationService'
 
 export default function AssistantItem({ assistant, projectType, projectId, projectColor, isShared, navItem }) {
     const dispatch = useDispatch()
@@ -45,12 +40,6 @@ export default function AssistantItem({ assistant, projectType, projectId, proje
 
     const highlight = currentUserId === assistant.uid
     const { hover, onHover, offHover } = useOnHover(highlight, highlight)
-    // `assistant` is the redux object (state.projectAssistants[projectId]), so the
-    // count re-renders when the sync trigger writes conflicts.
-    const templateReviewCount = getAssistantTemplateReviewCount(assistant)
-    const templateReviewLabel = templateReviewCount
-        ? `${templateReviewCount} ${translate(getAssistantTemplateReviewLabelKey(templateReviewCount))}`
-        : ''
 
     const hideSideBar = () => {
         if (store.getState().smallScreenNavigation) dispatch(hideWebSideBar())
@@ -121,31 +110,7 @@ export default function AssistantItem({ assistant, projectType, projectId, proje
                 onMouseLeave={offHover}
             >
                 <AssistantData assistant={assistant} />
-                {/*
-                 * Expanded: the review marker takes over the decorative cpu icon's
-                 * slot — a pending review is strictly more informative than the type
-                 * icon, and the 48px row has room for only one.
-                 * Collapsed: the sidebar is SIDEBAR_MENU_COLLAPSED_WIDTH (56px), so
-                 * 18px padding + a 20px avatar + a 20px icon would overflow; the
-                 * absolute dot is the same trick Indicator.js uses for that width.
-                 * Either way the review is visible without opening the assistant,
-                 * which is the whole point (AT-2358).
-                 */}
-                {templateReviewCount > 0 ? (
-                    expanded ? (
-                        <Icon
-                            style={{ marginRight: 24 }}
-                            name={'alert-circle'}
-                            size={20}
-                            color={colors.UtilityYellow300}
-                            accessibilityLabel={templateReviewLabel}
-                        />
-                    ) : (
-                        <View style={localStyles.reviewDot} accessibilityLabel={templateReviewLabel} />
-                    )
-                ) : (
-                    expanded && <Icon style={{ marginRight: 24 }} name={'cpu'} size={20} color={colors.Text03} />
-                )}
+                {expanded && <Icon style={{ marginRight: 24 }} name={'cpu'} size={20} color={colors.Text03} />}
             </View>
         </TouchableOpacity>
     )
@@ -161,16 +126,5 @@ const localStyles = StyleSheet.create({
     },
     containerCollapsed: {
         paddingLeft: 18,
-    },
-    // Clears the 20px avatar that starts at the container's 18px left padding, and
-    // stays inside the 56px collapsed sidebar.
-    reviewDot: {
-        position: 'absolute',
-        top: 12,
-        right: 8,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: colors.UtilityYellow300,
     },
 })

@@ -7,7 +7,6 @@ const { describeToolActivity, rememberDelegationDisplayName } = require('./assis
  * `%s` is replaced by the already-sanitized subject.
  */
 const ACTION_PRESENTATION = {
-    assistant_activity_multiple_steps: ['🧩', 'Working through your request: %s results received'],
     assistant_activity_search_notes: ['🔍', 'Searching notes for “%s”'],
     assistant_activity_search_tasks: ['🔍', 'Searching tasks for “%s”'],
     assistant_activity_search_goals: ['🔍', 'Searching goals for “%s”'],
@@ -62,14 +61,6 @@ const ACTION_PRESENTATION = {
     assistant_activity_find_places_plain: ['📍', 'Looking for recommendations nearby'],
     assistant_activity_load_skill: ['📚', 'Getting up to speed on “%s”'],
     assistant_activity_load_skill_plain: ['📚', 'Getting up to speed'],
-    assistant_activity_read_wiki_page: ['📖', 'Reading the wiki page “%s”'],
-    assistant_activity_read_wiki_page_plain: ['📖', 'Reading the project wiki'],
-    assistant_activity_correct_wiki_page: ['✏️', 'Correcting the wiki page “%s”'],
-    assistant_activity_correct_wiki_page_plain: ['✏️', 'Correcting the project wiki'],
-    assistant_activity_undo_wiki_correction: ['↩️', 'Undoing a wiki correction'],
-    assistant_activity_add_wiki_document: ['📎', 'Adding “%s” to the project wiki'],
-    assistant_activity_add_wiki_document_plain: ['📎', 'Adding a document to the project wiki'],
-    assistant_activity_remove_wiki_document: ['🗑️', 'Taking a document out of the project wiki'],
     assistant_activity_vm_task: ['🤝', 'Handing “%s” to a specialist'],
     assistant_activity_vm_task_plain: ['🤝', 'Handing the work to a specialist'],
     assistant_activity_ask_assistant: ['🤝', 'Asking %s for help'],

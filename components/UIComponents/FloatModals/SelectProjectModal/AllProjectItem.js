@@ -2,12 +2,12 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import ProjectRowStatusIcon from './ProjectRowStatusIcon'
+import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { ALL_PROJECTS_LABEL, ALL_PROJECTS_OPTION } from './projectPickerConstants'
+import { ALL_PROJECTS_OPTION } from './SelectProjectModalInSearch'
 
-export default function AllProjectItem({ selectedProjectId, onProjectSelect, active, busy = false }) {
+export default function AllProjectItem({ selectedProjectId, onProjectSelect, active }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
 
     const onPress = () => {
@@ -27,10 +27,15 @@ export default function AllProjectItem({ selectedProjectId, onProjectSelect, act
                                 active && localStyles.projectNameSelected,
                             ]}
                         >
-                            {translate(ALL_PROJECTS_LABEL)}
+                            {translate('All projects')}
                         </Text>
                     </View>
-                    <ProjectRowStatusIcon busy={busy} checked={selectedProjectId === ALL_PROJECTS_OPTION} />
+
+                    {selectedProjectId === ALL_PROJECTS_OPTION && (
+                        <View style={[localStyles.checkContainer]}>
+                            <Icon name="check" size={24} color="white" />
+                        </View>
+                    )}
                 </View>
             </TouchableOpacity>
         </View>
@@ -60,6 +65,9 @@ const localStyles = StyleSheet.create({
         height: 24,
         borderRadius: 100,
         marginRight: 8,
+    },
+    checkContainer: {
+        marginLeft: 'auto',
     },
     projectName: {
         color: '#ffffff',

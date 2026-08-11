@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
 import Button from './Button'
@@ -55,7 +55,7 @@ class RecurrenceButton extends Component {
         const recurrenceInfo = getRecurrenceInfo(task.recurrence)
 
         return (
-            <AppPopover
+            <Popover
                 content={<RecurrenceModal task={task} projectId={projectId} closePopover={this.hidePopover} />}
                 onClickOutside={this.hidePopover}
                 isOpen={visiblePopover}
@@ -77,7 +77,7 @@ class RecurrenceButton extends Component {
                     onPress={this.showPopover}
                     disabled={disabled}
                 />
-            </AppPopover>
+            </Popover>
         )
     }
 }

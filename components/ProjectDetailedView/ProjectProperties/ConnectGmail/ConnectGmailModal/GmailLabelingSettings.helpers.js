@@ -10,7 +10,7 @@ const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
 const GMAIL_LABELING_PROMPT_MODE_CUSTOM = 'custom'
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT6_LUNA'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
 const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // Client mirror of the shared Ads guidance in functions/Gmail/serverSideGmailLabelingSync.js —
 // keep the texts identical, they only exist here for the default-config preview.
@@ -221,7 +221,7 @@ function buildDefaultProjectFollowUpPrompt(labelName = '') {
     return [
         `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason.`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} [today's date]" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
-        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com), only use update_note when the sender already exists as a contact in the project ${projectLabel}. Set createIfMissing=false so a missing contact is never created. Update the existing contact note and include a link to the email with a space at the end.`,
+        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }
 

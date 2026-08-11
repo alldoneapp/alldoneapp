@@ -26,7 +26,6 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 
 import store from '../../redux/store'
-import ConnectedVoiceCallProvider from '../../components/UIComponents/AssistantVoiceCallProvider'
 import { toggleSmallScreenNavigation } from '../../redux/actions'
 import AssistantInputLine from '../../components/TaskListView/OpenTasksView/OpenTaskViewForAssistants/AssistantInputLine'
 
@@ -63,9 +62,7 @@ function Harness() {
 const container = document.getElementById('root')
 createRoot(container).render(
     <Provider store={store}>
-        <ConnectedVoiceCallProvider>
-            <Harness />
-        </ConnectedVoiceCallProvider>
+        <Harness />
     </Provider>
 )
 

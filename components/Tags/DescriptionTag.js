@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import DescriptionModal from '../UIComponents/FloatModals/DescriptionModal/DescriptionModal'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -40,7 +40,7 @@ export default function DescriptionTag({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <DescriptionModal
                     projectId={projectId}
@@ -82,7 +82,7 @@ export default function DescriptionTag({
                     )}
                 </View>
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }
 

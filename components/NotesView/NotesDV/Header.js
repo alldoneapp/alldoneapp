@@ -1,8 +1,8 @@
 import React, { Component } from 'react'
-import { Animated, StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, Text, View } from 'react-native'
 import TagList from './TagList'
 import store from '../../../redux/store'
-import { colors } from '../../styles/global'
+import styles, { colors } from '../../styles/global'
 import BackButton from './BackButton'
 import SharedHelper from '../../../utils/SharedHelper'
 import DVHamburgButton from '../../UIControls/DVHamburgButton'
@@ -25,6 +25,7 @@ export default class Header extends Component {
             loggedUser: storeState.loggedUser,
             taskTitleInEditMode: storeState.taskTitleInEditMode,
             editionMode: false,
+            showEllipsis: false,
             unsubscribe: store.subscribe(this.updateState),
         }
     }
@@ -42,6 +43,17 @@ export default class Header extends Component {
         this.setState({ editionMode: false })
     }
 
+    onTitleLayoutChange = ({ nativeEvent }) => {
+        const maxHeight = this.getMaxHeight()
+        const { layout } = nativeEvent
+
+        if (layout.height > maxHeight && !this.state.showEllipsis) {
+            this.setState({ showEllipsis: true })
+        } else if (layout.height <= maxHeight && this.state.showEllipsis) {
+            this.setState({ showEllipsis: false })
+        }
+    }
+
     render() {
         const {
             projectId,
@@ -54,10 +66,9 @@ export default class Header extends Component {
             setFullscreen,
             onOpenSideChat,
         } = this.props
-        const { mobile, isMiddleScreen, loggedUser, editionMode, selectedTab } = this.state
+        const { mobile, isMiddleScreen, loggedUser, editionMode, selectedTab, showEllipsis } = this.state
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
         const maxHeight = this.getMaxHeight()
-        const compactSharedChat = isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && !accessGranted
 
         return (
             <Animated.View
@@ -68,7 +79,6 @@ export default class Header extends Component {
                           ? localStyles.containerTablet
                           : localStyles.container,
                     isFullscreen && localStyles.containerFS,
-                    compactSharedChat && localStyles.sharedChatContainer,
                 ]}
             >
                 <View
@@ -76,13 +86,12 @@ export default class Header extends Component {
                         localStyles.upperHeader,
                         isFullscreen
                             ? selectedTab === DV_TAB_NOTE_CHAT
-                                ? { paddingBottom: compactSharedChat ? 8 : 16 }
+                                ? { paddingBottom: 16 }
                                 : localStyles.upperHeaderFS
                             : null,
                     ]}
                 >
-                    {/* Compact navigation can be active even above the middle-screen breakpoint. */}
-                    {(mobile || isMiddleScreen) && accessGranted && (
+                    {isMiddleScreen && accessGranted && (
                         <View style={localStyles.backButtonMobile}>
                             <BackButton projectId={projectId} note={note} />
                         </View>
@@ -106,14 +115,17 @@ export default class Header extends Component {
                                 closeTitleEdition={this.closeTitleEdition}
                             />
                         ) : (
-                            <NoteTitlePresentation
-                                projectId={projectId}
-                                openTitleEdition={this.openTitleEdition}
-                                note={note}
-                                disabled={!accessGranted || disabled}
-                                hideLastEdited={isFullscreen}
-                                maxHeight={maxHeight}
-                            />
+                            <View onLayout={this.onTitleLayoutChange}>
+                                <NoteTitlePresentation
+                                    projectId={projectId}
+                                    openTitleEdition={this.openTitleEdition}
+                                    note={note}
+                                    disabled={!accessGranted || disabled}
+                                />
+                            </View>
+                        )}
+                        {showEllipsis && !editionMode && (
+                            <Text style={[localStyles.ellipsis, { right: mobile ? 32 : 80 }]}>...</Text>
                         )}
                     </View>
                 </View>
@@ -131,7 +143,7 @@ export default class Header extends Component {
                         />
                     </View>
                 )}
-                {isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && accessGranted && (
+                {isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && (
                     <View style={localStyles.bottomHeader}>
                         <BotLine
                             setFullscreen={setFullscreen}
@@ -188,9 +200,6 @@ const localStyles = StyleSheet.create({
         minHeight: 80,
         paddingBottom: 0,
     },
-    sharedChatContainer: {
-        minHeight: 0,
-    },
     titleContainer: {
         marginRight: 'auto',
         flex: 1,
@@ -220,5 +229,14 @@ const localStyles = StyleSheet.create({
     },
     backButtonTablet: {
         left: -16,
+    },
+    ellipsis: {
+        ...styles.title4,
+        color: colors.Text01,
+        backgroundColor: '#ffffff',
+        paddingHorizontal: 8,
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
     },
 })

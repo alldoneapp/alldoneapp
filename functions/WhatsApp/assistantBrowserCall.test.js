@@ -22,8 +22,6 @@ jest.mock(
     { virtual: true }
 )
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
-jest.mock('./assistantLiveController', () => ({ closeLiveSession: jest.fn(async () => true) }))
-jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 90 })) }))
 jest.mock('./whatsAppIncomingHandler', () => ({ getDefaultAssistantId: jest.fn() }))
 jest.mock('./whatsAppCallTwilioWebhook', () => ({ getCallEligibilityReason: jest.fn() }))
 jest.mock('./whatsAppCallConfig', () => ({
@@ -47,10 +45,9 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
 const { createDirectCallSessionWithLease, updateCallSession } = require('./whatsAppCallSessions')
 const {
-    buildInitialBrowserLiveSession,
+    buildInitialBrowserRealtimeSession,
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
-    getAssistantBrowserCallSummary,
 } = require('./assistantBrowserCall')
 
 describe('assistant browser calls', () => {
@@ -66,7 +63,7 @@ describe('assistant browser calls', () => {
         }
         global.fetch = jest.fn(async () => ({
             ok: true,
-            text: async () => JSON.stringify({ session: { id: 'live_123' }, transport: { sdp: 'answer-sdp' } }),
+            text: async () => 'answer-sdp',
             headers: { get: name => (name === 'location' ? '/v1/realtime/calls/rtc_123' : null) },
         }))
         getWhatsAppCallConfig.mockReturnValue({
@@ -86,7 +83,7 @@ describe('assistant browser calls', () => {
                             id: 'user-1',
                             data: () => ({
                                 premium: { status: 'premium' },
-                                gold: 100,
+                                gold: 3,
                                 defaultProjectId: 'project-1',
                                 language: 'English',
                             }),
@@ -119,22 +116,14 @@ describe('assistant browser calls', () => {
     })
 
     test('requires auth', async () => {
-        await expect(
-            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v2', offerSdp: 'offer-sdp' }, null)
-        ).rejects.toMatchObject({
+        await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, null)).rejects.toMatchObject({
             code: 'unauthenticated',
         })
     })
 
     test('creates a browser call session and queues the sideband controller', async () => {
         const result = await startAssistantBrowserCall(
-            {
-                voiceProtocol: 'gpt-live-v2',
-                offerSdp: 'offer-sdp',
-                projectId: 'project-1',
-                chatId: 'chat-1',
-                assistantId: 'assistant-1',
-            },
+            { offerSdp: 'offer-sdp', projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
             { uid: 'user-1' }
         )
 
@@ -156,20 +145,16 @@ describe('assistant browser calls', () => {
             })
         )
         expect(global.fetch).toHaveBeenCalledWith(
-            'https://api.openai.com/v1/live/sessions',
+            'https://api.openai.com/v1/realtime/calls',
             expect.objectContaining({ method: 'POST' })
         )
-        const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body).session
-        expect(initialSession.delegation).toEqual({ type: 'client' })
-        expect(initialSession.model).toBe('gpt-live-1')
-        expect(initialSession.store).toBe(false)
-        expect(initialSession.instructions).toContain(
-            'Read a URL aloud only when the caller explicitly asks to hear that URL'
-        )
+        const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body.values.session)
+        expect(initialSession.instructions).toContain('Act as Anna.')
+        expect(initialSession.instructions).toContain('All task IDs are silent by default')
         expect(initialSession.instructions).toContain('Start the call in English')
         expect(updateCallSession).toHaveBeenCalledWith(
             expect.stringMatching(/^browser-/),
-            expect.objectContaining({ openAiSessionId: 'live_123', status: 'accepted' })
+            expect.objectContaining({ openAiCallId: 'rtc_123', status: 'accepted' })
         )
         expect(mockEnqueue).toHaveBeenCalled()
     })
@@ -178,23 +163,15 @@ describe('assistant browser calls', () => {
         const offerSdp = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n'
 
         await startAssistantBrowserCall(
-            {
-                voiceProtocol: 'gpt-live-v2',
-                offerSdp,
-                projectId: 'project-1',
-                chatId: 'chat-1',
-                assistantId: 'assistant-1',
-            },
+            { offerSdp, projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
             { uid: 'user-1' }
         )
 
-        expect(JSON.parse(global.fetch.mock.calls[0][1].body).transport.sdp).toBe(offerSdp)
+        expect(global.fetch.mock.calls[0][1].body.values.sdp).toBe(offerSdp)
     })
 
     test('requires an explicit browser call topic', async () => {
-        await expect(
-            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v2', offerSdp: 'offer-sdp' }, { uid: 'user-1' })
-        ).rejects.toMatchObject({
+        await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, { uid: 'user-1' })).rejects.toMatchObject({
             code: 'failed-precondition',
         })
     })
@@ -211,7 +188,7 @@ describe('assistant browser calls', () => {
 
     test('protects the browser call with the special prompt before the sideband connects', () => {
         expect(
-            buildInitialBrowserLiveSession({
+            buildInitialBrowserRealtimeSession({
                 config: { realtimeModel: 'gpt-realtime-2' },
                 voice: 'marin',
                 assistant: { displayName: 'Anna Alldone', instructions: 'Act as Anna.' },
@@ -219,252 +196,11 @@ describe('assistant browser calls', () => {
             })
         ).toEqual(
             expect.objectContaining({
-                delegation: { type: 'client' },
-                model: 'gpt-live-1',
-                instructions: expect.stringContaining(
-                    'Read a URL aloud only when the caller explicitly asks to hear that URL'
-                ),
+                type: 'realtime',
+                model: 'gpt-realtime-2',
+                instructions: expect.stringContaining('All task IDs are silent by default'),
                 audio: { output: { voice: 'marin' } },
             })
         )
-    })
-})
-
-const { closeLiveSession } = require('./assistantLiveController')
-const { reconcileLiveUsage } = require('./assistantLiveGold')
-describe('Live startup failures and usage privacy', () => {
-    const request = {
-        voiceProtocol: 'gpt-live-v2',
-        offerSdp: 'offer',
-        projectId: 'project-1',
-        chatId: 'chat-1',
-        assistantId: 'assistant-1',
-    }
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockEnqueue.mockReset()
-        getWhatsAppCallConfig.mockReturnValue({
-            browserCallsEnabled: true,
-            openAiApiKey: 'key',
-            callLeaseMs: 1000,
-            maxDurationSeconds: 60,
-        })
-        getCallEligibilityReason.mockReturnValue(null)
-        createDirectCallSessionWithLease.mockResolvedValue({ success: true })
-        getAssistantForChat.mockResolvedValue({ displayName: 'Anna' })
-        admin.firestore.mockReturnValue({
-            doc: path => ({
-                get: async () => ({
-                    exists: true,
-                    id: path.split('/').pop(),
-                    data: () =>
-                        path.startsWith('users/')
-                            ? { gold: 100 }
-                            : {
-                                  type: 'topics',
-                                  creatorId: 'user-1',
-                                  assistantId: 'assistant-1',
-                                  userId: 'user-1',
-                                  voiceBilledGold: 40,
-                                  backendBilledGold: 12,
-                                  status: 'completed',
-                                  voiceUsageFinal: true,
-                                  secret: 'never expose',
-                              },
-                }),
-            }),
-        })
-    })
-    test.each([undefined, 'gpt-live-v1', 'realtime'])(
-        'rejects old client protocol %s before opening a paid session',
-        async voiceProtocol => {
-            await expect(
-                startAssistantBrowserCall({ ...request, voiceProtocol }, { uid: 'user-1' })
-            ).rejects.toMatchObject({ code: 'failed-precondition' })
-            expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
-            expect(reconcileLiveUsage).not.toHaveBeenCalled()
-        }
-    )
-    test('reports missing app configuration before creating a session or spending Gold', async () => {
-        getWhatsAppCallConfig.mockReturnValue({ browserCallsEnabled: true, openAiApiKey: '' })
-        global.fetch = jest.fn()
-        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({
-            code: 'unavailable',
-            message: expect.stringContaining('OPEN_AI_KEY or OPENAI_API_KEY'),
-        })
-        expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
-        expect(global.fetch).not.toHaveBeenCalled()
-        expect(reconcileLiveUsage).not.toHaveBeenCalled()
-    })
-
-    test.each([401, 403, 404, 500])('never falls back to Realtime on app Live HTTP %s', async status => {
-        global.fetch = jest.fn(async () => ({
-            ok: false,
-            status,
-            text: async () => JSON.stringify({ error: { code: 'model_not_found' } }),
-        }))
-        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({
-            code: status === 500 ? 'internal' : 'unavailable',
-            ...(status !== 500 ? { message: expect.stringContaining('gpt-live-1 access') } : {}),
-        })
-        expect(global.fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.openai.com/v1/live/sessions'])
-        expect(reconcileLiveUsage).not.toHaveBeenCalled()
-        const { finalizeCallSession } = require('./whatsAppCallSessions')
-        expect(finalizeCallSession).toHaveBeenCalledWith(
-            expect.stringContaining('browser-'),
-            'browser_start_failed',
-            'failed'
-        )
-    })
-
-    test.each(['missing SDP', 'queue failure'])('closes a created provider session after %s', async kind => {
-        global.fetch = jest.fn(async () => ({
-            ok: true,
-            text: async () =>
-                JSON.stringify({
-                    session: { id: 'live_failed' },
-                    transport: kind === 'missing SDP' ? {} : { sdp: 'answer' },
-                }),
-        }))
-        if (kind === 'queue failure') mockEnqueue.mockRejectedValueOnce(new Error('queue unavailable'))
-        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({ code: 'internal' })
-        expect(closeLiveSession).toHaveBeenCalledWith(
-            expect.anything(),
-            expect.objectContaining({ openAiSessionId: 'live_failed' })
-        )
-    })
-    test('only exposes the owner usage totals', async () => {
-        await expect(getAssistantBrowserCallSummary({ sessionId: 'browser-123' }, { uid: 'user-1' })).resolves.toEqual({
-            voiceGold: 40,
-            assistantGold: 12,
-            settled: true,
-            finalVoiceUsage: true,
-            controllerConnected: false,
-        })
-        await expect(
-            getAssistantBrowserCallSummary({ sessionId: 'browser-123' }, { uid: 'other' })
-        ).rejects.toMatchObject({ code: 'not-found' })
-        await expect(
-            getAssistantBrowserCallSummary({ sessionId: '../users' }, { uid: 'user-1' })
-        ).rejects.toMatchObject({ code: 'invalid-argument' })
-    })
-})
-
-describe('cancel abandoned Live startup', () => {
-    const { endAssistantBrowserCall } = require('./assistantBrowserCall')
-    let update
-    beforeEach(() => {
-        jest.clearAllMocks()
-        update = jest.fn(async () => {})
-        admin.firestore.mockReturnValue({
-            doc: () => ({
-                update,
-                get: async () => ({
-                    exists: true,
-                    data: () => ({
-                        userId: 'owner',
-                        voiceProvider: 'gpt-live',
-                        openAiSessionId: 'live_owned',
-                        status: 'controller_running',
-                    }),
-                }),
-            }),
-        })
-        closeLiveSession.mockResolvedValue(true)
-    })
-    test('requires ownership before cancellation or access to the provider session', async () => {
-        await expect(endAssistantBrowserCall({ sessionId: 'browser-owned' }, { uid: 'other' })).rejects.toMatchObject({
-            code: 'not-found',
-        })
-        expect(update).not.toHaveBeenCalled()
-        expect(closeLiveSession).not.toHaveBeenCalled()
-    })
-    test('records cancellation before closing the provider session', async () => {
-        await expect(endAssistantBrowserCall({ sessionId: 'browser-owned' }, { uid: 'owner' })).resolves.toEqual({
-            closed: true,
-        })
-        expect(update).toHaveBeenCalledWith({ cancelRequestedAt: expect.any(Number), controllerConnected: false })
-        expect(closeLiveSession).toHaveBeenCalledWith(
-            expect.anything(),
-            expect.objectContaining({ id: 'browser-owned', openAiSessionId: 'live_owned' })
-        )
-    })
-    test('records sanitized diagnostics even after provider completion without closing the session again', async () => {
-        admin.firestore.mockReturnValue({
-            doc: () => ({
-                update,
-                get: async () => ({
-                    exists: true,
-                    data: () => ({ userId: 'owner', status: 'completed', voiceProvider: 'gpt-live' }),
-                }),
-            }),
-        })
-        await endAssistantBrowserCall(
-            {
-                sessionId: 'browser-owned',
-                diagnostics: {
-                    reason: 'component_unmounted',
-                    width: 844,
-                    peerState: 'connected',
-                    sdp: 'secret',
-                    events: [{ event: 'resize', width: 844, height: 390, authorization: 'secret' }],
-                },
-            },
-            { uid: 'owner' }
-        )
-        expect(update).toHaveBeenCalledWith({
-            clientDisconnect: expect.objectContaining({
-                reason: 'component_unmounted',
-                receivedAt: expect.any(Number),
-                events: [{ event: 'resize', width: 844, height: 390 }],
-            }),
-        })
-        expect(JSON.stringify(update.mock.calls)).not.toContain('secret')
-        expect(closeLiveSession).not.toHaveBeenCalled()
-        expect(update.mock.calls.some(([data]) => data.cancelRequestedAt)).toBe(false)
-    })
-})
-
-describe('live page context ownership and ordering', () => {
-    const { updateAssistantBrowserCallContext } = require('./assistantBrowserCall')
-    let session
-    let update
-    const data = {
-        sessionId: 'browser-one',
-        sequence: 1,
-        pageContext: { path: '/projects/p/notes/n/editor', title: 'Plan' },
-    }
-    beforeEach(() => {
-        session = { userId: 'owner', voiceProvider: 'gpt-live', status: 'controller_running', pageContextSequence: 0 }
-        update = jest.fn((ref, changes) => Object.assign(session, changes))
-        admin.firestore.mockReturnValue({
-            doc: path => ({ path }),
-            runTransaction: fn => fn({ get: async () => ({ exists: true, data: () => session }), update }),
-        })
-    })
-    test('only the authenticated call owner can change context', async () => {
-        await expect(updateAssistantBrowserCallContext(data, null)).rejects.toMatchObject({ code: 'unauthenticated' })
-        await expect(updateAssistantBrowserCallContext(data, { uid: 'someone-else' })).rejects.toMatchObject({
-            code: 'not-found',
-        })
-        expect(update).not.toHaveBeenCalled()
-        await expect(updateAssistantBrowserCallContext(data, { uid: 'owner' })).resolves.toEqual({ updated: true })
-        expect(session.pageContext).toEqual(data.pageContext)
-    })
-    test('rejects malformed data and does not overwrite a newer page or revive an ended call', async () => {
-        await expect(
-            updateAssistantBrowserCallContext(
-                { ...data, pageContext: { path: 'https://elsewhere.test' } },
-                { uid: 'owner' }
-            )
-        ).rejects.toMatchObject({ code: 'invalid-argument' })
-        await updateAssistantBrowserCallContext({ ...data, sequence: 2 }, { uid: 'owner' })
-        await expect(updateAssistantBrowserCallContext(data, { uid: 'owner' })).resolves.toEqual({ updated: false })
-        expect(update).toHaveBeenCalledTimes(1)
-        session.cancelRequestedAt = Date.now()
-        await expect(updateAssistantBrowserCallContext({ ...data, sequence: 3 }, { uid: 'owner' })).resolves.toEqual({
-            closed: true,
-        })
-        expect(update).toHaveBeenCalledTimes(1)
     })
 })

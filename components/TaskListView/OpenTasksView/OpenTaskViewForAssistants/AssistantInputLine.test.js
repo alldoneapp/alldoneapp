@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, TextInput } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantInputLine from './AssistantInputLine'
@@ -16,44 +16,11 @@ jest.mock('react-redux', () => ({
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: key => key,
-    getDeviceLanguage: () => 'en',
 }))
 
 jest.mock('../../../../utils/assistantHelper', () => ({
     createBotQuickTopic: jest.fn(),
 }))
-
-// AT-2444 swapped the plain TextInput for the rich editor so the line can take dropped files.
-// Both stand-ins keep this suite about layout; the drop itself is covered against the REAL zone
-// in AssistantInputLineAttachments.test.js.
-jest.mock('../../../Feeds/CommentsTextInput/textInputHelper', () => ({
-    TASK_THEME: 'TASK_THEME',
-    insertFilesAsAttachments: jest.fn(() => ({ addedFiles: [], nextCursorIndex: 0 })),
-}))
-
-jest.mock('../../../Feeds/Utils/HelperFunctions', () => ({
-    updateNewAttachmentsData: jest.fn(async (projectId, text) => text),
-}))
-
-jest.mock('../../../Feeds/CommentsTextInput/AttachmentDropZone', () => {
-    const React = require('react')
-    const { View } = require('react-native')
-    return ({ children, style }) => <View style={style}>{children}</View>
-})
-
-const AssistantTextInputStub = 'AssistantTextInputStub'
-
-jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
-    const React = require('react')
-    return React.forwardRef((props, ref) => {
-        React.useImperativeHandle(ref, () => ({
-            clear: jest.fn(),
-            blur: jest.fn(),
-            isFocused: () => false,
-        }))
-        return React.createElement('AssistantTextInputStub', props)
-    })
-})
 
 jest.mock('../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton', () => {
     const React = require('react')
@@ -91,15 +58,14 @@ const renderLine = () => {
         tree = renderer.create(<AssistantInputLine assistant={assistant} projectId={'project-1'} />)
     })
 
-    const getInput = () => tree.root.findByType(AssistantTextInputStub)
+    const getInput = () => tree.root.findByType(TextInput)
     const getControlsStyle = () =>
         StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
-    // The rich editor takes its height as a prop rather than through `style`.
-    const getInputHeight = () => getInput().props.fixedHeight
+    const getInputHeight = () => StyleSheet.flatten(getInput().props.style).height
     const type = (text, contentHeight) => {
         act(() => getInput().props.onChangeText(text))
         if (contentHeight != null) {
-            act(() => getInput().props.onContentSizeChange(0, contentHeight))
+            act(() => getInput().props.onContentSizeChange({ nativeEvent: { contentSize: { height: contentHeight } } }))
         }
     }
 
@@ -112,11 +78,10 @@ describe('AssistantInputLine control alignment', () => {
     })
 
     it('keeps the compact single row while the field is one line', () => {
-        const { getControlsStyle, getInputHeight, getInput } = renderLine()
+        const { getControlsStyle, getInputHeight } = renderLine()
 
         expect(getControlsStyle().flexDirection).toBe('row')
         expect(getInputHeight()).toBe(40)
-        expect(getInput().props.placeholder).toBe('Start a new chat')
     })
 
     it('stacks the call and send buttons on one axis when the field expands', () => {
@@ -148,19 +113,15 @@ describe('AssistantInputLine control alignment', () => {
         expect(line.getInputHeight()).toBe(40)
     })
 
-    it('keeps the mobile buttons side by side as the short-placeholder field expands', () => {
+    it('applies the same stacking on small screens', () => {
         mockState = { smallScreenNavigation: true }
         const line = renderLine()
 
         line.type('Mobile message that wraps', 62)
 
         const controls = line.getControlsStyle()
-        expect(controls.flexDirection).toBe('row')
+        expect(controls.flexDirection).toBe('column')
         expect(controls.alignItems).toBe('center')
-        expect(line.getInputHeight()).toBe(78)
-        expect(line.getInput().props.placeholder).toBe('New message …')
-        line.type('Long mobile message', 160)
-        expect(line.getInputHeight()).toBe(120)
-        expect(line.getControlsStyle().flexDirection).toBe('row')
+        expect(line.getInputHeight()).toBe(88)
     })
 })

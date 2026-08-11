@@ -151,21 +151,14 @@ async function acquireAssistantRunLock(db, params, nowFn = Date.now) {
         const snapshot = await transaction.get(lockRef)
         const existing = snapshot.exists ? snapshot.data() || {} : null
 
-        const settledWithoutRetry =
-            params.retryFailed === false &&
-            [ASSISTANT_RUN_STATUS_FAILED, ASSISTANT_RUN_STATUS_CANCELLED].includes(existing?.status)
-        if (shouldSkipExistingRun(existing, now) || settledWithoutRetry) {
+        if (shouldSkipExistingRun(existing, now)) {
             result = {
                 acquired: false,
                 skipped: true,
                 lockRef,
                 lockId,
                 existing,
-                reason: settledWithoutRetry
-                    ? 'already_settled'
-                    : existing.status === ASSISTANT_RUN_STATUS_COMPLETED
-                      ? 'already_completed'
-                      : 'already_running',
+                reason: existing.status === ASSISTANT_RUN_STATUS_COMPLETED ? 'already_completed' : 'already_running',
             }
             return
         }

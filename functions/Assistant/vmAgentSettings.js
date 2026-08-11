@@ -74,10 +74,6 @@ async function readStoredVmAgentSettings(userId) {
     }
 
     const data = snapshot.data() || {}
-    // Legacy disabled reasoning is upgraded at read time without rewriting user settings.
-    if (data.defaultVmAgentReasoningEffort === 'none' && data.defaultVmAgent !== 'claude') {
-        data.defaultVmAgentReasoningEffort = 'high'
-    }
     const hasReasoningEffortField = Object.prototype.hasOwnProperty.call(data, 'defaultVmAgentReasoningEffort')
     const hasStoredReasoningEffort =
         (hasReasoningEffortField &&
@@ -264,10 +260,7 @@ async function setDefaultVmAgentModel({ userId, agent, family }) {
         } catch (error) {
             console.warn('🖥️ VM MODELS: Could not verify family on save', { agent, family, error: error.message })
         }
-        const availableModels = catalog
-            ? [...(catalog.families || []), ...(openRouterSelected ? catalog.searchModels || [] : [])]
-            : []
-        if (catalog && catalog.source !== 'fallback' && !availableModels.some(entry => entry.id === family)) {
+        if (catalog && catalog.source !== 'fallback' && !catalog.families.some(entry => entry.id === family)) {
             throw new HttpsError('invalid-argument', `"${family}" is not an available ${agent} model family.`)
         }
         if (openRouterSelected && catalog && catalog.available === false) {

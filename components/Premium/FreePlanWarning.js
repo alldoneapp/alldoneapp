@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
 
-import styles, { colors, hexColorToRGBa } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import { navigateToSettings } from '../../redux/actions'
 import NavigationService from '../../utils/NavigationService'
@@ -24,10 +24,8 @@ import { translate } from '../../i18n/TranslationService'
 import ProgressBar from './LimitModal/ProgressBar'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { removeQuotaWarnings } from '../../utils/backends/Premium/premiumFirestore'
-import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function FreePlanWarning() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const monthlyXp = useSelector(state => state.loggedUser.monthlyXp)
@@ -107,61 +105,57 @@ export default function FreePlanWarning() {
     return (
         <>
             {headerText ? (
-                <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+                <View style={localStyles.parent}>
                     <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            <View style={{ paddingHorizontal: 16 }}>
-                                <Text style={[styles.title7, { color: 'white', marginRight: 24 }]}>{headerText}</Text>
-                                <Text style={localStyles.subtitle}>
-                                    {translate('XP and or Traffic quota percent reached', { percent })}
-                                </Text>
+                        <View style={{ paddingHorizontal: 16 }}>
+                            <Text style={[styles.title7, { color: 'white', marginRight: 24 }]}>{headerText}</Text>
+                            <Text style={localStyles.subtitle}>
+                                {translate('XP and or Traffic quota percent reached', { percent })}
+                            </Text>
 
-                                <View style={localStyles.warning}>
-                                    <Icon
-                                        name={'info'}
-                                        size={16}
-                                        color={colors.UtilityYellow150}
-                                        style={{ marginRight: 8 }}
-                                    />
-                                    <Text style={localStyles.warningText}>
-                                        {daysUntilNextMonth} {translate('until the next month begins')}
-                                    </Text>
-                                </View>
-
-                                <ProgressBar
-                                    percent={xpQuotaPercent}
-                                    headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
-                                    headerTextStyle={{ color: '#fff' }}
+                            <View style={localStyles.warning}>
+                                <Icon
+                                    name={'info'}
+                                    size={16}
+                                    color={colors.UtilityYellow150}
+                                    style={{ marginRight: 8 }}
                                 />
-
-                                <ProgressBar
-                                    percent={xpTrafficPercent}
-                                    headerText={translate('Traffic quota this month')}
-                                    containerStyle={{ marginTop: 24 }}
-                                    headerTextStyle={{ color: '#fff' }}
-                                />
-
-                                <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>
-                                    {footerText}
+                                <Text style={localStyles.warningText}>
+                                    {daysUntilNextMonth} {translate('until the next month begins')}
                                 </Text>
                             </View>
 
-                            <View style={localStyles.line} />
+                            <ProgressBar
+                                percent={xpQuotaPercent}
+                                headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
+                                headerTextStyle={{ color: '#fff' }}
+                            />
 
-                            <View style={localStyles.button}>
-                                <Button
-                                    title={translate('Upgrade to Premium')}
-                                    icon={'crown'}
-                                    iconSize={22}
-                                    buttonStyle={{ alignSelf: 'center' }}
-                                    onPress={() => {
-                                        NavigationService.navigate('SettingsView')
-                                        dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_PREMIUM }))
-                                        resetNotification(warningId)
-                                    }}
-                                />
-                            </View>
-                        </ScrollView>
+                            <ProgressBar
+                                percent={xpTrafficPercent}
+                                headerText={translate('Traffic quota this month')}
+                                containerStyle={{ marginTop: 24 }}
+                                headerTextStyle={{ color: '#fff' }}
+                            />
+
+                            <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>{footerText}</Text>
+                        </View>
+
+                        <View style={localStyles.line} />
+
+                        <View style={localStyles.button}>
+                            <Button
+                                title={translate('Upgrade to Premium')}
+                                icon={'crown'}
+                                iconSize={22}
+                                buttonStyle={{ alignSelf: 'center' }}
+                                onPress={() => {
+                                    NavigationService.navigate('SettingsView')
+                                    dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_PREMIUM }))
+                                    resetNotification(warningId)
+                                }}
+                            />
+                        </View>
                         <CloseButton
                             close={() => {
                                 resetNotification(warningId)
@@ -184,11 +178,13 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
-        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        maxHeight: '90%',
+        top: '50%',
+        left: '58.5%',
+        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
+        position: 'fixed',
+        width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

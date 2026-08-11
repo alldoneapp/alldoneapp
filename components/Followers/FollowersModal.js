@@ -4,10 +4,9 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, em2px } from '../styles/global'
 import Icon from '../Icon'
 import { useSelector } from 'react-redux'
-import HelperFunctions, { applyPopoverWidth } from '../../utils/HelperFunctions'
+import HelperFunctions, { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../utils/HelperFunctions'
 import useWindowSize from '../../utils/useWindowSize'
 import CustomScrollView from '../UIControls/CustomScrollView'
-import { getSafeAreaModalMaxHeight } from '../../utils/modalSafeArea'
 
 export default function FollowersModal({ closeModal, followers, markAssignee = false, followObjectsType }) {
     const [width, height] = useWindowSize()
@@ -15,7 +14,7 @@ export default function FollowersModal({ closeModal, followers, markAssignee = f
     const showAssignee = markAssignee && assignee && assignee.uid
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Text style={localStyles.title}>Followers</Text>
                 <Text style={localStyles.subtitle}>
@@ -53,6 +52,7 @@ export default function FollowersModal({ closeModal, followers, markAssignee = f
 const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
+        width: 298,
         borderRadius: 4,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,

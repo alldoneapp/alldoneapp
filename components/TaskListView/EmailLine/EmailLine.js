@@ -21,8 +21,6 @@ import {
     splitChipsForDisplay,
 } from './emailLineHelper'
 
-export const EMAIL_SUMMARY_LOAD_DELAY_MS = 500
-
 // A gently pulsating green dot shown in the Email header while labeling is
 // active, signaling that incoming emails are being parsed in the background.
 // The steady core reads as "live"; the halo pings outward and fades to convey
@@ -38,9 +36,9 @@ function EmailLabelingLiveDot() {
                     toValue: 1,
                     duration: 1600,
                     easing: Easing.out(Easing.ease),
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
-                Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: false }),
+                Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
             ])
         )
         animation.start()
@@ -76,13 +74,13 @@ function EmailChipsSkeleton() {
                     toValue: 1,
                     duration: 700,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
                 Animated.timing(pulse, {
                     toValue: 0.5,
                     duration: 700,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
             ])
         )
@@ -107,34 +105,20 @@ export default function EmailLine() {
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject) || {}
     const loadingByKey = useSelector(state => state.emailLineLoadingByProject) || {}
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const taskDataLoading = useSelector(state => (state.isLoadingData || 0) > 0)
     const [showAllChips, setShowAllChips] = useState(false)
 
     const connections = listEmailConnections(loggedUser)
     const connectionIds = connections.map(connection => connection.connectionId)
-    const fetchableConnectionIds = connections
-        .filter(connection => !connection.authInvalid)
-        .map(connection => connection.connectionId)
-    const connectionFetchStateKey = connections
-        .map(connection => `${connection.connectionId}:${connection.authInvalid === true}`)
-        .join(',')
+    const connectionIdsKey = connectionIds.join(',')
 
     const hiddenToday = areEmailLineConnectionsHiddenToday(loggedUser, connectionIds)
 
     useEffect(() => {
-        if (!EMAIL_LINE_ENABLED || taskDataLoading) return undefined
-
-        // Gmail/Microsoft summaries are multi-second Cloud Function calls. Give
-        // the visible task snapshots first use of the network and main thread,
-        // then refresh every connected account once through this unified line.
-        const timer = setTimeout(() => {
-            fetchableConnectionIds.forEach(connectionId => {
-                fetchEmailLineSummary(connectionId)
-            })
-        }, EMAIL_SUMMARY_LOAD_DELAY_MS)
-
-        return () => clearTimeout(timer)
-    }, [connectionFetchStateKey, taskDataLoading])
+        if (!EMAIL_LINE_ENABLED) return undefined
+        connectionIds.forEach(connectionId => {
+            fetchEmailLineSummary(connectionId)
+        })
+    }, [connectionIdsKey])
 
     if (!EMAIL_LINE_ENABLED) return null
 
@@ -149,7 +133,7 @@ export default function EmailLine() {
     }
 
     const reload = () => {
-        fetchableConnectionIds.forEach(connectionId => {
+        connectionIds.forEach(connectionId => {
             fetchEmailLineSummary(connectionId, { force: true })
         })
     }

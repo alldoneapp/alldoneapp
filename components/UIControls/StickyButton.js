@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import Button from './Button'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
@@ -74,7 +74,7 @@ class StickyButton extends Component {
         const { visiblePopover, smallScreen } = this.state
 
         return (
-            <AppPopover
+            <Popover
                 content={
                     <SelectStickynessPopup
                         projectId={projectId}
@@ -109,7 +109,7 @@ class StickyButton extends Component {
                         shortcutText={shortcutText}
                     />
                 </Hotkeys>
-            </AppPopover>
+            </Popover>
         )
     }
 }

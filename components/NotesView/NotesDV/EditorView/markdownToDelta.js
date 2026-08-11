@@ -7,15 +7,6 @@ import { findMarkdownTable, getMarkdownTableAt, splitMarkdownTableRow } from '..
 
 export { getMarkdownTableAt, splitMarkdownTableRow }
 
-// Verbose per-line tracing of the conversion. Off by default: it fires on every paste and
-// every assistant message render, and floods the console. Flip to true when debugging.
-const DEBUG_MARKDOWN_TO_DELTA = false
-const debugLog = (...args) => {
-    if (DEBUG_MARKDOWN_TO_DELTA) {
-        console.log(...args)
-    }
-}
-
 // Regex patterns for markdown detection
 // ATX headings allow one to six # characters after up to three leading spaces.
 // Four leading spaces are excluded because they start an indented code block.
@@ -237,7 +228,7 @@ const parseLineType = line => {
 
     // Skip lines that are just bullet markers with no content (e.g., "- " or "* ")
     if (/^[-*]\s*$/.test(trimmed)) {
-        debugLog(`[markdownToDelta] Skipping empty bullet marker: "${trimmed}"`)
+        console.log(`[markdownToDelta] Skipping empty bullet marker: "${trimmed}"`)
         return { type: 'empty', text: '', indent: 0 }
     }
 
@@ -283,12 +274,12 @@ const parseLineType = line => {
  * @returns {Delta} - Quill Delta with converted content
  */
 export const markdownToDelta = (text, Delta) => {
-    debugLog('[markdownToDelta] ========== START ==========')
-    debugLog('[markdownToDelta] Input text:', JSON.stringify(text))
-    debugLog('[markdownToDelta] Contains markdown:', containsMarkdown(text))
+    console.log('[markdownToDelta] ========== START ==========')
+    console.log('[markdownToDelta] Input text:', JSON.stringify(text))
+    console.log('[markdownToDelta] Contains markdown:', containsMarkdown(text))
 
     if (!text || !containsMarkdown(text)) {
-        debugLog('[markdownToDelta] No markdown detected, returning null')
+        console.log('[markdownToDelta] No markdown detected, returning null')
         return null // Return null if no markdown to convert
     }
 
@@ -297,13 +288,13 @@ export const markdownToDelta = (text, Delta) => {
     let previousWasList = false
     let previousWasHeader = false
 
-    debugLog('[markdownToDelta] Split into', lines.length, 'lines')
+    console.log('[markdownToDelta] Split into', lines.length, 'lines')
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
         const table = getMarkdownTableAt(lines, lineIndex)
         if (table) {
             const isLastTableLine = table.endIndex === lines.length - 1
-            debugLog(`[markdownToDelta] Line ${lineIndex}: inserting markdown table`)
+            console.log(`[markdownToDelta] Line ${lineIndex}: inserting markdown table`)
             delta.insert({ markdownTable: { rows: table.rows, alignments: table.alignments } })
             if (!isLastTableLine) {
                 if (previousWasList) {
@@ -323,14 +314,14 @@ export const markdownToDelta = (text, Delta) => {
         const isLastLine = lineIndex === lines.length - 1
         const isListItem = parsed.type === 'bullet' || parsed.type === 'ordered' || parsed.type === 'checkbox'
 
-        debugLog(
+        console.log(
             `[markdownToDelta] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}, previousWasHeader: ${previousWasHeader}`
         )
 
         if (parsed.type === 'empty') {
             // Skip empty lines immediately after headers to avoid excessive spacing
             if (previousWasHeader) {
-                debugLog(`[markdownToDelta]   -> Skipping empty line after header`)
+                console.log(`[markdownToDelta]   -> Skipping empty line after header`)
                 previousWasHeader = false
                 previousWasList = false
                 continue // Skip this empty line
@@ -339,10 +330,10 @@ export const markdownToDelta = (text, Delta) => {
             // Quill may otherwise inherit list formatting from the previous line
             if (!isLastLine) {
                 if (previousWasList) {
-                    debugLog(`[markdownToDelta]   -> Inserting empty line with {list: null} to break list context`)
+                    console.log(`[markdownToDelta]   -> Inserting empty line with {list: null} to break list context`)
                     delta.insert('\n', { list: null })
                 } else {
-                    debugLog(`[markdownToDelta]   -> Inserting empty line (plain \\n)`)
+                    console.log(`[markdownToDelta]   -> Inserting empty line (plain \\n)`)
                     delta.insert('\n')
                 }
             }
@@ -350,14 +341,14 @@ export const markdownToDelta = (text, Delta) => {
             previousWasHeader = false
         } else if (parsed.type === 'hr') {
             // Horizontal rule - if coming after a list, explicitly break list formatting (shorter to fit mobile)
-            debugLog(`[markdownToDelta]   -> Inserting HR`)
+            console.log(`[markdownToDelta]   -> Inserting HR`)
             delta.insert('───────────')
             if (!isLastLine) {
                 if (previousWasList) {
-                    debugLog(`[markdownToDelta]   -> HR newline with {list: null}`)
+                    console.log(`[markdownToDelta]   -> HR newline with {list: null}`)
                     delta.insert('\n', { list: null })
                 } else {
-                    debugLog(`[markdownToDelta]   -> HR newline (plain)`)
+                    console.log(`[markdownToDelta]   -> HR newline (plain)`)
                     delta.insert('\n')
                 }
             }
@@ -365,7 +356,7 @@ export const markdownToDelta = (text, Delta) => {
             previousWasHeader = false
         } else if (parsed.type === 'header') {
             // Parse inline formatting within the header text
-            debugLog(`[markdownToDelta]   -> Inserting header level ${parsed.level}: "${parsed.text}"`)
+            console.log(`[markdownToDelta]   -> Inserting header level ${parsed.level}: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 // Explicitly set all formatting attributes to prevent inheritance
@@ -383,7 +374,7 @@ export const markdownToDelta = (text, Delta) => {
             previousWasList = false
             previousWasHeader = true
         } else if (parsed.type === 'bullet') {
-            debugLog(`[markdownToDelta]   -> Inserting bullet: "${parsed.text}", indent: ${parsed.indent}`)
+            console.log(`[markdownToDelta]   -> Inserting bullet: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 // Explicitly set all formatting attributes to prevent inheritance
@@ -399,12 +390,12 @@ export const markdownToDelta = (text, Delta) => {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8) // Quill supports up to 8 indent levels
             }
-            debugLog(`[markdownToDelta]   -> Bullet newline attrs:`, JSON.stringify(listAttrs))
+            console.log(`[markdownToDelta]   -> Bullet newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
             previousWasList = true
             previousWasHeader = false
         } else if (parsed.type === 'ordered') {
-            debugLog(`[markdownToDelta]   -> Inserting ordered: "${parsed.text}", indent: ${parsed.indent}`)
+            console.log(`[markdownToDelta]   -> Inserting ordered: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 // Explicitly set all formatting attributes to prevent inheritance
@@ -420,13 +411,13 @@ export const markdownToDelta = (text, Delta) => {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
-            debugLog(`[markdownToDelta]   -> Ordered newline attrs:`, JSON.stringify(listAttrs))
+            console.log(`[markdownToDelta]   -> Ordered newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
             previousWasList = true
             previousWasHeader = false
         } else if (parsed.type === 'checkbox') {
             // Convert checkbox to bullet item (without separate checkbox prefix to avoid double indicators)
-            debugLog(
+            console.log(
                 `[markdownToDelta]   -> Inserting checkbox as bullet: "${parsed.text}", checked: ${parsed.checked}`
             )
             const segments = parseInlineFormatting(parsed.text)
@@ -450,7 +441,7 @@ export const markdownToDelta = (text, Delta) => {
             previousWasHeader = false
         } else {
             // Regular text - parse inline formatting
-            debugLog(`[markdownToDelta]   -> Inserting regular text: "${parsed.text}"`)
+            console.log(`[markdownToDelta]   -> Inserting regular text: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 // Explicitly set all formatting attributes to prevent inheritance
@@ -464,10 +455,10 @@ export const markdownToDelta = (text, Delta) => {
             if (!isLastLine) {
                 // If previous line was a list, explicitly remove list formatting
                 if (previousWasList) {
-                    debugLog(`[markdownToDelta]   -> Text newline with {list: null} to break list`)
+                    console.log(`[markdownToDelta]   -> Text newline with {list: null} to break list`)
                     delta.insert('\n', { list: null })
                 } else {
-                    debugLog(`[markdownToDelta]   -> Text newline (plain)`)
+                    console.log(`[markdownToDelta]   -> Text newline (plain)`)
                     delta.insert('\n')
                 }
             }
@@ -476,8 +467,8 @@ export const markdownToDelta = (text, Delta) => {
         }
     }
 
-    debugLog('[markdownToDelta] Final delta ops:', JSON.stringify(delta.ops, null, 2))
-    debugLog('[markdownToDelta] ========== END ==========')
+    console.log('[markdownToDelta] Final delta ops:', JSON.stringify(delta.ops, null, 2))
+    console.log('[markdownToDelta] ========== END ==========')
     return delta
 }
 

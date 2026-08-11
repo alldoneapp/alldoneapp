@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View } from 'react-native'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import GoalsProgressModal from '../UIComponents/FloatModals/GoalsProgressModal/GoalsProgressModal'
@@ -55,7 +55,7 @@ export default function GoalProgressWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 inDoneMilestone ? (
@@ -85,6 +85,6 @@ export default function GoalProgressWrapper({
                     dynamicProgress={dynamicProgress}
                 />
             </View>
-        </AppPopover>
+        </Popover>
     )
 }

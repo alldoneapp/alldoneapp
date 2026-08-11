@@ -1,6 +1,6 @@
 import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
 
-export function getLinkedEmailFromMessage(message = {}, context = {}) {
+export function getLinkedEmailFromMessage(message = {}) {
     const gmailData = message?.gmailData
     const messageId = typeof gmailData?.messageId === 'string' ? gmailData.messageId.trim() : ''
     const gmailEmail = typeof gmailData?.gmailEmail === 'string' ? gmailData.gmailEmail.trim().toLowerCase() : ''
@@ -17,65 +17,18 @@ export function getLinkedEmailFromMessage(message = {}, context = {}) {
 
     if (!messageId || !connectionProjectId) return null
 
-    const commentId = typeof message.id === 'string' ? message.id.trim() : ''
-    const projectId = typeof context.projectId === 'string' ? context.projectId.trim() : ''
-    const chatId = typeof context.chatId === 'string' ? context.chatId.trim() : ''
-    const commentRefs =
-        projectId && commentId
-            ? [
-                  {
-                      projectId,
-                      chatId,
-                      commentId,
-                  },
-              ]
-            : []
-
-    // Carried for the Gmail read sync only (AT-2376): whether the labeling sync archived the email
-    // itself, and whether it is an outgoing message. In both cases the mail was never in the user's
-    // inbox to begin with, so "not in the inbox" says nothing about the user having handled it.
-    const archivedByLabeling = gmailData?.archivedByLabeling === true
-    const direction = typeof gmailData?.direction === 'string' ? gmailData.direction.trim() : ''
-
     return {
         key: `${connectionProjectId}:${messageId}`,
         connectionProjectId,
         messageId,
-        ...(archivedByLabeling ? { archivedByLabeling: true } : {}),
-        ...(direction ? { direction } : {}),
-        ...(commentId ? { commentId } : {}),
-        ...(projectId ? { projectId } : {}),
-        ...(chatId ? { chatId } : {}),
-        ...(commentRefs.length ? { commentRefs } : {}),
     }
 }
 
-export function getLinkedEmailsFromMessages(messages = [], context = {}) {
+export function getLinkedEmailsFromMessages(messages = []) {
     const linkedEmails = new Map()
     messages.forEach(message => {
-        const linkedEmail = getLinkedEmailFromMessage(message, context)
-        if (!linkedEmail) return
-
-        const existing = linkedEmails.get(linkedEmail.key)
-        if (!existing) {
-            linkedEmails.set(linkedEmail.key, {
-                ...linkedEmail,
-                ...(linkedEmail.commentRefs ? { commentRefs: [...linkedEmail.commentRefs] } : {}),
-            })
-            return
-        }
-
-        if (!(linkedEmail.commentRefs || []).length) return
-        existing.commentRefs = existing.commentRefs || []
-        linkedEmail.commentRefs.forEach(ref => {
-            if (
-                !existing.commentRefs.some(
-                    existingRef => existingRef.projectId === ref.projectId && existingRef.commentId === ref.commentId
-                )
-            ) {
-                existing.commentRefs.push(ref)
-            }
-        })
+        const linkedEmail = getLinkedEmailFromMessage(message)
+        if (linkedEmail) linkedEmails.set(linkedEmail.key, linkedEmail)
     })
     return [...linkedEmails.values()]
 }
@@ -99,51 +52,4 @@ export function groupLinkedEmailsByConnection(linkedEmails = []) {
         groups[linkedEmail.connectionProjectId] = messageIds
         return groups
     }, {})
-}
-
-export async function archiveLinkedEmailsInMailbox(linkedEmails = []) {
-    const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
-    const { performEmailLineAction } = require('../../../utils/backends/EmailLine/emailLineBackend')
-    await Promise.all(
-        Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-            performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-        )
-    )
-}
-
-// Chat and Email Line archive is "I'm done with this": take the mail out of the inbox and
-// mark the matching Alldone chat comments as read. The mailbox read/unread state is left
-// alone (AT-2298).
-//
-// The unread state is cleared FIRST, and that ordering is the whole point (AT-2424).
-//
-// It used to be the other way round, which meant the email comment stayed on screen and kept
-// counting as unread until Gmail had answered - and that is not one round trip but two, because
-// `performEmailLineAction` awaits a forced `fetchEmailLineSummary` of its own before it resolves.
-// Measured in production: ~1s for the archive plus 3-7s for the summary refresh, so 4-8 seconds
-// of pressing Archive and watching nothing happen. Nothing in that chain is needed to know the
-// user is done with the mail; only the notification docs decide what the frontend shows.
-//
-// Deleting them first is instant on screen without any new optimistic state to keep in sync:
-// Firestore applies the delete to the local cache as the write is issued, `watchChatNotifications`
-// fires from it, and the row, the preview and every unread counter follow in the same tick.
-//
-// If the mailbox archive then fails the unread state is put back (Karsten's call on AT-2424), so a
-// failed archive is "nothing happened, try again" rather than a comment that quietly went read
-// while the mail is still sitting in the inbox. This function still rejects on that failure, so
-// every caller's existing error affordance - the thread's alert, the bulk button's "try again" -
-// keeps working unchanged.
-export async function archiveAndMarkReadLinkedEmails(linkedEmails = []) {
-    const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
-    if (Object.keys(groupedEmails).length === 0) return
-
-    const { clearChatCommentsForLinkedEmails } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
-    const restoreUnreadState = await clearChatCommentsForLinkedEmails(linkedEmails)
-
-    try {
-        await archiveLinkedEmailsInMailbox(linkedEmails)
-    } catch (error) {
-        await restoreUnreadState()
-        throw error
-    }
 }

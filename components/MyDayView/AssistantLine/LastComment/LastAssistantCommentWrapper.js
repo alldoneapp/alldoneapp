@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -29,8 +29,6 @@ export default function LastAssistantCommentWrapper({
     isFollowedNotification,
     setAModalIsOpen,
     compact = false,
-    arrivalId = null,
-    scopeKey = null,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -103,36 +101,8 @@ export default function LastAssistantCommentWrapper({
     const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true, true)
     const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
-    /**
-     * Built ONCE and rendered from both branches on purpose.
-     *
-     * These used to be two hand-written copies of the same element, and AT-2511 shipped `arrivalId`
-     * onto only one of them — the popover branch, which is open exactly when the user is typing a
-     * reply and therefore never when a comment arrives. So the card was handed `null` in every case
-     * that matters, its motion hook never armed, and the animation could not run for any user. The
-     * suites stayed green because the one that renders this container mocks this component away, and
-     * the one that renders the card passes `arrivalId` by hand.
-     *
-     * The duplication is what allowed that, so it is gone: a prop can no longer reach one branch and
-     * not the other.
-     */
-    const card = (
-        <LastAssistantComment
-            isNew={isNew}
-            unreadComments={unreadComments}
-            isFollowedNotification={isFollowedNotification}
-            onPress={openModal}
-            commentText={parsedComment}
-            objectName={parsedObjectName}
-            projectId={projectId}
-            compact={compact}
-            arrivalId={arrivalId}
-            scopeKey={scopeKey}
-        />
-    )
-
     return showModal ? (
-        <AppPopover
+        <Popover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -143,7 +113,6 @@ export default function LastAssistantCommentWrapper({
                     showBotButton={true}
                     objectName={objectName}
                     externalAssistantId={assistantId}
-                    openedFromUnreadComment={isNew}
                 />
             }
             onClickOutside={closeModal}
@@ -155,9 +124,27 @@ export default function LastAssistantCommentWrapper({
             contentLocation={popoverToTop}
             containerStyle={popoverToTopContainerStyle}
         >
-            {card}
-        </AppPopover>
+            <LastAssistantComment
+                isNew={isNew}
+                unreadComments={unreadComments}
+                isFollowedNotification={isFollowedNotification}
+                onPress={openModal}
+                commentText={parsedComment}
+                objectName={parsedObjectName}
+                projectId={projectId}
+                compact={compact}
+            />
+        </Popover>
     ) : (
-        card
+        <LastAssistantComment
+            isNew={isNew}
+            unreadComments={unreadComments}
+            isFollowedNotification={isFollowedNotification}
+            onPress={openModal}
+            commentText={parsedComment}
+            objectName={parsedObjectName}
+            projectId={projectId}
+            compact={compact}
+        />
     )
 }

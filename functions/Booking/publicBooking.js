@@ -8,7 +8,6 @@ const {
     getConnectedCalendarCount,
     getHostingUrl,
     getPublicBookingPage,
-    resolveEarliestBookableStart,
     resolvePublicDuration,
     slugify,
 } = require('./bookingSettings')
@@ -103,10 +102,6 @@ async function handleGetPage(req, res, slug) {
                 workingHoursStart: page.settings.workingHoursStart,
                 workingHoursEnd: page.settings.workingHoursEnd,
                 includeWeekends: page.settings.includeWeekends,
-                // Drives which days the visitor is offered at all. Enforcement still lives
-                // server-side in findPublicBookingSlots — this is only so the page doesn't
-                // render a day it would then show as empty.
-                allowSameDayBooking: page.settings.allowSameDayBooking === true,
                 bufferBeforeMinutes: page.settings.bufferBeforeMinutes,
                 bufferAfterMinutes: page.settings.bufferAfterMinutes,
                 timeZone: page.settings.timeZone,
@@ -224,15 +219,6 @@ async function handleBook(req, res) {
 
     const page = await loadPublicPageOr404(res, slug)
     if (!page) return
-
-    // findPublicBookingSlots already refuses to return same-day options, so the availability
-    // re-check below would reject this anyway — but with a misleading "no longer available".
-    // Check it up front so a direct API caller gets told the actual reason.
-    const earliestBookableStart = resolveEarliestBookableStart(page.settings, timeZone)
-    if (earliestBookableStart && moment.parseZone(start).isBefore(earliestBookableStart)) {
-        json(res, 409, { success: false, error: 'Same-day bookings are not available for this link' })
-        return
-    }
 
     const resolvedDurationMinutes = resolvePublicDuration(page.settings, durationMinutes)
     const available = await assertSlotStillAvailable(page, {

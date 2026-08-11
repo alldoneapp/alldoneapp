@@ -6,7 +6,7 @@ import Hotkeys from 'react-hot-keys'
 
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import Icon from '../../../Icon'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { ASSIGNEE_PICKER_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -15,12 +15,6 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DV_TAB_ROOT_GOALS } from '../../../../utils/TabNavigationConstants'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import useProjectData from '../../../../hooks/useProjectData'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
-
-// AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
-// array on every render.
-const EMPTY_LIST = []
 
 export default function AssigneePickerModal({
     projectIndex,
@@ -36,14 +30,11 @@ export default function AssigneePickerModal({
     const project = ProjectHelper.getProjectByIndex(projectIndex)
 
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
-    // AT-2386: the picker lists everyone in the project, so it asks for the data instead of
-    // assuming login fetched it, and reads every slice defensively while it arrives.
-    useProjectData(project.id)
-    const users = useSelector(state => state.projectUsers[project.id]) || EMPTY_LIST
+    const users = useSelector(state => state.projectUsers[project.id])
     const globalAssistants = useSelector(state => state.globalAssistants)
     const assistants = useSelector(state => state.projectAssistants)
-    const workstreams = useSelector(state => state.projectWorkstreams[project.id]) || EMPTY_LIST
-    const contacts = useSelector(state => state.projectContacts[project.id]) || EMPTY_LIST
+    const workstreams = useSelector(state => state.projectWorkstreams[project.id])
+    const contacts = useSelector(state => state.projectContacts[project.id])
     const parentTemplateId = useSelector(
         state => projectIndex && state.loggedUserProjects[projectIndex].parentTemplateId
     )
@@ -59,7 +50,7 @@ export default function AssigneePickerModal({
     if (showAssistants) {
         const assistantsToShow = [
             ...globalAssistants.filter(assistant => project.globalAssistantIds.includes(assistant.uid)),
-            ...(assistants[project.id] || EMPTY_LIST),
+            ...assistants[project.id],
         ]
         usersList.push(...assistantsToShow)
     }
@@ -151,9 +142,7 @@ export default function AssigneePickerModal({
 
     return (
         sortedUsers.length > 0 && (
-            <View
-                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
-            >
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
                         <View style={{ marginBottom: 20 }}>

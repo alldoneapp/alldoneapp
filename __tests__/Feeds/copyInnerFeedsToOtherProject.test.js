@@ -8,7 +8,7 @@ jest.mock('../../functions/GlobalState/globalState', () => ({ getGlobalState: je
 const { copyInnerFeedsToOtherProject } = require('../../functions/Feeds/globalFeedsHelper')
 
 // Minimal firebase-admin firestore fake recording batched writes so we can assert the per-object Updates
-// feed is copied into the target project's path without its source-project access projection.
+// feed is copied verbatim into the target project's path.
 function makeFakeAdmin({ collections = {} } = {}) {
     const writes = []
 
@@ -48,21 +48,12 @@ describe('copyInnerFeedsToOtherProject', () => {
     const TASK = 'task1'
     const FEEDS_PATH = `projectsInnerFeeds/${SRC}/tasks/${TASK}/feeds`
 
-    it('copies every inner feed doc into the target project path without source access projections', async () => {
+    it('copies every inner feed doc verbatim into the target project path', async () => {
         const { admin, writes } = makeFakeAdmin({
             collections: {
                 [FEEDS_PATH]: [
                     { id: 'f1', data: { lastChangeDate: 2, isPublicFor: ['ALL'], text: 'created' } },
-                    {
-                        id: 'f2',
-                        data: {
-                            lastChangeDate: 5,
-                            isPublicFor: ['u1'],
-                            text: 'due date set',
-                            readerIds: ['source-user'],
-                            followedReaderIds: ['source-user'],
-                        },
-                    },
+                    { id: 'f2', data: { lastChangeDate: 5, isPublicFor: ['u1'], text: 'due date set' } },
                 ],
             },
         })
@@ -77,7 +68,6 @@ describe('copyInnerFeedsToOtherProject', () => {
 
         const f2 = writes.find(w => w.path.endsWith('/f2'))
         expect(f2.data).toEqual({ lastChangeDate: 5, isPublicFor: ['u1'], text: 'due date set' })
-        expect(f2.params).toEqual({ merge: true })
     })
 
     it('returns 0 and writes nothing when the object has no feed history', async () => {

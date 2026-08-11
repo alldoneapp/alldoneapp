@@ -3,12 +3,11 @@ import { StyleSheet, View } from 'react-native'
 import { colors } from '../styles/global'
 import { DYNAMIC_PERCENT } from './GoalsHelper'
 
-export default function GoalProgressBar({ progress, barColor, dynamicProgress, style }) {
+export default function GoalProgressBar({ progress, barColor, dynamicProgress }) {
     return (
         <View
             style={[
                 localStyles.container,
-                style,
                 {
                     width: progress
                         ? progress === DYNAMIC_PERCENT

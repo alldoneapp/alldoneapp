@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 
 import { UNLOCK_GOAL_COST } from '../../Guides/guidesHelper'
@@ -35,7 +35,7 @@ export default function UnlockWrapper({ projectId, lockKey, goalId, ownerId }) {
     }
 
     return (
-        <AppPopover
+        <Popover
             isOpen={isOpen}
             onClickOutside={closeModal}
             align={'center'}
@@ -58,6 +58,6 @@ export default function UnlockWrapper({ projectId, lockKey, goalId, ownerId }) {
                     shortcutText={'U'}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

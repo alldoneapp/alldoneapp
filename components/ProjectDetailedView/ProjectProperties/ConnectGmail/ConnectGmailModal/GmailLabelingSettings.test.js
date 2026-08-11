@@ -42,8 +42,8 @@ describe('GmailLabelingSettings helpers', () => {
 
         const sanitized = sanitizeConfigForSave(normalized)
 
-        expect(normalized.model).toBe('MODEL_GPT6_LUNA')
-        expect(sanitized.model).toBe('MODEL_GPT6_LUNA')
+        expect(normalized.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(sanitized.model).toBe('MODEL_GPT5_6_LUNA')
         expect(sanitized.labelDefinitions[0].postLabelPrompt).toBe('Create a task with this email link')
     })
 
@@ -169,9 +169,6 @@ describe('GmailLabelingSettings helpers', () => {
         expect(prompt).toContain('Do not include the Gmail web URL')
         expect(prompt).not.toContain('LINK: Email from')
         expect(prompt).toContain('hello@cal.com')
-        expect(prompt).toContain('only use update_note when the sender already exists as a contact')
-        expect(prompt).toContain('Set createIfMissing=false')
-        expect(prompt).toContain('a missing contact is never created')
         expect(prompt).toContain('with a space at the end')
     })
 

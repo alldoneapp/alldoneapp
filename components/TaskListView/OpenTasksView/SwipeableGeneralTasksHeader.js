@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, View, Text, Animated } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -8,18 +8,50 @@ import GoalsSwipeBackground from '../../GoalsView/GoalsSwipeBackground'
 import { showSwipeDueDatePopup, setSwipeDueDatePopupData, setSelectedNavItem } from '../../../redux/actions'
 import store from '../../../redux/store'
 import NavigationService from '../../../utils/NavigationService'
+import Icon from '../../Icon'
+import styles, { colors } from '../../styles/global'
+import { translate } from '../../../i18n/TranslationService'
 import { DV_TAB_PROJECT_PROPERTIES } from '../../../utils/TabNavigationConstants'
-import { useTaskHierarchy } from '../TaskHierarchy'
 
 export default function SwipeableGeneralTasksHeader({ projectId, taskList, dateIndex, instanceKey }) {
     const itemSwipe = useRef(null)
-    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
 
-    const renderLeftSwipe = () => <View style={localStyles.swipeAction} />
+    const renderLeftSwipe = (progress, dragX) => {
+        const trans = dragX.interpolate({
+            inputRange: [0, 50, 100, 101],
+            outputRange: [-20, 0, 0, 1],
+            extrapolate: 'clamp',
+        })
+        return (
+            <Animated.View style={[localStyles.leftSwipeAction, { transform: [{ translateX: trans }] }]}>
+                <View style={localStyles.swipeContainer}>
+                    <View style={localStyles.leftSwipeArea}>
+                        <Icon name="settings" size={18} color={colors.UtilityGreen200} />
+                        <View style={{ marginLeft: 4 }}>
+                            <Text style={[styles.subtitle2, { color: colors.UtilityGreen200 }]}>
+                                {translate('Properties')}
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+            </Animated.View>
+        )
+    }
 
-    const renderRightSwipe = () => <View style={localStyles.swipeAction} />
+    const renderRightSwipe = (progress, dragX) => {
+        const trans = dragX.interpolate({
+            inputRange: [-101, -100, -50, 0],
+            outputRange: [1, 0, 0, -20],
+            extrapolate: 'clamp',
+        })
+        return (
+            <Animated.View style={[localStyles.rightSwipeAction, { transform: [{ translateX: trans }] }]}>
+                <GoalsSwipeBackground needToShowReminderButton={true} />
+            </Animated.View>
+        )
+    }
 
     const onLeftSwipe = () => {
         itemSwipe.current.close()
@@ -63,8 +95,7 @@ export default function SwipeableGeneralTasksHeader({ projectId, taskList, dateI
     }
 
     return (
-        <View style={[localStyles.container, taskHierarchy && localStyles.hierarchyContainer]}>
-            <GoalsSwipeBackground needToShowReminderButton={true} showPropertiesButton={true} />
+        <View style={localStyles.container}>
             <Swipeable
                 useNativeAnimations={false}
                 ref={itemSwipe}
@@ -81,7 +112,7 @@ export default function SwipeableGeneralTasksHeader({ projectId, taskList, dateI
                 containerStyle={{ overflow: 'visible' }}
                 failOffsetY={[-5, 5]}
             >
-                <GeneralTasksHeader projectId={projectId} noVerticalMargin={true} />
+                <GeneralTasksHeader projectId={projectId} />
             </Swipeable>
         </View>
     )
@@ -90,12 +121,31 @@ export default function SwipeableGeneralTasksHeader({ projectId, taskList, dateI
 const localStyles = StyleSheet.create({
     container: {
         position: 'relative',
-        marginVertical: 4,
     },
-    hierarchyContainer: {
-        marginTop: 0,
-    },
-    swipeAction: {
+    leftSwipeAction: {
         width: 150,
+        position: 'relative',
+    },
+    rightSwipeAction: {
+        width: 150,
+        position: 'relative',
+    },
+    swipeContainer: {
+        height: '100%',
+        width: '100%',
+        borderRadius: 4,
+        position: 'absolute',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    leftSwipeArea: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        height: '100%',
+        backgroundColor: colors.UtilityGreen100,
+        borderRadius: 4,
+        paddingLeft: 12,
     },
 })

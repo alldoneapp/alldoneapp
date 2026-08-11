@@ -14,13 +14,8 @@ export default function AssigneeArea({ projectId, task, showAssignee, containerS
     const showShortcuts = useSelector(state => state.showShortcuts)
     const buttonRef = useRef(null)
 
-    // AT-2464: an unresolvable project is a real state here, not a defensive `?.` — `RichCreateTaskModal`
-    // deliberately falls back to a bare `{ id: projectId }` when `loggedUserProjectsMap` has no entry
-    // (PT-4745, so that an unknown id keeps the switcher row instead of hiding it), and the automatic
-    // project option can resolve to no host project at all. Dereferencing that threw one line above the
-    // AT-2464 crash site, in the same render — and a throw here takes the whole app down through the
-    // top-level ErrorBoundary. "Not a guide" is the right answer for a project we cannot read.
-    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
+    const project = ProjectHelper.getProjectById(projectId)
+    const isGuide = !!project.parentTemplateId
 
     return (
         <View style={[localStyles.container, containerStyle]}>

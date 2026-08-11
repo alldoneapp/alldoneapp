@@ -1,5 +1,3 @@
-import { getProjectPalette } from '../../../TaskListView/ProjectSection'
-import { taskHierarchyStyles } from '../../../TaskListView/TaskHierarchy'
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
@@ -10,14 +8,7 @@ import Icon from '../../../Icon'
 
 export default function ProjectHeader({ project, amount, containerStyle }) {
     return (
-        <View
-            style={[
-                localStyles.container,
-                taskHierarchyStyles.projectHeader,
-                { backgroundColor: getProjectPalette(project.color).PROJECT_ITEM_ACTIVE },
-                containerStyle,
-            ]}
-        >
+        <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.titleContainer}>
                 {project.color ? (
                     <ColoredCircleSmall
@@ -43,8 +34,8 @@ export default function ProjectHeader({ project, amount, containerStyle }) {
 const localStyles = StyleSheet.create({
     container: {
         height: 56,
-        justifyContent: 'center',
-        paddingHorizontal: 12,
+        justifyContent: 'flex-end',
+        paddingBottom: 6,
         borderBottomColor: colors.Grey400,
         borderBottomWidth: 1,
         marginHorizontal: 16,
@@ -57,7 +48,7 @@ const localStyles = StyleSheet.create({
     projectName: {
         ...styles.subtitle1,
         paddingLeft: 8,
-        color: colors.Text01,
+        color: '#ffffff',
     },
     dot: {
         ...styles.subtitle1,

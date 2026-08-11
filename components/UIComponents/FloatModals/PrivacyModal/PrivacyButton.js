@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 
 import PrivacyModal from './PrivacyModal'
@@ -61,7 +61,7 @@ export default function PrivacyButton({
     const { isPublicFor } = object
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <PrivacyModal
                     object={object}
@@ -111,6 +111,6 @@ export default function PrivacyButton({
                     accessible={false}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

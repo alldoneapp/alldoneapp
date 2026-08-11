@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'
@@ -52,7 +52,7 @@ export default function TaskGoalRouting({ projectId, disabled, mode }) {
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Task goal routing')}</Text>
             <View style={localStyles.buttonContainer}>
-                <AppPopover
+                <Popover
                     content={
                         <View style={[localStyles.popover, applyPopoverWidth()]}>
                             <Text style={localStyles.popoverTitle}>{translate('Task goal routing')}</Text>
@@ -90,7 +90,7 @@ export default function TaskGoalRouting({ projectId, disabled, mode }) {
                         onPress={() => setOpen(true)}
                         disabled={disabled}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

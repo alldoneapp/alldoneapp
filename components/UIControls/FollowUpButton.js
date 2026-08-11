@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import Button from './Button'
 import { setLastSelectedDueDate } from '../../redux/actions'
@@ -98,7 +98,7 @@ class FollowUpButton extends Component {
         const { buttonText, disabled, style, inEditTask, dateText, shortcutText } = this.props
         const { visiblePopover, smallScreen, inDueDate, inCalendar } = this.state
         return (
-            <AppPopover
+            <Popover
                 content={
                     inDueDate ? (
                         <FollowUpDueDate
@@ -144,7 +144,7 @@ class FollowUpButton extends Component {
                         shortcutText={shortcutText}
                     />
                 </Hotkeys>
-            </AppPopover>
+            </Popover>
         )
     }
 }

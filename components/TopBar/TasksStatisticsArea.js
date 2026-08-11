@@ -48,8 +48,7 @@ export default function TasksStatisticsArea() {
     const doneTasksToShow = getValueToShow(doneTasksByProject)
     const donePointsToShow = getValueToShow(donePointsByProject)
 
-    // Keep the compact icon while a centered Home button limits the statistics row.
-    const useMobile = smallScreen || topBarWidth < 900
+    const useMobile = smallScreen || (donePointsToShow > 0 && topBarWidth < 840)
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.TasksStatisticsArea')
 

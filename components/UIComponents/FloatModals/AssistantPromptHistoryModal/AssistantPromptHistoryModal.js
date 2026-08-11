@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import ModalHeader from '../ModalHeader'
@@ -11,7 +11,6 @@ import { translate } from '../../../../i18n/TranslationService'
 import { getDateFormat, getTimeFormat } from '../DateFormatPickerModal'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import HelperFunctions from '../../../../utils/HelperFunctions'
-import useModalSizing from '../../../../hooks/useModalSizing'
 
 const CURRENT_PROMPT_ID = 'current'
 
@@ -63,8 +62,9 @@ export default function AssistantPromptHistoryModal({
     closeModal,
     restorePrompt,
 }) {
-    const { isSheet: isMobile, width: sheetWidth, windowWidth } = useModalSizing()
-    const modalWidth = isMobile ? sheetWidth : Math.min(windowWidth * 0.9, 720)
+    const { width: windowWidth } = Dimensions.get('window')
+    const isMobile = windowWidth < 600
+    const modalWidth = isMobile ? windowWidth - 32 : Math.min(windowWidth * 0.9, 720)
     const [selectedId, setSelectedId] = useState(CURRENT_PROMPT_ID)
 
     const historyItems = (Array.isArray(history) ? history : []).map((entry, index) => {

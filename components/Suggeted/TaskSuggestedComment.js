@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { updateTaskSuggestedCommentModalData } from '../../redux/actions'
 import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Icon from '../Icon'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { getWorkstreamById, WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
@@ -13,10 +13,8 @@ import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
-import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function TaskSuggestedComment({ task, projectId }) {
-    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
@@ -28,10 +26,11 @@ export default function TaskSuggestedComment({ task, projectId }) {
 
     const isWorkstream = assignee.uid.startsWith(WORKSTREAM_ID_PREFIX)
 
-    const onSubmit = async comment => {
+    const onSubmit = comment => {
         if (!isQuillTagEditorOpen && !isMentionModalOpen && comment) {
-            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
-            await createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', FORDWARD_COMMENT, null, null)
+            updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
+                createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', FORDWARD_COMMENT, null, null)
+            })
         }
     }
     const closeModal = () => {
@@ -59,8 +58,8 @@ export default function TaskSuggestedComment({ task, projectId }) {
     }
 
     return (
-        <View style={[localStyles.container, safeAreaOverlayPadding]}>
-            <AppPopover isOpen={true} content={null} onClickOutside={closeModal}>
+        <View style={[localStyles.container]}>
+            <Popover isOpen={true} content={null} onClickOutside={closeModal}>
                 <RichCommentModal
                     projectId={projectId}
                     objectType={'tasks'}
@@ -86,7 +85,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
                         </View>
                     }
                 />
-            </AppPopover>
+            </Popover>
         </View>
     )
 }

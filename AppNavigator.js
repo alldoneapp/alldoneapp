@@ -27,6 +27,14 @@ import {
     toggleSmallScreenNavigation,
     toggleSmallScreenNavSidebarCollapsed,
 } from './redux/actions'
+import {
+    SCREEN_BREAKPOINT,
+    SCREEN_BREAKPOINT_MIDDLE,
+    SCREEN_BREAKPOINT_NAV,
+    SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED,
+    SCREEN_SMALL_BREAKPOINT_NAV,
+    SIDEBAR_MENU_WIDTH,
+} from './components/styles/global'
 import DismissibleModal from './components/UIComponents/DismissibleModal'
 import SettingsView from './components/SettingsView/SettingsView'
 import { notifyClickObservers } from './utils/Observers'
@@ -39,61 +47,6 @@ import AssistantDetailedView from './components/AssistantDetailedView/AssistantD
 import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
-import { installConnectionStateListener } from './utils/connectionState'
-import { installShellOtaUpdater } from './utils/shellOtaUpdater'
-import { installConnectionHealthMonitor } from './utils/connectionHealth'
-import { installAppResumeListener } from './utils/appResume'
-import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
-import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
-import AnnaShell from './components/Anna/AnnaShell'
-import { getResponsiveLayoutState } from './utils/responsiveLayout'
-import { isAnnaMode } from './utils/annaMode'
-
-const getCurrentResponsiveLayout = width => {
-    const { loggedUser, route } = store.getState()
-    return getResponsiveLayoutState({
-        width,
-        sidebarExpanded: loggedUser.sidebarExpanded,
-        route,
-        preferCompactNavigation: isAnnaMode(),
-    })
-}
-
-// Seed the responsive Redux flags before AppContent's first render. This is
-// intentionally separate from the outer View's onLayout handler: on a cached
-// mobile boot the task board can be visible for well over a second before that
-// first layout callback, which otherwise exposes the desktop defaults.
-export const initializeResponsiveLayout = () => {
-    const width = Dimensions.get('window').width
-    if (!Number.isFinite(width) || width <= 0) return
-
-    const current = store.getState()
-    const next = getResponsiveLayoutState({
-        width,
-        sidebarExpanded: current.loggedUser.sidebarExpanded,
-        route: current.route,
-        preferCompactNavigation: isAnnaMode(),
-    })
-    const dispatches = []
-
-    if (current.showWebSideBar.visible && next.smallScreenNavigation) dispatches.push(hideWebSideBar())
-    if (current.isMiddleScreen !== next.isMiddleScreen) dispatches.push(toggleMiddleScreen(next.isMiddleScreen))
-    if (current.isMiddleScreenNoteDV !== next.isMiddleScreenNoteDV) {
-        dispatches.push(toggleMiddleScreenNoteDV(next.isMiddleScreenNoteDV))
-    }
-    if (current.smallScreen !== next.smallScreen) dispatches.push(toggleSmallScreen(next.smallScreen))
-    if (current.smallScreenNavigation !== next.smallScreenNavigation) {
-        dispatches.push(toggleSmallScreenNavigation(next.smallScreenNavigation))
-    }
-    if (current.reallySmallScreenNavigation !== next.reallySmallScreenNavigation) {
-        dispatches.push(toggleReallySmallScreenNavigation(next.reallySmallScreenNavigation))
-    }
-    if (current.smallScreenNavSidebarCollapsed !== next.smallScreenNavSidebarCollapsed) {
-        dispatches.push(toggleSmallScreenNavSidebarCollapsed(next.smallScreenNavSidebarCollapsed))
-    }
-
-    if (dispatches.length > 0) store.dispatch(dispatches)
-}
 
 const onLayoutChange = layout => {
     const {
@@ -104,16 +57,22 @@ const onLayoutChange = layout => {
         smallScreen,
         isMiddleScreenNoteDV,
         showWebSideBar,
+        route,
+        loggedUser,
     } = store.getState()
+
+    const { sidebarExpanded } = loggedUser
+    const screenBreakpointNav = sidebarExpanded ? SCREEN_BREAKPOINT_NAV : SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
 
     let widthScreenNavigation = layout.nativeEvent.layout.width
     if (widthScreenNavigation === 0) {
         widthScreenNavigation = Dimensions.get('window').width
     }
 
-    const next = getCurrentResponsiveLayout(widthScreenNavigation)
+    let widthScreen =
+        widthScreenNavigation < screenBreakpointNav ? widthScreenNavigation : widthScreenNavigation - SIDEBAR_MENU_WIDTH
 
-    if (next.smallScreenNavigation) {
+    if (widthScreenNavigation <= screenBreakpointNav) {
         //This conditional is to avoid setting the state every time the layout changes while the condition is false
         if (showWebSideBar.visible && !smallScreenNavigation) {
             store.dispatch(hideWebSideBar())
@@ -126,7 +85,7 @@ const onLayoutChange = layout => {
 
     const dispatches = []
 
-    if (next.reallySmallScreenNavigation) {
+    if (widthScreenNavigation <= SCREEN_SMALL_BREAKPOINT_NAV) {
         if (!reallySmallScreenNavigation) {
             dispatches.push(toggleReallySmallScreenNavigation(true))
         }
@@ -135,7 +94,7 @@ const onLayoutChange = layout => {
     }
 
     // For screen size under breakpoint navigation
-    if (next.smallScreenNavigation) {
+    if (widthScreenNavigation <= screenBreakpointNav) {
         if (!smallScreenNavigation) {
             dispatches.push(toggleSmallScreenNavigation(true))
         }
@@ -144,7 +103,7 @@ const onLayoutChange = layout => {
     }
 
     // For screen size under breakpoint navigation sidebar collapsed
-    if (next.smallScreenNavSidebarCollapsed) {
+    if (widthScreenNavigation <= SCREEN_BREAKPOINT_NAV) {
         if (!smallScreenNavSidebarCollapsed) {
             dispatches.push(toggleSmallScreenNavSidebarCollapsed(true))
         }
@@ -155,7 +114,7 @@ const onLayoutChange = layout => {
     dispatches.length > 0 && store.dispatch(dispatches)
 
     // For screen size under breakpoint
-    if (next.smallScreen) {
+    if (widthScreen <= SCREEN_BREAKPOINT) {
         if (!smallScreen) {
             store.dispatch(toggleSmallScreen(true))
         }
@@ -163,7 +122,7 @@ const onLayoutChange = layout => {
         store.dispatch(toggleSmallScreen(false))
     }
 
-    if (next.isMiddleScreen) {
+    if (widthScreen <= SCREEN_BREAKPOINT_MIDDLE - SIDEBAR_MENU_WIDTH) {
         if (!isMiddleScreen) store.dispatch(toggleMiddleScreen(true))
     } else {
         if (isMiddleScreen) store.dispatch(toggleMiddleScreen(false))
@@ -171,7 +130,17 @@ const onLayoutChange = layout => {
 
     // This specific breakpoint allows a nice responsive behavior in NoteDV
     // The Note Toolbar and Tag List needs to jump to mobile earlier than the rest of view
-    if (next.isMiddleScreenNoteDV) {
+    if (
+        widthScreen <= SCREEN_BREAKPOINT_MIDDLE &&
+        (route === 'NotesDetailedView' ||
+            route === 'ChatDetailedView' ||
+            route === 'ContactDetailedView' ||
+            route === 'GoalDetailedView' ||
+            route === 'SkillDetailedView' ||
+            route === 'AssistantDetailedView' ||
+            route === 'TaskDetailedView' ||
+            route === 'UserDetailedView')
+    ) {
         if (!isMiddleScreenNoteDV) {
             store.dispatch(toggleMiddleScreenNoteDV(true))
         }
@@ -228,13 +197,6 @@ const ROUTES = {
 // legacy ref callback stays harmless. Each navigation remounts the subtree via
 // the state id key — the old navigator reset the stack on every navigate, so
 // screens rely on fresh mounts.
-// react-native-web's lists register a scroll-blocking (non-passive) `wheel` listener on
-// every mount, which Chrome reports as a `[Violation]` each time. Unlike the listeners
-// installed in `componentDidMount` below this is a PROTOTYPE patch and has to land before
-// the first list mounts — `componentDidMount` runs children-first, so from there it would
-// miss every list on the first screen. Module scope is the only place early enough.
-installPassiveVirtualizedListWheel()
-
 export class AppContainer extends React.Component {
     state = NavigationService.getCurrentState()
 
@@ -258,25 +220,6 @@ export class AppContainer extends React.Component {
         // one component that mounts once for the whole app and owns its
         // document-level listeners.
         this.stopEscapeStack = installEscapeStack()
-        // Connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1): feeds the
-        // `connectionState` redux slice from the browser online/offline events.
-        // Installed here for the same reason as the listeners above.
-        this.stopConnectionStateListener = installConnectionStateListener()
-        // iOS Capacitor shell: confirm this boot as healthy (rollback guard)
-        // and track web deploys over the air. No-op everywhere else.
-        // It returns the "check for a new web deploy" callback rather than
-        // listening for itself, so the resume signal keeps its single owner below.
-        const checkShellOtaUpdate = installShellOtaUpdater()
-        // Connection health (PT-4660): `connectionState` above only reports what the
-        // BROWSER believes. These two add what the app can actually prove — a resume
-        // signal that coalesces visibilitychange/pageshow/focus into one event, and a
-        // monitor that probes the server when the connection looks suspect. Installed
-        // here for the same reason as the listeners above.
-        this.stopConnectionHealthMonitor = installConnectionHealthMonitor()
-        // The OTA check rides that coalesced signal: `pageshow` after a bfcache
-        // restore is the only return signal an iOS home-screen shell reliably
-        // sends, and it is already handled here.
-        this.stopAppResumeListener = installAppResumeListener({ onResume: checkShellOtaUpdate })
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -295,9 +238,6 @@ export class AppContainer extends React.Component {
         document.removeEventListener('touchstart', this.handleDomPointerDown, { capture: true })
         this.stopVirtualKeyboardViewport && this.stopVirtualKeyboardViewport()
         this.stopEscapeStack && this.stopEscapeStack()
-        this.stopConnectionStateListener && this.stopConnectionStateListener()
-        this.stopConnectionHealthMonitor && this.stopConnectionHealthMonitor()
-        this.stopAppResumeListener && this.stopAppResumeListener()
     }
 
     // Feeds every press on the page into the dismissible-modal system with the
@@ -325,33 +265,9 @@ export class AppContainer extends React.Component {
             </React.Fragment>
         )
 
-        const user = store.getState().loggedUser
-        if (
-            user?.uid &&
-            !user.isAnonymous &&
-            ![
-                'LoginScreen',
-                'Onboarding',
-                'WhatsAppOnboarding',
-                'AppAuth',
-                'PaymentSuccess',
-                'MeetingBooking',
-            ].includes(routeName)
-        ) {
-            return (
-                <AnnaShell key={user.uid} routeId={id}>
-                    <React.Fragment key={id}>
-                        {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
-                        <ShellInsetPainter routeName={routeName} />
-                    </React.Fragment>
-                </AnnaShell>
-            )
-        }
-
         return (
             <React.Fragment key={id}>
                 {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
-                <ShellInsetPainter routeName={routeName} />
             </React.Fragment>
         )
     }

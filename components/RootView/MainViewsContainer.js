@@ -14,20 +14,13 @@ import {
     DV_TAB_ROOT_TASKS,
     DV_TAB_ROOT_UPDATES,
     DV_TAB_ROOT_CHATS,
-    DV_TAB_ROOT_WIKI,
-    DV_TAB_ROOT_ARTIFACTS,
 } from '../../utils/TabNavigationConstants'
 import ChatsView from '../ChatsView/ChatsView'
-import WikiView from '../WikiView/WikiView'
-import ArtifactsView from '../ArtifactsView/ArtifactsView'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import RootSectionNavigation from './RootSectionNavigation'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
-import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
-import { showConnectionChipBelowHeader } from '../TopBar/connectionChipPlacement'
-import FloatingAddTaskButton from '../TaskListView/FloatingAddTaskButton'
 
 export const isMainViewScrollEnabled = state => !(state.smallScreen && state.showFloatPopup > 0)
 
@@ -37,22 +30,16 @@ export default function MainViewsContainer() {
     const enableScroll = useSelector(isMainViewScrollEnabled)
     // smallScreen is the <= 970px content breakpoint, which covers phone, tablet,
     // and compact desktop layouts. React Native Web blocks touch/wheel events here.
-    // The connection chip uses its own, narrower band (AT-2426) — see
-    // `showConnectionChipBelowHeader`.
-    const chipBelowHeader = useSelector(showConnectionChipBelowHeader)
 
     const { overlay } = useCollapsibleSidebar()
     const showGlobalRootSectionNavigation = checkIfSelectedAllProjects(selectedProjectIndex)
 
     return (
         <CustomScrollView
-            nativeID="main-task-list-viewport"
             style={[localStyles.subContainer, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}
             scrollEnabled={enableScroll}
-            fixedChildren={selectedTab === DV_TAB_ROOT_TASKS ? <FloatingAddTaskButton /> : null}
         >
             <View>
-                {chipBelowHeader && <ConnectionStatusChip belowHeader />}
                 {showGlobalRootSectionNavigation && <RootSectionNavigation />}
                 {(() => {
                     switch (selectedTab) {
@@ -68,10 +55,6 @@ export default function MainViewsContainer() {
                             return <ChatsView />
                         case DV_TAB_ROOT_UPDATES:
                             return <RootViewFeedsGlobalProject />
-                        case DV_TAB_ROOT_WIKI:
-                            return <WikiView />
-                        case DV_TAB_ROOT_ARTIFACTS:
-                            return <ArtifactsView />
                     }
                 })()}
             </View>

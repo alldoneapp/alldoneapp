@@ -54,7 +54,7 @@ export default function DvContainer({ projectId, note, navigation, updateObjectS
         <>
             {selectedTab === DV_TAB_NOTE_EDITOR ? (
                 <View ref={scrollRef} style={{ flex: 1 }}>
-                    {accessGranted && !mobile && !isMiddleScreen && (
+                    {accessGranted && !isMiddleScreen && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton projectId={projectId} note={note} />
                         </View>
@@ -107,7 +107,7 @@ export default function DvContainer({ projectId, note, navigation, updateObjectS
                         overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH },
                     ]}
                 >
-                    {accessGranted && !mobile && !isMiddleScreen && (
+                    {accessGranted && !isMiddleScreen && (
                         <View style={localStyles.backButton}>
                             <BackButton projectId={projectId} note={note} />
                         </View>

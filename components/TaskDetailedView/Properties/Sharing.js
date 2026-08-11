@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../Icon'
 import styles, { colors, em2px } from '../../styles/global'
 import GhostButton from '../../UIControls/GhostButton'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import SharingPopup, {
     getSharingOptionText,
     SHARE_ALL_SEE_MEMBER_EDIT,
@@ -54,7 +54,7 @@ export default function Sharing({ projectId, task, disabled }) {
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>Share</Text>
             <View style={{ marginLeft: 'auto' }}>
-                <AppPopover
+                <Popover
                     content={
                         <SharingPopup
                             closeModal={closeModal}
@@ -79,7 +79,7 @@ export default function Sharing({ projectId, task, disabled }) {
                         onPress={openModal}
                         disabled={disabled}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

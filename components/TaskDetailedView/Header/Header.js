@@ -26,21 +26,15 @@ const Header = ({
 }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const photoURL = useSelector(state => state.assignee.photoURL)
-    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const taskTitleInEditMode = useSelector(state => state.taskTitleInEditMode)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     return (
-        <View
-            style={[
-                localStyles.container,
-                isFullscreen && { paddingBottom: 8 },
-                isFullscreen && !accessGranted && localStyles.sharedChatContainer,
-            ]}
-        >
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {inlineBackButton && accessGranted && (
+        <View style={[localStyles.container, isFullscreen && { paddingBottom: 8 }]}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+                {isMiddleScreen && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton projectId={projectId} task={task} />
                     </View>
@@ -84,7 +78,7 @@ const Header = ({
                     />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && accessGranted && (
+            {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -109,9 +103,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         justifyContent: 'space-between',
         paddingBottom: 24,
-    },
-    sharedChatContainer: {
-        minHeight: 0,
     },
     upperHeader: {
         flexDirection: 'row',

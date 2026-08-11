@@ -20,7 +20,6 @@ import {
     sanitizeCalendarProjectRoutingConfigForSave,
 } from './CalendarProjectRoutingSettings.helpers'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../../functions/Assistant/selectableAssistantModels'
-import AssistantModelGoldRate from '../../../../UIComponents/AssistantModelGoldRate'
 
 function stopEnterPropagation(event) {
     const key = event?.nativeEvent?.key || event?.key
@@ -55,7 +54,6 @@ function ModelSelector({ value, disabled, onChange }) {
                             {option.name}
                         </Text>
                         <Text style={localStyles.modelOptionDescription}>{translate(option.descriptionKey)}</Text>
-                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                     </TouchableOpacity>
                 )
             })}
@@ -320,52 +318,6 @@ export default function CalendarProjectRoutingSettings({
                             onChange={model => updateConfig({ model })}
                         />
                     </View>
-                    <View style={localStyles.section}>
-                        <Text style={localStyles.inputLabel}>
-                            {translate('Learned rules from your calendar moves')}
-                        </Text>
-                        <CustomTextInput3
-                            containerStyle={[localStyles.input, localStyles.learnedRulesInput]}
-                            initialTextExtended={config.learnedRules}
-                            placeholder={translate('CalendarLearnedRulesPlaceholder')}
-                            placeholderTextColor={colors.Text03}
-                            multiline={true}
-                            onChangeText={learnedRules => updateConfig({ learnedRules })}
-                            styleTheme={NEW_TOPIC_MODAL_THEME}
-                            disabledTabKey={true}
-                            disabledTags={true}
-                            disabledEdition={!canManage}
-                            externalTextStyle={localStyles.multilineInputText}
-                            keepBreakLines={true}
-                            allowPlainEnterBreakLines={true}
-                            onKeyPress={stopEnterPropagation}
-                            key={`calendar-routing-learned-rules-${projectId}-${connectedEmail}`}
-                        />
-                        <Text style={localStyles.helperText}>{translate('CalendarLearnedRulesDescription')}</Text>
-                    </View>
-                    <View style={localStyles.section}>
-                        <Text style={localStyles.inputLabel}>
-                            {translate('Learned Goal rules from your calendar changes')}
-                        </Text>
-                        <CustomTextInput3
-                            containerStyle={[localStyles.input, localStyles.learnedRulesInput]}
-                            initialTextExtended={config.learnedGoalRules}
-                            placeholder={translate('CalendarLearnedGoalRulesPlaceholder')}
-                            placeholderTextColor={colors.Text03}
-                            multiline={true}
-                            onChangeText={learnedGoalRules => updateConfig({ learnedGoalRules })}
-                            styleTheme={NEW_TOPIC_MODAL_THEME}
-                            disabledTabKey={true}
-                            disabledTags={true}
-                            disabledEdition={!canManage}
-                            externalTextStyle={localStyles.multilineInputText}
-                            keepBreakLines={true}
-                            allowPlainEnterBreakLines={true}
-                            onKeyPress={stopEnterPropagation}
-                            key={`calendar-goal-routing-learned-rules-${projectId}-${connectedEmail}`}
-                        />
-                        <Text style={localStyles.helperText}>{translate('CalendarLearnedGoalRulesDescription')}</Text>
-                    </View>
                     <ProjectContextPreview projectDefinitions={projectDefinitions} />
                 </>
             ) : null}
@@ -434,10 +386,6 @@ const localStyles = StyleSheet.create({
     },
     textArea: {
         minHeight: 156,
-    },
-    learnedRulesInput: {
-        minHeight: 120,
-        padding: 8,
     },
     multilineInput: {
         padding: 8,

@@ -1,6 +1,4 @@
-import { DAILY_APP_LOAD_DATE_STORAGE_KEY, dayReloadCoordinator } from './dayReloadCoordinator'
-import { recordNewDayEvent } from './newDayDiagnostics'
-export { DAILY_APP_LOAD_DATE_STORAGE_KEY } from './dayReloadCoordinator'
+export const DAILY_APP_LOAD_DATE_STORAGE_KEY = 'alldone.lastFullAppLoadLocalDate'
 
 const MIDNIGHT_GRACE_PERIOD = 1000
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -60,7 +58,6 @@ export function startDailyAppReload({
     reload,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
-    coordinator = dayReloadCoordinator,
 } = {}) {
     if (!windowObject || !documentObject) return () => {}
 
@@ -75,11 +72,6 @@ export function startDailyAppReload({
 
     const loadedDate = getLocalCalendarDate(now())
     const reloadPage = reload || (() => windowObject.location.reload())
-    // Reloading while offline gains nothing (with the service worker precache the
-    // shell would boot, but the day's fresh data cannot load) and loses the page
-    // state the user still has. Defer to the 'online' listener below instead. A
-    // window object without a navigator (tests, non-browser) counts as online.
-    const isOffline = () => !!windowObject.navigator && windowObject.navigator.onLine === false
     let reloadStarted = false
     let timerId
 
@@ -91,22 +83,16 @@ export function startDailyAppReload({
     if (!needsStartupReload) storeAppLoadDate(localStorage, loadedDate)
 
     const reloadIfNewLocalDay = () => {
-        if (reloadStarted || documentObject.visibilityState === 'hidden' || isOffline()) return
+        if (reloadStarted || documentObject.visibilityState === 'hidden') return
 
         const currentDate = getLocalCalendarDate(now())
         if (!needsStartupReload && currentDate <= loadedDate) return
 
         // Mark before navigating and latch in memory. Both are intentional:
         // navigation can be delayed, while storage can be unavailable.
-        coordinator.request(
-            () => {
-                reloadStarted = true
-                storeAppLoadDate(localStorage, getLocalCalendarDate(now()))
-                recordNewDayEvent('reload', { reason: 'daily-lifecycle' })
-                reloadPage()
-            },
-            () => documentObject.visibilityState !== 'hidden' && !isOffline()
-        )
+        reloadStarted = true
+        storeAppLoadDate(localStorage, currentDate)
+        reloadPage()
     }
 
     const scheduleMidnightCheck = () => {
@@ -123,17 +109,15 @@ export function startDailyAppReload({
 
     // Mark before navigating. The replacement document reads today's marker,
     // which is the persisted half of the reload-loop guard. A browser-restored
-    // background tab waits until it actually becomes visible; an offline one
-    // falls through to the listeners below and reloads when connectivity is back.
-    if (needsStartupReload && documentObject.visibilityState !== 'hidden' && !isOffline()) {
+    // background tab waits until it actually becomes visible.
+    if (needsStartupReload && documentObject.visibilityState !== 'hidden') {
         reloadIfNewLocalDay()
-        if (reloadStarted) return () => {}
+        return () => {}
     }
 
     documentObject.addEventListener('visibilitychange', handleVisibilityChange)
     windowObject.addEventListener('focus', reloadIfNewLocalDay)
     windowObject.addEventListener('pageshow', reloadIfNewLocalDay)
-    windowObject.addEventListener('online', reloadIfNewLocalDay)
     scheduleMidnightCheck()
 
     return () => {
@@ -141,6 +125,5 @@ export function startDailyAppReload({
         documentObject.removeEventListener('visibilitychange', handleVisibilityChange)
         windowObject.removeEventListener('focus', reloadIfNewLocalDay)
         windowObject.removeEventListener('pageshow', reloadIfNewLocalDay)
-        windowObject.removeEventListener('online', reloadIfNewLocalDay)
     }
 }

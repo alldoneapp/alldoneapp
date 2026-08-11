@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import ObjectCommentsTag from '../Tags/ObjectCommentsTag'
@@ -125,7 +125,7 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
     }
 
     return showModal && !isUnmountedRef.current ? (
-        <AppPopover
+        <Popover
             key={`goal-comments-${goal.id}-${showModal}`}
             content={
                 <RichCommentModal
@@ -137,7 +137,6 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                     userGettingKarmaId=""
                     showBotButton={true}
                     objectName={goal.name}
-                    initialObject={goal}
                     externalAssistantId={goal.assistantId}
                 />
             }
@@ -159,7 +158,7 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                 style={tagStyle}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     ) : (
         <ObjectCommentsTag
             commentsData={commentsData}

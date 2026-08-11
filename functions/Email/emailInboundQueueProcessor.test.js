@@ -3,10 +3,6 @@
 const mockGetAssistantForChat = jest.fn().mockResolvedValue({
     emailSignature: 'Custom signature\nhttps://example.com',
 })
-const mockMaybeCreateGuestMeetingGrant = jest.fn().mockResolvedValue({
-    created: false,
-    reason: 'missing_availability_context',
-})
 
 jest.mock('firebase-admin', () => {
     const auditSet = jest.fn().mockResolvedValue(undefined)
@@ -74,10 +70,6 @@ jest.mock('./emailAssistantBridge', () => ({
     processAnnaEmailAssistantMessage: jest.fn().mockResolvedValue('Processed'),
 }))
 
-jest.mock('./emailGuestMeetingGrant', () => ({
-    maybeCreateGuestMeetingGrant: mockMaybeCreateGuestMeetingGrant,
-}))
-
 jest.mock('./emailDailyTopic', () => ({
     getOrCreateDailyEmailTopic: jest.fn().mockResolvedValue({
         chatId: 'chat-1',
@@ -88,7 +80,6 @@ jest.mock('./emailDailyTopic', () => ({
 }))
 
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
-const { maybeCreateGuestMeetingGrant } = require('./emailGuestMeetingGrant')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { getOrCreateDailyEmailTopic, storeEmailUserMessageInTopic } = require('./emailDailyTopic')
@@ -99,10 +90,6 @@ describe('emailInboundQueueProcessor', () => {
         jest.clearAllMocks()
         mockGetAssistantForChat.mockResolvedValue({
             emailSignature: 'Custom signature\nhttps://example.com',
-        })
-        mockMaybeCreateGuestMeetingGrant.mockResolvedValue({
-            created: false,
-            reason: 'missing_availability_context',
         })
     })
 
@@ -156,7 +143,6 @@ describe('emailInboundQueueProcessor', () => {
                     source: 'email',
                     messageId: 'msg-1',
                 }),
-                autoAttachInvoice: true,
                 fromEmail: 'sender@example.com',
                 toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
                 ccEmails: ['observer@example.com'],
@@ -172,47 +158,6 @@ describe('emailInboundQueueProcessor', () => {
             })
         )
         expect(getAssistantForChat).toHaveBeenCalledWith('project-1', 'assistant-1', 'user-1')
-    })
-
-    test.each([false, true])('keeps BCC delivery private on success or failure (failure=%s)', async fail => {
-        const queueRef = {
-            delete: jest.fn().mockResolvedValue(undefined),
-            update: jest.fn().mockResolvedValue(undefined),
-        }
-        if (fail) processAnnaEmailAssistantMessage.mockRejectedValueOnce(new Error('Processing failed'))
-        await __private__.processQueueItem('user-1', {
-            id: 'bcc-message',
-            ref: queueRef,
-            data: {
-                projectId: 'project-1',
-                assistantId: 'assistant-1',
-                fromEmail: 'sender@example.com',
-                toEmails: ['teammate@example.com'],
-                ccEmails: ['observer@example.com'],
-                subject: 'Private request',
-                textBody: 'Please create a task',
-                attachments: [],
-            },
-        })
-        expect(getOrCreateDailyEmailTopic).toHaveBeenCalledWith('user-1', 'project-1', 'assistant-1', {
-            ownerEmail: 'sender@example.com',
-            participantEmails: ['sender@example.com'],
-        })
-        expect(processAnnaEmailAssistantMessage).toHaveBeenCalledWith(
-            'user-1',
-            'project-1',
-            'chat-1',
-            expect.any(String),
-            'assistant-1',
-            expect.objectContaining({ replyToSenderOnly: true, hasAdditionalRecipients: false })
-        )
-        expect(sendAnnaEmailReply).toHaveBeenCalledTimes(1)
-        expect(sendAnnaEmailReply).toHaveBeenCalledWith(
-            expect.objectContaining({
-                toEmails: ['sender@example.com'],
-                ccEmails: [],
-            })
-        )
     })
 
     test('continues without attachment payload when no supported attachment exists', async () => {
@@ -248,72 +193,7 @@ describe('emailInboundQueueProcessor', () => {
             'assistant-1',
             expect.objectContaining({
                 initialPendingAttachmentPayload: null,
-                autoAttachInvoice: false,
             })
         )
-    })
-
-    test('persists a one-purpose guest grant after sending safe availability options', async () => {
-        const queueRef = {
-            delete: jest.fn().mockResolvedValue(undefined),
-        }
-        const safeActionContext = {
-            type: 'calendar_availability',
-            timeZone: 'Europe/Berlin',
-            durationMinutes: 30,
-            options: [
-                {
-                    start: '2026-08-21T09:00:00+02:00',
-                    end: '2026-08-21T09:30:00+02:00',
-                },
-            ],
-        }
-        processAnnaEmailAssistantMessage.mockResolvedValueOnce({
-            responseText: 'Karsten is available Friday at 09:00.',
-            guestMeetingContext: safeActionContext,
-            canCreateCalendarEvent: true,
-            calendarOwnerName: 'Karsten',
-            language: 'de',
-        })
-        sendAnnaEmailReply.mockResolvedValueOnce({
-            success: true,
-            messageId: '<anna-options-1@brevo.example>',
-        })
-        mockMaybeCreateGuestMeetingGrant.mockResolvedValueOnce({
-            created: true,
-            grantId: 'grant-1',
-        })
-
-        await __private__.processQueueItem('user-1', {
-            id: 'msg-meeting',
-            ref: queueRef,
-            data: {
-                projectId: 'project-1',
-                assistantId: 'assistant-1',
-                messageId: 'msg-meeting',
-                fromEmail: 'owner@example.com',
-                toEmails: ['anna@alldoneapp.com'],
-                ccEmails: ['guest@example.com'],
-                subject: 'Agentic AI Leadership',
-                textBody: 'Please offer Ralf some meeting times.',
-                attachments: [],
-            },
-        })
-
-        expect(maybeCreateGuestMeetingGrant).toHaveBeenCalledWith({
-            ownerUserId: 'user-1',
-            projectId: 'project-1',
-            assistantId: 'assistant-1',
-            ownerEmail: 'owner@example.com',
-            ownerName: 'Karsten',
-            language: 'de',
-            subject: 'Agentic AI Leadership',
-            ownerRequestText: 'Please offer Ralf some meeting times.',
-            inboundMessageId: 'msg-meeting',
-            outboundMessageId: '<anna-options-1@brevo.example>',
-            recipientEmails: ['owner@example.com', 'guest@example.com'],
-            safeActionContext,
-            canCreateCalendarEvent: true,
-        })
     })
 })

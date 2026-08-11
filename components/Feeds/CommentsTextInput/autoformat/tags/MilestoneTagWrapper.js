@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { View, TouchableOpacity } from 'react-native'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import MilestoneDateTag from '../../../../GoalsView/MilestoneDateTag'
 import moment from 'moment'
@@ -78,7 +78,7 @@ export default function MilestoneTagWrapper({ milestoneId, text }) {
     }, [])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 modalsState === ORGANIZATION_MODAL_IS_OPEN ? (
                     <GoalOrganizationModal
@@ -100,10 +100,9 @@ export default function MilestoneTagWrapper({ milestoneId, text }) {
                         openOrganizationModal={openOrganizationModal}
                         ownerId={milestone.ownerId}
                     />
-                ) : // null on purpose: with the modals closed there is nothing to
-                // show, and AppPopover's sheet guard needs falsy content to know
-                // it must not open an empty bottom sheet.
-                null
+                ) : (
+                    <View />
+                )
             }
             align={'start'}
             position={['bottom']}
@@ -118,6 +117,6 @@ export default function MilestoneTagWrapper({ milestoneId, text }) {
             ) : (
                 <View />
             )}
-        </AppPopover>
+        </Popover>
     )
 }

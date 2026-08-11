@@ -11,7 +11,6 @@ import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import ActionButton from './ActionButton'
 import ConnectedUserData from './ConnectedUserData'
 import CalendarProjectRoutingSettings from './CalendarProjectRoutingSettings'
-import { getSafeAreaEdgeOffsets, getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 import {
     PROVIDER_GOOGLE,
     PROVIDER_MICROSOFT,
@@ -21,6 +20,7 @@ import {
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
+const MODAL_VERTICAL_MARGIN = 16
 const MODAL_PADDING = 16
 const MAX_MODAL_WIDTH = 760
 
@@ -39,14 +39,9 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, provider, 
     const isConnectedAndSignedIn = isConnected && isSignedIn
     const { width: windowWidth, height: windowHeight } = windowDimensions
     const horizontalMargin = smallScreenNavigation ? MOBILE_MODAL_HORIZONTAL_MARGIN : MODAL_HORIZONTAL_MARGIN
-    const { left: safeAreaLeft, right: safeAreaRight } = getSafeAreaEdgeOffsets()
-    const availableWidth = Math.max(windowWidth - horizontalMargin * 2 - safeAreaLeft - safeAreaRight, 0)
+    const availableWidth = Math.max(windowWidth - horizontalMargin * 2, 0)
     const containerWidth = Math.min(availableWidth, MAX_MODAL_WIDTH)
-    // AT-2339: the previous cap was `windowHeight - 32`, and the shared
-    // MODAL_SAFE_AREA_GAP is exactly that 32 — so this is a drop-in that
-    // additionally subtracts the iOS insets. Zero insets (desktop, Android,
-    // older iPhones) reproduce the previous number exactly.
-    const containerMaxHeight = getSafeAreaModalMaxHeight(windowHeight)
+    const containerMaxHeight = Math.max(windowHeight - MODAL_VERTICAL_MARGIN * 2, 0)
     const scrollMaxHeight = Math.max(containerMaxHeight - MODAL_PADDING * 2, 0)
 
     useEffect(() => {

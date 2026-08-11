@@ -229,14 +229,6 @@ export const setDismissibleComponent = dismissibleComponent => {
     return action
 }
 
-export const startTaskEditor = () => ({
-    type: 'Start task editor',
-})
-
-export const finishTaskEditor = () => ({
-    type: 'Finish task editor',
-})
-
 export const setShortcutFocusTasks = shortcutFocusTasks => {
     const action = {
         type: 'Set shortcut focus tasks',
@@ -461,15 +453,6 @@ export const setInitialUrl = url => {
     return action
 }
 
-export const setPendingWebShareTarget = payload => ({
-    type: 'Set pending web share target',
-    payload,
-})
-
-export const clearPendingWebShareTarget = () => ({
-    type: 'Clear pending web share target',
-})
-
 export const setTaskInDetailView = task => {
     const action = {
         type: 'Set task in detail view',
@@ -572,6 +555,15 @@ export const setContactsInProject = (projectId, contacts) => {
     return action
 }
 
+export const setMeetingsInProject = (projectId, meetings) => {
+    const action = {
+        type: 'Set meetings in project',
+        projectId,
+        meetings,
+    }
+    return action
+}
+
 export const setWorkstreamsInProject = (projectId, workstreams) => {
     const action = {
         type: 'Set workstreams in project',
@@ -586,18 +578,6 @@ export const setAssistantsInProject = (projectId, assistants) => {
         type: 'Set assistants in project',
         projectId,
         assistants,
-    }
-    return action
-}
-
-// AT-2430: the assistant the assistant line should use inside `projectId`, chosen with the
-// line's own switch control. Pass a falsy `assistantId` to drop the choice and fall back to the
-// project's configured assistant.
-export const setAssistantLineAssistant = (projectId, assistantId) => {
-    const action = {
-        type: 'Set assistant line assistant',
-        projectId,
-        assistantId,
     }
     return action
 }
@@ -976,22 +956,6 @@ export const setActiveChatData = (projectId, chatId, chatType) => {
     return action
 }
 
-export const setConnectionState = connectionState => {
-    const action = {
-        type: 'Set connection state',
-        connectionState,
-    }
-    return action
-}
-
-export const setConnectionHealth = connectionHealth => {
-    const action = {
-        type: 'Set connection health',
-        connectionHealth,
-    }
-    return action
-}
-
 export const setShowNewDayNotification = show => {
     const action = {
         type: 'Set show new day notification',
@@ -1160,6 +1124,30 @@ export const updateScreenRecordingModalData = (visible, projectId) => {
     const action = {
         type: 'Update screen recording modal data',
         screenRecordingModalData: { visible, projectId },
+    }
+    return action
+}
+
+export const updateChatGoogleMeetModalData = (visible, projectId, userId, userIds, title) => {
+    const action = {
+        type: 'Update chat google meet modal data',
+        chatGoogleMeetModalData: { visible, projectId, userId, userIds, title },
+    }
+    return action
+}
+
+export const updateGoogleMeetModalData = (visible, projectId, userId) => {
+    const action = {
+        type: 'Update google meet modal data',
+        googleMeetModalData: { visible, projectId, userId },
+    }
+    return action
+}
+
+export const updateGoogleMeetNotificationModalData = (visible, projectId, email, meeting) => {
+    const action = {
+        type: 'Update google meet notification modal data',
+        googleMeetNotificationModalData: { visible, projectId, email, meeting },
     }
     return action
 }
@@ -2017,14 +2005,6 @@ export const setLaterTasksExpanded = laterTasksExpanded => {
     return action
 }
 
-export const setTaskListSingleLoading = (instanceKey, loading) => {
-    return {
-        type: 'Set task list single loading',
-        instanceKey,
-        loading,
-    }
-}
-
 export const setSomedayTasksExpanded = somedayTasksExpanded => {
     const action = {
         type: 'Set someday tasks expanded',
@@ -2045,27 +2025,6 @@ export const setOpenTasksAmount = openTasksAmount => {
     const action = {
         type: 'Set open tasks amount',
         openTasksAmount,
-    }
-    return action
-}
-
-export const setTaskColdStartEmptyToday = emptyToday => ({
-    type: 'Set task cold start empty today',
-    emptyToday,
-})
-
-/**
- * AT-2445 — "has every open-task count watcher delivered its first snapshot?".
- *
- * `openTasksAmount` is a running total accumulated across one Firestore listener per project, and
- * it is forced back to 0 whenever those listeners are rebuilt. Without this flag, `!openTasksAmount`
- * is true for the whole loading window of every visit to the all-projects board, which is
- * indistinguishable from a genuinely empty inbox.
- */
-export const setOpenTasksAmountLoaded = openTasksAmountLoaded => {
-    const action = {
-        type: 'Set open tasks amount loaded',
-        openTasksAmountLoaded,
     }
     return action
 }
@@ -2719,20 +2678,6 @@ export const navigateToNewProject = (project, users, workstreams, contacts, assi
     return action
 }
 
-// Data-only sibling of 'Navigate to new project': inserts a project (plus its sub-stores) that
-// was dropped from the initial load by a transient read failure, WITHOUT navigating to it.
-export const addProjectData = (project, users, workstreams, contacts, assistants) => {
-    const action = {
-        type: 'Add project data',
-        project,
-        users,
-        workstreams,
-        contacts,
-        assistants,
-    }
-    return action
-}
-
 export const navigateToAllProjectsTasks = options => {
     const action = {
         type: 'Navigate to all projects tasks',
@@ -2761,13 +2706,6 @@ export const navigateToAllProjectsNotes = options => {
     const action = {
         type: 'Navigate to all projects notes',
         options: options || {},
-    }
-    return action
-}
-
-export const navigateToAllProjectsArtifacts = () => {
-    const action = {
-        type: 'Navigate to all projects artifacts',
     }
     return action
 }
@@ -3084,6 +3022,20 @@ export const setShowAllProjectsByTime = showAllProjectsByTime => {
     const action = {
         type: 'Set show all projects by time',
         showAllProjectsByTime,
+    }
+    return action
+}
+
+export const showTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Show task completion animation',
+    }
+    return action
+}
+
+export const hideTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Hide task completion animation',
     }
     return action
 }

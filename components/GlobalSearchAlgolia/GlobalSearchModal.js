@@ -1,13 +1,9 @@
-import { runWithLoading, INITIAL_LOAD_TIMEOUT_MS } from '../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors, hexColorToRGBa } from '../styles/global'
-import { translate } from '../../i18n/TranslationService'
-import { MODAL_EDGE_GAP } from '../styles/modals'
-import useModalSizing from '../../hooks/useModalSizing'
+import styles, { colors, hexColorToRGBa, POPOVER_MOBILE_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
 import store from '../../redux/store'
 import {
     blockBackgroundTabShortcut,
@@ -17,6 +13,8 @@ import {
     setBlockShortcuts,
     setGlobalSearchResults,
     setSearchText,
+    startLoadingData,
+    stopLoadingData,
     unblockBackgroundTabShortcut,
 } from '../../redux/actions'
 import Icon from '../Icon'
@@ -30,6 +28,7 @@ import {
     MENTION_MODAL_TASKS_TAB,
     MENTION_MODAL_TOPICS_TAB,
 } from '../Feeds/CommentsTextInput/textInputHelper'
+import algoliasearch from 'algoliasearch'
 import {
     CHATS_INDEX_NAME_PREFIX,
     CONTACTS_INDEX_NAME_PREFIX,
@@ -37,102 +36,52 @@ import {
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
-import { ARTIFACTS_INDEX_NAME_PREFIX, GLOBAL_SEARCH_ARTIFACTS_TAB } from './searchIndexes'
-import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
-import { multiSearchTypesense, warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
+import { buildSearchFilters } from './searchFilters'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
-import SearchFilterChips from './Filter/SearchFilterChips'
+import ProjectFilter from './Filter/ProjectFilter'
+import ActiveFullSearch from './Filter/ActiveFullSearch'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
-    ALL_ARCHIVED_PROJECTS_OPTION,
     ALL_PROJECTS_OPTION,
 } from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
-import { isProjectPickerSentinel } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
-import { getAllUserProjects } from '../../utils/backends/firestore'
+import {
+    watchUserProjects,
+    unwatch,
+    runHttpsCallableFunction,
+    spentGold,
+    getAllUserProjects,
+} from '../../utils/backends/firestore'
+import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
-import BottomSheet from '../UIComponents/ModalShell/BottomSheet'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
 import useEscapeKey from '../../hooks/useEscapeKey'
-import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
-
-// The `real*` id sets are written by `updateInactiveProjectsData` (redux/store.js)
-// and are the unmasked truth; the plain sets next to them are trimmed by the
-// sidebar's "archived mode". Fall back to the plain set only when the real one is
-// genuinely absent (a partially-populated user: boot, anonymous, tests), never
-// when it is merely empty.
-const realIdSet = (realIds, maskedIds) => (Array.isArray(realIds) ? realIds : maskedIds || [])
-
-// Use the same unmasked buckets for the immediate local scope and its server
-// refresh. Sidebar mode must never remove archived projects from Search.
-const getProjectScope = (projectsList = []) => {
-    const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
-    const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
-    const realTemplateProjectIds = realIdSet(loggedUser.realTemplateProjectIds, loggedUser.templateProjectIds)
-    const realArchivedProjectIds = realIdSet(loggedUser.realArchivedProjectIds, loggedUser.archivedProjectIds)
-    const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
-    const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
-    const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
-    const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
-    const activeProjects = ProjectHelper.getActiveProjectsInList(
-        projectsList,
-        realProjectIds,
-        realArchivedProjectIds,
-        realTemplateProjectIds,
-        realGuideProjectIds
-    )
-    let projects = [
-        ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
-        ...ProjectHelper.sortProjects(guides, loggedUser.uid),
-        ...ProjectHelper.sortProjects(templates, loggedUser.uid),
-        ...ProjectHelper.sortProjects(archived, loggedUser.uid),
-    ]
-    if (checkIfSelectedProject(selectedProjectIndex)) {
-        const selectedId = loggedUserProjects[selectedProjectIndex]?.id
-        const selectedProject = projects.find(project => project.id === selectedId)
-        if (selectedProject) projects = [selectedProject, ...projects.filter(project => project.id !== selectedId)]
-    }
-    return {
-        projects,
-        projectBuckets: {
-            activeIds: activeProjects.map(project => project.id),
-            guideIds: guides.map(project => project.id),
-            templateIds: templates.map(project => project.id),
-            archivedIds: archived.map(project => project.id),
-        },
-    }
-}
 
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
 
-    const realArchivedProjectsAmount = useSelector(
-        state => realIdSet(state.loggedUser.realArchivedProjectIds, state.loggedUser.archivedProjectIds).length
-    )
+    const activeFullSearchDate = useSelector(state => state.loggedUser.activeFullSearchDate)
+    const premiumStatus = useSelector(state => state.loggedUser.premium.status)
+    const realTemplateProjectsAmount = useSelector(state => state.loggedUser.realTemplateProjectIds.length)
     const searchText = useSelector(state => state.searchText)
-    // The app already has projects available. A fresh server read must not gate
-    // the first click; it fills in archived/other projects in the background.
-    const [projectScope, setProjectScope] = useState(() => ({
-        ...getProjectScope(store.getState().loggedUserProjects),
-        refreshing: true,
-    }))
-    const { projects, projectBuckets } = projectScope
-    const lastSubmittedQueryRef = useRef('')
-    const lastSearchedScopeRef = useRef(projectScope)
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const tablet = useSelector(state => state.isMiddleScreen)
+    const [projects, setProjects] = useState([])
+    const [fullSearchMap, setFullSearchMap] = useState({ all: false, indexing: true })
+    const [activeFullSearchInAllProjects, setActiveFullSearchInAllProjects] = useState(false)
+    const [indexingFullSearchInAllProjects, setIndexingActiveFullSearchInAllProjects] = useState(false)
+    const [indexing, setIndexing] = useState(false)
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
-    const [searchOfflineNotice, setSearchOfflineNotice] = useState(false)
-    const [searchErrorNotice, setSearchErrorNotice] = useState(false)
     const [processing, setProcessing] = useState({
         [MENTION_MODAL_CONTACTS_TAB]: false,
         [MENTION_MODAL_GOALS_TAB]: false,
         [MENTION_MODAL_NOTES_TAB]: false,
         [MENTION_MODAL_TASKS_TAB]: false,
         [MENTION_MODAL_TOPICS_TAB]: false,
-        [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
     })
     const [tasksResult, setTasksResult] = useState({})
     const [tasksResultAmount, setTasksResultAmount] = useState(0)
@@ -144,8 +93,6 @@ export default function GlobalSearchModal() {
     const [contactsResultAmount, setContactsResultAmount] = useState(0)
     const [chatsResult, setChatsResult] = useState({})
     const [chatsResultAmount, setChatsResultAmount] = useState(0)
-    const [artifactsResult, setArtifactsResult] = useState({})
-    const [artifactsResultAmount, setArtifactsResultAmount] = useState(0)
 
     const [activeItemData, setActiveItemData] = useState({ projectId: '', activeIndex: -1 })
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
@@ -155,18 +102,6 @@ export default function GlobalSearchModal() {
     // resets to off every time Search is opened and the default search
     // behaviour is unchanged.
     const [createdByMeOnly, setCreatedByMeOnly] = useState(false)
-    // AT-2524 — "include archived", ON by default. Component state for the same
-    // reset-on-open reason as createdByMeOnly, which here means every Search
-    // opens back at the default (archived included) rather than remembering the
-    // last narrowing. Unlike createdByMeOnly the default is ON: an all-projects
-    // search that silently omits archived work is the gap this reopens (see the
-    // header comment in SearchFilterChips.js for why it no longer overlaps with
-    // the picker's "All archived" scope).
-    const [includeArchived, setIncludeArchived] = useState(true)
-    // AT-2593 — task-only status filter. Component state makes it reset to off
-    // whenever the popup opens, while keeping the choice through tab switches
-    // for as long as this popup instance remains mounted.
-    const [openTasksOnly, setOpenTasksOnly] = useState(false)
     const searchInstanceIdRef = useRef(v4())
     const modalRef = useRef(null)
     const searchInputRef = useRef(null)
@@ -177,13 +112,7 @@ export default function GlobalSearchModal() {
     // cannot dismiss it (AT-2236) — see onBackdropPress below.
     const openedAtRef = useRef(highResNow())
 
-    // Three scopes, not two (AT-2390): every active project, every archived
-    // project, or one specific project. `inSelectedProject` keeps its old
-    // meaning — "the scope is a single, concrete project" — because the result
-    // grouping in applySearchHits branches on it, and an all-archived search
-    // spans many projects exactly like an all-active one does.
-    const isAllArchivedScope = selectedProject.id === ALL_ARCHIVED_PROJECTS_OPTION
-    const inSelectedProject = selectedProject.id !== ALL_PROJECTS_OPTION && !isAllArchivedScope
+    const inSelectedProject = selectedProject.id !== ALL_PROJECTS_OPTION
 
     const onKeyDownShortcuts = event => {
         if (event.altKey && !showShortcuts) {
@@ -199,29 +128,66 @@ export default function GlobalSearchModal() {
         }
     }
 
-    useEffect(() => {
-        let disposed = false
-        const { loggedUser } = store.getState()
-        warmTypesenseSearchCredentials()
-        runWithLoading(
-            'search_project_scope',
-            async () => {
-                let projectsList
-                try {
-                    projectsList = await getAllUserProjects(loggedUser.uid)
-                } catch (error) {
-                    console.error('[GlobalSearch] Could not refresh the project scope, using loaded projects', error)
-                    projectsList = store.getState().loggedUserProjects
-                }
-                if (disposed || store.getState().loggedUser.uid !== loggedUser.uid) return
-                setProjectScope({ ...getProjectScope(projectsList), refreshing: false })
-            },
-            { timeoutMs: INITIAL_LOAD_TIMEOUT_MS }
+    const isSearching = () => {
+        return (
+            processing[MENTION_MODAL_CONTACTS_TAB] ||
+            processing[MENTION_MODAL_CONTACTS_TAB] ||
+            processing[MENTION_MODAL_CONTACTS_TAB] ||
+            processing[MENTION_MODAL_CONTACTS_TAB] ||
+            processing[MENTION_MODAL_CONTACTS_TAB]
         )
-        return () => {
-            disposed = true
-            searchInstanceIdRef.current = null
+    }
+
+    const updateTemporaryProjectsAndUsers = async () => {
+        const {
+            loggedUser,
+            areArchivedActive,
+            activeGuideId,
+            activeTemplateId,
+            loggedUserProjects,
+            selectedProjectIndex,
+        } = store.getState()
+        const { realGuideProjectIds, realTemplateProjectIds, realArchivedProjectIds } = loggedUser
+
+        const inactiveGuideIds = realGuideProjectIds.filter(id => id !== activeGuideId)
+        const inactiveTemplateIds = realTemplateProjectIds.filter(id => id !== activeTemplateId)
+
+        const inactiveProjectIds = []
+        inactiveProjectIds.push(...inactiveGuideIds)
+        inactiveProjectIds.push(...inactiveTemplateIds)
+        if (!areArchivedActive) inactiveProjectIds.push(...realArchivedProjectIds)
+
+        dispatch(startLoadingData())
+        const projectsList = await getAllUserProjects(loggedUser.uid)
+        dispatch(stopLoadingData())
+
+        const activeProjects = ProjectHelper.getActiveProjects2(projectsList, loggedUser)
+        const guides = ProjectHelper.getGuideProjects(projectsList, loggedUser)
+        const templates = ProjectHelper.getTemplateProjects(projectsList, loggedUser)
+        const archived = ProjectHelper.getArchivedProjects2(projectsList, loggedUser)
+
+        let sortedProjects = [
+            ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
+            ...ProjectHelper.sortProjects(guides, loggedUser.uid),
+            ...ProjectHelper.sortProjects(templates, loggedUser.uid),
+            ...ProjectHelper.sortProjects(archived, loggedUser.uid),
+        ]
+
+        if (checkIfSelectedProject(selectedProjectIndex)) {
+            const selectedProject = sortedProjects.find(
+                project => project.id === loggedUserProjects[selectedProjectIndex].id
+            )
+            sortedProjects = [
+                selectedProject,
+                ...sortedProjects.filter(project => project.id !== loggedUserProjects[selectedProjectIndex].id),
+            ]
         }
+
+        setProjects(sortedProjects)
+    }
+
+    useEffect(() => {
+        updateTemporaryProjectsAndUsers()
     }, [])
 
     useEffect(() => {
@@ -304,8 +270,7 @@ export default function GlobalSearchModal() {
             !processing?.[MENTION_MODAL_GOALS_TAB] &&
             !processing?.[MENTION_MODAL_NOTES_TAB] &&
             !processing?.[MENTION_MODAL_CONTACTS_TAB] &&
-            !processing?.[MENTION_MODAL_TOPICS_TAB] &&
-            !processing?.[GLOBAL_SEARCH_ARTIFACTS_TAB]
+            !processing?.[MENTION_MODAL_TOPICS_TAB]
         ) {
             showNextPositiveResultsTab()
         }
@@ -314,37 +279,37 @@ export default function GlobalSearchModal() {
     const onKeyDown = event => {
         const { key } = event
         if (key === 'Enter') {
-            if (localText.trim() && (searchInputRef.current.isFocused() || activeItemData.activeIndex === -1)) {
-                onSearch()
-            } else if (projects.length > 0 && activeItemData.activeIndex !== -1) {
-                const { resultsByProject, objectType, detailedViewType } = selectActiveTabData()
-                const object = resultsByProject[activeItemData.projectId][activeItemData.activeIndex]
-                const objectId = objectType === 'contacts' ? object.uid : object.id
+            if (projects.length > 0) {
+                if (localText.trim() && (searchInputRef.current.isFocused() || activeItemData.activeIndex === -1)) {
+                    onSearch()
+                } else if (activeItemData.activeIndex !== -1) {
+                    const { resultsByProject, objectType, detailedViewType } = selectActiveTabData()
+                    const object = resultsByProject[activeItemData.projectId][activeItemData.activeIndex]
+                    const objectId = objectType === 'contacts' ? object.uid : object.id
 
-                const { inactive, projectType } = ProjectHelper.checkIfProjectIdBelongsToInactiveProject(
-                    activeItemData.projectId
-                )
-                if (inactive) {
-                    const { parentObject } = object
-                    const url =
-                        objectType === 'artifacts'
-                            ? `/projects/${activeItemData.projectId}/artifacts/${objectId}`
-                            : objectType === 'notes' && parentObject
-                              ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
-                                    parentObject.id
-                                }/note`
-                              : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
+                    const { inactive, projectType } = ProjectHelper.checkIfProjectIdBelongsToInactiveProject(
+                        activeItemData.projectId
+                    )
+                    if (inactive) {
+                        const { parentObject } = object
+                        const url =
+                            objectType === 'notes' && parentObject
+                                ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
+                                      parentObject.id
+                                  }/note`
+                                : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
 
-                    ProjectHelper.navigateToInactiveProject(projectType, url)
-                } else {
-                    goToObjectDetailView(activeItemData.projectId, objectId, objectType, detailedViewType)
+                        ProjectHelper.navigateToInactiveProject(projectType, url)
+                    } else {
+                        goToObjectDetailView(activeItemData.projectId, objectId, objectType, detailedViewType)
+                    }
                 }
+                setTimeout(() => {
+                    if (searchInputRef && searchInputRef.current) {
+                        searchInputRef.current.focus()
+                    }
+                })
             }
-            setTimeout(() => {
-                if (searchInputRef && searchInputRef.current) {
-                    searchInputRef.current.focus()
-                }
-            })
             event.preventDefault()
             event.stopPropagation()
         } else if (key === 'ArrowDown') {
@@ -393,13 +358,6 @@ export default function GlobalSearchModal() {
                 resultsAmount: chatsResultAmount,
                 objectType: 'chats',
                 detailedViewType: 'chat',
-            }
-        } else if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB) {
-            return {
-                resultsByProject: artifactsResult,
-                resultsAmount: artifactsResultAmount,
-                objectType: 'artifacts',
-                detailedViewType: 'artifact',
             }
         }
     }
@@ -541,241 +499,98 @@ export default function GlobalSearchModal() {
         hidePopup(event)
     }
 
-    // The projects the chosen scope resolves to. Every record EXISTS in the index
-    // (Typesense indexes archived, template and guide projects too), so what is
-    // searched is decided here and nowhere else — unlike the Algolia era, where
-    // absence from the index did the filtering.
-    //
-    // AT-2524: there are two archived controls again, and they answer different
-    // questions. The "All archived" SCOPE searches archived projects only; the
-    // "Include archived" CHIP widens the all-projects scope to active AND
-    // archived, which is what the scope alone could never express. The chip is
-    // therefore consulted for exactly one scope — the all-projects group — and
-    // deliberately ignored for the other two: a specific picked project is
-    // always searched whether it is archived or not, and an all-archived scope
-    // is already entirely archived. Template/guide projects are never part of a
-    // group scope — picking one explicitly is the only way to search them.
-    const getProjectsInSearchScope = () => {
-        if (inSelectedProject) return projects.filter(project => project.id === selectedProject.id)
-        if (isAllArchivedScope) {
-            return projects.filter(project => projectBuckets.archivedIds.includes(project.id))
-        }
-        const groupIds = includeArchived
-            ? [...projectBuckets.activeIds, ...projectBuckets.archivedIds]
-            : projectBuckets.activeIds
-        return projects.filter(project => groupIds.includes(project.id))
-    }
-
-    // The chip is hidden rather than disabled whenever it could not mean
-    // anything: with a specific project as the scope (that project is searched
-    // either way) and for a user with no archived projects — the same
-    // `realArchivedProjectsAmount` gate the picker's Archived tab already uses,
-    // so the two cannot disagree about whether archived exists for this user.
-    const showArchivedChip = !inSelectedProject && realArchivedProjectsAmount > 0
-
-    // Shared result processing for both engines: groups hits by project, applies the
-    // guide-project visibility rules, and publishes the tab's results. Hits arrive in
-    // the Algolia shape (the Typesense adapter reproduces it).
-    const applySearchHits = (indexPrefix, hits, setResults, setResultsAmount, tab, searchInstanceId) => {
+    const onSearchInAlgolia = async (client, indexPrefix, setResults, setResultsAmount, tab, searchInstanceId) => {
         const { loggedUser } = store.getState()
 
-        if (searchInstanceId !== searchInstanceIdRef.current) return
+        setResults({})
+        setResultsAmount(0)
 
-        const objectsResult = {}
-        for (let project of projects) {
-            objectsResult[project.id] = []
-        }
+        const algoliaIndex = client.initIndex(indexPrefix)
 
-        let objectsResultAmount = hits.length
-
-        if (inSelectedProject) {
-            objectsResult[selectedProject.id] = hits
-        } else {
-            // Group results by project
-            for (let i = 0; i < hits.length; i++) {
-                const hit = hits[i]
-                if (objectsResult[hit.projectId]) objectsResult[hit.projectId].push(hit)
-            }
-        }
-
-        if (indexPrefix !== CHATS_INDEX_NAME_PREFIX) {
-            const entries = Object.entries(objectsResult)
-            objectsResultAmount = 0
-            for (let i = 0; i < entries.length; i++) {
-                const projectId = entries[i][0]
-                const resultsInProject = entries[i][1]
-
-                const project = projects.find(project => project.id === projectId)
-                const isGuide = project && !!project.parentTemplateId
-                if (isGuide) {
-                    if (indexPrefix === TASKS_INDEX_NAME_PREFIX || indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-                        objectsResult[projectId] = resultsInProject.filter(object => {
-                            const needToShowObject = object.userId === loggedUser.uid
-                            if (needToShowObject) objectsResultAmount++
-                            return needToShowObject
-                        })
-                    } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
-                        objectsResult[projectId] = resultsInProject.filter(object => {
-                            const needToShowObject = object.ownerId === loggedUser.uid
-                            if (needToShowObject) objectsResultAmount++
-                            return needToShowObject
-                        })
-                    } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-                        objectsResult[projectId] = resultsInProject.filter(object => {
-                            const needToShowObject =
-                                object.uid === loggedUser.uid || object.recorderUserId === loggedUser.uid
-                            if (needToShowObject) objectsResultAmount++
-                            return needToShowObject
-                        })
-                    }
-                } else {
-                    objectsResultAmount += objectsResult[projectId].length
-                }
-            }
-        }
-
-        setResults(objectsResult)
-        setResultsAmount(objectsResultAmount)
-
-        setProcessing(processing => {
-            return { ...processing, [tab]: false }
-        })
-    }
-
-    // All five tabs in ONE multi_search round-trip. An empty filter_by means "skip this
-    // tab", never "search unscoped".
-    const onSearchInTypesense = async (searchInstanceId, query) => {
-        const { loggedUser } = store.getState()
-
-        const tabsConfig = [
-            {
-                indexPrefix: TASKS_INDEX_NAME_PREFIX,
-                setResults: setTasksResult,
-                setResultsAmount: setTasksResultAmount,
-                tab: MENTION_MODAL_TASKS_TAB,
-            },
-            {
-                indexPrefix: GOALS_INDEX_NAME_PREFIX,
-                setResults: setGoalsResult,
-                setResultsAmount: setGoalsResultAmount,
-                tab: MENTION_MODAL_GOALS_TAB,
-            },
-            {
-                indexPrefix: NOTES_INDEX_NAME_PREFIX,
-                setResults: setNotesResult,
-                setResultsAmount: setNotesResultAmount,
-                tab: MENTION_MODAL_NOTES_TAB,
-            },
-            {
-                indexPrefix: CONTACTS_INDEX_NAME_PREFIX,
-                setResults: setContactsResult,
-                setResultsAmount: setContactsResultAmount,
-                tab: MENTION_MODAL_CONTACTS_TAB,
-            },
-            {
-                indexPrefix: CHATS_INDEX_NAME_PREFIX,
-                setResults: setChatsResult,
-                setResultsAmount: setChatsResultAmount,
-                tab: MENTION_MODAL_TOPICS_TAB,
-            },
-            {
-                indexPrefix: ARTIFACTS_INDEX_NAME_PREFIX,
-                setResults: setArtifactsResult,
-                setResultsAmount: setArtifactsResultAmount,
-                tab: GLOBAL_SEARCH_ARTIFACTS_TAB,
-                // Its own request: the scoped search key allows eight engine searches per
-                // request, which the five original tabs already use up, and a collection that
-                // does not exist yet must not take the other tabs down with it.
-                separateRequest: true,
-            },
-        ]
-
-        tabsConfig.forEach(({ setResults, setResultsAmount }) => {
-            setResults({})
-            setResultsAmount(0)
+        const projectsToSearch = inSelectedProject ? [selectedProject] : projects
+        const filters = buildSearchFilters({
+            indexPrefix,
+            projects: projectsToSearch,
+            loggedUser,
+            createdByMeOnly,
         })
 
-        const projectsToSearch = getProjectsInSearchScope()
-
-        const searchableTabs = []
-        tabsConfig.forEach(config => {
-            const filterBy = buildTypesenseSearchFilters({
-                indexPrefix: config.indexPrefix,
-                projects: projectsToSearch,
-                loggedUser,
-                createdByMeOnly,
-                openTasksOnly,
+        // Nothing to search against (no accessible projects) — avoid an empty
+        // filter, which would either error or leak unscoped results.
+        if (!filters) {
+            setProcessing(processing => {
+                return { ...processing, [tab]: false }
             })
-            if (filterBy) {
-                searchableTabs.push({ ...config, filterBy })
-            } else {
-                setProcessing(processing => {
-                    return { ...processing, [config.tab]: false }
-                })
-            }
-        })
-        if (searchableTabs.length === 0) return
+            return
+        }
 
-        setSearchOfflineNotice(false)
-        setSearchErrorNotice(false)
-        const toEngineSearch = ({ indexPrefix, filterBy }) => ({
-            collection: indexPrefix,
-            query,
-            filterBy,
-            // Lead each tab with the objects whose NAME matches, ahead of the ones
-            // that merely mention the query somewhere in their body (AT-2527).
-            // Nothing is filtered out — see mergeIdentityFirstHits.
-            identityFirst: true,
-        })
-        const mainTabs = searchableTabs.filter(config => !config.separateRequest)
-        const separateTabs = searchableTabs.filter(config => config.separateRequest)
-        // A separate tab that fails shows no results; it never turns the whole search into an
-        // error, since the main tabs carry what the user came for.
-        separateTabs.forEach(config => {
-            multiSearchTypesense([toEngineSearch(config)])
-                .then(([result]) => result.hits)
-                .catch(error => {
-                    console.log('Typesense search failed for', config.indexPrefix, error.message)
-                    return []
-                })
-                .then(hits =>
-                    applySearchHits(
-                        config.indexPrefix,
-                        hits,
-                        config.setResults,
-                        config.setResultsAmount,
-                        config.tab,
-                        searchInstanceId
-                    )
-                )
-        })
-        if (mainTabs.length === 0) return
         try {
-            const results = await multiSearchTypesense(mainTabs.map(toEngineSearch))
-            mainTabs.forEach((config, index) => {
-                applySearchHits(
-                    config.indexPrefix,
-                    results[index].hits,
-                    config.setResults,
-                    config.setResultsAmount,
-                    config.tab,
-                    searchInstanceId
-                )
-            })
+            const results = await algoliaIndex.search(localText, { filters: filters })
+
+            if (searchInstanceId === searchInstanceIdRef.current) {
+                const objectsResult = {}
+                for (let project of projects) {
+                    objectsResult[project.id] = []
+                }
+
+                let objectsResultAmount = results.hits.length
+
+                if (inSelectedProject) {
+                    objectsResult[selectedProject.id] = results.hits
+                } else {
+                    // Group results by project
+                    for (let i = 0; i < results.hits.length; i++) {
+                        const hit = results.hits[i]
+                        objectsResult[hit.projectId].push(hit)
+                    }
+                }
+
+                if (indexPrefix !== CHATS_INDEX_NAME_PREFIX) {
+                    const entries = Object.entries(objectsResult)
+                    objectsResultAmount = 0
+                    for (let i = 0; i < entries.length; i++) {
+                        const projectId = entries[i][0]
+                        const resultsInProject = entries[i][1]
+
+                        const project = projects.find(project => project.id === projectId)
+                        const isGuide = project && !!project.parentTemplateId
+                        if (isGuide) {
+                            if (indexPrefix === TASKS_INDEX_NAME_PREFIX || indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+                                objectsResult[projectId] = resultsInProject.filter(object => {
+                                    const needToShowObject = object.userId === loggedUser.uid
+                                    if (needToShowObject) objectsResultAmount++
+                                    return needToShowObject
+                                })
+                            } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
+                                objectsResult[projectId] = resultsInProject.filter(object => {
+                                    const needToShowObject = object.ownerId === loggedUser.uid
+                                    if (needToShowObject) objectsResultAmount++
+                                    return needToShowObject
+                                })
+                            } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+                                objectsResult[projectId] = resultsInProject.filter(object => {
+                                    const needToShowObject =
+                                        object.uid === loggedUser.uid || object.recorderUserId === loggedUser.uid
+                                    if (needToShowObject) objectsResultAmount++
+                                    return needToShowObject
+                                })
+                            }
+                        } else {
+                            objectsResultAmount += objectsResult[projectId].length
+                        }
+                    }
+                }
+
+                setResults(objectsResult)
+                setResultsAmount(objectsResultAmount)
+
+                setProcessing(processing => {
+                    return { ...processing, [tab]: false }
+                })
+            }
         } catch (error) {
-            if (searchInstanceId !== searchInstanceIdRef.current) return
-            console.log('Typesense search failed:', error.message)
-            // Offline fast-fail from multiSearchTypesense (Stage 7): say so
-            // instead of silently showing zero results.
-            setSearchOfflineNotice(error.code === 'offline')
-            setSearchErrorNotice(error.code !== 'offline')
-            setProcessing({
-                [MENTION_MODAL_CONTACTS_TAB]: false,
-                [MENTION_MODAL_GOALS_TAB]: false,
-                [MENTION_MODAL_NOTES_TAB]: false,
-                [MENTION_MODAL_TASKS_TAB]: false,
-                [MENTION_MODAL_TOPICS_TAB]: false,
-                [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
+            setProcessing(processing => {
+                return { ...processing, [tab]: false }
             })
         }
     }
@@ -787,7 +602,6 @@ export default function GlobalSearchModal() {
             notesResultAmount,
             contactsResultAmount,
             chatsResultAmount,
-            artifactsResultAmount,
         ]
         if (tabResults[activeTab] === 0) {
             for (let resultIdx in tabResults) {
@@ -799,10 +613,35 @@ export default function GlobalSearchModal() {
         }
     }
 
-    const runSearch = query => {
-        if (query.trim() !== '') {
-            lastSubmittedQueryRef.current = query
-            lastSearchedScopeRef.current = projectScope
+    const updateIndexationDataAndFullSearchData = projects => {
+        const fullSearchMap = { all: true, indexing: false }
+        projects.forEach(project => {
+            fullSearchMap[project.id] = project.activeFullSearch
+            if (!project.activeFullSearch || project.activeFullSearch === 'indexing') fullSearchMap.all = false
+            if (project.activeFullSearch === 'indexing') fullSearchMap.indexing = true
+        })
+        setFullSearchMap(fullSearchMap)
+    }
+
+    useEffect(() => {
+        const { loggedUser } = store.getState()
+        const watcherKey = v4()
+        watchUserProjects(loggedUser.uid, watcherKey, updateIndexationDataAndFullSearchData)
+        return () => {
+            unwatch(watcherKey)
+        }
+    }, [])
+
+    useEffect(() => {
+        const activeFullSearchInAllProjects = inSelectedProject
+            ? fullSearchMap[selectedProject.id] && fullSearchMap[selectedProject.id] !== 'indexing'
+            : fullSearchMap.all
+        setActiveFullSearchInAllProjects(activeFullSearchInAllProjects)
+        setIndexingActiveFullSearchInAllProjects(fullSearchMap.indexing)
+    }, [inSelectedProject, JSON.stringify(selectedProject), JSON.stringify(fullSearchMap)])
+
+    const onSearch = async () => {
+        if (localText.trim() !== '') {
             searchInstanceIdRef.current = v4()
             const searchInstanceId = searchInstanceIdRef.current
             setProcessing({
@@ -811,28 +650,66 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_NOTES_TAB]: true,
                 [MENTION_MODAL_TASKS_TAB]: true,
                 [MENTION_MODAL_TOPICS_TAB]: true,
-                [GLOBAL_SEARCH_ARTIFACTS_TAB]: true,
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
+            const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
 
-            setSearchOfflineNotice(false)
-            setSearchErrorNotice(false)
-            // A cold open can still accept the click. Keep the loading state
-            // until the scope arrives instead of searching without a scope.
-            if (projects.length === 0 && projectScope.refreshing) return
-            onSearchInTypesense(searchInstanceId, query)
+            const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
+
+            const promises = []
+            promises.push(
+                onSearchInAlgolia(
+                    client,
+                    TASKS_INDEX_NAME_PREFIX,
+                    setTasksResult,
+                    setTasksResultAmount,
+                    MENTION_MODAL_TASKS_TAB,
+                    searchInstanceId
+                )
+            )
+            promises.push(
+                onSearchInAlgolia(
+                    client,
+                    GOALS_INDEX_NAME_PREFIX,
+                    setGoalsResult,
+                    setGoalsResultAmount,
+                    MENTION_MODAL_GOALS_TAB,
+                    searchInstanceId
+                )
+            )
+            promises.push(
+                onSearchInAlgolia(
+                    client,
+                    NOTES_INDEX_NAME_PREFIX,
+                    setNotesResult,
+                    setNotesResultAmount,
+                    MENTION_MODAL_NOTES_TAB,
+                    searchInstanceId
+                )
+            )
+            promises.push(
+                onSearchInAlgolia(
+                    client,
+                    CONTACTS_INDEX_NAME_PREFIX,
+                    setContactsResult,
+                    setContactsResultAmount,
+                    MENTION_MODAL_CONTACTS_TAB,
+                    searchInstanceId
+                )
+            )
+            promises.push(
+                onSearchInAlgolia(
+                    client,
+                    CHATS_INDEX_NAME_PREFIX,
+                    setChatsResult,
+                    setChatsResultAmount,
+                    MENTION_MODAL_TOPICS_TAB,
+                    searchInstanceId
+                )
+            )
+            Promise.all(promises)
         }
     }
-
-    const onSearch = () => runSearch(localText)
-
-    useEffect(() => {
-        if (lastSearchedScopeRef.current === projectScope || !lastSubmittedQueryRef.current) return
-        // Complete an early search against the refreshed scope (including
-        // archived projects). Preserve the submitted query if the user has
-        // since edited the input without pressing Search again.
-        runSearch(lastSubmittedQueryRef.current)
-    }, [projectScope])
 
     // Toggling "only objects I created" re-runs the current search immediately,
     // so the user sees the narrowed list without retyping. Skipped on mount:
@@ -844,224 +721,131 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [createdByMeOnly])
 
-    // Same immediate re-run when the SCOPE changes. This used to watch the
-    // archived chip, which was the only scope control that re-ran anything —
-    // changing the picked project left the old results on screen until the user
-    // pressed Search again. With the chip gone (AT-2390) the picker is the only
-    // way to reach archived results, so it has to be the thing that re-runs.
-    const scopeAppliedRef = useRef(selectedProject.id)
-    useEffect(() => {
-        if (scopeAppliedRef.current === selectedProject.id) return
-        scopeAppliedRef.current = selectedProject.id
-        if (localText.trim() !== '') onSearch()
-    }, [selectedProject.id])
+    const activateFullSearch = async () => {
+        setIndexing(true)
+        const { loggedUser } = store.getState()
+        const goldResult = await spentGold(loggedUser.uid, 500, {
+            source: 'global_search',
+            channel: 'search',
+        })
+        if (!goldResult?.success) {
+            setIndexing(false)
+            return
+        }
+        await runHttpsCallableFunction('indexProjectsRecordsInAlgoliaSecondGen', { userId: loggedUser.uid })
+        setIndexing(false)
+        onSearch()
+    }
 
-    // And the same for the archived chip (AT-2524). The ref is seeded with the
-    // ON default, so mounting never fires a search — only a real user toggle
-    // does, exactly like the two effects above.
-    const archivedAppliedRef = useRef(includeArchived)
-    useEffect(() => {
-        if (archivedAppliedRef.current === includeArchived) return
-        archivedAppliedRef.current = includeArchived
-        if (localText.trim() !== '') onSearch()
-    }, [includeArchived])
-
-    // Re-run the entered query as soon as the task status filter changes. The
-    // Typesense builder applies it only to the task collection, so the other
-    // result tabs keep their existing result scope.
-    const openTasksAppliedRef = useRef(openTasksOnly)
-    useEffect(() => {
-        if (openTasksAppliedRef.current === openTasksOnly) return
-        openTasksAppliedRef.current = openTasksOnly
-        if (localText.trim() !== '') onSearch()
-    }, [openTasksOnly])
-
-    // Desktop: a window-centered card at the L token width (round-3 centering
-    // policy; the old marginLeft sidebar offset pushed it right of center).
-    // Phones: the standard BottomSheet, same as every other popup — which
-    // brings the scrim, drag handle, swipe/back-button dismissal, scroll lock
-    // and keyboard riding along for free. The card height stays bounded (the
-    // results list needs a definite height to scroll internally) but follows
-    // the sheet's keyboard-aware maxHeight. Search is a results-heavy surface,
-    // so unlike a short confirmation sheet it uses all of that available
-    // height. The previous 512px cap left roughly a third of a modern phone
-    // unused while showing only a few results.
-    const { isSheet: isPhone, width: cardWidth, maxHeight: sheetMaxHeight } = useModalSizing({ size: 'L' })
-    const compactMobileLayout = isPhone && sheetMaxHeight < 480
-    // The overlay already pads MODAL_EDGE_GAP on every side; add the insets
-    // on top so the centered card clears the status bar and home indicator.
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding({
-        top: MODAL_EDGE_GAP,
-        bottom: MODAL_EDGE_GAP,
-        left: MODAL_EDGE_GAP,
-        right: MODAL_EDGE_GAP,
-    })
-    const width = isPhone ? '100%' : cardWidth
-    const sheetCardStyle = isPhone
-        ? {
-              width: '100%',
-              borderRadius: 0,
-              boxShadow: 'none',
-              backgroundColor: 'transparent',
-              height: Math.max(sheetMaxHeight - 48, 0),
-          }
-        : null
+    const width = mobile ? POPOVER_MOBILE_WIDTH : tablet ? 400 : 520
+    let sidebarOpenStyle = mobile ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
 
     const updateSelectedProject = projectId => {
-        const project = isProjectPickerSentinel(projectId)
-            ? { id: projectId }
-            : projects.find(project => project.id === projectId)
+        const project =
+            projectId === ALL_PROJECTS_OPTION
+                ? { id: ALL_PROJECTS_OPTION }
+                : projects.find(project => project.id === projectId)
         setSelectedProject(project)
     }
 
-    const body = showSelectProjectModal ? (
-        <SelectProjectModalInSearch
-            projectId={selectedProject.id}
-            closePopover={() => {
-                setShowSelectProjectModal(false)
-            }}
-            projects={projects}
-            setSelectedProjectId={updateSelectedProject}
-            // AT-2390: the search scope has exactly two groups, Active and
-            // Archived. The Community/Template tabs are gated off HERE rather
-            // than removed from the shared picker, because the "Switch project"
-            // and add-task pickers still need them.
-            showGuideTab={false}
-            showTemplateTab={false}
-            showArchivedTab={realArchivedProjectsAmount > 0}
-            showAllProjects={true}
-            showAllArchivedProjects={true}
-        />
-    ) : (
-        <View
-            testID="global-search-popup"
-            style={[
-                localStyles.popup,
-                { width: width },
-                isPhone && localStyles.mobilePopup,
-                compactMobileLayout && localStyles.compactMobilePopup,
-                sheetCardStyle,
-            ]}
-        >
-            <View style={localStyles.titleContainer}>
-                <Text style={[styles.title7, localStyles.title]}>Search</Text>
-            </View>
-            <SearchFilterChips
-                selectedProject={selectedProject}
-                onOpenScope={() => {
-                    setShowSelectProjectModal(true)
-                }}
-                createdByMeOnly={createdByMeOnly}
-                onToggleCreatedByMe={() => setCreatedByMeOnly(!createdByMeOnly)}
-                includeArchived={includeArchived}
-                onToggleArchived={() => setIncludeArchived(!includeArchived)}
-                showArchivedChip={showArchivedChip}
-                openTasksOnly={openTasksOnly}
-                onToggleOpenTasks={() => setOpenTasksOnly(!openTasksOnly)}
-                showOpenTasksChip={activeTab === MENTION_MODAL_TASKS_TAB}
-                disabled={projects.length === 0}
-                mobile={isPhone}
-                compact={compactMobileLayout}
-            />
-
-            <Line
-                style={{
-                    width: '100%',
-                    marginTop: 0,
-                    marginBottom: compactMobileLayout ? 8 : isPhone ? 12 : 16,
-                }}
-            />
-            <SearchForm
-                searchInputRef={searchInputRef}
-                onPressButton={onSearch}
-                localText={localText}
-                setLocalText={setLocalText}
-                showShortcuts={showShortcuts}
-                placeholder="Search term..."
-                buttonIcon="search"
-                disabledButton={false}
-                onSubmitEditing={onSearch}
-            />
-
-            {searchOfflineNotice && (
-                <Text style={[styles.body2, localStyles.offlineNotice]}>
-                    {translate('Search needs an internet connection')}
-                </Text>
-            )}
-            {searchErrorNotice && (
-                <Text style={[styles.body2, localStyles.offlineNotice]}>
-                    {translate('Search is temporarily unavailable')}
-                </Text>
-            )}
-            <ResultLists
-                projects={projects}
-                processing={processing}
-                tasksResultAmount={tasksResultAmount}
-                tasksResult={tasksResult}
-                goalsResultAmount={goalsResultAmount}
-                goalsResult={goalsResult}
-                notesResultAmount={notesResultAmount}
-                notesResult={notesResult}
-                contactsResultAmount={contactsResultAmount}
-                contactsResult={contactsResult}
-                chatsResultAmount={chatsResultAmount}
-                chatsResult={chatsResult}
-                artifactsResultAmount={artifactsResultAmount}
-                artifactsResult={artifactsResult}
-                activeItemData={activeItemData}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                activeItemRef={activeItemRef}
-                scrollRef={scrollRef}
-                resultsContainerRef={resultsContainerRef}
-                showShortcuts={showShortcuts}
-                mobile={isPhone}
-                compact={compactMobileLayout}
-            />
-
-            <View style={localStyles.closeContainer}>
-                <TouchableOpacity style={localStyles.closeButton} onPress={hidePopup}>
-                    <Icon name={'x'} size={24} color={colors.Text03} />
-                </TouchableOpacity>
-            </View>
-        </View>
-    )
-
-    // Phones: the standard bottom sheet, like every other popup. Its own
-    // backdrop/Escape/back-button handling replaces the overlay below (the
-    // AT-2236 mount grace is baked into the sheet's backdrop too).
-    if (isPhone) {
-        return (
-            <BottomSheet isOpen={true} onRequestClose={hidePopup}>
-                {body}
-            </BottomSheet>
-        )
-    }
-
     return (
-        <View style={[localStyles.container, safeAreaOverlayPadding]} ref={modalRef}>
+        <View style={localStyles.container} ref={modalRef}>
             <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
-            {body}
+
+            {showSelectProjectModal ? (
+                <SelectProjectModalInSearch
+                    projectId={selectedProject.id}
+                    closePopover={() => {
+                        setShowSelectProjectModal(false)
+                    }}
+                    projects={projects}
+                    setSelectedProjectId={updateSelectedProject}
+                    createdByMeOnly={createdByMeOnly}
+                    setCreatedByMeOnly={setCreatedByMeOnly}
+                    showGuideTab={!!activeFullSearchDate}
+                    showTemplateTab={realTemplateProjectsAmount > 0}
+                    showArchivedTab={true}
+                    showAllProjects={true}
+                />
+            ) : (
+                <View style={[localStyles.popup, { width: width }, sidebarOpenStyle]}>
+                    <View style={localStyles.titleContainer}>
+                        <Text style={[styles.title7, localStyles.title]}>Search</Text>
+                    </View>
+                    <ProjectFilter
+                        setShowSelectProjectModal={() => {
+                            setShowSelectProjectModal(true)
+                        }}
+                        selectedProject={selectedProject}
+                        createdByMeOnly={createdByMeOnly}
+                        containerStyle={inSelectedProject && { marginBottom: 16 }}
+                        disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                    />
+
+                    <ActiveFullSearch
+                        activeFullSearchInAllProjects={
+                            activeFullSearchDate &&
+                            activeFullSearchInAllProjects &&
+                            premiumStatus === PLAN_STATUS_PREMIUM
+                        }
+                        activateFullSearch={activateFullSearch}
+                        disabled={isSearching() || projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        closeModalSearchModal={hidePopup}
+                    />
+
+                    <Line style={{ width: '100%', marginTop: 0, marginBottom: 16 }} />
+                    <SearchForm
+                        searchInputRef={searchInputRef}
+                        onPressButton={onSearch}
+                        localText={localText}
+                        setLocalText={setLocalText}
+                        showShortcuts={showShortcuts}
+                        placeholder="Search term..."
+                        buttonIcon="search"
+                        disabledButton={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        onSubmitEditing={onSearch}
+                    />
+
+                    <ResultLists
+                        projects={projects}
+                        processing={processing}
+                        tasksResultAmount={tasksResultAmount}
+                        tasksResult={tasksResult}
+                        goalsResultAmount={goalsResultAmount}
+                        goalsResult={goalsResult}
+                        notesResultAmount={notesResultAmount}
+                        notesResult={notesResult}
+                        contactsResultAmount={contactsResultAmount}
+                        contactsResult={contactsResult}
+                        chatsResultAmount={chatsResultAmount}
+                        chatsResult={chatsResult}
+                        activeItemData={activeItemData}
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
+                        activeItemRef={activeItemRef}
+                        scrollRef={scrollRef}
+                        resultsContainerRef={resultsContainerRef}
+                        showShortcuts={showShortcuts}
+                        indexing={indexing || indexingFullSearchInAllProjects}
+                    />
+
+                    <View style={localStyles.closeContainer}>
+                        <TouchableOpacity style={localStyles.closeButton} onPress={hidePopup}>
+                            <Icon name={'x'} size={24} color={colors.Text03} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
-    offlineNotice: {
-        color: colors.Text02,
-        marginBottom: 12,
-    },
     container: {
         ...fixedModalOverlayStyle,
         zIndex: 10000,
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         alignItems: 'center',
-        // Mid-centered card with one edge gap on every side (the base overlay
-        // style top-pins at 80px, which read as off-center on desktop).
-        justifyContent: 'center',
-        paddingTop: MODAL_EDGE_GAP,
-        paddingBottom: MODAL_EDGE_GAP,
-        paddingHorizontal: MODAL_EDGE_GAP,
     },
     backdrop: {
         position: 'absolute',
@@ -1079,14 +863,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         height: 512,
         maxHeight: '100%',
-        minHeight: 0,
         zIndex: 11000,
-    },
-    mobilePopup: {
-        paddingVertical: 12,
-    },
-    compactMobilePopup: {
-        paddingVertical: 8,
     },
     titleContainer: {
         width: '100%',
@@ -1103,8 +880,5 @@ const localStyles = StyleSheet.create({
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
-        // 44px touch target without moving the icon (same as FollowUp/CloseButton).
-        padding: 10,
-        margin: -10,
     },
 })

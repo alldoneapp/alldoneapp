@@ -10,18 +10,13 @@ const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
-    withEmailAttachmentToolDescriptions,
 } = require('./attachmentToolHandoff')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 const mockCreateAndPersistTask = jest.fn()
 const mockCreateAndPersistNote = jest.fn()
-const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
-const mockListMcpTools = jest.fn()
-jest.mock('./mcpClient', () => ({ listTools: (...args) => mockListMcpTools(...args) }))
-jest.mock('../MCP/mcpAssistantConnect', () => ({ getValidMcpSecret: jest.fn() }))
 const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     noteId,
     title: 'Launch notes',
@@ -47,9 +42,6 @@ jest.mock('../shared/NoteService', () => ({
         initialize: jest.fn().mockResolvedValue(undefined),
         createAndPersistNote: mockCreateAndPersistNote,
     })),
-}))
-jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
-    findCalendarAvailabilityForAssistantRequest: mockFindCalendarAvailabilityForAssistantRequest,
 }))
 jest.mock('../shared/UserHelper', () => ({
     UserHelper: {
@@ -204,7 +196,6 @@ const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
 const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
-const mockFirestoreGetAll = jest.fn()
 const mockResponsesCreate = jest.fn()
 const mockFirestoreTimestamp = { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) }
 const mockFirestoreFieldValue = {
@@ -222,7 +213,6 @@ jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
     firestore: Object.assign(
         jest.fn(() => ({
-            getAll: (...refs) => mockFirestoreGetAll(...refs),
             doc: jest.fn(path => ({
                 path,
                 get: mockDocGet,
@@ -276,21 +266,15 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-// The project wiki's own rules live in KnowledgeBase/knowledgeBaseAssistant.test.js; here only how
-// this module hands runs to it. By default no project has a wiki.
-const mockKnowledgeBase = {
-    getKnowledgeBaseContextMessage: jest.fn(async () => ''),
-    getKnowledgeBaseToolNamesForRun: jest.fn(async () => []),
-    isKnowledgeBaseToolAllowed: jest.fn(async () => false),
-    executeKnowledgeBaseTool: jest.fn(async () => ({ success: true })),
-}
-jest.mock('../KnowledgeBase/knowledgeBaseAssistant', () => mockKnowledgeBase)
-jest.mock('openai', () =>
-    jest.fn().mockImplementation(() => ({
-        responses: {
-            create: mockResponsesCreate,
-        },
-    }))
+jest.mock(
+    'openai',
+    () =>
+        jest.fn().mockImplementation(() => ({
+            responses: {
+                create: mockResponsesCreate,
+            },
+        })),
+    { virtual: true }
 )
 const mockTiktokenEncode = jest.fn(() => [])
 jest.mock(
@@ -355,14 +339,12 @@ const {
     getHeartbeatSettingsContextMessage,
     getAssistantThreadStateContextMessage,
     getOptimizedContextMessages,
-    getDynamicToolSchemasWithCache,
     buildCurrentObjectContextMessage,
     buildVmThreadContext,
     buildConversationAfterToolExecution,
     buildConversationAfterToolExecutions,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
-    getTokensPerGold,
     calculateGoldCostFromTokens,
     normalizeModelKey,
     getMaxTokensForModel,
@@ -370,8 +352,6 @@ const {
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
     buildResponsesTools,
-    collectPromptReferencedToolNames,
-    getToolSearchNamespaceName,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
     enforceOpenAiInputTokenPreflight,
@@ -384,44 +364,8 @@ const {
     modelSupportsToolSearch,
     modelSupportsAssistantReasoningEffort,
     modelSupportsExplicitPromptCaching,
-    isFetchableChatAttachment,
-    selectRequestedChatAttachments,
 } = require('./assistantHelper')
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
-
-describe('chat attachment kinds', () => {
-    const image = { kind: 'image', fileName: 'photo.jpg', storageUrl: 'https://example.com/photo.jpg' }
-    const document = { kind: 'file', fileName: 'invoice.pdf', storageUrl: 'https://example.com/invoice.pdf' }
-
-    test('an image is fetchable, not just a file', () => {
-        // Only `kind === 'file'` was accepted, so a WhatsApp photo — stored as `kind: 'image'` and
-        // advertised by list_recent_chat_media with its messageId — answered "no attachment found".
-        expect(isFetchableChatAttachment(image)).toBe(true)
-        expect(isFetchableChatAttachment(document)).toBe(true)
-        expect(isFetchableChatAttachment({ kind: 'video', storageUrl: 'https://example.com/clip.mp4' })).toBe(true)
-    })
-
-    test('media with no storage URL is not fetchable', () => {
-        expect(isFetchableChatAttachment({ kind: 'image', fileName: 'photo.jpg' })).toBe(false)
-        expect(isFetchableChatAttachment({})).toBe(false)
-    })
-
-    test('a message carrying both a document and an image still resolves to the document', () => {
-        // Widening the accepted kinds must not turn a call that used to work into an ambiguity
-        // error: before images were fetchable this message resolved to the PDF.
-        expect(selectRequestedChatAttachments([image, document])).toEqual([document])
-    })
-
-    test('an explicit expected file name outranks the document preference', () => {
-        expect(selectRequestedChatAttachments([image, document], 'photo.jpg')).toEqual([image])
-    })
-
-    test('leaves a genuinely ambiguous set alone so the caller can report it', () => {
-        const second = { kind: 'image', fileName: 'other.jpg', storageUrl: 'https://example.com/other.jpg' }
-
-        expect(selectRequestedChatAttachments([image, second])).toEqual([image, second])
-    })
-})
 
 describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
     const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
@@ -439,7 +383,7 @@ describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
         expect(calculateGoldCostFromTokens(2000, MODEL_DEEPSEEK_V4_FLASH)).toBe(1)
         expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBe(10)
         expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBeLessThan(
-            calculateGoldCostFromTokens(20000, 'MODEL_GPT6_LUNA')
+            calculateGoldCostFromTokens(20000, 'MODEL_GPT5_6_LUNA')
         )
     })
 
@@ -455,15 +399,6 @@ describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
         expect(modelSupportsToolSearch(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
         expect(modelSupportsAssistantReasoningEffort(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
         expect(modelSupportsExplicitPromptCaching(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
-    })
-})
-
-describe('selectable assistant model Gold pricing', () => {
-    test('the shared picker rate is the exact divisor used by billing', () => {
-        for (const option of SELECTABLE_ASSISTANT_MODELS) {
-            expect(getTokensPerGold(option.model)).toBe(option.tokensPerGold)
-            expect(calculateGoldCostFromTokens(option.tokensPerGold, option.model)).toBe(1)
-        }
     })
 })
 
@@ -553,205 +488,11 @@ describe('Current task context', () => {
                 'Task description: (empty)'
         )
     })
-
-    test('names the artifact a chat is attached to and how to change it', () => {
-        const context = buildCurrentObjectContextMessage({
-            projectId: 'project-1',
-            objectType: 'artifacts',
-            objectId: 'artifact-1',
-            projectData: { name: 'Alldone Product' },
-            objectData: {
-                title: 'Sales dashboard',
-                description: 'Q3 numbers',
-                kind: 'web',
-                entryPath: 'index.html',
-                fileCount: 2,
-                versionCount: 3,
-            },
-        })
-
-        expect(context).toContain('attached to the project artifact below')
-        expect(context).toContain('Artifact ID: artifact-1')
-        expect(context).toContain('Artifact title: Sales dashboard')
-        expect(context).toContain('Artifact description: Q3 numbers')
-        expect(context).toContain('Kind: web; entry file: index.html; files: 2; current version: 3')
-        expect(context).toContain('update_artifact')
-    })
-
-    test('falls back to the chat title when the artifact itself could not be read', () => {
-        const context = buildCurrentObjectContextMessage({
-            objectType: 'artifacts',
-            objectId: 'gone',
-            objectData: null,
-            chatData: { title: 'Sales dashboard' },
-        })
-        expect(context).toBe('This conversation is about an artifact titled: "Sales dashboard"')
-    })
-})
-
-describe('persisted dynamic tool cache', () => {
-    test.each([false, true])('preserves MCP tools across memory expiry (legacy entry: %s)', async legacy => {
-        const context = { projectId: `mcp-cache-${legacy}`, assistantId: 'assistant', requestUserId: 'user' }
-        let now = Date.now()
-        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now)
-        const key = JSON.stringify({ ...context, allowedTools: ['mcp_servers'], contextVersion: 'p0:g0:x0' })
-        let persisted = legacy
-            ? { key, timestamp: now, data: { delegationToolSchemas: [], externalToolSchemas: [] } }
-            : null
-        mockListMcpTools
-            .mockReset()
-            .mockResolvedValue([
-                { name: 'find_records', description: 'Find records', inputSchema: { type: 'object', properties: {} } },
-            ])
-        mockDocGet.mockImplementation(function () {
-            if (this.path.startsWith('runtimeCaches/dynamicToolSchemas/')) {
-                return Promise.resolve({ exists: !!persisted, data: () => persisted })
-            }
-            if (this.path.startsWith('assistants/')) {
-                return Promise.resolve({
-                    exists: true,
-                    data: () => ({ mcpServers: [{ id: 'server', label: 'Records', url: 'https://example.com/mcp' }] }),
-                })
-            }
-            return Promise.resolve({ exists: false })
-        })
-        mockDocSet.mockImplementation(async function (data) {
-            if (this.path.startsWith('runtimeCaches/dynamicToolSchemas/')) persisted = JSON.parse(JSON.stringify(data))
-        })
-        try {
-            const built = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
-            expect(built.mcpToolSchemas).toHaveLength(1)
-            expect(persisted.data.mcpToolSchemas).toEqual(built.mcpToolSchemas)
-            now += 6 * 60 * 1000
-            const restored = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
-            expect(restored).toEqual(built)
-            expect(mockListMcpTools).toHaveBeenCalledTimes(1)
-        } finally {
-            clock.mockRestore()
-            mockDocGet.mockReset()
-            mockDocSet.mockReset().mockResolvedValue(undefined)
-        }
-    })
-})
-
-describe('project wiki wiring', () => {
-    beforeEach(() => {
-        mockResponsesCreate.mockReset()
-        Object.values(mockKnowledgeBase).forEach(mock => mock.mockClear())
-    })
-
-    test('offers the wiki tools the run may use on top of the assistant’s own', async () => {
-        mockResponsesCreate.mockResolvedValue([])
-        mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockResolvedValueOnce([
-            'read_knowledge_page',
-            'correct_knowledge_page',
-        ])
-        const runtime = { projectId: 'p1', requestUserId: 'u1', allowKnowledgeCorrections: true }
-
-        await interactWithChatStream([['user', 'Stimmt das?']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'], {
-            ...runtime,
-            disableToolSearch: true,
-        })
-
-        expect(mockKnowledgeBase.getKnowledgeBaseToolNamesForRun).toHaveBeenCalledWith(
-            expect.objectContaining({ toolRuntimeContext: expect.objectContaining(runtime) })
-        )
-        const toolNames = mockResponsesCreate.mock.calls[0][0].tools.map(tool => tool.name)
-        expect(toolNames).toEqual(
-            expect.arrayContaining(['get_tasks', 'read_knowledge_page', 'correct_knowledge_page'])
-        )
-    })
-
-    test('lets the wiki decide whether a wiki tool call runs, whatever the assistant’s toggles say', async () => {
-        const runtime = { projectId: 'p1', requestUserId: 'u1' }
-        mockKnowledgeBase.isKnowledgeBaseToolAllowed.mockResolvedValueOnce(true)
-
-        await expect(isToolAllowedForExecution([], 'read_knowledge_page', runtime)).resolves.toBe(true)
-        await expect(
-            isToolAllowedForExecution(['correct_knowledge_page'], 'correct_knowledge_page', runtime)
-        ).resolves.toBe(false)
-        expect(mockKnowledgeBase.isKnowledgeBaseToolAllowed).toHaveBeenLastCalledWith(
-            expect.objectContaining({ toolName: 'correct_knowledge_page', toolRuntimeContext: runtime })
-        )
-    })
-
-    test('runs a wiki tool with the run’s project and person', async () => {
-        await executeToolNatively(
-            'correct_knowledge_page',
-            { slug: 'kunden', revision: 2 },
-            'p1',
-            'anna',
-            'u1',
-            {},
-            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1' }
-        )
-
-        expect(mockKnowledgeBase.executeKnowledgeBaseTool).toHaveBeenCalledWith(
-            expect.objectContaining({
-                toolName: 'correct_knowledge_page',
-                args: { slug: 'kunden', revision: 2 },
-                assistantId: 'anna',
-                toolRuntimeContext: expect.objectContaining({
-                    projectId: 'p1',
-                    requestUserId: 'u1',
-                    allowKnowledgeCorrections: true,
-                }),
-            })
-        )
-    })
-
-    test('puts the wiki index right after the project description, and only for a person', async () => {
-        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockResolvedValue(
-            'Project wiki of "Alldone":\nPages:\n- [[kunden]] Kunden'
-        )
-        const previousDocGet = mockDocGet.getMockImplementation()
-        mockDocGet.mockImplementation(async () => ({
-            exists: true,
-            data: () => ({ name: 'Alldone', description: 'Manual briefing.' }),
-        }))
-        const messages = []
-
-        try {
-            await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['get_tasks'], null, {
-                projectId: 'p1',
-                assistantId: 'anna',
-                requestUserId: 'u1',
-                allowKnowledgeCorrections: true,
-            })
-        } finally {
-            mockDocGet.mockImplementation(previousDocGet)
-        }
-
-        const texts = messages.map(([, text]) => text)
-        const descriptionIndex = texts.findIndex(text => text.startsWith('Project description'))
-        expect(descriptionIndex).toBeGreaterThanOrEqual(0)
-        expect(texts[descriptionIndex + 1]).toMatch(/^Project wiki of "Alldone"/)
-        expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ context: expect.objectContaining({ allowKnowledgeCorrections: true }) })
-        )
-
-        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockClear()
-        await addBaseInstructions([], 'Anna', 'en', 'Be helpful.', [], null, { projectId: 'p1', assistantId: 'anna' })
-        expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).not.toHaveBeenCalled()
-        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockResolvedValue('')
-    })
 })
 
 describe('Responses API compatibility helpers', () => {
     beforeEach(() => {
         mockResponsesCreate.mockReset()
-    })
-
-    test('passes the WhatsApp deadline signal to the SDK for cancellation of the active HTTP stream', async () => {
-        const controller = new AbortController()
-        mockResponsesCreate.mockResolvedValue([])
-        await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [], {
-            sourceChannel: 'whatsapp',
-            abortSignal: controller.signal,
-        })
-        expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ stream: true }), {
-            signal: controller.signal,
-        })
     })
 
     test('sends assistant generation through the stateless Responses endpoint', async () => {
@@ -760,13 +501,13 @@ describe('Responses API compatibility helpers', () => {
             { type: 'response.completed', response: { output: [] } },
         ])
 
-        const stream = await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        const stream = await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
         const firstChunk = await stream.next()
 
         expect(firstChunk.value).toEqual({ content: 'Hello', additional_kwargs: {} })
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-6.1-sol',
+                model: 'gpt-5.6-sol',
                 input: [{ role: 'user', content: 'Hello' }],
                 stream: true,
                 store: false,
@@ -786,7 +527,7 @@ describe('Responses API compatibility helpers', () => {
 
             const stream = await interactWithChatStream(
                 [['user', 'Consider this carefully']],
-                'MODEL_GPT6_SOL',
+                'MODEL_GPT5_6_SOL',
                 'TEMPERATURE_NORMAL',
                 [],
                 { openAiReasoningEffort: reasoningEffort }
@@ -794,9 +535,7 @@ describe('Responses API compatibility helpers', () => {
             await stream.next()
 
             expect(mockResponsesCreate).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    reasoning: { effort: reasoningEffort === 'none' ? 'high' : reasoningEffort },
-                })
+                expect.objectContaining({ reasoning: { effort: reasoningEffort } })
             )
         }
     )
@@ -809,7 +548,7 @@ describe('Responses API compatibility helpers', () => {
 
         const stream = await interactWithChatStream(
             [['user', 'Use the model default']],
-            'MODEL_GPT6_SOL',
+            'MODEL_GPT5_6_SOL',
             'TEMPERATURE_NORMAL',
             [],
             { openAiReasoningEffort: effort }
@@ -837,7 +576,7 @@ describe('Responses API compatibility helpers', () => {
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
     })
 
-    test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT6_LUNA'])(
+    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])(
         'sends max effort to compatible %s assistants',
         async model => {
             mockResponsesCreate.mockResolvedValue([
@@ -933,52 +672,6 @@ describe('Responses API compatibility helpers', () => {
         })
     })
 
-    test('adds email attachment guidance without changing cached schemas or leaking file bytes', () => {
-        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
-        const cachedSchemas = [invoiceToolName, 'create_gmail_reply_draft', 'external_tool_other'].map(name => ({
-            type: 'function',
-            function: { name, description: 'Original description', parameters: { type: 'object' } },
-        }))
-        const context = {
-            channel: 'email',
-            invoiceToolName,
-            invoiceAttachmentPayload: { fileName: 'private-invoice.pdf', fileBase64: 'private-file-bytes' },
-        }
-        const described = withEmailAttachmentToolDescriptions(cachedSchemas, context)
-        expect(described[0].function.description).toContain('leave fileBase64 empty')
-        expect(described[0].function.description).toContain('directly to bookkeeping before creating a suggested task')
-        expect(described[1].function.description).toContain('sender explicitly requests a Gmail draft')
-        expect(described[1].function.description).toContain('final assistant reply is sent automatically')
-        expect(described[2]).toBe(cachedSchemas[2])
-        expect(described[0].function.parameters).toBe(cachedSchemas[0].function.parameters)
-        expect(cachedSchemas.map(schema => schema.function.description)).toEqual(Array(3).fill('Original description'))
-        expect(JSON.stringify(described)).not.toContain('private-file-bytes')
-        expect(JSON.stringify(described)).not.toContain('private-invoice.pdf')
-
-        const completed = withEmailAttachmentToolDescriptions(cachedSchemas, { ...context, invoiceToolAttempted: true })
-        expect(completed[0].function.description).toContain('do not upload the same invoice again')
-        expect(completed[0].function.description).not.toContain('injected automatically')
-        expect(withEmailAttachmentToolDescriptions(cachedSchemas, { channel: 'chat' })).toBe(cachedSchemas)
-        const builtInSchema = { type: 'web_search' }
-        expect(withEmailAttachmentToolDescriptions([builtInSchema], { channel: 'email' })).toEqual([builtInSchema])
-    })
-
-    test('sends email-specific draft guidance in the actual model tool schema', async () => {
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Reply' }])
-        const stream = await interactWithChatStream(
-            [['user', 'Forwarded invoice']],
-            'MODEL_GPT6_SOL',
-            'TEMPERATURE_NORMAL',
-            ['create_gmail_reply_draft'],
-            { channel: 'email' }
-        )
-        await stream.next()
-        const draftTool = mockResponsesCreate.mock.calls[0][0].tools.find(
-            tool => tool.name === 'create_gmail_reply_draft'
-        )
-        expect(draftTool.description).toContain('receiving or forwarding an invoice is not a draft request')
-    })
-
     test('adds internal prompt cache markers only when explicit caching is enabled', () => {
         const messages = [
             { role: 'system', content: 'Stable instructions', promptCacheBreakpoint: true },
@@ -1032,7 +725,7 @@ describe('Responses API compatibility helpers', () => {
         logOpenAiCacheUsage({
             usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 50 } },
             route: 'tasks',
-            model: 'gpt-6.1-sol',
+            model: 'gpt-5.6-sol',
             cacheKey: 'sensitive-cache-key',
             cacheMode: 'explicit',
         })
@@ -1074,70 +767,8 @@ describe('Responses API compatibility helpers', () => {
         warnSpy.mockRestore()
     })
 
-    test('allows a large inline screenshot without counting its Base64 as prompt text or changing the request', () => {
-        const screenshot = `data:image/jpeg;base64,${'aB12'.repeat(180000)}`
-        const request = {
-            input: [
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'input_text', text: 'Rewrite the selected passage.' },
-                        { type: 'input_image', image_url: screenshot },
-                    ],
-                },
-            ],
-            tools: [],
-        }
-        const estimate = enforceOpenAiInputTokenPreflight(request, { route: 'writing', model: 'gpt-6-luna' })
-        expect(estimate.payloadBytes).toBeGreaterThan(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT)
-        expect(estimate.estimatedInputTokens).toBeLessThan(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT)
-        expect(estimate.imageCount).toBe(1)
-        expect(estimate.imageTokenReserve).toBeGreaterThan(0)
-        expect(estimate.usedTokenizer).toBe(false)
-        expect(request.input[0].content[1].image_url).toBe(screenshot)
-        expect(
-            enforceOpenAiInputTokenPreflight({
-                ...request,
-                input: [
-                    {
-                        role: 'user',
-                        content: [
-                            request.input[0].content[0],
-                            { type: 'input_image', image_url: 'https://example.com/same-screenshot.jpg' },
-                        ],
-                    },
-                ],
-            }).estimatedInputTokens
-        ).toBe(estimate.estimatedInputTokens)
-    })
-
-    test('still blocks oversized real text and includes the image token budget', () => {
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-        mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT - 1 })
-        expect(() =>
-            enforceOpenAiInputTokenPreflight({
-                input: [
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'input_text', text: 'x'.repeat(210000) },
-                            { type: 'input_image', image_url: `data:image/jpeg;base64,${'aB12'.repeat(100000)}` },
-                        ],
-                    },
-                ],
-            })
-        ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
-        expect(mockTiktokenEncode).toHaveBeenLastCalledWith(
-            expect.not.stringContaining('data:image/jpeg;base64,'),
-            [],
-            []
-        )
-        warnSpy.mockRestore()
-    })
-
     test('blocks an oversized OpenAI request during preflight before dispatch', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-        expect(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT).toBe(200000)
         mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
 
         expect(() =>
@@ -1148,11 +779,11 @@ describe('Responses API compatibility helpers', () => {
                             type: 'function_call',
                             call_id: 'call-file',
                             name: 'external_tool_bookkeeping_attach_invoice',
-                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(210000) }),
+                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(160000) }),
                         },
                     ],
                 },
-                { route: 'assistant', model: 'gpt-6.1-sol' }
+                { route: 'assistant', model: 'gpt-5.6-sol' }
             )
         ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
 
@@ -1166,100 +797,6 @@ describe('Responses API compatibility helpers', () => {
         warnSpy.mockRestore()
     })
 
-    test.each(['whatsapp', 'email', 'chat', 'delegation'])(
-        'finalizes stalled research through the shared request path for %s',
-        async sourceChannel => {
-            const prompt = [
-                ['system', 'Keep original instructions'],
-                ['user', 'Find the Juno meeting'],
-            ]
-            for (let i = 0; i < 5; i++) {
-                prompt.push(
-                    {
-                        role: 'assistant',
-                        content: '',
-                        tool_calls: [
-                            {
-                                id: `search-${i}`,
-                                type: 'function',
-                                function: {
-                                    name: 'search',
-                                    arguments: JSON.stringify({ query: `different wording ${i}` }),
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        role: 'tool',
-                        tool_call_id: `search-${i}`,
-                        content: JSON.stringify({ results: { notes: [{ id: 'same-note', title: 'Juno meeting' }] } }),
-                    }
-                )
-            }
-            mockResponsesCreate.mockResolvedValue([
-                {
-                    type: 'response.output_text.delta',
-                    delta: 'Closest meeting found, but the exact statement is unconfirmed.',
-                },
-            ])
-            const stream = await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['search'], {
-                sourceChannel,
-                additionalToolSchemas: [
-                    {
-                        type: 'function',
-                        function: { name: 'channel_action', parameters: { type: 'object', properties: {} } },
-                    },
-                ],
-            })
-            expect((await stream.next()).value.content).toContain('unconfirmed')
-            const params = mockResponsesCreate.mock.calls[0][0]
-            expect(params.tools).toBeUndefined()
-            expect(params.input.at(-1).content).toContain('Do not call more tools')
-            expect(params.input).toEqual(expect.arrayContaining([{ role: 'user', content: 'Find the Juno meeting' }]))
-        }
-    )
-
-    test('recovers a preflight block without dispatching the oversized request or replaying tools', async () => {
-        const prompt = [
-            ['system', 'Original instructions '.repeat(12000)],
-            ['user', 'Find the meeting'],
-            { role: 'assistant', tool_calls: [{ id: 'search-1', function: { name: 'search', arguments: '{}' } }] },
-            {
-                role: 'tool',
-                tool_call_id: 'search-1',
-                content: JSON.stringify({
-                    results: { notes: [{ title: 'Juno meeting', url: 'https://example.com/meeting' }] },
-                }),
-            },
-        ]
-        mockTiktokenEncode.mockReturnValueOnce({ length: 202754 }).mockReturnValueOnce({ length: 50000 })
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Partial findings' }])
-        const stream = await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['search'])
-        expect((await stream.next()).value.content).toBe('Partial findings')
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
-        expect(mockResponsesCreate.mock.calls[0][0].tools).toBeUndefined()
-        expect(mockResponsesCreate.mock.calls[0][0].input.at(-1).content).toContain('Do not call more tools')
-    })
-
-    test('returns actual source links when the compacted request is still blocked', async () => {
-        const prompt = [
-            ['system', 'Original instructions '.repeat(12000)],
-            ['user', 'Find the meeting'],
-            { role: 'assistant', tool_calls: [{ id: 'search-1', function: { name: 'search', arguments: '{}' } }] },
-            {
-                role: 'tool',
-                tool_call_id: 'search-1',
-                content: JSON.stringify({
-                    results: { notes: [{ title: 'Juno meeting', url: 'https://example.com/meeting' }] },
-                }),
-            },
-        ]
-        mockTiktokenEncode.mockReturnValueOnce({ length: 202754 }).mockReturnValueOnce({ length: 202754 })
-        const stream = await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['search'])
-        expect((await stream.next()).value.content).toContain('Juno meeting: https://example.com/meeting')
-        expect(mockResponsesCreate).not.toHaveBeenCalled()
-    })
-
     test('sends an explicit GPT-5.6 cache breakpoint without changing the source message content', async () => {
         mockResponsesCreate.mockResolvedValue([
             { type: 'response.output_text.delta', delta: 'Ok' },
@@ -1270,7 +807,7 @@ describe('Responses API compatibility helpers', () => {
             ['user', 'Volatile request'],
         ]
 
-        const stream = await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
+        const stream = await interactWithChatStream(prompt, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
         await stream.next()
 
         expect(prompt[0][1]).toBe('Stable instructions')
@@ -1291,59 +828,6 @@ describe('Responses API compatibility helpers', () => {
             })
         )
     })
-
-    test('caches growing tool conversations while preserving the original prefix and breakpoint', async () => {
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Ok' }])
-        const prompt = [
-            ['system', 'Stable instructions', { promptCacheBreakpoint: true }],
-            ['system', 'Current time at run start'],
-            ['user', 'Find my tasks'],
-        ]
-        await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
-        const firstRequest = mockResponsesCreate.mock.calls[0][0]
-        const continued = buildConversationAfterToolExecution({
-            currentConversation: prompt,
-            responseText: '',
-            toolName: 'get_tasks',
-            toolArgs: {},
-            toolCallId: 'call-tasks',
-            conversationSafeToolResult: { tasks: [{ title: 'Ship release' }] },
-        })
-        await interactWithChatStream(continued, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
-        const nextRequest = mockResponsesCreate.mock.calls[1][0]
-        for (const request of [firstRequest, nextRequest]) {
-            expect(request.prompt_cache_options).toEqual({ mode: 'implicit', ttl: '30m' })
-            expect(request.input[0].content[0].prompt_cache_breakpoint).toEqual({ mode: 'explicit' })
-        }
-        expect(nextRequest.input.slice(0, firstRequest.input.length)).toEqual(firstRequest.input)
-        expect(nextRequest.input).toContainEqual({
-            type: 'function_call_output',
-            call_id: 'call-tasks',
-            output: JSON.stringify({ tasks: [{ title: 'Ship release' }] }),
-        })
-        expect(nextRequest.tools).toEqual(firstRequest.tools)
-    })
-
-    test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT6_LUNA', 'MODEL_GPT5_5'])(
-        'disables one-off prompt caching only on supported models: %s',
-        async model => {
-            mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Summary' }])
-            await interactWithChatStream(
-                [
-                    ['system', 'Instructions', { promptCacheBreakpoint: true }],
-                    ['user', 'Summarize this thread'],
-                ],
-                model,
-                'TEMPERATURE_NORMAL',
-                [],
-                { disablePromptCaching: true }
-            )
-            const request = mockResponsesCreate.mock.calls[0][0]
-            expect(JSON.stringify(request.input)).not.toContain('prompt_cache_breakpoint')
-            if (model === 'MODEL_GPT5_5') expect(request).not.toHaveProperty('prompt_cache_options')
-            else expect(request.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
-        }
-    )
 
     test('retries one empty response with full tool schemas and returns the retry text', async () => {
         const emptyCompletion = {
@@ -1449,8 +933,6 @@ describe('Responses API compatibility helpers', () => {
     })
 
     test('replaces the loading placeholder with a clear failure after two empty responses', async () => {
-        mockDocGet.mockResolvedValue({ exists: false })
-        mockTransactionUpdate.mockClear()
         mockDocSet.mockClear()
         mockDocUpdate.mockClear()
         mockResponsesCreate.mockResolvedValue([
@@ -1519,134 +1001,12 @@ describe('Responses API compatibility helpers', () => {
             )
         ).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
 
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
+        expect(mockDocUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
                 commentText: '⚠️ No response was generated after retrying. Please try again.',
                 isLoading: false,
                 isThinking: false,
                 assistantRun: expect.objectContaining({ status: 'failed' }),
-            })
-        )
-    })
-
-    const missingProjectId = '-MDq6lDDNf_OwPjWeJsX2'
-    const failingProjectToolCall = id => ({
-        id,
-        type: 'function',
-        function: {
-            name: 'update_project_description',
-            arguments: JSON.stringify({ projectId: missingProjectId, description: 'Updated description' }),
-        },
-    })
-    const failingProjectToolResponse = id => [
-        {
-            type: 'response.output_item.done',
-            item: {
-                id,
-                type: 'function_call',
-                call_id: id,
-                name: 'update_project_description',
-                arguments: JSON.stringify({ projectId: missingProjectId, description: 'Updated description' }),
-            },
-        },
-        { type: 'response.completed', response: { output: [] } },
-    ]
-    const setUpFailingProjectTool = () => {
-        mockDocSet.mockClear()
-        mockDocUpdate.mockClear()
-        mockBatchUpdate.mockClear()
-        mockBatchCommit.mockClear()
-        mockFirestoreGetAll.mockResolvedValue([
-            { exists: false, data: () => ({}) },
-            {
-                exists: true,
-                id: 'assistant-1',
-                data: () => ({ allowedTools: ['update_project_description'] }),
-            },
-        ])
-        mockDocGet.mockResolvedValue({
-            exists: true,
-            data: () => ({ uid: 'assistant-1', allowedTools: ['update_project_description'] }),
-        })
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([]),
-        }))
-    }
-    const runFailingProjectTool = () =>
-        storeBotAnswerStream(
-            'project-1',
-            'tasks',
-            'task-1',
-            [{ content: '', additional_kwargs: { tool_calls: [failingProjectToolCall('call-update-project')] } }],
-            ['user-1'],
-            ['PUBLIC'],
-            null,
-            'assistant-1',
-            ['user-1'],
-            'Anna',
-            'user-1',
-            null,
-            [['user', 'Update all project descriptions']],
-            'MODEL_GPT6_LUNA',
-            'TEMPERATURE_NORMAL',
-            ['update_project_description'],
-            {
-                project: { name: 'Project A' },
-                chat: { title: 'Weekly Project Descriptions Update' },
-                chatLink: 'https://my.alldone.app/projects/project-1/tasks/task-1/chat',
-            },
-            null,
-            {
-                projectId: 'project-1',
-                assistantId: 'assistant-1',
-                requestUserId: 'user-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                failOnToolExecutionError: true,
-            }
-        )
-
-    // Note 8b4wQWfKyLXpZFtqYsNC (2026-09-28): one pointless update_task call at the end of a
-    // finished run replaced the whole answer with "Error executing update_task: …".
-    test('hands a failed tool call back to the model so the run can still answer', async () => {
-        setUpFailingProjectTool()
-        mockResponsesCreate.mockResolvedValueOnce([
-            { type: 'response.output_text.delta', delta: 'That project does not exist, so nothing was changed.' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-
-        await runFailingProjectTool()
-
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
-        const resumedInput = JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)
-        expect(resumedInput).toContain('function_call_output')
-        expect(resumedInput).toContain('Target project not found or not accessible')
-        const writtenTexts = mockDocUpdate.mock.calls.map(([update]) => update?.commentText).filter(Boolean)
-        expect(writtenTexts[writtenTexts.length - 1]).toContain('That project does not exist, so nothing was changed.')
-        expect(writtenTexts.some(text => text.includes('Error executing'))).toBe(false)
-    })
-
-    test('still fails a background task whose tool keeps failing, after persisting the error', async () => {
-        setUpFailingProjectTool()
-        mockResponsesCreate
-            .mockResolvedValueOnce(failingProjectToolResponse('call-retry-1'))
-            .mockResolvedValueOnce(failingProjectToolResponse('call-retry-2'))
-
-        await expect(runFailingProjectTool()).rejects.toMatchObject({
-            code: 'ASSISTANT_TOOL_EXECUTION_FAILED',
-            message: `Target project not found or not accessible: "${missingProjectId}"`,
-        })
-
-        // Three rounds, all failed: the original call plus two retries the model was given.
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
-        expect(mockDocUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({
-                commentText: expect.stringContaining(
-                    `Error executing update_project_description: Target project not found or not accessible: "${missingProjectId}"`
-                ),
-                isLoading: false,
             })
         )
     })
@@ -1684,7 +1044,7 @@ describe('Responses API compatibility helpers', () => {
             },
         }))
 
-        const result = buildResponsesTools(tools, 'MODEL_GPT6_SOL')
+        const result = buildResponsesTools(tools, 'MODEL_GPT5_6_SOL')
         const namespaces = result.tools.filter(tool => tool.type === 'namespace')
 
         expect(result.toolSearchEnabled).toBe(true)
@@ -1704,171 +1064,13 @@ describe('Responses API compatibility helpers', () => {
             }))
 
         expect(buildResponsesTools(buildTools(12), 'MODEL_GPT5_2').toolSearchEnabled).toBe(false)
-        expect(buildResponsesTools(buildTools(3), 'MODEL_GPT6_SOL').toolSearchEnabled).toBe(false)
+        expect(buildResponsesTools(buildTools(3), 'MODEL_GPT5_6_SOL').toolSearchEnabled).toBe(false)
 
-        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT6_SOL', {
+        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT5_6_SOL', {
             disableToolSearch: true,
         })
         expect(explicitlyDisabled.toolSearchEnabled).toBe(false)
         expect(explicitlyDisabled.tools.every(tool => tool.type === 'function')).toBe(true)
-    })
-
-    // a daily recurring task did every step of its work, then reported
-    // `update_user_description` as unavailable and refused to save — the tool was allowed and in
-    // the assembled schema list, but tool search had deferred it while a base instruction named it
-    // in writing. The model never searched for it and did not retry.
-    describe('prompt-referenced tools are never deferred behind tool search', () => {
-        const namedTools = [
-            'update_user_description',
-            'update_project_description',
-            'update_user_memory',
-            'get_contacts',
-            'get_chats',
-            'get_goals',
-            'get_notes',
-            'get_updates',
-            'search',
-            'web_search',
-            'create_note',
-            'create_task',
-        ]
-        const schemasFor = names =>
-            names.map(name => ({
-                type: 'function',
-                function: { name, description: '', parameters: { type: 'object', properties: {} } },
-            }))
-
-        test('collects only tool names the system prompt actually writes out', () => {
-            const messages = [
-                ['system', 'When the user asks to update their user description, use update_user_description.'],
-                ['system', 'Use your update_user_memory tool to save noteworthy facts.'],
-                // A user turn must not count: it is the request, not an instruction about tooling,
-                // and tool names echoed back in conversation would pin schemas for the whole thread.
-                ['user', 'please also run get_contacts for me'],
-            ]
-
-            const referenced = collectPromptReferencedToolNames(messages, namedTools)
-
-            expect([...referenced].sort()).toEqual(['update_user_description', 'update_user_memory'])
-        })
-
-        test('prefers the longest matching name so web_search is not reported as search', () => {
-            const referenced = collectPromptReferencedToolNames(
-                [['system', 'Use web_search for anything on the open internet.']],
-                namedTools
-            )
-
-            expect([...referenced]).toEqual(['web_search'])
-        })
-
-        test('object-shaped system messages and empty prompts are handled', () => {
-            expect([
-                ...collectPromptReferencedToolNames(
-                    [{ role: 'system', content: 'Call get_goals before planning.' }],
-                    namedTools
-                ),
-            ]).toEqual(['get_goals'])
-            expect(collectPromptReferencedToolNames([], namedTools).size).toBe(0)
-            expect(collectPromptReferencedToolNames([['system', 'no tools here']], []).size).toBe(0)
-        })
-
-        test('sends a named tool directly while the rest stay deferred', () => {
-            const result = buildResponsesTools(schemasFor(namedTools), 'MODEL_GPT6_SOL', {
-                alwaysDirectToolNames: new Set(['update_user_description']),
-            })
-            const directNames = result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)
-            const deferredNames = result.tools
-                .filter(tool => tool.type === 'namespace')
-                .flatMap(namespace => namespace.tools.map(tool => tool.name))
-
-            expect(result.toolSearchEnabled).toBe(true)
-            expect(directNames).toEqual(['update_user_description'])
-            expect(result.alwaysDirectCount).toBe(1)
-            expect(deferredNames).not.toContain('update_user_description')
-            expect(deferredNames).toHaveLength(namedTools.length - 1)
-            // The fallback path (used when the API rejects tool search) must still carry everything.
-            expect(result.fallbackTools).toHaveLength(namedTools.length)
-        })
-
-        test('reproduces the reported request: the named write tool is directly callable', () => {
-            const productionTools = [
-                ...namedTools,
-                'update_task',
-                'get_tasks',
-                'get_focus_task',
-                'update_note',
-                'get_user_projects',
-                'search_gmail',
-                'update_contact',
-                'get_project_okrs',
-                'get_project_happiness',
-                'add_chat_comment',
-                'load_skill',
-            ]
-            const messages = [
-                ['system', 'When the user asks to update their user description, use update_user_description.'],
-                ['user', 'Please update the global user description based on my tasks, goals and notes.'],
-            ]
-
-            const result = buildResponsesTools(schemasFor(productionTools), 'MODEL_GPT6_SOL', {
-                alwaysDirectToolNames: collectPromptReferencedToolNames(messages, productionTools),
-            })
-
-            expect(result.toolSearchEnabled).toBe(true)
-            expect(result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)).toContain(
-                'update_user_description'
-            )
-        })
-    })
-
-    // `talk_to_assistant_*` / `external_tool_*` / `mcp_*` names are built from
-    // user-authored project and assistant names, so every keyword rule matched them first.
-    describe('tool search namespace routing', () => {
-        test('files delegation, external and MCP tools under integrations', () => {
-            expect(getToolSearchNamespaceName('talk_to_assistant_alldone_team_cto_02e74d40d143')).toBe('integrations')
-            expect(getToolSearchNamespaceName('external_tool_bookkeeping_assistant__f5f03fdb4d16')).toBe('integrations')
-            expect(getToolSearchNamespaceName('mcp_pubmed_pubmed_europepmc_fetch_e671552bd534')).toBe('integrations')
-        })
-
-        test('a delegate named after a project cannot be pulled into a keyword namespace', () => {
-            // "MediAgents" matched /media/ and landed in chats_and_media; "assistant" pulled the
-            // rest into assistant_settings, overflowing it into an _1/_2 split.
-            expect(getToolSearchNamespaceName('talk_to_assistant_mediagents_pubmed_research_f250285ab147')).toBe(
-                'integrations'
-            )
-            expect(getToolSearchNamespaceName('talk_to_assistant_gmail_desk_1dced65e3398')).toBe('integrations')
-        })
-
-        test('keeps the keyword routing for native tools', () => {
-            expect(getToolSearchNamespaceName('update_user_description')).toBe('people_and_projects')
-            expect(getToolSearchNamespaceName('search_gmail')).toBe('gmail')
-            expect(getToolSearchNamespaceName('get_tasks')).toBe('tasks_and_goals')
-            expect(getToolSearchNamespaceName('update_note')).toBe('alldone_notes')
-            expect(getToolSearchNamespaceName('update_assistant_settings')).toBe('assistant_settings')
-            expect(getToolSearchNamespaceName('web_search')).toBe('research')
-        })
-
-        test('keeps the four artifact tools in one namespace', () => {
-            for (const toolName of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {
-                expect(getToolSearchNamespaceName(toolName)).toBe('artifacts')
-            }
-        })
-
-        test('keeps note tools out of the reserved notes namespace', () => {
-            const toolNames = ['update_note', ...Array.from({ length: 9 }, (_, index) => `get_task_${index}`)]
-            const tools = toolNames.map(name => ({
-                type: 'function',
-                function: { name, description: '', parameters: { type: 'object', properties: {} } },
-            }))
-            const result = buildResponsesTools(tools, 'MODEL_GPT6_SOL')
-            const noteNamespace = result.tools.find(tool => tool.type === 'namespace' && tool.name === 'alldone_notes')
-
-            expect(result.toolSearchEnabled).toBe(true)
-            expect(result.tools.some(tool => tool.type === 'namespace' && tool.name === 'notes')).toBe(false)
-            expect(noteNamespace.tools.map(tool => tool.name)).toEqual(['update_note'])
-            expect(noteNamespace.tools[0].defer_loading).toBe(true)
-            expect(result.fallbackTools.map(tool => tool.name)).toContain('update_note')
-        })
     })
 
     test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {
@@ -1983,7 +1185,6 @@ describe('assistant attachment handoff helpers', () => {
         mockBatchDelete.mockClear()
         mockBatchCommit.mockClear()
         mockCreateAndPersistNote.mockReset()
-        mockFindCalendarAvailabilityForAssistantRequest.mockReset()
     })
 
     test('normalizes hour-based user timezone values into minutes', () => {
@@ -2004,132 +1205,15 @@ describe('assistant attachment handoff helpers', () => {
         expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_5')).toBe(1)
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
-        expect(calculateGoldCostFromTokens(500, 'MODEL_GPT6_LUNA')).toBe(1)
+        expect(calculateGoldCostFromTokens(500, 'MODEL_GPT5_6_LUNA')).toBe(1)
         expect(calculateGoldCostFromTokens(200, 'MODEL_GPT5_6_TERRA')).toBe(1)
     })
 
-    test('defaults missing models to GPT-6 Sol and upgrades stored Sol and Luna keys', () => {
-        expect(normalizeModelKey()).toBe('MODEL_GPT6_SOL')
-        expect(normalizeModelKey('MODEL_GPT5_6_SOL')).toBe('MODEL_GPT6_SOL')
-        expect(normalizeModelKey('MODEL_GPT5_6_LUNA')).toBe('MODEL_GPT6_LUNA')
-        expect(getTokensPerGold('MODEL_GPT5_6_SOL')).toBe(200)
-        expect(getTokensPerGold('MODEL_GPT5_6_LUNA')).toBe(1000)
-        expect(getMaxTokensForModel('MODEL_GPT6_SOL')).toBe(1050000)
+    test('defaults missing models to GPT-5.6 Sol with its full context window', () => {
+        expect(normalizeModelKey()).toBe('MODEL_GPT5_6_SOL')
+        expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_TERRA')).toBe(1050000)
-        expect(getMaxTokensForModel('MODEL_GPT6_LUNA')).toBe(1050000)
-    })
-
-    test('passes the email meeting-link policy flag into availability execution', async () => {
-        mockFindCalendarAvailabilityForAssistantRequest.mockResolvedValue({
-            success: true,
-            options: [],
-        })
-
-        await executeToolNatively(
-            'find_calendar_availability',
-            {
-                timeMin: '2026-08-12T09:00:00+02:00',
-                timeMax: '2026-08-19T17:00:00+02:00',
-                allowSameDayBooking: true,
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null,
-            { respectPublicMeetingLinkSettings: true }
-        )
-
-        expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledWith(
-            expect.objectContaining({
-                userId: 'user-1',
-                allowSameDayBooking: true,
-                respectPublicMeetingLinkSettings: true,
-            })
-        )
-    })
-
-    test('publishes the saved sidebar mutation and preserves success when visual feedback fails', async () => {
-        const publish = jest
-            .spyOn(require('./annaWorkspaceChanges'), 'recordAnnaWorkspaceChange')
-            .mockRejectedValue(new Error('Feedback offline'))
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-        mockDocGet.mockResolvedValue({ exists: false })
-        mockCreateAndPersistNote.mockResolvedValue({
-            success: true,
-            noteId: 'note-1',
-            note: { projectId: 'project-1' },
-        })
-        const runtime = {
-            annaConversation: true,
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'AnnaChat20261007user-1',
-            requestUserId: 'user-1',
-        }
-        try {
-            const saved = await executeToolNatively(
-                'create_note',
-                { title: 'Launch' },
-                'project-1',
-                null,
-                'user-1',
-                null,
-                runtime
-            )
-            expect(saved).toMatchObject({ success: true, noteId: 'note-1', projectId: 'project-1' })
-            expect(publish).toHaveBeenCalledWith(
-                expect.objectContaining({ runtime, toolName: 'create_note', result: saved })
-            )
-            expect(mockCreateAndPersistNote).toHaveBeenCalledTimes(1)
-        } finally {
-            publish.mockRestore()
-            warn.mockRestore()
-        }
-    })
-
-    test('continues sidebar mutations when an older client has left the Alldone workspace under user control', async () => {
-        const legacyControlPath = 'users/user-1/private/annaWorkspace'
-        const legacyState = {
-            control: 'user',
-            page: { path: '/projects/project-1/notes/note-1/editor' },
-            blocked: { objectId: 'AnnaChat20261007user-1' },
-        }
-        const reads = []
-        mockDocGet.mockImplementation(function () {
-            reads.push(this.path)
-            return Promise.resolve({ exists: this.path === legacyControlPath, data: () => legacyState })
-        })
-        mockCreateAndPersistNote.mockResolvedValue({
-            success: true,
-            noteId: 'note-1',
-            note: { projectId: 'project-1' },
-        })
-        const publish = jest
-            .spyOn(require('./annaWorkspaceChanges'), 'recordAnnaWorkspaceChange')
-            .mockResolvedValue(null)
-        try {
-            const result = await executeToolNatively(
-                'create_note',
-                { title: 'While you work' },
-                'project-1',
-                null,
-                'user-1',
-                null,
-                {
-                    annaConversation: true,
-                    projectId: 'project-1',
-                    objectId: 'AnnaChat20261007user-1',
-                    objectType: 'topics',
-                    requestUserId: 'user-1',
-                }
-            )
-            expect(result).toMatchObject({ success: true, noteId: 'note-1' })
-            expect(mockCreateAndPersistNote).toHaveBeenCalledTimes(1)
-            expect(reads).not.toContain(legacyControlPath)
-            expect(publish).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'create_note', result }))
-        } finally {
-            publish.mockRestore()
-        }
+        expect(getMaxTokensForModel('MODEL_GPT5_6_LUNA')).toBe(400000)
     })
 
     test('returns the canonical URL when creating a note', async () => {
@@ -2250,109 +1334,6 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
-    describe('create_note target project', () => {
-        const mockUserProjects = projects => {
-            const getUserProjects = jest.fn().mockResolvedValue(projects)
-            ProjectService.mockImplementationOnce(() => ({
-                initialize: jest.fn().mockResolvedValue(),
-                getUserProjects,
-            }))
-            return getUserProjects
-        }
-
-        test('creates the note in the project named by projectName', async () => {
-            const getUserProjects = mockUserProjects([
-                { id: 'project-1', name: 'Inbox' },
-                { id: 'project-2', name: 'Alldone Product' },
-            ])
-            mockCreateAndPersistNote.mockResolvedValue({
-                success: true,
-                noteId: 'note-5',
-                note: { id: 'note-5', projectId: 'project-2' },
-            })
-
-            const result = await executeToolNatively(
-                'create_note',
-                { title: 'Routing', content: 'Body', projectName: 'Alldone Product' },
-                'project-1',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(getUserProjects).toHaveBeenCalledWith('user-1', expect.anything())
-            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
-                expect.objectContaining({ projectId: 'project-2' }),
-                expect.objectContaining({ userId: 'user-1', projectId: 'project-2' })
-            )
-            expect(result).toMatchObject({
-                projectId: 'project-2',
-                url: 'https://my.alldone.app/projects/project-2/notes/note-5/editor',
-            })
-        })
-
-        test('refuses a projectId the requesting user is not a member of', async () => {
-            // The in-app assistant hands the model's projectId straight through, so the executor's
-            // membership check is what keeps a note out of somebody else's project.
-            mockUserProjects([{ id: 'project-1', name: 'Inbox' }])
-
-            await expect(
-                executeToolNatively(
-                    'create_note',
-                    { title: 'Elsewhere', content: 'Body', projectId: 'foreign-project' },
-                    'foreign-project',
-                    null,
-                    'user-1',
-                    null
-                )
-            ).rejects.toThrow('Target project not found or not accessible: "foreign-project"')
-            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
-        })
-
-        test('asks for projectId, not moveToProjectId, when the name is ambiguous', async () => {
-            mockUserProjects([
-                { id: 'project-2', name: 'Alldone' },
-                { id: 'project-3', name: 'Alldone' },
-            ])
-
-            await expect(
-                executeToolNatively(
-                    'create_note',
-                    { title: 'Ambiguous', content: 'Body', projectName: 'Alldone' },
-                    'project-1',
-                    null,
-                    'user-1',
-                    null
-                )
-            ).rejects.toThrow('Please use projectId to choose one target project.')
-            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
-        })
-
-        test('keeps the current project and reads no project list when no target is given', async () => {
-            ProjectService.mockClear()
-            mockCreateAndPersistNote.mockResolvedValue({
-                success: true,
-                noteId: 'note-6',
-                note: { id: 'note-6', projectId: 'project-1' },
-            })
-
-            await executeToolNatively(
-                'create_note',
-                { title: 'Here', content: 'Body' },
-                'project-1',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(ProjectService).not.toHaveBeenCalled()
-            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
-                expect.objectContaining({ projectId: 'project-1' }),
-                expect.objectContaining({ projectId: 'project-1' })
-            )
-        })
-    })
-
     test('falls back to the assistant for both owner and creator when there is no requesting user', async () => {
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
@@ -2368,35 +1349,6 @@ describe('assistant attachment handoff helpers', () => {
             expect.anything()
         )
     })
-
-    test.each([false, true])(
-        'stamps topic comments with requester and automatic reply provenance: %s',
-        async automaticCommentReply => {
-            ProjectService.mockImplementationOnce(() => ({
-                initialize: jest.fn().mockResolvedValue(),
-                getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
-            }))
-            mockCollectionGet.mockResolvedValueOnce({ docs: [] })
-            await executeToolNatively(
-                'add_chat_comment',
-                {
-                    chatTitle: 'Review',
-                    comment: 'Please review',
-                    createIfMissing: true,
-                },
-                'project-1',
-                'assistant-1',
-                'user-1',
-                null,
-                { automaticCommentReply }
-            )
-            const writtenComment = mockDocSet.mock.calls
-                .map(([data]) => data)
-                .find(data => data.commentText === 'Please review')
-            expect(writtenComment).toMatchObject({ requestUserId: 'user-1', fromAssistant: true })
-            expect(writtenComment.suppressAssistantReply === true).toBe(automaticCommentReply)
-        }
-    )
 
     test('adds a comment to a newly created topic chat', async () => {
         ProjectService.mockImplementationOnce(() => ({
@@ -2599,22 +1551,7 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
-    test('describes Email and Calendar integrations as global across projects', async () => {
-        const messages = []
-
-        await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['create_gmail_draft'])
-
-        const systemMessages = messages
-            .filter(message => message[0] === 'system')
-            .map(message => message[1])
-            .join('\n')
-
-        expect(systemMessages).toContain('Email and Calendar integrations belong to the user account')
-        expect(systemMessages).toContain('available across projects')
-        expect(systemMessages).toContain('Never claim that an integration must be connected separately')
-    })
-
-    test('instructs assistants to assign tasks directly with a concrete visible reason', async () => {
+    test('requires proactive task creation to use the suggestion flow with a concrete visible reason', async () => {
         const messages = []
 
         await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['create_task'])
@@ -2629,8 +1566,6 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('must set taskOrigin to assistant_suggestion')
         expect(systemMessages).toContain('concrete context-specific reason')
         expect(systemMessages).toContain('do not merely restate the title or give a generic reason')
-        expect(systemMessages).toContain('assigned directly to the user')
-        expect(systemMessages).toContain('does not require the user to accept or reject')
     })
 
     test('uses a conversational style with natural humor across assistant channels', async () => {
@@ -2689,56 +1624,6 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('occasionally use web_search without an explicit search request')
         expect(systemMessages).toContain('topic the user is genuinely interested in')
         expect(systemMessages).toContain('limited, occasional proactive web_search behavior')
-    })
-
-    test('routes incomplete static reads to the real browser when both web tools are enabled', async () => {
-        const messages = []
-
-        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['fetch_url', 'browser_automation'])
-
-        const systemMessages = messages
-            .filter(message => message[0] === 'system')
-            .map(message => message[1])
-            .join('\n')
-
-        expect(systemMessages).toContain('WEB READING ROUTING')
-        expect(systemMessages).toContain('SPA or "#/..." fragment routes')
-        expect(systemMessages).toContain(
-            'fetch_url succeeds technically but does not contain the requested information'
-        )
-        expect(systemMessages).toContain('instead of attempting repeated web_search queries')
-        expect(systemMessages).toContain('call browser_inspect only if')
-
-        const directTools = collectPromptReferencedToolNames(messages, [
-            'fetch_url',
-            'web_search',
-            'browser_navigate',
-            'browser_inspect',
-            'browser_click',
-        ])
-        expect(directTools).toEqual(
-            new Set(['fetch_url', 'web_search', 'browser_navigate', 'browser_inspect', 'browser_click'])
-        )
-    })
-
-    test('clears cookie banners even when browsing is enabled without static fetch', async () => {
-        const messages = []
-        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['browser_automation'])
-        const instructions = messages.map(message => message[1]).join('\n')
-        expect(instructions).toContain('BROWSER PAGE ACCESS')
-        expect(instructions).toContain('Prefer accepting all cookies')
-        expect(instructions).toContain('confirm the overlay is gone')
-        expect(instructions).toContain('do not subscribe or install anything')
-        expect(instructions).toContain('never bypass an approval')
-    })
-
-    test('does not advertise browser fallback when browser automation is disabled', async () => {
-        const messages = []
-
-        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['fetch_url'])
-
-        expect(messages.map(message => message[1]).join('\n')).not.toContain('WEB READING ROUTING')
-        expect(messages.map(message => message[1]).join('\n')).not.toContain('BROWSER PAGE ACCESS')
     })
 
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {
@@ -2834,8 +1719,7 @@ describe('assistant attachment handoff helpers', () => {
 
         expect(result).toContain('The answer starts here')
         expect(result).toContain("⚠️ The response was cut off because it hit the model's length limit.")
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
+        expect(mockDocUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
                 commentText: expect.stringContaining(
                     "⚠️ The response was cut off because it hit the model's length limit."
@@ -2843,98 +1727,6 @@ describe('assistant attachment handoff helpers', () => {
                 assistantRun: expect.objectContaining({ status: 'incomplete' }),
             })
         )
-    })
-
-    test('serializes batched comment writes so an older snapshot cannot cut off the final words', async () => {
-        mockDocGet.mockResolvedValue({ data: () => ({}) })
-
-        let releaseFirstWrite
-        let firstWriteReleased = false
-        let signalFirstWriteStarted
-        let signalSecondChunkReady
-        let persistedCommentText = ''
-        const commentWrites = []
-        const firstWriteStarted = new Promise(resolve => {
-            signalFirstWriteStarted = resolve
-        })
-        const secondChunkReady = new Promise(resolve => {
-            signalSecondChunkReady = resolve
-        })
-
-        mockDocUpdate.mockImplementation(updateData => {
-            if (typeof updateData?.commentText !== 'string') return Promise.resolve()
-
-            commentWrites.push(updateData.commentText)
-            if (updateData.commentText === 'The answer starts') {
-                signalFirstWriteStarted()
-                return new Promise(resolve => {
-                    releaseFirstWrite = () => {
-                        if (firstWriteReleased) return
-                        firstWriteReleased = true
-                        persistedCommentText = updateData.commentText
-                        resolve()
-                    }
-                })
-            }
-
-            persistedCommentText = updateData.commentText
-            return Promise.resolve()
-        })
-
-        const delayedStream = {
-            async *[Symbol.asyncIterator]() {
-                yield { content: 'The answer starts', additional_kwargs: {} }
-                await new Promise(resolve => setTimeout(resolve, 350))
-                signalSecondChunkReady()
-                yield { content: ' and finishes here.', additional_kwargs: {} }
-            },
-        }
-
-        let storePromise
-        try {
-            storePromise = storeBotAnswerStream(
-                'project-1',
-                'topics',
-                'chat-1',
-                delayedStream,
-                ['user-1'],
-                ['PUBLIC'],
-                null,
-                'assistant-1',
-                ['user-1'],
-                'Anna',
-                'user-1',
-                null,
-                [['user', 'Please answer fully']],
-                'MODEL_GPT6_SOL',
-                'TEMPERATURE_NORMAL',
-                [],
-                {
-                    project: { name: 'Project A' },
-                    chat: { title: 'Chat A' },
-                    chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
-                }
-            )
-
-            await firstWriteStarted
-            await secondChunkReady
-            await new Promise(resolve => setTimeout(resolve, 25))
-
-            // The final snapshot is queued behind the deliberately blocked older write. Without
-            // serialization it starts immediately and the older write can land last in Firestore.
-            expect(commentWrites).toEqual(['The answer starts'])
-
-            releaseFirstWrite()
-            const result = await storePromise
-
-            expect(result).toBe('The answer starts and finishes here.')
-            expect(commentWrites).toContain('The answer starts and finishes here.')
-            expect(persistedCommentText).toBe('The answer starts and finishes here.')
-        } finally {
-            if (releaseFirstWrite) releaseFirstWrite()
-            if (storePromise) await storePromise.catch(() => {})
-            mockDocUpdate.mockReset().mockResolvedValue(undefined)
-        }
     })
 
     test('adds timestamps to multimodal context content without dropping images', () => {
@@ -3178,52 +1970,6 @@ describe('assistant attachment handoff helpers', () => {
         const toolResult = { success: true, taskId: '123' }
 
         expect(buildConversationSafeToolResult('create_task', toolResult)).toBe(toolResult)
-    })
-
-    test('labels calendar account targets without exposing internal project IDs', () => {
-        expect(
-            buildConversationSafeToolResult('create_calendar_event', {
-                success: false,
-                code: 'calendar_account_ambiguous',
-                message: 'Choose a calendar account.',
-                projectId: 'internal-top-level-project',
-                event: {
-                    projectId: 'internal-event-project',
-                    eventId: 'event-1',
-                },
-                accounts: [
-                    {
-                        projectId: 'internal-project-1',
-                        calendarEmail: 'one@example.com',
-                        calendarDefault: false,
-                    },
-                    {
-                        projectId: 'internal-project-2',
-                        calendarEmail: 'two@example.com',
-                        calendarDefault: true,
-                    },
-                ],
-            })
-        ).toEqual({
-            success: false,
-            code: 'calendar_account_ambiguous',
-            message: 'Choose a calendar account.',
-            event: {
-                eventId: 'event-1',
-            },
-            availableCalendarTargets: [
-                {
-                    calendarId: 'one@example.com',
-                    calendarEmail: 'one@example.com',
-                    isDefault: false,
-                },
-                {
-                    calendarId: 'two@example.com',
-                    calendarEmail: 'two@example.com',
-                    isDefault: true,
-                },
-            ],
-        })
     })
 
     test('globally caps oversized tool results before returning them to the model', () => {
@@ -3823,110 +2569,6 @@ describe('assistant chat media helpers', () => {
         })
     })
 
-    test('reads a PowerPoint or Excel upload as text, so the assistant can see what it says', async () => {
-        const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
-        const commentRef = { set: jest.fn(async () => {}) }
-        mockCollectionGet.mockResolvedValue({
-            docs: ['deck.pptx', 'prices.xlsx'].map((fileName, index) => ({
-                id: `message-${index}`,
-                ref: commentRef,
-                data: () => ({
-                    created: index,
-                    fromAssistant: false,
-                    mediaContext: [{ kind: 'file', fileName, storageUrl: `https://cdn.example.com/${fileName}` }],
-                }),
-            })),
-        })
-        global.fetch.mockResolvedValue({
-            ok: true,
-            arrayBuffer: async () => Buffer.from('zip-bytes'),
-            headers: { get: jest.fn(() => '') },
-        })
-
-        await listRecentChatMediaForAssistantRequest({
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-        })
-
-        expect(extractTextFromWhatsAppFile.mock.calls.map(([args]) => [args.fileName, args.contentType])).toEqual([
-            ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-            ['prices.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-        ])
-        expect(commentRef.set).toHaveBeenCalledWith(
-            { mediaContext: [expect.objectContaining({ extractedText: 'Extracted text for deck.pptx' })] },
-            { merge: true }
-        )
-    })
-
-    test('tells the model when it sees only the beginning of a long file', () => {
-        const [media] = normalizeCommentMediaContext({
-            mediaContext: [
-                {
-                    kind: 'file',
-                    fileName: 'deck.pptx',
-                    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                    storageUrl: 'https://cdn.example.com/deck.pptx',
-                    extractedText: 'Slide 1',
-                    extractionStatus: 'ok',
-                    extractionTruncated: true,
-                },
-            ],
-        })
-
-        expect(buildUserMessageContentFromComment('Put this into the wiki', [media])).toBe(
-            'Put this into the wiki\n\n[FILE: deck.pptx, type=application/vnd.openxmlformats-officedocument.presentationml.presentation, only the first 7 characters]\nSlide 1'
-        )
-    })
-
-    test('hands the wiki the bytes of a file from the conversation, never from the target project', async () => {
-        mockDocGet.mockResolvedValue({
-            exists: true,
-            data: () => ({
-                fromAssistant: false,
-                commentText: 'Put the deck into the wiki of the other project',
-                mediaContext: [
-                    {
-                        kind: 'file',
-                        fileName: 'deck.pptx',
-                        storageUrl: 'https://cdn.example.com/deck.pptx',
-                        extractedText: 'Slide 1',
-                    },
-                ],
-            }),
-        })
-        global.fetch.mockResolvedValue({
-            ok: true,
-            arrayBuffer: async () => Buffer.from('deck-bytes'),
-            headers: { get: jest.fn(() => '') },
-        })
-
-        await executeToolNatively(
-            'add_knowledge_document',
-            { projectId: 'other-project' },
-            'p1',
-            'anna',
-            'u1',
-            { message: 'Put the deck into the wiki of the other project' },
-            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1', messageId: 'm1' }
-        )
-        const [{ readChatAttachment, args }] = mockKnowledgeBase.executeKnowledgeBaseTool.mock.calls.at(-1)
-        expect(args).toEqual({ projectId: 'other-project' })
-
-        mockDocGet.mockClear()
-        const file = await readChatAttachment({ messageId: '', fileName: '' })
-
-        expect(mockDocGet.mock.contexts[0].path).toBe('chatComments/p1/topics/c1/comments/m1')
-        expect(file).toEqual({
-            fileName: 'deck.pptx',
-            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            kind: 'file',
-            buffer: Buffer.from('deck-bytes'),
-            fileSizeBytes: Buffer.from('deck-bytes').length,
-            messageId: 'm1',
-        })
-    })
-
     test('lists recent chat media with message ids and extracted-text availability', async () => {
         mockCollectionGet.mockResolvedValue({
             docs: [
@@ -4278,223 +2920,6 @@ describe('resolveCreateTaskTargetProject', () => {
             },
         })
     })
-
-    test('refuses an explicit projectId the creator is not a member of', async () => {
-        // The project exists, so a lookup by id alone would accept it; TaskService then writes
-        // through the Admin SDK with no membership check of its own.
-        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'p-own', name: 'Own' }])
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects,
-        }))
-        const fakeDb = {
-            collection: jest.fn(() => ({
-                doc: jest.fn(() => ({
-                    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Somebody else' }) }),
-                })),
-            })),
-        }
-
-        await expect(
-            resolveCreateTaskTargetProject(fakeDb, {
-                creatorId: 'u-1',
-                contextProjectId: 'p-own',
-                assistantId: 'a-1',
-                globalProjectId: 'global',
-                requestedProjectId: 'p-foreign',
-            })
-        ).rejects.toThrow('Target project not found or not accessible: "p-foreign"')
-        expect(getUserProjects).toHaveBeenCalledWith(
-            'u-1',
-            expect.objectContaining({ includeArchived: true, includeCommunity: true, activeOnly: false })
-        )
-    })
-
-    test('still accepts the global assistant project without a membership lookup', async () => {
-        const getUserProjects = jest.fn().mockResolvedValue([])
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects,
-        }))
-
-        await expect(
-            resolveCreateTaskTargetProject(
-                {},
-                {
-                    creatorId: 'u-1',
-                    contextProjectId: 'p-own',
-                    assistantId: 'a-1',
-                    globalProjectId: 'global',
-                    requestedProjectId: 'global',
-                }
-            )
-        ).resolves.toMatchObject({ targetProjectId: 'global', source: 'toolArgs.projectId' })
-        expect(getUserProjects).not.toHaveBeenCalled()
-    })
-})
-
-describe('assistant parent goal tools', () => {
-    const TaskUpdateService = require('../shared/TaskUpdateService')
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockDocGet.mockReset()
-        mockCreateAndPersistTask.mockReset()
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-goal', name: 'Goal Project' }]),
-        }))
-        mockDocGet.mockImplementation(function () {
-            return Promise.resolve({
-                exists: true,
-                data: () => ({
-                    defaultProjectId: 'project-goal',
-                    projectIds: ['project-goal'],
-                    userIds: ['user-1'],
-                    isPublicFor: ['user-1'],
-                    lockKey: 'goal-lock',
-                }),
-            })
-        })
-        mockCreateAndPersistTask.mockResolvedValue({
-            success: true,
-            taskId: 'task-goal',
-            projectId: 'project-goal',
-            task: { id: 'task-goal', name: 'Goal task', userId: 'user-1', commentsData: { amount: 0 } },
-        })
-    })
-    afterEach(() => jest.restoreAllMocks())
-
-    test.each(['goal-1', null])('create_task forwards resolved parent goal fields: %j', async parentGoalId => {
-        await executeToolNatively(
-            'create_task',
-            { name: 'Goal task', projectId: 'project-goal', parentGoalId },
-            'project-context',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'project-goal',
-                parentGoalId,
-                parentGoalIsPublicFor: parentGoalId ? ['user-1'] : null,
-                lockKey: parentGoalId ? 'goal-lock' : '',
-            }),
-            expect.objectContaining({ userId: 'user-1' })
-        )
-        if (parentGoalId === null) {
-            expect(mockCreateAndPersistTask.mock.calls[0][0].skipAutomaticGoalRouting).toBe(true)
-        }
-    })
-
-    test('create_task chooses the goal project automatically', async () => {
-        mockDocGet.mockImplementation(function () {
-            return Promise.resolve({
-                exists: this.path !== 'goals/project-goal/items/goal-1',
-                data: () => ({
-                    defaultProjectId: 'project-goal',
-                    projectIds: ['project-goal', 'other-project'],
-                    userIds: ['user-1'],
-                    isPublicFor: [0],
-                    lockKey: 'target-lock',
-                }),
-            })
-        })
-        await executeToolNatively(
-            'create_task',
-            { name: 'Goal task', projectId: 'project-goal', parentGoalId: 'goal-1' },
-            'project-goal',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-            expect.objectContaining({ projectId: 'other-project', parentGoalId: 'goal-1', lockKey: 'target-lock' }),
-            expect.anything()
-        )
-    })
-
-    test('create_task refuses a private goal before task persistence', async () => {
-        mockDocGet.mockImplementation(function () {
-            const privateGoal = this.path === 'goals/project-goal/items/goal-1'
-            return Promise.resolve({
-                exists: true,
-                data: () => ({
-                    defaultProjectId: 'project-goal',
-                    projectIds: ['project-goal'],
-                    userIds: ['user-1'],
-                    isPublicFor: privateGoal ? ['other-user'] : [0],
-                }),
-            })
-        })
-        await expect(
-            executeToolNatively(
-                'create_task',
-                { name: 'Goal task', projectId: 'project-goal', parentGoalId: 'goal-1' },
-                'project-context',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow('Parent goal not found or not accessible')
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test.each(['goal-1', null])(
-        'update_task accepts goal-only mutations and forwards clearing: %j',
-        async parentGoalId => {
-            jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
-            const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask').mockResolvedValue({
-                success: true,
-                taskId: 'task-1',
-                changes: ['parent goal'],
-            })
-            await executeToolNatively(
-                'update_task',
-                { taskName: 'Goal task', parentGoalId, parentGoalProjectId: 'target-goal-project' },
-                'project-goal',
-                'assistant-1',
-                'user-1',
-                null
-            )
-            expect(findAndUpdate).toHaveBeenCalledWith(
-                'user-1',
-                expect.anything(),
-                expect.objectContaining({ parentGoalId, parentGoalProjectId: 'target-goal-project' }),
-                expect.objectContaining({ feedUser: expect.objectContaining({ uid: 'assistant-1' }) })
-            )
-        }
-    )
-
-    test('refuses combined project moves and goal assignment before updating', async () => {
-        jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
-        const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask')
-        await expect(
-            executeToolNatively(
-                'update_task',
-                { taskName: 'Goal task', parentGoalId: 'goal-1', moveToProjectId: 'project-goal' },
-                'project-context',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow('omit explicit move fields')
-        expect(findAndUpdate).not.toHaveBeenCalled()
-    })
-
-    test.each(['create_task', 'update_task'])('requires human authorization for %s goal edits', async tool => {
-        await expect(
-            executeToolNatively(
-                tool,
-                { name: 'Goal task', parentGoalId: 'goal-1' },
-                'project-goal',
-                'assistant-1',
-                null,
-                null
-            )
-        ).rejects.toThrow('Authenticated user is required')
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
 })
 
 describe('assistant create_task project routing comments', () => {
@@ -4592,18 +3017,11 @@ describe('assistant create_task project routing comments', () => {
             confidence: 0.84,
             commentId: 'routing-comment-1',
         })
-        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: 'task-comment-1' })
-        expect(addAssistantTaskComment).toHaveBeenCalledWith({
-            requestUserId: 'user-1',
-            suppressAssistantReply: false,
-            projectId: 'project-client',
-            taskId: 'task-1',
-            assistantId: 'assistant-1',
-            comment: 'Assistant added this task for you. You asked me to create this task.',
-        })
+        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: null })
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
     })
 
-    test('assigns proactive assistant tasks directly to the user with a visible explanatory comment', async () => {
+    test('creates proactive assistant tasks as suggestions with a visible explanatory comment', async () => {
         const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
         ProjectService.mockImplementation(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),
@@ -4658,129 +3076,23 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 userId: 'user-1',
                 creatorId: 'assistant-1',
-                suggestedBy: null,
-                assigneeType: 'USER',
+                suggestedBy: 'assistant-1',
                 assistantId: '',
-                taskMetadata: null,
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
             }),
             expect.objectContaining({ userId: 'user-1', projectId: 'project-client' })
         )
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
-            requestUserId: 'user-1',
-            suppressAssistantReply: false,
             projectId: 'project-client',
             taskId: 'task-suggested',
             assistantId: 'assistant-1',
-            comment: 'Assistant added this task for you. This client email asks for a decision before tomorrow.',
+            comment: 'This client email asks for a decision before tomorrow.',
         })
         expect(updateUserMemory).not.toHaveBeenCalled()
         expect(result).toMatchObject({
             taskOrigin: 'assistant_suggestion',
-            suggested: false,
+            suggested: true,
             commentId: 'task-comment-1',
-        })
-    })
-
-    describe('called without an Alldone assistant (MCP)', () => {
-        function mockCreatedTask(taskId) {
-            const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
-            ProjectService.mockImplementation(() => ({
-                initialize: jest.fn().mockResolvedValue(undefined),
-                getUserProjects,
-            }))
-            const userDoc = {
-                exists: true,
-                data: () => ({
-                    defaultProjectId: 'project-client',
-                    projectIds: ['project-client'],
-                    timezone: 'UTC+02:00',
-                }),
-            }
-            mockDocGet.mockResolvedValue(userDoc)
-            mockCreateAndPersistTask.mockResolvedValueOnce({
-                success: true,
-                taskId,
-                projectId: 'project-client',
-                message: 'Task created',
-                task: { id: taskId, name: 'Projekt-Wiki Paket 1', userId: 'user-1', commentsData: { amount: 0 } },
-            })
-            const { TaskCommentService } = require('../shared/TaskCommentService')
-            return jest
-                .spyOn(TaskCommentService.prototype, 'addComment')
-                .mockResolvedValue({ success: true, commentId: 'user-comment-1' })
-        }
-
-        afterEach(() => {
-            mockDocGet.mockReset()
-            jest.restoreAllMocks()
-        })
-
-        test("posts the comment in the signed-in user's name instead of refusing the task", async () => {
-            const addComment = mockCreatedTask('task-mcp')
-
-            const result = await executeToolNatively(
-                'create_task',
-                {
-                    name: 'Projekt-Wiki Paket 1',
-                    taskOrigin: 'user_request',
-                    comment: 'Erstes von fünf MVP-Paketen für das Projekt-Wiki.',
-                    projectName: 'Client Work',
-                },
-                'project-client',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(addComment).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    projectId: 'project-client',
-                    taskId: 'task-mcp',
-                    comment: 'Erstes von fünf MVP-Paketen für das Projekt-Wiki.',
-                    actor: expect.objectContaining({ uid: 'user-1' }),
-                    fromAssistant: false,
-                })
-            )
-            expect(addAssistantTaskComment).not.toHaveBeenCalled()
-            expect(result).toMatchObject({ success: true, taskId: 'task-mcp', commentId: 'user-comment-1' })
-        })
-
-        test('keeps the requesting user as creator of a suggested task', async () => {
-            mockCreatedTask('task-mcp-suggested')
-
-            const result = await executeToolNatively(
-                'create_task',
-                {
-                    name: 'Projekt-Wiki Paket 1',
-                    taskOrigin: 'assistant_suggestion',
-                    comment: 'Folgt aus dem Konzeptgespräch.',
-                    projectName: 'Client Work',
-                },
-                'project-client',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-                expect.objectContaining({ creatorId: 'user-1', userId: 'user-1' }),
-                expect.anything()
-            )
-            expect(result).toMatchObject({ taskOrigin: 'assistant_suggestion' })
-        })
-
-        test('still requires a reason for a suggested task', async () => {
-            await expect(
-                executeToolNatively(
-                    'create_task',
-                    { name: 'Irgendwas', taskOrigin: 'assistant_suggestion' },
-                    'project-client',
-                    null,
-                    'user-1',
-                    null
-                )
-            ).rejects.toThrow('require a comment explaining why')
-            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
         })
     })
 
@@ -4894,15 +3206,6 @@ describe('assistant create_task project routing comments', () => {
     })
 
     test('uses Gmail label matched project over conflicting assistant task project', async () => {
-        // The label's project is honoured only because the user is a member of it, as the user
-        // doc below says; the project list has to agree with it.
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([
-                { id: 'project-bechtle', name: 'Bechtle' },
-                { id: 'project-jtl', name: 'JTL Software - Project Juno' },
-            ]),
-        }))
         mockDocGet
             .mockResolvedValueOnce({
                 exists: true,
@@ -4955,7 +3258,8 @@ describe('assistant create_task project routing comments', () => {
                     threadId: 'thread-1',
                     webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
                     archiveOnComplete: true,
-                    taskSuggestionComment: 'The invoice email appears to require follow-up.',
+                    taskSuggestionComment:
+                        'I suggest this task because the invoice email appears to require follow-up.',
                 },
             }
         )
@@ -4965,10 +3269,8 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
                 projectId: 'project-jtl',
                 creatorId: 'assistant-1',
-                userId: 'user-1',
-                assigneeType: 'USER',
-                suggestedBy: null,
-                taskMetadata: null,
+                suggestedBy: 'assistant-1',
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
                 gmailData: expect.objectContaining({
                     origin: 'gmail_label_follow_up',
                     projectId: 'gmail-connection-project',
@@ -4980,23 +3282,20 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 userId: 'user-1',
                 projectId: 'project-jtl',
-            }),
-            { emailThread: { userId: 'user-1', projectIds: ['project-bechtle', 'project-jtl'] } }
+            })
         )
         expect(result.projectId).toBe('project-jtl')
         expect(result.projectName).toBe('JTL Software - Project Juno')
         expect(result).toMatchObject({
             taskOrigin: 'assistant_suggestion',
-            suggested: false,
+            suggested: true,
             commentId: 'task-comment-1',
         })
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
-            requestUserId: 'user-1',
-            suppressAssistantReply: false,
             projectId: 'project-jtl',
             taskId: 'task-jtl',
             assistantId: 'assistant-1',
-            comment: 'Assistant added this task for you. The invoice email appears to require follow-up.',
+            comment: 'I suggest this task because the invoice email appears to require follow-up.',
         })
         expect(result.projectSelection).toMatchObject({
             source: 'gmailLabelMatchedProject',
@@ -5005,226 +3304,6 @@ describe('assistant create_task project routing comments', () => {
             assistantProvidedReasoning: false,
         })
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
-    })
-})
-
-describe('assistant task assignment and attribution', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockDocGet.mockReset()
-        mockFirestoreGetAll.mockReset()
-        mockCreateAndPersistTask.mockReset()
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Project One' }]),
-        }))
-        mockDocGet.mockResolvedValue({
-            exists: true,
-            data: () => ({ defaultProjectId: 'project-1', projectIds: ['project-1'] }),
-        })
-        mockFirestoreGetAll.mockResolvedValue([
-            { exists: false },
-            { exists: true, id: 'assistant-1', data: () => ({ displayName: 'Anna' }) },
-        ])
-        mockCreateAndPersistTask.mockImplementation(async params => {
-            const task = require('../shared/TaskModelBuilder').createTaskObject({ ...params, taskId: 'task-new' })
-            return { success: true, taskId: task.id, task }
-        })
-    })
-
-    afterEach(() => mockFirestoreGetAll.mockReset())
-
-    test.each([
-        ['Anna', 'user_request'],
-        ['Anna', 'assistant_suggestion'],
-        ['Mira', 'user_request'],
-        ['Mira', 'assistant_suggestion'],
-    ])('%s directly assigns a %s task and explains why in its own comment', async (displayName, taskOrigin) => {
-        mockFirestoreGetAll.mockResolvedValue([
-            { exists: false },
-            { exists: true, id: 'assistant-1', data: () => ({ displayName }) },
-        ])
-
-        const result = await executeToolNatively(
-            'create_task',
-            {
-                name: 'Reply to the client',
-                projectId: 'project-1',
-                taskOrigin,
-                comment: '  The client needs your decision by tomorrow.  ',
-                // Inferred tasks must remain user-owned even if the model requests tracking.
-                trackAssistantWork: taskOrigin === 'assistant_suggestion',
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null,
-            { annaConversation: true }
-        )
-
-        expect(result).toMatchObject({
-            suggested: false,
-            taskOrigin,
-            commentId: 'task-comment-1',
-            task: {
-                userId: 'user-1',
-                userIds: ['user-1'],
-                currentReviewerId: 'user-1',
-                assigneeType: 'USER',
-                suggestedBy: null,
-                taskMetadata: null,
-            },
-        })
-        expect(addAssistantTaskComment).toHaveBeenCalledTimes(1)
-        expect(addAssistantTaskComment).toHaveBeenCalledWith({
-            requestUserId: 'user-1',
-            suppressAssistantReply: false,
-            projectId: 'project-1',
-            taskId: 'task-new',
-            assistantId: 'assistant-1',
-            comment: `${displayName} added this task for you. The client needs your decision by tomorrow.`,
-        })
-    })
-
-    test('keeps work explicitly delegated to Anna assigned to the assistant', async () => {
-        const result = await executeToolNatively(
-            'create_task',
-            {
-                name: 'Research the client',
-                projectId: 'project-1',
-                taskOrigin: 'user_request',
-                trackAssistantWork: true,
-                comment: 'You asked me to research the client before your meeting.',
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null,
-            { annaConversation: true }
-        )
-
-        expect(result.task).toMatchObject({
-            userId: 'assistant-1',
-            currentReviewerId: 'assistant-1',
-            assigneeType: 'assistant',
-            executionMode: 'direct',
-            suggestedBy: null,
-            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' } },
-        })
-        expect(addAssistantTaskComment).toHaveBeenCalledWith(
-            expect.objectContaining({ comment: 'You asked me to research the client before your meeting.' })
-        )
-    })
-
-    test('preserves user-authored MCP task creation without an assistant identity', async () => {
-        const result = await executeToolNatively(
-            'create_task',
-            { name: 'Reply to the client', projectId: 'project-1', taskOrigin: 'user_request' },
-            'project-1',
-            null,
-            'user-1',
-            null
-        )
-
-        expect(result.task).toMatchObject({ userId: 'user-1', creatorId: 'user-1', suggestedBy: null })
-        expect(addAssistantTaskComment).not.toHaveBeenCalled()
-    })
-
-    test('reports failure if the assistant attribution comment cannot be saved', async () => {
-        addAssistantTaskComment.mockResolvedValueOnce(null)
-
-        await expect(
-            executeToolNatively(
-                'create_task',
-                { name: 'Reply to the client', projectId: 'project-1', taskOrigin: 'user_request' },
-                'project-1',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow('Task was created, but its assistant comment could not be added')
-    })
-})
-
-// Model-authored JSON (assistant tool calls and the MCP server, which delegates to
-// executeToolNatively) can put anything under dueDate; the create funnel must refuse
-// garbage instead of persisting it to Firestore.
-describe('assistant create_task dueDate validation', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockDocGet.mockReset()
-        mockCreateAndPersistTask.mockReset()
-        ProjectService.mockClear()
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-default', name: 'Default Project' }]),
-        }))
-        mockDocGet.mockResolvedValue({
-            exists: true,
-            data: () => ({
-                defaultProjectId: 'project-default',
-                projectIds: ['project-default'],
-                timezone: 'UTC+02:00',
-            }),
-        })
-    })
-
-    test('rejects a dueDate holding an object before persisting anything', async () => {
-        await expect(
-            executeToolNatively(
-                'create_task',
-                {
-                    name: 'Task with garbage dueDate',
-                    projectName: 'Default Project',
-                    dueDate: { id: 'task-1', name: 'an entire task object' },
-                },
-                'project-default',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow('Invalid dueDate: received an object')
-
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test('rejects an unparseable dueDate string, naming the value for the retry', async () => {
-        await expect(
-            executeToolNatively(
-                'create_task',
-                { name: 'Task with bad date string', projectName: 'Default Project', dueDate: 'not-a-real-date' },
-                'project-default',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow('could not interpret "not-a-real-date" as a date')
-
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test('keeps Number.MAX_SAFE_INTEGER ("Someday") valid and forwards it', async () => {
-        mockCreateAndPersistTask.mockResolvedValueOnce({
-            success: true,
-            taskId: 'task-someday',
-            projectId: 'project-default',
-            message: 'Task created',
-            task: { id: 'task-someday', name: 'Someday task', userId: 'user-1', commentsData: { amount: 0 } },
-        })
-
-        await executeToolNatively(
-            'create_task',
-            { name: 'Someday task', projectName: 'Default Project', dueDate: Number.MAX_SAFE_INTEGER },
-            'project-default',
-            'assistant-1',
-            'user-1',
-            null
-        )
-
-        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-            expect.objectContaining({ dueDate: Number.MAX_SAFE_INTEGER }),
-            expect.anything()
-        )
     })
 })
 
@@ -5666,8 +3745,6 @@ describe('assistant get contacts tool', () => {
                     phone: '+491234',
                     linkedInUrl: 'https://linkedin.com/in/alice',
                     description: 'Important customer',
-                    contactStatusId: 'status-1',
-                    contactStatusName: 'Lead',
                     lastEditedAt: 1774970400000,
                 },
             ],
@@ -5728,8 +3805,6 @@ describe('assistant get contacts tool', () => {
                     phone: '+491234',
                     linkedInUrl: 'https://linkedin.com/in/alice',
                     description: 'Important customer',
-                    contactStatusId: 'status-1',
-                    contactStatusName: 'Lead',
                     lastEditedAt: 1774970400000,
                 },
             ],
@@ -6014,65 +4089,6 @@ describe('assistant get tasks tool cross-project failures', () => {
         expect(result.count).toBe(150)
         expect(result.limitCapped).toEqual(expect.objectContaining({ requestedLimit: 1000, appliedLimit: 150 }))
         expect(result.limitCapped.note).toMatch(/search tool/)
-    })
-
-    test('preserves 82 matching tasks when the model requests only 20', async () => {
-        mockMultiProjectResult({
-            tasks: Array.from({ length: 40 }, (_, index) => ({ id: `task-${index}`, name: `Task ${index}` })),
-            totalAcrossProjects: 82,
-            totalCountIsExact: true,
-            query: { hasMore: true },
-        })
-        const result = await executeToolNatively(
-            'get_tasks',
-            { allProjects: true, date: '2026-10-08', limit: 20 },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(result.tasks).toHaveLength(20)
-        expect(result).toMatchObject({
-            count: 20,
-            shownCount: 20,
-            totalCount: 82,
-            totalCountIsExact: true,
-            hasMore: true,
-            listingComplete: false,
-        })
-        expect(result.limitCapped).toBeUndefined()
-    })
-
-    test('single-project listings expose the uncapped count too', async () => {
-        TaskRetrievalService.mockImplementation(() => ({
-            initialize: jest.fn(),
-            getTasks: jest.fn().mockResolvedValue({
-                tasks: [{ id: 'task-1', name: 'First task' }],
-                totalAvailable: 31,
-                totalCountIsExact: true,
-                query: { hasMore: true },
-            }),
-        }))
-        const result = await executeToolNatively('get_tasks', { limit: 1 }, 'project-1', 'assistant-1', 'user-1', null)
-        expect(result).toMatchObject({ count: 1, totalCount: 31, totalCountIsExact: true, listingComplete: false })
-    })
-
-    test('post-filtered recent results do not claim an exact count from a capped all-time query', async () => {
-        mockMultiProjectResult({
-            tasks: [{ id: 'recent', name: 'Recent task', done: true, completed: Date.now() }],
-            totalAcrossProjects: 82,
-            totalCountIsExact: true,
-            query: { hasMore: true },
-        })
-        const result = await executeToolNatively(
-            'get_tasks',
-            { allProjects: true, status: 'done', recentHours: 2, limit: 1 },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(result).toMatchObject({ count: 1, totalCount: 1, totalCountIsExact: false, listingComplete: false })
     })
 
     test('omits the limit disclosure when the request already fits', async () => {
@@ -6435,14 +4451,6 @@ describe('assistant heartbeat settings tool', () => {
         expect(systemMessages).toContain('Current heartbeat settings for this assistant:')
         expect(systemMessages).toContain('Check progress and mention the focus task.')
         expect(systemMessages).toContain('treat the current heartbeat prompt as the base text')
-    })
-
-    test('allows the four artifact tools exactly when the artifacts key is enabled', async () => {
-        for (const toolName of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {
-            expect(await isToolAllowedForExecution([], toolName)).toBe(false)
-            expect(await isToolAllowedForExecution(['create_note'], toolName)).toBe(false)
-            expect(await isToolAllowedForExecution(['artifacts'], toolName)).toBe(true)
-        }
     })
 
     test('denies heartbeat settings tool execution when not allowed', async () => {
@@ -6973,8 +4981,7 @@ describe('assistant thread compaction tool', () => {
                 trimHistoryBeforeMessageId: '',
                 compactionRevision: 1,
                 updatedAt: expect.any(Object),
-            },
-            { merge: true }
+            }
         )
         expect(result).toMatchObject({
             success: true,
@@ -7063,108 +5070,6 @@ describe('assistant thread compaction tool', () => {
                 }
             )
         ).rejects.toThrow('summary is required for compact_thread_context.')
-    })
-
-    test('treats another assistant comment as incoming context while retaining own output as assistant history', async () => {
-        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
-        mockCollectionGet.mockResolvedValue({
-            docs: [
-                {
-                    id: 'incoming',
-                    ref: { path: 'incoming' },
-                    data: () => ({
-                        commentText: 'Please review this result',
-                        creatorId: 'other-assistant',
-                        fromAssistant: true,
-                        created: 200,
-                    }),
-                },
-                {
-                    id: 'own',
-                    ref: { path: 'own' },
-                    data: () => ({
-                        commentText: 'My earlier response',
-                        creatorId: 'assistant-1',
-                        fromAssistant: true,
-                        created: 100,
-                    }),
-                },
-            ],
-        })
-        const messages = await getOptimizedContextMessages(
-            'incoming',
-            'project-1',
-            'topics',
-            'chat-1',
-            'en',
-            'Bot',
-            '',
-            [],
-            0,
-            null,
-            'assistant-1'
-        )
-        expect(
-            messages.find(([, text]) => typeof text === 'string' && text.includes('Please review this result'))?.[0]
-        ).toBe('user')
-        expect(messages.find(([, text]) => typeof text === 'string' && text.includes('My earlier response'))?.[0]).toBe(
-            'assistant'
-        )
-    })
-
-    test('excludes only the current live call display copy when its transcript is supplied directly', async () => {
-        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
-        mockCollectionGet.mockResolvedValue({
-            docs: [
-                {
-                    id: 'spoken',
-                    data: () => ({
-                        commentText: 'Current spoken reply',
-                        fromAssistant: true,
-                        callSessionId: 'live-current',
-                        created: 400,
-                    }),
-                },
-                {
-                    id: 'backend',
-                    data: () => ({
-                        commentText: 'Current backend copy',
-                        fromAssistant: true,
-                        callSessionId: 'live-current',
-                        created: 300,
-                    }),
-                },
-                {
-                    id: 'previous-call',
-                    data: () => ({
-                        commentText: 'Earlier call answer',
-                        fromAssistant: true,
-                        callSessionId: 'live-previous',
-                        created: 200,
-                    }),
-                },
-                { id: 'chat', data: () => ({ commentText: 'Earlier chat answer', fromAssistant: true, created: 100 }) },
-            ],
-        })
-        const messages = await getOptimizedContextMessages(
-            null,
-            'project-1',
-            'topics',
-            'chat-1',
-            'en',
-            'Bot',
-            '',
-            [],
-            null,
-            null,
-            null,
-            {
-                includeAllRecent: true,
-                excludeCallSessionId: 'live-current',
-            }
-        )
-        const answers = messages.filter(([role]) => role === 'assistant').map(([, text]) => text)
-        expect(answers).toEqual(['Earlier chat answer', 'Earlier call answer'])
     })
 
     test('injects hidden compacted state and excludes older comments in future context loads', async () => {
@@ -7866,10 +5771,6 @@ describe('assistant project description tool', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
         expect(systemMessages).toContain('Treat the current project description as the base text')
-        expect(systemMessages).toContain("The project description is the project's stable profile")
-        expect(systemMessages).toContain(
-            'Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them'
-        )
         expect(systemMessages).toContain('call get_user_projects first')
     })
 
@@ -7974,84 +5875,6 @@ describe('assistant project description tool', () => {
                 feedUser: expect.objectContaining({ uid: 'assistant-1' }),
             })
         )
-    })
-
-    test('recovers a unique one-character typo in an accessible projectId', async () => {
-        const familieProjectId = '-MDq6lDDNf_OwPjWeJsX'
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([
-                { id: 'another-project-id-1', name: 'Operations', description: 'Old description' },
-                { id: familieProjectId, name: 'Familie', description: 'Family description' },
-            ]),
-        }))
-        updateProjectDescription.mockResolvedValue({
-            success: true,
-            updated: true,
-            project: { id: familieProjectId, name: 'Familie' },
-            description: 'Updated family description',
-            previousDescription: 'Family description',
-            message: 'Project description updated in project "Familie"',
-        })
-        mockDocGet
-            .mockResolvedValueOnce({
-                exists: true,
-                data: () => ({
-                    uid: 'assistant-1',
-                    allowedTools: ['update_project_description'],
-                }),
-            })
-            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
-
-        await executeToolNatively(
-            'update_project_description',
-            { description: 'Updated family description', projectId: `${familieProjectId}2` },
-            'another-project-id-1',
-            'assistant-1',
-            'user-1',
-            null
-        )
-
-        expect(updateProjectDescription).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: familieProjectId,
-                userId: 'user-1',
-                description: 'Updated family description',
-            })
-        )
-    })
-
-    test('rejects an ambiguous one-character projectId correction', async () => {
-        const requestedProjectId = '-MDq6lDDNf_OwPjWeJsX2'
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([
-                { id: '-MDq6lDDNf_OwPjWeJsX', name: 'Familie', description: '' },
-                { id: '-MDq6lDDNf_OwPjWeJsX3', name: 'Other', description: '' },
-            ]),
-        }))
-        mockDocGet
-            .mockResolvedValueOnce({
-                exists: true,
-                data: () => ({
-                    uid: 'assistant-1',
-                    allowedTools: ['update_project_description'],
-                }),
-            })
-            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
-
-        await expect(
-            executeToolNatively(
-                'update_project_description',
-                { description: 'Updated family description', projectId: requestedProjectId },
-                '-MDq6lDDNf_OwPjWeJsX',
-                'assistant-1',
-                'user-1',
-                null
-            )
-        ).rejects.toThrow(`Target project not found or not accessible: "${requestedProjectId}"`)
-
-        expect(updateProjectDescription).not.toHaveBeenCalled()
     })
 
     test('updates an exact projectName target', async () => {
@@ -8264,7 +6087,6 @@ describe('execute_task_in_vm existing task routing', () => {
         })
         resolveTargetTaskSpy = jest.spyOn(vmTargetTask, 'resolveVmTargetTask').mockResolvedValue({
             ok: true,
-            projectId: 'project-1',
             objectType: 'tasks',
             objectId: 'task-1',
             isPublicFor: [0, 'user-1'],
@@ -8329,193 +6151,6 @@ describe('execute_task_in_vm existing task routing', () => {
             })
         )
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
-        const onVmJobStarted = jest.fn()
-        startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })
-        await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Merge this task', task_type: 'prototype', target_task_id: 'task-1' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            {},
-            { onVmJobStarted }
-        )
-        if (success) {
-            expect(onVmJobStarted).toHaveBeenCalledWith({
-                correlationId: 'vm-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-            })
-        } else expect(onVmJobStarted).not.toHaveBeenCalled()
-    })
-
-    test('retains the successful VM launch when workflow bookkeeping fails', async () => {
-        const onVmJobStarted = jest.fn().mockRejectedValue(new Error('Firestore unavailable'))
-        startVmJobSpy.mockResolvedValue({ success: true, correlationId: 'vm-1', status: 'queued' })
-        const result = await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Merge this task', task_type: 'prototype', target_task_id: 'task-1' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            {},
-            { onVmJobStarted }
-        )
-        expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
-    })
-
-    test('uses the resolved task project for chat, task context and VM launch, keeping the delegate persona', async () => {
-        resolveTargetTaskSpy.mockResolvedValue({
-            ok: true,
-            projectId: 'private-project',
-            objectType: 'tasks',
-            objectId: 'task-1',
-            isPublicFor: ['user-1'],
-        })
-        mockDocGet.mockImplementation(function () {
-            const docs = {
-                'items/private-project/tasks/task-1': { name: 'Review architecture', isPublicFor: ['user-1'] },
-                'projects/private-project': { name: 'Privat' },
-                'assistants/project-1/items/assistant-1': {
-                    displayName: 'Team CTO',
-                    instructions: 'Review carefully.',
-                },
-            }
-            return Promise.resolve({ exists: !!docs[this?.path], data: () => docs[this?.path] || {} })
-        })
-        await executeToolNatively(
-            'execute_task_in_vm',
-            {
-                objective: 'Review architecture in a VM',
-                task_type: 'research',
-                target_task_id: 'task-1',
-                target_project_id: 'private-project',
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            { message: 'Review this task' },
-            {
-                originProjectId: 'private-project',
-                originObjectType: 'tasks',
-                originObjectId: 'task-1',
-            }
-        )
-        expect(resolveTargetTaskSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                targetProjectId: 'private-project',
-                preferredProjectId: 'private-project',
-                requestUserId: 'user-1',
-            })
-        )
-        expect(ensureChatExistsSpy).toHaveBeenCalledWith(
-            'private-project',
-            'tasks',
-            'task-1',
-            'assistant-1',
-            ['user-1'],
-            ['user-1']
-        )
-        expect(startVmJobSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'private-project',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-            })
-        )
-        const context = startVmJobSpy.mock.calls[0][0].threadContext
-        expect(context).toContain('Review architecture')
-        expect(context).toContain('Privat')
-        expect(context).toContain('Team CTO')
-        expect(context).toContain('Review carefully.')
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test('does not create a chat or launch when target access is rejected', async () => {
-        resolveTargetTaskSpy.mockResolvedValue({ ok: false, message: 'You do not have access to that task.' })
-        const result = await executeToolNatively(
-            'execute_task_in_vm',
-            {
-                objective: 'Review architecture',
-                task_type: 'research',
-                target_task_id: 'task-1',
-            },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(result.success).toBe(false)
-        expect(ensureChatExistsSpy).not.toHaveBeenCalled()
-        expect(startVmJobSpy).not.toHaveBeenCalled()
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test('keeps Anna work on an existing task and leaves the daily conversation as its origin', async () => {
-        await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Prepare the launch', target_task_id: 'task-1', task_type: 'research' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            { message: 'Please prepare the launch' },
-            {
-                annaConversation: true,
-                projectId: 'project-1',
-                objectType: 'topics',
-                objectId: 'AnnaChat20261007user-1',
-                assistantId: 'assistant-1',
-            }
-        )
-        expect(startVmJobSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                objectType: 'tasks',
-                objectId: 'task-1',
-                originObjectId: 'AnnaChat20261007user-1',
-                threadContext: expect.stringContaining('Keep progress, questions and deliverables in that task'),
-            })
-        )
-        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
-    })
-
-    test('creates an assistant-owned task instead of running new Anna work inside the daily chat', async () => {
-        mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
-        mockCreateAndPersistTask.mockResolvedValueOnce({ success: true, taskId: 'new-host', projectId: 'project-1' })
-        await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Research launch options', task_type: 'research' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            { message: 'Research the launch options for me' },
-            {
-                annaConversation: true,
-                projectId: 'project-1',
-                objectType: 'topics',
-                objectId: 'AnnaChat20261007user-1',
-                assistantId: 'assistant-1',
-            }
-        )
-        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
-            expect.objectContaining({
-                userId: 'assistant-1',
-                creatorId: 'user-1',
-                assigneeType: 'assistant',
-                executionMode: 'direct',
-            }),
-            expect.anything()
-        )
-        expect(startVmJobSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                objectType: 'tasks',
-                objectId: 'new-host',
-                originObjectId: 'AnnaChat20261007user-1',
-            })
-        )
     })
 
     // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if
@@ -8900,873 +6535,5 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
         expect(systemMessages).toContain('include create_task.projectRoutingReason')
-    })
-})
-
-describe('shared chat loop with voice channel controls', () => {
-    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
-    const schema = {
-        type: 'function',
-        function: {
-            name: 'end_call',
-            description: 'End this voice call',
-            parameters: { type: 'object', properties: {}, required: [] },
-        },
-    }
-    const toolStream = [
-        {
-            content: 'Checking.',
-            additional_kwargs: {
-                tool_calls: [{ id: 'call-end', type: 'function', function: { name: 'end_call', arguments: '{}' } }],
-            },
-        },
-    ]
-    test('routes a local control through the configured model and accounts for both model rounds', async () => {
-        mockResponsesCreate.mockReset().mockResolvedValue([
-            { type: 'response.output_text.delta', delta: 'Goodbye.' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-        const execute = jest.fn(async () => ({ success: true }))
-        const rounds = jest.fn(async () => {})
-        const result = await collectAssistantTextWithToolCalls({
-            stream: toolStream,
-            conversationHistory: [['user', 'Goodbye']],
-            modelKey: 'MODEL_GPT6_SOL',
-            temperatureKey: 'TEMPERATURE_NORMAL',
-            allowedTools: [],
-            toolRuntimeContext: { additionalToolSchemas: [schema] },
-            localTools: { end_call: { execute } },
-            onRoundComplete: rounds,
-        })
-        expect(execute).toHaveBeenCalledTimes(1)
-        expect(rounds.mock.calls.map(([round]) => round.round)).toEqual([0, 1])
-        expect(result.finalResponseText).toBe('Goodbye.')
-        expect(mockResponsesCreate.mock.calls[0][0].tools).toEqual(
-            expect.arrayContaining([expect.objectContaining({ type: 'function', name: 'end_call' })])
-        )
-    })
-    test('a newer voice request prevents local actions and subsequent model rounds', async () => {
-        mockResponsesCreate.mockClear()
-        const execute = jest.fn()
-        await expect(
-            collectAssistantTextWithToolCalls({
-                stream: toolStream,
-                conversationHistory: [],
-                modelKey: 'MODEL_GPT6_SOL',
-                allowedTools: [],
-                localTools: { end_call: { execute } },
-                assertActive: async () => {
-                    throw new Error('voice_request_superseded')
-                },
-            })
-        ).rejects.toThrow('voice_request_superseded')
-        expect(execute).not.toHaveBeenCalled()
-        expect(mockResponsesCreate).not.toHaveBeenCalled()
-    })
-})
-
-test('includes voice controls for the configured OpenRouter model even without other tools', async () => {
-    const client = require('./openRouterChatClient')
-    const mockStream = jest.spyOn(client, 'streamOpenRouterChat').mockResolvedValue([])
-    const schema = {
-        type: 'function',
-        function: {
-            name: 'end_call',
-            description: 'End the call',
-            parameters: { type: 'object', properties: {}, required: [] },
-        },
-    }
-    try {
-        await interactWithChatStream([['user', 'Goodbye']], 'MODEL_DEEPSEEK_V4_FLASH', 'TEMPERATURE_NORMAL', [], {
-            additionalToolSchemas: [schema],
-            sourceChannel: 'browser_call',
-        })
-        expect(mockStream).toHaveBeenCalledWith(
-            expect.objectContaining({ tools: [schema], usageContext: { route: 'browser_call' } })
-        )
-    } finally {
-        mockStream.mockRestore()
-    }
-})
-
-describe('parallel tool execution in both assistant paths', () => {
-    const { collectAssistantTextWithToolCalls, storeChunks } = require('./assistantHelper')
-    const calls = Array.from({ length: 5 }, (_, index) => ({
-        id: `parallel-${index}`,
-        type: 'function',
-        function: { name: 'find_calendar_availability', arguments: JSON.stringify({ durationMinutes: 30 + index }) },
-    }))
-    const flush = async () => {
-        for (let i = 0; i < 150; i++) await Promise.resolve()
-    }
-    beforeEach(() => {
-        mockResponsesCreate.mockReset().mockResolvedValue([
-            { type: 'response.output_text.delta', delta: 'All five results checked.' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-        mockFindCalendarAvailabilityForAssistantRequest.mockReset()
-        mockDocGet.mockResolvedValue({ exists: true, data: () => ({}) })
-        mockFirestoreGetAll.mockResolvedValue([
-            { exists: true, id: 'parallel-assistant', data: () => ({ allowedTools: ['find_calendar_availability'] }) },
-            { exists: false },
-        ])
-        mockDocUpdate.mockClear()
-    })
-    test.each(['voice', 'chat'])(
-        '%s overlaps reads and gives the model every result with its original call id',
-        async channel => {
-            if (channel === 'chat') jest.useFakeTimers()
-            const gates = calls.map(() => {
-                let resolve
-                const promise = new Promise(done => {
-                    resolve = done
-                })
-                return { resolve, promise }
-            })
-            mockFindCalendarAvailabilityForAssistantRequest.mockImplementation(
-                ({ durationMinutes }) => gates[durationMinutes - 30].promise
-            )
-            const stream = [{ additional_kwargs: { tool_calls: calls } }]
-            const runtime = {
-                projectId: 'parallel-project',
-                assistantId: 'parallel-assistant',
-                requestUserId: 'parallel-user',
-            }
-            const running =
-                channel === 'voice'
-                    ? collectAssistantTextWithToolCalls({
-                          stream,
-                          conversationHistory: [['user', 'Check five alternatives']],
-                          modelKey: 'MODEL_GPT6_SOL',
-                          temperatureKey: 'TEMPERATURE_NORMAL',
-                          allowedTools: ['find_calendar_availability'],
-                          toolRuntimeContext: runtime,
-                      })
-                    : storeChunks(
-                          'parallel-project',
-                          'topics',
-                          'parallel-chat',
-                          [],
-                          stream,
-                          null,
-                          'parallel-assistant',
-                          [],
-                          [],
-                          'Chat',
-                          'Assistant',
-                          'Project',
-                          '',
-                          'parallel-user',
-                          null,
-                          [['user', 'Check five alternatives']],
-                          'MODEL_GPT6_SOL',
-                          'TEMPERATURE_NORMAL',
-                          ['find_calendar_availability'],
-                          runtime,
-                          null,
-                          null,
-                          { kind: 'workflow', runId: 'parallel-progress-test' }
-                      )
-            try {
-                await flush()
-                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
-                expect(mockResponsesCreate).not.toHaveBeenCalled()
-                gates[2].resolve({ success: true, options: [], message: 'result-2' })
-                await flush()
-                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
-                gates[3].resolve({ success: false, options: [], message: 'result-3 unavailable' })
-                await flush()
-                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
-                if (channel === 'chat') {
-                    await jest.advanceTimersByTimeAsync(7000)
-                    expect(mockDocUpdate).toHaveBeenCalledWith(
-                        expect.objectContaining({
-                            assistantRun: expect.objectContaining({
-                                activity: expect.objectContaining({
-                                    actionKey: 'assistant_activity_multiple_steps',
-                                    subject: '2/5',
-                                    total: 5,
-                                    completed: 2,
-                                    active: 3,
-                                }),
-                                activityHistory: [
-                                    expect.objectContaining({ phase: 'thinking' }),
-                                    expect.objectContaining({ phase: 'tool', subject: '2/5' }),
-                                ],
-                            }),
-                        })
-                    )
-                }
-            } finally {
-                gates.forEach((gate, i) => gate.resolve({ success: true, options: [], message: `result-${i}` }))
-                try {
-                    await running
-                } finally {
-                    if (channel === 'chat') jest.useRealTimers()
-                }
-            }
-            expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
-            const outputs = mockResponsesCreate.mock.calls[0][0].input.filter(
-                item => item.type === 'function_call_output'
-            )
-            expect(outputs.map(item => item.call_id)).toEqual(calls.map(call => call.id))
-            expect(outputs.map(item => JSON.parse(item.output).message)).toEqual([
-                'result-0',
-                'result-1',
-                'result-2',
-                'result-3 unavailable',
-                'result-4',
-            ])
-        }
-    )
-})
-
-test('a multi-call round keeps attachment handoff ordered and strips binary data from model context', async () => {
-    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
-    mockResponsesCreate.mockReset().mockResolvedValue([
-        { type: 'response.output_text.delta', delta: 'Done.' },
-        { type: 'response.completed', response: { output: [] } },
-    ])
-    const useFile = jest.fn(async () => ({ success: true }))
-    await collectAssistantTextWithToolCalls({
-        stream: [
-            {
-                additional_kwargs: {
-                    tool_calls: [
-                        { id: 'attachment', function: { name: 'get_chat_attachment', arguments: '{}' } },
-                        { id: 'use-file', function: { name: 'external_tool_upload', arguments: '{}' } },
-                    ],
-                },
-            },
-        ],
-        conversationHistory: [['user', 'Use my file']],
-        modelKey: 'MODEL_GPT6_SOL',
-        temperatureKey: 'TEMPERATURE_NORMAL',
-        allowedTools: [],
-        localTools: {
-            get_chat_attachment: {
-                execute: async () => ({
-                    success: true,
-                    fileName: 'report.pdf',
-                    fileBase64: 'UFJJVkFURV9CSU5BUllfUEFZTE9BRA==',
-                }),
-            },
-            external_tool_upload: { execute: useFile },
-        },
-    })
-    expect(useFile).toHaveBeenCalledWith(
-        expect.objectContaining({ fileName: 'report.pdf', fileBase64: 'UFJJVkFURV9CSU5BUllfUEFZTE9BRA==' })
-    )
-    const input = mockResponsesCreate.mock.calls[0][0].input
-    expect(JSON.stringify(input)).not.toContain('UFJJVkFURV9CSU5BUllfUEFZTE9BRA==')
-    expect(input.filter(item => item.type === 'function_call_output').map(item => item.call_id)).toEqual([
-        'attachment',
-        'use-file',
-    ])
-})
-
-test('compaction within a batch preserves every current result while removing obsolete context', () => {
-    const result = buildConversationAfterToolExecutions({
-        currentConversation: [
-            ['system', 'Keep the base rules'],
-            ['user', 'Current request'],
-            ['assistant', 'Obsolete details'],
-        ],
-        responseText: 'Checking',
-        toolExecutions: [
-            {
-                toolName: 'web_search',
-                toolArgs: {},
-                toolCallId: 'search',
-                conversationSafeToolResult: { success: true, answer: 'Fresh result' },
-            },
-            {
-                toolName: 'compact_thread_context',
-                toolArgs: {},
-                toolCallId: 'compact',
-                conversationSafeToolResult: {
-                    compactedContextMessage: 'Compacted thread state for this ongoing workflow:\nCurrent summary',
-                },
-            },
-        ],
-    })
-    expect(JSON.stringify(result)).not.toContain('Obsolete details')
-    expect(JSON.stringify(result)).toContain('Keep the base rules')
-    expect(JSON.stringify(result)).toContain('Current request')
-    expect(result.filter(item => item.role === 'tool').map(item => item.tool_call_id)).toEqual(['search', 'compact'])
-})
-
-test('a corrected voice request drains active reads and prevents queued reads, writes and model continuation', async () => {
-    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
-    mockResponsesCreate.mockClear()
-    let cancelled = false
-    const gates = Array.from({ length: 5 }, () => {
-        let resolve
-        const promise = new Promise(done => {
-            resolve = done
-        })
-        return { resolve, promise }
-    })
-    let index = 0
-    const execute = jest.fn(() => gates[index++].promise)
-    const calls = [0, 1, 2, 3, 4, 5].map(i => ({ id: `read-${i}`, function: { name: 'web_search', arguments: '{}' } }))
-    calls.push({ id: 'write', function: { name: 'create_task', arguments: '{}' } })
-    const running = collectAssistantTextWithToolCalls({
-        stream: [{ additional_kwargs: { tool_calls: calls } }],
-        conversationHistory: [],
-        modelKey: 'MODEL_GPT6_SOL',
-        allowedTools: ['web_search', 'create_task'],
-        toolExecutor: execute,
-        assertActive: async () => {
-            if (cancelled) throw new Error('voice_request_superseded')
-        },
-    })
-    let finished = false
-    const outcome = running.catch(error => {
-        finished = true
-        return error
-    })
-    const flush = async () => {
-        for (let i = 0; i < 60; i++) await Promise.resolve()
-    }
-    await flush()
-    expect(execute).toHaveBeenCalledTimes(5)
-    cancelled = true
-    gates[0].resolve({ success: true })
-    await flush()
-    expect(finished).toBe(false)
-    gates[1].resolve({ success: true })
-    gates[2].resolve({ success: true })
-    gates[3].resolve({ success: true })
-    gates[4].resolve({ success: true })
-    expect((await outcome).message).toBe('voice_request_superseded')
-    expect(execute).toHaveBeenCalledTimes(5)
-    expect(mockResponsesCreate).not.toHaveBeenCalled()
-})
-
-describe('unfinished scheduled workflow continuation', () => {
-    const { storeChunks } = require('./assistantHelper')
-    const ids = Array.from({ length: 13 }, (_, i) => `project-${i + 1}`)
-    const call = durationMinutes => ({
-        id: `call-${durationMinutes}`,
-        type: 'function',
-        function: { name: 'find_calendar_availability', arguments: JSON.stringify({ durationMinutes }) },
-    })
-    const textResponse = text => [
-        { type: 'response.output_text.delta', delta: text },
-        { type: 'response.completed', response: { output: [] } },
-    ]
-    const run = runtime =>
-        storeChunks(
-            'wf-project',
-            'tasks',
-            'wf-task',
-            [],
-            [{ additional_kwargs: { tool_calls: [call(30)] } }],
-            null,
-            'wf-assistant',
-            [],
-            [],
-            'Workflow',
-            'Assistant',
-            'Project',
-            '',
-            'wf-user',
-            { message: 'Update all thirteen projects' },
-            [['user', 'Update all thirteen projects']],
-            'MODEL_GPT6_SOL',
-            'TEMPERATURE_NORMAL',
-            ['find_calendar_availability'],
-            runtime
-        )
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockDocUpdate.mockResolvedValue(undefined)
-        mockDocSet.mockResolvedValue(undefined)
-        mockFirestoreGetAll.mockResolvedValue([
-            { exists: true, id: 'wf-assistant', data: () => ({ allowedTools: ['find_calendar_availability'] }) },
-            { exists: false },
-        ])
-    })
-    test('a normal final response at six of thirteen resumes, completes the remaining work, and replaces the early reply', async () => {
-        let completed = 6
-        mockDocGet.mockImplementation(async function () {
-            return {
-                exists: true,
-                data: () =>
-                    this.path?.startsWith('assistantThreadState/')
-                        ? {
-                              projectWorkflow: { expectedIds: ids, completedIds: ids.slice(0, completed) },
-                          }
-                        : {},
-            }
-        })
-        mockFindCalendarAvailabilityForAssistantRequest.mockImplementation(async ({ durationMinutes }) => {
-            if (durationMinutes === 45) completed = 13
-            return { success: true, options: [] }
-        })
-        mockResponsesCreate
-            .mockReset()
-            .mockResolvedValueOnce(textResponse('Only six projects are complete.'))
-            .mockResolvedValueOnce([
-                {
-                    type: 'response.output_item.done',
-                    item: {
-                        id: 'item-45',
-                        type: 'function_call',
-                        call_id: 'call-45',
-                        name: 'find_calendar_availability',
-                        arguments: '{"durationMinutes":45}',
-                    },
-                },
-                { type: 'response.completed', response: { output: [] } },
-            ])
-            .mockResolvedValueOnce(textResponse('All thirteen projects are complete.'))
-        const answer = await run({
-            projectId: 'wf-project',
-            objectType: 'tasks',
-            objectId: 'wf-task',
-            assistantId: 'wf-assistant',
-            requestUserId: 'wf-user',
-            trackWorkflowProgress: true,
-            failOnToolExecutionError: true,
-        })
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(3)
-        expect(JSON.stringify(mockResponsesCreate.mock.calls[1][0].input)).toContain('project-7')
-        expect(answer).toContain('All thirteen')
-        expect(answer).not.toContain('Only six')
-    })
-    test('repeated progress-only answers fail rather than looping forever or reporting success', async () => {
-        mockDocGet.mockImplementation(async function () {
-            return {
-                exists: true,
-                data: () =>
-                    this.path?.startsWith('assistantThreadState/')
-                        ? {
-                              projectWorkflow: { expectedIds: ids, completedIds: ids.slice(0, 6) },
-                          }
-                        : {},
-            }
-        })
-        mockFindCalendarAvailabilityForAssistantRequest.mockResolvedValue({ success: true, options: [] })
-        mockResponsesCreate.mockReset().mockResolvedValue(textResponse('Six are complete; seven remain.'))
-        await expect(
-            run({
-                projectId: 'wf-project',
-                objectType: 'tasks',
-                objectId: 'wf-task',
-                assistantId: 'wf-assistant',
-                requestUserId: 'wf-user',
-                trackWorkflowProgress: true,
-                failOnToolExecutionError: true,
-            })
-        ).rejects.toMatchObject({ code: 'ASSISTANT_WORKFLOW_INCOMPLETE' })
-        expect(mockResponsesCreate).toHaveBeenCalledTimes(3)
-    })
-})
-
-test('the tool loop returns invalid compact arguments to the model and executes the corrected call', async () => {
-    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
-    const { compactionArgumentError } = require('./assistantWorkflowProgress')
-    const execute = jest.fn(async args => {
-        if (!Number.isInteger(args.progressCompleted)) throw compactionArgumentError('progressCompleted is required')
-        return {
-            success: true,
-            compactedContextMessage: 'Compacted thread state for this ongoing workflow:\n13 of 13 completed.',
-        }
-    })
-    mockDocGet.mockResolvedValue({ exists: false })
-    mockResponsesCreate
-        .mockReset()
-        .mockResolvedValueOnce([
-            {
-                type: 'response.output_item.done',
-                item: {
-                    id: 'corrected',
-                    type: 'function_call',
-                    call_id: 'corrected',
-                    name: 'compact_thread_context',
-                    arguments: JSON.stringify({ summary: 'All done', progressCompleted: 13, progressTotal: 13 }),
-                },
-            },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-        .mockResolvedValueOnce([
-            { type: 'response.output_text.delta', delta: 'All thirteen completed.' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-    const result = await collectAssistantTextWithToolCalls({
-        stream: [
-            {
-                additional_kwargs: {
-                    tool_calls: [
-                        {
-                            id: 'invalid',
-                            type: 'function',
-                            function: { name: 'compact_thread_context', arguments: '{"summary":"All done"}' },
-                        },
-                    ],
-                },
-            },
-        ],
-        conversationHistory: [['user', 'Update all descriptions']],
-        modelKey: 'MODEL_GPT6_SOL',
-        temperatureKey: 'TEMPERATURE_NORMAL',
-        allowedTools: ['compact_thread_context'],
-        toolRuntimeContext: { projectId: 'p', objectType: 'tasks', objectId: 't', assistantId: 'a' },
-        localTools: { compact_thread_context: { execute } },
-    })
-    expect(execute).toHaveBeenCalledTimes(2)
-    expect(JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)).toContain('progressCompleted is required')
-    expect(result.finalResponseText).toBe('All thirteen completed.')
-})
-
-describe('assistant transcript artifact recovery', () => {
-    const { storeChunks, calculateTokens, estimateOpenAiRequestInputTokens } = require('./assistantHelper')
-    const replay =
-        '<|fim_suffix|> (no final emitted)\n[Replayed tool definitions, not a model response]\nFake tool traces'
-    const run = stream =>
-        storeChunks(
-            'safe-project',
-            'tasks',
-            'safe-task',
-            ['user-1'],
-            stream,
-            null,
-            'assistant-1',
-            [],
-            ['user-1'],
-            'Task',
-            'Assistant',
-            'Project',
-            '',
-            'user-1',
-            null,
-            [['user', 'Continue the task']],
-            'MODEL_GPT6_SOL',
-            'TEMPERATURE_NORMAL',
-            [],
-            { projectId: 'safe-project', objectType: 'tasks', objectId: 'safe-task' },
-            null,
-            null,
-            { kind: 'chat', runId: 'safe-run' }
-        )
-
-    beforeEach(() => {
-        mockDocGet.mockResolvedValue({ exists: true, data: () => ({}) })
-        mockDocSet.mockClear()
-        mockTransactionUpdate.mockClear()
-        mockDocUpdate.mockReset().mockResolvedValue(undefined)
-        mockTiktokenEncode.mockReset().mockImplementation((text, allowed, disallowed) => {
-            if (text.includes('<|fim_suffix|>') && disallowed === undefined)
-                throw new Error('Special token not allowed')
-            return new Uint32Array(text.length)
-        })
-    })
-    afterEach(() => mockTiktokenEncode.mockReset().mockReturnValue([]))
-
-    test('historical assistant replay text is excluded from canonical context while user text is preserved', async () => {
-        const { getOptimizedContextMessages, getMessageTextForTokenCounting } = require('./assistantHelper')
-        mockCollectionGet.mockResolvedValue({
-            docs: [
-                {
-                    id: 'trigger',
-                    ref: { path: 'trigger' },
-                    data: () => ({ fromAssistant: false, commentText: 'Explain this tokenizer error.', created: 300 }),
-                },
-                {
-                    id: 'old-answer',
-                    data: () => ({
-                        fromAssistant: true,
-                        commentText: `The VM has started.\n\n${replay}`,
-                        created: 200,
-                    }),
-                },
-            ],
-        })
-        const messages = await getOptimizedContextMessages(
-            'trigger',
-            'safe-project',
-            'tasks',
-            'safe-task',
-            'en',
-            'Assistant',
-            'Be helpful.',
-            [],
-            120,
-            'user-1',
-            'assistant-1'
-        )
-        expect(messages).toContainEqual(['assistant', 'The VM has started.'])
-        expect(
-            messages.some(
-                ([role, text]) =>
-                    role === 'user' && getMessageTextForTokenCounting(text).includes('Explain this tokenizer error.')
-            )
-        ).toBe(true)
-        expect(JSON.stringify(messages)).not.toContain('[Replayed tool definitions')
-    })
-
-    test('Gold accounting counts special-token text in both the answer and historical context', () => {
-        const text = 'Explain <|fim_suffix|>'
-        const encoder = { encode: mockTiktokenEncode }
-        expect(calculateTokens(text, [['assistant', text]], 'MODEL_GPT6_SOL', encoder)).toBeGreaterThan(0)
-        expect(mockTiktokenEncode).toHaveBeenCalledWith(text, [], [])
-        expect(mockTiktokenEncode).toHaveBeenCalledTimes(2)
-    })
-
-    test('large-request preflight tolerates token-shaped strings', () => {
-        const estimate = estimateOpenAiRequestInputTokens({
-            input: [{ content: 'x'.repeat(210000) + '<|fim_suffix|>' }],
-        })
-        expect(estimate.usedTokenizer).toBe(true)
-        expect(mockTiktokenEncode).toHaveBeenCalledWith(expect.stringContaining('<|fim_suffix|>'), [], [])
-    })
-
-    test.each(['chunked', 'replacement'])('%s replies persist and return only the clean answer', async mode => {
-        const clean = 'The VM has started.\n\nFollow progress in this task.'
-        const contaminated = `${clean}\n\ntransport debris${replay}`
-        const stream =
-            mode === 'replacement'
-                ? [{ clearThinkingMode: true, replacementContent: contaminated }]
-                : [
-                      { content: clean + '\n\n' },
-                      { content: 'transport debris' + replay.slice(0, 7) },
-                      { content: replay.slice(7) },
-                  ]
-        expect(await run(stream)).toBe(clean)
-        const writes = [
-            ...mockDocSet.mock.calls,
-            ...mockDocUpdate.mock.calls,
-            ...mockTransactionUpdate.mock.calls.map(([, data]) => [data]),
-        ]
-            .map(([data]) => data?.commentText)
-            .filter(Boolean)
-        expect(writes.some(text => text.includes('[Replayed tool definitions'))).toBe(false)
-        expect(writes).toContain(clean)
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
-            expect.objectContaining({ assistantRun: expect.objectContaining({ status: 'completed' }) })
-        )
-    })
-
-    test('an artifact-only reply becomes a failed run with a readable error', async () => {
-        await expect(run([{ content: replay }])).rejects.toMatchObject({ code: 'INVALID_ASSISTANT_RESPONSE' })
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
-            expect.objectContaining({
-                commentText: 'The assistant returned an invalid transcript instead of an answer. Please try again.',
-                assistantRun: expect.objectContaining({ status: 'failed' }),
-            })
-        )
-    })
-})
-
-describe('assistant and MCP update_contact Kontaktstatus', () => {
-    let resolveTarget
-    let updateFields
-    const project = {
-        name: 'Sales',
-        contactStatuses: { connect: { name: 'JTL Connect' } },
-    }
-
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockDocGet.mockReset()
-        mockDocGet.mockResolvedValue({ exists: true, data: () => project })
-        const targets = require('../shared/contactNoteTargetHelper')
-        jest.spyOn(targets, 'resolveProjectForContactNote').mockResolvedValue({ id: 'sales', name: 'Sales' })
-        resolveTarget = jest.spyOn(targets, 'resolveContactTarget').mockResolvedValue({
-            success: true,
-            contactCreated: true,
-            contact: { uid: 'contact-1', displayName: 'New Person', contactStatusId: null },
-        })
-        updateFields = jest
-            .spyOn(require('../shared/contactUpdateHelper'), 'updateContactFields')
-            .mockImplementation(async ({ contact, updates }) => ({
-                contact: { ...contact, ...updates },
-                updated: true,
-                changes: ['contactStatusId updated'],
-            }))
-    })
-
-    afterEach(() => jest.restoreAllMocks())
-
-    test('project discovery exposes the available status IDs and names', async () => {
-        ProjectService.mockImplementationOnce(() => ({
-            initialize: jest.fn(),
-            getUserProjects: jest.fn().mockResolvedValue([{ id: 'sales', ...project }]),
-        }))
-        const result = await executeToolNatively('get_user_projects', {}, 'sales', null, 'user-1', null)
-        expect(result.projects[0].contactStatuses).toEqual([{ id: 'connect', name: 'JTL Connect' }])
-    })
-
-    test.each([null, 'assistant-1'])('sets a status on a new contact for assistantId %s', async assistantId => {
-        const result = await executeToolNatively(
-            'update_contact',
-            { contactName: 'New Person', createIfMissing: true, contactStatusName: 'JTL Connect' },
-            'original-project',
-            assistantId,
-            'user-1',
-            null
-        )
-        expect(resolveTarget).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'sales',
-                userId: 'user-1',
-                createIfMissing: true,
-            })
-        )
-        expect(updateFields).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'sales',
-                updates: { contactStatusId: 'connect' },
-            })
-        )
-        expect(result.contact).toMatchObject({ contactStatusId: 'connect', contactStatusName: 'JTL Connect' })
-    })
-
-    test('sets and clears the status on an existing contact without other field updates', async () => {
-        for (const [contactStatusId, expected] of [
-            ['connect', 'connect'],
-            ['', null],
-        ]) {
-            const result = await executeToolNatively(
-                'update_contact',
-                { contactId: 'contact-1', contactStatusId },
-                'sales',
-                null,
-                'user-1',
-                null
-            )
-            expect(result.success).toBe(true)
-            expect(result.contact.contactStatusId).toBe(expected)
-            expect(updateFields).toHaveBeenLastCalledWith(
-                expect.objectContaining({
-                    updates: { contactStatusId: expected },
-                })
-            )
-        }
-    })
-
-    test('invalid target-project status does not create or update a contact', async () => {
-        const result = await executeToolNatively(
-            'update_contact',
-            { contactName: 'New Person', createIfMissing: true, contactStatusId: 'other-project-status' },
-            'original-project',
-            'assistant-1',
-            'user-1',
-            null
-        )
-        expect(result).toMatchObject({
-            success: false,
-            availableContactStatuses: [{ id: 'connect', name: 'JTL Connect' }],
-        })
-        expect(resolveTarget).not.toHaveBeenCalled()
-        expect(updateFields).not.toHaveBeenCalled()
-    })
-})
-
-describe('streaming reply follows its task to a new project', () => {
-    test('updates the destination comment, preview, notifications, and subsequent tool context', async () => {
-        jest.clearAllMocks()
-        const { storeChunks } = require('./assistantHelper')
-        const { moveAssistantRunComment } = require('./assistantRunLocation')
-        const db = require('firebase-admin').firestore()
-        const state = new Map()
-        let moved = false
-        let replyId
-        const snapshot = path => ({ exists: state.has(path), data: () => state.get(path) })
-        state.set('projects/target', { name: 'Familie', userIds: ['user-1'] })
-        state.set('chatObjects/target/chats/task', { title: 'Task', usersFollowing: ['user-1'] })
-        mockDocGet.mockImplementation(async function () {
-            return snapshot(this.path)
-        })
-        mockDocSet.mockImplementation(async function (data) {
-            state.set(this.path, { ...(state.get(this.path) || {}), ...data })
-            if (this.path.startsWith('chatComments/source/')) replyId = this.path.split('/').pop()
-        })
-        mockDocUpdate.mockImplementation(async function (data) {
-            if (moved && this.path.includes('/source/')) throw Error('NOT_FOUND: source deleted')
-            state.set(this.path, { ...(state.get(this.path) || {}), ...data })
-        })
-        mockTransactionGet.mockImplementation(async ref => snapshot(ref.path))
-        mockTransactionUpdate.mockImplementation((ref, data) => {
-            if (!state.has(ref.path)) throw Error(`NOT_FOUND: ${ref.path}`)
-            state.set(ref.path, { ...state.get(ref.path), ...data })
-        })
-        mockTransactionSet.mockImplementation((ref, data) => state.set(ref.path, data))
-        const runtime = { projectId: 'source', objectType: 'tasks', objectId: 'task', requestUserId: 'user-1' }
-        const output = {}
-        async function* stream() {
-            yield { content: 'Moving the task. ' }
-            await moveAssistantRunComment(db, {
-                sourceProjectId: 'source',
-                targetProjectId: 'target',
-                objectType: 'tasks',
-                objectId: 'task',
-                commentId: replyId,
-                runId: 'moving-run',
-            })
-            state.delete(`chatComments/source/tasks/task/comments/${replyId}`)
-            moved = true
-            yield { content: 'Moved to Familie.' }
-        }
-        try {
-            const result = await storeChunks(
-                'source',
-                'tasks',
-                'task',
-                ['user-1'],
-                stream(),
-                null,
-                'anna',
-                [],
-                ['user-1'],
-                'Task',
-                'Anna',
-                'Privat',
-                '',
-                'user-1',
-                null,
-                [],
-                null,
-                null,
-                [],
-                runtime,
-                output,
-                null,
-                { kind: 'chat', runId: 'moving-run' }
-            )
-            expect(result).toContain('Moved to Familie.')
-            expect(state.get(`chatComments/target/tasks/task/comments/${replyId}`)).toMatchObject({
-                commentText: result,
-                isLoading: false,
-                assistantRun: { status: 'completed' },
-            })
-            expect(state.get('chatObjects/target/chats/task')['commentsData.lastComment']).toContain(
-                'Moved to Familie.'
-            )
-            expect(runtime.projectId).toBe('target')
-            expect(output.projectId).toBe('target')
-            expect(mockBatchUpdate).toHaveBeenCalledWith(
-                expect.anything(),
-                expect.objectContaining({
-                    'lastAssistantCommentDataByAssistant.anna.allProjects': expect.objectContaining({
-                        projectId: 'target',
-                        objectId: 'task',
-                    }),
-                })
-            )
-            const push = mockBatchSet.mock.calls.find(([ref]) => ref.path?.startsWith('pushNotifications/'))
-            expect(push[1]).toMatchObject({ projectId: 'target', link: expect.stringContaining('/projects/target/') })
-        } finally {
-            mockDocSet.mockReset().mockResolvedValue(undefined)
-            mockDocUpdate.mockReset().mockResolvedValue(undefined)
-            mockDocGet.mockReset()
-            mockTransactionGet.mockReset().mockImplementation(ref => ref.get())
-            mockTransactionSet.mockReset()
-            mockTransactionUpdate.mockReset()
-        }
     })
 })

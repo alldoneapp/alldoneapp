@@ -14,8 +14,6 @@ export const DV_TAB_ROOT_GOALS = 'ROOT_GOALS'
 export const DV_TAB_ROOT_CONTACTS = 'ROOT_CONTACTS'
 export const DV_TAB_ROOT_CHATS = 'ROOT_CHATS'
 export const DV_TAB_ROOT_UPDATES = 'ROOT_UPDATES'
-export const DV_TAB_ROOT_WIKI = 'ROOT_WIKI'
-export const DV_TAB_ROOT_ARTIFACTS = 'ROOT_ARTIFACTS'
 
 export const ROOT_ROUTES = [
     DV_TAB_ROOT_TASKS,
@@ -24,8 +22,6 @@ export const ROOT_ROUTES = [
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_UPDATES,
-    DV_TAB_ROOT_WIKI,
-    DV_TAB_ROOT_ARTIFACTS,
 ]
 
 /**
@@ -56,7 +52,6 @@ export const DV_TAB_PROJECT_ASSISTANTS = 'PROJECT_ASSISTANTS'
 export const DV_TAB_PROJECT_CONTACT_STATUSES = 'PROJECT_CONTACT_STATUSES'
 export const DV_TAB_PROJECT_HAPPINESS = 'PROJECT_HAPPINESS'
 export const DV_TAB_PROJECT_OKRS = 'PROJECT_OKRS'
-export const DV_TAB_PROJECT_WIKI = 'PROJECT_WIKI'
 
 /**
  * User Detailed View
@@ -181,7 +176,6 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_ROOT_CONTACTS]: 'Contacts',
     [DV_TAB_ROOT_CHATS]: 'Chats',
     [DV_TAB_ROOT_UPDATES]: 'Updates',
-    [DV_TAB_ROOT_ARTIFACTS]: 'Artifacts',
     // Tasks
     [DV_TAB_TASK_PROPERTIES]: 'Properties',
     [DV_TAB_TASK_BACKLINKS]: 'Backlinks',
@@ -200,7 +194,6 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_PROJECT_CONTACT_STATUSES]: 'Contact Statuses',
     [DV_TAB_PROJECT_HAPPINESS]: 'Happiness',
     [DV_TAB_PROJECT_OKRS]: 'OKRs',
-    [DV_TAB_PROJECT_WIKI]: 'Wiki',
     [DV_TAB_PROJECT_UPDATES]: 'Updates',
     // User
     [DV_TAB_USER_PROPERTIES]: 'Properties',

@@ -27,7 +27,6 @@ import { setSelectedSidebarTab, setSelectedTypeOfProject, storeCurrentUser, swit
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import { setGoalDescription } from '../../utils/backends/Goals/goalsFirestore'
 import GoalScheduleModeTag from '../Tags/GoalScheduleModeTag'
-import GoalFocusAreaTag from '../Tags/GoalFocusAreaTag'
 
 export default function GoalItemTagsArea({
     projectId,
@@ -51,8 +50,6 @@ export default function GoalItemTagsArea({
     inParentGoal,
     loggedUserCanUpdateObject,
     inCommentPopup,
-    milestoneOnly = false,
-    hideMilestone = false,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -97,17 +94,6 @@ export default function GoalItemTagsArea({
     const milestoneDate =
         isInTaskList && goal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC && moment(goal.completionMilestoneDate)
 
-    const milestoneTag = milestoneDate && (
-        <MilestoneDateTag
-            date={milestoneDate}
-            onMilestoneTagClick={goToGoals}
-            style={{ marginLeft: 8, marginRight: 0 }}
-            inDetailedView={true}
-        />
-    )
-
-    if (milestoneOnly) return milestoneTag || null
-
     return (
         <View
             onLayout={onLayoutTagsContainer}
@@ -115,14 +101,6 @@ export default function GoalItemTagsArea({
             style={[localStyles.container, containerStyle]}
         >
             <View nativeID={`initial_social_tag_${projectId}_${goal.id}`} />
-            {isInTaskList && (
-                <GoalFocusAreaTag
-                    projectId={projectId}
-                    goal={goal}
-                    style={[{ marginLeft: 8 }, tagStyle]}
-                    disabled={disableTagsActions || !loggedUserCanUpdateObject}
-                />
-            )}
             {!!commentsData && !inCommentPopup && (
                 <GoalCommentsWrapper
                     commentsData={commentsData}
@@ -216,7 +194,14 @@ export default function GoalItemTagsArea({
                     inParentGoal={inParentGoal || !loggedUserCanUpdateObject}
                 />
             )}
-            {!hideMilestone && milestoneTag}
+            {milestoneDate && (
+                <MilestoneDateTag
+                    date={milestoneDate}
+                    onMilestoneTagClick={goToGoals}
+                    style={{ marginLeft: 8, marginRight: 0 }}
+                    inDetailedView={true}
+                />
+            )}
             {showAssignees && (
                 <GoalItemAssigneesArea
                     projectId={projectId}

@@ -12,7 +12,6 @@ import NavigationService from '../../../../utils/NavigationService'
 import { uploadTaskByQuill } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
-import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
 const getQuillCollaborationData = (roomId, noteData) => {
     const ydoc = new Y.Doc()
@@ -31,14 +30,10 @@ const getQuillCollaborationData = (roomId, noteData) => {
     return { ydoc, provider, quill, type }
 }
 
-const disconnectQuillCollaboration = (provider, ydoc, binding, quill) => {
+const disconnectQuillCollaboration = (provider, ydoc, binding) => {
     provider.destroy()
     ydoc.destroy()
     binding.destroy()
-    // These editors are virtual — built to read or rewrite a note's ops and thrown away — but
-    // building the document still mounts one React root per embed, and quill 2 has no destroy()
-    // to tell them so. Without the sweep every note processed here leaks a root per tag.
-    unmountEmbedReactRoots(quill?.root)
 }
 
 export const processRestoredNote = async (noteId, originalData, restoredData) => {
@@ -54,7 +49,7 @@ export const processRestoredNote = async (noteId, originalData, restoredData) =>
     store.dispatch(setVirtualQuillLoaded(false))
 
     setTimeout(() => {
-        disconnectQuillCollaboration(provider, ydoc, binding, quill)
+        disconnectQuillCollaboration(provider, ydoc, binding)
     }, 2000)
 }
 
@@ -64,7 +59,7 @@ const getNoteDataOps = noteData => {
 
     const ops = quill.getContents().ops
 
-    disconnectQuillCollaboration(provider, ydoc, binding, quill)
+    disconnectQuillCollaboration(provider, ydoc, binding)
 
     return ops
 }
@@ -108,7 +103,7 @@ export const processMovedNoteTasks = async (
         const stateUpdate = Y.encodeStateAsUpdate(ydoc)
         store.dispatch(setVirtualQuillLoaded(false))
 
-        disconnectQuillCollaboration(provider, ydoc, binding, quill)
+        disconnectQuillCollaboration(provider, ydoc, binding)
 
         const tasks = await Promise.all(promises)
 

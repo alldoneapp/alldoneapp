@@ -31,10 +31,6 @@ export default function Icon({ style, accessibilityLabel, size, color, onPress, 
     )
 }
 
-// The icon font's character for a name, for icons that must sit inside a line of text (a <Text>
-// may nest only other <Text>, and <Icon> renders a <View>).
-export const getIconGlyph = name => FONT_MAP[name] || ''
-
 const FONT_MAP = {
     fingerprint: '',
     'add-task': '',

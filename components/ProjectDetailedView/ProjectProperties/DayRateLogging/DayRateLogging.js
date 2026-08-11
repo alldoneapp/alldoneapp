@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
 
@@ -89,7 +89,6 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                     accessible={false}
                 />
             </View>
-            <Text style={localStyles.modalHint}>{translate('Day-rate hours hint')}</Text>
             <View style={localStyles.modalRow}>
                 <Text style={localStyles.modalLabel}>{translate('Task trigger')}</Text>
                 <TextInput
@@ -128,7 +127,7 @@ export default function DayRateLogging({ projectId, disabled, dayRateTimeLog }) 
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Day-rate logging')}</Text>
             <View style={localStyles.buttonContainer}>
-                <AppPopover
+                <Popover
                     content={
                         <DayRateLoggingModal
                             projectId={projectId}
@@ -150,7 +149,7 @@ export default function DayRateLogging({ projectId, disabled, dayRateTimeLog }) 
                         onPress={() => setOpen(true)}
                         disabled={disabled}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )
@@ -192,11 +191,6 @@ const localStyles = StyleSheet.create({
     modalLabel: {
         ...styles.subtitle2,
         color: colors.Text03,
-    },
-    modalHint: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginBottom: 8,
     },
     input: {
         ...styles.body1,

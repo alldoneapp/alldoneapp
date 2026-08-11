@@ -12,36 +12,14 @@ import { translate } from '../../../i18n/TranslationService'
 import { clearUserOKRsHiddenInAllProjectsToday } from '../../../utils/backends/Users/usersFirestore'
 import OKRItem, { OKREmptyItem } from './OKRItem'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from './okrHelper'
-import { useTaskHierarchy } from '../TaskHierarchy'
-import { getOkrTodayOperation, getOkrTodayVisibilityValue } from '../../../redux/okrTodayVisibility'
 
 export default function OKRSection({ projectId, inAllProjects }) {
-    const taskHierarchy = useTaskHierarchy()
     const okrs = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
-    const operations = useSelector(state => state.okrTodayOperations)
-    const projectOperations = okrs.map(okr => getOkrTodayOperation(operations, loggedUser.uid, projectId, okr.id))
-    const savingToday = projectOperations.some(operation => operation?.status === 'pending')
-    const restoringToday = projectOperations.some(
-        operation => operation?.status === 'pending' && !operation.targetValue
-    )
-    const restoreFailed = projectOperations.some(
-        operation => operation?.status === 'error' && !operation.targetValue && operation.previousValue === todayKey
-    )
-    const okrsHiddenTodayById = Object.fromEntries(
-        okrs.map(okr => [
-            okr.id,
-            getOkrTodayVisibilityValue(
-                loggedUser,
-                projectId,
-                okr.id,
-                getOkrTodayOperation(operations, loggedUser.uid, projectId, okr.id)
-            ),
-        ])
-    )
+    const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
     const okrsHiddenToday = okrs.filter(okr => okrsHiddenTodayById[okr.id] === todayKey)
     const okrsToShow = okrs.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey)
     const showUndoAllToday = !inAllProjects && okrsHiddenToday.length > 0
@@ -56,18 +34,17 @@ export default function OKRSection({ projectId, inAllProjects }) {
     }
 
     const undoAllOKRsForToday = () => {
-        if (!loggedUser.uid || savingToday) return
         clearUserOKRsHiddenInAllProjectsToday(
             loggedUser.uid,
             projectId,
             okrsHiddenToday.map(okr => okr.id)
-        ).catch(() => {}) // Keep rejected writes visible as errors instead of unhandled rejections.
+        )
     }
 
-    if (okrs.length === 0 || (okrsToShow.length === 0 && !restoringToday && !restoreFailed)) return null
+    if (okrs.length === 0 || okrsToShow.length === 0) return null
 
     return (
-        <View style={[localStyles.container, taskHierarchy && localStyles.hierarchyContainer]}>
+        <View style={localStyles.container}>
             <View style={localStyles.header}>
                 <View style={localStyles.headerLeft}>
                     <Text style={[styles.caption1, localStyles.headerText]}>{translate('OKRs')}</Text>
@@ -85,16 +62,13 @@ export default function OKRSection({ projectId, inAllProjects }) {
                         <TouchableOpacity
                             style={localStyles.undoAllTodayButton}
                             onPress={undoAllOKRsForToday}
-                            disabled={!loggedUser.uid || savingToday}
-                            accessibilityState={{ disabled: !loggedUser.uid || savingToday, busy: restoringToday }}
+                            disabled={!loggedUser.uid}
                             accessibilityLabel={translate('Undo all OKRs for today')}
                         >
                             <Icon name="rotate-ccw" size={14} color={colors.Text03} />
                             {!smallScreenNavigation && (
                                 <Text style={[styles.caption1, localStyles.undoAllTodayText]}>
-                                    {translate(
-                                        restoringToday ? 'OKR saving today visibility' : 'Undo all OKRs for today'
-                                    )}
+                                    {translate('Undo all OKRs for today')}
                                 </Text>
                             )}
                         </TouchableOpacity>
@@ -104,15 +78,6 @@ export default function OKRSection({ projectId, inAllProjects }) {
                     <OKREmptyItem projectId={projectId} canUpdate={canUpdate} compact />
                 </View>
             </View>
-            {(restoringToday || restoreFailed) && (
-                <Text
-                    style={[styles.caption1, { color: restoreFailed ? colors.Red200 : colors.Text03 }]}
-                    accessibilityRole={restoreFailed ? 'alert' : undefined}
-                    accessibilityLiveRegion="polite"
-                >
-                    {translate(restoreFailed ? 'OKR today visibility failed' : 'OKR saving today visibility')}
-                </Text>
-            )}
             {okrsToShow.map(okr => (
                 <OKRItem
                     key={okr.id}
@@ -130,9 +95,6 @@ export default function OKRSection({ projectId, inAllProjects }) {
 const localStyles = StyleSheet.create({
     container: {
         paddingTop: 12,
-    },
-    hierarchyContainer: {
-        paddingHorizontal: 8,
     },
     header: {
         height: 24,

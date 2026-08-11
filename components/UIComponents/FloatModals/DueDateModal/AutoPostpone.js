@@ -21,8 +21,6 @@ import {
     setLastSelectedDueDate,
     setOptimisticGoalPostpone,
 } from '../../../../redux/actions'
-import { postponeGoalWithMotion } from '../../../TaskListView/OpenTasksView/goalPostponeMotion'
-import { postponeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion'
 
 export default function AutoPostpone({
     projectId,
@@ -34,8 +32,6 @@ export default function AutoPostpone({
     updateParentGoalReminderDate,
     inParentGoal,
     saveDueDateBeforeSaveTask,
-    animateGoalPostpone = false,
-    postponeProject,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -45,13 +41,6 @@ export default function AutoPostpone({
     const autoPostpone = async () => {
         if (applying) return
         setApplying(true)
-        if (postponeProject) {
-            try {
-                return await postponeProject()
-            } finally {
-                setApplying(false)
-            }
-        }
         const isGoalAutoPostpone = goal && updateParentGoalReminderDate
 
         if (!isGoalAutoPostpone && bulkTasks) {
@@ -67,7 +56,7 @@ export default function AutoPostpone({
             // instantly via Firestore's local cache, instead of waiting on the auto-postpone
             // Cloud Function round-trip. The target date is already computed client-side below.
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-            const write = () =>
+            const applyPromise =
                 dateTimestamp === BACKLOG_DATE_NUMERIC
                     ? setTaskToBacklog(
                           projectId,
@@ -83,16 +72,6 @@ export default function AutoPostpone({
                           singleTaskToPostpone,
                           isObservedTabActive
                       )
-            const applyPromise = postponeTaskWithMotion(
-                {
-                    projectId,
-                    task: singleTaskToPostpone,
-                    targetDate: dateTimestamp,
-                    updatesDueDate: !isObservedTabActive,
-                    updatesObservedDate: isObservedTabActive,
-                },
-                write
-            )
             Promise.resolve(applyPromise).catch(error => {
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
@@ -105,21 +84,11 @@ export default function AutoPostpone({
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
             // AT-2160: the goal postpone stays on the server — it is one transaction that also
             // records the undo entry and cascades the date onto the goal's open tasks. Drop the
-            // goal out of today's list after the short section exit so the UI does not wait for
-            // that round trip; a rejected postpone puts it straight back.
-            const write = async () => {
-                dispatch(setOptimisticGoalPostpone(projectId, goal.id, dateTimestamp, Date.now()))
-                try {
-                    return await autoPostponeGoal(projectId, goal, currentUserId, inParentGoal, { background: true })
-                } catch (error) {
-                    dispatch(clearOptimisticGoalPostpone(projectId, goal.id))
-                    throw error
-                }
-            }
-            const operation = animateGoalPostpone
-                ? postponeGoalWithMotion({ projectId, goal, targetDate: dateTimestamp }, write)
-                : write()
-            Promise.resolve(operation).catch(error => {
+            // goal out of today's list right away so the UI does not wait for that round trip;
+            // a rejected postpone puts it straight back.
+            dispatch(setOptimisticGoalPostpone(projectId, goal.id, dateTimestamp, Date.now()))
+            autoPostponeGoal(projectId, goal, currentUserId, inParentGoal, { background: true }).catch(error => {
+                dispatch(clearOptimisticGoalPostpone(projectId, goal.id))
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
             dispatch(setLastSelectedDueDate(dateTimestamp))
@@ -148,13 +117,11 @@ export default function AutoPostpone({
     const singleTaskToPostpone = bulkTasks ? null : tasks && tasks.length === 1 ? tasks[0] : task
 
     // Calculate date based on goal or task
-    const date = postponeProject
-        ? null
-        : goal
-          ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-          : bulkTasks
-            ? null
-            : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
+    const date = goal
+        ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
+        : bulkTasks
+          ? null
+          : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity

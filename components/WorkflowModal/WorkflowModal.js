@@ -1,4 +1,3 @@
-import { runWithLoading } from '../../utils/redux/loadingOperation'
 import React, { Component } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
@@ -19,7 +18,7 @@ import {
     getWorkflowStepId,
 } from '../../utils/HelperFunctions'
 import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-
+import { startLoadingData, stopLoadingData, showTaskCompletionAnimation } from '../../redux/actions'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import FileTag from '../Tags/FileTag'
@@ -44,7 +43,6 @@ import { WORKFLOW_FORWARD } from './workflowDirections'
 import { getWorkflowCompletionCopy } from './workflowCompletionCopy'
 import BypassWorkflowButton from './BypassWorkflowButton'
 import { moveTaskToDoneBypassingWorkflow } from './workflowBypass'
-import { completeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 
 export { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
 
@@ -340,57 +338,46 @@ export default class WorkflowModal extends Component {
                 return
             }
 
-            /**
-             * AT-2495 — the row plays the same motion it does when its checkbox is ticked. The
-             * popup is closed FIRST (it is anchored to the checkbox and centred on mobile, so it
-             * covers the row it is animating), and the write is then held until the row has had
-             * its run. `isCompletion` is false for a plain step advance: the row still leaves this
-             * list and still gets the exit, but a task handed to the next reviewer has not been
-             * finished and must not be congratulated as if it had.
-             */
-            this.props.hidePopover()
+            // Show animation if task is being marked as done
+            store.dispatch(startLoadingData())
+            if (stepToMoveId === DONE_STEP) {
+                store.dispatch(showTaskCompletionAnimation())
+            }
 
-            await completeTaskWithMotion(
-                this.props.completionMotion,
-                { isCompletion: stepToMoveId === DONE_STEP },
-                async () => {
-                    return runWithLoading('move_workflow_task', async () => {
-                        if (bypassWorkflow) {
-                            await moveTaskToDoneBypassingWorkflow({
-                                projectId,
-                                task,
-                                comment: commentWithAttachments,
-                                commentType,
-                                estimations,
-                                checkBoxId,
-                            })
-                        } else if (task.userIds.length === 1) {
-                            await moveTasksFromOpen(
-                                projectId,
-                                task,
-                                stepToMoveId,
-                                commentWithAttachments,
-                                commentType,
-                                estimations,
-                                checkBoxId
-                            )
-                        } else {
-                            await moveTasksFromMiddleOfWorkflow(
-                                projectId,
-                                task,
-                                stepToMoveId,
-                                commentWithAttachments,
-                                commentType,
-                                estimations,
-                                checkBoxId
-                            )
-                        }
-                    })
-                }
-            )
+            if (bypassWorkflow) {
+                await moveTaskToDoneBypassingWorkflow({
+                    projectId,
+                    task,
+                    comment: commentWithAttachments,
+                    commentType,
+                    estimations,
+                    checkBoxId,
+                })
+            } else if (task.userIds.length === 1) {
+                await moveTasksFromOpen(
+                    projectId,
+                    task,
+                    stepToMoveId,
+                    commentWithAttachments,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            } else {
+                await moveTasksFromMiddleOfWorkflow(
+                    projectId,
+                    task,
+                    stepToMoveId,
+                    commentWithAttachments,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            }
+            this.props.hidePopover()
         } catch (error) {
             console.error('[WorkflowModal] Could not move task', { projectId, taskId: task.id, direction, error })
-
+            store.dispatch(stopLoadingData())
             this.setSafeState({ disabledMainButtons: false })
         }
     }
@@ -404,45 +391,39 @@ export default class WorkflowModal extends Component {
         const { pendingMoveFromOpenData } = this.state
         if (!pendingMoveFromOpenData) return
 
+        store.dispatch(startLoadingData())
+        store.dispatch(showTaskCompletionAnimation())
         try {
-            // Same handoff as `onDonePress` above. This branch is only ever reached for a move to
-            // DONE — it is the recurring-task date-basis question, which is asked exclusively when
-            // completing — so the motion is always a real completion.
-            this.props.hidePopover()
-
-            await completeTaskWithMotion(this.props.completionMotion, { isCompletion: true }, async () => {
-                return runWithLoading('complete_recurring_task', async () => {
-                    if (pendingMoveFromOpenData.bypassWorkflow) {
-                        await moveTaskToDoneBypassingWorkflow({
-                            projectId,
-                            task,
-                            comment: pendingMoveFromOpenData.commentWithAttachments,
-                            commentType: pendingMoveFromOpenData.commentType,
-                            estimations: pendingMoveFromOpenData.estimations,
-                            checkBoxId,
-                            recurrenceBaseDateOverride,
-                        })
-                    } else {
-                        await moveTasksFromOpen(
-                            projectId,
-                            task,
-                            pendingMoveFromOpenData.stepToMoveId,
-                            pendingMoveFromOpenData.commentWithAttachments,
-                            pendingMoveFromOpenData.commentType,
-                            pendingMoveFromOpenData.estimations,
-                            checkBoxId,
-                            recurrenceBaseDateOverride
-                        )
-                    }
+            if (pendingMoveFromOpenData.bypassWorkflow) {
+                await moveTaskToDoneBypassingWorkflow({
+                    projectId,
+                    task,
+                    comment: pendingMoveFromOpenData.commentWithAttachments,
+                    commentType: pendingMoveFromOpenData.commentType,
+                    estimations: pendingMoveFromOpenData.estimations,
+                    checkBoxId,
+                    recurrenceBaseDateOverride,
                 })
-            })
+            } else {
+                await moveTasksFromOpen(
+                    projectId,
+                    task,
+                    pendingMoveFromOpenData.stepToMoveId,
+                    pendingMoveFromOpenData.commentWithAttachments,
+                    pendingMoveFromOpenData.commentType,
+                    pendingMoveFromOpenData.estimations,
+                    checkBoxId,
+                    recurrenceBaseDateOverride
+                )
+            }
+            this.props.hidePopover()
         } catch (error) {
             console.error('[WorkflowModal] Could not complete recurring task', {
                 projectId,
                 taskId: task.id,
                 error,
             })
-
+            store.dispatch(stopLoadingData())
             this.setSafeState({ disabledMainButtons: false })
         }
     }

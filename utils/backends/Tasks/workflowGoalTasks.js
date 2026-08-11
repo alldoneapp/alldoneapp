@@ -3,7 +3,12 @@ import { cloneDeep } from 'lodash'
 
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
 import store from '../../../redux/store'
-import { setGoalWorkflowTasksData, setGoalWorkflowSubtasksByParent } from '../../../redux/actions'
+import {
+    startLoadingData,
+    stopLoadingData,
+    setGoalWorkflowTasksData,
+    setGoalWorkflowSubtasksByParent,
+} from '../../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../../components/TaskListView/Utils/TasksHelper'
 import { chronoEntriesOrder } from '../../HelperFunctions'
@@ -24,7 +29,7 @@ export const watchWorkflowGoalTasks = (projectId, goalId, watcherKey) => {
         .where('parentId', '==', null)
         .where('completed', '!=', null)
         .where('parentGoalId', '==', goalId)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { workflowTasksArray } = processTasks(projectId, snapshot.docs)
@@ -106,7 +111,7 @@ export const watchWorkflowGoalSubtasks = (projectId, goalId, watcherKey) => {
         .where('isSubtask', '==', true)
         .where('completed', '!=', null)
         .where('parentGoalId', '==', goalId)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { workflowSubtasksByParent } = processSubtaskChanges(snapshot.docs)

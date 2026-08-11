@@ -14,7 +14,6 @@ import Project from '../../TaskDetailedView/Properties/Project'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import MilestoneProperty from './MilestoneProperty'
 import ScheduleModeProperty from './ScheduleModeProperty'
-import FocusAreaProperty from './FocusAreaProperty'
 import CreatedBy from '../../TaskDetailedView/Properties/CreatedBy'
 import Backend from '../../../utils/BackendBridge'
 import URLsGoals, { URL_GOAL_DETAILS_PROPERTIES } from '../../../URLSystem/Goals/URLsGoals'
@@ -22,7 +21,6 @@ import FollowObject from '../../Followers/FollowObject'
 import { FOLLOWER_GOALS_TYPE } from '../../Followers/FollowerConstants'
 import HighlightProperty from './HighlightProperty'
 import DescriptionField from '../../TaskDetailedView/Properties/DescriptionField'
-import ObjectArtifacts from '../../ArtifactsView/ObjectArtifacts'
 import { FEED_GOAL_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
 import ObjectRevisionHistory from '../../NotesView/NotesDV/PropertiesView/ObjectRevisionHistory'
@@ -30,7 +28,6 @@ import Privacy from './Privacy'
 import Reminder from './Reminder'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import { getUserData } from '../../../utils/backends/Users/usersFirestore'
-import SharedHelper from '../../../utils/SharedHelper'
 
 export default function GoalProperties({ projectId, goal, accessGranted }) {
     const dispatch = useDispatch()
@@ -67,11 +64,7 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
     }
 
     useEffect(() => {
-        if (loggedUser.isAnonymous) {
-            setCreator(SharedHelper.createAnonymousResourceUser(goal.creatorId))
-        } else {
-            getUserData(goal.creatorId, false).then(setCreator)
-        }
+        getUserData(goal.creatorId, false).then(setCreator)
         writeBrowserURL()
     }, [])
 
@@ -93,11 +86,6 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
                         disabled={!accessGranted || !loggedUserCanUpdateObject}
                     />
                     <ScheduleModeProperty
-                        goal={goal}
-                        projectId={projectId}
-                        disabled={!accessGranted || !loggedUserCanUpdateObject}
-                    />
-                    <FocusAreaProperty
                         goal={goal}
                         projectId={projectId}
                         disabled={!accessGranted || !loggedUserCanUpdateObject}
@@ -152,8 +140,6 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                 objectType={FEED_GOAL_OBJECT_TYPE}
             />
-
-            <ObjectArtifacts projectId={projectId} objectType="goals" objectId={goal.id} />
 
             {accessGranted && loggedUserCanUpdateObject && (
                 <View style={localStyles.footerSection}>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { View, StyleSheet } from 'react-native'
 
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -20,7 +20,6 @@ import store from '../../../../redux/store'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 import { setPreConfigTaskExecuting, setTriggerChatDraft } from '../../../../redux/actions'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
@@ -207,7 +206,7 @@ export default function PreConfigTaskGeneratorModal({
     }, [values])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <AssistantAvatar photoURL={assistant.photoURL300} assistantId={assistant.uid} size={51} />
                 <CloseButton style={localStyles.closeButton} close={closeModal} />

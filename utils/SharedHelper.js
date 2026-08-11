@@ -54,22 +54,8 @@ import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { getGoalData } from './backends/Goals/goalsFirestore'
 import { getChatMeta } from './backends/Chats/chatsFirestore'
 import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
-import URLsBookingTrigger from '../URLSystem/Booking/URLsBookingTrigger'
-import { PLAN_STATUS_FREE } from '../components/Premium/PremiumHelper'
-import { withoutAnnaMode } from './annaMode'
 
 class SharedHelper {
-    static createAnonymousResourceUser = userId => ({
-        uid: userId || '',
-        displayName: 'Shared user',
-        email: '',
-        photoURL: '/images/generic-user.svg',
-        projectIds: [],
-        guideProjectIds: [],
-        templateProjectIds: [],
-        archivedProjectIds: [],
-    })
-
     static normalizeInternalUrl = rawUrl => {
         if (typeof rawUrl !== 'string') return '/'
 
@@ -77,12 +63,12 @@ class SharedHelper {
             try {
                 const parsedUrl = new window.URL(rawUrl, window.location.origin)
                 if (parsedUrl.origin === window.location.origin) {
-                    return withoutAnnaMode(`${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`)
+                    return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
                 }
             } catch (_) {}
         }
 
-        return withoutAnnaMode(rawUrl)
+        return rawUrl
     }
 
     // Synchronously decide whether a URL is a shareable resource *detail* link (chat, note, task,
@@ -120,18 +106,6 @@ class SharedHelper {
             }
         }
         return false
-    }
-
-    // Public standalone pages: pages an unregistered visitor is meant to open directly, with no
-    // account, no Firebase session and no app shell around them. Currently that is the public
-    // meeting booking page (/meet/<slug>), which is served by unauthenticated HTTP endpoints
-    // (/api/booking/*), so it needs no authentication at all. These URLs must never mount the
-    // login ("you are not registered") screen on the way in — that screen rewrites the address bar
-    // to /login and starts an anonymous sign-in, i.e. it both flashes and loses the link.
-    static matchesPublicPageUrl = rawUrl => {
-        const url = SharedHelper.normalizeInternalUrl(rawUrl)
-        const pathname = url.split('?')[0].split('#')[0]
-        return URLsBookingTrigger.match(pathname) !== URL_NOT_MATCH
     }
 
     static processUrl = async (isLoggedIn, URL, onIsMember, onIsShared, onNotShared, onNotMatch, onJoinToTemplate) => {
@@ -178,8 +152,6 @@ class SharedHelper {
         }
 
         const isAnonymous = !isLoggedIn
-        const getResourceUser = userId =>
-            isAnonymous ? SharedHelper.createAnonymousResourceUser(userId) : getUserData(userId, false)
 
         if (matchAnyResource(matchedSharedObj)) {
             const params = matchedSharedObj.matches.groups
@@ -199,9 +171,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [task, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(task)) {
-                            // Anonymous visitors can read this public task, but Firestore does not
-                            // expose its creator's private /users document to them.
-                            const user = await getResourceUser(task.creatorId || task.userId || project.creatorId)
+                            const user = await getUserData(task.creatorId, false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.taskId, 'tasks')
                             await onIsShared(URL, users, params, commonPath)
@@ -261,7 +231,7 @@ class SharedHelper {
                         const [goal, project] = await Promise.all(promises)
 
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(goal)) {
-                            const user = await getResourceUser(goal.creatorId || goal.userId || project.creatorId)
+                            const user = await getUserData(goal.creatorId, false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.goalId, 'goals')
                             await onIsShared(URL, users, params, commonPath)
@@ -332,7 +302,7 @@ class SharedHelper {
                                     (globalAssistant && project.globalAssistantIds.includes(params.assistantId)))
                             ) {
                                 const projectUserId = assistant ? assistant.creatorId : project.userIds[0]
-                                const user = await getResourceUser(projectUserId)
+                                const user = await getUserData(projectUserId, false)
                                 const users = { projectUser: user, currentUser: user }
                                 const commonPath = getDvLink(params.projectId, params.assistantId, 'assistants')
                                 await onIsShared(URL, users, params, commonPath)
@@ -349,13 +319,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [note, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(note)) {
-                            // Anonymous Firebase users intentionally cannot read another person's
-                            // /users document. The note and public project already contain every
-                            // field needed to authorize and render this read-only view, so do not
-                            // make the shared-note boot depend on a private profile read.
-                            const user = SharedHelper.createAnonymousResourceUser(
-                                note.creatorId || note.userId || project.creatorId
-                            )
+                            const user = await getUserData(note.creatorId, false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.noteId, 'notes')
                             await onIsShared(URL, users, params, commonPath)
@@ -367,24 +331,11 @@ class SharedHelper {
                     // Process contact & users
                     case matchedSharedObj.key.indexOf(URL_CONTACT_DETAILS) >= 0 ||
                         matchedSharedObj.key.indexOf(URL_PEOPLE_DETAILS) >= 0: {
-                        const project = await getProjectData(params.projectId)
-                        if (!SharedHelper.canAccessToProject(project, false)) {
-                            await onNotShared()
-                            break
-                        }
-                        // A person's /users profile is private even when the project is public.
-                        // Only a separately public contact document can be shared anonymously.
-                        if (isAnonymous && project.userIds?.includes(params.userId)) {
-                            await onNotShared()
-                            break
-                        }
-                        const [contact, user] = await Promise.all([
-                            getContactData(params.projectId, params.userId).catch(error => {
-                                if (isAnonymous && error?.code === 'permission-denied') return null
-                                throw error
-                            }),
-                            isAnonymous ? null : getUserData(params.userId, false),
-                        ])
+                        const promises = []
+                        promises.push(getContactData(params.projectId, params.userId))
+                        promises.push(getUserData(params.userId, false))
+                        promises.push(getProjectData(params.projectId))
+                        const [contact, user, project] = await Promise.all(promises)
 
                         if (SharedHelper.canAccessToProject(project, false)) {
                             if (user) {
@@ -392,8 +343,8 @@ class SharedHelper {
                                 const commonPath = getDvLink(params.projectId, params.userId, 'users')
                                 await onIsShared(URL, users, params, commonPath)
                             } else if (SharedHelper.canAccessToObject(contact)) {
-                                const contactOwner = await getResourceUser(contact.recorderUserId || project.creatorId)
-                                const users = { projectUser: contactOwner, currentUser: contactOwner }
+                                const user = await getUserData(contact.recorderUserId, false)
+                                const users = { projectUser: user, currentUser: user }
                                 const commonPath = getDvLink(params.projectId, params.userId, 'contacts')
                                 await onIsShared(URL, users, params, commonPath)
                             } else {
@@ -411,7 +362,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [skill, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(skill)) {
-                            const user = await getResourceUser(skill.userId || project.creatorId)
+                            const user = await getUserData(skill.userId, false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.skillId, 'skills')
                             await onIsShared(URL, users, params, commonPath)
@@ -427,7 +378,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [chat, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(chat)) {
-                            const user = await getResourceUser(chat.creatorId || project.creatorId)
+                            const user = await getUserData(chat.creatorId, false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.chatId, 'chats')
                             await onIsShared(URL, users, params, commonPath)
@@ -440,7 +391,7 @@ class SharedHelper {
                     case matchedSharedObj.key.indexOf(URL_PROJECT_DETAILS) >= 0: {
                         const project = await getProjectData(params.projectId)
                         if (SharedHelper.canAccessToProject(project, false)) {
-                            const user = await getResourceUser(project.creatorId || project.userIds?.[0])
+                            const user = await getUserData(project.userIds[0], false)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.projectId, 'projects')
                             await onIsShared(URL, users, params, commonPath)
@@ -480,14 +431,10 @@ class SharedHelper {
 
         const onNotMatch = URL => {
             // If URL is public then process it
-            // We have public URLs: /login, /starttrial, /paymentsuccess and /meet/<slug>
+            // We have public URLs: /login, /starttrial, and /paymentsuccess
             // The /login route is processed in other component, not here
             // For /starttrial and /paymentsuccess, we should handle them directly
-            if (
-                URL.startsWith('/starttrial') ||
-                URL.startsWith('/paymentsuccess') ||
-                SharedHelper.matchesPublicPageUrl(URL)
-            ) {
+            if (URL.startsWith('/starttrial') || URL.startsWith('/paymentsuccess') || URL.startsWith('/meet/')) {
                 URLTrigger.directProcessUrl(NavigationService, URL)
             }
         }
@@ -616,19 +563,6 @@ class SharedHelper {
     }
 
     static onHistoryPop = commonPath => {
-        // Browser Back/Forward already selected an entry. Route that URL, not
-        // the app's close-button stack, and let the view refresh its title.
-        if (commonPath && typeof commonPath !== 'string') {
-            const { pathname, search } = window.location
-            const url = pathname + search
-            const screen = withoutAnnaMode(url)
-            const { lastVisitedScreen } = store.getState()
-            const screens = Array.isArray(lastVisitedScreen) ? [...lastVisitedScreen] : []
-            const index = screens.lastIndexOf(screen)
-            store.dispatch(setLastVisitedScreen(index >= 0 ? screens.slice(0, index + 1) : [...screens, screen]))
-            return SharedHelper.processUrlAsLoggedIn(NavigationService, url, true)
-        }
-
         let { lastVisitedScreen } = store.getState()
         // Pop from a copy, never the array held in the store. The reducer stores whatever
         // reference it is handed, so mutating in place leaves the store identity-equal and the
@@ -661,15 +595,8 @@ export const ANONYMOUS_USER_DATA = {
     isAnonymous: true,
     // Never expose the resource owner's gold balance to an anonymous viewer. Without this the
     // anonymous loggedUser inherits the creator's gold (via the spread in addAnonymousData), which
-    // both leaks it into the UI and can incorrectly enable assistant controls on shared links.
+    // both leaks it into the UI and auto-enables the assistant/fullscreen bar on shared links.
     gold: 0,
-    // Shared-note embeds use the normal traffic-quota hooks while Quill initializes. Anonymous
-    // sessions do not have a private user document to supply these fields, so provide the same
-    // safe free-plan shape a newly created user receives. Missing `premium.status` throws during
-    // image rendering and leaves the note loader retrying behind an endless spinner.
-    premium: { status: PLAN_STATUS_FREE },
-    monthlyTraffic: 0,
-    monthlyXp: 0,
     themeName: COLORS_THEME_MODERN,
     sidebarNavigationMode: SIDEBAR_NAVIGATION_SIMPLE,
     sidebarExpanded: SIDEBAR_COLLAPSED,

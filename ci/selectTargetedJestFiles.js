@@ -1,127 +1,145 @@
 const { execFileSync } = require('child_process')
-const fs = require('fs')
+const { existsSync } = require('fs')
 const path = require('path')
 
-const full = (head, reason, base = null, kind = 'web') => ({
-    version: 1,
-    kind,
-    mode: 'full',
-    head,
-    base,
-    inputs: [],
-    reason,
-})
-const broadChange = file =>
-    /^(App[^/]*\.js|index\.js|app\.json|babel\.config\.js|tsconfig\.json|package(?:-lock)?\.json|\.npmrc)$/.test(
-        file
-    ) ||
-    /^(__mocks__\/|replacement_node_modules\/|web\/|web-bundler\/|redux\/(store|reducers|actions)|i18n\/)/.test(file)
+// Exit codes are how test:web:changed tells "nothing to test" apart from "the
+// selection never happened". Only an empty selection may exit 0; every failure
+// below has to be non-zero, because a silent empty list turns the job into a
+// no-op that still reports success.
+const EXIT_USAGE = 2
+const EXIT_UNRESOLVED_REF = 3
+const EXIT_NO_MERGE_BASE = 4
+const EXIT_DIFF_FAILED = 5
 
-function selectPlan({ changes, base, head, kind = 'web', runtimeFiles = [] }) {
-    const fallback = reason => full(head, reason, base, kind)
-    if (!base) return fallback('No verified comparison commit; run every suite')
-    const patterns = fs
-        .readFileSync(path.join(__dirname, 'deploy-scope/web-production.paths'), 'utf8')
-        .split('\n')
-        .map(line => line.replace(/#.*/, '').trim())
-        .filter(Boolean)
-        .map(pattern => new RegExp(pattern))
-    const dependencies = new Set(runtimeFiles)
-    const relevant = changes.filter(({ file }) =>
-        kind === 'functions'
-            ? (file.startsWith('functions/') && !/(^|\/)(README|CHANGELOG|AGENTS|CLAUDE)\.md$/i.test(file)) ||
-              dependencies.has(file) ||
-              /^__tests__\/(TwilioWhatsAppService|Chats\/copyChatToOtherProject|Feeds\/copyInnerFeedsToOtherProject)\.test\.js$/.test(
-                  file
-              ) ||
-              /^(package(?:-lock)?\.json|babel\.config\.js|ci\/(jest\.functions\.config|jestSetup|jestPolyfills|writeTestEnv)\.js)$/.test(
-                  file
-              )
-            : patterns.some(pattern => pattern.test(file)) &&
-              file !== '__tests__/Firestore/firestoreRules.emulator.test.js'
-    )
-    const broad = relevant.find(({ file }) =>
-        kind === 'functions'
-            ? /^(functions\/(package(?:-lock)?\.json|firebaseConfig\.js)|package(?:-lock)?\.json|babel\.config\.js|ci\/(jest\.functions\.config|jestSetup|jestPolyfills|writeTestEnv)\.js)$/.test(
-                  file
-              )
-            : broadChange(file) || /^ci\/(jest\.web\.config|jestSetup|jestPolyfills|writeTestEnv)\.js$/.test(file)
-    )
-    if (broad) return fallback(`Shared configuration or application-wide change: ${broad.file}`)
-    const removed = relevant.find(change => change.status === 'D')
-    if (removed) return fallback(`Removed or renamed dependency requires the old graph: ${removed.file}`)
-    // Jest traces imports; CI scripts and path lists use source-reading tests.
-    // The runner still falls back to full validation for any unmapped input.
-    // Styles, assets and unknown product formats can affect rendering without an edge.
-    const unsupported = relevant.find(
-        change =>
-            !/\.[cm]?[jt]sx?$|\.json$|\.snap$|^\.gitlab-ci\.yml$|^\.firebaserc$|^ci\/.*\.(sh|paths)$/.test(change.file)
-    )
-    if (unsupported) return fallback(`Cannot reliably trace this change: ${unsupported.file}`)
-    const inputs = [...new Set(relevant.map(change => change.file))].sort()
-    return {
-        version: 1,
-        kind,
-        mode: inputs.length ? 'targeted' : 'none',
-        base,
-        head,
-        inputs,
-        reason: inputs.length
-            ? 'All changed sources, data and tests, including their dependent suites'
-            : 'No web changes',
-    }
+const baseRef = process.argv[2]
+const headRef = process.argv[3] || 'HEAD'
+
+const excludedRoots = [
+    'ci/',
+    'cloudflare/',
+    'firebase_tool/',
+    'firestore-backups/',
+    'functions/',
+    'migration/',
+    // Shared manual mocks are test scaffolding, not application sources. Jest
+    // relates them to every suite that touches the module they stand in for, so
+    // handing one to --findRelatedTests selects a large arbitrary slice of the
+    // suite and defeats the point of a targeted run. The suites that matter for
+    // a mock change are reached through the sources and tests changed with it.
+    '__mocks__/',
+]
+const testPattern = /(?:^|\/)__tests__\/|[.](?:test|spec)[.][jt]sx?$/
+const codePattern = /[.][jt]sx?$/
+
+// Diagnostics go to stderr so stdout stays the NUL-delimited list the job pipes
+// into xargs.
+const note = message => process.stderr.write(`${message}\n`)
+
+const fail = (code, message) => {
+    process.stderr.write(`ci/selectTargetedJestFiles.js: ${message}\n`)
+    process.exit(code)
 }
 
-function makePlan(root, baseRef, headRef = 'HEAD', options = {}) {
-    const git = args =>
-        execFileSync('git', ['-C', root, ...args], {
-            encoding: 'utf8',
-            maxBuffer: 20 * 1024 * 1024,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        })
-    const head = git(['rev-parse', '--verify', `${headRef}^{commit}`]).trim()
-    const kind = options.kind || 'web'
-    if (!baseRef) return full(head, 'No verified deployment marker; run every suite', null, kind)
-    try {
-        let base = git(['rev-parse', '--verify', `${baseRef}^{commit}`]).trim()
-        // Branch QA compares with its fork point. Deployment QA compares exact
-        // trees, including catch-up changes, reverts and non-ancestor markers.
-        if (options.branch) base = git(['merge-base', base, head]).trim()
-        const fields = git(['diff', '--name-status', '--no-renames', '-z', base, head]).split('\0').filter(Boolean)
-        const changes = []
-        for (let index = 0; index < fields.length; index += 2)
-            changes.push({ status: fields[index], file: fields[index + 1] })
-        let runtimeFiles = []
-        if (kind === 'functions') {
-            const { buildGraph, gitTree } = require('./selectFunctionsDeployment')
-            const blobs = new Map()
-            runtimeFiles = [
-                ...buildGraph(gitTree(root, base, blobs)).values(),
-                ...buildGraph(gitTree(root, head, blobs)).values(),
-            ].flatMap(info => [...info.files])
-        }
-        return selectPlan({ ...options, kind, base, head, changes, runtimeFiles })
-    } catch (_) {
-        return full(head, 'Comparison cannot be established; run every suite', null, kind)
-    }
-}
+const git = args =>
+    execFileSync('git', args, {
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    })
 
-if (require.main === module) {
+const gitStderr = error => String((error && error.stderr) || '').trim()
+
+const resolveCommit = ref => {
     try {
-        const [base, head, output, option] = process.argv.slice(2)
-        if (!head || !output)
-            throw new Error(
-                'Usage: selectTargetedJestFiles.js <base-or-empty> <head> <plan.json> [last-full-test-time]'
-            )
-        const plan = makePlan(process.cwd(), base, head, {
-            kind: option === '--functions' ? 'functions' : 'web',
-        })
-        fs.writeFileSync(output, JSON.stringify(plan, null, 2) + '\n')
-        console.log(`Web tests: ${plan.mode}. ${plan.reason}`)
+        return git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).trim()
     } catch (error) {
-        console.error(error.message)
-        process.exitCode = 1
+        return ''
     }
 }
 
-module.exports = { selectPlan, makePlan, full }
+if (!baseRef) {
+    fail(EXIT_USAGE, 'usage: node ci/selectTargetedJestFiles.js <base-ref> [head-ref]')
+}
+
+const baseSha = resolveCommit(baseRef)
+if (!baseSha) {
+    fail(
+        EXIT_UNRESOLVED_REF,
+        `cannot resolve base ref "${baseRef}". In CI the default branch is fetched by ci/ensureMergeBase.sh; ` +
+            'without it there is no comparison point and the run would silently select nothing.'
+    )
+}
+
+const headSha = resolveCommit(headRef)
+if (!headSha) {
+    fail(EXIT_UNRESOLVED_REF, `cannot resolve head ref "${headRef}".`)
+}
+
+// Resolve the merge base explicitly instead of relying on `base...head`. The
+// three-dot form fails the same way whether the history is shallow or the refs
+// are unrelated, and that failure used to reach the job as an empty selection.
+let mergeBase
+try {
+    mergeBase = git(['merge-base', baseSha, headSha]).trim()
+} catch (error) {
+    fail(
+        EXIT_NO_MERGE_BASE,
+        `"${baseRef}" and "${headRef}" have no common ancestor in this clone` +
+            `${gitStderr(error) ? ` (git: ${gitStderr(error)})` : ''}. ` +
+            'A shallow CI clone cut too early is the usual cause; ci/ensureMergeBase.sh deepens it before this runs.'
+    )
+}
+
+const short = sha => sha.slice(0, 9)
+
+if (mergeBase === headSha) {
+    // The branch has already been merged (or fast-forwarded) into the base, so
+    // the branch diff is empty by definition. Legitimately zero, but worth
+    // saying out loud: nothing this pipeline reports covers the commit.
+    note(
+        `Targeted Jest selection: "${baseRef}" already contains ${short(headSha)}, so the branch diff is empty. ` +
+            'Selecting no files.'
+    )
+    process.exit(0)
+}
+
+let rawDiff
+try {
+    rawDiff = git(['diff', '--name-only', '-z', mergeBase, headSha, '--'])
+} catch (error) {
+    fail(
+        EXIT_DIFF_FAILED,
+        `git diff ${short(mergeBase)}..${short(headSha)} failed${gitStderr(error) ? `: ${gitStderr(error)}` : '.'}`
+    )
+}
+
+const changedPaths = rawDiff.split('\0').filter(Boolean)
+const changedFiles = changedPaths
+    .filter(file => existsSync(file))
+    .filter(file => codePattern.test(file))
+    .filter(file => !excludedRoots.some(root => file.startsWith(root)))
+
+const changedTests = changedFiles.filter(file => testPattern.test(file))
+const changedTestStems = new Set(
+    changedTests
+        .filter(file => !file.includes('/__tests__/') && !file.startsWith('__tests__/'))
+        .map(file => file.replace(/[.](?:test|spec)[.][jt]sx?$/, ''))
+)
+const uncoveredSources = changedFiles.filter(file => {
+    if (testPattern.test(file)) return false
+    return !changedTestStems.has(file.replace(/[.][jt]sx?$/, ''))
+})
+
+const selected = [...changedTests, ...uncoveredSources]
+
+note(
+    `Targeted Jest selection: ${selected.length} file(s) from ${changedPaths.length} changed in ` +
+        `${baseRef}...${headRef} (merge base ${short(mergeBase)}).`
+)
+if (selected.length === 0) {
+    note('No web-relevant JavaScript changed, so the targeted run has nothing to do.')
+}
+
+for (const file of selected) {
+    process.stdout.write(`${path.normalize(file)}\0`)
+}

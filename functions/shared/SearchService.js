@@ -11,21 +11,28 @@
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
-let moment, getNoteContent, parseTextForSearch
-let searchTypesenseDocuments, formatTypesenseFilterValue
+let algoliasearch, moment, getAlgoliaClient, getNoteContent, parseTextForSearch
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
-    if (!moment) {
+    if (!algoliasearch) {
         try {
-            moment = require('moment')
-            const searchHelper = require('../searchHelper')
-            const parsingHelper = require('../ParsingTextHelper')
-            const typesenseHelper = require('../typesenseHelper')
-            getNoteContent = searchHelper.getNoteContent
-            parseTextForSearch = parsingHelper.parseTextForSearch
-            searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
-            formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
+            // Try CommonJS first (Node.js/Cloud Functions)
+            if (typeof require !== 'undefined') {
+                algoliasearch = require('algoliasearch')
+                moment = require('moment')
+                const searchHelper = require('../searchHelper')
+                const parsingHelper = require('../ParsingTextHelper')
+                getAlgoliaClient = searchHelper.getAlgoliaClient
+                getNoteContent = searchHelper.getNoteContent
+                parseTextForSearch = parsingHelper.parseTextForSearch
+            } else {
+                // Fall back to ES6 imports (React Native/Web)
+                const [algolia, momentLib] = await Promise.all([import('algoliasearch'), import('moment')])
+                algoliasearch = algolia.default || algolia
+                moment = momentLib.default || momentLib
+                // Note: For React Native/Web, search functionality would use different backends
+            }
         } catch (error) {
             console.error('Failed to load SearchService dependencies:', error)
             throw new Error('SearchService initialization failed')
@@ -59,9 +66,6 @@ const DEFAULT_SEARCH_LIMIT = 50
 const MAX_SEARCH_LIMIT = 1000
 const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
-const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-const PROJECT_READ_CONCURRENCY = 20
-
 function canAccessByIsPublicFor(data, userId) {
     const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
     return isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId)
@@ -82,6 +86,7 @@ class SearchService {
             isWeb: typeof window !== 'undefined',
 
             // Feature flags
+            enableAlgolia: true,
             enableNoteContent: true,
             enableDateParsing: true,
 
@@ -90,6 +95,7 @@ class SearchService {
         }
 
         this.initialized = false
+        this.algoliaClient = null
     }
 
     /**
@@ -99,6 +105,10 @@ class SearchService {
         if (this.initialized) return
 
         await loadDependencies()
+
+        if (this.options.enableAlgolia && getAlgoliaClient) {
+            this.algoliaClient = getAlgoliaClient()
+        }
 
         this.initialized = true
     }
@@ -145,27 +155,8 @@ class SearchService {
             throw new Error(`Search limit cannot exceed ${MAX_SEARCH_LIMIT}`)
         }
 
-        // buildTypesenseFilters narrows to an explicit projectId exactly as given, so it has to be one
-        // of the caller's own projects: a foreign id would otherwise return everything that project
-        // shares with its members. Checked once here, not on every fallback pass.
-        if (projectId && !(await this.userBelongsToProject(userId, projectId))) {
-            return {
-                results: {},
-                query,
-                totalResults: 0,
-                message: `Target project not found or not accessible: "${projectId}"`,
-            }
-        }
-
         // Use enhanced search with result optimization
         return await this.searchWithOptimization(userId, searchParams)
-    }
-
-    // The same membership source as getUserProjects (users/{uid}.projectIds), for one project.
-    async userBelongsToProject(userId, projectId) {
-        const userDoc = await this.options.database.collection('users').doc(userId).get()
-        const projectIds = userDoc.exists ? userDoc.data().projectIds || [] : []
-        return projectIds.includes(projectId)
     }
 
     /**
@@ -937,6 +928,10 @@ class SearchService {
      * @returns {Array} Search results for this entity type
      */
     async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId, status) {
+        if (!this.algoliaClient || !this.options.enableAlgolia) {
+            return []
+        }
+
         const indexName = SEARCH_INDICES[entityType.toUpperCase()]
         if (!indexName) {
             console.warn(`No search index configured for entity type: ${entityType}`)
@@ -944,6 +939,8 @@ class SearchService {
         }
 
         try {
+            const index = this.algoliaClient.initIndex(indexName)
+
             // Build search parameters - ensure keywords are valid
             const keywords = parsedQuery.keywords || []
             if (keywords.length === 0) {
@@ -963,21 +960,19 @@ class SearchService {
                 return []
             }
 
-            const filterBy = this.buildTypesenseFilters(
-                userProjects,
-                projectId,
-                parsedQuery,
-                entityType,
-                userId,
-                status
-            )
-            const response = await searchTypesenseDocuments(indexName, searchQuery, {
-                filterBy,
-                perPage: Math.min(limit, 250),
-            })
-            const hits = response.hits
+            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status)
 
-            return hits.map(hit => {
+            const searchOptions = {
+                filters,
+                hitsPerPage: limit,
+                attributesToRetrieve: this.getAttributesToRetrieve(entityType),
+                attributesToHighlight: this.getAttributesToHighlight(entityType),
+                timeout: 5000, // 5 second timeout per search
+            }
+
+            const searchResponse = await index.search(searchQuery, searchOptions)
+
+            return searchResponse.hits.map(hit => {
                 let cleanId = hit.objectID || hit.id
                 // Remove project ID suffix from Algolia objectID (format: noteId + projectId)
                 if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
@@ -1020,52 +1015,61 @@ class SearchService {
     }
 
     /**
-     * Search filters (Typesense). Same access model the Algolia era enforced, one
-     * deliberate scope rule: with everything indexed, the eligibility gate that used to be
-     * implicit (inactive/template projects simply had no records) is an explicit project
-     * scope — assistant search covers active, non-template projects only.
+     * Build Algolia filters based on search parameters
+     * @param {Array} userProjects - User's accessible projects
+     * @param {string} projectId - Optional project filter
+     * @param {Object} parsedQuery - Parsed query components
+     * @param {string} entityType - Entity type being searched
+     * @param {string} userId - Current user ID for visibility filtering
+     * @returns {string} Algolia filter string
      */
-    buildTypesenseFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
+    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
         const filters = []
 
         // Project access filter
         if (projectId) {
-            filters.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
+            filters.push(`projectId:"${projectId}"`)
         } else {
-            const searchableProjects = userProjects.filter(
-                project => project && project.active !== false && !project.parentTemplateId
-            )
-            const projectIdsList = searchableProjects.map(project => formatTypesenseFilterValue(project.id)).join(',')
-            if (projectIdsList) {
-                filters.push(`projectId:=[${projectIdsList}]`)
+            const projectFilters = userProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
+            if (projectFilters) {
+                filters.push(`(${projectFilters})`)
             }
         }
 
-        // Visibility filters (critical for security) — isPublicFor is string[] in
-        // Typesense, so the numeric public sentinel is compared as a string.
-        const publicScope = `isPublicFor:=[${formatTypesenseFilterValue(
-            FEED_PUBLIC_FOR_ALL
-        )},${formatTypesenseFilterValue(userId)}]`
+        // Visibility filters (critical for security) - following main app patterns
         switch (entityType) {
-            case ENTITY_TYPES.ASSISTANTS:
-                filters.push('isAssistant:=true')
-                filters.push(publicScope)
+            case ENTITY_TYPES.GOALS:
+            case ENTITY_TYPES.CHATS:
+                // Goals and chats use isPublicFor field
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
                 break
+            case ENTITY_TYPES.CONTACTS:
             case ENTITY_TYPES.USERS:
-                filters.push(publicScope)
-                filters.push('isAssistant:=false')
+                // Enforce visibility via access list, not isPrivate flag
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
+                if (entityType === ENTITY_TYPES.USERS) {
+                    filters.push('isAssistant:false')
+                }
                 break
+            case ENTITY_TYPES.ASSISTANTS:
+                // Assistants are public but marked as isAssistant:true
+                filters.push('isAssistant:true')
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
+                break
+            case ENTITY_TYPES.TASKS:
+            case ENTITY_TYPES.NOTES:
             default:
-                filters.push(publicScope)
+                // Enforce visibility via access list, not isPrivate flag
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
                 break
         }
 
         // Task status filter (only applies to tasks)
         if (entityType === ENTITY_TYPES.TASKS && status) {
             if (status === 'done') {
-                filters.push('done:=true')
+                filters.push('done:true')
             } else if (status === 'open') {
-                filters.push('done:=false')
+                filters.push('done:false')
             }
             // status === 'all' means no status filtering
         }
@@ -1073,10 +1077,10 @@ class SearchService {
         // Date range filter - use lastEditionDate (updated when tasks are completed)
         if (parsedQuery.dateFilter) {
             const { startDate, endDate } = parsedQuery.dateFilter
-            filters.push(`lastEditionDate:>=${startDate} && lastEditionDate:<=${endDate}`)
+            filters.push(`lastEditionDate >= ${startDate} AND lastEditionDate <= ${endDate}`)
         }
 
-        return filters.join(' && ')
+        return filters.join(' AND ')
     }
 
     /**
@@ -1294,26 +1298,26 @@ class SearchService {
         const userData = userDoc.data()
         const projectIds = userData.projectIds || []
 
-        // One read per project, and an account can hold ~200 of them: awaited one at a time
-        // this took most of a minute. Bounded concurrency, same reads, same order.
-        const projects = await mapWithConcurrency(projectIds, PROJECT_READ_CONCURRENCY, async projectId => {
+        // Get project details
+        const projects = []
+        for (const projectId of projectIds) {
             try {
                 const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
-                if (!projectDoc.exists) return null
-                const projectData = projectDoc.data()
-                return {
-                    id: projectId,
-                    name: projectData.name,
-                    active: projectData.active,
-                    ...projectData,
+                if (projectDoc.exists) {
+                    const projectData = projectDoc.data()
+                    projects.push({
+                        id: projectId,
+                        name: projectData.name,
+                        active: projectData.active,
+                        ...projectData,
+                    })
                 }
             } catch (error) {
                 console.warn(`Could not access project ${projectId}:`, error.message)
-                return null
             }
-        })
+        }
 
-        return projects.filter(Boolean)
+        return projects
     }
 
     /**
@@ -1519,18 +1523,6 @@ class SearchService {
             throw new Error('At least one search criterion is required (noteId, noteTitle, projectName, or projectId)')
         }
 
-        // The assistant almost always knows both ids (it is editing the note it is looking at).
-        // Resolve that with three reads instead of listing every project the user belongs to.
-        if (noteId && projectId) {
-            const directMatch = await this.findNoteInProject(noteId, projectId, userId)
-            if (directMatch) {
-                return {
-                    matches: [{ ...directMatch, matchScore: 1000, matchType: 'direct_id' }],
-                    searchCriteria,
-                }
-            }
-        }
-
         // Get user's accessible projects
         const userProjects = await this.getUserProjects(userId)
         if (userProjects.length === 0) {
@@ -1545,7 +1537,7 @@ class SearchService {
 
         // If noteId is provided, try direct lookup first
         if (noteId) {
-            const directMatch = await this.findNoteById(noteId, userProjects, userId, projectId)
+            const directMatch = await this.findNoteById(noteId, userProjects, userId)
             if (directMatch) {
                 matches.push({
                     ...directMatch,
@@ -1578,52 +1570,8 @@ class SearchService {
      * @param {string} userId - The authenticated user ID
      * @returns {Object|null} Note match or null
      */
-    /**
-     * Direct lookup of a note in one known project, with the same access rules as
-     * getUserProjects + findNoteById: the project must be in the user's projectIds and the
-     * note must be visible to the user. Returns null when any of that does not hold, so the
-     * caller falls back to the full search.
-     */
-    async findNoteInProject(noteId, projectId, userId) {
-        try {
-            const db = this.options.database
-            const cleanNoteId = noteId.endsWith(projectId)
-                ? noteId.substring(0, noteId.length - projectId.length)
-                : noteId
-            const [userDoc, projectDoc, noteDoc] = await Promise.all([
-                db.collection('users').doc(userId).get(),
-                db.collection('projects').doc(projectId).get(),
-                db.doc(`noteItems/${projectId}/notes/${cleanNoteId}`).get(),
-            ])
-            if (!userDoc.exists || !projectDoc.exists || !noteDoc.exists) return null
-            const projectIds = (userDoc.data() || {}).projectIds || []
-            if (!projectIds.includes(projectId)) return null
-            const noteData = noteDoc.data()
-            if (!canAccessByIsPublicFor(noteData, userId)) return null
-            return {
-                note: { ...noteData, id: cleanNoteId },
-                projectId,
-                projectName: (projectDoc.data() || {}).name,
-            }
-        } catch (error) {
-            console.warn(
-                `SearchService: direct lookup of note ${noteId} in project ${projectId} failed:`,
-                error.message
-            )
-            return null
-        }
-    }
-
-    /**
-     * Find note by direct ID lookup
-     * @param {string} noteId - The note ID
-     * @param {Array} userProjects - User's accessible projects
-     * @param {string} userId - The authenticated user ID
-     * @param {string} [preferredProjectId] - Project to check first (the caller's current project)
-     * @returns {Object|null} Note match or null
-     */
-    async findNoteById(noteId, userProjects, userId, preferredProjectId = null) {
-        const lookUp = async project => {
+    async findNoteById(noteId, userProjects, userId) {
+        for (const project of userProjects) {
             try {
                 // Clean the note ID in case it has project suffix (from Algolia objectID)
                 let cleanNoteId = noteId
@@ -1637,31 +1585,20 @@ class SearchService {
                 }
 
                 const noteDoc = await this.options.database.doc(`noteItems/${project.id}/notes/${cleanNoteId}`).get()
-                if (!noteDoc.exists) return null
-                const noteData = noteDoc.data()
-                if (!canAccessByIsPublicFor(noteData, userId)) return null
-                return {
-                    note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
-                    projectId: project.id,
-                    projectName: project.name,
+                if (noteDoc.exists) {
+                    const noteData = noteDoc.data()
+                    if (!canAccessByIsPublicFor(noteData, userId)) continue
+                    return {
+                        note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
+                        projectId: project.id,
+                        projectName: project.name,
+                    }
                 }
             } catch (error) {
                 console.warn(`Error checking note ${noteId} in project ${project.id}:`, error.message)
-                return null
             }
         }
-
-        const preferred = preferredProjectId ? userProjects.find(project => project.id === preferredProjectId) : null
-        if (preferred) {
-            const match = await lookUp(preferred)
-            if (match) return match
-        }
-
-        // Every other project, a bounded number at a time. The first hit in project order wins,
-        // exactly as the sequential loop this replaces decided it.
-        const others = userProjects.filter(project => project !== preferred)
-        const results = await mapWithConcurrency(others, PROJECT_READ_CONCURRENCY, lookUp)
-        return results.find(Boolean) || null
+        return null
     }
 
     /**
@@ -1677,13 +1614,11 @@ class SearchService {
         // Build search query
         let query = noteTitle || ''
 
-        // Add project filter if specified (Typesense syntax; isPublicFor is string[])
-        let filters = [
-            `isPublicFor:=[${formatTypesenseFilterValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseFilterValue(userId)}]`,
-        ]
+        // Add project filter if specified
+        let filters = [`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`]
 
         if (projectId) {
-            filters.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
+            filters.push(`projectId:${projectId}`)
         } else if (projectName) {
             // Search for projects matching the name first
             const matchingProjectIds = userProjects
@@ -1691,14 +1626,16 @@ class SearchService {
                 .map(p => p.id)
 
             if (matchingProjectIds.length > 0) {
-                filters.push(`projectId:=[${matchingProjectIds.map(formatTypesenseFilterValue).join(',')}]`)
+                filters.push(`(${matchingProjectIds.map(id => `projectId:${id}`).join(' OR ')})`)
             }
         }
 
         try {
-            const searchResults = await searchTypesenseDocuments(SEARCH_INDICES.NOTES, query, {
-                filterBy: filters.join(' && '),
-                perPage: 20,
+            const index = this.algoliaClient.initIndex(SEARCH_INDICES.NOTES)
+            const searchResults = await index.search(query, {
+                filters: filters.join(' AND '),
+                hitsPerPage: 20,
+                attributesToRetrieve: ['objectID', 'title', 'content', 'projectId', 'userId', 'lastEditionDate'],
             })
 
             const matches = []
@@ -1785,6 +1722,7 @@ class SearchService {
             return {
                 status: 'healthy',
                 initialized: this.initialized,
+                algoliaClient: !!this.algoliaClient,
                 dependencies: {
                     algoliasearch: !!algoliasearch,
                     moment: !!moment,
@@ -1792,6 +1730,7 @@ class SearchService {
                     getNoteContent: !!getNoteContent,
                 },
                 config: {
+                    enableAlgolia: this.options.enableAlgolia,
                     enableNoteContent: this.options.enableNoteContent,
                     enableDateParsing: this.options.enableDateParsing,
                     environment: this.options.isCloudFunction

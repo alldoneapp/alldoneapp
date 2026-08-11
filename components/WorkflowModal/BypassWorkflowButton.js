@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
-export default function BypassWorkflowButton({ disabled, onPress, label = 'Bypass workflow and mark done' }) {
+export default function BypassWorkflowButton({ disabled, onPress, label = 'Bypass workflow' }) {
     const text = translate(label)
 
     return (
@@ -23,10 +23,7 @@ export default function BypassWorkflowButton({ disabled, onPress, label = 'Bypas
 const localStyles = StyleSheet.create({
     button: {
         alignSelf: 'center',
-        // 8pt of separation from the primary button row above (which contributes its own
-        // 16px bottom padding), so the secondary escape hatch reads as a separate action
-        // rather than a caption of the blue button (AT-2354).
-        marginTop: 8,
+        marginTop: 0,
         marginBottom: 12,
         paddingHorizontal: 8,
         paddingVertical: 4,

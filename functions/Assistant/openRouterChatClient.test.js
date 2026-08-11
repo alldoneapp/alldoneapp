@@ -79,28 +79,6 @@ describe('normalizeContentForChatCompletions', () => {
         expect(normalizeContentForChatCompletions(parts, { supportsImages: true })).toEqual(parts)
     })
 
-    test('counts replaced image parts so a dropped image leaves a trace', () => {
-        // Without the count a dropped image is invisible: the request succeeds and the only symptom
-        // is an answer that ignores the attachment the user is looking at.
-        const stats = { strippedImageParts: 0 }
-        normalizeContentForChatCompletions(
-            [
-                { type: 'text', text: 'What is this?' },
-                { type: 'image_url', image_url: { url: 'https://example.com/a.png' } },
-                { type: 'image_url', image_url: { url: 'https://example.com/b.png' } },
-            ],
-            { stats }
-        )
-
-        expect(stats.strippedImageParts).toBe(2)
-    })
-
-    test('tells the model that fetching the image with a tool will not help', () => {
-        // get_chat_attachment can now return an image's bytes, which a text-only model still cannot
-        // see. Saying so stops the tool loop that burned a minute of the user's time.
-        expect(UNSUPPORTED_IMAGE_PLACEHOLDER).toMatch(/tool will not make it viewable/i)
-    })
-
     test('collapses an all-text part list to a plain string', () => {
         // A string is universally accepted; the parts array is only reliably accepted on `user`.
         expect(

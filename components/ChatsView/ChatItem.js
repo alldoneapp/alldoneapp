@@ -1,4 +1,3 @@
-import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 import React, { useMemo } from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
@@ -23,7 +22,6 @@ import { getUserPresentationDataInProject } from '../ContactsView/Utils/Contacts
 import { getChatItemBackgroundColor } from './chatItemBackground'
 import { getUnreadCommentIds } from './Utils/unreadChatFilter'
 import ChatItemUnreadMessages from './ChatItemUnreadMessages'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -38,7 +36,6 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
     const isLoadingData = useSelector(state => state.isLoadingData > 0)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id][chat.id])
-    const chatsActiveTab = useSelector(state => state.chatsActiveTab)
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -46,17 +43,20 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
 
     // The unread messages previewed under the title (AT-2256). Never in a comment popup: that
     // popup is a compact picker of chats, and it already renders the thread it is pointing at.
+    //
+    // Exactly the messages `notificationsAmount` above is counting, on either tab - a row that
+    // shows a grey badge on the Followed tab must preview those messages there too, or the emails
+    // behind them are invisible and the header's bulk archive buttons have nothing to act on.
     const unreadCommentIds = useMemo(
-        () => (inCommentPopup ? [] : getUnreadCommentIds(chatNotifications, chatsActiveTab)),
-        [chatNotifications, chatsActiveTab, inCommentPopup]
+        () => (inCommentPopup ? [] : getUnreadCommentIds(chatNotifications)),
+        [chatNotifications, inCommentPopup]
     )
 
     const hasUnreadPreview = unreadCommentIds.length > 0
 
     const isSticky = chat.stickyData.days > 0
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
-    const projectBackgroundColor = useTaskHierarchyBackground()
-    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup, projectBackgroundColor)
+    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup)
     const usesCommentPopupBackground = inCommentPopup
 
     const onOpenEditModal = () => {
@@ -75,13 +75,12 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                 { backgroundColor },
             ]}
         >
-            <ProjectMoveIndicator object={chat} />
             <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
                 <ChatHeaderItem members={chat.members} membersNumber={chat.members.length} />
             </TouchableOpacity>
-            {/* The unread preview is a sibling of the title touchable because each previewed
-                message owns its open-the-chat action while its nested links and email controls
-                keep their existing actions. */}
+            {/* The unread preview is a sibling of the open-the-chat touchable, not a child of it:
+                nested inside, every tap on a previewed message would navigate away, and the links,
+                mentions and text selection inside a message would stop working. */}
             <View style={{ flex: 1 }}>
                 <TouchableOpacity
                     onPress={inCommentPopup ? onPress : () => onOpenChat(project.id, chat)}

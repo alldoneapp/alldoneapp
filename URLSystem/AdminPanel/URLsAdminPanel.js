@@ -1,4 +1,3 @@
-import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 
 /**
@@ -27,11 +26,13 @@ class URLsAdminPanel {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAdminPanel.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        writeBrowserHistory('replace', data, urlPath, () => URLsAdminPanel.setTitle(urlConstant, ...params))
+        URLsAdminPanel.setTitle(urlConstant, ...params)
+        history.replaceState(data, '', `${originPath}/${urlPath}`)
     }
 
     /**
@@ -41,11 +42,13 @@ class URLsAdminPanel {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAdminPanel.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        writeBrowserHistory('push', data, urlPath, () => URLsAdminPanel.setTitle(urlConstant, ...params))
+        URLsAdminPanel.setTitle(urlConstant, ...params)
+        history.pushState(data, '', `${originPath}/${urlPath}`)
     }
 
     static getPath = (urlConstant, ...params) => {

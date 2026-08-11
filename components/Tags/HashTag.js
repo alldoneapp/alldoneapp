@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../Icon'
 import styles, { windowTagStyle } from '../styles/global'
-import { addHashtagFilters, removeHashtagFilters } from '../../redux/actions'
+import { addHashtagFilters, removeHashtagFilters, startLoadingData, stopLoadingData } from '../../redux/actions'
 import { useDispatch, useSelector } from 'react-redux'
 import {
     COLOR_KEY_4,
@@ -47,8 +47,13 @@ export default function HashTag({
     }
 
     useEffect(() => {
+        if (!hashtagsColors?.[projectId]?.[parsedText]) dispatch(startLoadingData())
+        return () => dispatch(stopLoadingData())
+    }, [])
+
+    useEffect(() => {
         const cleanedText = removeColor(text)
-        Backend.watchHastagsColors(projectId, tagId, cleanedText)
+        Backend.watchHastagsColors(projectId, tagId, cleanedText, () => dispatch(stopLoadingData()))
         return () => {
             Backend.unwatchHastagsColors(tagId)
         }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -42,7 +42,7 @@ export default function CreateCompanyWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <View>
                     {modalState === SELECT_USERS_MODAL_OPEN && (
@@ -77,7 +77,7 @@ export default function CreateCompanyWrapper({
                 buttonStyle={localStyles.button}
                 onPress={openSelectUsersModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }
 

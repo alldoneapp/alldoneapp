@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -20,7 +20,7 @@ export default function CompanyAddressModalWrapper({ usePersistentSave, companyD
     }
 
     return (
-        <AppPopover
+        <Popover
             isOpen={showModal}
             disableReposition={smallScreenNavigation}
             contentLocation={smallScreenNavigation && popoverToCenter}
@@ -44,6 +44,6 @@ export default function CompanyAddressModalWrapper({ usePersistentSave, companyD
                 buttonStyle={{ marginTop: 8 }}
                 onPress={openModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }

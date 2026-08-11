@@ -24,7 +24,7 @@ jest.mock('react-redux', () => ({
 jest.mock('../../Icon', () => 'Icon')
 jest.mock('../../ChatsView/ChatIndicator', () => 'ChatIndicator')
 jest.mock('../GoldArea', () => 'GoldArea')
-jest.mock('../AssistantModeButton', () => 'AssistantModeButton')
+jest.mock('../HomeButton', () => 'HomeButton')
 jest.mock('../../../Themes/Themes', () => ({ getTheme: () => ({ menuIcon: 'black' }) }))
 jest.mock('../Themes', () => ({ Themes: {} }))
 jest.mock('../../../redux/actions', () => ({
@@ -58,11 +58,5 @@ describe('mobile sidebar opener', () => {
 
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'show web sidebar' })
         expect(expandSecondaryBar).toHaveBeenCalledTimes(1)
-    })
-
-    it.each([false, true])('shows the Gold balance in the main row only when compact is %s', compact => {
-        const component = renderer.create(<TopBarMobileStatisticArea compact={compact} />)
-        expect(component.root.findAllByType('GoldArea')).toHaveLength(compact ? 0 : 1)
-        expect(component.root.findAllByType('AssistantModeButton')).toHaveLength(1)
     })
 })

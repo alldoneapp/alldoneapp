@@ -2,7 +2,6 @@ import moment from 'moment'
 
 import { colors } from '../styles/global'
 import store from '../../redux/store'
-import { ensureProjectDataLoaded } from '../../utils/InitialLoad/projectDataLoader'
 import { DEFAULT_WORKSTREAM_ID, isWorkstream, WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
 import TasksHelper, { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../Feeds/Utils/FeedsConstants'
@@ -28,7 +27,6 @@ import {
     normalizeMilestoneType,
 } from '../../utils/GoalMilestonesHelper'
 import { shouldShowMilestoneWithoutGoals } from './GoalsBoardMilestonesHelper'
-import { isSameBoardResult } from './goalsBoardSelectors'
 
 export {
     GOAL_MILESTONES_MODE_MANUAL,
@@ -293,7 +291,6 @@ export const getNewDefaultGoal = milestoneDate => {
         assistantId: '',
         commentsData: null,
         scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
-        focusAreaId: null,
     }
     return goal
 }
@@ -528,14 +525,11 @@ export const getAssigneesIdsToShowInBoard = (currentUserId, userWorkstreamsIdsIn
     if (isWorkstream(currentUserId)) return [currentUserId]
 
     if (currentUserId === ALL_GOALS_ID) {
-        // AT-2386: the three slices are loaded on demand, so ask for them and read defensively.
-        // The board re-renders when they land (each `set*InProject` replaces the map identity).
-        ensureProjectDataLoaded(projectId)
         const { projectWorkstreams, projectUsers, projectContacts } = store.getState()
         return [
-            ...(projectWorkstreams[projectId] || []).map(item => item.uid),
-            ...(projectUsers[projectId] || []).map(item => item.uid),
-            ...(projectContacts[projectId] || []).map(item => item.uid),
+            ...projectWorkstreams[projectId].map(item => item.uid),
+            ...projectUsers[projectId].map(item => item.uid),
+            ...projectContacts[projectId].map(item => item.uid),
         ]
     }
 
@@ -797,28 +791,6 @@ export const filterMilestonesAndGoalsInCurrentUser = (
                   goals,
                   assigneesIdsToShow
               )
-
-    // AT-2336: this runs once per project per Firestore snapshot in "All projects". Writing an
-    // identical board back into redux replaces five top-level maps and gives every MilestoneItem a
-    // brand new goals array, which re-runs its hashtag/assignee filtering effect and setStates.
-    // Skip the write when nothing actually changed. The comparison is by element reference, and
-    // goal/milestone objects are rebuilt on every snapshot, so real data updates always get through.
-    const state = store.getState()
-    const previous = {
-        boardMilestones: state.boardMilestonesByProject[projectId],
-        boardGoalsByMilestones: state.boardGoalsByMilestoneByProject[projectId],
-        boardNeedShowMore: state.boardNeedShowMoreByProject[projectId],
-        openGoalsAmount: state.openGoalsAmountByProject[projectId],
-        doneGoalsAmount: state.doneGoalsAmountByProject[projectId],
-    }
-    const next = {
-        boardMilestones,
-        boardGoalsByMilestones,
-        boardNeedShowMore,
-        openGoalsAmount: goalsAmount.open,
-        doneGoalsAmount: goalsAmount.done,
-    }
-    if (previous.boardMilestones !== undefined && isSameBoardResult(previous, next)) return
 
     store.dispatch([
         setBoardMilestonesInProject(projectId, boardMilestones),

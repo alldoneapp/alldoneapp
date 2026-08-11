@@ -63,29 +63,6 @@ describe('applyPostponeToGoalTaskList', () => {
         expect(onTaskError).toHaveBeenCalledWith({ id: 'task-1' }, expect.any(Error))
     })
 
-    it('rejects after reporting a task failure when the animated section must be restored', async () => {
-        const onTaskError = jest.fn()
-        await expect(
-            applyPostponeToGoalTaskList({
-                tasks: [{ id: 'task-1' }],
-                applyToTask: () => Promise.reject(new Error('network')),
-                onTaskError,
-                rejectOnError: true,
-            })
-        ).rejects.toThrow('network')
-        expect(onTaskError).toHaveBeenCalledTimes(1)
-    })
-
-    it('waits for and propagates a failed goal write', async () => {
-        await expect(
-            applyPostponeToGoalTaskList({
-                tasks,
-                updateGoalReminderDate: () => Promise.reject(new Error('goal failed')),
-                applyToTask: jest.fn(() => Promise.resolve()),
-            })
-        ).rejects.toThrow('goal failed')
-    })
-
     it('still moves the goal when there is no task writer', async () => {
         const updateGoalReminderDate = jest.fn()
         await applyPostponeToGoalTaskList({ tasks, updateGoalReminderDate, applyToTask: null })

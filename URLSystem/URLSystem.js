@@ -1,4 +1,3 @@
-import { writeBrowserHistory } from './browserHistory'
 // URL definitions
 // ========================
 
@@ -73,11 +72,13 @@ class URLSystem {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLSystem.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        writeBrowserHistory('replace', data, urlPath, () => URLSystem.setTitle(urlConstant, ...params))
+        URLSystem.setTitle(urlConstant, ...params)
+        history.replaceState(data, '', `${originPath}/${urlPath}`)
     }
 
     /**
@@ -87,11 +88,13 @@ class URLSystem {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLSystem.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        writeBrowserHistory('push', data, urlPath, () => URLSystem.setTitle(urlConstant, ...params))
+        URLSystem.setTitle(urlConstant, ...params)
+        history.pushState(data, '', `${originPath}/${urlPath}`)
     }
 
     static getPath = (urlConstant, ...params) => {

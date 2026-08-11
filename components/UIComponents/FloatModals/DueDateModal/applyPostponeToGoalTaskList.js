@@ -12,37 +12,21 @@
  * the whole section moves in one frame instead of trickling out. The goal reminder goes first for
  * the same reason: it is the row the user swiped, and it should not be the last thing to react.
  *
- * A task that fails is normally reported and skipped; it must never stop the rest of the list from
- * moving. The animated whole-goal path opts into rejection after all writes have started so its
- * measured section can be restored instead of remaining collapsed after a partial failure.
+ * A task that fails is reported and skipped; it must never stop the rest of the list from moving.
  */
-export async function applyPostponeToGoalTaskList({
-    tasks,
-    updateGoalReminderDate,
-    applyToTask,
-    onTaskError,
-    rejectOnError = false,
-}) {
-    // Invoke the goal writer first, but retain its promise so the whole operation cannot report
-    // success while the row the user actually swiped failed to move.
-    const goalWrite = updateGoalReminderDate ? updateGoalReminderDate() : null
+export async function applyPostponeToGoalTaskList({ tasks, updateGoalReminderDate, applyToTask, onTaskError }) {
+    if (updateGoalReminderDate) updateGoalReminderDate()
 
-    if (!applyToTask || !tasks || tasks.length === 0) {
-        if (goalWrite) await goalWrite
-        return []
-    }
+    if (!applyToTask || !tasks || tasks.length === 0) return []
 
-    const taskWrites = Promise.all(
+    return Promise.all(
         tasks.map(task =>
             Promise.resolve()
                 .then(() => applyToTask(task))
                 .catch(error => {
                     if (onTaskError) onTaskError(task, error)
-                    if (rejectOnError) throw error
                     return null
                 })
         )
     )
-
-    return Promise.all([Promise.resolve(goalWrite), taskWrites]).then(([, results]) => results)
 }

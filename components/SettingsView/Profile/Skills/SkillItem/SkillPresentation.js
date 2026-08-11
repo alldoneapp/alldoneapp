@@ -18,7 +18,6 @@ import SkillPointsWrapper from '../SkillPointsWrapper/SkillPointsWrapper'
 import useActiveDragMode from '../useActiveDragMode'
 import SkillProgressBar from './SkillProgressBar'
 import { updateSkillDescription } from '../../../../../utils/backends/Skills/skillsFirestore'
-import ProjectMoveIndicator from '../../../../UIComponents/ProjectMoveIndicator'
 
 export default function SkillPresentation({ projectId, skill, higherSkill, onPress, isDragging, inCommentPopup }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -70,7 +69,6 @@ export default function SkillPresentation({ projectId, skill, higherSkill, onPre
         <View style={[localStyles.globalContainer, isDragging && localStyles.globalContainerDragged]}>
             <View style={[isDragging && localStyles.draggedContainer, activeDragMode && { paddingRight: 28 }]}>
                 <View style={localStyles.container}>
-                    <ProjectMoveIndicator object={skill} />
                     <SkillProgressBar skill={skill} higherSkill={higherSkill} />
                     <View style={{ flexDirection: 'row' }}>
                         <TouchableOpacity onPress={onPress} style={localStyles.content}>

@@ -29,7 +29,6 @@ import URLsProjects, {
     URL_PROJECT_DETAILS_FEED,
     URL_PROJECT_DETAILS_HAPPINESS,
     URL_PROJECT_DETAILS_OKRS,
-    URL_PROJECT_DETAILS_WIKI,
     URL_PROJECT_DETAILS_MEMBERS,
     URL_PROJECT_DETAILS_PROPERTIES,
     URL_PROJECT_DETAILS_STATISTICS,
@@ -44,7 +43,6 @@ import {
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_HAPPINESS,
     DV_TAB_PROJECT_OKRS,
-    DV_TAB_PROJECT_WIKI,
 } from '../../../utils/TabNavigationConstants'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
@@ -175,16 +173,6 @@ class ProjectHelper {
         })
     }
 
-    // Keep the existing global Updates convention: active projects + community guides.
-    // Membership comes from the project document; user project lists are navigation state.
-    static getGlobalFeedProjects = (projects, user) => {
-        const membersProjects = projects.filter(project => project.userIds?.includes(user.uid))
-        return [
-            ...this.getProjectsByType(membersProjects, user, PROJECT_TYPE_ACTIVE),
-            ...this.getProjectsByType(membersProjects, user, PROJECT_TYPE_GUIDE),
-        ]
-    }
-
     static getActiveProjectsInList = (
         projects,
         userProjectIds,
@@ -301,8 +289,7 @@ class ProjectHelper {
 
     static getProjectColorById(projectId, defaultName) {
         const project = ProjectHelper.getProjectById(projectId)
-        const color = project?.color || defaultName
-        return PROJECT_COLORS[color] ? color : PROJECT_COLOR_DEFAULT
+        return project ? project.color : defaultName ? defaultName : ''
     }
 
     static getUserNameById(projectId, userId, defaultName) {
@@ -616,9 +603,6 @@ class ProjectHelper {
                 break
             case DV_TAB_PROJECT_OKRS:
                 urlConstant = URL_PROJECT_DETAILS_OKRS
-                break
-            case DV_TAB_PROJECT_WIKI:
-                urlConstant = URL_PROJECT_DETAILS_WIKI
                 break
             case DV_TAB_PROJECT_ASSISTANTS:
                 urlConstant = URL_PROJECT_DETAILS_ASSISTANTS

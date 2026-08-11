@@ -34,8 +34,7 @@ jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
     })),
 }))
 
-const { buildConnectionId } = require('../Integrations/providerConnections')
-const { getConnectedGmailAccounts, getGmailAttachmentForAssistantRequest } = require('./assistantGmailSearch')
+const { getGmailAttachmentForAssistantRequest } = require('./assistantGmailSearch')
 
 describe('assistantGmailSearch attachment retrieval', () => {
     beforeEach(() => {
@@ -89,43 +88,7 @@ describe('assistantGmailSearch attachment retrieval', () => {
         expect(result.fileMimeType).toBe('application/pdf')
         expect(result.fileSizeBytes).toBe(buffer.length)
         expect(result.fileBase64).toBe(buffer.toString('base64'))
-        expect(result.projectId).toBe(buildConnectionId('email', 'google', 'person@example.com'))
+        expect(result.projectId).toBe('project-1')
         expect(result.gmailEmail).toBe('person@example.com')
-    })
-
-    test('uses the global default Gmail account even when legacy project flags disagree', async () => {
-        const connectionId = buildConnectionId('email', 'google', 'default@example.com')
-        mockUserGet.mockResolvedValue({
-            exists: true,
-            data: () => ({
-                emailConnections: {
-                    [connectionId]: {
-                        provider: 'google',
-                        emailAddress: 'default@example.com',
-                        defaultProjectId: 'integration-home-project',
-                        isDefaultAccount: true,
-                    },
-                },
-                apisConnected: {
-                    'integration-home-project': {
-                        gmail: true,
-                        gmailEmail: 'default@example.com',
-                        gmailDefault: false,
-                    },
-                },
-            }),
-        })
-
-        await expect(getConnectedGmailAccounts('user-1')).resolves.toEqual([
-            {
-                provider: 'google',
-                projectId: connectionId,
-                connectionProjectId: 'integration-home-project',
-                gmailEmail: 'default@example.com',
-                emailAddress: 'default@example.com',
-                gmailDefault: true,
-                emailDefault: true,
-            },
-        ])
     })
 })

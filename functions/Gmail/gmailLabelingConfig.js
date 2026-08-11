@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const { SELECTABLE_ASSISTANT_MODELS } = require('../Assistant/selectableAssistantModels')
 const { Timestamp } = require('firebase-admin/firestore')
 
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT6_LUNA'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
 const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // The self-consistency auditor (second pass) deliberately runs on a STRONGER, independent
 // model tier than the first-pass classifier. Re-judging with the same model produces correlated
@@ -16,7 +16,7 @@ const DEFAULT_GMAIL_CONSISTENCY_MODEL = 'MODEL_GPT5_6_TERRA'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 const DEFAULT_LOOKBACK_DAYS = 7
-const { DEFAULT_SYNC_INTERVAL_MINUTES } = require('./gmailSyncInterval')
+const DEFAULT_SYNC_INTERVAL_MINUTES = 30
 const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const DEFAULT_ESTIMATED_EMAILS_PER_DAY = 20

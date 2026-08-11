@@ -8,7 +8,6 @@ import {
     centerPopoverInViewport,
     centerPopoverInWindow,
     clampToRange,
-    offsetPopoverInsideSafeArea,
 } from './popoverPositioning'
 
 const PADDING = POPOVER_VIEWPORT_PADDING
@@ -119,61 +118,6 @@ describe('centerPopoverInViewport', () => {
         })
     })
 
-    // AT-2339: ~10 call sites pass disableReposition, which skips the library's
-    // own safe-area nudge — for those this clamp is the only protection.
-    describe('safe-area insets', () => {
-        const IPHONE = { top: 47, right: 0, bottom: 34, left: 0 }
-        const IPHONE_LANDSCAPE = { top: 0, right: 0, bottom: 21, left: 59 }
-
-        it('keeps an oversized popover below the Dynamic Island', () => {
-            const { top } = centerPopoverInViewport({
-                viewportWidth: 390,
-                viewportHeight: 844,
-                popoverWidth: 304,
-                popoverHeight: 1200,
-                insets: IPHONE,
-            })
-
-            expect(top).toBe(47 + PADDING)
-        })
-
-        it('centres within the safe rectangle, not the hardware one', () => {
-            const { top } = centerPopoverInViewport({
-                viewportWidth: 390,
-                viewportHeight: 844,
-                popoverWidth: 304,
-                popoverHeight: 400,
-                insets: IPHONE,
-            })
-
-            // Safe band is 47..810, so its centre is 428.5 and the card starts
-            // 200 above that — visually centred between the system bars.
-            expect(top).toBe(228.5)
-            expect(top).toBeGreaterThanOrEqual(47)
-            expect(top + 400).toBeLessThanOrEqual(844 - 34)
-        })
-
-        it('keeps a wide popover clear of the landscape cutout', () => {
-            const { left } = centerPopoverInViewport({
-                viewportWidth: 844,
-                viewportHeight: 390,
-                popoverWidth: 900,
-                popoverHeight: 200,
-                insets: IPHONE_LANDSCAPE,
-            })
-
-            expect(left).toBe(59 + PADDING)
-        })
-
-        it('is identical to the pre-AT-2339 result when the insets are zero', () => {
-            const zero = { top: 0, right: 0, bottom: 0, left: 0 }
-            const args = { viewportWidth: 1440, viewportHeight: 900, popoverWidth: 432, popoverHeight: 500 }
-
-            expect(centerPopoverInViewport({ ...args, insets: zero })).toEqual(centerPopoverInViewport(args))
-            expect(centerPopoverInViewport({ ...args, insets: zero })).toEqual({ top: 200, left: 504 })
-        })
-    })
-
     it('treats a missing popover size as zero instead of producing NaN', () => {
         expect(centerPopoverInViewport({ viewportWidth: 400, viewportHeight: 600 })).toEqual({ top: 300, left: 200 })
     })
@@ -208,64 +152,5 @@ describe('centerPopoverInWindow', () => {
         setViewport(1440, 900)
 
         expect(centerPopoverInWindow()).toEqual({ top: 450, left: 720 })
-    })
-})
-
-describe('offsetPopoverInsideSafeArea (AT-2339)', () => {
-    const HEADER_OFFSET = { top: 60, left: 16 }
-    const fits = { viewportWidth: 390, viewportHeight: 844, popoverWidth: 300, popoverHeight: 400 }
-
-    it('returns the literal offset unchanged when there are no insets', () => {
-        // The anti-regression contract: desktop, Android and older iPhones must
-        // land on exactly the coordinates the call site asked for.
-        expect(offsetPopoverInsideSafeArea({ ...HEADER_OFFSET, ...fits })).toEqual({ top: 60, left: 16 })
-    })
-
-    it('ADDS the insets rather than max()-ing against them', () => {
-        // max(60, 59) would leave one pixel of clearance under a Dynamic
-        // Island. The header the offset is measured from already starts at
-        // insets.top, because the shell pads `body`.
-        expect(
-            offsetPopoverInsideSafeArea({
-                ...HEADER_OFFSET,
-                ...fits,
-                insets: { top: 59, right: 0, bottom: 34, left: 0 },
-            })
-        ).toEqual({ top: 119, left: 16 })
-    })
-
-    it('clears the landscape cutout on the left', () => {
-        expect(
-            offsetPopoverInsideSafeArea({
-                ...HEADER_OFFSET,
-                viewportWidth: 844,
-                viewportHeight: 390,
-                popoverWidth: 300,
-                popoverHeight: 200,
-                insets: { top: 0, right: 59, bottom: 21, left: 59 },
-            })
-        ).toEqual({ top: 60, left: 75 })
-    })
-
-    it('clamps a popover the offset would push past the bottom edge', () => {
-        const { top } = offsetPopoverInsideSafeArea({
-            ...HEADER_OFFSET,
-            viewportWidth: 390,
-            viewportHeight: 500,
-            popoverWidth: 300,
-            popoverHeight: 460,
-            insets: { top: 47, right: 0, bottom: 34, left: 0 },
-        })
-
-        // 47 + 60 = 107 would run off the bottom; pinned to the top inset
-        // instead so the header stays reachable.
-        expect(top).toBe(47 + POPOVER_VIEWPORT_PADDING)
-    })
-
-    it('tolerates missing insets and popover dimensions', () => {
-        expect(offsetPopoverInsideSafeArea({ viewportWidth: 390, viewportHeight: 844 })).toEqual({
-            top: PADDING,
-            left: PADDING,
-        })
     })
 })

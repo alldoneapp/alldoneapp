@@ -4,25 +4,20 @@
 
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import renderer, { act } from 'react-test-renderer'
+import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../styles/global'
 import Icon from '../Icon'
 import AddTaskTag from './AddTaskTag'
-import { AUTOMATIC_PROJECT_OPTION } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
-
-const mockDispatch = jest.fn()
 
 jest.mock('react-redux', () => ({
-    useDispatch: () => mockDispatch,
+    useDispatch: () => jest.fn(),
     useSelector: jest.fn(),
 }))
 jest.mock('../../redux/actions', () => ({
-    hideFloatPopup: () => ({ type: 'Hide float popup' }),
-    showFloatPopup: () => ({ type: 'Show float popup' }),
-    startTaskEditor: () => ({ type: 'Start task editor' }),
-    finishTaskEditor: () => ({ type: 'Finish task editor' }),
+    hideFloatPopup: jest.fn(),
+    showFloatPopup: jest.fn(),
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../styles/global', () => {
@@ -37,117 +32,20 @@ jest.mock('react-tiny-popover', () => {
     const React = require('react')
     return {
         __esModule: true,
-        // Renders the popover content as well as the trigger so the tests can
-        // assert on both the alignment props and the popup that opens.
-        default: props => React.createElement('Popover', props, props.children, props.content),
+        default: ({ children }) => React.createElement('Popover', null, children),
     }
 })
-jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => {
-    const React = require('react')
-    return props => {
-        const [selectedProjectId, setSelectedProjectId] = React.useState(props.initialProjectId)
-        return React.createElement('RichCreateTaskModal', { ...props, selectedProjectId, setSelectedProjectId })
-    }
-})
-
-const mockState = (overrides = {}) => {
-    useSelector.mockImplementation(selector =>
-        selector({
-            isQuillTagEditorOpen: false,
-            openModals: {},
-            smallScreenNavigation: false,
-            ...overrides,
-        })
-    )
-}
-
-const findLabel = tree => tree.root.findAll(node => node.type === Text && node.props.children === 'Add task')
+jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => () => null)
 
 describe('AddTaskTag', () => {
     beforeEach(() => {
-        jest.clearAllMocks()
-        mockState()
-    })
-
-    it('refreshes scroll context and replaces a manual project selection every time the button opens', () => {
-        const getInitialProjectId = jest.fn(() => 'project-1')
-        const tree = renderer.create(
-            <AddTaskTag projectId={AUTOMATIC_PROJECT_OPTION} getInitialProjectId={getInitialProjectId} />
+        useSelector.mockImplementation(selector =>
+            selector({
+                isQuillTagEditorOpen: false,
+                openModals: {},
+                smallScreenNavigation: false,
+            })
         )
-        const button = tree.root.findByType(TouchableOpacity)
-        act(() => button.props.onPress())
-        const modal = tree.root.findByType('RichCreateTaskModal')
-        expect(modal.props.selectedProjectId).toBe('project-1')
-        act(() => modal.props.setSelectedProjectId('manually-selected'))
-        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('manually-selected')
-        act(() => tree.root.findByType('Popover').props.onClickOutside())
-        getInitialProjectId.mockReturnValue('project-2')
-        act(() => button.props.onPress())
-        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('project-2')
-        act(() => tree.root.findByType('RichCreateTaskModal').props.setSelectedProjectId('manually-selected-again'))
-        act(() => tree.root.findByType('Popover').props.onClickOutside())
-        act(() => button.props.onPress())
-        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('project-2')
-        act(() => tree.root.findByType('Popover').props.onClickOutside())
-        getInitialProjectId.mockReturnValue(AUTOMATIC_PROJECT_OPTION)
-        act(() => button.props.onPress())
-        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe(AUTOMATIC_PROJECT_OPTION)
-        expect(getInitialProjectId).toHaveBeenCalledTimes(4)
-        act(() => tree.unmount())
-    })
-
-    it('resolves the project for the plus shortcut and shared-link auto-open too', () => {
-        const getInitialProjectId = jest.fn(() => 'visible-project')
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <AddTaskTag
-                    projectId={AUTOMATIC_PROJECT_OPTION}
-                    getInitialProjectId={getInitialProjectId}
-                    autoOpenKey="share-context"
-                    plusShortcutEnabled
-                />
-            )
-        })
-        expect(tree.root.findByType('RichCreateTaskModal').props.initialProjectId).toBe('visible-project')
-        act(() => tree.root.findByType('Popover').props.onClickOutside())
-        getInitialProjectId.mockReturnValue('next-project')
-        act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })))
-        expect(tree.root.findByType('RichCreateTaskModal').props.initialProjectId).toBe('next-project')
-        expect(getInitialProjectId).toHaveBeenCalledTimes(2)
-        act(() => tree.unmount())
-    })
-
-    it('acquires once for repeated opens and releases when the add popup closes', () => {
-        const openPopover = jest.fn()
-        let tree
-
-        act(() => {
-            tree = renderer.create(
-                <AddTaskTag projectId="project-1" openPopover={openPopover} closePopover={jest.fn()} isOpen={false} />
-            )
-        })
-        const button = tree.root.findByType(TouchableOpacity)
-
-        act(() => {
-            button.props.onPress()
-            button.props.onPress()
-        })
-
-        expect(openPopover).toHaveBeenCalledTimes(2)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Start task editor')).toHaveLength(1)
-
-        act(() => tree.root.findByType('Popover').props.onClickOutside())
-
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish task editor')).toHaveLength(1)
-
-        act(() => tree.unmount())
-
-        // Cleanup is idempotent after the explicit close.
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish task editor')).toHaveLength(1)
     })
 
     it('uses the assistant Search button colors when requested', () => {
@@ -161,76 +59,13 @@ describe('AddTaskTag', () => {
             borderColor: colors.UtilityBlue150,
         })
         expect(icon.props.color).toBe('#ffffff')
-        expect(StyleSheet.flatten(label.props.style).color.toLowerCase()).toBe('#ffffff')
+        expect(StyleSheet.flatten(label.props.style).color).toBe('#ffffff')
         expect(button.props.accessibilityRole).toBe('button')
         expect(button.props.accessibilityLabel).toBe('Add task')
     })
 
-    // AT-2389: the big All Projects / My Day call to action is the primary
-    // action of the screen it lives on, so it takes the app's primary blue
-    // rather than the lighter Search-button tint of the small header buttons.
-    it('uses the primary blue for the large call to action', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
-        const button = tree.root.findByType(TouchableOpacity)
-        const icon = tree.root.findByType(Icon)
-        const label = tree.root.find(node => node.type === Text && node.props.children === 'Add task')
-
-        // Asserted as a literal too, not only via the token: a token compared
-        // against itself would still pass if it were renamed out of existence
-        // and both sides became undefined.
-        expect(colors.Primary100).toBe('#007FFF')
-        expect(StyleSheet.flatten(button.props.style)).toMatchObject({
-            backgroundColor: '#007FFF',
-            borderColor: '#007FFF',
-        })
-        // White on the primary blue, same as before the recolor.
-        expect(icon.props.color).toBe('#ffffff')
-        expect(StyleSheet.flatten(label.props.style).color.toLowerCase()).toBe('#ffffff')
-        // The recolor must not disturb the large variant's geometry.
-        expect(StyleSheet.flatten(button.props.style)).toMatchObject({
-            height: 44,
-            paddingHorizontal: 20,
-            borderWidth: 1,
-            borderRadius: 50,
-        })
-        expect(button.props.accessibilityRole).toBe('button')
-        expect(button.props.accessibilityLabel).toBe('Add task')
-    })
-
-    // The small header buttons deliberately match the assistant Search button, so
-    // the AT-2389 recolor is scoped to `large` and must not reach them.
-    it('leaves the small primary button on the Search button tint', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-        const button = tree.root.findByType(TouchableOpacity)
-
-        expect(StyleSheet.flatten(button.props.style).backgroundColor).toBe(colors.UtilityBlue200)
-        expect(colors.UtilityBlue200).toBe('#5AACFF')
-        expect(StyleSheet.flatten(button.props.style).backgroundColor).not.toBe(colors.Primary100)
-    })
-
-    it('allows a larger icon inside the floating task-board action', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" iconSize={24} />)
-
-        expect(tree.root.findByType(Icon).props.size).toBe(24)
-    })
-
-    // A caller-supplied style still overrides the variant (unchanged precedence).
-    it('lets a caller style override the large primary colors', () => {
-        const tree = renderer.create(
-            <AddTaskTag
-                projectId="project-1"
-                primary={true}
-                large={true}
-                style={{ backgroundColor: 'rebeccapurple' }}
-            />
-        )
-        const button = tree.root.findByType(TouchableOpacity)
-
-        expect(StyleSheet.flatten(button.props.style).backgroundColor).toBe('rebeccapurple')
-    })
-
-    it('retains the neutral variant when explicitly requested', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" headerAction={false} />)
+    it('keeps the existing neutral treatment by default', () => {
+        const tree = renderer.create(<AddTaskTag projectId="project-1" />)
         const button = tree.root.findByType(TouchableOpacity)
         const icon = tree.root.findByType(Icon)
         const label = tree.root.find(node => node.type === Text && node.props.children === 'Add task')
@@ -241,222 +76,5 @@ describe('AddTaskTag', () => {
         expect(StyleSheet.flatten(button.props.style).backgroundColor).toBeUndefined()
         expect(icon.props.color).toBe(colors.Text03)
         expect(StyleSheet.flatten(label.props.style).color).toBe(colors.Text03)
-    })
-
-    // AT-2364: the big All Projects call to action is horizontally centered on
-    // the screen, so its popup remains centered on it. Width is now owned by
-    // RichCreateTaskModal for every add-task entry point (AT-2582).
-    it('opens a center-aligned popup for the large call to action', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
-        const popover = tree.root.findByType('Popover')
-
-        expect(popover.props.align).toBe('center')
-    })
-
-    it('keeps the regular tag popup anchored to its trigger', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" />)
-        const popover = tree.root.findByType('Popover')
-
-        expect(popover.props.align).toBe('start')
-    })
-
-    it('opens the floating action popup above the button with a clear gap', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" floating={true} />)
-        const popover = tree.root.findByType('Popover')
-
-        expect(popover.props.position).toEqual(['top'])
-        expect(popover.props.align).toBe('end')
-        expect(popover.props.padding).toBe(12)
-        expect(popover.props.windowBorderPadding).toBe(16)
-        const popupCard = tree.root.find(
-            node => node.type === 'div' && node.props.style?.backgroundColor === 'var(--background-primary)'
-        )
-        expect(popupCard.props.style.maxHeight).toBe(window.innerHeight - 108)
-    })
-
-    it('opens automatically and prefills the existing popup for a shared link', () => {
-        const openPopover = jest.fn()
-        const onAutoOpen = jest.fn()
-        let tree
-
-        act(() => {
-            tree = renderer.create(
-                <AddTaskTag
-                    projectId="project-1"
-                    initialTaskName="https://example.com/shared"
-                    autoOpenKey="share-1"
-                    onAutoOpen={onAutoOpen}
-                    openPopover={openPopover}
-                />
-            )
-        })
-
-        expect(openPopover).toHaveBeenCalledTimes(1)
-        expect(onAutoOpen).toHaveBeenCalledTimes(1)
-        expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
-
-        act(() => {
-            tree.update(
-                <AddTaskTag
-                    projectId="project-1"
-                    autoOpenKey="share-1"
-                    onAutoOpen={onAutoOpen}
-                    openPopover={openPopover}
-                />
-            )
-        })
-
-        expect(openPopover).toHaveBeenCalledTimes(1)
-        expect(onAutoOpen).toHaveBeenCalledTimes(1)
-        expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
-    })
-
-    describe('plus keyboard shortcut (AT-2621)', () => {
-        const pressPlus = target =>
-            target.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }))
-
-        it('uses the same open action as pressing the floating button', () => {
-            const openPopover = jest.fn()
-            const legacyInlineShortcut = jest.fn()
-            document.addEventListener('keydown', legacyInlineShortcut)
-            const tree = renderer.create(
-                <AddTaskTag projectId="project-1" plusShortcutEnabled={true} openPopover={openPopover} />
-            )
-
-            act(() => pressPlus(document.body))
-
-            expect(openPopover).toHaveBeenCalledTimes(1)
-            expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
-            expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Start task editor')).toHaveLength(1)
-            expect(legacyInlineShortcut).not.toHaveBeenCalled()
-
-            document.removeEventListener('keydown', legacyInlineShortcut)
-            tree.unmount()
-        })
-
-        it('does not fire while the user is typing', () => {
-            const openPopover = jest.fn()
-            const tree = renderer.create(
-                <AddTaskTag projectId="project-1" plusShortcutEnabled={true} openPopover={openPopover} />
-            )
-            const input = document.createElement('input')
-            document.body.appendChild(input)
-            input.focus()
-
-            act(() => pressPlus(input))
-
-            expect(openPopover).not.toHaveBeenCalled()
-
-            input.remove()
-            tree.unmount()
-        })
-
-        it('leaves the shortcut to the legacy list flow when the floating action is hidden', () => {
-            const openPopover = jest.fn()
-            const legacyInlineShortcut = jest.fn()
-            document.addEventListener('keydown', legacyInlineShortcut)
-            const tree = renderer.create(
-                <AddTaskTag projectId="project-1" plusShortcutEnabled={false} openPopover={openPopover} />
-            )
-
-            act(() => pressPlus(document.body))
-
-            expect(openPopover).not.toHaveBeenCalled()
-            expect(legacyInlineShortcut).toHaveBeenCalledTimes(1)
-
-            document.removeEventListener('keydown', legacyInlineShortcut)
-            tree.unmount()
-        })
-    })
-
-    describe('icon-only tap target on mobile', () => {
-        it('uses a square mobile target larger than its icon', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.width).toBe(36)
-            expect(style.height).toBe(36)
-            // Asserted as literals too, so renaming the tokens out of existence
-            // cannot leave both sides `undefined` and still pass.
-            expect(style.width).toBe(36)
-            expect(style.height).toBe(36)
-            expect(style.width).toBe(style.height)
-        })
-
-        it('stays icon-only and keeps its accessible name', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const button = tree.root.findByType(TouchableOpacity)
-
-            // Widened, NOT labelled: the row has no width budget for the text.
-            expect(findLabel(tree)).toHaveLength(0)
-            expect(tree.root.findByType(Icon).props.size).toBe(16)
-            expect(button.props.accessibilityLabel).toBe('Add task')
-            expect(button.props.accessibilityRole).toBe('button')
-        })
-
-        it('preserves the rounded rectangle shape and colors it had at 24px', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.borderRadius).toBe(8)
-            expect(style.borderWidth).toBe(0)
-            expect(style.justifyContent).toBe('center')
-            expect(style.alignItems).toBe('center')
-            expect(style.backgroundColor).toBe(colors.UtilityBlue200)
-            expect(style.borderColor).toBe(colors.UtilityBlue150)
-        })
-
-        it('leaves the labelled desktop button auto-width', () => {
-            mockState({ smallScreenNavigation: false })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            // No fixed width on desktop: the button hugs its label as before.
-            expect(style.width).toBeUndefined()
-            expect(style.height).toBe(32)
-            expect(style.paddingHorizontal).toBe(10)
-            expect(findLabel(tree)).toHaveLength(1)
-        })
-
-        it('applies the same square target to forceShrink on a wide screen', () => {
-            mockState({ smallScreenNavigation: false })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" forceShrink={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(findLabel(tree)).toHaveLength(0)
-            expect(style.width).toBe(36)
-        })
-
-        // The empty-inbox call to action is a different control that happens to
-        // share this component; the narrow-screen widening must not reach it.
-        it('never applies the mobile box to the large call to action', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.width).toBeUndefined()
-            expect(style.height).toBe(44)
-            expect(style.paddingHorizontal).toBe(20)
-            expect(findLabel(tree)).toHaveLength(1)
-        })
-
-        // Callers keep the last word on style (unchanged precedence), which is
-        // how a future row could opt out of the wider target locally.
-        it('still lets a caller style override the widened box', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" style={{ width: 24 }} />)
-
-            expect(StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style).width).toBe(24)
-        })
     })
 })

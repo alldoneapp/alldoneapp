@@ -3,25 +3,21 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
-const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey, tokensPerGold }) => ({
+const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey }) => ({
     text: labelKey,
     model,
-    tokensPerGold,
     shortcutKey: '',
 }))
 
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
     const [, height] = useWindowSize()
-    const selectedModel =
-        model === 'MODEL_GPT5_6_SOL' ? 'MODEL_GPT6_SOL' : model === 'MODEL_GPT5_6_LUNA' ? 'MODEL_GPT6_LUNA' : model
 
     const selectModel = model => {
         updateModel(model)
@@ -30,9 +26,7 @@ export default function AssistantModelModal({ closeModal, model, updateModel }) 
 
     return (
         <View>
-            <View
-                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
-            >
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}
@@ -40,12 +34,7 @@ export default function AssistantModelModal({ closeModal, model, updateModel }) 
                         description={translate('Select the AI model')}
                     />
                     {options.map(data => (
-                        <OptionItem
-                            key={data.model}
-                            modelData={data}
-                            selectModel={selectModel}
-                            selectedModel={selectedModel}
-                        />
+                        <OptionItem key={data.model} modelData={data} selectModel={selectModel} selectedModel={model} />
                     ))}
                 </CustomScrollView>
             </View>

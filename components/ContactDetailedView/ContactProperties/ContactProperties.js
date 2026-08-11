@@ -1,9 +1,8 @@
 import React, { Component } from 'react'
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import store from '../../../redux/store'
-import { ensureProjectDataLoaded, PROJECT_DATA_CONTACTS } from '../../../utils/InitialLoad/projectDataLoader'
 import PropTypes from 'prop-types'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import UserPropertiesHeader from '../../UserDetailedView/UserProperties/UserPropertiesHeader'
 import styles, { colors } from '../../styles/global'
@@ -15,26 +14,13 @@ import ChangeTextFieldModal from '../../UIComponents/FloatModals/ChangeTextField
 import ChangeContactInfoModal from '../../UIComponents/FloatModals/ChangeContactInfoModal'
 import HelperFunctions from '../../../utils/HelperFunctions'
 import ImagePickerModal from '../../UIComponents/FloatModals/ImagePickerModal'
-import {
-    showConfirmPopup,
-    setShowLimitedFeatureModal,
-    setSelectedNavItem,
-    setTriggerBotSpinner,
-} from '../../../redux/actions'
-import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../../ChatsView/Utils/botSpinnerTrigger'
+import { showConfirmPopup, setShowLimitedFeatureModal } from '../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PROJECT_CONTACT } from '../../UIComponents/ConfirmPopup'
-import URLsContacts, {
-    URL_CONTACT_DETAILS_CHAT,
-    URL_CONTACT_DETAILS_PROPERTIES,
-} from '../../../URLSystem/Contacts/URLsContacts'
+import URLsContacts, { URL_CONTACT_DETAILS_PROPERTIES } from '../../../URLSystem/Contacts/URLsContacts'
 import ContactsHelper, { PHOTO_SIZE_300, PHOTO_SIZE_50 } from '../../ContactsView/Utils/ContactsHelper'
 import FollowObject from '../../Followers/FollowObject'
 import { FOLLOWER_CONTACTS_TYPE } from '../../Followers/FollowerConstants'
-import {
-    DV_TAB_CONTACT_CHAT,
-    DV_TAB_CONTACT_PROPERTIES,
-    DV_TAB_ROOT_CONTACTS,
-} from '../../../utils/TabNavigationConstants'
+import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_ROOT_CONTACTS } from '../../../utils/TabNavigationConstants'
 import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
 import { FEED_CONTACT_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import HighlightButton from '../../UIComponents/FloatModals/HighlightColorModal/HighlightButton'
@@ -49,9 +35,9 @@ import {
     setProjectContactPhone,
     setProjectContactPicture,
     setProjectContactLinkedInUrl,
-    enrichContactProfile,
+    enrichContactViaLinkedIn,
+    searchLinkedInProfile,
 } from '../../../utils/backends/Contacts/contactsFirestore'
-import { resolveAssistantForProjectObject } from '../../AdminPanel/Assistants/assistantsHelper'
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
@@ -70,6 +56,7 @@ class ContactProperties extends Component {
             showPhoneModal: false,
             showLinkedInModal: false,
             isEnriching: false,
+            isSearchingLinkedIn: false,
             showAddTaskModal: false,
             loggedUser: storeState.loggedUser,
             selectedTab: storeState.selectedNavItem,
@@ -82,14 +69,9 @@ class ContactProperties extends Component {
 
     componentDidMount() {
         this.writeBrowserURL()
-        // AT-2386: the contact detailed view reads its contact out of `projectContacts[projectId]`,
-        // which is filled on demand now. Ask for it; the store subscription above re-renders once
-        // the first snapshot lands.
-        ensureProjectDataLoaded(this.props.projectId, PROJECT_DATA_CONTACTS)
     }
 
     componentWillUnmount() {
-        this.unmounted = true
         this.state.unsubscribe()
     }
 
@@ -117,10 +99,7 @@ class ContactProperties extends Component {
         const { projectContacts } = this.state
         const { projectIndex, user, projectId } = this.props
 
-        const contact = (projectContacts[projectId] || []).find(contact => contact.uid === user.uid)
-        // The project's contacts may not have arrived yet; every branch below dereferences
-        // `contact`, and the property editors re-render as soon as they do.
-        if (!contact) return
+        const contact = projectContacts[projectId].find(contact => contact.uid === user.uid)
 
         switch (property) {
             case 'info':
@@ -190,18 +169,14 @@ class ContactProperties extends Component {
         return emails.join('\n')
     }
 
-    // "Enrich profile": the assistant researches the person from public sources and fills the
-    // card from inside the contact chat, asking there when it cannot tell two people apart. The
-    // callable hosts the whole run (minutes), so the user is sent to the chat to watch it rather
-    // than kept waiting on this tab.
     enrichContact = async () => {
         const { projectContacts, loggedUser } = this.state
         const { projectId, user: userProp } = this.props
-        const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
-        if (!contact) return
+        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
 
-        // The run is billed as ordinary assistant usage; there is no flat fee, only "any Gold at all".
-        if (!(loggedUser.gold > 0)) {
+        if (!contact?.linkedInUrl) return
+
+        if (loggedUser.gold < 30) {
             store.dispatch(
                 setShowLimitedFeatureModal({
                     title: translate('Not enough Gold'),
@@ -211,20 +186,9 @@ class ContactProperties extends Component {
             return
         }
 
-        const assistantId = resolveAssistantForProjectObject(projectId, contact.assistantId)?.uid || ''
         this.setState({ isEnriching: true })
-
-        // The server posts the request comment and the answers into the chat tab, but only after the
-        // callable has cold-started (often 10s+). The spinner trigger shows the "assistant is
-        // preparing" placeholder there at once, so the tab is never an idle, empty-looking chat.
-        store.dispatch([
-            setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, contact.uid)),
-            setSelectedNavItem(DV_TAB_CONTACT_CHAT),
-        ])
-        URLsContacts.push(URL_CONTACT_DETAILS_CHAT, { projectId, userId: contact.uid }, projectId, contact.uid)
-
         try {
-            const result = await enrichContactProfile(projectId, contact.uid, assistantId)
+            const result = await enrichContactViaLinkedIn(projectId, contact, contact.uid)
             if (result && result.error === 'insufficient_gold') {
                 store.dispatch(
                     setShowLimitedFeatureModal({
@@ -232,22 +196,45 @@ class ContactProperties extends Component {
                         description: translate('Not enough Gold description'),
                     })
                 )
-            } else if (result && result.success === false) {
-                alert(translate('Profile enrichment did not complete'))
             }
         } catch (error) {
-            console.error('Contact enrichment failed:', error)
-            // The browser gives up after 9 minutes while the server may keep running (it has 55), and
-            // whatever it posts still reaches the chat; only a real failure is worth an alert.
-            if (!/deadline-exceeded$/.test(String(error?.code || ''))) {
-                alert(translate('Profile enrichment did not complete'))
-            }
-        } finally {
-            // The callable returns once the run is over (or was refused). Either way nothing more is
-            // coming, so the placeholder must not wait out its 5-minute safety timeout.
-            endBotSpinnerWait(projectId, contact.uid)
+            console.error('LinkedIn enrichment failed:', error)
         }
-        if (!this.unmounted) this.setState({ isEnriching: false })
+        this.setState({ isEnriching: false })
+    }
+
+    searchLinkedIn = async () => {
+        const { projectContacts, loggedUser } = this.state
+        const { projectId, user: userProp } = this.props
+        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
+
+        if (loggedUser.gold < 20) {
+            store.dispatch(
+                setShowLimitedFeatureModal({
+                    title: translate('Not enough Gold'),
+                    description: translate('Not enough Gold description'),
+                })
+            )
+            return
+        }
+
+        this.setState({ isSearchingLinkedIn: true })
+        try {
+            const result = await searchLinkedInProfile(projectId, contact, contact.uid)
+            if (result && result.error === 'insufficient_gold') {
+                store.dispatch(
+                    setShowLimitedFeatureModal({
+                        title: translate('Not enough Gold'),
+                        description: translate('Not enough Gold description'),
+                    })
+                )
+            } else if (result && result.success && !result.linkedInUrl) {
+                alert(translate('No LinkedIn profile found'))
+            }
+        } catch (error) {
+            console.error('LinkedIn search failed:', error)
+        }
+        this.setState({ isSearchingLinkedIn: false })
     }
 
     writeBrowserURL = () => {
@@ -270,6 +257,7 @@ class ContactProperties extends Component {
             showPhoneModal,
             showLinkedInModal,
             isEnriching,
+            isSearchingLinkedIn,
             showAddTaskModal,
             loggedUser,
         } = this.state
@@ -314,7 +302,7 @@ class ContactProperties extends Component {
                     {/* Profile Header: Big photo + Info */}
                     <View style={[localStyles.profileHeader, mobile && localStyles.profileHeaderMobile]}>
                         <View style={localStyles.profilePhotoContainer}>
-                            <AppPopover
+                            <Popover
                                 content={
                                     <ImagePickerModal
                                         closePopover={() => this.hideModal('showPictureModal')}
@@ -346,7 +334,7 @@ class ContactProperties extends Component {
                                         </View>
                                     )}
                                 </TouchableOpacity>
-                            </AppPopover>
+                            </Popover>
                         </View>
                         <View style={localStyles.profileInfo}>
                             <View style={{ flex: 1 }}>
@@ -375,43 +363,33 @@ class ContactProperties extends Component {
                                 )}
                             </View>
                         </View>
-                        <View style={localStyles.profileActions}>
-                            <AppPopover
-                                content={
-                                    <ChangeContactInfoModal
-                                        projectId={projectId}
-                                        closePopover={() => this.hideModal('showInfoModal')}
-                                        onSaveData={value => this.changePropertyValue('info', value)}
-                                        currentRole={userRole ? userRole : ''}
-                                        currentCompany={userCompany ? userCompany : ''}
-                                        currentDescription={userDescription ? userDescription : ''}
-                                        disabled={!loggedUserCanUpdateObject}
-                                    />
-                                }
-                                onClickOutside={() => this.hideModal('showInfoModal')}
-                                isOpen={showInfoModal}
-                                position={['bottom', 'left', 'right', 'top']}
-                                padding={4}
-                                align={'end'}
-                                contentLocation={mobile ? null : undefined}
-                            >
-                                <Button
-                                    icon={'edit-2'}
-                                    type={'ghost'}
-                                    onPress={() => this.showModal('showInfoModal')}
-                                    disabled={!accessGranted || !loggedUserCanUpdateObject}
+                        <Popover
+                            content={
+                                <ChangeContactInfoModal
+                                    projectId={projectId}
+                                    closePopover={() => this.hideModal('showInfoModal')}
+                                    onSaveData={value => this.changePropertyValue('info', value)}
+                                    currentRole={userRole ? userRole : ''}
+                                    currentCompany={userCompany ? userCompany : ''}
+                                    currentDescription={userDescription ? userDescription : ''}
+                                    disabled={!loggedUserCanUpdateObject}
                                 />
-                            </AppPopover>
-                            {!isGuide && (
-                                <Button
-                                    icon={'search'}
-                                    title={isEnriching ? translate('Loading') : translate('Enrich profile')}
-                                    type={'ghost'}
-                                    onPress={this.enrichContact}
-                                    disabled={!accessGranted || !loggedUserCanUpdateObject || isEnriching}
-                                />
-                            )}
-                        </View>
+                            }
+                            onClickOutside={() => this.hideModal('showInfoModal')}
+                            isOpen={showInfoModal}
+                            position={['bottom', 'left', 'right', 'top']}
+                            padding={4}
+                            align={'end'}
+                            contentLocation={mobile ? null : undefined}
+                        >
+                            <Button
+                                icon={'edit-2'}
+                                type={'ghost'}
+                                onPress={() => this.showModal('showInfoModal')}
+                                disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                buttonStyle={localStyles.profileEditButton}
+                            />
+                        </Popover>
                     </View>
 
                     <View style={[localStyles.properties, mobile ? localStyles.propertiesMobile : undefined]}>
@@ -451,7 +429,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     </View>
                                     <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                        <AppPopover
+                                        <Popover
                                             content={
                                                 <ChangeTextFieldModal
                                                     header={'Edit LinkedIn URL'}
@@ -476,7 +454,7 @@ class ContactProperties extends Component {
                                                 onPress={() => this.showModal('showLinkedInModal')}
                                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                                             />
-                                        </AppPopover>
+                                        </Popover>
                                     </View>
                                 </View>
 
@@ -495,6 +473,35 @@ class ContactProperties extends Component {
                                             {user.linkedInUrl}
                                         </Text>
                                     </TouchableOpacity>
+                                )}
+
+                                {accessGranted && loggedUserCanUpdateObject && (
+                                    <View style={{ paddingLeft: 32, paddingBottom: 8 }}>
+                                        {user.linkedInUrl === '' && (
+                                            <Button
+                                                title={
+                                                    isSearchingLinkedIn
+                                                        ? translate('Loading')
+                                                        : `${translate('Search LinkedIn')} (20 Gold)`
+                                                }
+                                                type={'ghost'}
+                                                onPress={this.searchLinkedIn}
+                                                disabled={isSearchingLinkedIn}
+                                            />
+                                        )}
+                                        {user.linkedInUrl !== '' && (
+                                            <Button
+                                                title={
+                                                    isEnriching
+                                                        ? translate('Loading')
+                                                        : `${translate('Enrich via LinkedIn')} (30 Gold)`
+                                                }
+                                                type={'ghost'}
+                                                onPress={this.enrichContact}
+                                                disabled={isEnriching}
+                                            />
+                                        )}
+                                    </View>
                                 )}
                             </View>
 
@@ -547,7 +554,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     )}
 
-                                    <AppPopover
+                                    <Popover
                                         content={
                                             <ChangeTextFieldModal
                                                 header={'Edit phone'}
@@ -572,7 +579,7 @@ class ContactProperties extends Component {
                                             onPress={() => this.showModal('showPhoneModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
-                                    </AppPopover>
+                                    </Popover>
                                 </View>
                             </View>
                             {accessGranted && (
@@ -652,7 +659,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     )}
 
-                                    <AppPopover
+                                    <Popover
                                         content={
                                             <ChangeTextFieldModal
                                                 header={'Edit email addresses'}
@@ -682,14 +689,14 @@ class ContactProperties extends Component {
                                             onPress={() => this.showModal('showEmailsModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
-                                    </AppPopover>
+                                    </Popover>
                                 </View>
                             </View>
 
                             {accessGranted && loggedUserCanUpdateObject && (
                                 <View style={localStyles.bottomContainer}>
                                     <View style={localStyles.addTaskButton}>
-                                        <AppPopover
+                                        <Popover
                                             content={
                                                 <RichCreateTaskModal
                                                     initialProjectId={projectId}
@@ -712,7 +719,7 @@ class ContactProperties extends Component {
                                                 onPress={() => this.setState({ showAddTaskModal: true })}
                                                 accessible={false}
                                             />
-                                        </AppPopover>
+                                        </Popover>
                                     </View>
                                     <ObjectRevisionHistory projectId={projectId} noteId={user.noteId} />
                                     <View style={localStyles.deleteButton}>
@@ -790,9 +797,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         minHeight: 120,
     },
-    profileActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
+    profileEditButton: {
         alignSelf: 'flex-start',
     },
     properties: {

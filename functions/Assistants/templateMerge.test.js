@@ -2,7 +2,6 @@ const {
     getAssistantTemplateState,
     getTaskTemplateState,
     inheritMissingAssistantTemplateFields,
-    inheritMissingTaskTemplateFields,
     isTaskUnmodified,
     mergeTemplateState,
     buildBackfillConflicts,
@@ -45,26 +44,18 @@ describe('templateMerge', () => {
                 creatorId: 'admin',
                 isDefault: true,
                 templateSyncConflicts: [],
-                templateSyncReviewedBy: 'reviewer',
-                workflow: [{ id: 'project-local-step' }],
                 realtimeVoice: 'cedar',
                 mcpServers: [{ id: 'server' }],
             })
         ).toEqual({ realtimeVoice: 'cedar', mcpServers: [{ id: 'server' }] })
     })
 
-    test('tracks recurring schedule fields while excluding task execution state', () => {
+    test('preserves execution state and recurring schedule times in task comparisons', () => {
         const template = {
             title: 'Run',
             recurrence: 'daily',
             startTime: 8,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
             lastExecuted: 1,
-            lastExecutionStarted: 2,
-            lastGeneratedTaskId: 'template-run',
-            executionByUser: { user: { status: 'succeeded' } },
-            activatedInProjectIdByUser: { user: 'globalProject' },
             aiModel: 'MODEL_GPT5_5',
             aiModelOverride: 'MODEL_GPT5_6_TERRA',
         }
@@ -72,51 +63,17 @@ describe('templateMerge', () => {
             title: 'Run',
             recurrence: 'daily',
             startTime: 12,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
             lastExecuted: 999,
-            lastExecutionStarted: 1000,
-            lastGeneratedTaskId: 'local-run',
-            executionByUser: { user: { status: 'in_progress' } },
-            activatedInProjectIdByUser: { user: 'project-1' },
-            completedOneOffUserIds: ['user'],
             activatedUserIds: ['user'],
-            aiModel: 'MODEL_GPT6_SOL',
+            aiModel: 'MODEL_GPT5_6_SOL',
             aiModelOverride: 'MODEL_GPT5_6_TERRA',
         }
         expect(getTaskTemplateState(local)).toEqual({
             title: 'Run',
             recurrence: 'daily',
-            startTime: 12,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
             aiModelOverride: 'MODEL_GPT5_6_TERRA',
         })
-        expect(isTaskUnmodified(template, local)).toBe(false)
-        expect(isTaskUnmodified(template, { ...local, startTime: 8 })).toBe(true)
-    })
-
-    test('repairs missing legacy schedule fields without replacing explicit local times', () => {
-        const template = {
-            title: 'Run',
-            recurrence: 'daily',
-            startDate: '2026-08-28',
-            startTime: 8,
-            userTimezone: 'Europe/Berlin',
-        }
-
-        expect(inheritMissingTaskTemplateFields({ title: 'Run', recurrence: 'daily' }, template)).toEqual({
-            normalizedLocalState: template,
-            inheritedPatch: {
-                startDate: '2026-08-28',
-                startTime: 8,
-                userTimezone: 'Europe/Berlin',
-            },
-        })
-        expect(
-            inheritMissingTaskTemplateFields({ title: 'Run', recurrence: 'daily', startTime: 12 }, template)
-                .normalizedLocalState.startTime
-        ).toBe(12)
+        expect(isTaskUnmodified(template, local)).toBe(true)
     })
 
     test('backfill conservatively asks for review instead of overwriting historical differences', () => {

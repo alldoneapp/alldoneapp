@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import ObjectCommentsTag from '../../Tags/ObjectCommentsTag'
@@ -69,7 +69,7 @@ export default function CommentWrapperTag({
             !isBotWarningModalOpen &&
             comment
         ) {
-            await createObjectMessage(
+            createObjectMessage(
                 projectId,
                 assistantId,
                 comment,
@@ -85,7 +85,7 @@ export default function CommentWrapperTag({
     }
 
     return commentsData ? (
-        <AppPopover
+        <Popover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -117,6 +117,6 @@ export default function CommentWrapperTag({
                 style={{ marginLeft: 8 }}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     ) : null
 }

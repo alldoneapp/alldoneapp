@@ -10,7 +10,6 @@ import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
 import CheckboxAndIcon from '../../TaskItem/CheckboxAndIcon'
 import { taskEditorLayout } from '../../TaskItem/TaskEditorLayout'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import { assistantWorkflowFirstStepHasPrompt, getAssistantWorkflowFirstStep } from '../../../../utils/assistantWorkflow'
 
 let mockState
 const mockInputClear = jest.fn()
@@ -79,7 +78,6 @@ jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../../utils/assistantWorkflow', () => ({
     assistantWorkflowFirstStepHasPrompt: jest.fn(() => true),
-    getAssistantWorkflowFirstStep: jest.fn(() => ({ aiPrompt: 'Do this' })),
 }))
 jest.mock('../../../../utils/assistantHelper', () => ({ generateTaskFromPreConfig: jest.fn() }))
 jest.mock('../../../../redux/actions', () => ({ setSelectedNavItem: jest.fn() }))
@@ -125,8 +123,6 @@ const expandCreator = tree => {
 describe('WorkflowTaskCreator', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        assistantWorkflowFirstStepHasPrompt.mockReturnValue(true)
-        getAssistantWorkflowFirstStep.mockReturnValue({ aiPrompt: 'Do this' })
         mockState = {
             smallScreenNavigation: false,
             isMiddleScreen: false,
@@ -395,33 +391,6 @@ describe('WorkflowTaskCreator', () => {
             { executionMode: 'direct' },
             { skipNavigation: true, waitForDirectRun: false }
         )
-    })
-
-    it('submits when workflow mode is selected but no workflow step is configured', async () => {
-        getAssistantWorkflowFirstStep.mockReturnValue(null)
-        assistantWorkflowFirstStepHasPrompt.mockReturnValue(false)
-        generateTaskFromPreConfig.mockResolvedValue()
-        const tree = renderCreator()
-        enterTask(tree, 'Run without a workflow')
-
-        await act(async () => {
-            await tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.onPress()
-        })
-
-        expect(generateTaskFromPreConfig).toHaveBeenCalledWith(
-            'project-1',
-            'Run without a workflow',
-            'assistant-1',
-            'Run without a workflow',
-            null,
-            { executionMode: 'workflow' },
-            { skipNavigation: true, waitForDirectRun: false }
-        )
-        expect(
-            tree.root.findAllByProps({
-                children: 'Define the first workflow step prompt before creating a workflow task',
-            })
-        ).toHaveLength(0)
     })
 
     it('can render the task editor without the duplicate configuration link', () => {

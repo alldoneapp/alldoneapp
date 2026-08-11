@@ -1,16 +1,4 @@
-const {
-    hasActiveAttempt,
-    claimScheduledPromptAttempt,
-    failedScheduledAttempt,
-    updateScheduledAttempt,
-} = require('./scheduledAssistantContinuation')
-const { readWorkflowState, getWorkflowProgress, assertWorkflowComplete } = require('./assistantWorkflowProgress')
 const admin = require('firebase-admin')
-const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-
-// Firestore reads in flight while the scan builds its project/assistant/task lists; the
-// evaluation itself stays sequential.
-const RECURRING_SCAN_CONCURRENCY = 10
 const moment = require('moment')
 const { getAssistantTasks } = require('../Firestore/templatesFirestore')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
@@ -34,9 +22,7 @@ const {
     TASK_EXECUTION_MODE_DIRECT,
     TASK_EXECUTION_MODE_WORKFLOW,
     getTaskExecutionMode,
-    resolveAssistantWorkflowExecutionMode,
 } = require('../shared/taskExecutionMode')
-const { completeGeneratedAssistantTask, finalizeGeneratedAssistantTask } = require('./generatedAssistantTaskCompletion')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
@@ -53,12 +39,11 @@ const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 const RECURRENCE_CUSTOM = 'custom'
 const ASSISTANT_WORKFLOW_FIRST_STEP_ID = 'assistant-start'
-const OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT_ERROR_CODE = 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT'
 
 function buildRecurringTaskAiSettings(task, assistant, assistantId) {
     const taskModelOverride = getPreConfigTaskModelOverride(task)
     return {
-        model: taskModelOverride || assistant?.model || 'MODEL_GPT6_SOL',
+        model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
         temperature: assistant?.temperature || 'TEMPERATURE_NORMAL',
         reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant?.reasoningEffort),
         systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',
@@ -102,57 +87,6 @@ function getActivatedUserIdsForTask(task) {
     return [...new Set(fallbackIds)]
 }
 
-function buildAssistantTaskFailureUpdate({
-    error,
-    activatorUserId,
-    recurrence,
-    previousLastExecuted,
-    previousLastExecutedByUser,
-    attemptCompletedAt = Date.now(),
-}) {
-    const isTokenCeilingFailure = error?.code === OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT_ERROR_CODE
-    const updatePayload = {
-        executionStatus: 'failed',
-        lastExecutionCompleted: isTokenCeilingFailure ? attemptCompletedAt : null,
-        lastExecutionError: error.message,
-        [`executionByUser.${activatorUserId}`]: {
-            status: 'failed',
-            startedAt: attemptCompletedAt,
-            completedAt: isTokenCeilingFailure ? attemptCompletedAt : null,
-            error: error.message,
-        },
-    }
-
-    if (isTokenCeilingFailure) {
-        // The request cannot succeed without changing its context. Count this occurrence as
-        // attempted so the five-minute scheduler does not repeatedly run up the same cost.
-        updatePayload.lastExecuted = attemptCompletedAt
-        updatePayload[`lastExecutedByUser.${activatorUserId}`] = attemptCompletedAt
-
-        if (recurrence === RECURRENCE_ONCE) {
-            updatePayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
-            updatePayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
-            updatePayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
-        }
-
-        return { updatePayload, isTokenCeilingFailure }
-    }
-
-    if (previousLastExecuted) {
-        updatePayload.lastExecuted = previousLastExecuted
-    } else {
-        updatePayload.lastExecuted = FieldValue.delete()
-    }
-
-    if (typeof previousLastExecutedByUser === 'number') {
-        updatePayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
-    } else {
-        updatePayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
-    }
-
-    return { updatePayload, isTokenCeilingFailure }
-}
-
 async function shouldExecuteTask(task, projectId, userDataCache = null, options = {}) {
     const recurrenceForUser =
         options.recurrenceValue || task?.recurrenceByUser?.[options.targetUserId] || task.recurrence
@@ -166,7 +100,7 @@ async function shouldExecuteTask(task, projectId, userDataCache = null, options 
 
     const userLastExecuted = task?.lastExecutedByUser?.[userId] ?? task.lastExecuted
     const executionStatus = task?.executionByUser?.[userId]?.status
-    if (hasActiveAttempt(task?.executionByUser?.[userId])) return false
+    if (executionStatus === 'in_progress') return false
     if (
         recurrenceForUser === RECURRENCE_ONCE &&
         (executionStatus === 'succeeded' || (executionStatus === undefined && userLastExecuted))
@@ -417,27 +351,11 @@ async function ensureTaskChatExists(
     assistantId,
     prompt,
     activatorUserId,
-    executionProjectId = projectId,
-    executionModeOverride = null,
-    reservedTaskId = null
+    executionProjectId = projectId
 ) {
     try {
         const assistantTasksProjectId = projectId
-        if (reservedTaskId) {
-            const existingChat = await admin
-                .firestore()
-                .doc(`chatObjects/${executionProjectId}/chats/${reservedTaskId}`)
-                .get()
-            const existingTask = await admin
-                .firestore()
-                .doc(`items/${executionProjectId}/tasks/${reservedTaskId}`)
-                .get()
-            const existingPrompt = await admin
-                .firestore()
-                .doc(`chatComments/${executionProjectId}/tasks/${reservedTaskId}/comments/scheduled-prompt`)
-                .get()
-            if (existingChat.exists && existingTask.exists && existingPrompt.exists) return { uniqueId: reservedTaskId }
-        }
+        console.log('KW Special Always creating new chat for task:', { taskId, assistantId })
 
         // Get the task data to set proper metadata
         const taskDoc = await admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get()
@@ -447,7 +365,7 @@ async function ensureTaskChatExists(
             console.error('Task not found when creating chat:', { taskId, projectId })
             return { uniqueId: null }
         }
-        const executionMode = executionModeOverride || getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+        const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
         // Determine the follower(s) for the task - prioritize activator, then creator, then first user
         const followerIds = []
@@ -477,7 +395,7 @@ async function ensureTaskChatExists(
         }
 
         // Create chat object
-        const uniqueId = reservedTaskId || getId()
+        const uniqueId = getId()
         const chat = {
             id: uniqueId,
             title: task.extendedName || task.name,
@@ -692,7 +610,7 @@ async function ensureTaskChatExists(
                     errorMessage: error.message,
                     errorCode: error.code,
                 })
-                throw error
+                // Continue execution even if task creation fails
             }
         }
 
@@ -712,9 +630,7 @@ async function ensureTaskChatExists(
 
         // Create initial comment with the prompt
         if (prompt) {
-            const commentId = reservedTaskId
-                ? 'scheduled-prompt'
-                : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+            const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
 
             const comment = {
                 creatorId: activatorUserId || task.creatorUserId || task.userId,
@@ -779,7 +695,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         recurrence: recurrenceForUser,
         lastExecuted: previousLastExecutedByUser ?? task.lastExecuted ?? null,
     }
-    const requestedExecutionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+    const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
     // Get activator data from cache or fetch from DB
     let activatorData
@@ -821,24 +737,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     const executionProjectId =
         task?.activatedInProjectIdByUser?.[activatorUserId] || task.activatedInProjectId || projectId
 
-    let executionMode = requestedExecutionMode
-    if (requestedExecutionMode === TASK_EXECUTION_MODE_WORKFLOW) {
-        const assistantDoc = await admin.firestore().doc(`assistants/${executionProjectId}/items/${assistantId}`).get()
-        executionMode = resolveAssistantWorkflowExecutionMode(
-            assistantDoc.exists ? assistantDoc.data() : null,
-            executionProjectId,
-            requestedExecutionMode
-        )
-        if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
-            console.warn('Scheduled assistant has no configured workflow step; running task directly', {
-                assistantProjectId: projectId,
-                executionProjectId,
-                assistantId,
-                taskId: task.id,
-            })
-        }
-    }
-
     if (executionProjectId !== projectId) {
         console.log('Using different project ID for execution:', {
             taskId: task.id,
@@ -869,32 +767,20 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         activatorGold: activatorData.gold,
     })
 
-    let scheduledAttempt = null
     try {
         const startTimestamp = Timestamp.now()
-        if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
-            scheduledAttempt = await claimScheduledPromptAttempt({
-                taskRef: taskDocRef,
-                userId: activatorUserId,
-                task,
-                executionProjectId,
-                newTaskId: getId(),
-            })
-            if (!scheduledAttempt) return
-        }
-        if (!scheduledAttempt)
-            await taskDocRef.update({
-                lastExecutionStarted: startTimestamp,
-                lastExecutionCompleted: null,
-                executionStatus: 'in_progress',
-                lastExecutionError: null,
-                [`executionByUser.${activatorUserId}`]: {
-                    status: 'in_progress',
-                    startedAt: startTimestamp.toMillis(),
-                    completedAt: null,
-                    error: null,
-                },
-            })
+        await taskDocRef.update({
+            lastExecutionStarted: startTimestamp,
+            lastExecutionCompleted: null,
+            executionStatus: 'in_progress',
+            lastExecutionError: null,
+            [`executionByUser.${activatorUserId}`]: {
+                status: 'in_progress',
+                startedAt: startTimestamp.toMillis(),
+                completedAt: null,
+                error: null,
+            },
+        })
 
         console.log('Marked recurring assistant task as in-progress:', {
             projectId,
@@ -910,9 +796,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             task.prompt,
             activatorUserId,
-            executionProjectId,
-            executionMode,
-            scheduledAttempt?.taskId || null
+            executionProjectId
         )
         if (!uniqueId) throw new Error('Could not create the scheduled assistant task')
 
@@ -972,25 +856,13 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
                 recurrence: taskWithActivator.recurrence,
-            },
-            null,
-            'tasks',
-            {
                 // These runs execute inline inside checkRecurringAssistantTasks, an onSchedule
                 // function whose Cloud Scheduler attempt deadline caps at 30 minutes, so they get
-                // the scheduled wall clock rather than the interactive 55 minutes. This lives in
-                // the OPTIONS argument, not in the task metadata one: generatePreConfigTaskResult
-                // reads run-shaping options only from the 13th parameter, so the years this spent
-                // in the metadata bag were years it silently did nothing and every scheduled run
-                // believed it had 55 minutes while its transport was sized for 25.
+                // the scheduled wall clock rather than the interactive 55 minutes.
                 maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-                // Nobody is watching a scheduled run, so it cannot be re-asked when the model
-                // fails to search for a tool it was told to use — it does the whole job, reports
-                // the tool as missing, spends the Gold and is marked done. Send every
-                // schema up front and trade the prompt-size saving for determinism.
-                disableToolSearch: true,
-                resumeScheduledWorkflow: scheduledAttempt?.resume === true,
-            }
+            },
+            null,
+            'tasks'
         )
 
         // WhatsApp notification is now handled inside generatePreConfigTaskResult
@@ -998,12 +870,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         if (!taskResult || taskResult.success !== true) {
             throw new Error('Scheduled assistant prompt did not return a successful execution result')
         }
-
-        await assertWorkflowComplete(
-            admin.firestore(),
-            { projectId: executionProjectId, objectType: 'tasks', objectId: uniqueId, assistantId },
-            taskResult
-        )
 
         await finalizeGeneratedAssistantTask({
             taskResult,
@@ -1037,11 +903,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             successPayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
             successPayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
         }
-        if (scheduledAttempt) {
-            await updateScheduledAttempt(taskDocRef, activatorUserId, scheduledAttempt, successPayload)
-        } else {
-            await taskDocRef.update(successPayload)
-        }
+        await taskDocRef.update(successPayload)
 
         const nextExecutionAfterRun =
             taskWithActivator.recurrence === RECURRENCE_NEVER ||
@@ -1072,64 +934,34 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             remainingGold: activatorData.gold,
         })
     } catch (error) {
-        const attemptCompletedAt = Date.now()
-        const { updatePayload, isTokenCeilingFailure } = buildAssistantTaskFailureUpdate({
-            error,
-            activatorUserId,
-            recurrence: taskWithActivator.recurrence,
-            previousLastExecuted,
-            previousLastExecutedByUser,
-            attemptCompletedAt,
-        })
-
-        if (scheduledAttempt) {
-            const state = await readWorkflowState(admin.firestore(), {
-                projectId: executionProjectId,
-                objectType: 'tasks',
-                objectId: scheduledAttempt.taskId,
-                assistantId,
-            }).catch(() => null)
-            const signature = state
-                ? getWorkflowProgress(state)?.signature || (state.projectWorkflow?.completedIds || []).join(',')
-                : scheduledAttempt.progressSignature
-            const failedAttempt = failedScheduledAttempt(scheduledAttempt, error, signature, attemptCompletedAt)
-            if (isTokenCeilingFailure) failedAttempt.retryExhausted = true
-            updatePayload[`executionByUser.${activatorUserId}`] = failedAttempt
-            if (failedAttempt.retryExhausted) {
-                // Stop charging for repeated failures without progress. Leave this task failed;
-                // the next scheduled occurrence starts fresh rather than looping every 5 minutes.
-                updatePayload.lastExecuted = attemptCompletedAt
-                updatePayload[`lastExecutedByUser.${activatorUserId}`] = attemptCompletedAt
-                updatePayload.lastExecutionCompleted = attemptCompletedAt
-                if (taskWithActivator.recurrence === RECURRENCE_ONCE) {
-                    updatePayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
-                    updatePayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
-                    updatePayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
-                }
-            }
+        const revertPayload = {
+            executionStatus: 'failed',
+            lastExecutionCompleted: null,
+            lastExecutionError: error.message,
+            [`executionByUser.${activatorUserId}`]: {
+                status: 'failed',
+                startedAt: Date.now(),
+                completedAt: null,
+                error: error.message,
+            },
         }
 
-        if (isTokenCeilingFailure) {
-            console.warn('🚨 RECURRING ASSISTANT TOKEN CEILING: Retry deferred until next scheduled occurrence', {
-                projectId,
-                assistantId,
-                taskId: task.id,
-                taskName: task.name,
-                activatorUserId,
-                recurrence: taskWithActivator.recurrence,
-                estimatedInputTokens: error.estimatedInputTokens,
-                attemptCompletedAt,
-            })
+        if (previousLastExecuted) {
+            revertPayload.lastExecuted = previousLastExecuted
+        } else {
+            revertPayload.lastExecuted = FieldValue.delete()
+        }
+
+        if (typeof previousLastExecutedByUser === 'number') {
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
+        } else {
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
         }
 
         try {
-            if (scheduledAttempt) {
-                await updateScheduledAttempt(taskDocRef, activatorUserId, scheduledAttempt, updatePayload)
-            } else {
-                await taskDocRef.update(updatePayload)
-            }
+            await taskDocRef.update(revertPayload)
         } catch (restoreError) {
-            console.error('Failed to update task execution metadata after error:', {
+            console.error('Failed to revert task execution metadata after error:', {
                 projectId,
                 assistantId,
                 taskId: task.id,
@@ -1150,6 +982,84 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
         throw error
     }
+}
+
+async function completeGeneratedAssistantTask(projectId, generatedTaskId, activatorUserId, activatorData = {}) {
+    if (!generatedTaskId) {
+        throw new Error('Cannot complete recurring assistant task because the generated task ID is missing')
+    }
+
+    const database = admin.firestore()
+    const taskRef = database.doc(`items/${projectId}/tasks/${generatedTaskId}`)
+    const taskSnapshot = await taskRef.get()
+
+    if (!taskSnapshot.exists) {
+        throw new Error(`Generated recurring assistant task ${generatedTaskId} was not found`)
+    }
+
+    const currentTask = { id: generatedTaskId, ...taskSnapshot.data() }
+    if (currentTask.done === true && currentTask.inDone === true) {
+        return { success: true, persisted: false, alreadyCompleted: true, taskId: generatedTaskId }
+    }
+
+    const { TaskService } = require('../shared/TaskService')
+    const taskService = new TaskService({
+        database,
+        moment,
+        enableFeeds: true,
+        enableValidation: false,
+        isCloudFunction: true,
+    })
+    await taskService.initialize()
+
+    const feedUser = {
+        uid: activatorUserId,
+        id: activatorUserId,
+        creatorId: activatorUserId,
+        name: activatorData.name || activatorData.displayName || 'User',
+        displayName: activatorData.displayName || activatorData.name || 'User',
+        email: activatorData.email || '',
+    }
+
+    const result = await taskService.updateAndPersistTask(
+        {
+            taskId: generatedTaskId,
+            projectId,
+            currentTask,
+            completed: true,
+            feedUser,
+            initiatorId: activatorUserId,
+        },
+        {
+            projectId,
+            userId: activatorUserId,
+            lastEditorId: activatorUserId,
+        },
+        {
+            projectId,
+            feedUser,
+        }
+    )
+
+    console.log('Marked generated recurring assistant task as done:', {
+        projectId,
+        generatedTaskId,
+        activatorUserId,
+        persisted: result.persisted,
+    })
+
+    return result
+}
+
+async function finalizeGeneratedAssistantTask(
+    { taskResult, projectId, generatedTaskId, activatorUserId, activatorData },
+    completeTask = completeGeneratedAssistantTask
+) {
+    if (!taskResult || taskResult.success !== true) {
+        throw new Error('Recurring assistant task did not return a successful execution result')
+    }
+
+    return completeTask(projectId, generatedTaskId, activatorUserId, activatorData)
 }
 
 /**
@@ -1380,7 +1290,7 @@ async function checkAndExecuteRecurringTasks() {
         // Step 2a: Get all projects that active users belong to
         const activeUserProjects = new Set()
         const projectMembersMap = new Map()
-        await mapWithConcurrency(activeUsersMap.keys(), RECURRING_SCAN_CONCURRENCY, async userId => {
+        for (const [userId, userData] of activeUsersMap.entries()) {
             // Get user's project memberships
             try {
                 const userProjectsSnapshot = await admin
@@ -1419,7 +1329,7 @@ async function checkAndExecuteRecurringTasks() {
                     error: error.message,
                 })
             }
-        })
+        }
 
         console.log('Active user projects identified (excluding archived, templates, community):', {
             activeUsers: activeUsersMap.size,
@@ -1428,7 +1338,7 @@ async function checkAndExecuteRecurringTasks() {
 
         // Step 2b: Get assistants only from projects with active users
         const projectAssistants = new Map()
-        await mapWithConcurrency(activeUserProjects, RECURRING_SCAN_CONCURRENCY, async projectId => {
+        for (const projectId of activeUserProjects) {
             try {
                 const assistantsSnapshot = await admin.firestore().collection(`assistants/${projectId}/items`).get()
 
@@ -1444,7 +1354,7 @@ async function checkAndExecuteRecurringTasks() {
                     error: error.message,
                 })
             }
-        })
+        }
 
         try {
             const globalAssistantsSnapshot = await admin
@@ -1466,147 +1376,138 @@ async function checkAndExecuteRecurringTasks() {
             totalAssistants: Array.from(projectAssistants.values()).reduce((sum, arr) => sum + arr.length, 0),
         })
 
-        // Step 2b: Fetch every assistant's task list up front with bounded concurrency. The
-        // per-task evaluation below stays sequential (it writes lastExecuted), but it is cheap once
-        // the documents are in memory; the sequential fetches were what made a run take 40s.
-        const assistantTaskLists = await mapWithConcurrency(
-            Array.from(projectAssistants.entries()).flatMap(([projectId, assistantIds]) =>
-                assistantIds.map(assistantId => ({ projectId, assistantId }))
-            ),
-            RECURRING_SCAN_CONCURRENCY,
-            async ({ projectId, assistantId }) => ({
-                projectId,
-                assistantId,
-                tasks: await getAssistantTasks(admin, projectId, assistantId),
-            })
-        )
+        // Step 2b: For each project with assistants, fetch their tasks
+        for (const [projectId, assistantIds] of projectAssistants.entries()) {
+            for (const assistantId of assistantIds) {
+                // Get all tasks for this assistant
+                const tasks = await getAssistantTasks(admin, projectId, assistantId)
 
-        for (const { projectId, assistantId, tasks } of assistantTaskLists) {
-            // Check each task
-            for (const task of tasks) {
-                // Filter 0: Skip tasks without recurring schedule
-                if (
-                    !task.recurrence ||
-                    (!recurringTypes.includes(task.recurrence) && !getCustomRecurrenceDays(task.recurrence))
-                ) {
-                    continue
-                }
+                // Check each task
+                for (const task of tasks) {
+                    // Filter 0: Skip tasks without recurring schedule
+                    if (
+                        !task.recurrence ||
+                        (!recurringTypes.includes(task.recurrence) && !getCustomRecurrenceDays(task.recurrence))
+                    ) {
+                        continue
+                    }
 
-                totalTasksChecked++
+                    totalTasksChecked++
 
-                try {
-                    const activatedUserIds = getActivatedUserIdsForTask(task)
+                    try {
+                        const activatedUserIds = getActivatedUserIdsForTask(task)
 
-                    for (const activatedUserId of activatedUserIds) {
-                        const recurrenceForUser =
-                            task?.recurrenceByUser?.[activatedUserId] || task.recurrence || RECURRENCE_NEVER
-                        if (!recurrenceForUser || recurrenceForUser === RECURRENCE_NEVER) {
-                            continue
-                        }
+                        for (const activatedUserId of activatedUserIds) {
+                            const recurrenceForUser =
+                                task?.recurrenceByUser?.[activatedUserId] || task.recurrence || RECURRENCE_NEVER
+                            if (!recurrenceForUser || recurrenceForUser === RECURRENCE_NEVER) {
+                                continue
+                            }
 
-                        const membershipProjectId =
-                            task?.activatedInProjectIdByUser?.[activatedUserId] ||
-                            task.activatedInProjectId ||
-                            projectId
-                        const projectMembers = projectMembersMap.get(membershipProjectId) || new Set()
-                        if (!projectMembers.has(activatedUserId)) {
-                            console.log('Skipping recurring task because activated user is not in project:', {
-                                projectId,
-                                membershipProjectId,
-                                assistantId,
-                                taskId: task.id,
-                                taskName: task.name,
-                                activatedUserId,
-                            })
-                            tasksSkippedNotMember++
-                            continue
-                        }
-
-                        // Filter 1: Check if user is active (logged in within 30 days)
-                        if (activeUsersMap.size > 0 && !isUserActive(activatedUserId, activeUsersMap)) {
-                            console.log('Skipping recurring task due to inactive user:', {
-                                projectId,
-                                assistantId,
-                                taskId: task.id,
-                                taskName: task.name,
-                                taskUserId: activatedUserId,
-                            })
-                            tasksSkippedInactiveUser++
-                            continue
-                        }
-
-                        // Filter 2: Check if task should execute based on timing
-                        console.log('Evaluating recurring task for execution eligibility:', {
-                            projectId,
-                            assistantId,
-                            taskId: task.id,
-                            taskName: task.name,
-                            recurrence: recurrenceForUser,
-                            startDate: task.startDate,
-                            startTime: task.startTime,
-                            activatedUserId,
-                        })
-                        if (
-                            await shouldExecuteTask(task, projectId, activeUsersMap, {
-                                targetUserId: activatedUserId,
-                                recurrenceValue: recurrenceForUser,
-                            })
-                        ) {
-                            console.log('Recurring task marked for execution:', {
-                                projectId,
-                                assistantId,
-                                taskId: task.id,
-                                taskName: task.name,
-                                activatedUserId,
-                            })
-
-                            // CRITICAL: Update lastExecuted for this user immediately to prevent re-queueing
-                            const taskDocRef = admin
-                                .firestore()
-                                .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
-
-                            try {
-                                await taskDocRef.update({
-                                    lastExecuted: Date.now(),
-                                    [`lastExecutedByUser.${activatedUserId}`]: Date.now(),
+                            const membershipProjectId =
+                                task?.activatedInProjectIdByUser?.[activatedUserId] ||
+                                task.activatedInProjectId ||
+                                projectId
+                            const projectMembers = projectMembersMap.get(membershipProjectId) || new Set()
+                            if (!projectMembers.has(activatedUserId)) {
+                                console.log('Skipping recurring task because activated user is not in project:', {
+                                    projectId,
+                                    membershipProjectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    activatedUserId,
                                 })
-                                console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                                tasksSkippedNotMember++
+                                continue
+                            }
+
+                            // Filter 1: Check if user is active (logged in within 30 days)
+                            if (activeUsersMap.size > 0 && !isUserActive(activatedUserId, activeUsersMap)) {
+                                console.log('Skipping recurring task due to inactive user:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    taskUserId: activatedUserId,
+                                })
+                                tasksSkippedInactiveUser++
+                                continue
+                            }
+
+                            // Filter 2: Check if task should execute based on timing
+                            console.log('Evaluating recurring task for execution eligibility:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                                recurrence: recurrenceForUser,
+                                startDate: task.startDate,
+                                startTime: task.startTime,
+                                activatedUserId,
+                            })
+                            if (
+                                await shouldExecuteTask(task, projectId, activeUsersMap, {
+                                    targetUserId: activatedUserId,
+                                    recurrenceValue: recurrenceForUser,
+                                })
+                            ) {
+                                console.log('Recurring task marked for execution:', {
                                     projectId,
                                     assistantId,
                                     taskId: task.id,
                                     taskName: task.name,
                                     activatedUserId,
                                 })
-                            } catch (error) {
-                                console.error('Failed to pre-emptively update lastExecuted:', {
-                                    error: error.message,
+
+                                // CRITICAL: Update lastExecuted for this user immediately to prevent re-queueing
+                                const taskDocRef = admin
+                                    .firestore()
+                                    .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+
+                                try {
+                                    await taskDocRef.update({
+                                        lastExecuted: Date.now(),
+                                        [`lastExecutedByUser.${activatedUserId}`]: Date.now(),
+                                    })
+                                    console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                                        projectId,
+                                        assistantId,
+                                        taskId: task.id,
+                                        taskName: task.name,
+                                        activatedUserId,
+                                    })
+                                } catch (error) {
+                                    console.error('Failed to pre-emptively update lastExecuted:', {
+                                        error: error.message,
+                                        projectId,
+                                        assistantId,
+                                        taskId: task.id,
+                                        activatedUserId,
+                                    })
+                                }
+
+                                tasksToExecute.push({ projectId, assistantId, task, activatorUserId: activatedUserId })
+                            } else {
+                                console.log('Recurring task not ready for execution at this run:', {
                                     projectId,
                                     assistantId,
                                     taskId: task.id,
+                                    taskName: task.name,
                                     activatedUserId,
                                 })
+                                tasksSkippedTiming++
                             }
-
-                            tasksToExecute.push({ projectId, assistantId, task, activatorUserId: activatedUserId })
-                        } else {
-                            console.log('Recurring task not ready for execution at this run:', {
-                                projectId,
-                                assistantId,
-                                taskId: task.id,
-                                taskName: task.name,
-                                activatedUserId,
-                            })
-                            tasksSkippedTiming++
                         }
+                    } catch (error) {
+                        console.error('Error checking task:', {
+                            error: error.message,
+                            projectId,
+                            assistantId,
+                            taskId: task.id,
+                        })
+                        continue
                     }
-                } catch (error) {
-                    console.error('Error checking task:', {
-                        error: error.message,
-                        projectId,
-                        assistantId,
-                        taskId: task.id,
-                    })
-                    continue
                 }
             }
         }
@@ -1677,12 +1578,10 @@ module.exports = {
     shouldExecuteTask, // Exported for testing
     getNextExecutionTime, // Exported for testing
     __private__: {
-        executeAssistantTask,
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
         getActivatedUserIdsForTask,
         buildRecurringTaskAiSettings,
-        buildAssistantTaskFailureUpdate,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>
             resolveTimezoneContext(task, userData, options, getNextExecutionTime),
         buildOriginalScheduledMoment,

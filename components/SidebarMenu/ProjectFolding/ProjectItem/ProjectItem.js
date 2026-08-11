@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -35,11 +35,9 @@ import store from '../../../../redux/store'
 import { checkIfUserIsGuideAdmin } from '../../../Guides/guidesHelper'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ItemShortcut from '../../Items/Common/ItemShortcut'
-import AnnaWorkspaceNavigationContext from '../../../Anna/AnnaWorkspaceNavigationContext'
 
 export default function ProjectItem({ itemIndex, projectData, projectType, isShared, shortcutIndex, navigation }) {
     const dispatch = useDispatch()
-    const showAlldone = useContext(AnnaWorkspaceNavigationContext)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -108,7 +106,6 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
             activeTemplate()
         } else {
             e?.preventDefault()
-            showAlldone()
 
             dispatch(storeLoggedUser({ ...loggedUser, showAllProjectsByTime: false }))
             updateShowAllProjectsByTime(loggedUserId, false)

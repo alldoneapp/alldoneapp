@@ -80,15 +80,11 @@ if (!String.prototype.replaceAll) {
 // such as `display: 'inline-flex'` (components/Tags/LinkTag.js) are legal in
 // the browser but make StyleSheet.create() throw here, which takes down every
 // suite that transitively imports the tag components.
-jest.mock(
-    'react-native/Libraries/StyleSheet/StyleSheetValidation',
-    () => ({
-        validateStyle: () => {},
-        validateStyleProp: () => {},
-        addValidStylePropTypes: () => {},
-    }),
-    { virtual: true }
-)
+jest.mock('react-native/Libraries/StyleSheet/StyleSheetValidation', () => ({
+    validateStyle: () => {},
+    validateStyleProp: () => {},
+    addValidStylePropTypes: () => {},
+}))
 
 // React 18 defers passive effects (useEffect) to the scheduler. Legacy suites
 // that render with react-test-renderer and never unmount would have those
@@ -96,10 +92,6 @@ jest.mock(
 // "The `document` global was defined when React was initialized, but is not
 // defined anymore" (and taking the whole run down with it). Flushing inside
 // act() after every test absorbs the deferred work while the DOM still exists.
-// It cannot absorb all of it: act() drains only what was queued inside act, and
-// a task the scheduler already holds runs later on the real setImmediate. That
-// remainder is dropped by the guarded setImmediate in ci/jestPolyfills.js once
-// the file's environment is gone.
 afterEach(async () => {
     const { act } = require('react-test-renderer')
     await act(async () => {})

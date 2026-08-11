@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import AutomaticOption from './AutomaticOption'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -12,7 +12,6 @@ import ModalHeaderWithAvatar from '../ModalHeaderWithAvatar'
 import Button from '../../../UIControls/Button'
 import moment from 'moment'
 import { translate } from '../../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalSprintCapacityModal({
     assigneeId,
@@ -69,7 +68,7 @@ export default function GoalSprintCapacityModal({
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeaderWithAvatar
                     closeModal={closeModal}

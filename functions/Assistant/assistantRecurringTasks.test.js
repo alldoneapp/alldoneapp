@@ -66,82 +66,6 @@ describe('recurring assistant activations', () => {
     })
 })
 
-describe('recurring assistant failure scheduling', () => {
-    test('records a token-ceiling failure as the weekly occurrence attempt', () => {
-        const error = Object.assign(new Error('Request reached the token ceiling'), {
-            code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT',
-            estimatedInputTokens: 200000,
-        })
-
-        const result = __private__.buildAssistantTaskFailureUpdate({
-            error,
-            activatorUserId: 'user-1',
-            recurrence: 'weekly',
-            previousLastExecuted: 1000,
-            previousLastExecutedByUser: 1000,
-            attemptCompletedAt: 2000,
-        })
-
-        expect(result.isTokenCeilingFailure).toBe(true)
-        expect(result.updatePayload).toEqual(
-            expect.objectContaining({
-                executionStatus: 'failed',
-                lastExecutionCompleted: 2000,
-                lastExecutionError: 'Request reached the token ceiling',
-                lastExecuted: 2000,
-                'lastExecutedByUser.user-1': 2000,
-                'executionByUser.user-1': expect.objectContaining({
-                    status: 'failed',
-                    completedAt: 2000,
-                }),
-            })
-        )
-    })
-
-    test('deactivates a one-time task after a token-ceiling attempt', () => {
-        const error = Object.assign(new Error('Request reached the token ceiling'), {
-            code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT',
-        })
-
-        const { updatePayload } = __private__.buildAssistantTaskFailureUpdate({
-            error,
-            activatorUserId: 'user-1',
-            recurrence: 'once',
-            attemptCompletedAt: 2000,
-        })
-
-        expect(updatePayload).toEqual(
-            expect.objectContaining({
-                lastExecuted: 2000,
-                'lastExecutedByUser.user-1': 2000,
-                completedOneOffUserIds: expect.anything(),
-                activatedUserIds: expect.anything(),
-                'recurrenceByUser.user-1': expect.anything(),
-            })
-        )
-    })
-
-    test('keeps the existing retry behavior for other failures', () => {
-        const { updatePayload, isTokenCeilingFailure } = __private__.buildAssistantTaskFailureUpdate({
-            error: new Error('Temporary provider failure'),
-            activatorUserId: 'user-1',
-            recurrence: 'weekly',
-            previousLastExecuted: 1000,
-            previousLastExecutedByUser: 900,
-            attemptCompletedAt: 2000,
-        })
-
-        expect(isTokenCeilingFailure).toBe(false)
-        expect(updatePayload).toEqual(
-            expect.objectContaining({
-                lastExecutionCompleted: null,
-                lastExecuted: 1000,
-                'lastExecutedByUser.user-1': 900,
-            })
-        )
-    })
-})
-
 describe('recurring assistant generated task completion', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -266,7 +190,7 @@ describe('recurring assistant generated task completion', () => {
                 },
                 {
                     uid: 'assistant-1',
-                    model: 'MODEL_GPT6_SOL',
+                    model: 'MODEL_GPT5_6_SOL',
                     temperature: 'TEMPERATURE_NORMAL',
                     reasoningEffort: 'max',
                     instructions: 'Assistant instructions',
@@ -276,7 +200,7 @@ describe('recurring assistant generated task completion', () => {
                 'assistant-1'
             )
         ).toEqual({
-            model: 'MODEL_GPT6_SOL',
+            model: 'MODEL_GPT5_6_SOL',
             temperature: 'TEMPERATURE_NORMAL',
             reasoningEffort: 'max',
             systemMessage: 'Assistant instructions',
@@ -288,12 +212,12 @@ describe('recurring assistant generated task completion', () => {
 
     test('uses a deliberately saved recurring-task model override', () => {
         const settings = __private__.buildRecurringTaskAiSettings(
-            { aiModelOverride: 'MODEL_GPT6_LUNA' },
-            { model: 'MODEL_GPT6_SOL' },
+            { aiModelOverride: 'MODEL_GPT5_6_LUNA' },
+            { model: 'MODEL_GPT5_6_SOL' },
             'assistant-1'
         )
 
-        expect(settings.model).toBe('MODEL_GPT6_LUNA')
+        expect(settings.model).toBe('MODEL_GPT5_6_LUNA')
     })
 
     test('uses a deliberately saved recurring-task reasoning effort override', () => {

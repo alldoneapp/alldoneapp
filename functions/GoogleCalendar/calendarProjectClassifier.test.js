@@ -135,7 +135,6 @@ describe('calendarProjectClassifier', () => {
         const event = normalizeCalendarEventForClassifier(
             {
                 id: 'event-1',
-                recurringEventId: 'series-1',
                 summary: 'Product roadmap',
                 location: 'Meet',
                 attendees: [
@@ -153,7 +152,6 @@ describe('calendarProjectClassifier', () => {
         expect(event).toEqual(
             expect.objectContaining({
                 id: 'event-1',
-                recurringEventId: 'series-1',
                 summary: 'Product roadmap',
                 location: 'Meet',
                 calendarEmail: 'me@example.com',
@@ -210,7 +208,6 @@ describe('calendarProjectClassifier', () => {
         const result = await classifyCalendarEventProject({
             config: {
                 prompt: 'Route events',
-                learnedRules: '- Partner Conference routes to Juno',
                 model: 'MODEL_GPT5_4_NANO',
                 confidenceThreshold: 0.7,
             },
@@ -220,10 +217,6 @@ describe('calendarProjectClassifier', () => {
         })
 
         expect(create).toHaveBeenCalledTimes(2)
-        const firstPromptContent = create.mock.calls[0][0].messages[1].content
-        expect(Array.isArray(firstPromptContent) ? firstPromptContent[0].text : firstPromptContent).toContain(
-            'User routing feedback rules (always apply):\n- Partner Conference routes to Juno'
-        )
         expect(create.mock.calls[1][0].messages[3].content).toContain('previous JSON was inconsistent')
         expect(result).toEqual(
             expect.objectContaining({
@@ -279,7 +272,7 @@ describe('calendarProjectClassifier', () => {
         const result = await classifyCalendarEventProject({
             config: {
                 prompt: 'Route events',
-                model: 'MODEL_GPT6_SOL',
+                model: 'MODEL_GPT5_6_SOL',
                 confidenceThreshold: 0.7,
             },
             event: { id: 'event-1', summary: 'Juno roadmap' },

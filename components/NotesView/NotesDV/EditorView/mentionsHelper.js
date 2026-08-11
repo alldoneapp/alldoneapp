@@ -18,7 +18,6 @@ import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/Lin
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import { isGlobalAssistant, GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { findMentionEnd, findMentionStart, readCursorText } from './noteCursorText'
 import { captureNoteSelectionSnapshot, clearNoteSelectionSnapshot, normalizeSelection } from './noteSelection'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -39,8 +38,7 @@ let flag = false
 let quill = null
 let quillKeyboardBindingsEnter = null
 let quillKeyboardBindingsTab = null
-let mentionEnd = 0
-let selectionTimeout = null
+let mentionLastHalfText = ''
 
 export const getSelection = () => {
     return activeSelection
@@ -83,6 +81,7 @@ export const loadMentionsData = (paramNoteId, paramQuillRef, paramProjectId) => 
     noteProjectId = paramProjectId || ''
     quillRef = paramQuillRef
     editorElement = document.getElementsByClassName(`ql-editor-${noteId}`)[0]
+    getMentionModalLocation(0)
 }
 
 export const resetMentionsData = () => {
@@ -102,14 +101,14 @@ export const resetMentionsData = () => {
     quill = null
     quillKeyboardBindingsEnter = null
     quillKeyboardBindingsTab = null
-    mentionEnd = 0
-    clearTimeout(selectionTimeout)
+    mentionLastHalfText = ''
 }
 
 export const setMentionModalHeight = value => {
     mentionModalHeight = value
-    if (mentionModalHeight > 0 && showMentionPopup) {
-        getMentionModalLocation(activeSelection.index)
+    if (mentionModalHeight > 0 && !showMentionPopup) {
+        const text = getText()
+        getMentionModalLocation(activeSelection.index === 0 ? text.length : activeSelection.index)
     }
 }
 
@@ -118,8 +117,7 @@ export const closeMentionPopup = () => {
         showMentionPopup = false
         updateBindingKeys()
         mentionPosition = 0
-        mentionEnd = 0
-        clearTimeout(selectionTimeout)
+        mentionLastHalfText = ''
         mentionText = ''
         updateNotesMentionModalContainer()
     }
@@ -127,6 +125,11 @@ export const closeMentionPopup = () => {
 
 export const onKeyDownInMentionsModal = event => {
     const { key, ctrlKey } = event
+
+    const text = getText()
+    if (key === 'Delete' && mentionLastHalfText && activeSelection.index === text.length - mentionLastHalfText.length) {
+        mentionLastHalfText = mentionLastHalfText.substring(1)
+    }
 
     if (showMentionPopup) {
         const isPaste = ctrlKey && (key === 'v' || key === 'V')
@@ -141,61 +144,96 @@ export const onKeyDownInMentionsModal = event => {
 }
 
 const startToMention = cursorIndex => {
-    const editor = quillRef?.current
-    if (!editor) return
+    const text = getText()
     showMentionPopup = true
     updateBindingKeys()
     mentionPosition = cursorIndex
-    mentionEnd = findMentionEnd(editor, cursorIndex)
-    mentionText = readCursorText(editor, mentionPosition, mentionEnd - mentionPosition)
-    getMentionModalLocation(cursorIndex)
-    if (mentionEnd > cursorIndex) {
-        const currentEditor = editor
-        selectionTimeout = setTimeout(() => {
-            if (quillRef?.current === currentEditor && showMentionPopup) {
-                currentEditor.setSelection(mentionEnd, 0, 'user')
-            }
+
+    let lastHalfText = text.substring(cursorIndex)
+    if (lastHalfText[0] === '&') {
+        mentionText = ''
+        mentionLastHalfText = lastHalfText
+    } else {
+        const wordsInLastHalf = lastHalfText.split(/\s|&/)
+        mentionText = wordsInLastHalf[0] ? wordsInLastHalf[0] : ''
+        const newCursorIndex = cursorIndex + wordsInLastHalf[0].length
+        lastHalfText = text.substring(newCursorIndex)
+        mentionLastHalfText = lastHalfText
+        setTimeout(() => {
+            quillRef.current.setSelection(newCursorIndex, 0, 'user')
         })
     }
+
     updateNotesMentionModalContainer()
 }
 
-export const handleTextChangeForMentions = delta => {
-    const editor = quillRef?.current
-    if (!editor) return
+const updateMentionText = () => {
     if (showMentionPopup) {
-        // Transform the range, not a saved copy of everything after it. Remote
-        // edits before the mention and Delete at its end work the same way.
-        if (delta) {
-            const change = new Delta(delta.ops)
-            mentionPosition = change.transformPosition(mentionPosition, true)
-            mentionEnd = change.transformPosition(mentionEnd, false)
+        const text = getText()
+        mentionText = text.substring(mentionPosition, text.length - mentionLastHalfText.length)
+    }
+}
+
+const getText = () => {
+    if (!quillRef) {
+        return ''
+    }
+    return quillRef.current
+        .getContents()
+        .map(function (op) {
+            if (typeof op.insert === 'string') {
+                return op.insert
+            } else {
+                return '&'
+            }
+        })
+        .join('')
+}
+
+export const handleTextChangeForMentions = () => {
+    updateMentionText()
+
+    if (!showMentionPopup) {
+        const text = getText()
+        const lastCharacter = text[activeSelection.index - 1]
+        const previousToLastCharacter = text[activeSelection.index - 2]
+        const previousPreviousToLastCharacter = text[activeSelection.index - 3]
+        const nextCharacter = text[activeSelection.index]
+
+        if (lastCharacter === '@' && (!previousToLastCharacter || previousToLastCharacter.match(/\s|&/))) {
+            startToMention(activeSelection.index)
+        } else if (nextCharacter === '@' && (!lastCharacter || lastCharacter.match(/\s|&/))) {
+            startToMention(activeSelection.index + 1)
+        } else if (
+            lastCharacter &&
+            lastCharacter !== '@' &&
+            !lastCharacter.match(/\s|&/) &&
+            previousToLastCharacter === '@' &&
+            (!previousPreviousToLastCharacter || previousPreviousToLastCharacter.match(/\s|&/))
+        ) {
+            startToMention(activeSelection.index - 1)
         }
-        if (readCursorText(editor, mentionPosition - 1, 1) !== '@') return closeMentionPopup()
-        const nextText = readCursorText(editor, mentionPosition, mentionEnd - mentionPosition)
-        if (nextText !== mentionText) {
-            mentionText = nextText
-            updateNotesMentionModalContainer()
-        }
-    } else {
-        const start = findMentionStart(editor, activeSelection.index)
-        if (start !== null) startToMention(start)
     }
 }
 
 const tryToOpenMentionModalBySelection = () => {
-    const editor = quillRef?.current
-    if (!editor) return
-    const previous = readCursorText(editor, Math.max(0, activeSelection.index - 2), Math.min(2, activeSelection.index))
-    if (previous.endsWith('@') && (previous.length === 1 || /\s|&/.test(previous[0]))) {
-        startToMention(activeSelection.index)
+    const text = getText()
+
+    const previousCharacter = text[activeSelection.index - 1]
+    if (previousCharacter === '@') {
+        const previousPreviousCharacter = text[activeSelection.index - 2]
+        if (!previousPreviousCharacter || previousPreviousCharacter.match(/\s|&/)) {
+            startToMention(activeSelection.index)
+        }
     }
 }
 
 const checkMentionModalState = () => {
     if (showMentionPopup) {
+        const contentLength = quillRef.current.getLength()
         const { index: cursorIndex, length: selectionLength } = activeSelection
-        if (cursorIndex < mentionPosition || cursorIndex + selectionLength > mentionEnd) {
+        const mentionEndIndex = contentLength - mentionLastHalfText.length
+        if (cursorIndex < mentionPosition || cursorIndex + selectionLength > mentionEndIndex) {
             insertNormalMention()
         }
     } else {
@@ -216,8 +254,10 @@ export const onChangeSelection = selection => {
 
     if (!editorElement) return
 
+    if (!showMentionPopup) {
+        getMentionModalLocation(activeSelection.index)
+    }
     checkMentionModalState()
-    if (showMentionPopup) getMentionModalLocation(activeSelection.index)
 }
 
 export const insertNormalMention = () => {

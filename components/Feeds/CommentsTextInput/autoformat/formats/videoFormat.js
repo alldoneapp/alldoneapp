@@ -1,17 +1,19 @@
-import React from 'react'
-import { getPopoverWidth } from '../../../../../utils/HelperFunctions'
+import React, { createRef } from 'react'
+import ReactQuill from 'react-quill-new'
+import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
 import CustomVideoContainer from '../tags/CustomVideoContainer'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
-import { renderEmbedContent } from './embedReactRoot'
-import ReactEmbedBlot from './reactEmbedBlot'
 
-export default class VideoFormat extends ReactEmbedBlot {
+const Embed = ReactQuill.Quill.import('blots/embed')
+
+export default class VideoFormat extends Embed {
     static create(videoData) {
         const { text, uri, isNew, externalId, isLoading, editorId } = videoData
         const node = super.create(text)
+        const refs = VideoFormat.refs
         const id = externalId ? externalId : v4()
 
         node.setAttribute('data-id', id)
@@ -24,19 +26,16 @@ export default class VideoFormat extends ReactEmbedBlot {
         if (editorId != null) node.setAttribute('editorId', editorId)
 
         VideoFormat.data = text
+        VideoFormat.refs = {
+            ...refs,
+            [id]: createRef(),
+        }
 
-        renderEmbedContent(
-            node,
+        ReactDOM.render(
             <Provider store={store}>
                 <CustomVideoContainer editorId={editorId} uri={uri} isLoading={isLoading} />
             </Provider>,
-            {
-                editorId,
-                kind: 'media',
-                label: text,
-                width: getPopoverWidth() - 60,
-                height: store.getState().smallScreenNavigation ? 100 : store.getState().isMiddleScreen ? 150 : 200,
-            }
+            node
         )
 
         return node

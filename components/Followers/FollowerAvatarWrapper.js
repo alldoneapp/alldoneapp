@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, TouchableOpacity } from 'react-native'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import FollowersModal from './FollowersModal'
 import Avatar from '../Avatar'
@@ -17,7 +17,7 @@ export default function FollowerAvatarWrapper({ followers, avatarUrl, markAssign
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <View>
                     <FollowersModal
@@ -37,6 +37,6 @@ export default function FollowerAvatarWrapper({ followers, avatarUrl, markAssign
             <TouchableOpacity onPress={openModal} accessible={false}>
                 <Avatar reviewerPhotoURL={avatarUrl} borderSize={0} size={32} />
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }

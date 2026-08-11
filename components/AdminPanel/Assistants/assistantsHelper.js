@@ -4,7 +4,6 @@ import NavigationService from '../../../utils/NavigationService'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DEFAULT_ALLOWED_TOOLS } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
-import { PROJECT_DATA_ASSISTANTS, requestProjectDataOnLookupMiss } from '../../../utils/InitialLoad/projectDataLoader'
 
 export const TYPE_PROMPT_BASED = 'TYPE_PROMPT_BASED'
 export const TYPE_3RD_PARTY = 'TYPE_3RD_PARTY'
@@ -14,9 +13,9 @@ export const MODEL_GPT4 = 'MODEL_GPT4'
 export const MODEL_GPT4O = 'MODEL_GPT4O'
 export const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 export const MODEL_GPT5_5 = 'MODEL_GPT5_5'
-export const MODEL_GPT6_SOL = 'MODEL_GPT6_SOL'
+export const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
 export const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
-export const MODEL_GPT6_LUNA = 'MODEL_GPT6_LUNA'
+export const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
 export const MODEL_GPT5_2 = 'MODEL_GPT5_2'
 export const MODEL_SONAR = 'MODEL_SONAR'
 export const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
@@ -37,12 +36,13 @@ export const GLOBAL_PROJECT_ID = 'globalProject'
 
 export const DEFAULT_EMAIL_SIGNATURE = '---\nAnna Alldone\nAI Chief of Staff\nhttps://alldone.app/'
 
-export function getNewDefaultAssistant(userId = store.getState().loggedUser.uid) {
+export function getNewDefaultAssistant() {
+    const { loggedUser } = store.getState()
     return {
         displayName: '',
-        lastEditorId: userId,
+        lastEditorId: loggedUser.uid,
         lastEditionDate: Date.now(),
-        creatorId: userId,
+        creatorId: loggedUser.uid,
         createdDate: Date.now(),
         photoURL: '',
         photoURL50: '',
@@ -52,8 +52,8 @@ export function getNewDefaultAssistant(userId = store.getState().loggedUser.uid)
         thirdPartLink: '',
         type: TYPE_PROMPT_BASED,
         instructions: '',
-        model: MODEL_GPT6_SOL,
-        heartbeatModel: MODEL_GPT6_SOL,
+        model: MODEL_GPT5_6_SOL,
+        heartbeatModel: MODEL_GPT5_6_SOL,
         reasoningEffort: null,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
@@ -106,7 +106,7 @@ const getNormalAssistant = assistantId => {
     const assistantsByProject = Object.keys(projectAssistants)
 
     for (let i = 0; i < assistantsByProject.length; i++) {
-        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId, false)
+        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId)
         if (assistant) return assistant
     }
 
@@ -122,7 +122,7 @@ export const openAssistantDv = (projectId, assistant) => {
     store.dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
 }
 
-const getNormalAssistantInProject = (projectId, assistantId, reportMiss = true) => {
+const getNormalAssistantInProject = (projectId, assistantId) => {
     const { projectAssistants } = store.getState()
 
     const assistants = projectAssistants[projectId] || []
@@ -130,16 +130,6 @@ const getNormalAssistantInProject = (projectId, assistantId, reportMiss = true) 
     for (let n = 0; n < assistants.length; n++) {
         if (assistants[n].uid === assistantId) return assistants[n]
     }
-
-    // AT-2386: project assistants are no longer loaded for every project at login, so a miss can
-    // mean "not requested yet" rather than "no such assistant". Reported from this single lookup
-    // funnel; the caller keeps its existing null contract and the answer improves on re-render.
-    //
-    // `reportMiss` exists for `getNormalAssistant`, which SWEEPS every project looking for one id.
-    // Every project it walks past is a miss by construction, so reporting from inside that loop
-    // would arm every project's assistant watcher the first time any id failed to resolve - the
-    // exact eager fan-out this change removes.
-    if (reportMiss) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_ASSISTANTS)
 
     return null
 }
@@ -278,7 +268,7 @@ export const getAssistantProjectId = (assistantId, currentProjectId) => {
     const assistantsByProject = Object.keys(projectAssistants)
 
     for (let i = 0; i < assistantsByProject.length; i++) {
-        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId, false)
+        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId)
         if (assistant) return assistantsByProject[i]
     }
 

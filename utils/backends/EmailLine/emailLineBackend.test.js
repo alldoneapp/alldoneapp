@@ -15,15 +15,8 @@ jest.mock('../firestore', () => ({
     runHttpsCallableFunction: (...args) => mockRunHttpsCallableFunction(...args),
 }))
 
-const mockGetConnection = jest.fn()
-const mockGetConnectionsForProject = jest.fn()
 jest.mock('../../IntegrationProviders', () => ({
-    CONNECTION_SERVICE_EMAIL: 'email',
-    buildConnectionKeyPayload: jest.fn(key =>
-        String(key).startsWith('email_') ? { connectionId: key } : { projectId: key }
-    ),
-    getConnection: (...args) => mockGetConnection(...args),
-    getConnectionsForProject: (...args) => mockGetConnectionsForProject(...args),
+    buildConnectionKeyPayload: jest.fn(key => ({ connectionId: key })),
 }))
 
 jest.mock('../../../i18n/TranslationService', () => ({
@@ -31,13 +24,10 @@ jest.mock('../../../i18n/TranslationService', () => ({
 }))
 
 const {
-    fetchEmailLineSummary,
-    invalidateEmailLineSummaryCooldown,
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
     isEmailAuthExpiredError,
-    reconcileEmailLineLabelCount,
 } = require('./emailLineBackend')
 
 // Shape of the callable rejection: the server maps EmailLineAuthError to a
@@ -52,58 +42,6 @@ const summaryWithLabel = {
         { labelId: 'L2', displayName: 'Other', threadCount: 2, unreadCount: 1 },
     ],
 }
-
-describe('fetchEmailLineSummary auth-invalid circuit breaker', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockGetConnection.mockReturnValue(null)
-        mockGetConnectionsForProject.mockReturnValue([])
-        mockGetState.mockReturnValue({ loggedUser: {}, emailLineSummaryByProject: {} })
-        invalidateEmailLineSummaryCooldown('email_google_deadbeef')
-        invalidateEmailLineSummaryCooldown('legacy-project')
-    })
-
-    it('accepts the summary callable authExpired response without an HTTP error', async () => {
-        mockRunHttpsCallableFunction.mockResolvedValue({ authExpired: true })
-
-        await expect(fetchEmailLineSummary('email_google_deadbeef')).resolves.toEqual({ authExpired: true })
-        expect(mockDispatch).toHaveBeenCalledWith({
-            type: 'SET_EMAIL_LINE_SUMMARY',
-            key: 'email_google_deadbeef',
-            summary: { authExpired: true },
-        })
-    })
-
-    it('does not poll an account-level connection marked authInvalid', async () => {
-        mockGetConnection.mockReturnValue({ connectionId: 'email_google_deadbeef', authInvalid: true })
-
-        const summary = await fetchEmailLineSummary('email_google_deadbeef')
-
-        expect(summary.authExpired).toBe(true)
-        expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
-    })
-
-    it('does not poll a legacy project whose materialized account is marked authInvalid', async () => {
-        mockGetConnectionsForProject.mockReturnValue([
-            { connectionId: 'email_google_deadbeef', defaultProjectId: 'legacy-project', authInvalid: true },
-        ])
-
-        const summary = await fetchEmailLineSummary('legacy-project')
-
-        expect(summary.authExpired).toBe(true)
-        expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
-    })
-
-    it('resumes fetching after reconnect clears authInvalid', async () => {
-        mockGetConnection.mockReturnValueOnce({ authInvalid: true }).mockReturnValue({ authInvalid: false })
-        mockRunHttpsCallableFunction.mockResolvedValue({ connected: true, labels: [] })
-
-        await fetchEmailLineSummary('email_google_deadbeef')
-        await fetchEmailLineSummary('email_google_deadbeef', { force: true })
-
-        expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(1)
-    })
-})
 
 describe('performEmailLineSweepInBackground', () => {
     beforeEach(() => {
@@ -280,32 +218,5 @@ describe('listEmailLineMessages', () => {
         await Promise.all([listEmailLineMessages('c1', 'L1'), listEmailLineMessages('c1', 'L2')])
 
         expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(2)
-    })
-})
-
-describe('reconcileEmailLineLabelCount', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockGetState.mockReturnValue({ emailLineSummaryByProject: { c1: summaryWithLabel } })
-    })
-
-    it('updates only the matching label count in the Redux summary', () => {
-        expect(reconcileEmailLineLabelCount('c1', 'L1', 2)).toBe(true)
-
-        const action = mockDispatch.mock.calls[0][0]
-        expect(action.key).toBe('c1')
-        expect(action.summary.labels).toEqual([
-            { labelId: 'L1', displayName: 'Ads', threadCount: 2, unreadCount: 3 },
-            summaryWithLabel.labels[1],
-        ])
-        expect(action.summary.provider).toBe('google')
-    })
-
-    it('accepts zero but ignores missing, unchanged, and invalid counts', () => {
-        expect(reconcileEmailLineLabelCount('c1', 'L1', 0)).toBe(true)
-        expect(reconcileEmailLineLabelCount('c1', 'missing', 1)).toBe(false)
-        expect(reconcileEmailLineLabelCount('c1', 'L1', 5)).toBe(false)
-        expect(reconcileEmailLineLabelCount('c1', 'L1', Number.NaN)).toBe(false)
-        expect(mockDispatch).toHaveBeenCalledTimes(1)
     })
 })

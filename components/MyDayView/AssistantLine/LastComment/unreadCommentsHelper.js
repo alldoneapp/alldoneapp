@@ -1,5 +1,3 @@
-import { isLiveComment } from './liveComment'
-
 export const getUnreadCommentIds = (chatNotifications, isFollowedNotification) => {
     const commentIds = isFollowedNotification
         ? chatNotifications?.followedCommentIds
@@ -50,6 +48,19 @@ const getUnreadNotifications = (chatNotifications, isFollowedNotification) => {
 
     // Backwards compatibility for state restored before notification metadata was added.
     return getUnreadCommentIds(chatNotifications, isFollowedNotification).map(commentId => ({ commentId }))
+}
+
+const isLiveComment = comment => {
+    if (!comment || typeof comment === 'string') return false
+
+    const assistantRunStatus = comment.assistantRun?.status
+    return (
+        comment.isLoading === true ||
+        comment.isThinking === true ||
+        comment.isPartial === true ||
+        assistantRunStatus === 'running' ||
+        assistantRunStatus === 'cancel_requested'
+    )
 }
 
 const normalizeComment = comment => (typeof comment === 'string' ? { id: comment } : comment || {})

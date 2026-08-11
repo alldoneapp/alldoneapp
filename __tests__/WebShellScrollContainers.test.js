@@ -13,7 +13,6 @@ const TEMPLATES = [
     ['web-bundler/index.html', 'deployed webpack pipeline template'],
     ['web/index.html', 'legacy expo template'],
 ]
-const MANIFESTS = ['web-bundler/static/manifest.json', 'web/manifest.json']
 
 const readShellRule = relativePath => {
     const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
@@ -28,7 +27,7 @@ describe('Web app shell scroll containers', () => {
 
         expect(rule).not.toBeNull()
         expect(rule).toMatch(/(^|[\s;])height:\s*100%\s*;/)
-        // border-box keeps safe-area padding from exceeding that height
+        // border-box keeps the safe-area padding on body from exceeding that height
         expect(rule).toMatch(/box-sizing:\s*border-box\s*;/)
     })
 
@@ -61,14 +60,6 @@ describe('Web app shell scroll containers', () => {
         expect(descendantRule[1]).toMatch(/min-height:\s*0\s*;/)
     })
 
-    test.each(TEMPLATES)('%s (%s) does not double-count the bottom safe area with the keyboard', relativePath => {
-        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
-        const rootRules = [...html.matchAll(/html\.app-keyboard-open #root\s*\{([^}]*)\}/g)].map(match => match[1])
-
-        expect(rootRules).not.toHaveLength(0)
-        expect(rootRules.some(rule => /padding-bottom:\s*0\s*!important\s*;/.test(rule))).toBe(true)
-    })
-
     // The declarative half of the same fix: Android Chrome resizes the layout
     // viewport itself when asked to, which the JS side detects and stays out of.
     test.each(TEMPLATES)('%s (%s) asks Android to resize the content for the keyboard', relativePath => {
@@ -85,41 +76,5 @@ describe('Web app shell scroll containers', () => {
 
         expect(bodyRule).not.toBeNull()
         expect(bodyRule[1]).toMatch(/overflow-y:\s*auto\s*;/)
-    })
-
-    test.each(TEMPLATES)('%s (%s) does not reserve the bottom safe area anywhere', relativePath => {
-        // Content deliberately flows under the iOS home indicator like native
-        // apps; bottom-anchored interactive surfaces lift themselves instead
-        // (useHomeIndicatorLift, BottomSheet). Only top/left/right stay on body.
-        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
-        const bodyRule = html.match(/\n\s*body\s*\{([^}]*)\}/)
-        const rootRules = [...html.matchAll(/\n\s*#root\s*\{([^}]*)\}/g)].map(match => match[1])
-
-        expect(bodyRule).not.toBeNull()
-        expect(rootRules).not.toHaveLength(0)
-        for (const side of ['top', 'right', 'left']) {
-            expect(bodyRule[1]).toMatch(new RegExp(`padding-${side}:\\s*env\\(safe-area-inset-${side}\\)`))
-        }
-        expect(bodyRule[1]).not.toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom\)/)
-        expect(rootRules.some(rule => /padding-bottom:\s*env\(safe-area-inset-bottom\)/.test(rule))).toBe(false)
-    })
-
-    test.each(TEMPLATES)('%s (%s) configures a light standalone iOS status area', relativePath => {
-        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
-
-        expect(html).toMatch(/name="viewport"[^>]+viewport-fit=cover/)
-        expect(html).toMatch(/name="theme-color"\s+content="#FFFFFF"/)
-        expect(html).toMatch(/name="apple-mobile-web-app-capable"\s+content="yes"/)
-        expect(html).toMatch(/name="apple-mobile-web-app-status-bar-style"\s+content="default"/)
-        expect(html).not.toMatch(/navigator\.maxTouchPoints[\s\S]+background-color/)
-    })
-})
-
-describe('PWA display configuration', () => {
-    test.each(MANIFESTS)('%s uses standalone display and the app-shell color', relativePath => {
-        const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8'))
-
-        expect(manifest.display).toBe('standalone')
-        expect(manifest.theme_color).toBe('#FFFFFF')
     })
 })

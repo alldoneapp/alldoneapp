@@ -1,3 +1,6 @@
+import { getDb } from '../../utils/backends/firestore'
+import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
+
 export {
     TASKS_INDEX_NAME_PREFIX,
     GOALS_INDEX_NAME_PREFIX,
@@ -6,6 +9,8 @@ export {
     CHATS_INDEX_NAME_PREFIX,
 } from './searchIndexes'
 
-// startGlobalAssistantsIndexationInAlgolia was removed in Phase 4 of the Typesense
-// migration together with the algoliaIndexation trigger flow it fed. Global assistants
-// are reindexed with: node migration/backfillTypesense.js --project-id=globalProject
+export const startGlobalAssistantsIndexationInAlgolia = async () => {
+    await getDb().doc(`algoliaIndexation/${GLOBAL_PROJECT_ID}/objectTypes/assistants`).set({
+        activeFullSearchDate: null,
+    })
+}

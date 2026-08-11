@@ -1,4 +1,4 @@
-// Jest configuration for both branch and deployment web checks.
+// Jest configuration for the web-only CI check (test:web:changed).
 //
 // That job runs in build_base, which carries the root node_modules and nothing
 // else. Cloud Functions keep a separate dependency tree - firebase-admin,
@@ -23,11 +23,5 @@ const baseConfig = require('../package.json').jest
 module.exports = {
     ...baseConfig,
     rootDir: path.resolve(__dirname, '..'),
-    testPathIgnorePatterns: [
-        ...baseConfig.testPathIgnorePatterns,
-        '<rootDir>/functions/',
-        // This suite owns its emulator lifecycle and runs in the dedicated
-        // test:firestore:rules job. The regular web image does not start one.
-        '<rootDir>/__tests__/Firestore/firestoreRules.emulator.test.js',
-    ],
+    testPathIgnorePatterns: [...baseConfig.testPathIgnorePatterns, '<rootDir>/functions/'],
 }

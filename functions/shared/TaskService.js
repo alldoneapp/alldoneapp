@@ -322,13 +322,13 @@ class TaskService {
                                   : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
-                        return { ...task, projectId: finalProjectId, estimations }
+                        return { ...task, estimations }
                     } catch (_) {
-                        return { ...task, projectId: finalProjectId }
+                        return task
                     }
                 })()
 
-                if (!taskResult.emailTaskPersisted) await taskRef.set(taskToPersist)
+                await taskRef.set(taskToPersist)
 
                 // Persist feeds using Cloud Functions feeds pipeline when available
                 if (feedData && this.options.enableFeeds) {
@@ -470,15 +470,13 @@ class TaskService {
                                   : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
-                        return { ...task, projectId: finalProjectId, estimations }
+                        return { ...task, estimations }
                     } catch (_) {
-                        return { ...task, projectId: finalProjectId }
+                        return task
                     }
                 })()
 
-                if (!taskResult.emailTaskPersisted) {
-                    batch.set ? batch.set(taskRef, taskToPersist) : batch.add(() => taskRef.set(taskToPersist))
-                }
+                batch.set ? batch.set(taskRef, taskToPersist) : batch.add(() => taskRef.set(taskToPersist))
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
@@ -616,32 +614,7 @@ class TaskService {
      * @returns {Promise<Object>} Complete creation result
      */
     async createAndPersistTask(params, context = {}, options = {}) {
-        let taskResult = await this.createTask(params, context)
-
-        if (options.emailThread) {
-            const { persistEmailTaskAtomically, selectEmailThreadTask } = require('../Email/emailThreadTaskStore')
-            const task = taskResult.task
-            task.gmailData = {
-                ...task.gmailData,
-                accountUserId: options.emailThread.userId,
-                messageIds: [...new Set([task.gmailData.messageId, ...(task.gmailData.messageIds || [])])],
-                lastEmailReceivedAt: task.gmailData.receivedAt || 0,
-                taskContent: {
-                    name: task.name,
-                    description: task.description || '',
-                    dueDate: task.dueDate,
-                    priority: task.priority,
-                },
-            }
-            taskResult = await persistEmailTaskAtomically({
-                database: this.options.database,
-                taskResult: { ...taskResult, projectId: params.projectId },
-                ...options.emailThread,
-                selectMatch: selectEmailThreadTask,
-            })
-            if (taskResult.existing) return { ...taskResult, success: true }
-            taskResult.emailTaskPersisted = true
-        }
+        const taskResult = await this.createTask(params, context)
 
         // Ensure projectId is available for persistence
         const persistOptions = {
@@ -686,8 +659,6 @@ class TaskService {
             completed,
             userId,
             parentId,
-            parentGoalId,
-            parentGoalProjectId,
             feedUser,
             focus,
             focusUserId,
@@ -709,30 +680,6 @@ class TaskService {
         // Build update object with only provided fields
         const updateData = {}
         const changes = []
-
-        let parentGoalChange = null
-        if (parentGoalId !== undefined) {
-            const { prepareTaskParentGoalUpdate, normalizeParentGoalId } = require('./taskParentGoal')
-            const requestingUserId = initiatorId || context.userId
-            const goalUpdate = await prepareTaskParentGoalUpdate(
-                this.options.database,
-                requestingUserId,
-                projectId,
-                currentTask,
-                parentGoalId,
-                parentId,
-                parentGoalProjectId
-            )
-            if (Object.keys(goalUpdate).length > 0) {
-                Object.assign(updateData, goalUpdate)
-                changes.push(parentGoalId === null ? 'parent goal cleared' : 'parent goal')
-                parentGoalChange = {
-                    userId: requestingUserId,
-                    parentGoalId: normalizeParentGoalId(parentGoalId),
-                    parentGoalProjectId: goalUpdate.projectId || projectId,
-                }
-            }
-        }
 
         if (name !== undefined) {
             updateData.name = String(name)
@@ -944,7 +891,6 @@ class TaskService {
 
         return {
             updateData,
-            parentGoalChange,
             beforeData: Object.keys(updateData).reduce((result, field) => {
                 result[field] = currentTask[field] === undefined ? null : currentTask[field]
                 return result
@@ -977,19 +923,10 @@ class TaskService {
             throw new Error('Database interface not configured')
         }
 
-        const {
-            updateData,
-            beforeData,
-            updatedTask,
-            feedData,
-            taskId,
-            focusAction,
-            undoInitiatorId,
-            parentGoalChange,
-        } = updateResult
+        const { updateData, beforeData, updatedTask, feedData, taskId, focusAction, undoInitiatorId } = updateResult
         const { projectId, batch: externalBatch, feedUser } = options
 
-        let finalProjectId = projectId || updatedTask.projectId
+        const finalProjectId = projectId || updatedTask.projectId
         if (!finalProjectId) {
             throw new Error('Project ID is required for task update persistence')
         }
@@ -1005,14 +942,10 @@ class TaskService {
         }
 
         try {
-            if (parentGoalChange && externalBatch) {
-                throw new Error('Parent goal changes cannot use an external batch')
-            }
             // Use external batch if provided, or create new one
-            const batch = parentGoalChange
-                ? null
-                : externalBatch ||
-                  (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
+            const batch =
+                externalBatch ||
+                (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
 
             if (!batch && !externalBatch) {
                 // Direct write if no batch support
@@ -1044,20 +977,7 @@ class TaskService {
                         }
                     })()
 
-                    if (parentGoalChange) {
-                        const { persistTaskParentGoalUpdate } = require('./taskParentGoal')
-                        const persisted = await persistTaskParentGoalUpdate(this.options.database, {
-                            projectId: finalProjectId,
-                            taskId,
-                            ...parentGoalChange,
-                            updateData: updateDataToApply,
-                        })
-                        finalProjectId = persisted.updatedTask.projectId || finalProjectId
-                        Object.assign(updateData, persisted.updateData)
-                        Object.assign(updatedTask, persisted.updatedTask)
-                    } else {
-                        await taskRef.update(updateDataToApply)
-                    }
+                    await taskRef.update(updateDataToApply)
                 }
 
                 // Persist feeds using Cloud Functions feeds pipeline when available

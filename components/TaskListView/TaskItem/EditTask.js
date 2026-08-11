@@ -57,9 +57,6 @@ import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
 import { taskEditorLayout } from './TaskEditorLayout'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
-import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
-import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
-import { postponeTaskWithMotion } from './TaskPresentation/taskPostponeMotion'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -113,7 +110,6 @@ export default function EditTask({
     createSubtask,
 }) {
     const dispatch = useDispatch()
-    useTaskEditorLock(!adding)
     let currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -133,7 +129,6 @@ export default function EditTask({
         linkedParentGoalsUrl: [],
         linkedParentSkillsUrl: [],
         linkedParentAssistantsUrl: [],
-        linkedParentArtifactsUrl: [],
     })
     const [linkedObjects, setLinkedObjects] = useState({
         initialLinkedTasksUrl: [],
@@ -150,13 +145,6 @@ export default function EditTask({
         adding ? generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) : cloneDeep(task)
     )
     const [newTaskInFocus, setNewTaskInFocus] = useState(false)
-
-    // The task exactly as it was when this editor opened. `tmpTask` starts as a copy of it and only
-    // ever diverges through the user's own actions, so the two together say precisely which fields
-    // this editing session owns - which is what lets a save keep the background updates that landed
-    // meanwhile instead of reverting them. See mergeBackgroundTaskUpdates.js (AT-2267).
-    const openedTaskRef = useRef(undefined)
-    if (openedTaskRef.current === undefined) openedTaskRef.current = adding || !task ? null : cloneDeep(task)
 
     const inputTask = useRef(null)
     // Opening a task line replaces a one-line row with a much taller editor, so
@@ -227,12 +215,12 @@ export default function EditTask({
                     const finalTask = { ...tmpTask, ...goalData }
                     // Note: Creating task in different project requires changing projectId context
                     // For now, just create with goal data - the task will be in current project with new goal
-                    return createTask(finalTask, false, false)
+                    createTask(finalTask, false, false)
                 } else {
-                    return setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
+                    setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
+                    dismissEditMode(true)
                 }
             }
-            return false
         } else {
             // Same project or no goal, just update the parent goal
             const goalData = goal
@@ -240,7 +228,7 @@ export default function EditTask({
                 : { parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
 
             const finalTask = { ...tmpTask, ...goalData }
-            return adding ? createTask(finalTask, false, false) : editTask(finalTask, false, false, null, '', true)
+            adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
         }
     }
 
@@ -253,63 +241,42 @@ export default function EditTask({
     const setDueDateBeforeSave = (dueDate, updateObservedDueDate) => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: dueDate,
-                updatesDueDate: moveObservedDateAndDueDate || !updateObservedDueDate,
-                updatesObservedDate: moveObservedDateAndDueDate || updateObservedDueDate,
-            },
-            () => {
-                if (moveObservedDateAndDueDate) {
-                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
-                    return editTask(finalTask, true, false, null, '')
-                } else if (updateObservedDueDate) {
-                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds }
-                    return editTask(finalTask, true, false, null, '')
-                } else {
-                    const finalTask = { ...tmpTask, dueDate }
-                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
-                }
+        if (moveObservedDateAndDueDate) {
+            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
+            editTask(finalTask, true, false, null, '')
+        } else {
+            if (updateObservedDueDate) {
+                const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+                const finalTask = { ...tmpTask, dueDateByObserversIds }
+                editTask(finalTask, true, false, null, '')
+            } else {
+                const finalTask = { ...tmpTask, dueDate }
+                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
             }
-        )
+        }
     }
 
     const setToBacklogBeforeSave = updateObservedBacklog => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: BACKLOG_DATE_NUMERIC,
-                updatesDueDate: moveObservedDateAndDueDate || !updateObservedBacklog,
-                updatesObservedDate: moveObservedDateAndDueDate || updateObservedBacklog,
-            },
-            () => {
-                if (moveObservedDateAndDueDate) {
-                    const dueDateByObserversIds = {
-                        ...tmpTask.dueDateByObserversIds,
-                        [currentUserId]: BACKLOG_DATE_NUMERIC,
-                    }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
-                    return editTask(finalTask, true, false, null, '')
-                } else if (updateObservedBacklog) {
-                    const dueDateByObserversIds = {
-                        ...tmpTask.dueDateByObserversIds,
-                        [currentUserId]: BACKLOG_DATE_NUMERIC,
-                    }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds }
-                    return editTask(finalTask, true, false, null)
-                } else {
-                    const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
-                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+        if (moveObservedDateAndDueDate) {
+            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: BACKLOG_DATE_NUMERIC }
+            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
+            editTask(finalTask, true, false, null, '')
+        } else {
+            if (updateObservedBacklog) {
+                const dueDateByObserversIds = {
+                    ...tmpTask.dueDateByObserversIds,
+                    [currentUserId]: BACKLOG_DATE_NUMERIC,
                 }
+                const finalTask = { ...tmpTask, dueDateByObserversIds }
+                editTask(finalTask, true, false, null)
+            } else {
+                const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
+                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
             }
-        )
+        }
     }
 
     const setPrivacyBeforeSave = (isPrivate, isPublicFor) => {
@@ -372,8 +339,7 @@ export default function EditTask({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl,
-        linkedParentArtifactsUrl
+        linkedParentAssistantsUrl
     ) => {
         const extendedName = text.replace(/\r?\n|\r/g, '')
 
@@ -385,7 +351,6 @@ export default function EditTask({
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
-            linkedParentArtifactsUrl,
         })
 
         setTmpTask({ ...tmpTask, extendedName, name: TasksHelper.getTaskNameWithoutMeta(extendedName) })
@@ -478,16 +443,9 @@ export default function EditTask({
     // open) able to create consecutive distinct tasks.
     const createTask = useSingleFlightSubmit(runCreateTask, RELEASE_AFTER_SUBMISSION)
 
-    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment, deferDismiss = false) => {
+    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment) => {
         updatedTask.name = updatedTask.name.trim()
         updatedTask.extendedName = updatedTask.extendedName.trim()
-
-        // The editor now stays open across background updates (AT-2267), so by the time this runs
-        // the live task may already carry a goal an assistant assigned, a due date a colleague
-        // moved, and so on. `updatedTask` descends from the clone taken when the editor opened and
-        // `updateTask` writes the whole document, so saving it verbatim would revert all of it.
-        // Send only what this editing session actually changed, on top of the live task.
-        updatedTask = mergeBackgroundTaskUpdates(openedTaskRef.current, updatedTask, task)
 
         if (followUpData) {
             const { inBacklog, date } = followUpData
@@ -518,13 +476,13 @@ export default function EditTask({
         }
 
         const mentions = TasksHelper.getMentionUsersFromTitle(projectId, comment)
-        const saving = updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(
-            () => trySetLinkedObjects(taskToUpdate.id)
+        updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(() =>
+            trySetLinkedObjects(taskToUpdate.id)
         )
 
         if (validDirectAction) dispatch(hideFloatPopup())
 
-        if (!deferDismiss) dismissEditMode(true)
+        dismissEditMode(true)
 
         if (
             (currentUserId !== loggedUserId || loggedUserId !== updatedTask.userId) &&
@@ -535,8 +493,6 @@ export default function EditTask({
                 dispatch(updateTaskSuggestedCommentModalData(true, projectId, updatedTask, updatedTask.extendedName))
             })
         }
-
-        return saving
     }
 
     const setTask = (event, actionBeforeSave, validDirectAction, showSuggested) => {
@@ -751,7 +707,6 @@ export default function EditTask({
     return (
         <View
             ref={editorContainerRef}
-            dataSet={{ keyboardRevealTarget: true }}
             onLayout={onContainerLayout}
             style={[
                 localStyles.container,

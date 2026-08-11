@@ -8,9 +8,9 @@ import store from '../../../redux/store'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import GoldArea from '../GoldArea'
-import AssistantModeButton from '../AssistantModeButton'
+import HomeButton from '../HomeButton'
 
-export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact, showMenu = true }) {
+export default function TopBarMobileStatisticArea({ expandSecondaryBar, homeIconColor }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -25,18 +25,12 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar, compact,
 
     return (
         <View style={localStyle.container}>
-            {showMenu && (
-                <TouchableOpacity style={localStyle.menu} onPress={showSideBar} accessible={false}>
-                    <Icon name={'menu'} size={24} color={theme.menuIcon} />
-                </TouchableOpacity>
-            )}
-            <AssistantModeButton
-                inline
-                style={localStyle.assistantButton}
-                onOpen={() => store.getState().expandedNavPicker && expandSecondaryBar?.()}
-            />
+            <TouchableOpacity style={localStyle.menu} onPress={showSideBar} accessible={false}>
+                <Icon name={'menu'} size={24} color={theme.menuIcon} />
+            </TouchableOpacity>
+            <HomeButton color={homeIconColor} style={localStyle.homeButton} expandSecondaryBar={expandSecondaryBar} />
 
-            {!isAnonymous && !compact && <GoldArea />}
+            {!isAnonymous && <GoldArea />}
         </View>
     )
 }
@@ -54,7 +48,7 @@ const localStyle = StyleSheet.create({
         marginRight: 8,
         overflow: 'hidden',
     },
-    assistantButton: {
+    homeButton: {
         marginRight: 18,
     },
 })

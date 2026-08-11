@@ -8,20 +8,11 @@ import renderer from 'react-test-renderer'
 import TaskHeaderMoreButton from './TaskHeaderMoreButton'
 import { clearUserOKRsHiddenInAllProjectsToday } from '../../../../../utils/backends/Users/usersFirestore'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
-import NavigationService from '../../../../../utils/NavigationService'
-import { setSelectedNavItem } from '../../../../../redux/actions'
-import { openProjectWiki } from '../../../../WikiView/wikiLinks'
 
 let mockState
-const mockDispatch = jest.fn()
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
-    useDispatch: jest.fn(() => mockDispatch),
-}))
-
-jest.mock('../../../../../redux/actions', () => ({
-    setSelectedNavItem: jest.fn(tab => ({ type: 'SET_SELECTED_NAV_ITEM', tab })),
 }))
 
 jest.mock('../Common/MoreButtonWrapper', () => {
@@ -29,7 +20,7 @@ jest.mock('../Common/MoreButtonWrapper', () => {
     const { View } = require('react-native')
     return React.forwardRef(({ children }, ref) => {
         React.useImperativeHandle(ref, () => ({ close: jest.fn() }))
-        return <View testID="menu">{children}</View>
+        return <View>{children}</View>
     })
 })
 
@@ -40,14 +31,11 @@ jest.mock('../../MorePopupsOfEditModals/Common/ModalItem', () => {
 })
 
 jest.mock('../../MorePopupsOfEditModals/Common/CopyLinkModalItem', () => () => null)
-jest.mock('../../GoalMilestoneModal/Line', () => 'MenuLine')
 jest.mock('../Common/OpenInNewWindowModalItem', () => () => null)
 jest.mock('./SyncCalendarModalItem', () => () => null)
 jest.mock('./DateBarOrganizeModalItem', () => () => null)
 jest.mock('../../../../TaskListView/OKRs/OKRModal', () => () => null)
 jest.mock('../../../../TaskListView/AutoPostpone/AutoPostponeTasksModal', () => () => null)
-jest.mock('./PrioritizeTasksModalItem', () => props => <span {...props}>Prioritize tasks</span>)
-jest.mock('../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal', () => 'GoldModal')
 jest.mock('../../../../../utils/backends/openTasks', () => ({
     DATE_TASK_INDEX: 0,
     TODAY_DATE: '20260724',
@@ -71,20 +59,16 @@ jest.mock('../../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     default: {
         processURLProjectDetailsTab: jest.fn(),
     },
-    checkIfSelectedAllProjects: jest.fn(index => index === -1),
+    checkIfSelectedAllProjects: jest.fn(() => false),
 }))
-jest.mock('../../../../../utils/NavigationService', () => ({
-    navigate: jest.fn(),
-}))
-jest.mock('../../../../WikiView/wikiLinks', () => ({ openProjectWiki: jest.fn() }))
+jest.mock('../../../../../utils/NavigationService', () => ({}))
 
 const projectId = 'project-1'
 const okrs = [{ id: 'okr-1' }, { id: 'okr-2' }]
 
-const createState = (hiddenTodayById = {}, selectedProjectIndex = 0) => ({
-    selectedProjectIndex,
+const createState = hiddenTodayById => ({
+    selectedProjectIndex: 0,
     loggedUserProjects: [{ id: projectId }],
-    loggedUserProjectsMap: { [projectId]: { id: projectId, index: 7 } },
     okrsByProjectInTasks: { [projectId]: okrs },
     filteredOpenTasksStore: {},
     loggedUser: {
@@ -103,98 +87,6 @@ const renderMenu = hiddenTodayById => {
 
 const findItems = tree => tree.root.findAll(node => typeof node.props.text === 'string')
 
-describe('TaskHeaderMoreButton project wiki', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-    })
-
-    it('opens the wiki of the selected project for a member', () => {
-        mockState = createState()
-        mockState.loggedUser.projectIds = [projectId]
-        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        const wikiItem = findItems(tree).find(node => node.props.text === 'Project wiki')
-
-        wikiItem.props.onPress()
-
-        expect(openProjectWiki).toHaveBeenCalledWith(projectId)
-    })
-
-    it('offers no wiki to a guest of a shared project, nor in All Projects', () => {
-        mockState = createState()
-        mockState.loggedUser.projectIds = ['another-project']
-        const guest = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        expect(findItems(guest).map(node => node.props.text)).not.toContain('Project wiki')
-
-        mockState = createState({}, -1)
-        mockState.loggedUser.projectIds = [projectId]
-        const allProjects = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        expect(findItems(allProjects).map(node => node.props.text)).not.toContain('Project wiki')
-    })
-})
-
-describe('TaskHeaderMoreButton project navigation', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-    })
-
-    it('shows Open Project first with a separator for a project row in All Projects', () => {
-        mockState = createState({}, -1)
-        const tree = renderer.create(<TaskHeaderMoreButton projectIdOverride={projectId} userId="user-1" />)
-        const items = findItems(tree)
-
-        expect(items[0].props.text).toBe('Open Project')
-        expect(items[0].props.shortcut).toBe('1')
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId, shortcut: '2' })
-        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('3')
-        expect(tree.root.findAllByType('MenuLine')).toHaveLength(1)
-
-        items[0].props.onPress()
-
-        expect(setSelectedNavItem).toHaveBeenCalledWith('PROJECT_PROPERTIES')
-        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 7 })
-    })
-
-    it('shows Open Project in the selected project header and opens its Properties tab', () => {
-        mockState = createState()
-        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        const openProjectItem = findItems(tree).find(node => node.props.text === 'Open Project')
-
-        openProjectItem.props.onPress()
-
-        expect(setSelectedNavItem).toHaveBeenCalledWith('PROJECT_PROPERTIES')
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NAV_ITEM', tab: 'PROJECT_PROPERTIES' })
-        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 7 })
-    })
-
-    it('offers prioritization across all projects without an Open Project item', () => {
-        mockState = createState({}, -1)
-        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        const items = findItems(tree)
-
-        expect(items.map(node => node.props.text)).not.toContain('Open Project')
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId: null, shortcut: '1' })
-        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('2')
-        expect(tree.root.findAllByType('MenuLine')).toHaveLength(0)
-    })
-
-    it('keeps the All Projects header scope when a project remains selected in the store', () => {
-        mockState = createState()
-        const tree = renderer.create(<TaskHeaderMoreButton projectIdOverride={null} userId="user-1" />)
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId: null, shortcut: '1' })
-        expect(findItems(tree).map(node => node.props.text)).not.toContain('Open Project')
-    })
-
-    it('reuses the gold modal and clears it when closing the menu', () => {
-        mockState = createState()
-        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        renderer.act(() => tree.root.findByType('span').props.onRunOutOfGold())
-        const wrapper = tree.root.find(node => typeof node.props.onCloseModal === 'function')
-        expect(wrapper.props.customModal.type).toBe('GoldModal')
-        renderer.act(() => wrapper.props.onCloseModal())
-        expect(wrapper.props.customModal).toBeNull()
-    })
-})
-
 describe('TaskHeaderMoreButton OKR actions', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -207,7 +99,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
         })
         const labels = findItems(tree).map(node => node.props.text)
 
-        expect(labels).toEqual(expect.arrayContaining(['OKR History', 'Undo all OKRs for today', 'Add OKR']))
+        expect(labels).toEqual(expect.arrayContaining(['History', 'Undo all OKRs for today', 'Add OKR']))
         expect(labels).not.toContain('Show all')
     })
 
@@ -217,7 +109,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
         })
         const labels = findItems(tree).map(node => node.props.text)
 
-        expect(labels).not.toContain('OKR History')
+        expect(labels).not.toContain('History')
         expect(labels).not.toContain('Undo all OKRs for today')
         expect(labels).not.toContain('Add OKR')
         expect(labels).not.toContain('Show all')
@@ -240,7 +132,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
             'okr-1': '2026-07-24',
             'okr-2': '2026-07-24',
         })
-        const historyItem = findItems(tree).find(node => node.props.text === 'OKR History')
+        const historyItem = findItems(tree).find(node => node.props.text === 'History')
 
         historyItem.props.onPress()
 

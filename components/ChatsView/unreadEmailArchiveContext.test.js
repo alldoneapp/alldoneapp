@@ -12,19 +12,10 @@ import {
     useUnreadLinkedEmailsScope,
 } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
-import { clearChatCommentsForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
-import { syncEmailCommentsReadState } from '../../utils/backends/EmailLine/emailCommentReadSync'
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
-// Archiving clears the comment's unread state first and gets a rollback back (AT-2424).
-jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
-    clearChatCommentsForLinkedEmails: jest.fn(async () => async () => {}),
-}))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
-jest.mock('../../utils/backends/EmailLine/emailCommentReadSync', () => ({
-    syncEmailCommentsReadState: jest.fn(),
-}))
 
 const email = (connectionProjectId, messageId) => ({
     key: `${connectionProjectId}:${messageId}`,
@@ -59,35 +50,6 @@ describe('collectUnreadLinkedEmails', () => {
         // project sections; archiving it twice is the failure this deduplication prevents.
         const keys = collectUnreadLinkedEmails(sources).map(item => item.key)
         expect(new Set(keys).size).toBe(keys.length)
-    })
-
-    it('keeps every chat comment when the same email is previewed in two topics', () => {
-        const merged = collectUnreadLinkedEmails({
-            'project-1:chat-1': {
-                projectId: 'project-1',
-                linkedEmails: [
-                    {
-                        ...email('conn-a', 'm1'),
-                        commentRefs: [{ projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' }],
-                    },
-                ],
-            },
-            'project-1:chat-2': {
-                projectId: 'project-1',
-                linkedEmails: [
-                    {
-                        ...email('conn-a', 'm1'),
-                        commentRefs: [{ projectId: 'project-1', chatId: 'chat-2', commentId: 'comment-2' }],
-                    },
-                ],
-            },
-        })
-
-        expect(merged).toHaveLength(1)
-        expect(merged[0].commentRefs).toEqual([
-            { projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' },
-            { projectId: 'project-1', chatId: 'chat-2', commentId: 'comment-2' },
-        ])
     })
 
     it('tolerates an empty, missing or half-written registry', () => {
@@ -236,46 +198,7 @@ describe('UnreadEmailArchiveProvider', () => {
         })
 
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
-        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
-        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledWith([email('conn-a', 'm1')])
         expect(lastScope().archive.isArchivedEmail('conn-a:m1')).toBe(true)
-    })
-
-    // Gmail → Alldone read sync (AT-2376): the previewed emails are exactly the set worth
-    // reconciling against the mailbox, so the provider hands them to the sync as they change.
-    it('reconciles the previewed unread emails against the mailbox', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(
-                <UnreadEmailArchiveProvider>
-                    <PreviewRegistration
-                        sourceKey="project-1:chat-1"
-                        projectId="project-1"
-                        linkedEmails={[email('conn-a', 'm1')]}
-                    />
-                </UnreadEmailArchiveProvider>
-            )
-        })
-
-        expect(syncEmailCommentsReadState).toHaveBeenCalledWith([email('conn-a', 'm1')])
-
-        // Returning to the tab re-checks immediately: the user just handled the mail in Gmail,
-        // and nothing inside the app changed to trigger the effect above.
-        syncEmailCommentsReadState.mockClear()
-        await act(async () => {
-            document.dispatchEvent(new Event('visibilitychange'))
-        })
-        expect(syncEmailCommentsReadState).toHaveBeenCalledWith([email('conn-a', 'm1')], { force: true })
-
-        // Nothing previewed, nothing to ask about.
-        syncEmailCommentsReadState.mockClear()
-        await act(async () => {
-            tree.unmount()
-        })
-        await act(async () => {
-            renderer.create(<UnreadEmailArchiveProvider />)
-        })
-        expect(syncEmailCommentsReadState).not.toHaveBeenCalled()
     })
 
     it('gives no scope at all outside the provider, which is how the buttons stay hidden', () => {

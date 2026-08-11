@@ -5,32 +5,17 @@
 import React from 'react'
 import { ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
-import { Provider } from 'react-redux'
-import { createStore } from 'redux'
 
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider, useRegisterUnreadLinkedEmails } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { markMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
-import { clearChatCommentsForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 
-jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({
-    performEmailLineAction: jest.fn(),
-    // The provider reconciles previewed emails against the mailbox (AT-2376); it must not reach
-    // the real callable from a row test.
-    fetchEmailLineMessageStates: jest.fn(async () => []),
-}))
+jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markMessagesAsRead: jest.fn(),
     markChatMessagesAsRead: jest.fn(),
-}))
-
-// The archive clears the unread state of the matching chat comments first and hands back the
-// rollback (AT-2424); the restore is what a failed mailbox archive calls.
-const restoreUnreadState = jest.fn()
-jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
-    clearChatCommentsForLinkedEmails: jest.fn(),
 }))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
@@ -48,21 +33,16 @@ const PreviewRegistration = ({ sourceKey, projectId, linkedEmails }) => {
     return null
 }
 
-// `smallScreenNavigation` drives the icon-only mobile variant of the button (AT-2263); it is
-// undefined - i.e. the desktop, labelled variant - unless a case opts in.
-const renderButton = ({ projectId, registrations = [], smallScreenNavigation = false }) => {
-    const store = createStore(() => ({ smallScreenNavigation }))
+const renderButton = ({ projectId, registrations = [] }) => {
     let tree
     act(() => {
         tree = renderer.create(
-            <Provider store={store}>
-                <UnreadEmailArchiveProvider>
-                    {registrations.map(registration => (
-                        <PreviewRegistration key={registration.sourceKey} {...registration} />
-                    ))}
-                    <ArchiveUnreadEmailsButton projectId={projectId} />
-                </UnreadEmailArchiveProvider>
-            </Provider>
+            <UnreadEmailArchiveProvider>
+                {registrations.map(registration => (
+                    <PreviewRegistration key={registration.sourceKey} {...registration} />
+                ))}
+                <ArchiveUnreadEmailsButton projectId={projectId} />
+            </UnreadEmailArchiveProvider>
         )
     })
     return tree
@@ -80,10 +60,7 @@ const labelsOf = tree =>
 const archivePayloads = () => performEmailLineAction.mock.calls.map(([projectId, payload]) => [projectId, payload])
 
 describe('ArchiveUnreadEmailsButton visibility', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        clearChatCommentsForLinkedEmails.mockResolvedValue(restoreUnreadState)
-    })
+    beforeEach(() => jest.clearAllMocks())
 
     it('renders nothing outside the chat list, where there is no preview registry at all', () => {
         let tree
@@ -137,49 +114,27 @@ describe('ArchiveUnreadEmailsButton visibility', () => {
         expect(labelsOf(tree)).toEqual(['Archive emails'])
     })
 
-    // AT-2263: "Archive all emails" is the widest label on the line and is what overlapped the
-    // project title on a phone. On mobile only the archive icon is drawn.
-    it('shows the icon without its label on mobile, keeping the wording as the accessible name', () => {
-        const tree = renderButton({
-            projectId: 'project-1',
-            registrations: [
-                { sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [email('conn-a', 'm1')] },
-            ],
-            smallScreenNavigation: true,
-        })
-
-        expect(labelsOf(tree)).toEqual([])
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Archive emails')
-        // Still one press away, and still the same press.
-        expect(buttonOf(tree).props.disabled).toBe(false)
-    })
-
     it('disappears again when the last preview holding an email unmounts', () => {
-        const store = createStore(() => ({ smallScreenNavigation: false }))
         let tree
         act(() => {
             tree = renderer.create(
-                <Provider store={store}>
-                    <UnreadEmailArchiveProvider>
-                        <PreviewRegistration
-                            sourceKey="project-1:chat-1"
-                            projectId="project-1"
-                            linkedEmails={[email('conn-a', 'm1')]}
-                        />
-                        <ArchiveUnreadEmailsButton projectId="project-1" />
-                    </UnreadEmailArchiveProvider>
-                </Provider>
+                <UnreadEmailArchiveProvider>
+                    <PreviewRegistration
+                        sourceKey="project-1:chat-1"
+                        projectId="project-1"
+                        linkedEmails={[email('conn-a', 'm1')]}
+                    />
+                    <ArchiveUnreadEmailsButton projectId="project-1" />
+                </UnreadEmailArchiveProvider>
             )
         })
         expect(tree.toJSON()).not.toBeNull()
 
         act(() => {
             tree.update(
-                <Provider store={store}>
-                    <UnreadEmailArchiveProvider>
-                        <ArchiveUnreadEmailsButton projectId="project-1" />
-                    </UnreadEmailArchiveProvider>
-                </Provider>
+                <UnreadEmailArchiveProvider>
+                    <ArchiveUnreadEmailsButton projectId="project-1" />
+                </UnreadEmailArchiveProvider>
             )
         })
 
@@ -188,10 +143,7 @@ describe('ArchiveUnreadEmailsButton visibility', () => {
 })
 
 describe('ArchiveUnreadEmailsButton scope', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        clearChatCommentsForLinkedEmails.mockResolvedValue(restoreUnreadState)
-    })
+    beforeEach(() => jest.clearAllMocks())
 
     const twoProjects = [
         {
@@ -223,13 +175,10 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual(
-            expect.arrayContaining([
-                ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
-                ['conn-b', { action: 'archive', messageIds: ['m3'] }],
-            ])
-        )
-        expect(archivePayloads()).toHaveLength(2)
+        expect(archivePayloads()).toEqual([
+            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
+            ['conn-b', { action: 'archive', messageIds: ['m3'] }],
+        ])
     })
 
     it('archives an email previewed by two topics exactly once', async () => {
@@ -270,12 +219,13 @@ describe('ArchiveUnreadEmailsButton scope', () => {
         expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1'] }]])
     })
 
-    it('marks Alldone chats as read without changing the mailbox read state', async () => {
+    it('never marks anything as read - archiving is a mailbox action', async () => {
         performEmailLineAction.mockResolvedValue(undefined)
-        const linked = email('conn-a', 'm1')
         const tree = renderButton({
             projectId: 'project-1',
-            registrations: [{ sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [linked] }],
+            registrations: [
+                { sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [email('conn-a', 'm1')] },
+            ],
         })
 
         await act(async () => {
@@ -283,64 +233,27 @@ describe('ArchiveUnreadEmailsButton scope', () => {
         })
 
         expect(markMessagesAsRead).not.toHaveBeenCalled()
-        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
-        expect(performEmailLineAction).not.toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
-        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledWith([linked])
-        expect(restoreUnreadState).not.toHaveBeenCalled()
-    })
-
-    // The bulk version of the AT-2424 ordering: "Archive all emails" over a whole screen of
-    // previews must empty the unread list on the press, not one mailbox round trip later.
-    it('clears the unread state of every email in scope before calling the mailbox', async () => {
-        const order = []
-        clearChatCommentsForLinkedEmails.mockImplementation(async () => {
-            order.push('clear-unread')
-            return restoreUnreadState
-        })
-        performEmailLineAction.mockImplementation(async () => {
-            order.push('mailbox')
-        })
-        const tree = renderButton({ projectId: undefined, registrations: twoProjects })
-
-        await act(async () => {
-            await buttonOf(tree).props.onPress()
-        })
-
-        expect(order[0]).toBe('clear-unread')
-        expect(order.slice(1)).toEqual(['mailbox', 'mailbox'])
     })
 })
 
 describe('ArchiveUnreadEmailsButton states', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        clearChatCommentsForLinkedEmails.mockResolvedValue(restoreUnreadState)
-    })
+    beforeEach(() => jest.clearAllMocks())
 
     const oneEmail = [{ sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [email('conn-a', 'm1')] }]
 
-    // Was "shows a spinner ... while the archive is in flight". Since AT-2424 there is no spinner
-    // to show: the press clears the unread state and flips the button, and the mailbox round trips
-    // (4-8s in production) finish out of sight. A second press must still send nothing.
-    it('reads as Archived and refuses a second press while the mailbox call is still running', async () => {
+    it('shows a spinner and refuses a second press while the archive is in flight', async () => {
         let finishArchive
-        let callCount = 0
-        performEmailLineAction.mockImplementation(() => {
-            callCount += 1
-            if (callCount === 1) return new Promise(resolve => (finishArchive = resolve))
-            return Promise.resolve()
-        })
+        performEmailLineAction.mockImplementation(() => new Promise(resolve => (finishArchive = resolve)))
         const tree = renderButton({ projectId: 'project-1', registrations: oneEmail })
 
         let archivePromise
-        await act(async () => {
+        act(() => {
             archivePromise = buttonOf(tree).props.onPress()
         })
 
-        expect(labelsOf(tree)).toEqual(['Archived'])
-        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0)
+        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1)
         expect(buttonOf(tree).props.disabled).toBe(true)
-        expect(buttonOf(tree).props.accessibilityState).toEqual({ busy: false, disabled: true })
+        expect(buttonOf(tree).props.accessibilityState).toEqual({ busy: true, disabled: true })
 
         act(() => {
             buttonOf(tree).props.onPress()
@@ -351,8 +264,6 @@ describe('ArchiveUnreadEmailsButton states', () => {
             finishArchive()
             await archivePromise
         })
-
-        expect(labelsOf(tree)).toEqual(['Archived'])
     })
 
     it('settles into a completed state once everything in scope is archived', async () => {
@@ -366,9 +277,6 @@ describe('ArchiveUnreadEmailsButton states', () => {
         expect(labelsOf(tree)).toEqual(['Archived'])
         expect(buttonOf(tree).props.disabled).toBe(true)
         expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0)
-        // The accessible name follows the state, because on mobile the swapped icon is the only
-        // other thing that reports it (AT-2263).
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Archived')
     })
 
     it('never sends an already archived email again', async () => {
@@ -408,64 +316,5 @@ describe('ArchiveUnreadEmailsButton states', () => {
         expect(labelsOf(tree)).toEqual(['Archived'])
         consoleError.mockRestore()
         alertSpy.mockRestore()
-    })
-
-    // The failure mode the optimistic clear creates (AT-2424). In the real list, clearing the
-    // unread state unmounts the previewed rows - and this button with them, since its scope goes
-    // empty. The mailbox answer arrives seconds AFTER that, and the rollback brings the rows back;
-    // if the failure had been local state it would have died with the unmount and the emails would
-    // have silently reappeared as if nothing had been pressed.
-    it('still reports a failure that arrives after the previewed rows have gone', async () => {
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        let failArchive
-        performEmailLineAction.mockReturnValue(new Promise((resolve, reject) => (failArchive = reject)))
-
-        const store = createStore(() => ({ smallScreenNavigation: false }))
-        const withRows = (
-            <Provider store={store}>
-                <UnreadEmailArchiveProvider>
-                    <PreviewRegistration
-                        sourceKey="project-1:chat-1"
-                        projectId="project-1"
-                        linkedEmails={[email('conn-a', 'm1')]}
-                    />
-                    <ArchiveUnreadEmailsButton projectId="project-1" />
-                </UnreadEmailArchiveProvider>
-            </Provider>
-        )
-        let tree
-        act(() => {
-            tree = renderer.create(withRows)
-        })
-
-        let archivePromise
-        await act(async () => {
-            archivePromise = buttonOf(tree).props.onPress()
-        })
-
-        // The unread state is cleared, so the row unmounts and takes the button's scope with it.
-        act(() => {
-            tree.update(
-                <Provider store={store}>
-                    <UnreadEmailArchiveProvider>
-                        <ArchiveUnreadEmailsButton projectId="project-1" />
-                    </UnreadEmailArchiveProvider>
-                </Provider>
-            )
-        })
-        expect(tree.toJSON()).toBeNull()
-
-        // Gmail refuses, the rollback restores the unread comments, and the row comes back.
-        await act(async () => {
-            failArchive(new Error('offline'))
-            await archivePromise
-        })
-        act(() => {
-            tree.update(withRows)
-        })
-
-        expect(labelsOf(tree)).toEqual(['try again'])
-        expect(buttonOf(tree).props.disabled).toBe(false)
-        consoleError.mockRestore()
     })
 })

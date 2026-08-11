@@ -476,7 +476,6 @@ async function createSubtasksCopiesInCloudFunction(projectId, newParentTaskId, o
 
             const newSubtask = {
                 ...originalSubtask,
-                projectId,
                 priority: ['must_do', 'should_do', 'could_do', 'do_later', 'none'].includes(originalSubtask.priority)
                     ? originalSubtask.priority
                     : 'none',

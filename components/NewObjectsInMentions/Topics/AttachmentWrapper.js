@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
@@ -33,7 +33,7 @@ export default function AttachmentWrapper({ projectId, addAttachmentTag, disable
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <AttachmentsSelectorModal
                     projectId={projectId}
@@ -68,6 +68,6 @@ export default function AttachmentWrapper({ projectId, addAttachmentTag, disable
                     forceShowShortcut={true}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

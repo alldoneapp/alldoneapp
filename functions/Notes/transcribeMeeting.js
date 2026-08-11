@@ -1,9 +1,12 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { transcribeAudioBase64 } = require('./deepgramTranscribe')
+const { DeepgramClient } = require('@deepgram/sdk')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 
+const admin = require('firebase-admin')
 const { deductGold } = require('../Gold/goldHelper')
-const { withMeetingTranscriptionCache } = require('./meetingTranscriptionCache')
 
 const TRANSCRIPTION_COST = 0.2 // Gold per chunk
 
@@ -21,55 +24,117 @@ exports.transcribeMeetingAudio = onCall(
             throw new HttpsError('permission-denied', 'Authentication required')
         }
 
-        const { audioChunk, sessionId, chunkIndex, projectId, noteId } = data || {}
-        if (typeof audioChunk !== 'string' || !audioChunk || audioChunk.length > 9000000) {
+        const { audioChunk } = data
+        if (!audioChunk) {
             throw new HttpsError('invalid-argument', 'Audio chunk is required')
         }
 
-        // Calls without IDs retain the existing screen/tab transcription contract.
-        const transcribe = async idempotencyKey => {
-            const env = getEnvFunctions()
-            if (!env.DEEPGRAM_API_KEY) throw new HttpsError('internal', 'Deepgram API Key is not configured')
+        try {
+            const goldResult = await deductGold(auth.uid, TRANSCRIPTION_COST, {
+                source: 'meeting_transcription',
+                channel: 'notes',
+            })
+
+            if (!goldResult?.success) {
+                throw new Error(goldResult?.message || 'Insufficient Gold')
+            }
+        } catch (e) {
+            console.error('Gold deduction failed:', e)
+            if (e.message === 'Insufficient Gold') {
+                throw new HttpsError('resource-exhausted', 'Insufficient Gold to transcribe audio.')
+            }
+            throw new HttpsError('internal', 'Transaction failed', e)
+        }
+
+        const env = getEnvFunctions()
+        const apiKey = env.DEEPGRAM_API_KEY
+
+        if (!apiKey) {
+            console.error('Deepgram API Key is missing')
+            throw new HttpsError('internal', 'Deepgram API Key is not configured')
+        }
+
+        const deepgram = new DeepgramClient({ apiKey })
+
+        // Create a temporary file to store the audio chunk
+        const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.webm`)
+
+        try {
+            // Convert base64 to buffer and write to file
+            // The frontend should send the base64 string without the data URL prefix (e.g., "data:audio/webm;base64,")
+            // But we handle stripping it here just in case, using a regex that handles extra parameters like codecs
+            const base64Data = audioChunk.replace(/^data:audio\/[a-zA-Z0-9-+\.]+;.*base64,/, '')
+            const buffer = Buffer.from(base64Data, 'base64')
+
+            // Deepgram accepts Buffer directly, so we don't strictly need the file if we use the buffer.
+            // However, the existing code used a file, and it might be safer for memory handling if chunks are large.
+            // But Deepgram SDK supports buffer sources. Let's use the buffer directly to simplify IO if possible,
+            // but the original code was file-based.
+            // Given cloud function memory limits (1GB), buffer is fine for chunks.
+            // Let's stick to the file approach for stability if buffer handling has edge cases,
+            // but Deepgram SDK is designed for buffers in Node.
+            // Actually, let's use the buffer directly to skip disk I/O, it's faster.
+
+            // SDK v5 returns the response payload directly and throws on API errors
+            let result
             try {
-                const goldResult = await deductGold(auth.uid, TRANSCRIPTION_COST, {
-                    source: 'meeting_transcription',
-                    channel: 'notes',
-                    ...(idempotencyKey ? { idempotencyKey, projectId, objectId: noteId, objectType: 'note' } : {}),
+                result = await deepgram.listen.v1.media.transcribeFile(buffer, {
+                    model: 'nova-3',
+                    smart_format: true,
+                    detect_language: true,
+                    // Deactivate diarization for now because with our current file / chunk based approach
+                    // who is which speaker will not be persisted across sessions.
+                    diarize: false,
+                    punctuate: true,
+                    paragraphs: true,
                 })
-
-                if (!goldResult?.success) {
-                    throw new Error(goldResult?.message || 'Insufficient Gold')
-                }
-            } catch (e) {
-                console.error('Gold deduction failed:', e)
-                if (e.message === 'Insufficient Gold') {
-                    throw new HttpsError('resource-exhausted', 'Insufficient Gold to transcribe audio.')
-                }
-                throw new HttpsError('internal', 'Transaction failed', e)
-            }
-
-            try {
-                // Shares the rambler's transcription helper rather than repeating the Deepgram call:
-                // both paths must stay on the same model, the same formatting and the same keyterm
-                // vocabulary, and two copies of that options object is exactly how they drift apart.
-                // The helper handles the data-URL prefix, the buffer conversion and the paragraph
-                // formatting (with the flat-transcript fallback) identically to the inline code it
-                // replaces.
-                const { transcript, keytermFallback } = await transcribeAudioBase64(audioChunk)
-
-                if (keytermFallback) {
-                    console.warn('[transcribeMeeting] Transcribed without keyterms after a rejected request')
-                }
-
-                return { text: transcript }
             } catch (error) {
-                console.error('Error transcribing audio:', error)
-                throw new HttpsError('internal', 'Failed to transcribe audio', error)
+                console.error('Deepgram API error:', error)
+                throw new Error('Deepgram transcription failed')
+            }
+
+            // Format the transcript
+            // Nova-3 with paragraphs enabled returns structured paragraphs
+            let formattedTranscript = ''
+
+            if (
+                result.results &&
+                result.results.channels &&
+                result.results.channels[0].alternatives &&
+                result.results.channels[0].alternatives[0].paragraphs
+            ) {
+                const paragraphs = result.results.channels[0].alternatives[0].paragraphs.paragraphs
+                if (paragraphs) {
+                    formattedTranscript = paragraphs
+                        .map(p => {
+                            // Join sentences in the paragraph
+                            return p.sentences.map(s => s.text).join(' ')
+                        })
+                        .join('\n\n')
+                }
+            } else if (
+                result.results &&
+                result.results.channels &&
+                result.results.channels[0].alternatives &&
+                result.results.channels[0].alternatives[0].transcript
+            ) {
+                // Fallback to raw transcript if paragraphs mapping fails
+                formattedTranscript = result.results.channels[0].alternatives[0].transcript
+            }
+
+            return { text: formattedTranscript }
+        } catch (error) {
+            console.error('Error transcribing audio:', error)
+            throw new HttpsError('internal', 'Failed to transcribe audio', error)
+        } finally {
+            // Clean up: delete the temp file if we created it (we didn't used it above, but kept variable)
+            if (fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath)
+                } catch (e) {
+                    // ignore
+                }
             }
         }
-        if (sessionId !== undefined || chunkIndex !== undefined) {
-            return withMeetingTranscriptionCache({ uid: auth.uid, sessionId, chunkIndex, audioChunk, run: transcribe })
-        }
-        return transcribe()
     }
 )

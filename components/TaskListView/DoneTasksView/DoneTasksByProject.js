@@ -1,4 +1,3 @@
-import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { cloneDeep } from 'lodash'
@@ -14,11 +13,8 @@ import ShowMoreButtonsArea from './ShowMoreButtonsArea'
 import useEarlierSubtasks from './useEarlierSubtasks'
 import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
-import TaskListSkeleton from '../TaskListSkeleton'
-import { resolveGhostRowCount } from '../../UIComponents/Ghosts/ghostRowCount'
 
 export default function DoneTasksByProject({ project, inSelectedProject }) {
     const dispatch = useDispatch()
@@ -28,24 +24,38 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const [filteredTasksByDate, setFilteredTasksByDate] = useState([])
     const [filters, filtersArray] = useSelectorHashtagFilters()
 
-    // AT-2430: assistant resolution + switch options, shared with the open/pending boards of the
-    // same project so all three tabs can never show a different assistant.
-    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
-    const showAssistantLine = !isAnonymous && inSelectedProject && hasAssistantLine
+    // Check if this project is using a different assistant than the default project
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = project.id === defaultProjectId
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    // Keep the selected project as the conversation context even when its assistant
+    // is inherited from the default project.
+    const assistantLineProject = project
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
+        !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId
+    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
-    const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck, loadingEarlierTasks } =
-        useEarlierTasks(project, doneTasksAmount + amountDoneTasksExpanded)
+    const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck } = useEarlierTasks(
+        project,
+        doneTasksAmount + amountDoneTasksExpanded
+    )
 
     const completedDateToCheck =
         amountDoneTasksExpanded > 0 ? earlierCompletedDateToCheck : moment().startOf('day').valueOf()
     const earlierSubtasksByTask = useEarlierSubtasks(project, completedDateToCheck)
-
-    // AT-2382 - the first "earlier tasks" press is the harsh one: `tasksByDate` switches
-    // from today's list to `earlierTasksByDate`, which is still `[]` until Firestore
-    // answers, so the section previously went completely blank. Later presses keep the
-    // rows they already have, so the ghosts then simply extend the list downwards.
-    const showEarlierTasksGhosts = amountDoneTasksExpanded > 0 && loadingEarlierTasks
 
     const tasksByDate = amountDoneTasksExpanded > 0 ? earlierTasksByDate : todayTasksByDate
     const estimationByDate = amountDoneTasksExpanded > 0 ? earlierEstimationByDate : todayEstimationByDate
@@ -68,58 +78,59 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     }, [JSON.stringify(filtersArray), tasksByDate])
 
     return filteredTasksByDate.length > 0 || inSelectedProject ? (
-        <ProjectSection
-            projectId={project.id}
-            projectColor={project.color}
-            selected={inSelectedProject}
-            style={localStyles.container}
-        >
+        <View style={localStyles.container}>
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 showWorkflowTag={true}
                 showRootSectionNavigation={inSelectedProject}
             />
-            <ProjectSectionBody>
-                {showAssistantLine && (
-                    <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                        <AssistantLine {...assistantLineProps} />
-                    </View>
-                )}
-                {filteredTasksByDate.map((item, index) => {
-                    const dateFormated = item[0]
-                    const taskList = item[1]
-                    const firstDateSection = index === 0
-
-                    return (
-                        <DoneTasksByDate
-                            key={dateFormated}
-                            projectId={project.id}
-                            taskList={taskList}
-                            dateFormated={dateFormated}
-                            firstDateSection={firstDateSection}
-                            subtaskByTask={subtaskByTask}
-                            estimation={estimationByDate[dateFormated]}
-                        />
-                    )
-                })}
-
-                {showEarlierTasksGhosts && (
-                    <TaskListSkeleton
-                        rowCount={resolveGhostRowCount(AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON)}
-                        showDateHeader={filteredTasksByDate.length === 0}
+            {showAssistantLine && (
+                <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
+                    <AssistantLine
+                        showLastComment={true}
+                        useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                        useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                        projectOverride={assistantLineProject}
+                        assistantIdOverride={assistantLineAssistantId}
+                        assistantSwitchOptions={
+                            showAssistantSwitch
+                                ? {
+                                      projectOverride: defaultProject,
+                                      assistantIdOverride: defaultProjectAssistantId,
+                                      useAssistantProjectContext: true,
+                                      useGlobalLatestComment: true,
+                                  }
+                                : null
+                        }
                     />
-                )}
+                </View>
+            )}
+            {filteredTasksByDate.map((item, index) => {
+                const dateFormated = item[0]
+                const taskList = item[1]
+                const firstDateSection = index === 0
 
-                <ShowMoreButtonsArea
-                    filteredTasksByDateAmount={filteredTasksByDate.length}
-                    projectId={project.id}
-                    projectIndex={project.index}
-                    completedDateToCheck={completedDateToCheck}
-                    loading={showEarlierTasksGhosts}
-                />
-            </ProjectSectionBody>
-        </ProjectSection>
+                return (
+                    <DoneTasksByDate
+                        key={dateFormated}
+                        projectId={project.id}
+                        taskList={taskList}
+                        dateFormated={dateFormated}
+                        firstDateSection={firstDateSection}
+                        subtaskByTask={subtaskByTask}
+                        estimation={estimationByDate[dateFormated]}
+                    />
+                )
+            })}
+
+            <ShowMoreButtonsArea
+                filteredTasksByDateAmount={filteredTasksByDate.length}
+                projectId={project.id}
+                projectIndex={project.index}
+                completedDateToCheck={completedDateToCheck}
+            />
+        </View>
     ) : null
 }
 

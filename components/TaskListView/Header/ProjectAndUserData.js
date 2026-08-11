@@ -10,14 +10,7 @@ import NotificationBubble from './NotificationBubble'
 import ProjectEmailLabelChips from '../EmailLine/ProjectEmailLabelChips'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 
-export default function ProjectAndUserData({
-    projectIndex,
-    projectId,
-    badge,
-    userInHeader,
-    showEmailLabels = false,
-    headerTextColor,
-}) {
+export default function ProjectAndUserData({ projectIndex, projectId, badge, userInHeader, showEmailLabels = false }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { showFollowedBubble, showUnfollowedBubble, totalFollowed, totalUnfollowed } =
         useShowNewCommentsBubbleInBoard(projectId)
@@ -32,23 +25,13 @@ export default function ProjectAndUserData({
     return (
         <View ref={subContainer} onLayout={calcTitleWidth} style={localStyles.subContainer}>
             <View style={[localStyles.titleSubContainer, { maxWidth: titleWidth }]}>
-                <ProjectLine
-                    badge={badge}
-                    projectIndex={projectIndex}
-                    user={userInHeader}
-                    textColor={headerTextColor}
-                />
+                <ProjectLine badge={badge} projectIndex={projectIndex} user={userInHeader} />
 
                 {(userInHeader.displayName !== undefined || userInHeader.photoURL !== undefined) && (
-                    <View style={[localStyles.dotSeparator, headerTextColor && { backgroundColor: headerTextColor }]} />
+                    <View style={localStyles.dotSeparator} />
                 )}
 
-                <UserLine
-                    projectIndex={projectIndex}
-                    projectId={projectId}
-                    user={userInHeader}
-                    textColor={headerTextColor}
-                />
+                <UserLine projectIndex={projectIndex} projectId={projectId} user={userInHeader} />
                 {showFollowedBubble && (
                     <NotificationBubble
                         amount={totalFollowed}

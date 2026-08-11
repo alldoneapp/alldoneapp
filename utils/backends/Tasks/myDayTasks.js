@@ -1,16 +1,9 @@
 import moment from 'moment'
 
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
-import { getRoleIdsVisibleToField } from '../firestoreAccess'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setMyDayAllTodayTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
-import {
-    confirmOptimisticTaskForSubscriber,
-    OPTIMISTIC_TASK_REMOVED,
-    OPTIMISTIC_TASK_SETTLED,
-    subscribeToOptimisticTaskCreates,
-} from './optimisticTaskCreate'
 
 export const TO_ATTEND_TASKS_MY_DAY_TYPE = 'TO_ATTEND_TASKS_MY_DAY_TYPE'
 export const OBSERVED_TASKS_MY_DAY_TYPE = 'OBSERVED_TASKS_MY_DAY_TYPE'
@@ -26,126 +19,35 @@ function addTaskToContainers(tasks, subtasksMap, task) {
     }
 }
 
-/** AT-2342 - mirrors the `watchTasksToAttend` query for an optimistically published task. */
-export const matchesTasksToAttendQuery = (taskData, userId, endOfDay) =>
-    !!taskData &&
-    taskData.inDone === false &&
-    taskData.currentReviewerId === userId &&
-    Number.isFinite(taskData.dueDate) &&
-    taskData.dueDate <= endOfDay
-
 export async function watchTasksToAttend(projectId, userId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
-    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
-    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
-    // Same full-rebuild shape as the goal list: the optimistic task is one more document in the
-    // list this watcher already re-derives from scratch, and it drops out again the moment the
-    // real snapshot carries its id.
-    let latestDocs = []
-    let hasRealSnapshot = false
-    const pendingDocsById = new Map()
-
-    const emit = () => {
-        const realIds = new Set(latestDocs.map(doc => doc.id))
-        pendingDocsById.forEach((_, taskId) => {
-            if (realIds.has(taskId)) {
-                pendingDocsById.delete(taskId)
-                confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
-            }
-        })
-        const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
-
-        const tasks = []
-        const subtasksMap = {}
-
-        docs.forEach(doc => {
-            const task = mapTaskData(doc.id, doc.data())
-            task.projectId = projectId
-            addTaskToContainers(tasks, subtasksMap, task)
-        })
-        store.dispatch(setMyDayAllTodayTasks(projectId, TO_ATTEND_TASKS_MY_DAY_TYPE, '', tasks, subtasksMap))
-    }
-
-    function handleOptimisticTaskChange(change) {
-        // AT-2500 - the server has the document and `change.doc.data()` is what it looks like now,
-        // so re-check the pending copy against this list's own query and keep or drop it on that.
-        //
-        // This used to drop the pending copy unconditionally, on the reasoning that a task which
-        // really belongs here would already be in `latestDocs` by settlement time. It is not: this
-        // query filters on `readerIds`, a server-derived projection field the access rules forbid a
-        // client to write, so a just-created task matches nothing locally and is first delivered
-        // only after `synchronizeAccessProjection` has written the projection and it has come back.
-        // The unconditional drop therefore fired on every ordinary create, a round trip before the
-        // snapshot arrived - the row blinked out and came back. Re-checking the document has no
-        // such race: a still-matching task is refreshed in place and never leaves the list, and one
-        // postponed out of `dueDate <= endOfDay` is removed just as promptly as before.
-        if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (!pendingDocsById.has(change.doc.id)) return false
-            const settledData = change.doc.data()
-            // No verdict (the cache could not be read): leave the pending copy in place, the real
-            // snapshot still reconciles it.
-            if (!settledData) return false
-            if (matchesTasksToAttendQuery(settledData, userId, endOfDay)) {
-                pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
-            } else {
-                pendingDocsById.delete(change.doc.id)
-                confirmOptimisticTaskForSubscriber(projectId, change.doc.id, handleOptimisticTaskChange)
-            }
-            if (hasRealSnapshot) emit()
-            return false
-        }
-
-        if (!matchesTasksToAttendQuery(change.doc.data(), userId, endOfDay)) return false
-        change.type === OPTIMISTIC_TASK_REMOVED
-            ? pendingDocsById.delete(change.doc.id)
-            : pendingDocsById.set(change.doc.id, change.doc)
-        // Same reason as the goal list: publishing before the first snapshot would replace this
-        // project's whole My Day contribution with the single new task.
-        if (hasRealSnapshot) emit()
-        return change.type !== OPTIMISTIC_TASK_REMOVED
-    }
-
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
-
-    const unsub = getDb()
+    globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('currentReviewerId', '==', userId)
-        .where('readerIds', 'array-contains', accessReaderId)
         .where('dueDate', '<=', endOfDay)
-        // No explicit order: this is then byte-identical to the open-tasks board's assigned stream
-        // (getOpenTasksQuery), so Firestore serves both from ONE server target instead of two per
-        // project. My Day re-sorts by sortIndex and time in processMyDayData, so the snapshot order
-        // never reaches the screen. Keep the clause order in step with that query.
-        .onSnapshot(querySnapshot => {
-            // The parameter is a QuerySnapshot (the original code just called `.forEach` on it).
-            // Materialise it once so the optimistic path can re-emit without a second snapshot.
-            if (Array.isArray(querySnapshot.docs)) {
-                latestDocs = querySnapshot.docs
-            } else {
-                const collected = []
-                querySnapshot.forEach(doc => collected.push(doc))
-                latestDocs = collected
-            }
-            hasRealSnapshot = true
-            emit()
-        })
+        .orderBy('dueDate', 'desc')
+        .onSnapshot(docs => {
+            const tasks = []
+            const subtasksMap = {}
 
-    globalWatcherUnsub[watcherKey] = () => {
-        unsubOptimistic()
-        unsub()
-    }
+            docs.forEach(doc => {
+                const task = mapTaskData(doc.id, doc.data())
+                task.projectId = projectId
+                addTaskToContainers(tasks, subtasksMap, task)
+            })
+            store.dispatch(setMyDayAllTodayTasks(projectId, TO_ATTEND_TASKS_MY_DAY_TYPE, '', tasks, subtasksMap))
+        })
 }
 
 export async function watchObservedTasks(projectId, userId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
-    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
-    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
-        .where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', userId)
+        .where('inDone', '==', false)
+        .where('observersIds', 'array-contains-any', [userId])
         .onSnapshot(docs => {
             const tasks = []
             const subtasksMap = {}
@@ -154,7 +56,6 @@ export async function watchObservedTasks(projectId, userId, watcherKey) {
                 const task = mapTaskData(doc.id, doc.data())
                 const { isPublicFor, dueDateByObserversIds } = task
                 if (
-                    task.inDone === false &&
                     dueDateByObserversIds[userId] <= endOfDay &&
                     (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId))
                 ) {
@@ -168,17 +69,16 @@ export async function watchObservedTasks(projectId, userId, watcherKey) {
 
 export async function watchWorkstreamTasks(projectId, userId, workstreamId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
-    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
-    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
+
+    const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('userId', '==', workstreamId)
-        .where('readerIds', 'array-contains', accessReaderId)
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
         .where('dueDate', '<=', endOfDay)
-        // Identical to the board's workstream stream (getOpenStreamAndUserTasksQuery), so the two
-        // share one server target; see watchTasksToAttend.
+        .orderBy('dueDate', 'desc')
         .onSnapshot(docs => {
             const tasks = []
             const subtasksMap = {}

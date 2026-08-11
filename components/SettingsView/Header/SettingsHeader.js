@@ -8,12 +8,12 @@ import { useTranslator, translate } from '../../../i18n/TranslationService'
 
 export const SettingsHeader = ({}) => {
     useTranslator()
-    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
+    const mobile = useSelector(state => state.isMiddleScreen)
 
     return (
         <View style={localStyles.container}>
             <View style={localStyles.upperHeader}>
-                {inlineBackButton && (
+                {mobile && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton />
                     </View>

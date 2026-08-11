@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { shallowEqual, useSelector, useDispatch } from 'react-redux'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import BotButton from './BotButton'
 import BotButtonInModal from './BotButtonInModal'
@@ -99,7 +99,7 @@ export default function BotButtonWrapper({
     }, [])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 gold > 0 ? (
                     <BotOptionsModal
@@ -135,8 +135,6 @@ export default function BotButtonWrapper({
                 <BotButtonInModal
                     onPress={onPress}
                     projectId={projectId}
-                    objectId={objectId}
-                    objectType={objectType}
                     assistantId={effectiveAssistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
                 />
@@ -144,12 +142,10 @@ export default function BotButtonWrapper({
                 <BotButton
                     onPress={onPress}
                     projectId={projectId}
-                    objectId={objectId}
-                    objectType={objectType}
                     assistantId={effectiveAssistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
                 />
             )}
-        </AppPopover>
+        </Popover>
     )
 }

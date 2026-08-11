@@ -2,16 +2,12 @@ const {
     BASE_VM_TOKENS_PER_GOLD,
     OBSERVED_TOKEN_MIX,
     CODEX_REFERENCE_PRICES,
-    CLAUDE_REFERENCE_PRICES,
-    CLAUDE_MODEL_REFERENCE_PRICES,
     OPENROUTER_REFERENCE_PRICES,
     SOL_BLENDED_USD_PER_MILLION,
     blendedUsdPerMillionTokens,
     quantizeTokensPerGold,
     deriveTokensPerGold,
     resolveUpstreamPrice,
-    resolveConservativeNativeRate,
-    lookupClaudeReferencePrice,
     resolveTokensPerGold,
     resolveEffectiveTokensPerGold,
     resolveSolRelativeGoldFactor,
@@ -20,97 +16,60 @@ const {
     formatTokenDiscountNote,
 } = require('./vmTokenPricing')
 
-const SOL = 'gpt-6.1-sol'
-const LEGACY_SOL = 'gpt-5.6-sol'
-const ASTRA = 'gpt-6-astra'
+const SOL = 'gpt-5.6-sol'
 const TERRA = 'gpt-5.6-terra'
-const LUNA = 'gpt-6-luna'
-const LEGACY_LUNA = 'gpt-5.6-luna'
+const LUNA = 'gpt-5.6-luna'
 const DEEPSEEK_PRO = 'openrouter:deepseek/deepseek-v4-pro'
 const DEEPSEEK_FLASH = 'openrouter:deepseek/deepseek-v4-flash'
 const DEEPSEEK_R1 = 'openrouter:deepseek/deepseek-r1'
 
 describe('Sol is the baseline the whole table hangs off', () => {
-    test('Sol remains the 100-token billing baseline', () => {
+    test('Sol keeps the historical rate, unchanged', () => {
         expect(BASE_VM_TOKENS_PER_GOLD).toBe(100)
-        expect(resolveTokensPerGold(LEGACY_SOL)).toBe(BASE_VM_TOKENS_PER_GOLD)
-        expect(resolveSolRelativeGoldFactor(LEGACY_SOL)).toBeCloseTo(100 / 240)
-        expect(resolveTokensPerGold(SOL)).toBe(240)
+        expect(resolveTokensPerGold(SOL)).toBe(BASE_VM_TOKENS_PER_GOLD)
         expect(resolveSolRelativeGoldFactor(SOL)).toBe(1)
     })
 
-    test('current Claude aliases use official prices relative to the 100-token Sol baseline', () => {
-        expect(resolveTokensPerGold('opus')).toBe(120)
-        expect(resolveTokensPerGold('sonnet')).toBe(200)
-        expect(resolveTokensPerGold('haiku')).toBe(400)
-        expect(resolveTokensPerGold('fable')).toBe(53)
-        expect(resolveTokensPerGold('mythos')).toBe(53)
-        expect(resolveTokensPerGold('fable')).toBeLessThan(resolveTokensPerGold('opus'))
-    })
-
-    test('concrete Claude versions keep their own official price instead of inheriting an alias', () => {
-        expect(resolveTokensPerGold('claude-fable-5-1')).toBe(53)
-        expect(resolveTokensPerGold('claude-fable-5')).toBe(40)
-        expect(resolveTokensPerGold('claude-opus-5-5')).toBe(120)
-        expect(resolveTokensPerGold('claude-opus-5')).toBe(80)
-        expect(resolveTokensPerGold('claude-opus-4-8')).toBe(80)
-        expect(resolveTokensPerGold('claude-opus-4-1-20250805')).toBe(26)
-        expect(resolveTokensPerGold('claude-sonnet-5')).toBe(200)
-        expect(resolveTokensPerGold('claude-sonnet-4-6')).toBe(130)
-        expect(resolveTokensPerGold('claude-haiku-4-5-20251001')).toBe(400)
-        expect(resolveTokensPerGold('claude-3-5-haiku-20241022')).toBe(500)
-        expect(resolveTokensPerGold('claude-3-haiku-20240307')).toBe(1400)
-    })
-
-    test('Opus 5.5 (AT-2625) uses its official $4 / $0.20 cache read / $20 price, not the unknown-model fallback', () => {
-        expect(lookupClaudeReferencePrice('claude-opus-5-5')).toEqual({ input: 4, cachedInput: 0.2, output: 20 })
-        // The moving `opus` alias follows the newest Opus release, so it bills at the Opus 5.5 rate.
-        expect(lookupClaudeReferencePrice('opus')).toBe(lookupClaudeReferencePrice('claude-opus-5-5'))
-        // Before AT-2625 the unlisted id fell through to the conservative Claude rate (26).
-        expect(resolveTokensPerGold('claude-opus-5-5')).toBeGreaterThan(
-            resolveConservativeNativeRate('claude-opus-5-5', 100)
-        )
-        expect(resolveTokensPerGold('claude-opus-5-5')).toBeGreaterThan(resolveTokensPerGold('claude-opus-5'))
-    })
-
-    test('every researched Claude price derives from the same Sol blend', () => {
-        for (const price of [
-            ...Object.values(CLAUDE_REFERENCE_PRICES),
-            ...Object.values(CLAUDE_MODEL_REFERENCE_PRICES),
-        ]) {
-            expect(deriveTokensPerGold(price)).toBeGreaterThan(0)
+    // Claude is the default agent and is currently under-billed against Sol (Opus blends to ~3x Sol).
+    // Correcting that is a price increase on the default path and needs its own product decision, so
+    // this test exists to make any future change to it deliberate and visible rather than incidental.
+    test('Claude models are deliberately left at the Sol rate', () => {
+        for (const model of ['opus', 'sonnet', 'haiku', 'claude-opus-5', 'claude-haiku-4-5']) {
+            expect(resolveTokensPerGold(model)).toBe(BASE_VM_TOKENS_PER_GOLD)
         }
     })
 })
 
-describe('OpenAI model rates track the current upstream price table', () => {
-    test('Astra is dearer than Sol while Terra and Luna remain cheaper', () => {
-        expect(resolveSolRelativeGoldFactor(ASTRA)).toBeCloseTo(40 / 240)
-        expect(resolveSolRelativeGoldFactor(TERRA)).toBeCloseTo(190 / 240)
-        expect(resolveSolRelativeGoldFactor(LUNA)).toBeCloseTo(4000 / 240)
-        expect(resolveTokensPerGold(ASTRA)).toBe(40)
-        expect(resolveTokensPerGold(TERRA)).toBe(190)
-        expect(resolveTokensPerGold(LUNA)).toBe(4000)
-        expect(resolveTokensPerGold(LEGACY_LUNA)).toBe(1900)
-        expect(resolveUpstreamPrice(ASTRA)).toEqual(CODEX_REFERENCE_PRICES.astra)
+describe('the OpenAI tier multiples are exact, not estimated', () => {
+    // Every Terra rate is 0.4x the matching Sol rate and every Luna rate 0.04x — input, cached input
+    // and output alike. So these two multiples fall out of the price list itself and hold for ANY
+    // token mix. Asserted as ratios so they survive a reprice of the base rate.
+    test('Terra costs exactly 1/2.5 of Sol and Luna exactly 1/25', () => {
+        expect(resolveSolRelativeGoldFactor(TERRA)).toBe(2.5)
+        expect(resolveSolRelativeGoldFactor(LUNA)).toBe(25)
+        expect(resolveTokensPerGold(TERRA)).toBe(250)
+        expect(resolveTokensPerGold(LUNA)).toBe(2500)
     })
 
     test.each([
+        ['a short run', 50_000],
         ['a typical run', 2_500_000],
         ['a long run', 100_000_000],
-    ])('%s bills the current Sol-relative proportions', (_label, tokens) => {
+    ])('%s bills Sol : Terra : Luna as 25 : 10 : 1', (_label, tokens) => {
         const sol = calculateTokenGoldForModel(tokens, SOL)
         const terra = calculateTokenGoldForModel(tokens, TERRA)
         const luna = calculateTokenGoldForModel(tokens, LUNA)
 
         expect(luna).toBeGreaterThan(0)
-        expect(sol / terra).toBeCloseTo(190 / 240, 2)
-        expect(sol / luna).toBeCloseTo(4000 / 240, 2)
+        expect(sol / terra).toBeCloseTo(2.5, 5)
+        expect(sol / luna).toBeCloseTo(25, 5)
     })
 
-    test('an unpriced future generation takes the conservative native rate', () => {
-        expect(resolveTokensPerGold('gpt-7-luna')).toBe(resolveConservativeNativeRate('gpt-7-luna', 100))
-        expect(resolveTokensPerGold('gpt-7-terra')).toBe(resolveConservativeNativeRate('gpt-7-terra', 100))
+    // The multiple must follow the durable tier, not the generation number, or the next OpenAI release
+    // silently reverts everyone to the Sol rate.
+    test('the tier multiple survives a generation bump', () => {
+        expect(resolveTokensPerGold('gpt-6.0-luna')).toBe(resolveTokensPerGold(LUNA))
+        expect(resolveTokensPerGold('gpt-7-terra')).toBe(resolveTokensPerGold(TERRA))
     })
 
     // Exactly 0.04x in decimal is 24.999999999999996 in binary; a bare floor() to two significant
@@ -132,8 +91,8 @@ describe('blending uses the measured mix, and cache pricing dominates it', () =>
     })
 
     test('Sol blends to its published mix-weighted cost', () => {
-        expect(SOL_BLENDED_USD_PER_MILLION).toBeCloseTo(1.005, 3)
-        expect(blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)).toBeCloseTo(0.417)
+        expect(SOL_BLENDED_USD_PER_MILLION).toBeCloseTo(1.278, 3)
+        expect(blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)).toBe(SOL_BLENDED_USD_PER_MILLION)
     })
 
     // The single most dangerous line in the module: `Number(null)` is 0, so treating a missing
@@ -156,9 +115,9 @@ describe('blending uses the measured mix, and cache pricing dominates it', () =>
     // is ~18x cheaper because its cache reads cost $0.003625/1M. One vendor-wide rate cannot be
     // honest across that spread, which is why rates are per model line.
     test('DeepSeek is not one price: R1 is an order of magnitude dearer than V4 Pro', () => {
-        expect(resolveTokensPerGold(DEEPSEEK_PRO)).toBe(1400)
-        expect(resolveTokensPerGold(DEEPSEEK_FLASH)).toBe(2200)
-        expect(resolveTokensPerGold(DEEPSEEK_R1)).toBe(140)
+        expect(resolveTokensPerGold(DEEPSEEK_PRO)).toBe(1800)
+        expect(resolveTokensPerGold(DEEPSEEK_FLASH)).toBe(2800)
+        expect(resolveTokensPerGold(DEEPSEEK_R1)).toBe(180)
 
         expect(resolveTokensPerGold(DEEPSEEK_PRO) / resolveTokensPerGold(DEEPSEEK_R1)).toBeGreaterThan(9)
         // And R1 is dearer than Luna, so it must NOT be priced as a discount off Luna.
@@ -166,17 +125,17 @@ describe('blending uses the measured mix, and cache pricing dominates it', () =>
     })
 
     test('the researched rates match the published table', () => {
-        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-v4-flash-0731')).toBe(3800)
-        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-v3.2')).toBe(640)
-        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-chat')).toBe(380)
-        expect(resolveTokensPerGold('openrouter:qwen/qwen3-coder')).toBe(750)
-        expect(resolveTokensPerGold('openrouter:z-ai/glm-4.6')).toBe(600)
-        expect(resolveTokensPerGold('openrouter:moonshotai/kimi-k2-thinking')).toBe(440)
+        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-v4-flash-0731')).toBe(4900)
+        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-v3.2')).toBe(820)
+        expect(resolveTokensPerGold('openrouter:deepseek/deepseek-chat')).toBe(490)
+        expect(resolveTokensPerGold('openrouter:qwen/qwen3-coder')).toBe(960)
+        expect(resolveTokensPerGold('openrouter:z-ai/glm-4.6')).toBe(770)
+        expect(resolveTokensPerGold('openrouter:moonshotai/kimi-k2-thinking')).toBe(560)
     })
 
     test('every rate is a faithful inversion of the blended cost ratio', () => {
         for (const [modelId, price] of Object.entries(OPENROUTER_REFERENCE_PRICES)) {
-            const expected = (SOL_BLENDED_USD_PER_MILLION * 100) / (240 * blendedUsdPerMillionTokens(price))
+            const expected = SOL_BLENDED_USD_PER_MILLION / blendedUsdPerMillionTokens(price)
             const actual = resolveSolRelativeGoldFactor(`openrouter:${modelId}`)
             // Quantization only ever rounds down, and never by more than one significant step.
             expect(actual).toBeLessThanOrEqual(expected + 1e-9)
@@ -209,7 +168,7 @@ describe('a model dearer than Sol costs more Gold, not less', () => {
     })
 })
 
-describe('price source preference and safe release-day fallbacks', () => {
+describe('price source preference: live wins, then researched, then the Sol base rate', () => {
     test('a live catalog price overrides the researched static entry', () => {
         const liveHalfPrice = { upstreamPrice: { input: 0.2175, cachedInput: 0.0018125, output: 0.435 } }
         const live = resolveTokensPerGold(DEEPSEEK_PRO, undefined, liveHalfPrice)
@@ -220,7 +179,7 @@ describe('price source preference and safe release-day fallbacks', () => {
 
     test('an unusable live price falls through to the researched entry instead of mispricing', () => {
         for (const upstreamPrice of [null, undefined, {}, { input: 'abc', output: 1 }, { input: -1, output: 1 }]) {
-            expect(resolveTokensPerGold(DEEPSEEK_PRO, undefined, { upstreamPrice })).toBe(1400)
+            expect(resolveTokensPerGold(DEEPSEEK_PRO, undefined, { upstreamPrice })).toBe(1800)
         }
     })
 
@@ -255,18 +214,6 @@ describe('price source preference and safe release-day fallbacks', () => {
         ]) {
             expect(resolveTokensPerGold(model)).toBe(BASE_VM_TOKENS_PER_GOLD)
         }
-    })
-
-    test('a newly discovered native family uses a conservative provider rate until it is priced', () => {
-        const newOpenAiRate = resolveTokensPerGold('gpt-7-nova')
-        const newClaudeRate = resolveTokensPerGold('claude-verse-6')
-
-        expect(newOpenAiRate).toBe(resolveConservativeNativeRate('gpt-7-nova', BASE_VM_TOKENS_PER_GOLD))
-        expect(newClaudeRate).toBe(resolveConservativeNativeRate('claude-verse-6', BASE_VM_TOKENS_PER_GOLD))
-        expect(newOpenAiRate).toBeLessThanOrEqual(resolveTokensPerGold(ASTRA))
-        expect(newClaudeRate).toBeLessThanOrEqual(resolveTokensPerGold('fable'))
-        expect(newOpenAiRate).toBeGreaterThan(0)
-        expect(newClaudeRate).toBeGreaterThan(0)
     })
 })
 
@@ -321,16 +268,18 @@ describe('the rate can never produce a zero, negative or non-finite charge', () 
 
     // Scaling the divisor rather than baking in absolute prices is what makes every researched
     // multiple survive a reprice of the base. The ratio is preserved up to quantization only: at a
-    // base of 250 Luna derives about 4913, which rounding to two significant figures publishes as 4900
-    // (19.6x). That is the intended trade — a readable, jitter-proof rate — and it always errs
+    // base of 250 Luna derives 6250, which rounding to two significant figures publishes as 6200
+    // (24.8x). That is the intended trade — a readable, jitter-proof rate — and it always errs
     // downward, i.e. never in the user's favour by accident.
     test('an injected base rate scales the whole table, preserving its ratios up to quantization', () => {
         const repricedBase = 250
         const sol = resolveTokensPerGold(SOL, repricedBase)
         const luna = resolveTokensPerGold(LUNA, repricedBase)
 
-        expect(sol).toBe(600)
-        expect(luna / sol).toBeCloseTo(10000 / 600)
+        expect(sol).toBe(repricedBase)
+        expect(luna / sol).toBeCloseTo(25, 0)
+        expect(luna / sol).toBeLessThanOrEqual(25)
+        expect(luna / sol).toBeGreaterThan(25 * 0.99)
     })
 
     test('a bad divisor falls back to the base rate rather than charging Infinity', () => {
@@ -355,46 +304,44 @@ describe('the rate can never produce a zero, negative or non-finite charge', () 
         expect(quantizeTokensPerGold(NaN)).toBeNull()
     })
 
-    // The hazard the cheap end of the table introduces: at 3800 tokens/Gold the rounding threshold is
-    // 38x higher than at the Sol rate, so a small request rounds to zero far more often. Safe only
+    // The hazard the cheap end of the table introduces: at 4900 tokens/Gold the rounding threshold is
+    // 49x higher than at the Sol rate, so a small request rounds to zero far more often. Safe only
     // because both charge sites round against the run's CUMULATIVE total — dust is banked, not lost.
     test('token dust below the rounding threshold is deferred, not discarded', () => {
         const rate = resolveTokensPerGold('openrouter:deepseek/deepseek-v4-flash-0731')
-        expect(rate).toBe(3800)
-        expect(calculateTokenGold(1000, rate)).toBe(0)
+        expect(rate).toBe(4900)
+        expect(calculateTokenGold(2000, rate)).toBe(0)
 
         let cumulative = 0
         let charged = 0
-        for (let i = 0; i < 100; i++) {
-            cumulative += 1000
+        for (let i = 0; i < 50; i++) {
+            cumulative += 2000
             charged += Math.max(0, calculateTokenGold(cumulative, rate) - charged)
         }
         expect(cumulative).toBe(100_000)
         expect(charged).toBe(calculateTokenGold(cumulative, rate))
-        expect(charged).toBe(26) // round(100000 / 3800) — nothing lost to per-request rounding
+        expect(charged).toBe(20) // round(100000 / 4900) — nothing lost to per-request rounding
     })
 
     test('a realistic run always bills something on every tier', () => {
         for (const model of [SOL, TERRA, LUNA, DEEPSEEK_PRO, DEEPSEEK_FLASH, DEEPSEEK_R1]) {
             expect(calculateTokenGoldForModel(5_000_000, model)).toBeGreaterThan(0)
         }
-        expect(calculateTokenGoldForModel(1_000_000, SOL)).toBe(4167)
-        expect(calculateTokenGoldForModel(1_000_000, LUNA)).toBe(250)
+        expect(calculateTokenGoldForModel(1_000_000, SOL)).toBe(10_000)
+        expect(calculateTokenGoldForModel(1_000_000, LUNA)).toBe(400)
     })
 })
 
 describe('the rate is disclosed to the user', () => {
     test('a model away from the Sol baseline names its multiple; Sol itself adds nothing', () => {
         expect(formatTokenDiscountNote(SOL)).toBe('')
+        expect(formatTokenDiscountNote('opus')).toBe('')
         expect(formatTokenDiscountNote(undefined)).toBe('')
 
-        expect(formatTokenDiscountNote('opus')).toContain('2x the Sol rate')
-        expect(formatTokenDiscountNote('sonnet')).toContain('1.2x the Sol rate')
-        expect(formatTokenDiscountNote('fable')).toContain('4.5x the Sol rate')
-        expect(formatTokenDiscountNote(LUNA)).toContain('1/16.7')
-        expect(formatTokenDiscountNote(TERRA)).toContain('1.3x the Sol rate')
-        expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/5.8')
-        expect(formatTokenDiscountNote(DEEPSEEK_R1)).toContain('1.7x the Sol rate')
+        expect(formatTokenDiscountNote(LUNA)).toContain('1/25')
+        expect(formatTokenDiscountNote(TERRA)).toContain('1/2.5')
+        expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/18')
+        expect(formatTokenDiscountNote(DEEPSEEK_R1)).toContain('1/1.8')
     })
 
     test('a model dearer than Sol says so rather than implying a discount', () => {
@@ -408,7 +355,7 @@ describe('the rate is disclosed to the user', () => {
     // The quoted number must be the billed number, so the note prefers the rate frozen on the job
     // rather than independently re-deriving one that could differ.
     test('the note quotes the persisted rate, not a second derivation of it', () => {
-        expect(formatTokenDiscountNote(SOL, { tokensPerGold: 2500 })).toContain('1/10.4')
-        expect(formatTokenDiscountNote(DEEPSEEK_PRO, { tokensPerGold: resolveTokensPerGold(SOL) })).toBe('')
+        expect(formatTokenDiscountNote(SOL, { tokensPerGold: 2500 })).toContain('1/25')
+        expect(formatTokenDiscountNote(DEEPSEEK_PRO, { tokensPerGold: BASE_VM_TOKENS_PER_GOLD })).toBe('')
     })
 })

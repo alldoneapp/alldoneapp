@@ -45,35 +45,27 @@ jest.mock('../../../utils/HelperFunctions', () => ({
 }))
 
 import Backend from '../../../utils/BackendBridge'
-import {
-    updateNewAttachmentsData,
-    hasPendingDescriptionAttachments,
-    ATTACHMENT_TRIGGER,
-    IMAGE_TRIGGER,
-    VIDEO_TRIGGER,
-} from './HelperFunctions'
+import { updateNewAttachmentsData, ATTACHMENT_TRIGGER, IMAGE_TRIGGER } from './HelperFunctions'
 
 const NEW = '1'
 const newImageToken = (uri, name) =>
     `${IMAGE_TRIGGER}${uri}${IMAGE_TRIGGER}${uri}${IMAGE_TRIGGER}${name}${IMAGE_TRIGGER}${NEW}`
 const newAttachmentToken = (uri, name) =>
     `${ATTACHMENT_TRIGGER}${uri}${ATTACHMENT_TRIGGER}${name}${ATTACHMENT_TRIGGER}${NEW}`
-const newVideoToken = (uri, name) => `${VIDEO_TRIGGER}${uri}${VIDEO_TRIGGER}${name}${VIDEO_TRIGGER}${NEW}`
 
-const expectLoadingSettled = () => {
-    const actions = mockDispatch.mock.calls.flatMap(([action]) => [action].flat())
-    const starts = actions.filter(action => action?.type === 'Start loading operation')
-    const finishes = actions.filter(action => action?.type === 'Finish loading operation')
-    expect(starts).toHaveLength(1)
-    expect(finishes.map(action => action.id)).toEqual(starts.map(action => action.id))
-}
+const loadingDelta = () =>
+    mockDispatch.mock.calls
+        .map(([action]) => action && action.type)
+        .reduce((total, type) => {
+            if (type === 'Start loading data') return total + 1
+            if (type === 'Stop loading data') return total - 1
+            return total
+        }, 0)
 
 describe('updateNewAttachmentsData', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
         Backend.storeAttachment.mockReset()
-        Backend.storeConvertedVideos.mockReset()
-        global.fetch = jest.fn(async () => ({ blob: async () => new Blob(['file']) }))
     })
 
     it('rewrites an uploaded image to its remote uri and balances the loading spinner', async () => {
@@ -83,7 +75,7 @@ describe('updateNewAttachmentsData', () => {
 
         expect(result).toContain('https://storage/img.png')
         expect(result).not.toContain('blob:img')
-        expectLoadingSettled()
+        expect(loadingDelta()).toBe(0)
     })
 
     it('releases the loading spinner when an upload fails', async () => {
@@ -93,7 +85,7 @@ describe('updateNewAttachmentsData', () => {
             updateNewAttachmentsData('project-1', `hello ${newAttachmentToken('blob:doc', 'notes.pdf')}`)
         ).resolves.toEqual(expect.any(String))
 
-        expectLoadingSettled()
+        expect(loadingDelta()).toBe(0)
     })
 
     it('keeps the rest of the comment when one attachment fails to upload', async () => {
@@ -105,7 +97,7 @@ describe('updateNewAttachmentsData', () => {
         )
 
         expect(result).toContain('keep this text')
-        expectLoadingSettled()
+        expect(loadingDelta()).toBe(0)
     })
 
     it('does not mark a failed image upload as already stored', async () => {
@@ -116,51 +108,6 @@ describe('updateNewAttachmentsData', () => {
         // Stamping OLD_ATTACHMENT ('0') here would persist the local blob uri as a remote
         // one and render as a permanently broken image.
         expect(result.endsWith(`${IMAGE_TRIGGER}${NEW}`)).toBe(true)
-        expectLoadingSettled()
-    })
-
-    it.each([
-        newImageToken('blob:img', 'shot.png'),
-        newAttachmentToken('blob:doc', 'notes.pdf'),
-        newVideoToken('blob:video', 'clip.mp4'),
-    ])('rejects failed uploads in strict autosave mode: %s', async token => {
-        Backend.storeAttachment.mockRejectedValue(new Error('network down'))
-        await expect(updateNewAttachmentsData('project-1', token, { strict: true })).rejects.toThrow('network down')
-        expectLoadingSettled()
-    })
-
-    it('detects new images, attachments and videos but ignores stored embeds', () => {
-        const tokens = [
-            newImageToken('blob:img', 'shot.png'),
-            newAttachmentToken('blob:doc', 'notes.pdf'),
-            newVideoToken('blob:video', 'clip.mp4'),
-        ]
-        tokens.forEach(token => {
-            expect(hasPendingDescriptionAttachments(`text ${token}`)).toBe(true)
-            expect(hasPendingDescriptionAttachments(token.slice(0, -1) + '0')).toBe(false)
-        })
-        expect(hasPendingDescriptionAttachments('ordinary text')).toBe(false)
-    })
-
-    it('retains completed uploads when a later upload fails and reuses them on retry', async () => {
-        const first = newAttachmentToken('blob:first', 'first.pdf')
-        const second = newAttachmentToken('blob:second', 'second.pdf')
-        const uploadedTokens = new Map()
-        Backend.storeAttachment
-            .mockResolvedValueOnce('https://storage/first')
-            .mockRejectedValueOnce(new Error('offline'))
-        await expect(
-            updateNewAttachmentsData('project-1', `${first} ${second}`, { strict: true, uploadedTokens })
-        ).rejects.toThrow('offline')
-        expect(uploadedTokens.size).toBe(1)
-        Backend.storeAttachment.mockResolvedValueOnce('https://storage/second')
-        const result = await updateNewAttachmentsData('project-1', `${first} ${second}`, {
-            strict: true,
-            uploadedTokens,
-        })
-        expect(Backend.storeAttachment).toHaveBeenCalledTimes(3)
-        expect(result).toContain('https://storage/first')
-        expect(result).toContain('https://storage/second')
-        expect(result).not.toContain('blob:')
+        expect(loadingDelta()).toBe(0)
     })
 })

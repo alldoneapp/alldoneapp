@@ -1,19 +1,3 @@
-// Firestore security rules.
-//
-// These are compiled, behavior-tested and deployed automatically to production by CI
-// (`deploy:firestore:rules:production` in .gitlab-ci.yml) when this file changes.
-// Before AT-2450 nothing deployed them at all and it was a manual
-// `firebase deploy --only firestore:rules`, which is how the file came to describe an
-// authorization model production was not actually running.
-//
-// Two consequences worth keeping in mind when editing:
-//   - A merge publishes the rules only after the behavioral emulator suite, the full web
-//     suite and the production bundle succeed. A failed gate leaves production unchanged.
-//   - A deploy publishes the WHOLE file, never just your hunk, so anything already
-//     committed here but not yet released ships alongside your change.
-//
-// Staging is NOT deployed by CI (`develop` is dormant); publish it by hand if you need
-// it: firebase deploy --only firestore:rules --project alldonestaging
 rules_version = '2';
 
 service cloud.firestore {
@@ -38,215 +22,36 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/projects/$(projectId));
     }
 
-    function projectDocAfter(projectId) {
-      return getAfter(/databases/$(database)/documents/projects/$(projectId));
-    }
-
-    function isProjectMemberBeforeOrAfter(projectId) {
-      let projectPath = /databases/$(database)/documents/projects/$(projectId);
-      let beforeIds = exists(projectPath) ? get(projectPath).data.get('userIds', []) : [];
-      let afterIds = existsAfter(projectPath) ? getAfter(projectPath).data.get('userIds', []) : [];
-      return signedIn() && (request.auth.uid in beforeIds || request.auth.uid in afterIds);
-    }
-
-    function hasValidDefaultProject(userId, userData) {
-      return !('defaultProjectId' in userData) ||
-        userData.defaultProjectId == '' ||
-        (
-          userData.defaultProjectId is string &&
-          projectDocAfter(userData.defaultProjectId).data.creatorId == userId
-        );
-    }
-
-    function hasValidInitialProjectMembership(userId, userData) {
-      let projectId = userData.get('defaultProjectId', '');
-      return projectId is string && projectId != '' &&
-        userData.get('projectIds', []).toSet() == [projectId].toSet() &&
-        userData.get('guideProjectIds', []).toSet().hasOnly([projectId]) &&
-        userData.get('templateProjectIds', []).toSet().hasOnly([projectId]) &&
-        userData.get('archivedProjectIds', []).toSet().hasOnly([projectId]) &&
-        userData.get('copyProjectIds', []).toSet().hasOnly([projectId]) &&
-        userData.get('invitedProjectIds', []).size() == 0 &&
-        userId in projectDocAfter(projectId).data.get('userIds', []);
-    }
-
-    function ownerUpdatePreservesProjectMembership() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'projectIds', 'guideProjectIds', 'templateProjectIds',
-        'archivedProjectIds', 'copyProjectIds', 'invitedProjectIds',
-        'projectMembershipMutation'
-      ]);
-    }
-
-    function listChangedOnlyByProjectId(beforeList, afterList, projectId) {
-      return beforeList.toSet().difference(afterList.toSet()).hasOnly([projectId]) &&
-        afterList.toSet().difference(beforeList.toSet()).hasOnly([projectId]);
-    }
-
-    function projectMapChangedOnlyAt(fieldName, projectId) {
-      let affected = request.resource.data.diff(resource.data).affectedKeys();
-      let before = resource.data.get(fieldName, {});
-      let after = request.resource.data.get(fieldName, {});
-      // Some long-lived and freshly-created users legitimately store nullable project maps
-      // (notably apisConnected: null). A project membership update that leaves such a field
-      // untouched must not try to call map.diff() on null and fail the entire atomic batch.
-      return !affected.hasAny([fieldName]) ||
-        (before is map && after is map && before.diff(after).affectedKeys().hasOnly([projectId]));
-    }
-
-    function projectMapChangedOnlyAtWithGlobal(fieldName, projectId) {
-      let affected = request.resource.data.diff(resource.data).affectedKeys();
-      let before = resource.data.get(fieldName, {});
-      let after = request.resource.data.get(fieldName, {});
-      return !affected.hasAny([fieldName]) ||
-        (before is map && after is map && before.diff(after).affectedKeys().hasOnly([projectId, 'allProjects']));
-    }
-
-    function validFocusChange(userId, projectId) {
-      let affected = request.resource.data.diff(resource.data).affectedKeys();
-      let focusTaskId = request.resource.data.get('inFocusTaskId', '');
-      let focusProjectId = request.resource.data.get('inFocusTaskProjectId', '');
-      return !affected.hasAny(['inFocusTaskId', 'inFocusTaskProjectId']) ||
-        (focusTaskId == '' && focusProjectId == '') ||
-        (
-          focusTaskId is string && focusTaskId != '' &&
-          focusProjectId == projectId &&
-          exists(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)) &&
-          (
-            get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('userId', '') == userId ||
-            userId in get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('userIds', []) ||
-            userId in get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('observersIds', [])
-          )
-        );
-    }
-
-    function isValidProjectMembershipMutation(userId) {
-      let mutation = request.resource.data.get('projectMembershipMutation', {});
-      let projectId = mutation.get('projectId', '');
-      let action = mutation.get('action', '');
-      let projectPath = /databases/$(database)/documents/projects/$(projectId);
-      let projectBefore = exists(projectPath) ? get(projectPath).data.get('userIds', []) : [];
-      let projectAfter = existsAfter(projectPath) ? getAfter(projectPath).data.get('userIds', []) : [];
-      let membershipFieldsValid =
-        listChangedOnlyByProjectId(resource.data.get('projectIds', []), request.resource.data.get('projectIds', []), projectId) &&
-        listChangedOnlyByProjectId(resource.data.get('guideProjectIds', []), request.resource.data.get('guideProjectIds', []), projectId) &&
-        listChangedOnlyByProjectId(resource.data.get('templateProjectIds', []), request.resource.data.get('templateProjectIds', []), projectId) &&
-        listChangedOnlyByProjectId(resource.data.get('archivedProjectIds', []), request.resource.data.get('archivedProjectIds', []), projectId) &&
-        listChangedOnlyByProjectId(resource.data.get('copyProjectIds', []), request.resource.data.get('copyProjectIds', []), projectId) &&
-        listChangedOnlyByProjectId(resource.data.get('invitedProjectIds', []), request.resource.data.get('invitedProjectIds', []), projectId);
-      let projectMapsValid =
-        projectMapChangedOnlyAt('lastVisitBoard', projectId) &&
-        projectMapChangedOnlyAt('lastVisitBoardInGoals', projectId) &&
-        projectMapChangedOnlyAt('workstreams', projectId) &&
-        projectMapChangedOnlyAt('quotaWarnings', projectId) &&
-        projectMapChangedOnlyAt('apisConnected', projectId) &&
-        projectMapChangedOnlyAt('statisticsSelectedUsersIds', projectId) &&
-        projectMapChangedOnlyAt('workflow', projectId) &&
-        projectMapChangedOnlyAt('noteIdsByProject', projectId) &&
-        projectMapChangedOnlyAt('unlockedKeysByGuides', projectId) &&
-        projectMapChangedOnlyAt('commentsData', projectId) &&
-        projectMapChangedOnlyAtWithGlobal('lastAssistantCommentData', projectId) &&
-        validFocusChange(userId, projectId);
-      return signedIn() &&
-        projectId is string && projectId != '' &&
-        mutation.get('actorId', '') == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds',
-          'copyProjectIds', 'invitedProjectIds', 'lastVisitBoard', 'lastVisitBoardInGoals', 'workstreams',
-          'quotaWarnings', 'apisConnected', 'statisticsSelectedUsersIds', 'workflow',
-          'noteIdsByProject', 'unlockedKeysByGuides', 'commentsData', 'projectMembershipMutation',
-          'lastAssistantCommentData', 'lastAssistantCommentDataByAssistant',
-          'lastEditionDate', 'lastEditorId', 'assistantId',
-          'inFocusTaskId', 'inFocusTaskProjectId'
-        ]) &&
-        membershipFieldsValid && projectMapsValid &&
-        (
-          (
-            action == 'add' &&
-            request.auth.uid in projectBefore &&
-            request.auth.uid in projectAfter &&
-            userId in projectAfter &&
-            projectId in request.resource.data.get('projectIds', [])
-          ) ||
-          (
-            action == 'remove' &&
-            request.auth.uid in projectBefore &&
-            userId in projectBefore &&
-            userId != request.auth.uid &&
-            request.auth.uid in projectAfter &&
-            !(userId in projectAfter) &&
-            !(projectId in request.resource.data.get('projectIds', []))
-          ) ||
-          (
-            action == 'project-update' &&
-            request.auth.uid in projectBefore &&
-            userId in projectBefore &&
-            request.auth.uid in projectAfter &&
-            userId in projectAfter
-          ) ||
-          (
-            action == 'self-sync' &&
-            request.auth.uid == userId &&
-            userId in projectAfter
-          ) ||
-          (
-            action == 'delete-project' &&
-            request.auth.uid in projectBefore &&
-            projectAfter.size() == 0 &&
-            !(projectId in request.resource.data.get('projectIds', []))
-          ) ||
-          (
-            action == 'invitation-add' &&
-            request.auth.uid in projectBefore &&
-            request.auth.uid in projectAfter &&
-            projectId in request.resource.data.get('invitedProjectIds', [])
-          ) ||
-          (
-            action == 'invitation-remove' &&
-            (request.auth.uid in projectBefore || request.auth.uid == userId) &&
-            !(projectId in request.resource.data.get('invitedProjectIds', []))
-          )
-        );
+    function userHasProjectIn(uid, fieldName, projectId) {
+      return userDoc(uid).data[fieldName] is list && projectId in userDoc(uid).data[fieldName];
     }
 
     function isProjectMember(projectId) {
-      // projects/{projectId}.userIds is the authority. The arrays on users/{uid}
-      // are denormalized navigation state and are owner-writable, so using them
-      // for authorization lets an account add an arbitrary project id to itself.
-      return signedIn() &&
-        projectDoc(projectId).data.userIds is list &&
-        request.auth.uid in projectDoc(projectId).data.userIds;
+      return signedIn() && (
+        userHasProjectIn(request.auth.uid, 'projectIds', projectId) ||
+        userHasProjectIn(request.auth.uid, 'guideProjectIds', projectId) ||
+        userHasProjectIn(request.auth.uid, 'templateProjectIds', projectId) ||
+        userHasProjectIn(request.auth.uid, 'archivedProjectIds', projectId)
+      );
     }
 
     function isPublicSharedProject(projectId) {
       return projectDoc(projectId).data.isShared != privateProject();
     }
 
+    function isObjectPublic(data) {
+      return data.isPublicFor is list && publicForAll() in data.isPublicFor;
+    }
+
     function canReadObject(projectId, data) {
-      // isPublicFor uses 0 as a project-public sentinel. A query with
-      // array-contains-any [0, uid] cannot prove that OR to the rules engine, so
-      // the Admin SDK maintains query-shaped projection fields instead:
-      //   readerIds                  every caller allowed to read the object
-      //   roleIdsVisibleTo.{uid}     observer/assignee ids visible to caller
-      //   followedReaderIds          followers who are also allowed to read it
-      //   backlinkIdsVisibleTo       linked-object tokens visible to each caller
-      // Followed queries must use followedReaderIds; usersFollowing is client-writable legacy data.
-      // Clients may query these fields but may never change them.
       return isProjectMember(projectId) && (
-        request.auth.uid in data.get('readerIds', []) ||
-        request.auth.uid in data.get('roleIdsVisibleTo', {}) ||
-        request.auth.uid in data.get('backlinkIdsVisibleTo', {}) ||
-        request.auth.uid in data.get('followedReaderIds', []) ||
-        data.get('followedByVisibleTo', {}).get(request.auth.uid, false) == true
+        isObjectPublic(data) ||
+        (data.isPublicFor is list && request.auth.uid in data.isPublicFor)
       );
     }
 
     function canReadSharedObject(projectId, data) {
-      return isPublicSharedProject(projectId) && (
-        publicForAll() in data.get('readerIds', []) ||
-        '0' in data.get('roleIdsVisibleTo', {}) ||
-        '0' in data.get('backlinkIdsVisibleTo', {})
-      );
+      return isPublicSharedProject(projectId) && isObjectPublic(data);
     }
 
     function canReadProject(projectId) {
@@ -254,234 +59,14 @@ service cloud.firestore {
     }
 
     function canWriteObject(projectId, data) {
-      return isProjectMember(projectId) &&
-        data.isPublicFor is list &&
-        data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
-    }
-
-    function canCreateObjectWithProject(projectId, data) {
-      // Project creation and its starter objects are intentionally one atomic batch. `get()` sees
-      // only the pre-batch state, so creation must validate membership through getAfter(). Updates
-      // continue to require membership in the already-committed project.
-      return isProjectMemberBeforeOrAfter(projectId) &&
-        data.isPublicFor is list &&
-        data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
-    }
-
-    function accessProjectionAbsent(data) {
-      return !('readerIds' in data) &&
-        !('roleIdsVisibleTo' in data) &&
-        !('followedByVisibleTo' in data) &&
-        !('followedReaderIds' in data) &&
-        !('backlinkIdsVisibleTo' in data);
-    }
-
-    function accessProjectionUnchanged() {
-      return !request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['readerIds', 'roleIdsVisibleTo', 'followedByVisibleTo', 'followedReaderIds', 'backlinkIdsVisibleTo']);
-    }
-
-    function canAccessObjectWhileProjectionIsPending(projectId, data) {
-      // Object creates and the Admin SDK projection trigger are separate
-      // commits. The creating client can legitimately enqueue an immediate
-      // title/follower/content update before that trigger lands. During only
-      // that all-projection-fields-absent state, fall back to the same
-      // isPublicFor authorization used for create. Server-owned projection
-      // fields remain immutable, and callers not already named by the source
-      // object still cannot grant themselves access.
-      return canReadObject(projectId, data) ||
-        (accessProjectionAbsent(data) && canWriteObject(projectId, data));
-    }
-
-    // A read of a document that does not exist still evaluates the object's read rule, and every
-    // object rule dereferences resource.data — which is null for a missing document — so the
-    // evaluation ERRORS and the client is told `permission-denied` instead of "no such document".
-    // Production logs hundreds of those evaluation errors per active hour and next to no real
-    // denials (AT-2484). It matters because ids are denormalized: a task's subtaskIds/parentId, a
-    // note's inner-task list, a chat's object id can all point at something that is gone, and a
-    // probe that cannot tell "missing" from "forbidden" either fails the operation it precedes
-    // (the task-move undo capture) or fails a whole batch (a delete carrying a stale id). A
-    // project member may learn that an object does not exist; nobody else may, and an EXISTING
-    // private object is still governed by the ordinary read rule below because resource is not
-    // null for it. `resource == null` costs no document access, unlike the exists() probe the
-    // chatObjects rule predates this helper with.
-    function canProbeMissingObject(projectId) {
-      return resource == null && isProjectMember(projectId);
+      return isProjectMember(projectId) && (
+        isObjectPublic(data) ||
+        (data.isPublicFor is list && request.auth.uid in data.isPublicFor)
+      );
     }
 
     function canReadUserScopedProjectData(projectId, userId) {
       return signedIn() && request.auth.uid == userId && isProjectMember(projectId);
-    }
-
-    function canReadStoredCommentParent(projectId, parentPath) {
-      return exists(parentPath) && get(parentPath).data.get('isPublicFor', []) is list && (
-        (
-          isProjectMember(projectId) &&
-          get(parentPath).data.get('isPublicFor', []).hasAny([publicForAll(), request.auth.uid])
-        ) || (
-          isPublicSharedProject(projectId) &&
-          publicForAll() in get(parentPath).data.get('isPublicFor', [])
-        )
-      );
-    }
-
-    function canWriteStoredCommentParent(projectId, parentPath) {
-      return exists(parentPath) &&
-        canWriteObject(projectId, get(parentPath).data);
-    }
-
-    function isProjectUserCommentParent(projectId, objectId) {
-      return projectDoc(projectId).data.get('userIds', []) is list &&
-        objectId in projectDoc(projectId).data.get('userIds', []);
-    }
-
-    function isStoredCommentParentType(chatType) {
-      return chatType == 'tasks' || chatType == 'notes' || chatType == 'goals' ||
-        chatType == 'topics' || chatType == 'contacts' || chatType == 'users' || chatType == 'skills' ||
-        chatType == 'artifacts';
-    }
-
-    function isContactCommentParentType(chatType) {
-      return chatType == 'contacts' || chatType == 'users';
-    }
-
-    function commentParentPath(projectId, chatType, objectId) {
-      return chatType == 'tasks'
-        ? /databases/$(database)/documents/items/$(projectId)/tasks/$(objectId)
-        : chatType == 'notes'
-          ? /databases/$(database)/documents/noteItems/$(projectId)/notes/$(objectId)
-          : chatType == 'goals'
-            ? /databases/$(database)/documents/goals/$(projectId)/items/$(objectId)
-            : chatType == 'topics'
-              ? /databases/$(database)/documents/chatObjects/$(projectId)/chats/$(objectId)
-              : isContactCommentParentType(chatType)
-                ? /databases/$(database)/documents/projectsContacts/$(projectId)/contacts/$(objectId)
-                : chatType == 'skills'
-                  ? /databases/$(database)/documents/skills/$(projectId)/items/$(objectId)
-                  : chatType == 'artifacts'
-                    ? /databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(objectId)
-                    : /databases/$(database)/documents/invalidCommentParents/invalid/objects/$(objectId);
-    }
-
-    function assistantCommentParentExists(projectId, objectId) {
-      return exists(/databases/$(database)/documents/assistants/$(projectId)/items/$(objectId)) ||
-        exists(/databases/$(database)/documents/assistants/globalProject/items/$(objectId));
-    }
-
-    function canReadCommentParent(projectId, chatType, objectId) {
-      let parentPath = commentParentPath(projectId, chatType, objectId);
-      return (
-        isStoredCommentParentType(chatType) && canReadStoredCommentParent(projectId, parentPath)
-      ) || (
-        isContactCommentParentType(chatType) && !exists(parentPath) &&
-        isProjectUserCommentParent(projectId, objectId) && canReadProject(projectId)
-      ) || (
-        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) && canReadProject(projectId)
-      );
-    }
-
-    function canWriteCommentParent(projectId, chatType, objectId) {
-      let parentPath = commentParentPath(projectId, chatType, objectId);
-      return (
-        isStoredCommentParentType(chatType) && canWriteStoredCommentParent(projectId, parentPath)
-      ) || (
-        isContactCommentParentType(chatType) && !exists(parentPath) &&
-        isProjectUserCommentParent(projectId, objectId) && isProjectMember(projectId)
-      ) || (
-        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) && isProjectMember(projectId)
-      );
-    }
-
-    function canNotifyObjectReader(projectId, objectData, userId) {
-      return projectDoc(projectId).data.get('userIds', []) is list &&
-        userId in projectDoc(projectId).data.get('userIds', []) &&
-        objectData.get('isPublicFor', []) is list &&
-        objectData.get('isPublicFor', []).hasAny([publicForAll(), userId]);
-    }
-
-    function canNotifyObjectReaders(projectId, objectData, recipients) {
-      let projectUserIds = projectDoc(projectId).data.get('userIds', []);
-      let isPublicFor = objectData.get('isPublicFor', []);
-      return recipients is list && recipients.size() > 0 &&
-        projectUserIds is list && recipients.hasOnly(projectUserIds) &&
-        isPublicFor is list && (
-          publicForAll() in isPublicFor || recipients.hasOnly(isPublicFor)
-        );
-    }
-
-    function canNotifyStoredCommentParent(projectId, parentPath, userId) {
-      return exists(parentPath) && canNotifyObjectReader(projectId, get(parentPath).data, userId);
-    }
-
-    function canNotifyStoredCommentParentReaders(projectId, parentPath, recipients) {
-      return exists(parentPath) && canNotifyObjectReaders(projectId, get(parentPath).data, recipients);
-    }
-
-    function canNotifyCommentRecipient(projectId, chatType, objectId, userId) {
-      let parentPath = commentParentPath(projectId, chatType, objectId);
-      return (
-        isStoredCommentParentType(chatType) && canNotifyStoredCommentParent(projectId, parentPath, userId)
-      ) || (
-        isContactCommentParentType(chatType) && !exists(parentPath) &&
-        isProjectUserCommentParent(projectId, objectId) &&
-        userId in projectDoc(projectId).data.get('userIds', [])
-      ) || (
-        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) &&
-        userId in projectDoc(projectId).data.get('userIds', [])
-      );
-    }
-
-    function canNotifyCommentReaders(projectId, chatType, objectId, recipients) {
-      let parentPath = commentParentPath(projectId, chatType, objectId);
-      return (
-        isStoredCommentParentType(chatType) &&
-        canNotifyStoredCommentParentReaders(projectId, parentPath, recipients)
-      ) || (
-        isContactCommentParentType(chatType) && !exists(parentPath) &&
-        isProjectUserCommentParent(projectId, objectId) &&
-        recipients is list && recipients.size() > 0 &&
-        recipients.hasOnly(projectDoc(projectId).data.get('userIds', []))
-      ) || (
-        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) &&
-        recipients is list && recipients.size() > 0 &&
-        recipients.hasOnly(projectDoc(projectId).data.get('userIds', []))
-      );
-    }
-
-    // Comment authors enqueue recipient inbox rows and the scheduled push/email side-channel
-    // documents in the same atomic batch as the comment. Bind every such write to that exact
-    // after-state comment so a project member cannot manufacture arbitrary notifications.
-    function isValidCommentNotification(data) {
-      let projectId = data.get('projectId', '');
-      let chatType = data.get('chatType', '');
-      let objectId = data.get('objectId', '');
-      let commentId = data.get('commentId', '');
-      let commentPath = /databases/$(database)/documents/chatComments/$(projectId)/$(chatType)/$(objectId)/comments/$(commentId);
-      return signedIn() &&
-        projectId is string && projectId != '' &&
-        chatType is string && chatType != '' &&
-        objectId is string && objectId != '' &&
-        commentId is string && commentId != '' &&
-        data.get('creatorId', '') == request.auth.uid &&
-        isProjectMember(projectId) &&
-        canWriteCommentParent(projectId, chatType, objectId) &&
-        existsAfter(commentPath) &&
-        getAfter(commentPath).data.get('creatorId', '') == request.auth.uid;
-    }
-
-    function hasValidNotificationRecipients(data) {
-      let projectId = data.get('projectId', '');
-      let recipients = data.get('userIds', []);
-      return projectId is string && projectId != '' &&
-        recipients is list && recipients.size() > 0 &&
-        projectDoc(projectId).data.get('userIds', []) is list &&
-        recipients.hasOnly(projectDoc(projectId).data.get('userIds', [])) &&
-        canNotifyCommentReaders(
-          projectId,
-          data.get('chatType', ''),
-          data.get('objectId', ''),
-          recipients
-        );
     }
 
     match /users/{userId} {
@@ -493,46 +78,12 @@ service cloud.firestore {
           resource.data.projectIds.hasAny(userDoc(request.auth.uid).data.projectIds)
         )
       );
-      allow create: if signedIn() && request.auth.uid == userId &&
-        hasValidDefaultProject(userId, request.resource.data) &&
-        hasValidInitialProjectMembership(userId, request.resource.data);
-      allow update: if signedIn() && request.auth.uid == userId &&
-        ownerUpdatePreservesProjectMembership() &&
-        (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['defaultProjectId']) ||
-          hasValidDefaultProject(userId, request.resource.data)
-        ) || isValidProjectMembershipMutation(userId) || isAdministrator();
-      allow delete: if signedIn() && (request.auth.uid == userId || isAdministrator());
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update, delete: if signedIn() && request.auth.uid == userId;
     }
 
-    // OAuth credential documents are written ONLY by Cloud Functions, right after the
-    // provider itself confirmed which mailbox or calendar the tokens belong to. They stay
-    // owner-readable (the app renders connection state from them), but a client write is
-    // refused: fabricating `private/googleAuth_…` is otherwise all it takes for an account
-    // to present somebody else's address as a connected mailbox, which the Anna email
-    // channel used to accept as proof of ownership (AT-2483). Everything else under
-    // private/ keeps owner read+write — clockSync, gmailLabeling_*, calendarProjectRouting_*
-    // and taskPriorityLearning are all written from the app.
-    match /users/{userId}/private/{privateDocId} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow write: if signedIn() && request.auth.uid == userId &&
-        !privateDocId.matches('(googleAuth|microsoftAuth)_.*');
-    }
-
-    // One named segment before the recursive wildcard, so this cannot also match the
-    // private document itself and hand back the write the rule above just withheld
-    // (`{nested=**}` matches zero segments). Covers e.g. gmailLabelingState_*/messages/*.
-    match /users/{userId}/private/{privateDocId}/{nestedCollection}/{nested=**} {
+    match /users/{userId}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId;
-    }
-
-    // Include one named segment before the recursive wildcard. In rules v2 a
-    // `{document=**}` wildcard can match zero segments, so the old shape also
-    // matched users/{userId} itself and silently bypassed every field-level
-    // restriction in the rule above.
-    match /users/{userId}/{userSubcollection}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == userId &&
-        userSubcollection != 'private';
     }
 
     // Raw personal provider API keys are server-only. Unlike the legacy
@@ -543,182 +94,64 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      // Project-list queries filter `userIds` with array-contains. Express membership against the
-      // candidate resource so the rules engine can prove that query; routing through
-      // `projectDoc(projectId)` is equivalent for a single read but opaque to collection queries.
-      allow read: if signedIn() && request.auth.uid in resource.data.get('userIds', []);
-      allow read: if resource.data.get('isShared', privateProject()) != privateProject();
+      allow read: if canReadProject(projectId);
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
-      allow update: if isProjectMember(projectId);
-      allow delete: if signedIn() &&
-        request.auth.uid in resource.data.get('userIds', []);
+      allow update, delete: if isProjectMember(projectId);
     }
 
     match /items/{projectId}/tasks/{taskId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if
-        request.resource.data.get('projectId', '') == projectId &&
-        canCreateObjectWithProject(projectId, request.resource.data) &&
-        accessProjectionAbsent(request.resource.data);
-      allow update: if
-        resource.data.get('projectId', '') == projectId &&
-        request.resource.data.get('projectId', '') == projectId &&
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) &&
-        accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-    }
-
-    // Project artifacts (functions/Artifacts/artifactModel.js). Read exactly like notes. Only Cloud
-    // Functions create artifacts and write their versions; a member may edit the metadata (title,
-    // description, privacy, star, followers) but never the server-owned fields: the serve secret
-    // that makes up the artifact's address, and the pointer to and description of its current
-    // version, which decide what serveArtifact serves and whether it is sandboxed.
-    function artifactServerFieldsUnchanged() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'serveSecret', 'serveSecretRotatedAt', 'currentVersionId', 'versionCount', 'kind', 'mimeType',
-        'entryPath', 'sizeBytes', 'fileCount', 'source', 'creatorId', 'created', 'creatorAssistantId',
-        'vmOutputKey', 'parentObject', 'dataAccess'
-      ]);
-    }
-
-    match /artifactItems/{projectId}/artifacts/{artifactId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if false;
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged() &&
-        artifactServerFieldsUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-
-      match /versions/{versionId} {
-        allow read: if canAccessObjectWhileProjectionIsPending(
-            projectId,
-            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
-          ) || canReadSharedObject(
-            projectId,
-            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
-          );
-        allow write: if false;
-      }
-
-      // What happened to the artifact, written only by Cloud Functions (functions/Artifacts/
-      // artifactHistory.js) and readable exactly like its versions.
-      match /history/{eventId} {
-        allow read: if canAccessObjectWhileProjectionIsPending(
-            projectId,
-            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
-          ) || canReadSharedObject(
-            projectId,
-            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
-          );
-        allow write: if false;
-      }
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /noteItemsVersions/{projectId}/{noteId}/{versionId} {
-      allow read, write: if canAccessObjectWhileProjectionIsPending(
-        projectId,
-        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
-      );
+      allow read, write: if canReadObject(projectId, get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data);
     }
 
     match /noteItemsDailyVersions/{projectId}/notes/{noteId} {
-      allow read, write: if canAccessObjectWhileProjectionIsPending(
-        projectId,
-        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
-      );
+      allow read, write: if canReadObject(projectId, get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data);
     }
 
     match /goals/{projectId}/items/{goalId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /chatObjects/{projectId}/chats/{chatId} {
-      // Tasks, notes and goals share the follower helper with chats. Most objects never
-      // create a chat document, so the helper must be able to distinguish "not created"
-      // from "exists but is private" without opening any existing conversation.
-      allow get: if isProjectMember(projectId) &&
-        !exists(/databases/$(database)/documents/chatObjects/$(projectId)/chats/$(chatId));
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /projectsContacts/{projectId}/contacts/{contactId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /skills/{projectId}/items/{skillId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-    }
-
-    match /okrs/{projectId}/projectOkrs/{okrId} {
-      allow get: if canProbeMissingObject(projectId);
-      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canProbeMissingObject(projectId) ||
-        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
-    }
-
-    // The global assistant catalog lives under the pseudo project 'globalProject', whose
-    // project document has no members, so a membership check alone rejects everyone —
-    // including the administrator who curates it. Every pre-configured task edit on a
-    // global assistant also bumps the assistant document in the same batch, so the whole
-    // batch was denied. Same shape as the global skill catalog: admin-only writes.
-    function isGlobalAssistantCatalog(projectId) {
-      return projectId == 'globalProject';
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /assistants/{projectId}/items/{assistantId} {
-      allow read: if isGlobalAssistantCatalog(projectId) || canReadProject(projectId);
-      allow create: if (isGlobalAssistantCatalog(projectId) && isAdministrator()) ||
-        isProjectMemberBeforeOrAfter(projectId);
-      allow update, delete: if (isGlobalAssistantCatalog(projectId) && isAdministrator()) ||
-        isProjectMember(projectId);
+      allow read: if projectId == 'globalProject' || canReadProject(projectId);
+      allow write: if isProjectMember(projectId);
     }
 
     // Per-assistant MCP server secrets (bearer tokens / OAuth tokens). Server-only:
@@ -742,75 +175,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Resumable server-owned jobs used to reconcile query projections after a
-    // project's membership changes. They contain the authoritative member list
-    // and processing cursors, so no client may observe or alter them.
-    match /firestoreAccessProjectionJobs/{projectId} {
-      allow read, write: if false;
-    }
-
-    // Durable cursor for server-owned projection schema migrations. Like the per-project jobs,
-    // this is backend coordination state and never client data.
-    match /firestoreAccessProjectionMigrations/{migrationId} {
-      allow read, write: if false;
-    }
-
     function isAdministrator() {
       return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
     }
 
-    // A skill catalog is keyed by the project that owns it (AT-2450). Two kinds live
-    // in the same shape and they are NOT interchangeable:
-    //
-    //   assistantSkills/globalProject/items/*  — the curated catalog every user reads
-    //                                            and only the administrator may write.
-    //   assistantSkills/{realProjectId}/items/* — a project's own skills, readable and
-    //                                            writable by that project's members.
-    //
-    // Keying on the PATH rather than on a field is what keeps the collection queries
-    // legal: a query is rejected outright when any document it could return might be
-    // denied, so a field-scoped `creatorId`/`projectId` rule would break the
-    // unfiltered `.orderBy('lastEditionDate')` listing that both catalogs are read
-    // with. The path segment is known before the query runs, so each listing is
-    // provably safe on its own.
-    function isGlobalSkillCatalog(projectId) {
-      return projectId == 'globalProject';
-    }
-
     match /assistantSkills/{projectId}/items/{skillId} {
-      allow read: if (isGlobalSkillCatalog(projectId) && signedIn()) ||
-        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId));
-      // `creatorId` is pinned to the caller on create and frozen on update: it is the
-      // only attribution a project skill carries, and the write rule is the sole thing
-      // enforcing it now that clients other than the administrator can write here.
-      allow create: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
-        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId) &&
-          request.resource.data.creatorId == request.auth.uid);
-      allow update: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
-        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId) &&
-          request.resource.data.creatorId == resource.data.creatorId &&
-          request.resource.data.lastEditorId == request.auth.uid);
-      allow delete: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
-        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId));
+      allow read: if signedIn();
+      allow write: if isAdministrator();
     }
 
-    // Staged GitHub imports awaiting review. The flat collection is the administrator's
-    // global-catalog staging area and is deliberately left exactly as it was — it holds
-    // live documents in production, so moving it would strand them.
     match /assistantSkillImports/{importId} {
       allow read, write: if isAdministrator();
     }
 
-    // Project imports stage under their own project instead, for the same
-    // query-safety reason as the catalog above.
-    match /assistantSkillImports/{projectId}/items/{importId} {
-      allow read, write: if isProjectMember(projectId);
-    }
-
     match /assistantSkillImportJobs/{jobId} {
-      // Progress of one import run, watched by id (never queried), so the requester
-      // can be identified from the document itself.
-      allow read: if isAdministrator() || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow read: if isAdministrator();
       allow write: if false;
     }
 
@@ -826,15 +205,6 @@ service cloud.firestore {
       allow read, write: if canReadUserScopedProjectData(projectId, userId);
     }
 
-    // Project wiki: pages, their revisions, corrections and run logs under one project. It is
-    // compiled server-side only from objects every member may read, so the whole tree has a
-    // single audience, the project's members. Only Cloud Functions write it; settings go through
-    // the setKnowledgeBaseSettings callable.
-    match /knowledgeBases/{projectId}/{document=**} {
-      allow read: if isProjectMember(projectId);
-      allow write: if false;
-    }
-
     match /statistics/{projectId}/{userId}/{dayId} {
       allow read: if isProjectMember(projectId);
       allow write: if canReadUserScopedProjectData(projectId, userId);
@@ -848,18 +218,14 @@ service cloud.firestore {
     }
 
     match /chatComments/{projectId}/{chatType}/{objectId}/comments/{commentId} {
-      allow read: if canReadCommentParent(projectId, chatType, objectId);
+      allow read: if canReadProject(projectId);
       // A member may only create a comment authored as themselves: if creatorId is set it must
       // equal the caller's uid. This blocks forging a comment as another user (impersonation /
       // confused-deputy). Assistant/system comments are written server-side (admin SDK) and bypass
       // rules, so they are unaffected.
-      allow create: if canWriteCommentParent(projectId, chatType, objectId)
+      allow create: if isProjectMember(projectId)
         && (!('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid);
-      allow update: if canWriteCommentParent(projectId, chatType, objectId) &&
-        resource.data.get('creatorId', '') == request.auth.uid &&
-        request.resource.data.get('creatorId', '') == resource.data.get('creatorId', '');
-      allow delete: if canWriteCommentParent(projectId, chatType, objectId) &&
-        resource.data.get('creatorId', '') == request.auth.uid;
+      allow update, delete: if isProjectMember(projectId) && signedIn();
     }
 
     // VM runtime documents are server-managed. A client may only observe a session when it can
@@ -878,92 +244,29 @@ service cloud.firestore {
             get(/databases/$(database)/documents/items/$(resource.data.projectId)/tasks/$(resource.data.objectId)).data
           )
         );
-      // Most tasks never had a VM run, so the VM badges and filters routinely watch a session that
-      // does not exist. The rule above dereferences resource.data, which is an evaluation error for
-      // a missing document, so every one of those listeners was rejected as permission-denied — and
-      // a rejected listener that is unsubscribed at the wrong moment makes Firestore close the whole
-      // Listen stream ("Target id not found"). The id is `${projectId}__${objectId}`, so a project
-      // member may learn that no session exists; an existing session still needs the task read.
-      allow get: if canProbeMissingObject(sessionId.split('__')[0]);
-      allow write: if false;
-    }
-
-    // A pending browser-tool approval, so the card can appear in the thread the moment the assistant
-    // stops and asks. READ ONLY, and only for the person the request was raised for: the answer is
-    // minted exclusively by `respondToBrowserApprovalSecondGen`, which is also where the "may this
-    // category be approved for the whole run" rule is enforced. A client that could write here could
-    // approve its own payment.
-    //
-    // The browsing RUN and its steps (`browserRuns`) stay unreadable by design — they hold the audit
-    // trail and the redacted page evidence, which only the server has any business reading.
-    match /browserApprovals/{approvalId} {
-      allow read: if signedIn() && resource.data.get('requestUserId', '') == request.auth.uid;
       allow write: if false;
     }
 
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      // A missing feed object must read as "missing", not as a rules error: the Updates list
-      // treats a failed read as a pending access projection and retries it forever, while a
-      // clean miss lets getFeedObject rebuild the object. Same probe as the object collections.
-      allow get: if canProbeMissingObject(projectId);
-      allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
-      allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
-      allow delete: if isProjectMember(projectId);
+      allow write: if isProjectMember(projectId);
     }
 
     match /projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow get: if canProbeMissingObject(projectId);
-      allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
-      allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
-      allow delete: if isProjectMember(projectId);
+      allow write: if isProjectMember(projectId);
     }
 
-    match /feedsStore/{projectId}/all/{feedId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data) || canProbeMissingObject(projectId);
-    }
-
-    match /feedsStore/{projectId}/{userId}/feeds/followed/{feedId} {
-      allow read: if signedIn() && request.auth.uid == userId && canReadObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) &&
-        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data) ||
-        (signedIn() && request.auth.uid == userId && canProbeMissingObject(projectId));
+    match /feedsStore/{projectId}/{userId}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
     match /feedsCount/{projectId}/{userId}/{document=**} {
-      // The feed event creator fans out an unread counter to the other project
-      // members in the same batch as the event. Counters contain no private
-      // source data and remain readable/deletable only by their owner; writes
-      // are limited to real members and real member targets.
-      allow read, delete: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
-      allow create, update: if isProjectMember(projectId) &&
-        projectDoc(projectId).data.userIds is list &&
-        userId in projectDoc(projectId).data.userIds;
+      allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
     match /chatNotifications/{projectId}/{userId}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
-    }
-
-    match /chatNotifications/{projectId}/{userId}/{notificationId} {
-      allow create: if projectDoc(projectId).data.get('userIds', []) is list &&
-        userId in projectDoc(projectId).data.get('userIds', []) &&
-        request.resource.data.get('projectId', '') == projectId &&
-        request.resource.data.get('commentId', '') == notificationId &&
-        canNotifyCommentRecipient(
-          projectId,
-          request.resource.data.get('chatType', ''),
-          request.resource.data.get('objectId', ''),
-          userId
-        ) &&
-        isValidCommentNotification(request.resource.data);
     }
 
     match /notifications/{userId}/{document=**} {
@@ -982,44 +285,22 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    match /subscriptionsPaidByOtherUser/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
-    }
-
-    match /invoiceNumbers/customInvoiceNumber/users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
-    }
-
     match /invoiceData/{projectId}/{userId}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
     match /userForceReloads/{userId} {
-      allow read, delete: if signedIn() && request.auth.uid == userId;
-      allow create, update: if signedIn() && (
-        request.auth.uid == userId ||
-        isAdministrator() ||
-        (
-          request.resource.data.projectId is string &&
-          isProjectMemberBeforeOrAfter(request.resource.data.projectId)
-        )
-      );
+      allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
     match /emailNotifications/{notificationId} {
-      allow read: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
-      allow create: if isValidCommentNotification(request.resource.data) &&
-        hasValidNotificationRecipients(request.resource.data);
-      allow update: if request.resource.data.get('commentId', '') != '' &&
-        isValidCommentNotification(request.resource.data) &&
-        hasValidNotificationRecipients(request.resource.data);
+      allow read, update, delete: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
+      allow create: if signedIn() && request.resource.data.userIds is list && request.auth.uid in request.resource.data.userIds;
     }
 
     match /pushNotifications/{notificationId} {
-      allow read: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
-      allow create: if request.resource.data.get('commentId', '') == notificationId &&
-        isValidCommentNotification(request.resource.data) &&
-        hasValidNotificationRecipients(request.resource.data);
+      allow read, update, delete: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
+      allow create: if signedIn() && request.resource.data.userIds is list && request.auth.uid in request.resource.data.userIds;
     }
 
     match /followers/{projectId}/{objectType}/{objectId} {
@@ -1033,44 +314,6 @@ service cloud.firestore {
     match /workstreams/{projectId}/items/{workstreamId} {
       allow read: if isProjectMember(projectId);
       allow write: if isProjectMember(projectId);
-    }
-
-    // The active web client uses these legacy collection names/shapes. Keep
-    // them explicit so a renamed backend path cannot silently fall through to
-    // the final deny rule.
-    match /projectsWorkstreams/{projectId}/workstreams/{workstreamId} {
-      allow read, update, delete: if isProjectMember(projectId);
-      allow create: if isProjectMemberBeforeOrAfter(projectId);
-    }
-
-    match /goalsMilestones/{projectId}/milestonesItems/{milestoneId} {
-      allow read, write: if isProjectMember(projectId);
-    }
-
-    match /feedsObjectsLastStates/{projectId}/{objectType}/{objectId} {
-      allow read, write: if isProjectMember(projectId);
-    }
-
-    match /notesCollab/{projectId}/notes/{noteId} {
-      allow read, write: if canAccessObjectWhileProjectionIsPending(
-        projectId,
-        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
-      );
-    }
-
-    // Client writes a lightweight marker; the scheduled revision-history
-    // worker reads and deletes it through the Admin SDK.
-    match /notesEditedDaily/{noteId} {
-      allow create, update: if request.resource.data.projectId is string &&
-        isProjectMember(request.resource.data.projectId);
-      allow read, delete: if false;
-    }
-
-    // Legacy feed history is still produced by the client and consumed only by
-    // trusted backend jobs. It must never be client-readable.
-    match /oldFeeds/{projectId}/{document=**} {
-      allow write: if isProjectMember(projectId);
-      allow read: if false;
     }
 
     match /projectsInvitation/{projectId}/invitations/{invitationId} {

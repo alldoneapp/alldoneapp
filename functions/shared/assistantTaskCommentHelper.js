@@ -16,14 +16,7 @@ function normalizeText(value) {
  * This deliberately writes only to the task thread. Rejection learnings are derived later by
  * the weekly comment review, so this path must not update user memory directly.
  */
-async function addAssistantTaskComment({
-    projectId,
-    taskId,
-    assistantId,
-    comment,
-    requestUserId = null,
-    suppressAssistantReply = false,
-}) {
+async function addAssistantTaskComment({ projectId, taskId, assistantId, comment }) {
     const commentText = normalizeText(comment)
     if (!projectId || !taskId || !assistantId || !commentText) return null
 
@@ -53,8 +46,6 @@ async function addAssistantTaskComment({
         created: now,
         originalContent: commentText,
         fromAssistant: true,
-        ...(requestUserId ? { requestUserId } : {}),
-        ...(suppressAssistantReply ? { suppressAssistantReply: true } : {}),
     })
 
     await taskRef.update({ commentsData })
@@ -66,7 +57,7 @@ async function addAssistantTaskComment({
         },
         lastEditionDate: now,
         lastEditorId: assistantId,
-        assistantId: task.assistantId || chat.assistantId || assistantId,
+        assistantId,
         members: FieldValue.arrayUnion(assistantId),
     }
 

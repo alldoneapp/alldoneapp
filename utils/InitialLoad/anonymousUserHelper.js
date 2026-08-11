@@ -1,35 +1,37 @@
 import store from '../../redux/store'
 import { getGlobalAssistants } from '../backends/Assistants/assistantsFirestore'
-import { getAdministratorUser, getProjectData } from '../backends/firestore'
+import { getAdministratorUser } from '../backends/firestore'
 import { initAnonymousSesion, setAnonymousSesionData } from '../../redux/actions'
 import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
-import { watchAdministratorUser, watchGlobalAssistants, watchProjectData } from './initialLoadHelper'
+import {
+    getInitialProjectData,
+    handleCookies,
+    watchAdministratorUser,
+    watchGlobalAssistants,
+    watchLoggedUserData,
+    watchProjectData,
+} from './initialLoadHelper'
 import { ANONYMOUS_USER_DATA } from '../SharedHelper'
 
-async function loadInitialData(projectId, projectUsers) {
+async function loadInitialData(projectId) {
+    const { loggedUser } = store.getState()
+
     const promises = []
-    // Public shared-resource views must not enumerate private project people or
-    // related collections. The project document and the specifically authorized
-    // resource are sufficient; keep the other Redux collection slots present but empty.
-    promises.push(getProjectData(projectId))
+    promises.push(getInitialProjectData(projectId))
     promises.push(getGlobalAssistants())
-    // Administrator data is optional for a shared anonymous view. A transient
-    // inability to verify it must not prevent the shared project itself from opening.
-    promises.push(
-        getAdministratorUser().catch(error => {
-            console.warn('[GlobalData] Administrator unavailable in anonymous session:', error)
-            return {}
-        })
+    promises.push(getAdministratorUser())
+    const [projectInitialData, globalAssistants, administratorUser] = await Promise.all(promises)
+
+    const { project, users, workstreams, contacts, assistants } = projectInitialData
+    store.dispatch(
+        setAnonymousSesionData(project, users, workstreams, contacts, assistants, globalAssistants, administratorUser)
     )
-    const [project, globalAssistants, administratorUser] = await Promise.all(promises)
-    store.dispatch(setAnonymousSesionData(project, projectUsers, [], [], [], globalAssistants, administratorUser))
 
     watchGlobalAssistants()
-    if (administratorUser?.uid && !administratorUser.roleOnly) {
-        watchAdministratorUser(administratorUser.uid)
-    }
+    watchAdministratorUser(administratorUser.uid)
+    watchLoggedUserData(loggedUser)
     watchProjectData(projectId, false, false)
 }
 
@@ -42,12 +44,9 @@ const updateUserDateData = async loggedUser => {
 }
 
 const addAnonymousData = (user, projectId) => {
-    const sourceUser = user || {}
-    const guideProjectIds = Array.isArray(sourceUser.guideProjectIds) ? sourceUser.guideProjectIds : []
-    const templateProjectIds = Array.isArray(sourceUser.templateProjectIds) ? sourceUser.templateProjectIds : []
-    const archivedProjectIds = Array.isArray(sourceUser.archivedProjectIds) ? sourceUser.archivedProjectIds : []
+    const { guideProjectIds, templateProjectIds, archivedProjectIds } = user
     return {
-        ...sourceUser,
+        ...user,
         ...ANONYMOUS_USER_DATA,
         projectIds: [projectId],
         guideProjectIds: guideProjectIds.includes(projectId) ? [projectId] : [],
@@ -57,15 +56,14 @@ const addAnonymousData = (user, projectId) => {
 }
 
 export async function loadInitialDataForAnonymous(projectId, URL, users) {
-    let { projectUser, currentUser } = users || {}
-    projectUser = projectUser || currentUser || { uid: '' }
-    currentUser = currentUser || projectUser
+    let { projectUser, currentUser } = users
 
     const loggedUser = addAnonymousData(projectUser, projectId)
     if (projectUser.uid === currentUser.uid) currentUser = loggedUser
 
     await updateUserDateData(loggedUser)
     store.dispatch(initAnonymousSesion(loggedUser, currentUser))
-    await loadInitialData(projectId, [projectUser])
+    await loadInitialData(projectId)
+    //handleCookies()
     URLTrigger.processUrl(NavigationService, URL)
 }

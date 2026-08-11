@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { sortBy } from 'lodash'
 
 import useWindowSize from '../../../../utils/useWindowSize'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import Header, { ASSIGNEE_TAB, OBSERVERS_TAB } from './Header/Header'
 import SearchForm from './Form/SearchForm'
@@ -18,12 +18,6 @@ import { getWorkstreamInProject } from '../../../Workstreams/WorkstreamHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ModalHeader from '../ModalHeader'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
-import useProjectData from '../../../../hooks/useProjectData'
-
-// AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
-// array on every render.
-const EMPTY_LIST = []
 
 export default function AssigneeAndObserversModal({
     projectIndex,
@@ -46,12 +40,9 @@ export default function AssigneeAndObserversModal({
     const [assigneeIsContact, setAssigneeIsContact] = useState(false)
     const [filterText, setFilterText] = useState('')
     const [activeTab, setActiveTab] = useState(isGuide ? OBSERVERS_TAB : ASSIGNEE_TAB)
-    // AT-2386: lists everyone in the project, so it asks for the data rather than assuming
-    // login fetched it, and reads defensively while it arrives.
-    useProjectData(project.id)
-    const workstreams = useSelector(state => state.projectWorkstreams[project.id]) || EMPTY_LIST
-    const users = useSelector(state => state.projectUsers[project.id]) || EMPTY_LIST
-    const contacts = useSelector(state => state.projectContacts[project.id]) || EMPTY_LIST
+    const workstreams = useSelector(state => state.projectWorkstreams[project.id])
+    const users = useSelector(state => state.projectUsers[project.id])
+    const contacts = useSelector(state => state.projectContacts[project.id])
 
     const loggedUser = useSelector(state => state.loggedUser)
 
@@ -93,7 +84,7 @@ export default function AssigneeAndObserversModal({
               ? translate('Select here the observer subheader')
               : translate('Select here the assignee and observers subheader'))
 
-    const tmpHeight = getSafeAreaModalMaxHeight(height)
+    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const changeTab = tab => {

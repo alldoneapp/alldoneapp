@@ -7,26 +7,12 @@ const moment = require('moment-timezone')
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
 const {
-    toGoogleRecurrence,
-    validateRecurrence,
-    resolveRecurringTarget,
-    validateScope,
-} = require('../Calendar/calendarRecurrence')
-const { CALENDAR_PROVIDER_GOOGLE, listCalendarConnections } = require('../Integrations/providerConnections')
-const {
     GOOGLE_CONFERENCE_DATA_VERSION,
     buildGoogleMeetCreateRequest,
     googleConferenceSucceeded,
     isConferencingRejection,
     shouldAddConferencing,
 } = require('../Calendar/conferencing')
-const {
-    dayKeepsMinimumFreeTime,
-    getMinFreeHoursPerDayForUser,
-    minFreeHoursToMinutes,
-    normalizeMinFreeHoursPerDay,
-    sumBusyMinutesInWindow,
-} = require('../Calendar/dailyFreeTime')
 const {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
@@ -47,7 +33,22 @@ const MAX_AVAILABILITY_RANGE_DAYS = 31
 const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
 const DEFAULT_WORKING_HOURS_START = '09:00'
 const DEFAULT_WORKING_HOURS_END = '17:00'
-const PUBLIC_MEETING_LINK_SETTINGS_PATH = userId => `users/${userId}/bookingSettings/default`
+
+function getActiveProjectIds(userData = {}) {
+    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
+    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
+    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
+    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
+    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
+
+    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
+    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
+        activeProjectIds.unshift(defaultProjectId)
+    }
+
+    return activeProjectIds
+}
 
 function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
@@ -227,14 +228,30 @@ async function getConnectedCalendarAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    return listCalendarConnections(userData)
-        .filter(connection => connection.provider === CALENDAR_PROVIDER_GOOGLE)
-        .map(connection => ({
-            projectId: connection.connectionId,
-            connectionProjectId: connection.defaultProjectId || '',
-            calendarEmail: connection.emailAddress || null,
-            calendarDefault: connection.isDefaultAccount,
-        }))
+    const apisConnected = userData.apisConnected || {}
+    const activeProjectIds = getActiveProjectIds(userData)
+    const seenKeys = new Set()
+    const accounts = []
+
+    activeProjectIds.forEach(projectId => {
+        const connection = apisConnected?.[projectId]
+        if (!connection?.calendar) return
+        if (connection.calendarProvider === 'microsoft') return
+
+        const calendarEmail =
+            typeof connection.calendarEmail === 'string' ? connection.calendarEmail.trim().toLowerCase() : ''
+        const dedupeKey = calendarEmail || projectId
+        if (seenKeys.has(dedupeKey)) return
+        seenKeys.add(dedupeKey)
+
+        accounts.push({
+            projectId,
+            calendarEmail: calendarEmail || null,
+            calendarDefault: connection.calendarDefault === true,
+        })
+    })
+
+    return accounts
 }
 
 async function getUserDefaultTimeZone(userId) {
@@ -242,25 +259,6 @@ async function getUserDefaultTimeZone(userId) {
     if (!userDoc.exists) return ''
 
     return resolveUserIanaTimeZone(userDoc.data() || {})
-}
-
-async function getPublicMeetingLinkSettings(userId) {
-    if (!userId) return { exists: false, settings: null }
-
-    try {
-        const snapshot = await admin.firestore().doc(PUBLIC_MEETING_LINK_SETTINGS_PATH(userId)).get()
-        if (!snapshot?.exists) return { exists: false, settings: null }
-        return {
-            exists: true,
-            settings: (typeof snapshot.data === 'function' ? snapshot.data() : null) || {},
-        }
-    } catch (error) {
-        console.warn('📅 PUBLIC_MEETING_LINK_SETTINGS: failed to load availability policy', {
-            userId,
-            error: error?.message,
-        })
-        return { exists: false, settings: null, error }
-    }
 }
 
 function normalizeBoundedInteger(value, fallback, min, max) {
@@ -382,10 +380,8 @@ function buildAvailabilityOptions({
     workingHoursStart,
     workingHoursEnd,
     includeWeekends,
-    minFreeMinutesPerDay = 0,
 }) {
     const options = []
-    const skippedDays = []
     let day = rangeStart.clone().tz(timeZone).startOf('day')
     const lastDay = rangeEnd.clone().tz(timeZone).startOf('day')
 
@@ -395,23 +391,6 @@ function buildAvailabilityOptions({
             const date = day.format('YYYY-MM-DD')
             const dayStart = moment.tz(`${date}T${workingHoursStart}:00`, timeZone)
             const dayEnd = moment.tz(`${date}T${workingHoursEnd}:00`, timeZone)
-
-            // AT-2278: a day the user has already filled up is skipped whole, before any slot
-            // is generated. The load is measured across the entire working-hours window of the
-            // day (see dayKeepsMinimumFreeTime) — which is why the caller fetches busy events
-            // for whole days rather than only for the searched slice.
-            const keepsMinimumFreeTime = dayKeepsMinimumFreeTime({
-                capacityMinutes: dayEnd.diff(dayStart, 'minutes', true),
-                busyMinutes: sumBusyMinutesInWindow(busyIntervals, dayStart.valueOf(), dayEnd.valueOf()),
-                durationMinutes,
-                minFreeMinutes: minFreeMinutesPerDay,
-            })
-            if (!keepsMinimumFreeTime) {
-                skippedDays.push(date)
-                day.add(1, 'day')
-                continue
-            }
-
             let candidate = moment.max(rangeStart, dayStart)
             const candidateLimit = moment.min(rangeEnd, dayEnd)
             candidate = ceilMomentToInterval(candidate, dayStart, slotIntervalMinutes)
@@ -438,7 +417,7 @@ function buildAvailabilityOptions({
         day.add(1, 'day')
     }
 
-    return { options, skippedDays }
+    return options
 }
 
 async function getGoogleBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax, calendarId, timeZone }) {
@@ -488,48 +467,22 @@ async function findCalendarAvailabilityForAssistantRequest({
     durationMinutes = DEFAULT_AVAILABILITY_DURATION_MINUTES,
     maxOptions = DEFAULT_AVAILABILITY_MAX_OPTIONS,
     slotIntervalMinutes = DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES,
-    workingHoursStart = undefined,
-    workingHoursEnd = undefined,
-    includeWeekends = undefined,
-    bufferBeforeMinutes = undefined,
-    bufferAfterMinutes = undefined,
-    // Request-level override. The caller may set this only for an explicit current-message
-    // request for today/a same-day option; otherwise the saved meeting-link setting wins.
-    allowSameDayBooking = false,
-    // Left undefined on purpose: undefined means "use the user's saved setting" (default 4h),
-    // while an explicit number — including 0, which disables the rule — is an override.
-    minFreeHoursPerDay = undefined,
-    // Server-controlled. Email uses this because its proposed slots can be sent directly to
-    // external recipients and therefore must obey the same policy as the public meeting link.
-    respectPublicMeetingLinkSettings = false,
+    workingHoursStart = DEFAULT_WORKING_HOURS_START,
+    workingHoursEnd = DEFAULT_WORKING_HOURS_END,
+    includeWeekends = false,
+    bufferBeforeMinutes = 0,
+    bufferAfterMinutes = 0,
 }) {
     const requestedTimeZone = safeTrim(timeZone)
+    const resolvedTimeZone =
+        (requestedTimeZone && moment.tz.zone(requestedTimeZone) ? requestedTimeZone : '') ||
+        (await getUserDefaultTimeZone(userId)) ||
+        'UTC'
     if (requestedTimeZone && !moment.tz.zone(requestedTimeZone)) {
         return { success: false, options: [], message: `Unknown IANA timezone "${requestedTimeZone}".` }
     }
 
-    const publicMeetingLinkSettingsResult = respectPublicMeetingLinkSettings
-        ? await getPublicMeetingLinkSettings(userId)
-        : { exists: false, settings: null }
-    if (publicMeetingLinkSettingsResult.error) {
-        return {
-            success: false,
-            options: [],
-            message: 'Meeting availability settings could not be checked right now. Please try again later.',
-        }
-    }
-
-    const publicMeetingLinkSettings = publicMeetingLinkSettingsResult.exists
-        ? publicMeetingLinkSettingsResult.settings
-        : null
-    const publicMeetingLinkTimeZone = safeTrim(publicMeetingLinkSettings?.timeZone)
-    const resolvedTimeZone =
-        (publicMeetingLinkTimeZone && moment.tz.zone(publicMeetingLinkTimeZone) ? publicMeetingLinkTimeZone : '') ||
-        (requestedTimeZone && moment.tz.zone(requestedTimeZone) ? requestedTimeZone : '') ||
-        (await getUserDefaultTimeZone(userId)) ||
-        'UTC'
-
-    let rangeStart = parseAvailabilityBoundary(timeMin, resolvedTimeZone, 'timeMin')
+    const rangeStart = parseAvailabilityBoundary(timeMin, resolvedTimeZone, 'timeMin')
     const rangeEnd = parseAvailabilityBoundary(timeMax, resolvedTimeZone, 'timeMax')
     if (!rangeEnd.isAfter(rangeStart)) {
         return { success: false, options: [], message: 'timeMax must be after timeMin.' }
@@ -560,99 +513,15 @@ async function findCalendarAvailabilityForAssistantRequest({
         5,
         120
     )
-    const savedSettingsApply = !!publicMeetingLinkSettings
-    const savedWorkingHoursStart = safeTrim(publicMeetingLinkSettings?.workingHoursStart)
-    const savedWorkingHoursEnd = safeTrim(publicMeetingLinkSettings?.workingHoursEnd)
-    const explicitWorkingHoursStart = safeTrim(workingHoursStart)
-    const explicitWorkingHoursEnd = safeTrim(workingHoursEnd)
-    const normalizedWorkingHoursStart =
-        savedSettingsApply && !explicitWorkingHoursStart
-            ? /^([01]\d|2[0-3]):[0-5]\d$/.test(savedWorkingHoursStart)
-                ? savedWorkingHoursStart
-                : DEFAULT_WORKING_HOURS_START
-            : normalizeClockTime(workingHoursStart, DEFAULT_WORKING_HOURS_START)
-    const normalizedWorkingHoursEnd =
-        savedSettingsApply && !explicitWorkingHoursEnd
-            ? /^([01]\d|2[0-3]):[0-5]\d$/.test(savedWorkingHoursEnd)
-                ? savedWorkingHoursEnd
-                : DEFAULT_WORKING_HOURS_END
-            : normalizeClockTime(workingHoursEnd, DEFAULT_WORKING_HOURS_END)
+    const normalizedWorkingHoursStart = normalizeClockTime(workingHoursStart, DEFAULT_WORKING_HOURS_START)
+    const normalizedWorkingHoursEnd = normalizeClockTime(workingHoursEnd, DEFAULT_WORKING_HOURS_END)
     if (normalizedWorkingHoursEnd <= normalizedWorkingHoursStart) {
         return { success: false, options: [], message: 'workingHoursEnd must be after workingHoursStart.' }
     }
 
-    const normalizedIncludeWeekends =
-        savedSettingsApply && typeof includeWeekends !== 'boolean'
-            ? publicMeetingLinkSettings.includeWeekends === true
-            : includeWeekends === true
-    const hasBufferBeforeOverride = bufferBeforeMinutes !== undefined && bufferBeforeMinutes !== null
-    const hasBufferAfterOverride = bufferAfterMinutes !== undefined && bufferAfterMinutes !== null
-    const normalizedBufferBeforeMinutes = normalizeBoundedInteger(
-        savedSettingsApply && !hasBufferBeforeOverride
-            ? publicMeetingLinkSettings.bufferBeforeMinutes
-            : bufferBeforeMinutes,
-        0,
-        0,
-        240
-    )
-    const normalizedBufferAfterMinutes = normalizeBoundedInteger(
-        savedSettingsApply && !hasBufferAfterOverride
-            ? publicMeetingLinkSettings.bufferAfterMinutes
-            : bufferAfterMinutes,
-        0,
-        0,
-        240
-    )
-
-    // A saved settings document means the owner has configured the public meeting policy.
-    // As on the public link, only a strict boolean true permits today; older documents with
-    // no field retain the safer no-same-day behavior. An explicit current-request override
-    // may allow today without changing the persisted setting. The boundary is the host's day.
-    if (savedSettingsApply && publicMeetingLinkSettings.allowSameDayBooking !== true && allowSameDayBooking !== true) {
-        const earliestBookableStart = moment().tz(resolvedTimeZone).startOf('day').add(1, 'day')
-        if (!rangeEnd.isAfter(earliestBookableStart)) {
-            return {
-                success: true,
-                timeZone: resolvedTimeZone,
-                durationMinutes: normalizedDurationMinutes,
-                requestedRange: {
-                    start: rangeStart.clone().tz(resolvedTimeZone).format(),
-                    end: rangeEnd.clone().tz(resolvedTimeZone).format(),
-                },
-                workingHours: {
-                    start: normalizedWorkingHoursStart,
-                    end: normalizedWorkingHoursEnd,
-                    includeWeekends: normalizedIncludeWeekends,
-                    bufferBeforeMinutes: normalizedBufferBeforeMinutes,
-                    bufferAfterMinutes: normalizedBufferAfterMinutes,
-                },
-                options: [],
-                message:
-                    'No free meeting options were found in the requested range because the saved public meeting-link settings do not allow same-day meetings.',
-            }
-        }
-        if (rangeStart.isBefore(earliestBookableStart)) {
-            rangeStart = earliestBookableStart
-        }
-    }
-
-    const hasMinFreeHoursOverride = minFreeHoursPerDay !== undefined && minFreeHoursPerDay !== null
-    const normalizedMinFreeHoursPerDay = hasMinFreeHoursOverride
-        ? normalizeMinFreeHoursPerDay(minFreeHoursPerDay)
-        : savedSettingsApply
-          ? normalizeMinFreeHoursPerDay(publicMeetingLinkSettings.minFreeHoursPerDay)
-          : await getMinFreeHoursPerDayForUser(userId)
-    const minFreeMinutesPerDay = minFreeHoursToMinutes(normalizedMinFreeHoursPerDay)
-
     const normalizedCalendarId = normalizeCalendarId(calendarId)
-    // Busy events are fetched for WHOLE days covering the requested range, not just the
-    // requested slice: the daily-free-time rule has to see the meetings that sit outside the
-    // searched window but inside the same working day. Slot generation is still clamped to
-    // the requested range below, so the wider fetch cannot invent options outside it.
-    const loadWindowStart = moment.min(rangeStart.clone(), rangeStart.clone().tz(resolvedTimeZone).startOf('day'))
-    const loadWindowEnd = moment.max(rangeEnd.clone(), rangeEnd.clone().tz(resolvedTimeZone).endOf('day'))
-    const normalizedTimeMin = loadWindowStart.toISOString()
-    const normalizedTimeMax = loadWindowEnd.toISOString()
+    const normalizedTimeMin = rangeStart.toISOString()
+    const normalizedTimeMax = rangeEnd.toISOString()
     const googleAccounts = await getConnectedCalendarAccounts(userId)
     const googleResults = await settleAll(
         googleAccounts.map(account =>
@@ -708,46 +577,20 @@ async function findCalendarAvailabilityForAssistantRequest({
         }
     }
 
-    const bufferedBusyIntervals = applyBusyIntervalBuffers(
-        busyIntervals,
-        normalizedBufferBeforeMinutes,
-        normalizedBufferAfterMinutes
-    )
-    const mergedBusyIntervals = mergeBusyIntervals(
-        bufferedBusyIntervals,
-        loadWindowStart.valueOf(),
-        loadWindowEnd.valueOf()
-    )
-    const buildOptions = minFreeMinutes =>
-        buildAvailabilityOptions({
-            busyIntervals: mergedBusyIntervals,
-            rangeStart,
-            rangeEnd,
-            timeZone: resolvedTimeZone,
-            durationMinutes: normalizedDurationMinutes,
-            maxOptions: normalizedMaxOptions,
-            slotIntervalMinutes: normalizedSlotIntervalMinutes,
-            workingHoursStart: normalizedWorkingHoursStart,
-            workingHoursEnd: normalizedWorkingHoursEnd,
-            includeWeekends: normalizedIncludeWeekends,
-            minFreeMinutesPerDay: minFreeMinutes,
-        })
-
-    const constrained = buildOptions(minFreeMinutesPerDay)
-
-    // Soft fallback: the minimum is a guardrail, not a wall. If honouring it leaves the user
-    // with nothing at all in the whole requested range, offer the options anyway and say so
-    // (minFreeHours.applied === false) so the assistant can flag that these eat into the
-    // protected free time instead of answering "no availability" to someone who asked.
-    let options = constrained.options
-    let minFreeHoursApplied = true
-    if (options.length === 0 && minFreeMinutesPerDay > 0 && constrained.skippedDays.length > 0) {
-        const relaxed = buildOptions(0)
-        if (relaxed.options.length > 0) {
-            options = relaxed.options
-            minFreeHoursApplied = false
-        }
-    }
+    const bufferedBusyIntervals = applyBusyIntervalBuffers(busyIntervals, bufferBeforeMinutes, bufferAfterMinutes)
+    const mergedBusyIntervals = mergeBusyIntervals(bufferedBusyIntervals, rangeStart.valueOf(), rangeEnd.valueOf())
+    const options = buildAvailabilityOptions({
+        busyIntervals: mergedBusyIntervals,
+        rangeStart,
+        rangeEnd,
+        timeZone: resolvedTimeZone,
+        durationMinutes: normalizedDurationMinutes,
+        maxOptions: normalizedMaxOptions,
+        slotIntervalMinutes: normalizedSlotIntervalMinutes,
+        workingHoursStart: normalizedWorkingHoursStart,
+        workingHoursEnd: normalizedWorkingHoursEnd,
+        includeWeekends: includeWeekends === true,
+    })
 
     return {
         success: true,
@@ -760,45 +603,18 @@ async function findCalendarAvailabilityForAssistantRequest({
         workingHours: {
             start: normalizedWorkingHoursStart,
             end: normalizedWorkingHoursEnd,
-            includeWeekends: normalizedIncludeWeekends,
-            bufferBeforeMinutes: normalizedBufferBeforeMinutes,
-            bufferAfterMinutes: normalizedBufferAfterMinutes,
-        },
-        // AT-2278. `skippedDays` carries dates only — no event data — so the privacy contract
-        // of this tool ("free options, never calendar contents") is unchanged.
-        minFreeHours: {
-            perDay: normalizedMinFreeHoursPerDay,
-            source: hasMinFreeHoursOverride ? 'request' : 'settings',
-            applied: minFreeHoursApplied,
-            skippedDays: constrained.skippedDays,
+            includeWeekends: includeWeekends === true,
+            bufferBeforeMinutes: Math.max(parseInt(bufferBeforeMinutes, 10) || 0, 0),
+            bufferAfterMinutes: Math.max(parseInt(bufferAfterMinutes, 10) || 0, 0),
         },
         searchedCalendarCount,
         failedCalendarCount,
         options,
-        message: buildAvailabilityMessage({
-            optionCount: options.length,
-            minFreeHoursPerDay: normalizedMinFreeHoursPerDay,
-            minFreeHoursApplied,
-            skippedDayCount: constrained.skippedDays.length,
-        }),
+        message:
+            options.length > 0
+                ? `Found ${options.length} free meeting option${options.length === 1 ? '' : 's'}.`
+                : 'No free meeting options were found in the requested range.',
     }
-}
-
-function buildAvailabilityMessage({ optionCount, minFreeHoursPerDay, minFreeHoursApplied, skippedDayCount }) {
-    if (optionCount === 0) {
-        return 'No free meeting options were found in the requested range.'
-    }
-
-    const found = `Found ${optionCount} free meeting option${optionCount === 1 ? '' : 's'}.`
-    if (!minFreeHoursApplied) {
-        return `${found} Every day in this range is already at the user's limit of ${minFreeHoursPerDay}h of free calendar time per day, so these options cut into that protected time — say so when offering them.`
-    }
-    if (skippedDayCount > 0) {
-        return `${found} ${skippedDayCount} day${
-            skippedDayCount === 1 ? ' was' : 's were'
-        } skipped to keep at least ${minFreeHoursPerDay}h of free calendar time per day.`
-    }
-    return found
 }
 
 function normalizeCalendarEvent(event, account, calendarId, includeDescription = true) {
@@ -830,7 +646,6 @@ function normalizeCalendarEvent(event, account, calendarId, includeDescription =
         hangoutLink: event?.hangoutLink || '',
         conferenceData: event?.conferenceData || null,
         recurringEventId: event?.recurringEventId || null,
-        recurrence: event?.recurrence || null,
     }
 }
 
@@ -893,13 +708,7 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    // Google uses "primary" as an alias within each account. When more than one account is
-    // connected, probing that alias across every account makes the otherwise deterministic saved
-    // default look ambiguous. Treat an explicit "primary" exactly like an omitted target so tool
-    // callers cannot accidentally bypass the user's saved default account.
-    const targetsDefaultCalendar = !calendarId || resolvedCalendarId === DEFAULT_CALENDAR_ID
-
-    if (targetsDefaultCalendar) {
+    if (!calendarId) {
         const defaultAccount = accounts.find(account => account.calendarDefault)
         if (defaultAccount) {
             return {
@@ -926,12 +735,12 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    if (targetsDefaultCalendar) {
+    if (!calendarId) {
         return {
             success: false,
             code: 'calendar_account_ambiguous',
             message:
-                'Multiple Google Calendar accounts are connected and no saved default is available. Please specify one of the connected calendar email targets or set a default Calendar account.',
+                'Multiple Google Calendar accounts are connected. Please provide a calendarId or connect only one Calendar account for assistant writes.',
             accounts,
         }
     }
@@ -1249,7 +1058,6 @@ async function createCalendarEventForAssistantRequest({
     attendees,
     calendarId,
     addConferencing,
-    recurrence,
 }) {
     const trimmedSummary = safeTrim(summary)
     if (!trimmedSummary) {
@@ -1260,7 +1068,6 @@ async function createCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
-    if (recurrence !== undefined) validateRecurrence(recurrence, start, resolvedTimeZone)
     const microsoftAccounts = await getConnectedMicrosoftCalendarAccounts(userId).catch(() => [])
     const googleAccounts = await getConnectedCalendarAccounts(userId).catch(() => [])
     if (microsoftAccounts.find(account => account.calendarDefault) || googleAccounts.length === 0) {
@@ -1275,7 +1082,6 @@ async function createCalendarEventForAssistantRequest({
             attendees,
             calendarId,
             addConferencing,
-            recurrence,
         })
     }
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
@@ -1300,7 +1106,6 @@ async function createCalendarEventForAssistantRequest({
         },
         { requireRange: true }
     )
-    if (recurrence !== undefined) payload.recurrence = toGoogleRecurrence(recurrence, payload.start, resolvedTimeZone)
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const inserted = await insertGoogleEventWithConferencing(calendar, resolution.calendarId, payload, addConferencing)
@@ -1335,8 +1140,6 @@ async function updateCalendarEventForAssistantRequest({
     timeZone,
     location,
     attendees,
-    recurrence,
-    scope,
 }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
@@ -1347,8 +1150,6 @@ async function updateCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
-    validateScope(scope)
-    if (recurrence !== undefined && scope !== 'series') throw new Error('Changing recurrence requires scope: series.')
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
         return updateMicrosoftCalendarEventForAssistantRequest({
@@ -1362,8 +1163,6 @@ async function updateCalendarEventForAssistantRequest({
             timeZone: resolvedTimeZone,
             location,
             attendees,
-            recurrence,
-            scope,
         })
     }
 
@@ -1380,24 +1179,6 @@ async function updateCalendarEventForAssistantRequest({
         { requireRange: false }
     )
 
-    const calendar = await getCalendarClient(userId, resolution.account.projectId)
-    const currentEvent =
-        resolution.event ||
-        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
-        {}
-    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
-    if (target.error) return target.error
-    if (recurrence !== undefined) {
-        const masterEvent =
-            target.eventId === trimmedEventId
-                ? currentEvent
-                : (await calendar.events.get({ calendarId: resolution.calendarId, eventId: target.eventId }))?.data ||
-                  {}
-        const recurrenceStart = payload.start || masterEvent.start
-        if (!recurrenceStart) throw new Error('The series start date is required to change recurrence.')
-        payload.recurrence = toGoogleRecurrence(recurrence, recurrenceStart, resolvedTimeZone)
-    }
-
     if (Object.keys(payload).length === 0) {
         return {
             success: false,
@@ -1405,9 +1186,10 @@ async function updateCalendarEventForAssistantRequest({
         }
     }
 
+    const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const response = await calendar.events.patch({
         calendarId: resolution.calendarId,
-        eventId: target.eventId,
+        eventId: trimmedEventId,
         requestBody: payload,
     })
 
@@ -1421,7 +1203,7 @@ async function updateCalendarEventForAssistantRequest({
     }
 }
 
-async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId, scope }) {
+async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
         return {
@@ -1431,21 +1213,14 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
     }
 
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
-    validateScope(scope)
     if (!resolution.success) {
-        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId, scope })
+        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId })
     }
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
-    const currentEvent =
-        resolution.event ||
-        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
-        {}
-    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
-    if (target.error) return target.error
     await calendar.events.delete({
         calendarId: resolution.calendarId,
-        eventId: target.eventId,
+        eventId: trimmedEventId,
     })
 
     return {
@@ -1453,7 +1228,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        eventId: target.eventId,
+        eventId: trimmedEventId,
         message: 'Calendar event deleted successfully.',
     }
 }
@@ -1465,6 +1240,7 @@ module.exports = {
     updateCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
     __private__: {
+        getActiveProjectIds,
         normalizeLimit,
         normalizeEventDateTimeInput,
         validateEventRange,

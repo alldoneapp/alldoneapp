@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
@@ -27,37 +27,19 @@ export default function DoneStateWrapper({ projectId, milestone }) {
         dispatch(hideFloatPopup())
     }
 
-    const moveMilestoneToDone = async () => {
+    const moveMilestoneToDone = () => {
         setShowModal(false)
         dispatch(hideFloatPopup())
-        try {
-            await Backend.updateMilestoneDoneState(projectId, milestone)
-        } catch (error) {
-            setChecked(milestone.done)
-            console.error('[Milestone transition] Could not mark milestone as done', {
-                projectId,
-                milestoneId: milestone.id,
-                error,
-            })
-        }
+        Backend.updateMilestoneDoneState(projectId, milestone)
     }
 
-    const moveMilestoneToOpen = async () => {
+    const moveMilestoneToOpen = () => {
         setChecked(!milestone.done)
-        try {
-            await Backend.updateMilestoneDoneState(projectId, milestone)
-        } catch (error) {
-            setChecked(milestone.done)
-            console.error('[Milestone transition] Could not reopen milestone', {
-                projectId,
-                milestoneId: milestone.id,
-                error,
-            })
-        }
+        Backend.updateMilestoneDoneState(projectId, milestone)
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <ConfirmDoneMilestoneModal
                     projectId={projectId}
@@ -81,6 +63,6 @@ export default function DoneStateWrapper({ projectId, milestone }) {
                 checked={checked}
                 disabled={loggedUser.isAnonymous}
             />
-        </AppPopover>
+        </Popover>
     )
 }

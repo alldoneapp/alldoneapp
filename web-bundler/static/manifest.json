@@ -2,7 +2,6 @@
     "background_color": "#0A44A5",
     "description": "Alldone.app - team up with AI agents to get it all done",
     "display": "standalone",
-    "theme_color": "#FFFFFF",
     "lang": "en",
     "name": "Alldone.app",
     "short_name": "Alldone.app",
@@ -22,22 +21,6 @@
             "src": "/pwa/chrome-icon/chrome-icon-512.png",
             "sizes": "512x512",
             "type": "image/png"
-        },
-        {
-            "src": "/pwa/chrome-icon/chrome-icon-maskable-512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable"
         }
-    ],
-    "share_target": {
-        "action": "/projects/tasks/open",
-        "method": "GET",
-        "enctype": "application/x-www-form-urlencoded",
-        "params": {
-            "title": "share_title",
-            "text": "share_text",
-            "url": "share_url"
-        }
-    }
+    ]
 }

@@ -1,4 +1,3 @@
-import { runWithLoading, subscribeWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
 
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
@@ -16,7 +15,7 @@ import {
 } from '../firestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import store from '../../../redux/store'
-import { setAssistantsInProject, setGlobalAssistants } from '../../../redux/actions'
+import { setAssistantsInProject, setGlobalAssistants, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import {
     DEFAULT_EMAIL_SIGNATURE,
     GLOBAL_PROJECT_ID,
@@ -40,11 +39,7 @@ import { updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { RECURRENCE_NEVER, RECURRENCE_ONCE } from '../../../components/TaskListView/Utils/TasksHelper'
-import {
-    getAssistantPreConfigSearchRows,
-    settlePreConfigTaskSearchSources,
-    sortPreConfigTaskSearchItems,
-} from './preConfigTaskSearchHelper'
+import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
 import { getPreConfigTaskModelOverride } from '../../../functions/Assistant/preConfigTaskModel'
 import { getWorkflowSortIndexUpdates, getWorkflowStepsIdsSorted } from '../../workflowOrder'
 import {
@@ -53,7 +48,6 @@ import {
     getAssistantWorkflow,
 } from '../../assistantWorkflow'
 import { normalizeAssistantReasoningEffort } from '../../../functions/Assistant/selectableAssistantReasoningEfforts'
-import { getAssistantTemplateState, getTaskTemplateState } from '../../../functions/Assistants/templateMerge'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -71,10 +65,36 @@ export const DEFAULT_HEARTBEAT_PROMPT =
 const ASSISTANT_TASKS_CACHE_MAX_AGE = 120000
 const assistantTasksCache = {}
 
-export const getAssistantTemplateSnapshot = getAssistantTemplateState
+const TEMPLATE_LOCAL_ASSISTANT_FIELDS = new Set([
+    'uid',
+    'creatorId',
+    'createdDate',
+    'lastEditorId',
+    'lastEditionDate',
+    'noteIdsByProject',
+    'lastVisitBoard',
+    'commentsData',
+    'isDefault',
+    'fromTemplate',
+    'instructionsHistory',
+    'heartbeatPromptHistory',
+    'copiedFromTemplateAssistantId',
+    'copiedFromTemplateAssistantDate',
+    'templateSyncSnapshot',
+    'templateSyncConflicts',
+    'templateSyncStatus',
+    'templateSyncedAt',
+    'workflow',
+])
+
+export const getAssistantTemplateSnapshot = assistant =>
+    Object.keys(assistant || {}).reduce((snapshot, field) => {
+        if (!TEMPLATE_LOCAL_ASSISTANT_FIELDS.has(field)) snapshot[field] = assistant[field]
+        return snapshot
+    }, {})
 
 function getAssistantTasksCollectionPath(projectId, assistantId) {
-    return projectId === GLOBAL_PROJECT_ID || isGlobalAssistant(assistantId)
+    return isGlobalAssistant(assistantId)
         ? `assistantTasks/${projectId}/preConfigTasks`
         : `assistantTasks/${projectId}/${assistantId}`
 }
@@ -170,15 +190,13 @@ export async function getGlobalAssistants() {
     return assistants
 }
 
-export function watchAssistants(projectId, watcherKey, callback, { onError } = {}) {
-    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
-        'project_assistants',
-        (next, error) =>
-            getDb()
-                .collection(`assistants/${projectId}/items`)
-                .orderBy('lastEditionDate', 'desc')
-                .onSnapshot(next, error),
-        assistantDocs => {
+export function watchAssistants(projectId, watcherKey, callback) {
+    let firstSnap = true
+    store.dispatch(startLoadingData())
+    globalWatcherUnsub[watcherKey] = getDb()
+        .collection(`assistants/${projectId}/items`)
+        .orderBy('lastEditionDate', 'desc')
+        .onSnapshot(assistantDocs => {
             let assistants = []
             assistantDocs.forEach(doc => {
                 const assistant = doc.data()
@@ -186,22 +204,28 @@ export function watchAssistants(projectId, watcherKey, callback, { onError } = {
                 assistants.push(assistant)
             })
             callback(assistants)
-        },
-        { onError }
-    )
+            if (firstSnap) {
+                firstSnap = false
+                store.dispatch(stopLoadingData())
+            }
+        })
 }
 
 export function watchAssistant(projectId, assistantId, watcherKey, callback) {
-    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
-        'assistant',
-        (next, error) => getDb().doc(`assistants/${projectId}/items/${assistantId}`).onSnapshot(next, error),
-        doc => {
+    let firstSnap = true
+    store.dispatch(startLoadingData())
+    globalWatcherUnsub[watcherKey] = getDb()
+        .doc(`assistants/${projectId}/items/${assistantId}`)
+        .onSnapshot(doc => {
             const assistant = doc.data()
             if (assistant) assistant.uid = doc.id
 
             callback(assistant)
-        }
-    )
+            if (firstSnap) {
+                firstSnap = false
+                store.dispatch(stopLoadingData())
+            }
+        })
 }
 
 export async function getProjectAssistants(projectId) {
@@ -218,6 +242,8 @@ export async function getProjectAssistants(projectId) {
 }
 
 export function watchAssistantTasks(projectId, assistantId, watcherKey, callback) {
+    let firstSnap = true
+    store.dispatch(startLoadingData())
     const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
     let query = getDb().collection(collectionPath)
 
@@ -225,20 +251,20 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
         query = query.where('assistantId', '==', assistantId)
     }
 
-    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
-        'assistant_tasks',
-        (next, error) => query.onSnapshot(next, error),
-        assistantDocs => {
-            const tasks = []
-            assistantDocs.forEach(doc => {
-                tasks.push(mapAssistantTaskData(doc.id, doc.data()))
-            })
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(assistantDocs => {
+        const tasks = []
+        assistantDocs.forEach(doc => {
+            tasks.push(mapAssistantTaskData(doc.id, doc.data()))
+        })
 
-            sortAssistantTasks(tasks)
-            setAssistantTasksCache(projectId, assistantId, tasks)
-            callback(tasks)
+        sortAssistantTasks(tasks)
+        setAssistantTasksCache(projectId, assistantId, tasks)
+        callback(tasks)
+        if (firstSnap) {
+            firstSnap = false
+            store.dispatch(stopLoadingData())
         }
-    )
+    })
 }
 
 export async function getPreConfigTasksForProject(projectId) {
@@ -319,45 +345,27 @@ export async function getPreConfigTasksForAllProjects() {
         sourcesByCacheKey[cacheKey].rows.push({ project, assistant, projectSearchOrder, assistantSearchOrder })
     })
 
-    const { loadedSources, failedSources } = await settlePreConfigTaskSearchSources(
-        Object.values(sourcesByCacheKey),
-        source => getAssistantTasks(source.tasksProjectId, source.assistantId)
-    )
-
-    loadedSources.forEach(({ source, tasks }) => {
-        source.rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
-            tasks.forEach(task => {
-                allTasks.push({
-                    ...task,
-                    id: task.id,
-                    searchId: `${project.id}_${assistant.uid}_${task.id}`,
-                    projectId: project.id,
-                    project,
-                    assistant,
-                    assistantId: assistant.uid,
-                    isPreConfigTask: true,
-                    projectSearchOrder,
-                    assistantSearchOrder,
+    await Promise.all(
+        Object.values(sourcesByCacheKey).map(async source => {
+            const tasks = await getAssistantTasks(source.tasksProjectId, source.assistantId)
+            source.rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
+                tasks.forEach(task => {
+                    allTasks.push({
+                        ...task,
+                        id: task.id,
+                        searchId: `${project.id}_${assistant.uid}_${task.id}`,
+                        projectId: project.id,
+                        project,
+                        assistant,
+                        assistantId: assistant.uid,
+                        isPreConfigTask: true,
+                        projectSearchOrder,
+                        assistantSearchOrder,
+                    })
                 })
             })
         })
-    })
-
-    if (failedSources.length > 0) {
-        const failureDetails = failedSources.map(({ source, error }) => ({
-            tasksProjectId: source.tasksProjectId,
-            assistantId: source.assistantId,
-            code: error?.code || error?.name || 'unknown',
-        }))
-        console.warn('[Assistant task search] Skipped unavailable task sources:', failureDetails)
-
-        if (allTasks.length === 0) {
-            const error = new Error('Assistant tasks could not be loaded')
-            error.code = 'assistant-task-search-load-failed'
-            error.failedSources = failureDetails
-            throw error
-        }
-    }
+    )
 
     return sortPreConfigTaskSearchItems(allTasks, loggedUser?.uid)
 }
@@ -452,7 +460,6 @@ const updateAssistantEditedWorkflowStepTasks = (projectId, tasks, stepId, review
             : task.stepHistory.findIndex(id => id === stepId)
         if (index == null || index < 0 || index >= task.userIds.length) return
 
-        task.projectId = projectId
         task.userIds[index] = reviewerUid
         if (index === task.stepHistory.length - 1) task.currentReviewerId = reviewerUid
         if (task.subtaskIds?.length > 0) parentTasksIndices[taskData.id] = index
@@ -721,8 +728,8 @@ export async function updateAssistantName(projectId, assistant, newName) {
         assistantNameChangedUpdatesChain(projectId, assistant, assistant.displayName, newName)
 }
 
-export async function updateAssistantDescription(projectId, description, assistant) {
-    await updateAssistantData(projectId, assistant.uid, { description }, null)
+export function updateAssistantDescription(projectId, description, assistant) {
+    updateAssistantData(projectId, assistant.uid, { description }, null)
     if (!isGlobalAssistant(assistant.uid))
         assistantDescriptionChangedUpdatesChain(projectId, assistant, assistant.description, description)
 }
@@ -971,29 +978,29 @@ export function updateAssistantLastVisitedBoardDate(
 }
 
 export async function updateAssistantAvatar(projectId, assistant, pictureFile) {
-    return runWithLoading('update_assistant_avatar', async () => {
-        const pictures = await proccessPictureForAvatar(pictureFile)
+    const pictures = await proccessPictureForAvatar(pictureFile)
 
-        if (pictures.length > 0) {
-            await deleteFolderFilesInStorage(`assistants/${projectId}/items/${assistant.uid}`)
-            const urlList = await uploadAvatarPhotos(
-                pictures,
-                `assistants/${projectId}/${assistant.uid}/${assistant.uid}@${Date.now()}`,
-                ''
-            )
+    if (pictures.length > 0) {
+        store.dispatch(startLoadingData())
+        await deleteFolderFilesInStorage(`assistants/${projectId}/items/${assistant.uid}`)
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `assistants/${projectId}/${assistant.uid}/${assistant.uid}@${Date.now()}`,
+            ''
+        )
 
-            const updatedData = {
-                photoURL: urlList[0],
-                photoURL50: urlList[1],
-                photoURL300: urlList[2],
-            }
-
-            await updateAssistantData(projectId, assistant.uid, updatedData, null)
-
-            if (!isGlobalAssistant(assistant.uid))
-                assistantPictureChangedUpdatesChain(projectId, assistant, updatedData.photoURL50)
+        const updatedData = {
+            photoURL: urlList[0],
+            photoURL50: urlList[1],
+            photoURL300: urlList[2],
         }
-    })
+
+        await updateAssistantData(projectId, assistant.uid, updatedData, null)
+        store.dispatch(stopLoadingData())
+
+        if (!isGlobalAssistant(assistant.uid))
+            assistantPictureChangedUpdatesChain(projectId, assistant, updatedData.photoURL50)
+    }
 }
 
 export async function discoverExternalToolsForIframeLink(link) {
@@ -1453,13 +1460,13 @@ export async function copyPreConfigTasksToNewAssistant(
             const newTaskId = getId()
 
             const taskCopy = {
-                ...getTaskTemplateState(task),
+                ...task,
                 assistantId: targetAssistantId,
                 id: newTaskId,
                 // Track source template task for update sync
                 copiedFromTemplateTaskId: doc.id,
                 copiedFromTemplateTaskDate: Date.now(),
-                templateTaskSnapshot: getTaskTemplateState(task),
+                templateTaskSnapshot: getTemplateTaskPayloadForClient(task),
                 templateTaskSyncConflicts: [],
                 templateSyncStatus: 'synced',
             }
@@ -1510,6 +1517,31 @@ export async function copyPreConfigTasksToNewAssistant(
             stack: error.stack,
         })
     }
+}
+
+const TEMPLATE_LOCAL_TASK_FIELDS = new Set([
+    'id',
+    'assistantId',
+    'copiedFromTemplateTaskId',
+    'copiedFromTemplateTaskDate',
+    'templateTaskSnapshot',
+    'templateTaskSyncConflicts',
+    'templateSyncStatus',
+    'templateTaskDeletedAt',
+    'activatedInProjectId',
+    'lastExecuted',
+    'lastExecutedByUser',
+    'creatorUserId',
+    'activatorUserId',
+    'recurrenceByUser',
+    'activatedUserIds',
+])
+
+function getTemplateTaskPayloadForClient(task) {
+    return Object.keys(task || {}).reduce((payload, field) => {
+        if (!TEMPLATE_LOCAL_TASK_FIELDS.has(field)) payload[field] = task[field]
+        return payload
+    }, {})
 }
 
 export async function resolveAssistantTemplateConflicts(projectId, assistantId, acceptedFields, resolvedFields) {
@@ -1584,6 +1616,27 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
         const syncTimestamp = Date.now()
 
         const normalizeOrder = value => (typeof value === 'number' && Number.isFinite(value) ? value : 9999)
+        const localOnlyFields = new Set([
+            'id',
+            'assistantId',
+            'copiedFromTemplateTaskId',
+            'copiedFromTemplateTaskDate',
+            'activatedInProjectId',
+            'lastExecuted',
+            'lastExecutedByUser',
+            'creatorUserId',
+            'activatorUserId',
+            'recurrenceByUser',
+            'activatedUserIds',
+        ])
+
+        const getTemplateTaskPayload = globalTask => {
+            const payload = {}
+            Object.keys(globalTask || {}).forEach(key => {
+                if (!localOnlyFields.has(key) && key !== 'aiModel') payload[key] = globalTask[key]
+            })
+            return payload
+        }
 
         // 1. Get global/template tasks
         const globalTasksSnapshot = await getDb()
@@ -1621,8 +1674,8 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
         // 4. For each global task, update or create local task
         globalTasks.forEach((globalTask, index) => {
             const localTask = localTasksByTemplateId[globalTask.id]
+            const templatePayload = getTemplateTaskPayload(globalTask)
             const templateOrder = index
-            const templatePayload = { ...getTaskTemplateState(globalTask), order: templateOrder }
 
             if (localTask) {
                 const shouldPreserveLocalRecurringTime =
@@ -1636,9 +1689,6 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     order: templateOrder,
                     // Update sync timestamp
                     copiedFromTemplateTaskDate: syncTimestamp,
-                    templateTaskSnapshot: templatePayload,
-                    templateTaskSyncConflicts: [],
-                    templateSyncStatus: 'synced',
                 }
 
                 // Preserve project-level recurring schedule time customizations.
@@ -1665,9 +1715,6 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     copiedFromTemplateTaskId: globalTask.id,
                     copiedFromTemplateTaskDate: syncTimestamp,
                     order: templateOrder,
-                    templateTaskSnapshot: templatePayload,
-                    templateTaskSyncConflicts: [],
-                    templateSyncStatus: 'synced',
                     activatedInProjectId: localProjectId,
                     lastExecuted: null,
                     lastExecutedByUser: {},

@@ -69,10 +69,6 @@ describe('MeetingBookingPage', () => {
         })
     })
 
-    afterEach(() => {
-        jest.restoreAllMocks()
-    })
-
     test('renders the loading state before the page request resolves', () => {
         const tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
 
@@ -158,9 +154,7 @@ describe('MeetingBookingPage', () => {
             await flushPromises()
         })
 
-        // Tomorrow, not today: this fixture page has no allowSameDayBooking, so the day
-        // strip starts at the first bookable day (AT-2271).
-        const firstDay = moment().tz('Europe/Berlin').add(1, 'days').startOf('day')
+        const firstDay = moment().tz('Europe/Berlin').startOf('day')
         const firstDayButton = tree.root.findByProps({ testID: `booking-day-${firstDay.format('YYYY-MM-DD')}` })
 
         await act(async () => {
@@ -192,144 +186,6 @@ describe('MeetingBookingPage', () => {
                 end: futureDay.clone().endOf('day').format(),
             })
         )
-    })
-
-    test('hides excluded weekends and preselects the next visible weekday', async () => {
-        const now = moment.tz('2026-08-14T12:00:00', 'Europe/Berlin') // Friday
-        const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(now.valueOf())
-        let tree
-        await act(async () => {
-            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
-            await flushPromises()
-            await flushPromises()
-        })
-
-        const saturday = now.clone().add(1, 'day').startOf('day')
-        const sunday = now.clone().add(2, 'days').startOf('day')
-        const monday = now.clone().add(3, 'days').startOf('day')
-        expect(tree.root.findAllByProps({ testID: `booking-day-${saturday.format('YYYY-MM-DD')}` })).toHaveLength(0)
-        expect(tree.root.findAllByProps({ testID: `booking-day-${sunday.format('YYYY-MM-DD')}` })).toHaveLength(0)
-        expect(
-            tree.root.findAllByProps({ testID: `booking-day-${monday.format('YYYY-MM-DD')}` }).length
-        ).toBeGreaterThan(0)
-        expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                start: monday.format(),
-                end: monday.clone().endOf('day').format(),
-            })
-        )
-
-        dateNowSpy.mockRestore()
-    })
-
-    test('keeps weekend days visible and selectable when the host includes them', async () => {
-        const now = moment.tz('2026-08-14T12:00:00', 'Europe/Berlin') // Friday
-        const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(now.valueOf())
-        getPublicBookingPage.mockResolvedValue({
-            success: true,
-            page: { ...page, settings: { ...page.settings, includeWeekends: true } },
-        })
-        let tree
-        await act(async () => {
-            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
-            await flushPromises()
-            await flushPromises()
-        })
-
-        const saturday = now.clone().add(1, 'day').startOf('day')
-        expect(
-            tree.root.findAllByProps({ testID: `booking-day-${saturday.format('YYYY-MM-DD')}` }).length
-        ).toBeGreaterThan(0)
-        expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                start: saturday.format(),
-                end: saturday.clone().endOf('day').format(),
-            })
-        )
-
-        dateNowSpy.mockRestore()
-    })
-
-    describe('same-day booking (AT-2271)', () => {
-        const dayTestId = day => `booking-day-${day.format('YYYY-MM-DD')}`
-        const today = () => moment().tz('Europe/Berlin').startOf('day')
-        const tomorrow = () => moment().tz('Europe/Berlin').add(1, 'days').startOf('day')
-        const firstVisibleDay = () => {
-            const day = tomorrow()
-            while (day.day() === 0 || day.day() === 6) day.add(1, 'day')
-            return day
-        }
-
-        const render = async () => {
-            let tree
-            await act(async () => {
-                tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
-                await flushPromises()
-                await flushPromises()
-            })
-            return tree
-        }
-
-        test('does not offer today when the setting is absent (existing booking links)', async () => {
-            const tree = await render()
-
-            expect(tree.root.findAllByProps({ testID: dayTestId(today()) })).toHaveLength(0)
-            expect(tree.root.findAllByProps({ testID: dayTestId(firstVisibleDay()) }).length).toBeGreaterThan(0)
-        })
-
-        test('does not offer today when the host explicitly disabled it', async () => {
-            getPublicBookingPage.mockResolvedValue({
-                success: true,
-                page: { ...page, settings: { ...page.settings, allowSameDayBooking: false } },
-            })
-            const tree = await render()
-
-            expect(tree.root.findAllByProps({ testID: dayTestId(today()) })).toHaveLength(0)
-        })
-
-        test('preselects the first visible day, so the first availability request skips today and weekends', async () => {
-            await render()
-            const initialDay = firstVisibleDay()
-
-            expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
-                expect.objectContaining({
-                    start: initialDay.format(),
-                    end: initialDay.clone().endOf('day').format(),
-                })
-            )
-        })
-
-        test('offers today and preselects it when the host allows same-day booking', async () => {
-            getPublicBookingPage.mockResolvedValue({
-                success: true,
-                page: {
-                    ...page,
-                    settings: { ...page.settings, allowSameDayBooking: true, includeWeekends: true },
-                },
-            })
-            const tree = await render()
-
-            expect(tree.root.findAllByProps({ testID: dayTestId(today()) }).length).toBeGreaterThan(0)
-            // Today starts from "now" rather than midnight so past slots aren't offered.
-            expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
-                expect.objectContaining({ end: today().clone().endOf('day').format() })
-            )
-        })
-
-        test('keeps the full calendar-month horizon when today and weekends are excluded', async () => {
-            const tree = await render()
-            const firstDay = tomorrow()
-            const lastDay = moment().tz('Europe/Berlin').add(31, 'days').startOf('day')
-
-            for (const day of [firstDay, lastDay]) {
-                const matchingDays = tree.root.findAllByProps({ testID: dayTestId(day) })
-                if (day.day() === 0 || day.day() === 6) expect(matchingDays).toHaveLength(0)
-                else expect(matchingDays.length).toBeGreaterThan(0)
-            }
-
-            const beyondHorizon = lastDay.clone().add(1, 'day')
-            expect(tree.root.findAllByProps({ testID: dayTestId(beyondHorizon) })).toHaveLength(0)
-        })
     })
 
     test('books a selected slot after visitor details are entered', async () => {

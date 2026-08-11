@@ -22,6 +22,7 @@ export default function DvContainer({ projectId }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isFullScreen = useSelector(state => state.dvIsFullScreen)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
 
     const userHasAccessToProject = SharedHelper.checkIfUserHasAccessToProject(
         isAnonymous,
@@ -38,15 +39,12 @@ export default function DvContainer({ projectId }) {
     useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     useEffect(() => {
-        // Fullscreen is global for skill details, so reset stale note fullscreen state on entry.
-        dispatch(setDvIsFullScreen(false))
-    }, [])
+        dispatch(setDvIsFullScreen(assistantEnabled))
+    }, [assistantEnabled])
 
     return (
         <View style={{ flex: 1 }}>
-            {!smallScreenNavigation && !isMiddleScreen && userHasAccessToProject && (
-                <BackButton projectId={projectId} />
-            )}
+            {!isMiddleScreen && userHasAccessToProject && <BackButton projectId={projectId} />}
 
             <CustomView
                 ref={scrollRef}

@@ -71,30 +71,18 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
     })
 }
 
-export const getCollapsedQuickActionCount = ({ containerWidth, searchWidth, moreWidth, optionWidths }) => {
-    if (optionWidths.length === 0) return 0
+export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, isMobile) => {
+    const filledSpaceWidth = isMiddleScreen ? 174 : 274
+    const freeSpaceWidth = containerWidth - filledSpaceWidth
+    const avarageWidthOfButtons = isMobile ? 130 : 150
+    const calculatedAmount = Math.floor(freeSpaceWidth / avarageWidthOfButtons)
 
-    const hasCompleteMeasurements = containerWidth > 0 && searchWidth > 0 && optionWidths.every(width => width > 0)
-    if (!hasCompleteMeasurements) return 0
-
-    const allOptionsWidth = optionWidths.reduce((total, width) => total + width, 0)
-    if (searchWidth + allOptionsWidth <= containerWidth) return optionWidths.length
-
-    // If any option is hidden, More has to fit on the same line too. Until More has been
-    // measured, keep every task hidden rather than briefly rendering a wrapping row.
-    if (moreWidth <= 0) return 0
-
-    const availableOptionsWidth = Math.max(0, containerWidth - searchWidth - moreWidth)
-    let usedWidth = 0
-    let visibleCount = 0
-
-    for (const width of optionWidths) {
-        if (usedWidth + width > availableOptionsWidth) break
-        usedWidth += width
-        visibleCount += 1
+    // Ensure at least 2 buttons fit on mobile phones
+    if (isMobile && calculatedAmount < 2) {
+        return 2
     }
 
-    return visibleCount
+    return calculatedAmount
 }
 
 export const getOptionsPresentationData = (
@@ -129,25 +117,13 @@ export const getCommentData = (
 
     if (commentSource) {
         const { creatorId, creatorType, projectId } = commentSource
-        // A source that names its project must be rendered in THAT project. The preview subscribes
-        // to chatComments/<commentProject>/<objectType>/<objectId>, and under any other project the
-        // thread does not exist, so the rules deny it. That denial is not harmless: when the preview
-        // then remounts under the right project, removing the rejected listener raced the server's
-        // rejection and Firestore answered `Target id not found`, which tears down the WHOLE Listen
-        // stream. It happened on every boot of the All projects board, because project users and
-        // assistants load after this pointer and the old code fell back to the displayed project
-        // until they did. Show the skeleton instead of a wrong-project preview.
-        const sourceProject = projectId ? ProjectHelper.getProjectById(projectId) : null
-        if (projectId && !sourceProject)
-            return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
-        const commentProject = sourceProject || project
+        const commentProject = (projectId && ProjectHelper.getProjectById(projectId)) || project
 
         if (commentProject) {
             const projectAssistantId = commentProject.assistantId || defaultAssistantId
             const projectAssistant =
                 (projectAssistantId && getAssistantInProject(commentProject.id, projectAssistantId)) ||
-                (projectAssistantId ? getAssistant(projectAssistantId) : null) ||
-                (projectId && defaultAssistantId ? getAssistant(defaultAssistantId) : null)
+                (projectAssistantId ? getAssistant(projectAssistantId) : null)
 
             const isAssistantComment = creatorType === 'assistant'
             const commentCreator = isAssistantComment
@@ -164,7 +140,6 @@ export const getCommentData = (
                     hasUnread,
                 }
             }
-            if (projectId) return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
         }
     }
 

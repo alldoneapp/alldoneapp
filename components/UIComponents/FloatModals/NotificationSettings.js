@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -25,7 +25,7 @@ const NotificationSettings = () => {
     }
 
     return (
-        <AppPopover
+        <Popover
             isOpen={isOpen}
             onClickOutside={() => setIsOpen(false)}
             disableReposition={smallScreenNavigation}
@@ -42,7 +42,7 @@ const NotificationSettings = () => {
                 titleStyle={localStyles.text}
                 buttonStyle={{ width: 124 }}
             />
-        </AppPopover>
+        </Popover>
     )
 }
 

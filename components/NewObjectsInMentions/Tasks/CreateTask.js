@@ -1,6 +1,5 @@
-import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
-
+import { useDispatch } from 'react-redux'
 import { StyleSheet, View } from 'react-native'
 import { isEqual } from 'lodash'
 
@@ -17,7 +16,7 @@ import PlusButton from '../Common/PlusButton'
 import DueDateWrapper from '../../UIComponents/FloatModals/ManageTaskModal/DueDateWrapper'
 import EstimationWrapper from '../../UIComponents/FloatModals/ManageTaskModal/EstimationWrapper'
 import Backend from '../../../utils/BackendBridge'
-import { setSelectedNavItem } from '../../../redux/actions'
+import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
 import { translate } from '../../../i18n/TranslationService'
 import store from '../../../redux/store'
@@ -36,7 +35,7 @@ import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/
 
 export default function CreateTask({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
-
+    const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
     const [task, setTask] = useState(TasksHelper.getNewDefaultTask(isGuide))
     const [assignee, setAssignee] = useState(getUserPresentationDataInProject(projectId, task.userId))
@@ -47,7 +46,6 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
-    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
     const inputText = useRef()
 
     const cleanedName = task?.extendedName?.trim()
@@ -64,8 +62,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl,
-        linkedParentArtifactsUrl
+        linkedParentAssistantsUrl
     ) => {
         if (extendedName !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -75,7 +72,6 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
-            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setTask(task => ({ ...task, extendedName }))
     }
@@ -127,44 +123,44 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
     // `sendingData` only disables the buttons, and it is applied asynchronously,
     // so Enter could still start a second creation before the first one landed.
     const addTask = useSingleFlightSubmit(async (openDetails = false, directTask = null) => {
-        return runWithLoading('create_mentioned_task', async () => {
-            const newTask = directTask || { ...task }
-            newTask.extendedName = task.extendedName.trim()
-            newTask.name = TasksHelper.getTaskNameWithoutMeta(newTask.extendedName)
+        const newTask = directTask || { ...task }
+        newTask.extendedName = task.extendedName.trim()
+        newTask.name = TasksHelper.getTaskNameWithoutMeta(newTask.extendedName)
 
-            if (newTask.extendedName.length > 0) {
-                setSendingData(true)
+        if (newTask.extendedName.length > 0) {
+            dispatch(startLoadingData())
+            setSendingData(true)
 
-                await createTaskWithService(
-                    {
-                        projectId,
-                        ...newTask,
-                    },
-                    {
-                        awaitForTaskCreation: true,
+            await createTaskWithService(
+                {
+                    projectId,
+                    ...newTask,
+                },
+                {
+                    awaitForTaskCreation: true,
 
-                        notGenerateMentionTasks: false,
-                        notGenerateUpdates: false,
-                    }
-                ).then(taskDB => {
-                    trySetLinkedObjects(taskDB)
+                    notGenerateMentionTasks: false,
+                    notGenerateUpdates: false,
+                }
+            ).then(taskDB => {
+                trySetLinkedObjects(taskDB)
 
-                    setSendingData(false)
+                dispatch(stopLoadingData())
+                setSendingData(false)
 
-                    if (selectItemToMention) {
-                        selectItemToMention(taskDB, MENTION_MODAL_TASKS_TAB, projectId)
-                    }
+                if (selectItemToMention) {
+                    selectItemToMention(taskDB, MENTION_MODAL_TASKS_TAB, projectId)
+                }
 
-                    if (openDetails) {
-                        NavigationService.navigate('TaskDetailedView', {
-                            task: taskDB,
-                            projectId: projectId,
-                        })
-                        store.dispatch(setSelectedNavItem(DV_TAB_TASK_PROPERTIES))
-                    }
-                })
-            }
-        })
+                if (openDetails) {
+                    NavigationService.navigate('TaskDetailedView', {
+                        task: taskDB,
+                        projectId: projectId,
+                    })
+                    store.dispatch(setSelectedNavItem(DV_TAB_TASK_PROPERTIES))
+                }
+            })
+        }
     }, RELEASE_AFTER_SUBMISSION)
 
     const trySetLinkedObjects = task => {
@@ -178,7 +174,6 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
-                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )

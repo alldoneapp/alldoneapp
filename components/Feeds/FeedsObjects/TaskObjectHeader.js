@@ -153,7 +153,6 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
                         objectType="tasks"
                         userGettingKarmaId={userId}
                         objectName={name}
-                        object={task}
                         assistantId={assistantId}
                     />
                 )}

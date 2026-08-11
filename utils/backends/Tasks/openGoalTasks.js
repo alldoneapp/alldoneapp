@@ -8,12 +8,6 @@ import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
 import { sortTasksByPriority } from '../../TaskPriority'
-import {
-    confirmOptimisticTaskForSubscriber,
-    OPTIMISTIC_TASK_REMOVED,
-    OPTIMISTIC_TASK_SETTLED,
-    subscribeToOptimisticTaskCreates,
-} from './optimisticTaskCreate'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -21,23 +15,7 @@ export const ESTIMATION_TASKS_INDEX = 2
 export const MAIN_TASK_INDEX = 3
 export const MENTION_TASK_INDEX = 4
 export const SUGGESTED_TASK_INDEX = 5
-// AT-2377: the calendar bucket is back, which is what gives a goal its own Calendar section.
-// The old email bucket (7) stays retired - it rendered nowhere on the open-tasks board.
-export const CALENDAR_TASK_INDEX = 6
-
-/**
- * AT-2342 - mirrors the `watchOpenGoalTasks` query for an optimistically published task.
- * Note this list keys on `done`/`parentId`/`completed`, NOT the `inDone` the open board uses,
- * and a task only lands here when `parentGoalId` was already set at write time.
- */
-export const matchesOpenGoalTasksQuery = (taskData, goalId, allowUserIds) =>
-    !!taskData &&
-    taskData.done === false &&
-    (taskData.parentId === null || taskData.parentId === undefined) &&
-    (taskData.completed === null || taskData.completed === undefined) &&
-    taskData.parentGoalId === goalId &&
-    Array.isArray(taskData.isPublicFor) &&
-    taskData.isPublicFor.some(id => allowUserIds.includes(id))
+// AT-2252: calendar (6) and email (7) buckets were removed — those tasks are ordinary main tasks now.
 
 export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     const { loggedUser } = store.getState()
@@ -51,72 +29,12 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
         .where('parentId', '==', null)
         .where('completed', '==', null)
         .where('parentGoalId', '==', goalId)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
 
-    // This watcher rebuilds its whole output from the document list on every snapshot, so the
-    // optimistic insert is simply an extra document in that list. Reconciliation is therefore
-    // free: as soon as the real snapshot carries the id, `emit` drops the pending copy and the
-    // rebuild runs on the real document alone - the two can never both be rendered.
-    let latestDocs = []
-    let hasRealSnapshot = false
-    const pendingDocsById = new Map()
-
-    const emit = () => {
-        const realIds = new Set(latestDocs.map(doc => doc.id))
-        pendingDocsById.forEach((_, taskId) => {
-            if (realIds.has(taskId)) {
-                pendingDocsById.delete(taskId)
-                confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
-            }
-        })
-        const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
-        const { openTasksArray } = processTasks(projectId, docs)
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
+        const { openTasksArray } = processTasks(projectId, snapshot.docs)
         store.dispatch(setGoalOpenTasksData(openTasksArray))
-    }
-
-    function handleOptimisticTaskChange(change) {
-        // AT-2500 - see the same block in myDayTasks.js, including why settlement is a
-        // re-evaluation of the pending copy against this query and not a signal that the snapshot
-        // has already spoken. This query filters on `readerIds` too, so a just-created task is
-        // invisible to it until the server-side projection lands; dropping the copy on the ack
-        // alone made every ordinary create blink out and come back.
-        if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (!pendingDocsById.has(change.doc.id)) return false
-            const settledData = change.doc.data()
-            if (!settledData) return false
-            if (matchesOpenGoalTasksQuery(settledData, goalId, allowUserIds)) {
-                pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
-            } else {
-                pendingDocsById.delete(change.doc.id)
-                confirmOptimisticTaskForSubscriber(projectId, change.doc.id, handleOptimisticTaskChange)
-            }
-            if (hasRealSnapshot) emit()
-            return false
-        }
-
-        if (!matchesOpenGoalTasksQuery(change.doc.data(), goalId, allowUserIds)) return false
-        change.type === OPTIMISTIC_TASK_REMOVED
-            ? pendingDocsById.delete(change.doc.id)
-            : pendingDocsById.set(change.doc.id, change.doc)
-        // Before the first snapshot this rebuild would publish a list holding ONLY the new task,
-        // i.e. a goal that appears to have lost everything else. The task is still queued in
-        // `pendingDocsById` and the imminent first snapshot renders it together with the rest.
-        if (hasRealSnapshot) emit()
-        return change.type !== OPTIMISTIC_TASK_REMOVED
-    }
-
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
-
-    const unsub = query.onSnapshot(snapshot => {
-        latestDocs = snapshot.docs
-        hasRealSnapshot = true
-        emit()
     })
-
-    globalWatcherUnsub[watcherKey] = () => {
-        unsubOptimistic()
-        unsub()
-    }
 }
 
 const processTasks = (projectId, docs) => {
@@ -132,9 +50,11 @@ const processTasks = (projectId, docs) => {
 
         const taskTypeIndex = getTaskTypeIndex(task)
 
-        // A goal only ever lists today's calendar events.
+        // A goal only ever lists today's calendar events. This used to be keyed off the calendar
+        // bucket; since AT-2252 merged calendar tasks into the main list it is keyed off the
+        // calendar payload itself so the rule survives the merge unchanged.
         if (
-            taskTypeIndex === CALENDAR_TASK_INDEX &&
+            calendarData &&
             moment(calendarData.start.dateTime || calendarData.start.date).format('DDMMYYYY') !==
                 moment().format('DDMMYYYY')
         ) {
@@ -172,9 +92,7 @@ const processTasks = (projectId, docs) => {
     Object.keys(tasksByDate).forEach(date => {
         Object.keys(tasksByDate[date]).forEach(taskTypeIndex => {
             const taskList = orderBy(tasksByDate[date][taskTypeIndex], 'sortIndex', 'desc')
-            // AT-2377: the Calendar section sorts chronologically; priority must not reorder it.
-            tasksByDate[date][taskTypeIndex] =
-                Number(taskTypeIndex) === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
+            tasksByDate[date][taskTypeIndex] = sortTasksByPriority(taskList)
         })
     })
 
@@ -184,12 +102,10 @@ const processTasks = (projectId, docs) => {
 }
 
 const getTaskTypeIndex = task => {
-    const { genericData, suggestedBy, calendarData } = task
+    const { genericData, suggestedBy } = task
     if (genericData) return MENTION_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    // AT-2377: meetings render in the goal's own Calendar section.
-    if (calendarData) return CALENDAR_TASK_INDEX
-    // Inbox-summary email tasks deliberately stay in the main list.
+    // AT-2252: calendar and inbox-summary email tasks fall through to the main list.
     return MAIN_TASK_INDEX
 }
 
@@ -205,17 +121,8 @@ const generateOpenTasksArray = (tasksByDate, amountOfTasksByDate, estimationByDa
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? taskByType[MAIN_TASK_INDEX] : []
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? taskByType[MENTION_TASK_INDEX] : []
         const suggestedTasks = taskByType[SUGGESTED_TASK_INDEX] ? taskByType[SUGGESTED_TASK_INDEX] : []
-        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? taskByType[CALENDAR_TASK_INDEX] : []
 
-        openTasksArray.push([
-            date,
-            amountTasks,
-            estimationTasks,
-            mainTasks,
-            mentionTasks,
-            suggestedTasks,
-            calendarTasks,
-        ])
+        openTasksArray.push([date, amountTasks, estimationTasks, mainTasks, mentionTasks, suggestedTasks])
     }
 
     return openTasksArray
@@ -233,7 +140,7 @@ export const watchOpenGoalSubtasks = (projectId, goalId, watcherKey) => {
         .where('parentId', '!=', null)
         .where('completed', '==', null)
         .where('parentGoalId', '==', goalId)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { openSubtasksByParent } = processSubtasks(snapshot.docs)

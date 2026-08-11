@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import { dismissAllPopups, popoverToSafePosition } from '../../../../utils/HelperFunctions'
 import { setSelectedTypeOfProject, storeCurrentUser, switchProject, storeLoggedUser } from '../../../../redux/actions'
@@ -13,13 +13,8 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DV_TAB_ROOT_GOALS } from '../../../../utils/TabNavigationConstants'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 import AllProjectsButton from './AllProjectsButton'
-import useWindowSize from '../../../../utils/useWindowSize'
-import { getSafeAreaViewportHeightCap } from '../../../../utils/modalSafeArea'
-import { pinPopoverInsideWindow } from '../../../../utils/popoverPositioning'
-import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../../styles/modals'
 
 export default function AllProjectData() {
-    const [, windowHeight] = useWindowSize()
     const dispatch = useDispatch()
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
@@ -76,7 +71,7 @@ export default function AllProjectData() {
     }
 
     return showPopup ? (
-        <AppPopover
+        <Popover
             content={
                 <SelectProjectModalInSearch
                     projectId={ALL_PROJECTS_OPTION}
@@ -100,13 +95,7 @@ export default function AllProjectData() {
             containerStyle={
                 mobile
                     ? {
-                          // AT-2339: see ProjectLine.js — `80vh` is measured
-                          // against the raw viewport and ignores the insets.
-                          maxHeight: getSafeAreaViewportHeightCap(
-                              windowHeight,
-                              HEADER_POPOVER_HEIGHT_FRACTION,
-                              HEADER_POPOVER_OFFSET.top
-                          ),
+                          maxHeight: '80vh',
                           overflow: 'auto',
                           position: 'fixed',
                           zIndex: 9999,
@@ -115,14 +104,15 @@ export default function AllProjectData() {
             }
             contentLocation={
                 mobile
-                    ? // Force position for small screens, offset into the safe
-                      // rectangle: `disableReposition` skips the library nudge.
-                      args => pinPopoverInsideWindow(args, HEADER_POPOVER_OFFSET)
+                    ? args => {
+                          // Force position for small screens
+                          return { top: 60, left: 16 }
+                      }
                     : args => popoverToSafePosition(args, mobile)
             }
         >
             <AllProjectsButton onPress={openPopover} />
-        </AppPopover>
+        </Popover>
     ) : (
         <AllProjectsButton onPress={openPopover} />
     )

@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
-import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from '../UserDetailedView/Header/BackButton'
@@ -11,9 +10,11 @@ import ContactProperties from './ContactProperties/ContactProperties'
 import {
     navigateToAllProjectsTasks,
     resetFloatPopup,
+    resetLoadingData,
     setNavigationRoute,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
+    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -46,7 +47,6 @@ import { unwatch } from '../../utils/backends/firestore'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
-import { isLocalContactMovePending } from '../../utils/projectMoveState'
 
 const ContactDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -54,6 +54,7 @@ const ContactDetailedView = ({ navigation }) => {
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [isFullscreen, setFullscreen] = useState(false)
     const project = navigation.getParam('project', undefined)
     const contactParam = navigation.getParam('contact', undefined)
@@ -92,6 +93,10 @@ const ContactDetailedView = ({ navigation }) => {
     }
 
     useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
+
+    useEffect(() => {
         dispatch(setNavigationRoute('ContactDetailedView'))
     }, [])
 
@@ -103,9 +108,6 @@ const ContactDetailedView = ({ navigation }) => {
     }, [])
 
     const updateContact = contact => {
-        // The worker deletes the source before the completion poll navigates to
-        // the destination. Keep this view mounted for that short handoff.
-        if (!contact && isLocalContactMovePending(projectId, contactParam.uid)) return
         if (!contact || ContactsHelper.isPrivateContact(contact)) {
             if (loggedUser.isAnonymous) {
                 SharedHelper.redirectToPrivateResource()
@@ -114,11 +116,12 @@ const ContactDetailedView = ({ navigation }) => {
 
                 NavigationService.navigate('Root')
                 if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                    dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
+                    dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
                 } else {
                     dispatch([
                         resetFloatPopup(),
                         setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
+                        resetLoadingData(),
                         setShowAccessDeniedPopup(true),
                     ])
                 }
@@ -144,14 +147,13 @@ const ContactDetailedView = ({ navigation }) => {
 
     return (
         <View style={localStyles.container}>
-            <LoadingData />
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
             {!!contact && (
                 <View style={{ flex: 1 }}>
-                    {!mobile && !isMiddleScreen && accessGranted && (
+                    {!isMiddleScreen && accessGranted && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton user={contact} projectIndex={projectIndex} constant={URL_CONTACT_DETAILS} />
                         </View>
@@ -217,8 +219,6 @@ const ContactDetailedView = ({ navigation }) => {
                                                     assistantId={contact.assistantId}
                                                     parentObject={contact}
                                                     objectType={'contacts'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_CONTACT_NOTE:

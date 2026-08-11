@@ -3,15 +3,6 @@ const mockUpdate = jest.fn(async () => {})
 const mockDoc = jest.fn(() => ({ get: mockGet, update: mockUpdate }))
 const mockFirestore = jest.fn(() => ({ doc: mockDoc }))
 
-test('legacy Codex none reasoning is read as high', async () => {
-    mockGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'none' }),
-    })
-    const result = await require('./vmAgentSettings').resolveVmAgentSettings('user-1')
-    expect(result).toEqual({ agent: 'codex', reasoningEffort: 'high' })
-})
-
 jest.mock('firebase-admin', () => ({
     firestore: mockFirestore,
 }))
@@ -42,7 +33,7 @@ const MOCK_CATALOGS = {
     },
     codex: {
         families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
         ],
         fetchedAt: 1,
@@ -56,15 +47,6 @@ const MOCK_CATALOGS = {
                 vendor: 'deepseek',
                 modelId: 'deepseek/deepseek-chat',
                 resolvedModel: 'openrouter:deepseek/deepseek-chat',
-            },
-        ],
-        searchModels: [
-            {
-                id: 'openrouter:x-ai/grok-4.6',
-                label: 'SpaceXAI: Grok 4.6',
-                vendor: 'x-ai',
-                modelId: 'x-ai/grok-4.6',
-                resolvedModel: 'openrouter:x-ai/grok-4.6',
             },
         ],
         fetchedAt: 1,
@@ -234,7 +216,7 @@ describe('VM agent settings', () => {
         test('reads a per-agent family map and ignores malformed entries', async () => {
             mockGet.mockResolvedValue({
                 exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'gpt-6.1-sol' } }),
+                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'gpt-5.6-sol' } }),
             })
 
             await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBe('sonnet')
@@ -324,19 +306,6 @@ describe('VM agent settings', () => {
             expect(getModelCatalog).toHaveBeenLastCalledWith('openrouter')
             expect(mockUpdate).toHaveBeenLastCalledWith(
                 expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:deepseek/deepseek-chat' })
-            )
-        })
-
-        test('saves a searched OpenRouter selection that is not featured', async () => {
-            await expect(
-                setDefaultVmAgentModel({
-                    userId: 'user-1',
-                    agent: 'codex',
-                    family: 'openrouter:x-ai/grok-4.6',
-                })
-            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'openrouter:x-ai/grok-4.6' }))
-            expect(mockUpdate).toHaveBeenLastCalledWith(
-                expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:x-ai/grok-4.6' })
             )
         })
 

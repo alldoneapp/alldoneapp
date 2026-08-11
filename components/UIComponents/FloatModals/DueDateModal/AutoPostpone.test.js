@@ -17,8 +17,6 @@ const mockSetTaskDueDate = jest.fn(() => Promise.resolve())
 const mockSetTaskToBacklog = jest.fn(() => Promise.resolve())
 const mockAutoPostponeGoal = jest.fn(() => Promise.resolve(654321))
 const mockDispatch = jest.fn()
-const mockPostponeGoalWithMotion = jest.fn((context, write) => write())
-const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
 let mockDateToMoveTask
 
 jest.mock('react-redux', () => ({
@@ -66,14 +64,6 @@ jest.mock('../../../../utils/backends/Goals/goalsFirestore', () => ({
     getDateToMoveGoalInAutoPostpone: () => require('moment')('2026-07-06T12:00:00'),
 }))
 
-jest.mock('../../../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
-    postponeGoalWithMotion: (...args) => mockPostponeGoalWithMotion(...args),
-}))
-
-jest.mock('../../../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
-    postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
-}))
-
 const baseProps = {
     projectId: 'project-1',
     isObservedTabActive: false,
@@ -102,32 +92,12 @@ describe('DueDateModal AutoPostpone', () => {
         baseProps.closePopover = jest.fn()
     })
 
-    test('routes project auto-postpone to the project cloud operation without deriving a single-task date', async () => {
-        const postponeProject = jest.fn().mockResolvedValue(null)
-        const tree = await renderAndPress({ task: { dueDate: 123 }, postponeProject })
-        expect(postponeProject).toHaveBeenCalledTimes(1)
-        expect(mockSetTaskDueDate).not.toHaveBeenCalled()
-        expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
-        expect(tree.root.findByType(TouchableOpacity).props.disabled).toBe(false)
-        tree.unmount()
-    })
-
     test('applies a persisted single task via a direct due-date write', async () => {
         const task = { id: 'task-1', timesPostponed: 2 }
         await renderAndPress({ task })
 
         const expectedDate = moment('2026-07-05T12:00:00').valueOf()
         expect(mockSetTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', expectedDate, task, false)
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            {
-                projectId: 'project-1',
-                task,
-                targetDate: expectedDate,
-                updatesDueDate: true,
-                updatesObservedDate: false,
-            },
-            expect.any(Function)
-        )
         expect(mockSetTaskToBacklog).not.toHaveBeenCalled()
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: expectedDate })
         expect(baseProps.closePopover).toHaveBeenCalled()
@@ -139,14 +109,6 @@ describe('DueDateModal AutoPostpone', () => {
         await renderAndPress({ task })
 
         expect(mockSetTaskToBacklog).toHaveBeenCalledWith('project-1', 'task-1', task, false, null)
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'project-1',
-                task,
-                targetDate: BACKLOG_DATE_NUMERIC,
-            }),
-            expect.any(Function)
-        )
         expect(mockSetTaskDueDate).not.toHaveBeenCalled()
         expect(mockDispatch).toHaveBeenCalledWith({
             type: 'SET_LAST_SELECTED_DUE_DATE',
@@ -155,26 +117,11 @@ describe('DueDateModal AutoPostpone', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
-    test('qualifies an observer-date auto-postpone against the row placement field', async () => {
-        const task = { id: 'task-1', timesPostponed: 2 }
-        await renderAndPress({ task, isObservedTabActive: true })
-
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            expect.objectContaining({
-                task,
-                updatesDueDate: false,
-                updatesObservedDate: true,
-            }),
-            expect.any(Function)
-        )
-    })
-
     test('routes persisted multiple tasks through the callable wrapper', async () => {
         const tasks = [{ id: 'task-1' }, { id: 'task-2' }]
         await renderAndPress({ task: tasks[0], tasks })
 
         expect(mockAutoPostponeMultipleTasks).toHaveBeenCalledWith(tasks, 'target-1', { background: true })
-        expect(mockPostponeTaskWithMotion).not.toHaveBeenCalled()
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
@@ -228,27 +175,6 @@ describe('DueDateModal AutoPostpone', () => {
         )
 
         resolveRequest(654321)
-    })
-
-    test('hands a goal swipe auto-postpone to the mounted whole-section motion', async () => {
-        const goal = { id: 'goal-1', timesPostponed: 2 }
-
-        await renderAndPress({
-            goal,
-            updateParentGoalReminderDate: jest.fn(),
-            inParentGoal: true,
-            animateGoalPostpone: true,
-        })
-
-        expect(mockPostponeGoalWithMotion).toHaveBeenCalledWith(
-            {
-                projectId: 'project-1',
-                goal,
-                targetDate: moment('2026-07-06T12:00:00').valueOf(),
-            },
-            expect.any(Function)
-        )
-        expect(mockAutoPostponeGoal).toHaveBeenCalled()
     })
 
     test('logs a goal auto-postpone background failure after closing', async () => {

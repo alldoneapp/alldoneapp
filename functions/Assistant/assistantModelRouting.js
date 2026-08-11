@@ -24,7 +24,7 @@
  * The VM harness solved its equivalent problem by encoding the source into the model string
  * (`openrouter:deepseek/...`, see `vmModelRouting.js`), because there the user picks from a live
  * catalog of hundreds of models and no table could keep up. The in-app assistant is the opposite
- * case: it offers a short, curated, product-named list (`MODEL_GPT6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`)
+ * case: it offers a short, curated, product-named list (`MODEL_GPT5_6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`)
  * whose keys are already persisted on assistant docs, Gmail configs and calendar configs. Those keys
  * must keep meaning what they mean, so the mapping stays a table and the key stays opaque.
  *
@@ -61,19 +61,6 @@ const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
  */
 const OPENROUTER_ASSISTANT_MODEL_IDS = Object.freeze({
     [MODEL_DEEPSEEK_V4_FLASH]: 'deepseek/deepseek-v4-flash-0731',
-})
-
-/**
- * Product key → whether the upstream model accepts image input.
- *
- * Modality lives next to the pinned id because it is a fact about that exact upstream release, not
- * about the product name: `deepseek/deepseek-v4-flash-0731` reports `input_modalities: ['text']`,
- * and a future Flash release could report otherwise. An unlisted OpenRouter model is treated as
- * text-only, which is the safe direction — a stripped image degrades to a placeholder the model can
- * explain, while sending an image to a text-only model fails the entire request.
- */
-const OPENROUTER_ASSISTANT_MODEL_IMAGE_SUPPORT = Object.freeze({
-    [MODEL_DEEPSEEK_V4_FLASH]: false,
 })
 
 const PROVIDER_OPENAI = 'openai'
@@ -114,25 +101,8 @@ function isPerplexityAssistantModel(modelKey) {
  * is exactly the drift this module exists to stop.
  *
  * An unknown key resolves to OpenAI, which is the pre-AT-2238 behaviour: it then flows into the
- * existing `getModel` fallback (`gpt-6.1-sol`) rather than failing the run.
+ * existing `getModel` fallback (`gpt-5.6-sol`) rather than failing the run.
  */
-/**
- * Whether a model key can be sent image parts.
- *
- * Consulted by the OpenRouter transport, which must otherwise choose between failing the request
- * and silently dropping the image. The OpenAI answer is `true` because every model reachable
- * through the selectable list and the Responses path is multimodal; Perplexity's Sonar family is
- * text-only.
- */
-function assistantModelSupportsImageInput(modelKey) {
-    const key = normalizeKey(modelKey)
-
-    if (isOpenRouterAssistantModel(key)) return OPENROUTER_ASSISTANT_MODEL_IMAGE_SUPPORT[key] === true
-    if (isPerplexityAssistantModel(key)) return false
-
-    return true
-}
-
 function resolveAssistantModelProvider(modelKey) {
     const key = normalizeKey(modelKey)
 
@@ -147,13 +117,11 @@ function resolveAssistantModelProvider(modelKey) {
 module.exports = {
     MODEL_DEEPSEEK_V4_FLASH,
     OPENROUTER_ASSISTANT_MODEL_IDS,
-    OPENROUTER_ASSISTANT_MODEL_IMAGE_SUPPORT,
     PROVIDER_OPENAI,
     PROVIDER_OPENROUTER,
     PROVIDER_PERPLEXITY,
     isOpenRouterAssistantModel,
     isPerplexityAssistantModel,
     getOpenRouterAssistantModelId,
-    assistantModelSupportsImageInput,
     resolveAssistantModelProvider,
 }

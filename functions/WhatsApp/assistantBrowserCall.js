@@ -1,5 +1,4 @@
 const crypto = require('crypto')
-const { sanitizeCallPageContext } = require('./assistantCallPageContext')
 const admin = require('firebase-admin')
 const { getFunctions } = require('firebase-admin/functions')
 const { HttpsError } = require('firebase-functions/v2/https')
@@ -10,10 +9,7 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
-const { getLiveConfigurationError, getLiveSessionDefaults } = require('./assistantLiveConfig')
-const { buildLiveSession } = require('./assistantLiveProtocol')
-const { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
-const { reconcileLiveUsage } = require('./assistantLiveGold')
+const { buildCallBootstrapInstructions } = require('./whatsAppCallPrompt')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
 const MAX_SDP_LENGTH = 200000
@@ -31,7 +27,7 @@ function getHttpsErrorForEligibility(reason) {
         disabled: 'Browser assistant calls are not available right now.',
         unlinked: 'You must be signed in to call the assistant.',
         premium_required: 'Browser assistant calls are available to premium Alldone users.',
-        gold_required: `You need more than ${calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS)} Gold to start a voice call (the ${LIVE_INITIALIZATION_SECONDS}-second voice minimum plus assistant usage).`,
+        gold_required: 'You need a positive Gold balance before starting an assistant call.',
         missing_project: 'Set a default project before calling the assistant.',
         missing_assistant: 'No default assistant is available for your call.',
         missing_topic: 'Create a voice call topic before calling the assistant.',
@@ -42,8 +38,21 @@ function getHttpsErrorForEligibility(reason) {
     return new HttpsError(code, messages[reason] || 'The assistant call could not be started.')
 }
 
-function buildInitialBrowserLiveSession({ voice, assistant, language }) {
-    return buildLiveSession({ assistant, language, voice })
+function getLocationCallId(location) {
+    const normalized = String(location || '').trim()
+    if (!normalized) return ''
+    return normalized.split('/').filter(Boolean).pop() || ''
+}
+
+function buildInitialBrowserRealtimeSession({ config, voice, assistant, language }) {
+    return {
+        type: 'realtime',
+        model: config.realtimeModel,
+        instructions: buildCallBootstrapInstructions(assistant, language),
+        audio: {
+            output: { voice },
+        },
+    }
 }
 
 function getOpenAICallErrorCode(responseBody) {
@@ -95,35 +104,29 @@ async function resolveBrowserCallTopic(data, user, userId) {
 
 async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language, userId }) {
     const voice = normalizeRealtimeVoice(assistant?.realtimeVoice)
-    const response = await fetch('https://api.openai.com/v1/live/sessions', {
+    const form = new FormData()
+    form.set('sdp', offerSdp)
+    form.set('session', JSON.stringify(buildInitialBrowserRealtimeSession({ config, voice, assistant, language })))
+
+    const response = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${config.openAiApiKey}`,
-            'Content-Type': 'application/json',
             'OpenAI-Safety-Identifier': getSafetyIdentifier(userId),
         },
-        body: JSON.stringify({
-            session: buildInitialBrowserLiveSession({ voice, assistant, language }),
-            transport: { type: 'webrtc', sdp: offerSdp },
-        }),
-        signal: AbortSignal.timeout(25000),
+        body: form,
     })
-    const responseText = await response.text()
+    const answerSdp = await response.text()
     if (!response.ok) {
         const error = new Error(`OpenAI WebRTC call failed with HTTP ${response.status}`)
         error.status = response.status
-        error.code = getOpenAICallErrorCode(responseText)
+        error.code = getOpenAICallErrorCode(answerSdp)
         throw error
     }
-    const result = JSON.parse(responseText)
-    if (!result.session?.id || !result.transport?.sdp) {
-        const error = createMissingOpenAICallIdError()
-        error.openAiSessionId = result.session?.id
-        throw error
-    }
+
     return {
-        answerSdp: result.transport.sdp,
-        openAiSessionId: result.session.id,
+        answerSdp,
+        openAiCallId: getLocationCallId(response.headers.get('location')),
         voice,
     }
 }
@@ -141,8 +144,6 @@ async function enqueueBrowserCallController(sessionId) {
 async function startAssistantBrowserCall(data, auth) {
     const userId = auth?.uid
     if (!userId) throw new HttpsError('unauthenticated', 'Sign in before calling the assistant.')
-    if (data?.voiceProtocol !== 'gpt-live-v2')
-        throw new HttpsError('failed-precondition', 'Refresh Alldone to use the updated voice calls.')
 
     const offerSdp = String(data?.offerSdp || data?.sdp || '')
     if (!offerSdp.trim() || offerSdp.length > MAX_SDP_LENGTH) {
@@ -157,14 +158,7 @@ async function startAssistantBrowserCall(data, auth) {
         user,
     })
     if (eligibilityReason) throw getHttpsErrorForEligibility(eligibilityReason)
-    const configurationError = getLiveConfigurationError(config)
-    if (configurationError)
-        throw new HttpsError(
-            'unavailable',
-            `${configurationError} Ask Alldone support to enable GPT-Live access for the configured key.`
-        )
-    if (Number(user.gold) <= calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS))
-        throw getHttpsErrorForEligibility('gold_required')
+    if (!config.openAiApiKey) throw getHttpsErrorForEligibility('configuration')
 
     const { projectId, chatId, assistantId } = await resolveBrowserCallTopic(data, user, userId)
     const sessionId = `browser-${uuidv4()}`
@@ -182,33 +176,24 @@ async function startAssistantBrowserCall(data, auth) {
     })
     if (!leaseResult.success) throw getHttpsErrorForEligibility(leaseResult.reason || 'active_call')
 
-    let openAiSessionId
     try {
-        await updateCallSession(sessionId, {
-            pageContext: sanitizeCallPageContext(data.pageContext),
-            pageContextSequence: 0,
-            ...getLiveSessionDefaults(),
-        })
         const assistant = await getAssistantForChat(projectId, assistantId, userId)
-        const result = await createOpenAIWebRTCSession({
+        const { answerSdp, openAiCallId, voice } = await createOpenAIWebRTCSession({
             config,
             offerSdp,
             assistant,
             language: user.language,
             userId,
         })
-        const { answerSdp, voice } = result
-        openAiSessionId = result.openAiSessionId
+        if (!openAiCallId) throw createMissingOpenAICallIdError()
 
         await updateCallSession(sessionId, {
-            openAiSessionId,
+            openAiCallId,
             realtimeVoice: voice,
             status: 'accepted',
             startedAt: Date.now(),
             acceptCompletedAt: Date.now(),
         })
-        const gold = await reconcileLiveUsage({ sessionId, seconds: LIVE_INITIALIZATION_SECONDS })
-        if (gold.insufficientBalance || gold.currentGold <= 0) throw getHttpsErrorForEligibility('gold_required')
         await enqueueBrowserCallController(sessionId)
         await updateCallSession(sessionId, { status: 'controller_queued' })
 
@@ -218,15 +203,8 @@ async function startAssistantBrowserCall(data, auth) {
             chatId,
             assistantId,
             answerSdp,
-            voiceProvider: 'gpt-live',
-            voiceGoldPerMinute: LIVE_GOLD_PER_MINUTE,
         }
     } catch (error) {
-        openAiSessionId = openAiSessionId || error.openAiSessionId
-        if (openAiSessionId) {
-            const { closeLiveSession } = require('./assistantLiveController')
-            await closeLiveSession(config, { id: sessionId, openAiSessionId }).catch(() => {})
-        }
         console.error('Browser Call: Failed starting call', {
             sessionId,
             userId,
@@ -234,90 +212,14 @@ async function startAssistantBrowserCall(data, auth) {
         })
         await finalizeCallSession(sessionId, 'browser_start_failed', 'failed').catch(() => {})
         if (error instanceof HttpsError) throw error
-        if ([401, 403, 404].includes(error.status))
-            throw new HttpsError(
-                'unavailable',
-                'GPT-Live is unavailable. Ask Alldone support to verify the configured OpenAI key and gpt-live-1 access.'
-            )
         throw new HttpsError('internal', 'The browser assistant call could not be started.')
     }
 }
 
-// Navigation is reference data, not authority to read or mutate a resource.
-// The existing assistant tool permissions still apply to every actual action.
-async function updateAssistantBrowserCallContext(data, auth) {
-    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to update a call.')
-    const sessionId = String(data?.sessionId || '')
-    const pageContext = sanitizeCallPageContext(data?.pageContext)
-    const sequence = data?.sequence
-    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId) || !pageContext || !Number.isSafeInteger(sequence) || sequence < 1)
-        throw new HttpsError('invalid-argument', 'Invalid call page context.')
-    const ref = admin.firestore().doc(`whatsAppCallSessions/${sessionId}`)
-    return admin.firestore().runTransaction(async tx => {
-        const doc = await tx.get(ref)
-        const session = doc.data()
-        if (!doc.exists || session?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
-        if (session.cancelRequestedAt || ['completed', 'failed', 'cancelled', 'stale'].includes(session.status))
-            return { closed: true }
-        if (session.voiceProvider !== 'gpt-live') throw new HttpsError('failed-precondition', 'Unsupported call.')
-        if (sequence <= (session.pageContextSequence || 0)) return { updated: false }
-        tx.update(ref, { pageContext, pageContextSequence: sequence, pageContextUpdatedAt: Date.now() })
-        return { updated: true }
-    })
-}
-
-async function getAssistantBrowserCallSummary(data, auth) {
-    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to view call usage.')
-    const sessionId = String(data?.sessionId || '')
-    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId)) throw new HttpsError('invalid-argument', 'Invalid call id.')
-    const doc = await admin.firestore().doc(`whatsAppCallSessions/${sessionId}`).get()
-    if (!doc.exists || doc.data()?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
-    const session = doc.data()
-    return {
-        voiceGold: Number(session.voiceBilledGold || 0),
-        assistantGold: Number(session.backendBilledGold || 0),
-        settled: ['completed', 'failed', 'cancelled', 'stale'].includes(session.status),
-        finalVoiceUsage: session.voiceUsageFinal === true,
-        controllerConnected:
-            session.controllerConnected === true &&
-            !session.cancelRequestedAt &&
-            !['completed', 'failed', 'cancelled', 'stale'].includes(session.status),
-    }
-}
-
-// Close a paid provider session when the browser fails or leaves during startup.
-// IDs alone confer no authority; this is restricted to the call's owner.
-async function endAssistantBrowserCall(data, auth) {
-    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to end a call.')
-    const sessionId = String(data?.sessionId || '')
-    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId)) throw new HttpsError('invalid-argument', 'Invalid call id.')
-    const ref = admin.firestore().doc(`whatsAppCallSessions/${sessionId}`)
-    const doc = await ref.get()
-    const session = doc.data()
-    if (!doc.exists || session?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
-    const diagnostics = require('./assistantCallDiagnostics').sanitizeCallDiagnostics(data.diagnostics)
-    if (diagnostics) {
-        console.info('Live Call: Browser disconnected', { sessionId, ...diagnostics })
-        await ref.update({ clientDisconnect: { ...diagnostics, receivedAt: Date.now() } }).catch(() => {})
-    }
-    if (['completed', 'failed', 'cancelled', 'stale'].includes(session.status)) return { closed: true }
-    if (session.voiceProvider !== 'gpt-live') throw new HttpsError('failed-precondition', 'Unsupported call.')
-    await ref.update({ cancelRequestedAt: Date.now(), controllerConnected: false })
-    const { closeLiveSession } = require('./assistantLiveController')
-    const closed = await closeLiveSession(getWhatsAppCallConfig(), { ...session, id: sessionId }).catch(() => false)
-    // An active controller settles only after its in-flight assistant work finishes.
-    if (closed && !session.liveControllerClaimedAt)
-        await finalizeCallSession(sessionId, 'client_cancelled', 'completed')
-    return { closed: !!closed }
-}
-
 module.exports = {
-    buildInitialBrowserLiveSession,
+    buildInitialBrowserRealtimeSession,
     createMissingOpenAICallIdError,
     createOpenAIWebRTCSession,
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
-    getAssistantBrowserCallSummary,
-    updateAssistantBrowserCallContext,
-    endAssistantBrowserCall,
 }

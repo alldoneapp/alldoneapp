@@ -1,10 +1,10 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Text, View } from 'react-native'
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import ProjectTag from '../Tags/ProjectTag'
-import { useSelector } from 'react-redux'
-
+import { useDispatch, useSelector } from 'react-redux'
+import { resetLoadingData } from '../../redux/actions'
 import ModernImage from '../../utils/ModernImage'
 import { translate } from '../../i18n/TranslationService'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
@@ -12,6 +12,11 @@ import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 export default function EmptyNotesAllProjects({ sortedActiveProjects }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
+    const dispatch = useDispatch()
+
+    useEffect(() => {
+        dispatch(resetLoadingData())
+    }, [])
 
     return (
         <View style={localStyles.emptyInbox}>

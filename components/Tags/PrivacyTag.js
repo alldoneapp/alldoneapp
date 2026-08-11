@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors, windowTagStyle } from '../styles/global'
@@ -64,7 +64,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
     }
 
     return visiblePopover ? (
-        <AppPopover
+        <Popover
             content={
                 <PrivacyModal
                     object={object}
@@ -120,7 +120,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                     </View>
                 )}
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     ) : (
         <TouchableOpacity onPress={showPopover} disabled={disabled} accessible={false}>
             {outline ? (

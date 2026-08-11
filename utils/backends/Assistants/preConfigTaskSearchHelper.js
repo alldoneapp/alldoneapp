@@ -5,13 +5,7 @@ export const getAssistantPreConfigSearchRows = ({
     loggedUserId,
 }) => {
     return sortProjectsInAppOrder(loggedUserProjects, loggedUserId)
-        .filter(
-            project =>
-                project?.id &&
-                Array.isArray(project.userIds) &&
-                !!loggedUserId &&
-                project.userIds.includes(loggedUserId)
-        )
+        .filter(project => project?.id)
         .flatMap((project, projectSearchOrder) => {
             const projectSpecificAssistants = projectAssistants[project.id] || []
             const enabledGlobalAssistants = globalAssistants.filter(assistant =>
@@ -27,23 +21,6 @@ export const getAssistantPreConfigSearchRows = ({
                     assistantSearchOrder,
                 }))
         })
-}
-
-export const settlePreConfigTaskSearchSources = async (sources, loadTasks) => {
-    const results = await Promise.all(
-        sources.map(async source => {
-            try {
-                return { source, tasks: await loadTasks(source), error: null }
-            } catch (error) {
-                return { source, tasks: [], error }
-            }
-        })
-    )
-
-    return {
-        loadedSources: results.filter(result => !result.error),
-        failedSources: results.filter(result => !!result.error),
-    }
 }
 
 export const sortPreConfigTaskSearchItems = (tasks, loggedUserId) => {

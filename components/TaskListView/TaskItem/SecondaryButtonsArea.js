@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
 import HighlightButton from '../../UIComponents/FloatModals/HighlightColorModal/HighlightButton'
@@ -153,20 +153,14 @@ export default function SecondaryButtonsArea({
 
     const hideParentGoalPopup = () => {
         popupLock.release()
-        // Persisting a parent-goal change re-buckets the task immediately. That can unmount this
-        // editor before TaskParentGoalModal's awaited save resumes and asks us to close. The
-        // popup lock is already released by the hook cleanup; do not continue into the stale
-        // task-row dismiss callback after unmount.
-        if (isUnmountedRef.current) return
         safeSetShowParentGoalModalUI(false)
-        // TaskParentGoalModal owns its own popup lock until this state change unmounts it. Closing
-        // the editor without forcing it while that lock is still present makes DismissibleItem
-        // reject the close, so the placement hold keeps the task under its previous goal and the
-        // completed write looks like it did nothing.
-        dismissEditMode?.(true)
+        dismissEditMode?.()
     }
 
-    const handleSetParentGoal = (goal, goalProjectId) => setParentGoalBeforeSave(goal, goalProjectId)
+    const handleSetParentGoal = (goal, goalProjectId) => {
+        setParentGoalBeforeSave(goal, goalProjectId)
+        hideParentGoalPopup()
+    }
 
     return (
         <View style={localStyles.container}>
@@ -262,7 +256,7 @@ export default function SecondaryButtonsArea({
             )}
 
             {loggedUserCanUpdateObject && !isAssistant && !tmpTask.isSubtask && hasName && accessGranted && (
-                <AppPopover
+                <Popover
                     content={
                         showParentGoalModalUI ? (
                             <TaskParentGoalModal
@@ -305,7 +299,7 @@ export default function SecondaryButtonsArea({
                             shortcutText={'G'}
                         />
                     </Hotkeys>
-                </AppPopover>
+                </Popover>
             )}
 
             {!adding && tmpTask.done && loggedUserCanUpdateObject && !isAssistant && (

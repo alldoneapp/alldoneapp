@@ -168,7 +168,7 @@ function AssistantScheduleRow({ projectId, tasksProjectId, assistant, occurrence
  */
 export function AssistantScheduleRows({ projectId, tasksProjectId, assistant, occurrences, disabled = false }) {
     return (
-        <View style={taskPresentationLayout.listContainer} testID="assistant-schedule-task-list">
+        <View testID="assistant-schedule-task-list">
             {occurrences.map(occurrence => (
                 <AssistantScheduleRow
                     key={occurrence.id}

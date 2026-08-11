@@ -1,5 +1,5 @@
 /**
- * Values accepted by reasoning.effort for the selectable GPT-6 and GPT-5.6 assistant models.
+ * Values accepted by reasoning.effort for the selectable GPT-5.6 assistant models.
  * A null value represents the product-level "Model default" choice and must be
  * omitted from the API request.
  *
@@ -21,25 +21,12 @@ const VALID_ASSISTANT_REASONING_EFFORTS = SELECTABLE_ASSISTANT_REASONING_EFFORTS
 
 const isValidAssistantReasoningEffort = value => VALID_ASSISTANT_REASONING_EFFORTS.includes(value)
 
-// Keep the saved product key stable: existing Sol 6.0 selections now run on 6.1.
-const isSolModel = model => !model || ['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL', 'gpt-6-sol', 'gpt-6.1-sol'].includes(model)
-
-const normalizeAssistantReasoningEffort = (value, model) =>
-    value === 'none' && isSolModel(model) && model !== undefined
-        ? 'high'
-        : isValidAssistantReasoningEffort(value)
-          ? value
-          : null
-
-const getAssistantReasoningEffortOptions = model =>
-    isSolModel(model)
-        ? SELECTABLE_ASSISTANT_REASONING_EFFORTS.filter(option => option.value !== 'none')
-        : SELECTABLE_ASSISTANT_REASONING_EFFORTS
+const normalizeAssistantReasoningEffort = value => (isValidAssistantReasoningEffort(value) ? value : null)
 
 const resolveAssistantReasoningEffort = (settings = {}, fallbackValue = null) =>
     Object.prototype.hasOwnProperty.call(settings, 'reasoningEffort')
-        ? normalizeAssistantReasoningEffort(settings.reasoningEffort, settings.model)
-        : normalizeAssistantReasoningEffort(fallbackValue, settings.model)
+        ? normalizeAssistantReasoningEffort(settings.reasoningEffort)
+        : normalizeAssistantReasoningEffort(fallbackValue)
 
 const getAssistantReasoningEffortLabelKey = value => {
     const normalizedValue = normalizeAssistantReasoningEffort(value)
@@ -51,7 +38,6 @@ module.exports = {
     VALID_ASSISTANT_REASONING_EFFORTS,
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
-    getAssistantReasoningEffortOptions,
     resolveAssistantReasoningEffort,
     getAssistantReasoningEffortLabelKey,
 }

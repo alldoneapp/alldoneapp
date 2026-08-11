@@ -1,5 +1,3 @@
-import { getProjectPalette } from '../../../TaskListView/ProjectSection'
-import { HeaderActionsContext, taskHierarchyStyles } from '../../../TaskListView/TaskHierarchy'
 import React from 'react'
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
@@ -29,34 +27,23 @@ export default function ProjectHeader({ projectId, containerStyle, showSkillsMor
     }
 
     return (
-        <HeaderActionsContext.Provider value={true}>
-            <View style={[localStyles.container, containerStyle]}>
-                <View
-                    style={[
-                        localStyles.projectNameContainer,
-                        taskHierarchyStyles.projectHeader,
-                        { backgroundColor: getProjectPalette(color).PROJECT_ITEM_ACTIVE },
-                    ]}
-                >
-                    <TouchableOpacity
-                        style={{ flexDirection: 'row', flexShrink: 1, minWidth: 0 }}
-                        onPress={onPressProject}
-                    >
-                        <ColoredCircleSmall
-                            size={16}
-                            color={color}
-                            isGuide={isGuide}
-                            containerStyle={{ margin: 4 }}
-                            projectId={projectId}
-                        />
-                        <Text style={[styles.subtitle1, localStyles.projectName]} numberOfLines={1}>
-                            {name}
-                        </Text>
-                    </TouchableOpacity>
-                    {showSkillsMoreButton && <ProjectHeaderMoreButton projectId={projectId} />}
-                </View>
+        <View style={[localStyles.container, containerStyle]}>
+            <View style={localStyles.projectNameContainer}>
+                <TouchableOpacity style={{ flexDirection: 'row' }} onPress={onPressProject}>
+                    <ColoredCircleSmall
+                        size={16}
+                        color={color}
+                        isGuide={isGuide}
+                        containerStyle={{ margin: 4 }}
+                        projectId={projectId}
+                    />
+                    <Text style={[styles.subtitle1, localStyles.projectName]} numberOfLines={1}>
+                        {name}
+                    </Text>
+                </TouchableOpacity>
+                {showSkillsMoreButton && <ProjectHeaderMoreButton projectId={projectId} />}
             </View>
-        </HeaderActionsContext.Provider>
+        </View>
     )
 }
 
@@ -69,9 +56,8 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         borderBottomColor: colors.Grey300,
         borderBottomWidth: 1,
-        minHeight: 56,
-        alignItems: 'center',
-        paddingHorizontal: 12,
+        paddingBottom: 7,
+        paddingTop: 24,
         marginTop: 15,
         marginBottom: 7,
         justifyContent: 'space-between',

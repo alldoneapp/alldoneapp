@@ -118,7 +118,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
               className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
-              Artifacts
+              Chats
             </div>
           </div>
         </div>
@@ -360,7 +360,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
               className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
               dir="auto"
             >
-              Artifacts
+              Chats
             </div>
           </div>
         </div>

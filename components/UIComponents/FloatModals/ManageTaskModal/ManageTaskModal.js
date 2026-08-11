@@ -6,7 +6,7 @@ import { colors } from '../../../styles/global'
 import { MANAGE_TASK_MODAL_ID, removeModal } from '../../../ModalsManager/modalsManager'
 import Header from './Header'
 import TaskArea from './TaskArea'
-import { applyPopoverWidth, dismissPopupInBackground } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, dismissPopupInBackground, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
 import AddSubtask from './AddSubtask'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -17,9 +17,6 @@ import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
-import useCreateTaskPopupWidth from '../RichCreateTaskModal/createTaskPopupWidth'
-import useTaskEditorLock from '../../../../hooks/useTaskEditorLock'
 
 class ManageTaskModal extends Component {
     constructor(props) {
@@ -110,19 +107,8 @@ class ManageTaskModal extends Component {
 
     render() {
         const { subtasks, taskBeenEdited } = this.state
-        const {
-            projectId,
-            editing,
-            closeModal,
-            editorRef,
-            noteId,
-            task,
-            tagId,
-            unwatchTask,
-            windowSize,
-            objectUrl,
-            createTaskWidthStyle,
-        } = this.props
+        const { projectId, editing, closeModal, editorRef, noteId, task, tagId, unwatchTask, windowSize, objectUrl } =
+            this.props
 
         const isAssistant = task && task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
@@ -130,12 +116,8 @@ class ManageTaskModal extends Component {
             <CustomScrollView
                 style={[
                     localStyles.container,
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                     applyPopoverWidth(),
-                    // The note-editor toolbar opens this shared modal in
-                    // creation mode. Match every other Add task popup without
-                    // changing the width used to edit an existing task.
-                    !editing && createTaskWidthStyle,
                     this.closed && { opacity: 0 },
                 ]}
                 showsVerticalScrollIndicator={false}
@@ -188,14 +170,7 @@ class ManageTaskModal extends Component {
         )
     }
 }
-
-const ManageTaskModalWithWindowSize = withWindowSizeHook(ManageTaskModal)
-
-export default function ResponsiveManageTaskModal(props) {
-    const createTaskWidthStyle = useCreateTaskPopupWidth(!props.editing)
-    useTaskEditorLock(!!props.editing)
-    return <ManageTaskModalWithWindowSize {...props} createTaskWidthStyle={createTaskWidthStyle} />
-}
+export default withWindowSizeHook(ManageTaskModal)
 
 const localStyles = StyleSheet.create({
     container: {

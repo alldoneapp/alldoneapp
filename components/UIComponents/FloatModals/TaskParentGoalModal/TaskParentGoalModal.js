@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
+import algoliasearch from 'algoliasearch'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -7,10 +8,9 @@ import { colors } from '../../../styles/global'
 import { MENTION_MODAL_GOALS_TAB } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { TASK_PARENT_GOAL_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
 import MentionsGoalsGrouped from './MentionsGoalsGrouped'
-import MentionProjectHeader from '../../../Feeds/CommentsTextInput/MentionsModal/MentionProjectHeader'
 import EmptyMatch from '../../../Feeds/CommentsTextInput/MentionsModal/EmptyMatch'
 import useWindowSize from '../../../../utils/useWindowSize'
 import NewObjectsInMentions from '../../../NewObjectsInMentions/NewObjectsInMentions'
@@ -24,16 +24,15 @@ import {
     toggleDismissibleActive,
 } from '../../../../redux/actions'
 import ActiveGoal from './ActiveGoal'
+import { GOALS_INDEX_NAME_PREFIX } from '../../../GlobalSearchAlgolia/searchHelper'
 import ModalHeader from '../ModalHeader'
 import { translate } from '../../../../i18n/TranslationService'
 import TabsHeader, { CURRENT_MILESTONE, ALL_MILESTONES } from './TabsHeader'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
+import { FEED_PUBLIC_FOR_ALL } from '../../../Feeds/Utils/FeedsConstants'
 import { DYNAMIC_PERCENT, getOwnerId } from '../../../GoalsView/GoalsHelper'
 import { ALL_GOALS_ID } from '../../../AllSections/allSectionHelper'
-import useParentGoalSearch from './useParentGoalSearch'
-import GhostButton from '../../../UIControls/GhostButton'
-import { goalSelectionId, shouldUnselectGoal } from './goalSelectionToggle'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import store from '../../../../redux/store'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -48,7 +47,6 @@ export default function TaskParentGoalModal({
 }) {
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const projectsMap = useSelector(state => state.loggedUserProjectsMap)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const selectedGoalDataFromRedux = useSelector(state => state.selectedGoalDataInTasksListWhenAddTask)
@@ -56,23 +54,18 @@ export default function TaskParentGoalModal({
 
     // When in fromAddTaskSection mode, use Redux state for activeGoal
     const effectiveActiveGoal = fromAddTaskSection ? selectedGoalFromRedux : activeGoal
-
-    // Keep the meaning of a click stable for the lifetime of this picker. A goal assigned by the
-    // router after the picker opened must not turn the user's pending "select" click into
-    // "unselect". The reference advances only after a choice made through this picker.
-    const selectionAtLastUserChoiceRef = useRef(goalSelectionId(effectiveActiveGoal))
     const [flag, setFlag] = useState(false)
     const [activeMilestoneDate, setActiveMilestoneDate] = useState(null)
     const [currentMilestoneGoals, setCurrentMilestoneGoals] = useState([])
     const [allMilestonesGoals, setAllMilestonesGoals] = useState([])
 
+    const [endedFirstSearch, setEndedFirstSearch] = useState(false)
     const [activeTab, setActiveTab] = useState(CURRENT_MILESTONE)
     const [filterText, setFilterText] = useState('')
-    const { hits, loading, error, hasMore, loadMore } = useParentGoalSearch({
-        projectId,
-        userId: loggedUserId,
-        projectsMap,
-        query: filterText,
+    const [algoliaClient, setAlgoliaClient] = useState(() => {
+        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
+        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
+        return client
     })
 
     const getIfGoalsAreInCurrentMilestone = goal => {
@@ -86,7 +79,6 @@ export default function TaskParentGoalModal({
     }
 
     const items = activeTab === CURRENT_MILESTONE ? currentMilestoneGoals : allMilestonesGoals
-    const currentProject = projectsMap[projectId]
     const loadedActiveGoalAndMilestones = effectiveActiveGoal && activeMilestoneDate
     const isActiveGoalInCurrentMilestoneTab =
         loadedActiveGoalAndMilestones && getIfGoalsAreInCurrentMilestone(effectiveActiveGoal)
@@ -102,6 +94,7 @@ export default function TaskParentGoalModal({
     const activedActiveGoalTab = useRef(false)
     const modalId = useRef(null)
     const itemsRef = useRef([])
+    const goalsRef = useRef([])
     const itemsComponentsRefs = useRef({})
     const scrollHeight = useRef(0)
     const scrollRef = useRef()
@@ -112,7 +105,7 @@ export default function TaskParentGoalModal({
     const activeGoalRef = useRef(null)
 
     const [width, height] = useWindowSize()
-    const tmpHeight = getSafeAreaModalMaxHeight(height)
+    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const onKeyDown = event => {
@@ -245,6 +238,36 @@ export default function TaskParentGoalModal({
         setAllMilestonesGoals(allMilestonesGoals)
     }
 
+    const updateResults = async () => {
+        const algoliaIndex = algoliaClient.initIndex(GOALS_INDEX_NAME_PREFIX)
+        // Search goals across all projects the user has access to (similar to contacts)
+        const filters = activeGoal
+            ? `NOT id:${activeGoal.id} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
+            : `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
+        const results = await algoliaIndex.search(filterText, { filters })
+        let hits = results.hits
+
+        // Filter out goals from projects the user doesn't have access to
+        const { loggedUserProjectsMap } = store.getState()
+        hits = hits.filter(goal => loggedUserProjectsMap[goal.projectId])
+
+        // Sort: current project goals first, then others
+        hits.sort((a, b) => {
+            const aInCurrentProject = a.projectId === projectId
+            const bInCurrentProject = b.projectId === projectId
+            if (aInCurrentProject && !bInCurrentProject) return -1
+            if (!aInCurrentProject && bInCurrentProject) return 1
+            return 0
+        })
+
+        if (activeMilestoneDate) {
+            filterGoalsByCurrentMilestone(hits)
+        }
+        goalsRef.current = hits
+        setEndedFirstSearch(true)
+        setFlag(flag => !flag)
+    }
+
     useEffect(() => {
         closeNewForm()
         itemsRef.current = activeTab === CURRENT_MILESTONE ? currentMilestoneGoals : allMilestonesGoals
@@ -260,18 +283,17 @@ export default function TaskParentGoalModal({
         }, 50)
     }
 
-    const selectGoal = async (goal, tabIndex, goalProjectId, isNewGoal) => {
+    const selectGoal = (goal, tabIndex, goalProjectId, isNewGoal) => {
         dismissClickThroughEditModes()
 
-        // A repeated click is an unselect only if the goal was already selected when the picker
-        // opened (or when the user last chose through it). Live background updates may change what
-        // is rendered, but must not invert the interaction already in flight.
+        // Check if we're clicking on the same goal that's already selected
+        // We need to check both the effective active goal and the prop active goal
+        // to handle all different modal contexts
         const currentlySelectedGoal = effectiveActiveGoal || activeGoal
-        if (shouldUnselectGoal(goal, currentlySelectedGoal, selectionAtLastUserChoiceRef.current)) {
+        if (currentlySelectedGoal && goal && currentlySelectedGoal.id === goal.id) {
             unselectGoal()
             return
         }
-        selectionAtLastUserChoiceRef.current = goalSelectionId(goal)
 
         // Use the goal's projectId if available, otherwise fall back to the passed goalProjectId
         const targetProjectId = goal?.projectId || goalProjectId
@@ -280,27 +302,25 @@ export default function TaskParentGoalModal({
             const goalData = { projectId: targetProjectId, goal, dateFormated, isNewGoal }
             dispatch(setSelectedGoalDataInTasksListWhenAddTask(goalData))
             closeModal()
+        } else if (notDelayClose) {
+            setActiveGoal(goal, targetProjectId)
+            closeModal()
         } else {
-            // Persist the relationship before dismissing this picker. The detailed-view property
-            // writes asynchronously; closing first made the interaction look successful while the
-            // task was still unlinked (and hid write failures entirely).
-            const saved = await setActiveGoal(goal, targetProjectId)
-            if (saved === false) return
-
-            if (notDelayClose) closeModal()
-            else setTimeout(closeModal)
+            // Call setActiveGoal synchronously to ensure it executes before component unmounts
+            setActiveGoal(goal, targetProjectId)
+            setTimeout(() => {
+                closeModal()
+            })
         }
     }
 
-    const unselectGoal = async () => {
+    const unselectGoal = () => {
         dismissClickThroughEditModes()
-        selectionAtLastUserChoiceRef.current = null
 
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))
         } else {
-            const saved = await setActiveGoal(null)
-            if (saved === false) return
+            setActiveGoal(null)
         }
         closeModal()
     }
@@ -322,11 +342,9 @@ export default function TaskParentGoalModal({
 
     useEffect(() => {
         if (activeMilestoneDate) {
-            filterGoalsByCurrentMilestone(
-                hits.filter(goal => goalSelectionId(goal) !== goalSelectionId(effectiveActiveGoal))
-            )
+            filterGoalsByCurrentMilestone(goalsRef.current)
         }
-    }, [activeMilestoneDate, hits, effectiveActiveGoal])
+    }, [activeMilestoneDate, goalsRef.current.length])
 
     useEffect(() => {
         const watcherKey = v4()
@@ -339,6 +357,10 @@ export default function TaskParentGoalModal({
             Backend.unwatch(watcherKey)
         }
     }, [])
+
+    useEffect(() => {
+        updateResults()
+    }, [filterText])
 
     useEffect(() => {
         storeModal(TASK_PARENT_GOAL_MODAL_ID)
@@ -421,15 +443,6 @@ export default function TaskParentGoalModal({
                         }
                     />
                 </View>
-                {currentProject && (
-                    <MentionProjectHeader
-                        project={currentProject}
-                        amount={
-                            items.filter(goal => goal.projectId === projectId).length +
-                            (isActiveGoalInActiveTab ? 1 : 0)
-                        }
-                    />
-                )}
                 <NewObjectsInMentions
                     ref={newForm}
                     projectId={projectId}
@@ -458,22 +471,12 @@ export default function TaskParentGoalModal({
                         itemsComponentsRefs={itemsComponentsRefs}
                         currentProjectId={projectId}
                         currentlyAssignedGoal={effectiveActiveGoal}
-                        showCurrentProjectHeader={false}
                     />
                 ) : (
                     <EmptyMatch
                         sppinerContainerStyle={localStyles.sppinerContainer}
-                        showSpinner={loading || (!activeMilestoneDate && !error)}
-                        text={translate(error ? 'Search is temporarily unavailable' : 'There are not results to show')}
-                    />
-                )}
-                {error && items.length > 0 && <EmptyMatch text={translate('Search is temporarily unavailable')} />}
-                {(hasMore || error) && (
-                    <GhostButton
-                        title={translate(loading ? 'Loading' : error ? 'Try again' : 'Load more')}
-                        onPress={loadMore}
-                        disabled={loading}
-                        type="ghost"
+                        showSpinner={!endedFirstSearch || !activeMilestoneDate}
+                        text={translate('There are not results to show')}
                     />
                 )}
             </CustomScrollView>

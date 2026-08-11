@@ -1,9 +1,7 @@
-import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
-import { withContactStatus } from './contactStatusUrl'
 
 /**
  * /projects/contacts/all
@@ -91,11 +89,13 @@ class URLsPeople {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsPeople.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        writeBrowserHistory('replace', data, urlPath, () => URLsPeople.setTitle(urlConstant, false, ...params))
+        URLsPeople.setTitle(urlConstant, false, ...params)
+        history.replaceState(data, '', `${originPath}/${urlPath}`)
     }
 
     /**
@@ -105,11 +105,13 @@ class URLsPeople {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsPeople.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        writeBrowserHistory('push', data, urlPath, () => URLsPeople.setTitle(urlConstant, false, ...params))
+        URLsPeople.setTitle(urlConstant, false, ...params)
+        history.pushState(data, '', `${originPath}/${urlPath}`)
     }
 
     static getPath = (urlConstant, ...params) => {
@@ -119,9 +121,9 @@ class URLsPeople {
             case URL_ALL_PROJECTS_PEOPLE_FOLLOWED:
                 return `projects/contacts/followed`
             case URL_PROJECT_PEOPLE_ALL:
-                return withContactStatus(`projects/${params[0]}/user/${params[1]}/contacts/all`, params[2])
+                return `projects/${params[0]}/user/${params[1]}/contacts/all`
             case URL_PROJECT_PEOPLE_FOLLOWED:
-                return withContactStatus(`projects/${params[0]}/user/${params[1]}/contacts/followed`, params[2])
+                return `projects/${params[0]}/user/${params[1]}/contacts/followed`
             case URL_PEOPLE_DETAILS:
                 return `projects/${params[0]}/contacts/${params[1]}`
             case URL_PEOPLE_DETAILS_FEED:

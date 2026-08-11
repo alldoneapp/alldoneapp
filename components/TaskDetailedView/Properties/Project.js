@@ -5,17 +5,7 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
 
-export default function Project({
-    project,
-    item,
-    disabled,
-    taskProjectMoveHandoff,
-    taskProjectMoveHandoffActive,
-    taskProjectMovePending,
-    onTaskProjectMoveStarted,
-    onTaskProjectMoveEnqueued,
-    onTaskProjectMoveEnqueueFailed,
-}) {
+export default function Project({ project, item, disabled }) {
     const isGuide = !!project.parentTemplateId
     return (
         <View style={localStyles.container}>
@@ -24,16 +14,7 @@ export default function Project({
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Project')}</Text>
             <View style={{ marginLeft: 'auto' }}>
-                <ProjectPicker
-                    project={project}
-                    item={item}
-                    disabled={disabled || isGuide || taskProjectMoveHandoffActive}
-                    taskProjectMoveHandoff={taskProjectMoveHandoff}
-                    taskProjectMovePending={taskProjectMovePending}
-                    onTaskProjectMoveStarted={onTaskProjectMoveStarted}
-                    onTaskProjectMoveEnqueued={onTaskProjectMoveEnqueued}
-                    onTaskProjectMoveEnqueueFailed={onTaskProjectMoveEnqueueFailed}
-                />
+                <ProjectPicker project={project} item={item} disabled={disabled || isGuide} />
             </View>
         </View>
     )

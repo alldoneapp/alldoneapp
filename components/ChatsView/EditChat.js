@@ -385,10 +385,7 @@ const localStyles = StyleSheet.create({
         borderTopRightRadius: 4,
         minHeight: 40, // 59 - (7 + 12)
         marginLeft: 67,
-        // 8, not TaskInput's 40: that margin clears the assignee avatar in the task row, but the
-        // topic form has nothing on the input's right (its buttons live below) and the dictation
-        // mic anchors to the frame's right edge.
-        marginRight: 8,
+        marginRight: 40,
     },
     textInputAlignment: {
         paddingLeft: 0,
@@ -396,7 +393,7 @@ const localStyles = StyleSheet.create({
     },
     inputUnderBreakpoint: {
         marginLeft: 44,
-        marginRight: 8,
+        marginRight: 32,
     },
 })
 

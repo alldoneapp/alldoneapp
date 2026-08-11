@@ -1,46 +1,45 @@
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
+import Indicator from './Indicator'
 import styles, { colors } from '../../styles/global'
 import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
-import DvTitleLayout from '../../UIComponents/DvTitleLayout'
-import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
-export default function TitlePresentation({ openTitleEdition, skill, projectId, hideLastEdited, maxHeight }) {
+export default function TitlePresentation({ openTitleEdition, skill, projectId }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
 
     const isSkillsOwner = !isAnonymous && skill.userId === loggedUserId
-    const { extendedName, lastEditionDate, lastEditorId } = skill
-    const editor = getUserPresentationDataInProject(projectId, lastEditorId)
-
+    const { extendedName } = skill
     return (
-        <DvTitleLayout
-            onPress={openTitleEdition}
-            disabled={!isSkillsOwner}
-            typeLabel="SKILL"
-            typeIcon="star"
-            lastEditionDate={lastEditionDate}
-            editorName={editor.displayName}
-            shortEditorName={editor.shortName?.split(' ')[0]}
-            hideLastEdited={hideLastEdited}
-            maxHeight={maxHeight}
-        >
-            <CommentElementsParser
-                comment={extendedName}
-                entryStyle={localStyles.text}
-                projectId={projectId}
-                elementSpace={{ marginRight: 4 }}
-                inDetaliedView={true}
-            />
-        </DvTitleLayout>
+        <TouchableOpacity style={localStyles.container} onPress={openTitleEdition} disabled={!isSkillsOwner}>
+            <View style={localStyles.titleContainer}>
+                <CommentElementsParser
+                    comment={extendedName}
+                    entryStyle={localStyles.text}
+                    projectId={projectId}
+                    elementSpace={{ marginRight: 4 }}
+                    inDetaliedView={true}
+                />
+            </View>
+            <Indicator />
+        </TouchableOpacity>
     )
 }
 
 const localStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        flex: 1,
+        marginTop: 32,
+    },
     text: {
         ...styles.title4,
         color: colors.Text01,
+    },
+    titleContainer: {
+        flex: 1,
     },
 })

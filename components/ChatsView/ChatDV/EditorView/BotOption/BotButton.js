@@ -5,9 +5,9 @@ import Hotkeys from 'react-hot-keys'
 import Button from '../../../../UIControls/Button'
 import { execShortcutFn } from '../../../../../utils/HelperFunctions'
 import { resolveAssistantForProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
-import ThreadModelAssistantAvatar from './ThreadModelAssistantAvatar'
+import AssistantAvatar from '../../../../AdminPanel/Assistants/AssistantAvatar'
 
-export default function BotButton({ onPress, projectId, assistantId, isAssistantEnabled, objectId, objectType }) {
+export default function BotButton({ onPress, projectId, assistantId, isAssistantEnabled }) {
     const defaultAssistantEnabled = useSelector(state => state.assistantEnabled)
     const assistantEnabled = isAssistantEnabled !== undefined ? isAssistantEnabled : defaultAssistantEnabled
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -31,10 +31,7 @@ export default function BotButton({ onPress, projectId, assistantId, isAssistant
                 onPress={onPress}
                 shortcutText={'B'}
                 customIcon={
-                    <ThreadModelAssistantAvatar
-                        projectId={projectId}
-                        objectId={objectId}
-                        objectType={objectType}
+                    <AssistantAvatar
                         photoURL={photoURL}
                         assistantId={effectiveAssistantId}
                         size={24}

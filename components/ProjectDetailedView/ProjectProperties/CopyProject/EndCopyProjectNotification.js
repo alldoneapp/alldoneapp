@@ -9,10 +9,8 @@ import { translate } from '../../../../i18n/TranslationService'
 import { deleteCacheAndRefresh } from '../../../../utils/Observers'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { fixedModalOverlayStyle } from '../../../../utils/fixedModalPosition'
-import { useFixedModalOverlayPadding } from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function EndCopyProjectNotification({}) {
-    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const name = useSelector(state => state.endCopyProjectPopupData.name)
     const color = useSelector(state => state.endCopyProjectPopupData.color)
 
@@ -33,7 +31,8 @@ export default function EndCopyProjectNotification({}) {
     })
 
     return (
-        <View style={[localStyles.container, safeAreaOverlayPadding]}>
+        <View style={localStyles.container}>
+            <View style={localStyles.backdrop} />
             <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.body}>
                     <View style={{ marginBottom: 20 }}>
@@ -71,6 +70,14 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         ...Platform.select({ web: fixedModalOverlayStyle }),
     },
+    backdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 10100,
+    },
     body: {
         paddingHorizontal: 16,
     },
@@ -80,6 +87,7 @@ const localStyles = StyleSheet.create({
         boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
+        maxWidth: 305,
         zIndex: 11000,
     },
     projectName: {

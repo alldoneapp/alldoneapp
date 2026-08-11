@@ -42,9 +42,6 @@ jest.mock('./calendarProjectRoutingConfig', () => ({
             },
         })
     ),
-    findLearnedCalendarSeriesRoute: jest.fn((config, event) =>
-        event.recurringEventId === 'series-1' ? { targetProjectId: 'project-a', recurringEventId: 'series-1' } : null
-    ),
 }))
 
 const admin = require('firebase-admin')
@@ -147,28 +144,6 @@ describe('calendarProjectRouting', () => {
         })
 
         expect(result).toEqual({})
-        expect(classifyCalendarEventProject).not.toHaveBeenCalled()
-        expect(deductGold).not.toHaveBeenCalled()
-    })
-
-    test('routes later recurring occurrences from learned feedback without charging gold', async () => {
-        const result = await routeCalendarEventsToProjects({
-            userId: 'user-1',
-            syncProjectId: 'connected-project',
-            userData: premiumUser,
-            events: [{ ...event, id: 'event-2', recurringEventId: 'series-1' }],
-            calendarEmail: 'me@example.com',
-        })
-
-        expect(result).toEqual({
-            'event-2': expect.objectContaining({
-                matched: true,
-                targetProjectId: 'project-a',
-                confidence: 1,
-                goldSpent: 0,
-                learnedFromFeedback: true,
-            }),
-        })
         expect(classifyCalendarEventProject).not.toHaveBeenCalled()
         expect(deductGold).not.toHaveBeenCalled()
     })

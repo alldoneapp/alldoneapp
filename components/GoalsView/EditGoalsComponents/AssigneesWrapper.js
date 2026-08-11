@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -54,7 +54,7 @@ export default function AssigneesWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <GoalAssigneesModal
                     closeModal={closeModal}
@@ -92,6 +92,6 @@ export default function AssigneesWrapper({
                     shortcutText={'A'}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

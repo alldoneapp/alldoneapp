@@ -37,40 +37,15 @@ import {
 } from '../../redux/actions'
 import theStore, { initialState, resetCircularStructures, theReducer } from '../../redux/store'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
-import { SET_OKR_TODAY_OPERATION, getOkrTodayOperation } from '../../redux/okrTodayVisibility'
 
 describe('Redux Reducers', () => {
-    it('retains the exact red chat message identity for assistant previews without changing badge counts', () => {
-        const notification = {
-            chatId: 'task1',
-            commentId: 'message1',
-            chatType: 'tasks',
-            date: 1000,
-            creatorId: 'anna',
-            creatorType: 'assistant',
-            followed: true,
-        }
-        const state = theReducer(
-            { ...initialState, loggedUser: { uid: 'user', projectIds: ['p1'] } },
-            {
-                type: 'Set chat notifications in projects',
-                projectId: 'p1',
-                notifications: [notification, { ...notification, commentId: 'grey', followed: false }],
-            }
-        )
-        expect(state.projectChatNotifications.p1).toMatchObject({ totalFollowed: 1, totalUnfollowed: 1 })
-        expect(state.projectChatNotifications.p1.task1.followedNotifications).toEqual([
-            { commentId: 'message1', chatType: 'tasks', date: 1000, creatorId: 'anna', creatorType: 'assistant' },
-        ])
-        expect(state.projectChatNotifications.p1.task1.followedCommentIds).toEqual(['message1'])
-    })
     it('should return the initial state', () => {
         const state = theReducer(undefined, {})
         expect(state).toEqual(initialState)
     })
 
     it('should log out', () => {
-        const state = theReducer({ ...initialState, loggedIn: true, registeredNewUser: true }, LogOut())
+        const state = theReducer(undefined, LogOut())
         const newState = { ...initialState, loggedIn: false }
         expect(state).toEqual(newState)
     })
@@ -91,28 +66,6 @@ describe('Redux Reducers', () => {
         const state = theReducer(undefined, storeLoggedUser({ uid: 'user-1' }))
 
         expect(state.loggedUser.uid).toEqual('user-1')
-    })
-
-    it('keeps OKR operations pending through optimistic user snapshots and reconciles acknowledged writes', () => {
-        const user = { uid: 'user-1' }
-        const operation = {
-            userId: user.uid,
-            projectId: 'p1',
-            okrId: 'o1',
-            previousValue: null,
-            targetValue: '2026-10-05',
-            status: 'pending',
-        }
-        const snapshotUser = {
-            ...user,
-            okrsHiddenInAllProjectsTodayByProjectAndOkr: { p1: { o1: operation.targetValue } },
-        }
-        let state = theReducer(undefined, storeLoggedUser(user))
-        state = theReducer(state, { type: SET_OKR_TODAY_OPERATION, operations: [operation] })
-        state = theReducer(state, storeLoggedUser(snapshotUser))
-        expect(getOkrTodayOperation(state.okrTodayOperations, user.uid, 'p1', 'o1').status).toBe('pending')
-        state = theReducer(state, { type: SET_OKR_TODAY_OPERATION, operations: [{ ...operation, status: 'saved' }] })
-        expect(state.okrTodayOperations).toEqual({})
     })
 
     it('should store current user', () => {

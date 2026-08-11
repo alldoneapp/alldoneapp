@@ -17,40 +17,35 @@ const config = {
 
 class ProfileInit {
     constructor() {
-        this.initializationPromise = null
+        // Defer loading to avoid blocking app initialization
+        setTimeout(() => {
+            this.handleClientLoad()
+        }, 2500)
     }
 
     async initGapiClient() {
-        await window.gapi.client.init(config)
+        await gapi.client.init(config)
     }
 
-    async handleClientLoad() {
-        if (!window.gapi) await scriptLoader.loadScript(scriptSrcGapi)
-        if (!window.gapi) throw new Error('Google API library failed to load properly')
-
-        await new Promise((resolve, reject) => {
-            try {
-                window.gapi.load('client', resolve)
-            } catch (error) {
-                reject(error)
-            }
-        })
-        await this.initGapiClient()
-    }
-
-    ensureInitialized() {
-        if (!this.initializationPromise) {
-            this.initializationPromise = this.handleClientLoad().catch(error => {
-                this.initializationPromise = null
-                console.error('Error loading Google API integrations:', error)
-                throw error
+    handleClientLoad() {
+        const self = this
+        scriptLoader
+            .loadScript(scriptSrcGapi)
+            .then(() => {
+                if (window.gapi) {
+                    gapi.load('client', () => self.initGapiClient())
+                } else {
+                    console.error('Google API library failed to load properly')
+                }
             })
-        }
-        return this.initializationPromise
+            .catch(error => {
+                console.error('Error loading Google API script:', error)
+                console.error('Google Calendar, Gmail, and Drive integrations will not be available')
+            })
     }
 
     checkAccessGranted() {
-        return !!window.gapi?.client?.getToken?.()
+        return !!gapi.client.getToken()
     }
 }
 

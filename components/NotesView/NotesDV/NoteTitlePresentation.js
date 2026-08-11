@@ -1,48 +1,39 @@
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
+import Indicator from '../Indicator'
 import styles, { colors } from '../../styles/global'
 import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
-import DvTitleLayout from '../../UIComponents/DvTitleLayout'
-import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
-export default function NoteTitlePresentation({
-    openTitleEdition,
-    note,
-    projectId,
-    disabled = false,
-    hideLastEdited,
-    maxHeight,
-}) {
-    const { extendedTitle, lastEditionDate, lastEditorId } = note
-    const { displayName } = getUserPresentationDataInProject(projectId, lastEditorId)
-
+export default function NoteTitlePresentation({ openTitleEdition, note, projectId, disabled = false }) {
+    const { extendedTitle } = note
     return (
-        <DvTitleLayout
-            dataSet={{ annaObjectType: 'note', annaObjectId: note.id, annaProjectId: projectId }}
-            onPress={openTitleEdition}
-            disabled={disabled}
-            typeLabel="NOTE"
-            typeIcon="file-text"
-            lastEditionDate={lastEditionDate}
-            editorName={displayName}
-            shortEditorName={displayName.split(' ')[0]}
-            hideLastEdited={hideLastEdited}
-            maxHeight={maxHeight}
-        >
-            <CommentElementsParser
-                comment={extendedTitle}
-                entryStyle={localStyles.text}
-                projectId={projectId}
-                elementSpace={{ marginRight: 4 }}
-                inDetaliedView={true}
-            />
-        </DvTitleLayout>
+        <TouchableOpacity style={localStyles.container} onPress={openTitleEdition} disabled={disabled}>
+            <View style={localStyles.titleContainer}>
+                <CommentElementsParser
+                    comment={extendedTitle}
+                    entryStyle={localStyles.text}
+                    projectId={projectId}
+                    elementSpace={{ marginRight: 4 }}
+                    inDetaliedView={true}
+                />
+            </View>
+            <Indicator />
+        </TouchableOpacity>
     )
 }
 
 const localStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        flex: 1,
+        marginTop: 32,
+    },
     text: {
         ...styles.title4,
         color: colors.Text01,
+    },
+    titleContainer: {
+        flex: 1,
     },
 })

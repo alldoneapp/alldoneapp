@@ -5,10 +5,18 @@ import { useSelector } from 'react-redux'
 
 import Icon from '../../Icon'
 import ScopeTag from './ScopeTag'
+import CreatedByMeTag from './CreatedByMeTag'
 import styles from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 
-export default function ProjectFilter({ setShowSelectProjectModal, selectedProject, containerStyle, disabled, text }) {
+export default function ProjectFilter({
+    setShowSelectProjectModal,
+    selectedProject,
+    containerStyle,
+    disabled,
+    text,
+    createdByMeOnly,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const currentText = text ? text : smallScreenNavigation ? 'Select scope' : 'Select search scope'
@@ -17,15 +25,15 @@ export default function ProjectFilter({ setShowSelectProjectModal, selectedProje
             disabled={disabled}
             onPress={setShowSelectProjectModal}
             style={[localStyles.container, containerStyle]}
-            testID="project-filter"
         >
-            <View style={[localStyles.rowContainer, localStyles.content]} testID="project-filter-content">
-                <View style={[localStyles.rowContainer, localStyles.label]} testID="project-filter-label">
+            <View style={[localStyles.rowContainer, { flexWrap: 'wrap', flex: 1, justifyContent: 'space-between' }]}>
+                <View style={[localStyles.rowContainer, { marginTop: 8 }]}>
                     <Icon name="icon-circle" size={24} color="#ffffff" />
                     <Text style={localStyles.text}>{translate(currentText)}</Text>
                 </View>
-                <View style={[localStyles.rowContainer, localStyles.scope]} testID="project-filter-scope">
+                <View style={[localStyles.rowContainer, { flexWrap: 'wrap' }]}>
                     <ScopeTag selectedProject={selectedProject} />
+                    {!!createdByMeOnly && <CreatedByMeTag />}
                 </View>
             </View>
             <Hotkeys keyName={'alt+1'} onKeyDown={setShowSelectProjectModal} filter={e => true} />
@@ -46,20 +54,6 @@ const localStyles = StyleSheet.create({
     },
     rowContainer: {
         flexDirection: 'row',
-    },
-    content: {
-        flex: 1,
-        minWidth: 0,
-        justifyContent: 'flex-start',
-    },
-    label: {
-        flexShrink: 0,
-        marginTop: 8,
-        marginRight: 16,
-    },
-    scope: {
-        flexShrink: 1,
-        minWidth: 0,
     },
     text: {
         ...styles.subtitle1,

@@ -1,6 +1,5 @@
-import { writeBrowserHistory } from '../browserHistory'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
-import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { getProjectData } from '../../utils/backends/firestore'
 import URLSystem from '../URLSystem'
 
 /**
@@ -54,11 +53,13 @@ class URLsAssistants {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAssistants.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        writeBrowserHistory('replace', data, urlPath, () => URLsAssistants.setTitle(urlConstant, false, ...params))
+        URLsAssistants.setTitle(urlConstant, false, ...params)
+        history.replaceState(data, '', `${originPath}/${urlPath}`)
     }
 
     /**
@@ -68,11 +69,13 @@ class URLsAssistants {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAssistants.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        writeBrowserHistory('push', data, urlPath, () => URLsAssistants.setTitle(urlConstant, false, ...params))
+        URLsAssistants.setTitle(urlConstant, false, ...params)
+        history.pushState(data, '', `${originPath}/${urlPath}`)
     }
 
     static getPath = (urlConstant, ...params) => {
@@ -96,18 +99,15 @@ class URLsAssistants {
         }
     }
 
-    static setTitle = (urlConstant, internal = false, ...params) => {
+    static setTitle = async (urlConstant, internal = false, ...params) => {
         const projectId = params[0]
-        // Use the loaded project like the other object routes. A delayed
-        // Firestore read can leave the previous object's title on this entry
-        // or overwrite the next view's title after navigating away.
-        const projectName =
-            projectId === GLOBAL_PROJECT_ID ? 'Admin' : ProjectHelper.getProjectNameById(projectId, 'Project')
+        const project = projectId === GLOBAL_PROJECT_ID ? { name: 'Admin' } : await getProjectData(projectId)
 
         const prefix = internal ? '' : 'Alldone.app - '
         let title = ''
 
         const assistantDetails = (titleSuffix = '') => {
+            const projectName = project ? project.name : 'Project'
             title = `${prefix}${projectName} - Assistant details${titleSuffix}`
         }
 

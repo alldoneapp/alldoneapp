@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'
@@ -28,7 +28,7 @@ export default function SidebarNavigation({ userId, sidebarNavigationMode }) {
             </View>
 
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <AppPopover
+                <Popover
                     content={
                         <View style={localStyles.optionsContainer}>
                             {sidebarNavigationModeOptions.map(option => {
@@ -65,7 +65,7 @@ export default function SidebarNavigation({ userId, sidebarNavigationMode }) {
                         title={translate(currentOption.label)}
                         onPress={() => setOpen(true)}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

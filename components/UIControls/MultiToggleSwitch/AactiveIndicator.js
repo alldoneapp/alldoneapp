@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Animated, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -7,22 +7,23 @@ import { colors } from '../../styles/global'
 
 export default function AactiveIndicator({ options, optionsRefs, currentIndex }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const [optionsWidths, setOptionsWidths] = useState(new Array(options.length).fill(0))
     const width = useRef(new Animated.Value(0)).current
     const position = useRef(new Animated.Value(0)).current
 
-    const getOffset = widths => {
+    const getOffset = () => {
         let width = 0
         for (let i = 0; i < currentIndex; i++) {
-            width += widths[i]
+            width += optionsWidths[i]
         }
 
         return width
     }
 
     const animate = widths => {
-        const posValue = getOffset(widths)
+        let posValue = getOffset()
 
-        const animation = Animated.parallel(
+        Animated.parallel(
             [
                 Animated.timing(position, {
                     toValue: posValue,
@@ -37,29 +38,37 @@ export default function AactiveIndicator({ options, optionsRefs, currentIndex })
                 }),
             ],
             { stopTogether: false }
-        )
-        animation.start()
-        return animation
+        ).start()
+    }
+
+    const updateWidths = async () => {
+        let functors = []
+
+        for (let i = 0; i < optionsRefs.length; i++) {
+            functors.push(MyPlatform.getElementWidth(optionsRefs[i]))
+        }
+
+        const widths = await Promise.all(functors)
+
+        animate(widths)
+        setOptionsWidths(widths)
     }
 
     useEffect(() => {
-        let cancelled = false
-        let animation
-
-        const updateWidths = async () => {
-            const widths = await Promise.all(optionsRefs.map(optionRef => MyPlatform.getElementWidth(optionRef)))
-            if (cancelled) return
-
-            animation = animate(widths)
-        }
-
         updateWidths()
+    }, [currentIndex])
 
-        return () => {
-            cancelled = true
-            animation?.stop()
-        }
-    }, [currentIndex, smallScreenNavigation, JSON.stringify(options), optionsRefs])
+    useEffect(() => {
+        updateWidths()
+    }, [JSON.stringify(optionsWidths)])
+
+    useEffect(() => {
+        updateWidths()
+    }, [smallScreenNavigation])
+
+    useEffect(() => {
+        setOptionsWidths(new Array(options.length).fill(0))
+    }, [JSON.stringify(options)])
 
     return (
         <Animated.View style={[localStyles.activeIndicator, { width: width, transform: [{ translateX: position }] }]} />

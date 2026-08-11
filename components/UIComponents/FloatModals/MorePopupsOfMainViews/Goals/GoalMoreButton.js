@@ -12,25 +12,16 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../../Feeds/Utils/FeedsConstants'
 import TasksHelper, { RECURRENCE_WEEKLY } from '../../../../TaskListView/Utils/TasksHelper'
 import { checkIfSelectedProject } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
-import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function GoalMoreButton({
-    projectId: projectIdOverride,
-    wrapperStyle,
-    buttonStyle,
-    disabled,
-    shortcut = 'M',
-    iconSize,
-}) {
+export default function GoalMoreButton({ wrapperStyle, buttonStyle, disabled, shortcut = 'M', iconSize }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const selectedProjectId = useSelector(state =>
+    const projectId = useSelector(state =>
         state.loggedUserProjects[selectedProjectIndex] ? state.loggedUserProjects[selectedProjectIndex].id : null
     )
-    const projectId = projectIdOverride || selectedProjectId
     const [showWeeklyTaskPopup, setShowWeeklyTaskPopup] = useState(false)
     const modalRef = useRef()
 
@@ -123,8 +114,7 @@ export default function GoalMoreButton({
                 ) : null
             }
         >
-            {projectId && <OpenProjectModalItem projectId={projectId} shortcut={'1'} onPress={dismissModal} />}
-            {renderItems().map((item, index) => item((index + (projectId ? 2 : 1)).toString()))}
+            {renderItems().map((item, index) => item((index + 1).toString()))}
         </MoreButtonWrapper>
     )
 }

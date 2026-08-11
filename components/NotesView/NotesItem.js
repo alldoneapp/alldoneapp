@@ -1,4 +1,3 @@
-import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
@@ -16,14 +15,13 @@ import { dismissAllPopups } from '../../utils/HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
-import { setPrevScreen, setSelectedNavItem, setSelectedNote } from '../../redux/actions'
+import { setPrevScreen, setSelectedNavItem, setSelectedNote, startLoadingData } from '../../redux/actions'
 import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
 import NavigationService from '../../utils/NavigationService'
 import SwipeNewTaskWrapper from './SwipeNewTaskWrapper'
 import { exitsOpenModals, removeModal, RICH_CREATE_TASK_MODAL_ID, storeModal } from '../ModalsManager/modalsManager'
 import { LINKED_OBJECT_TYPE_NOTE, getDvNoteTabLink } from '../../utils/LinkingHelper'
 import useBacklinks from '../../hooks/useBacklinks'
-import useSwipeCloseGuard from '../../hooks/useSwipeCloseGuard'
 import { openNoteDV } from './NotesDV/EditorView/notesHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getTheme } from '../../Themes/Themes'
@@ -31,7 +29,6 @@ import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
 import Avatar from '../Avatar'
 import { resolveNoteOwner } from './NoteFilters/noteOwnerFilterHelper'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup, onPress }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -53,9 +50,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         'linkedParentNotesIds',
         note.id
     )
-    // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-    // and leave the row permanently unopenable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const showNewTaskPopup = useRef(false)
     const isUnmountedRef = useRef(false)
@@ -70,8 +65,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             : null
     const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
-    const projectBackgroundColor = useTaskHierarchyBackground()
-    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : projectBackgroundColor
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
     const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
@@ -99,6 +93,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
     }, [])
 
     const openObjectNote = () => {
+        dispatch(startLoadingData())
+
         const url = getDvNoteTabLink(
             project.id,
             note.parentObject.id,
@@ -214,7 +210,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         (loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id))
 
     return (
-        <View dataSet={{ annaObjectType: 'note', annaObjectId: note.id, annaProjectId: project.id }}>
+        <View>
             <View style={localStyles.swipeContainer}>
                 <View style={localStyles.leftSwipeArea}>
                     <Icon name={'circle-details'} size={18} color={colors.UtilityGreen200} />
@@ -248,7 +244,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 friction={2}
                 containerStyle={{ overflow: 'visible' }}
                 failOffsetY={[-5, 5]}
-                {...swipeCloseGuard}
+                onSwipeableWillClose={() => setBlockOpen(true)}
+                onSwipeableClose={() => setBlockOpen(false)}
             >
                 <Animated.View
                     style={[
@@ -257,7 +254,6 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                         isSticky && [localStyles.containerSticky, theme.containerSticky(project.color)],
                     ]}
                 >
-                    <ProjectMoveIndicator object={note} />
                     <TouchableOpacity
                         style={localStyles.subContainer}
                         onPress={inCommentPopup ? onPress : onOpenNoteDV}

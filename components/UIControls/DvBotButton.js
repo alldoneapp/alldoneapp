@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 
 import {
@@ -16,7 +16,7 @@ import {
     getAssistantInProjectObject,
     resolveAssistantForProjectObject,
 } from '../AdminPanel/Assistants/assistantsHelper'
-import ThreadModelAssistantAvatar from '../ChatsView/ChatDV/EditorView/BotOption/ThreadModelAssistantAvatar'
+import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import BotOptionsModal from '../ChatsView/ChatDV/EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
@@ -38,10 +38,6 @@ export default function DvBotButton({
     disabled = false,
     stopPressPropagation = false,
     hotkey,
-    // Opt-in, because this control is ALSO the task-list row button (`TaskAssistantButton`).
-    // The badge costs one thread-document read, which is nothing for the one thread a detail
-    // view has open and one read per visible row in a list of fifty.
-    showThreadModelBadge = false,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -210,19 +206,12 @@ export default function DvBotButton({
                     : undefined
             }
         >
-            <ThreadModelAssistantAvatar
-                projectId={showThreadModelBadge ? projectId : null}
-                objectId={showThreadModelBadge ? objectId : null}
-                objectType={objectType}
-                photoURL={assistantPhotoURL}
-                assistantId={effectiveAssistantId}
-                size={24}
-            />
+            <AssistantAvatar photoURL={assistantPhotoURL} assistantId={effectiveAssistantId} size={24} />
         </TouchableOpacity>
     )
 
     return (
-        <AppPopover
+        <Popover
             content={
                 resolveProjectAssistant && !assistant ? null : gold > 0 ? (
                     <BotOptionsModal
@@ -254,7 +243,7 @@ export default function DvBotButton({
             ) : (
                 assistantButton
             )}
-        </AppPopover>
+        </Popover>
     )
 }
 

@@ -1,11 +1,9 @@
 const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved for the next external tool call]'
-const { compactTaskListing } = require('./taskListingContext')
 const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
 const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
 const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
 const GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS = 50
 const BINARY_TOOL_ARG_KEY_PATTERN = /(?:^|_)(?:file_?)?base64(?:$|_)|(?:^|_)(?:data_?url|content_?bytes)(?:$|_)/i
-const CALENDAR_WRITE_TOOL_NAMES = new Set(['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'])
 
 function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -17,32 +15,6 @@ function isExternalIntegrationToolName(toolName) {
 
 function isGmailDraftToolName(toolName) {
     return ['create_gmail_draft', 'create_gmail_reply_draft', 'update_gmail_draft'].includes(toolName)
-}
-
-// Apply current email guidance after loading cached schemas. Never persist filenames,
-// attachment availability, or invoice-attempt state in the shared schema cache.
-function withEmailAttachmentToolDescriptions(toolSchemas, toolRuntimeContext = null) {
-    if (toolRuntimeContext?.channel !== 'email') return toolSchemas
-    return toolSchemas.map(schema => {
-        const toolName = schema.function?.name
-        let guidance = ''
-        if (toolRuntimeContext.invoiceToolName && toolName === toolRuntimeContext.invoiceToolName) {
-            guidance = toolRuntimeContext.invoiceToolAttempted
-                ? 'The current invoice upload has already been attempted. Use the existing tool result and do not upload the same invoice again.'
-                : 'Use this tool to upload the recognised invoice directly to bookkeeping before creating a suggested task. The original email attachment bytes are held by the server and injected automatically: supply the exact fileName and leave fileBase64 empty. Omitted binary content in model context does not mean the attachment is unavailable. Creating a task or Gmail draft does not complete this upload.'
-        } else if (isGmailDraftToolName(toolName)) {
-            guidance =
-                'In the incoming email channel, use this only when the sender explicitly requests a Gmail draft. The final assistant reply is sent automatically; receiving or forwarding an invoice is not a draft request. Attaching an invoice to a draft does not upload it to bookkeeping.'
-        }
-        if (!guidance) return schema
-        return {
-            ...schema,
-            function: {
-                ...schema.function,
-                description: `${schema.function.description || ''} ${guidance}`.trim(),
-            },
-        }
-    })
 }
 
 function isSuccessfulAttachmentToolResult(toolName, toolResult) {
@@ -81,32 +53,6 @@ function buildConversationSafeCalendarAvailabilityResult(toolResult) {
         }
     }
 
-    return safeResult
-}
-
-function buildConversationSafeCalendarWriteResult(toolResult) {
-    if (!isObject(toolResult)) return toolResult
-
-    const safeResult = { ...toolResult }
-    const accounts = safeResult.accounts
-    delete safeResult.accounts
-    delete safeResult.projectId
-    if (isObject(safeResult.event)) {
-        safeResult.event = { ...safeResult.event }
-        delete safeResult.event.projectId
-    }
-
-    const availableCalendarTargets = Array.isArray(accounts)
-        ? accounts
-              .map(account => ({
-                  calendarId: typeof account?.calendarEmail === 'string' ? account.calendarEmail.trim() : '',
-                  calendarEmail: typeof account?.calendarEmail === 'string' ? account.calendarEmail.trim() : '',
-                  isDefault: account?.calendarDefault === true,
-              }))
-              .filter(target => target.calendarId)
-        : []
-
-    if (availableCalendarTargets.length > 0) safeResult.availableCalendarTargets = availableCalendarTargets
     return safeResult
 }
 
@@ -213,10 +159,6 @@ function enforceToolResultContextCeiling(toolName, toolResult) {
         maxCharacters: MAX_TOOL_RESULT_CONTEXT_CHARS,
     })
 
-    if (toolName === 'get_tasks' && Array.isArray(toolResult?.tasks)) {
-        return compactTaskListing(toolResult, MAX_TOOL_RESULT_CONTEXT_CHARS)
-    }
-
     const compactResult = truncateToolResultForGlobalCeiling(toolResult)
     const compactWithMetadata = isObject(compactResult)
         ? {
@@ -266,8 +208,6 @@ function buildConversationSafeToolResult(toolName, toolResult) {
     let safeToolResult = toolResult
     if (toolName === 'find_calendar_availability') {
         safeToolResult = buildConversationSafeCalendarAvailabilityResult(toolResult)
-    } else if (CALENDAR_WRITE_TOOL_NAMES.has(toolName)) {
-        safeToolResult = buildConversationSafeCalendarWriteResult(toolResult)
     } else if (toolName === 'search') {
         safeToolResult = buildConversationSafeSearchResult(toolResult)
     } else if (isSuccessfulAttachmentToolResult(toolName, toolResult)) {
@@ -500,7 +440,6 @@ function injectPendingAttachmentIntoDraftToolArgs(toolArgs, pendingAttachmentPay
 }
 
 module.exports = {
-    withEmailAttachmentToolDescriptions,
     MAX_TOOL_RESULT_CONTEXT_CHARS,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,

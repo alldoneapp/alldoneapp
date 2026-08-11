@@ -10,7 +10,6 @@ import Shortcut from '../UIControls/Shortcut'
 import SharedHelper from '../../utils/SharedHelper'
 import WrapperTaskParentGoalModal from '../UIComponents/FloatModals/TaskParentGoalModal/WrapperTaskParentGoalModal'
 import { translate } from '../../i18n/TranslationService'
-import { useTaskHierarchy } from './TaskHierarchy'
 
 function AddTask({
     isSubtask,
@@ -24,7 +23,6 @@ function AddTask({
     disabled = false,
     setRepeatModeOnOpen = true,
 }) {
-    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const showShortcuts = useSelector(state => state.showShortcuts)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -47,9 +45,7 @@ function AddTask({
                         localStyles.taskRow,
                         isSubtask ? subTaskStyles.taskRow : undefined,
                         isSubtask && newItem ? { paddingLeft: 2 } : undefined,
-                        {
-                            backgroundColor: isSubtask ? colors.Grey200 : taskHierarchy ? 'transparent' : '#ffffff',
-                        },
+                        { backgroundColor: isSubtask ? colors.Grey200 : '#ffffff' },
                     ]}
                 >
                     <View style={[localStyles.checkBoxLabel]}>

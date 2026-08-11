@@ -3,13 +3,12 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import AddAssistant from './AddAssistant'
 import AssistantsArea from './AssistantsArea'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function AddAssistantModal({ closeModal, project }) {
     const [width, height] = useWindowSize()
@@ -30,9 +29,7 @@ export default function AddAssistantModal({ closeModal, project }) {
 
     return (
         <View>
-            <View
-                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
-            >
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}

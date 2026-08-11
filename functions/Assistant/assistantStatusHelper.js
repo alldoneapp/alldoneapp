@@ -2,8 +2,6 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
-const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
-const { getObjectDocPath } = require('../shared/privacyAccess')
 
 /**
  * Creates an initial status message from the assistant with proper notifications and updates
@@ -55,7 +53,6 @@ async function createInitialStatusMessage(
         created: now,
         originalContent: statusMessage,
         fromAssistant: true,
-        suppressAssistantReply: true,
     }
 
     // Create comment in Firestore
@@ -123,7 +120,7 @@ async function ensureChatExists(projectId, objectType, objectId, assistantId, fo
                 const parentDoc = await admin.firestore().doc(parentPath).get()
                 if (parentDoc.exists) {
                     const parentData = parentDoc.data()
-                    title = parentData.extendedName || parentData.name || parentData.displayName || 'Task'
+                    title = parentData.extendedName || parentData.name || 'Task'
                 }
             } catch (error) {
                 console.error('Error getting parent object:', error)
@@ -199,17 +196,22 @@ async function updateLastCommentDataOfChatParentObject(projectId, objectId, obje
     }
 }
 
-// Thread types whose parent document carries a commentsData preview this helper maintains.
-const PARENT_OBJECT_TYPES = new Set(['tasks', 'notes', 'goals', 'topics', 'contacts', 'artifacts'])
-
 /**
- * Get the Firestore path for the parent object. The path itself comes from the shared
- * getObjectDocPath: a hand-written copy here pointed notes and goals at collections that
- * do not exist, so their preview update failed with NOT_FOUND on every status message.
+ * Get the Firestore path for the parent object
  */
 function getParentObjectPath(projectId, objectType, objectId) {
-    if (!PARENT_OBJECT_TYPES.has(objectType)) return null
-    return getObjectDocPath(projectId, objectType, objectId)
+    switch (objectType) {
+        case 'tasks':
+            return `items/${projectId}/tasks/${objectId}`
+        case 'notes':
+            return `notes/${projectId}/notes/${objectId}`
+        case 'goals':
+            return `goals/${projectId}/goals/${objectId}`
+        case 'topics':
+            return `chatObjects/${projectId}/chats/${objectId}`
+        default:
+            return null
+    }
 }
 
 /**
@@ -225,12 +227,6 @@ async function updateLastAssistantCommentData(projectId, objectType, objectId, f
                 followerIds: followerIds || [],
                 assistantId: assistantId,
             })
-        const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId)
-        await Promise.all(
-            [...new Set(followerIds || [])]
-                .filter(id => id && id !== assistantId)
-                .map(id => admin.firestore().doc(`users/${id}`).set(pointer, { merge: true }))
-        )
     } catch (error) {
         console.error('Error updating last assistant comment data:', error)
     }
@@ -322,5 +318,4 @@ function createChatInternalNotifications(
 module.exports = {
     createInitialStatusMessage,
     ensureChatExists,
-    getParentObjectPath,
 }

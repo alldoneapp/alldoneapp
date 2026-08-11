@@ -1,9 +1,8 @@
-import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
-
+import { useDispatch } from 'react-redux'
 import Backend from '../../../utils/BackendBridge'
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import Icon from '../../Icon'
 import styles, { colors } from '../../styles/global'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -13,7 +12,7 @@ import { FEED_NOTE_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import HighlightWrapper from '../../UIComponents/FloatModals/ManageTaskModal/HighlightWrapper'
 import StickyWrapper from './StickyWrapper'
 import PlusButton from '../Common/PlusButton'
-import { setSelectedNavItem } from '../../../redux/actions'
+import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../../i18n/TranslationService'
@@ -30,11 +29,8 @@ import { uploadNewNote } from '../../../utils/backends/Notes/notesFirestore'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateNote({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
+    const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
-    // AT-2488 — a failed creation used to leave `sendingData` true forever (the
-    // promise had no rejection handler at all), so the form stayed locked and the
-    // global spinner never stopped. Report it and let the user retry instead.
-    const [creationError, setCreationError] = useState(null)
     const [note, setNote] = useState(TasksHelper.getNewDefaultNote())
     const [linkedParentNotesUrl, setLinkedParentNotesUrl] = useState([])
     const [linkedParentTasksUrl, setLinkedParentTasksUrl] = useState([])
@@ -43,7 +39,6 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
-    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
     const inputText = useRef()
 
     const cleanedTitle = note?.extendedTitle?.trim()
@@ -60,8 +55,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl,
-        linkedParentArtifactsUrl
+        linkedParentAssistantsUrl
     ) => {
         if (extendedTitle !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -71,7 +65,6 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
-            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setNote(note => ({ ...note, extendedTitle }))
     }
@@ -94,42 +87,33 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
     // `sendingData` only feeds React state, which is applied asynchronously, so
     // a second Return could still start another note before the first landed.
     const addNote = useSingleFlightSubmit(async (openDetails = false, directNote = null) => {
-        return runWithLoading('create_mentioned_note', async () => {
-            const newNote = directNote || { ...note }
-            newNote.extendedTitle = note.extendedTitle.trim()
-            newNote.title = TasksHelper.getTaskNameWithoutMeta(newNote.extendedTitle)
+        const newNote = directNote || { ...note }
+        newNote.extendedTitle = note.extendedTitle.trim()
+        newNote.title = TasksHelper.getTaskNameWithoutMeta(newNote.extendedTitle)
 
-            if (newNote.extendedTitle.length > 0) {
-                setSendingData(true)
-                setCreationError(null)
+        if (newNote.extendedTitle.length > 0) {
+            dispatch(startLoadingData())
+            setSendingData(true)
 
-                return uploadNewNote(projectId, newNote).then(
-                    noteDB => {
-                        trySetLinkedObjects(noteDB)
+            return uploadNewNote(projectId, newNote, true).then(noteDB => {
+                trySetLinkedObjects(noteDB)
 
-                        setSendingData(false)
+                dispatch(stopLoadingData())
+                setSendingData(false)
 
-                        if (selectItemToMention) {
-                            selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
-                        }
+                if (selectItemToMention) {
+                    selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
+                }
 
-                        if (openDetails) {
-                            NavigationService.navigate('NotesDetailedView', {
-                                noteId: noteDB.id,
-                                projectId,
-                            })
-                            store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
-                        }
-                    },
-                    error => {
-                        console.error('[notes] Could not create the note', error)
-
-                        setSendingData(false)
-                        setCreationError(translate('Note could not be created'))
-                    }
-                )
-            }
-        })
+                if (openDetails) {
+                    NavigationService.navigate('NotesDetailedView', {
+                        noteId: noteDB.id,
+                        projectId,
+                    })
+                    store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
+                }
+            })
+        }
     }, RELEASE_AFTER_SUBMISSION)
 
     const trySetLinkedObjects = note => {
@@ -143,7 +127,6 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
-                linkedParentArtifactsUrl,
             },
             { type: 'note', id: note.id }
         )
@@ -183,12 +166,6 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                     />
                 </View>
             </View>
-            {!!creationError && (
-                <View style={localStyles.errorContainer} testID="create-note-creation-error" accessibilityRole="alert">
-                    <Icon name={'alert-circle'} size={16} color={colors.UtilityRed150} />
-                    <Text style={localStyles.errorText}>{creationError}</Text>
-                </View>
-            )}
             <View style={localStyles.buttonsContainer}>
                 <View style={localStyles.buttonsLeft}>
                     {/*<OpenButton onPress={open} disabled={!cleanedTitle || sendingData} />*/}
@@ -211,12 +188,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                     />
                 </View>
                 <View style={localStyles.buttonsRight}>
-                    <PlusButton
-                        onPress={() => addNote()}
-                        disabled={!cleanedTitle || sendingData}
-                        modalId={modalId}
-                        processing={sendingData}
-                    />
+                    <PlusButton onPress={() => addNote()} disabled={!cleanedTitle || sendingData} modalId={modalId} />
                 </View>
             </View>
         </View>
@@ -242,19 +214,6 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#162764',
         paddingVertical: 8,
         paddingHorizontal: 8,
-    },
-    // The card is dark, so the error uses the light red of the palette.
-    errorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingBottom: 8,
-    },
-    errorText: {
-        ...styles.body2,
-        color: colors.UtilityRed150,
-        marginLeft: 8,
-        flex: 1,
     },
     buttonsLeft: {
         flexDirection: 'row',

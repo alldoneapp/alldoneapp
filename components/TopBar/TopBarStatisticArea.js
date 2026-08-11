@@ -16,11 +16,11 @@ export default function TopBarStatisticArea() {
     return (
         <View style={localStyles.statisticArea}>
             {smallScreen ? (
-                <XpBar key={'karma-bar-tablet'} size={XP_BAR_TABLET} compact />
+                <XpBar key={'karma-bar-tablet'} size={XP_BAR_TABLET} />
             ) : (
-                <XpBar key={'karma-bar-desktop'} compact />
+                <XpBar key={'karma-bar-desktop'} />
             )}
-            <GoldArea containerStyle={{ marginRight: smallScreen ? 4 : 8 }} />
+            <GoldArea />
             <TasksStatisticsArea />
             {premiumStatus === PLAN_STATUS_PREMIUM ? <PremiumBar /> : <QuotaBar />}
         </View>
@@ -30,8 +30,5 @@ export default function TopBarStatisticArea() {
 const localStyles = StyleSheet.create({
     statisticArea: {
         flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-        minWidth: 0,
     },
 })

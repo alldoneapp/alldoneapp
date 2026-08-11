@@ -5,7 +5,6 @@ import { setContactAssistant } from '../../../../../utils/backends/Contacts/cont
 import { setUserAssistant } from '../../../../../utils/backends/Users/usersFirestore'
 import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFirestore'
 import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
-import { setArtifactAssistant } from '../../../../../utils/backends/Artifacts/artifactsFirestore'
 
 export const normalizeAssistantObjectType = objectType => {
     switch (objectType) {
@@ -25,8 +24,6 @@ export const normalizeAssistantObjectType = objectType => {
             return 'skills'
         case 'goal':
             return 'goals'
-        case 'artifact':
-            return 'artifacts'
         default:
             return objectType
     }
@@ -57,9 +54,6 @@ export const setAssistantForObject = async (projectId, objectId, objectType, ass
             break
         case 'goals':
             await setGoalAssistant(projectId, objectId, assistantId, needGenerateUpdate)
-            break
-        case 'artifacts':
-            await setArtifactAssistant(projectId, objectId, assistantId)
             break
         default:
             return false

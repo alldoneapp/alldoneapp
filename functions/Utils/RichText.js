@@ -54,11 +54,6 @@ const parseRichText = text => {
     for (let i = 0; i < words.length; i++) {
         const word = words[i]
         const lastElementIndex = textElements.length - 1
-        const detectedEmail = word.match(emailRegEx)
-        const detectedUrl = word.match(urlRegEx)
-        // A URL beginning before an email-shaped fragment owns that fragment.
-        // Conversely, user@www.example.com starts with an email, not a web URL.
-        const isEmail = detectedEmail && (!detectedUrl || detectedEmail.index <= detectedUrl.index)
 
         if (hashTagRegEx.test(word)) {
             textElements.push({
@@ -80,7 +75,7 @@ const parseRichText = text => {
                     text: word.substring(1),
                 })
             }
-        } else if (isEmail) {
+        } else if (emailRegEx.test(word)) {
             textElements.push({
                 type: EMAIL_ELEMENT,
                 email: word,

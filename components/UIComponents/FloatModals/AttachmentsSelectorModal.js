@@ -3,7 +3,7 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import RecordVideo from '../../MediaBar/RecordVideo/RecordVideo'
 import ScreenRecording from '../../MediaBar/ScreenRecording/ScreenRecording'
 import MyPlatform from '../../MyPlatform'
@@ -11,32 +11,24 @@ import NotAvailableScreenRecording from '../../MediaBar/ScreenRecording/NotAvail
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
-import { addFilesAsAttachments, openAttachmentFilePicker } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { addFilesAsAttachments } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
 
-export default function AttachmentsSelectorModal({
-    projectId,
-    closeModal,
-    addAttachmentTag,
-    style,
-    allowMultiple = false,
-}) {
+export default function AttachmentsSelectorModal({ projectId, closeModal, addAttachmentTag, style }) {
     const [width, height] = useWindowSize()
     const [showVideoRecorder, setShowVideoRecorder] = useState(false)
     const [showScreenRecorder, setShowScreenRecorder] = useState(false)
     const [showMessage, setShowMessage] = useState(false)
     const chooseAttachments = () => {
         if (Platform.OS === 'web') {
-            // `allowMultiple` is opt-in per surface — see openAttachmentFilePicker.
-            openAttachmentFilePicker({
-                multiple: allowMultiple,
-                onFiles: files => {
-                    addFilesAsAttachments(files, addAttachmentTag)
-                    setTimeout(() => {
-                        closeModal()
-                    }, 100)
-                },
-            })
+            let fileInput = document.getElementById('file-input')
+
+            fileInput.onchange = event => {
+                addFilesAsAttachments(event.target.files, addAttachmentTag)
+                setTimeout(() => {
+                    closeModal()
+                }, 100)
+            }
+            fileInput.click()
         }
     }
 
@@ -85,7 +77,7 @@ export default function AttachmentsSelectorModal({
             style={[
                 localStyles.container,
                 applyPopoverWidth(),
-                { maxHeight: getSafeAreaModalMaxHeight(height) },
+                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
                 style ? style : null,
             ]}
         >

@@ -18,8 +18,7 @@ import RichCreateTaskModal from '../../RichCreateTaskModal/RichCreateTaskModal'
 import SelectProjectModal from '../../SelectProjectModal/SelectProjectModal'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import HighlightColorModal from '../../HighlightColorModal/HighlightColorModal'
-import FollowingModalItem from '../Common/FollowingModalItem'
-import { FOLLOWER_GOALS_TYPE } from '../../../../Followers/FollowerConstants'
+import FollowingModalItem from './FollowingModalItem'
 import CopyLinkModalItem from '../Common/CopyLinkModalItem'
 import DescriptionModal from '../../DescriptionModal/DescriptionModal'
 import GoalMilestoneRangeModal from '../../GoalMilestoneRangeModal/GoalMilestoneRangeModal'
@@ -210,9 +209,7 @@ export default function GoalMoreButton({
                     <FollowingModalItem
                         key={'mbtn-following'}
                         projectId={projectId}
-                        followObjectsType={FOLLOWER_GOALS_TYPE}
-                        followObjectId={goal.id}
-                        followObject={goal}
+                        goal={goal}
                         closeModal={dismissModal}
                         shortcut={shortcut}
                         onChangeFollowState={updateFollowState}

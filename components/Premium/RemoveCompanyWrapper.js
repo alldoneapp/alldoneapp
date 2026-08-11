@@ -1,10 +1,9 @@
 import React, { useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import Button from '../UIControls/Button'
 import { translate } from '../../i18n/TranslationService'
-import ConfirmDialog from '../UIComponents/ConfirmDialog'
-import { popoverToCenter } from '../../utils/HelperFunctions'
+import ConfirmationModal from './PremiumTab/ConfirmationModal'
 
 export default function RemoveCompanyWrapper({ removeCompany }) {
     const [showModal, setShowModal] = useState(false)
@@ -18,11 +17,10 @@ export default function RemoveCompanyWrapper({ removeCompany }) {
     }
 
     return (
-        <AppPopover
+        <Popover
             isOpen={showModal}
-            contentLocation={popoverToCenter}
             content={
-                <ConfirmDialog
+                <ConfirmationModal
                     onProceed={removeCompany}
                     closeModal={closeModal}
                     title="Be careful, this action is permanent"
@@ -37,6 +35,6 @@ export default function RemoveCompanyWrapper({ removeCompany }) {
                 buttonStyle={{ marginRight: 8 }}
                 onPress={openModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }

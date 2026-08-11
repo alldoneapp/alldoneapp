@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { intersection } from 'lodash'
 
 import Button from '../../../UIControls/Button'
-import { getPopoverWidth } from '../../../../utils/HelperFunctions'
+import { getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
@@ -22,7 +22,6 @@ import {
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../utils/useWindowSize'
 import Backend from '../../../../utils/BackendBridge'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function PaymentPreviewModal({ paymentMethod, closeModal, selectedUserIds, companyData, subscription }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -114,7 +113,7 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
                 {
                     minWidth: getPopoverWidth(),
                     maxWidth: getPopoverWidth(),
-                    maxHeight: getSafeAreaModalMaxHeight(height),
+                    maxHeight: height - MODAL_MAX_HEIGHT_GAP,
                 },
             ]}
         >
@@ -147,12 +146,12 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
 }
 
 const localStyles = StyleSheet.create({
-    // A plain card on purpose (the full rework deferred from the round-3
-    // sweep): the HOST owns positioning. As PaymentPreviewModalWrapper content
-    // it is centered via popoverToCenter on desktop and becomes a bottom sheet
-    // on phones; inside SelectPremiumUsersModal it renders in place of the
-    // users list, so the two steps of the flow no longer jump around.
     container: {
+        top: '50%',
+        left: '57%',
+        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
+        position: 'fixed',
+        width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

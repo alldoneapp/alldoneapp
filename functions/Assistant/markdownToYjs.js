@@ -3,8 +3,6 @@
  * Converts markdown syntax to Yjs text insertions with Quill-compatible formatting
  */
 
-const crypto = require('crypto')
-
 // Regex patterns for markdown detection
 // ATX headings allow one to six # characters after up to three leading spaces.
 // Four leading spaces are excluded because they start an indented code block.
@@ -16,146 +14,6 @@ const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
 const REGEX_TABLE_SEPARATOR_CELL = /^:?-{3,}:?$/
 const REGEX_IMAGE = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/
-const REGEX_EMAIL_ADDRESS =
-    /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}/gi
-const REGEX_INLINE_URL =
-    /(?:https?|ftp):\/\/[^\s<>]+|www\.[^\s<>]+|(?<![\w@])(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#][^\s<>@]*)?/gi
-const REGEX_ASTERISK_ITALIC = /(?<![\w*])\*([^*\n]+?)\*(?![\w*])/
-
-const TRAILING_URL_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?', '>', '"', "'", '”', '’'])
-const CLOSING_URL_BOUNDARIES = {
-    ')': '(',
-    ']': '[',
-    '}': '{',
-}
-
-function countCharacter(text, character) {
-    return text.split(character).length - 1
-}
-
-function splitTrailingUrlPunctuation(candidate) {
-    let end = candidate.length
-
-    while (end > 0) {
-        const lastCharacter = candidate[end - 1]
-        if (TRAILING_URL_PUNCTUATION.has(lastCharacter)) {
-            end -= 1
-            continue
-        }
-
-        const openingCharacter = CLOSING_URL_BOUNDARIES[lastCharacter]
-        if (
-            openingCharacter &&
-            countCharacter(candidate.substring(0, end), lastCharacter) >
-                countCharacter(candidate.substring(0, end), openingCharacter)
-        ) {
-            end -= 1
-            continue
-        }
-        break
-    }
-
-    return {
-        url: candidate.substring(0, end),
-        suffix: candidate.substring(end),
-    }
-}
-
-function containsInlineUrl(text) {
-    return splitInlineUrls(text).some(part => part.type === 'url')
-}
-
-function getEmailAddressRanges(text) {
-    const ranges = []
-    REGEX_EMAIL_ADDRESS.lastIndex = 0
-
-    let match
-    while ((match = REGEX_EMAIL_ADDRESS.exec(text)) !== null) {
-        ranges.push({ start: match.index, end: match.index + match[0].length })
-    }
-    return ranges
-}
-
-function overlapsEmailAddress(start, end, emailAddressRanges) {
-    return emailAddressRanges.some(range => start < range.end && end > range.start)
-}
-
-function splitInlineUrls(text) {
-    const parts = []
-    const emailAddressRanges = getEmailAddressRanges(text)
-    let textStart = 0
-    REGEX_INLINE_URL.lastIndex = 0
-
-    let match
-    while ((match = REGEX_INLINE_URL.exec(text)) !== null) {
-        const hasExplicitProtocol = /^(?:https?|ftp):\/\//i.test(match[0])
-        const matchEnd = match.index + match[0].length
-        if (!hasExplicitProtocol && overlapsEmailAddress(match.index, matchEnd, emailAddressRanges)) continue
-
-        const { url, suffix } = splitTrailingUrlPunctuation(match[0])
-        if (!url) continue
-
-        if (match.index > textStart) {
-            parts.push({ type: 'text', value: text.substring(textStart, match.index) })
-        }
-        parts.push({ type: 'url', value: url })
-        if (suffix) parts.push({ type: 'text', value: suffix })
-        textStart = match.index + match[0].length
-    }
-
-    if (textStart < text.length) parts.push({ type: 'text', value: text.substring(textStart) })
-    return parts.length > 0 ? parts : [{ type: 'text', value: text }]
-}
-
-function createPlainUrlEmbed(url, options = {}) {
-    let boundary = url
-    try {
-        const normalizedUrl = /^(?:https?|ftp):\/\//i.test(url) ? url : `https://${url}`
-        boundary = new URL(normalizedUrl).host.replace(/^www\./i, '')
-    } catch (error) {
-        // Keep the original URL as the fallback label. The same value remains clickable.
-    }
-
-    const protocolLength = url.match(/^https:\/\/www\./i)
-        ? 12
-        : url.match(/^http:\/\/www\./i)
-          ? 11
-          : url.match(/^https:\/\//i)
-            ? 8
-            : url.match(/^http:\/\//i)
-              ? 7
-              : 0
-
-    return {
-        url,
-        type: 'plain',
-        urlBoundary: url.length >= 15 + protocolLength ? `${boundary}...` : boundary,
-        id: crypto.randomUUID(),
-        editorId: options.editorId || '',
-        userIdAllowedToEditTags: options.userIdAllowedToEditTags || false,
-        objectId: '',
-    }
-}
-
-function insertInlineSegment(ytext, currentPosition, segment, options = {}, forceStrike = false) {
-    const attrs = {
-        bold: segment.bold ? true : null,
-        italic: segment.italic ? true : null,
-        strike: segment.strike || forceStrike ? true : null,
-    }
-
-    splitInlineUrls(segment.text).forEach(part => {
-        if (part.type === 'url') {
-            ytext.insert(currentPosition, { url: createPlainUrlEmbed(part.value, options) })
-            currentPosition += 1
-        } else if (part.value) {
-            ytext.insert(currentPosition, part.value, attrs)
-            currentPosition += part.value.length
-        }
-    })
-
-    return currentPosition
-}
 
 function parseAtxHeading(line) {
     const match = line.match(REGEX_ATX_HEADING)
@@ -201,10 +59,8 @@ function containsMarkdown(text) {
     if (
         /\*\*\*.+?\*\*\*/.test(text) ||
         /\*\*.+?\*\*/.test(text) ||
-        REGEX_ASTERISK_ITALIC.test(text) ||
         /(?<!\w)_.+?_(?!\w)/.test(text) ||
-        /~~.+?~~/.test(text) ||
-        containsInlineUrl(text)
+        /~~.+?~~/.test(text)
     ) {
         return true
     }
@@ -263,14 +119,14 @@ function splitMarkdownTableRow(line) {
             cell += '|'
             i += 1
         } else if (char === '|') {
-            cells.push(cell.trim().replace(/<br\s*\/?>/gi, '\n'))
+            cells.push(cell.trim())
             cell = ''
         } else {
             cell += char
         }
     }
 
-    cells.push(cell.trim().replace(/<br\s*\/?>/gi, '\n'))
+    cells.push(cell.trim())
     return cells
 }
 
@@ -422,18 +278,6 @@ function parseInlineFormatting(text) {
                 index: italicMatch.index,
                 length: italicMatch[0].length,
                 text: italicMatch[1],
-                bold: false,
-                italic: true,
-                strike: false,
-            })
-        }
-
-        const asteriskItalicMatch = REGEX_ASTERISK_ITALIC.exec(str)
-        if (asteriskItalicMatch) {
-            matches.push({
-                index: asteriskItalicMatch.index,
-                length: asteriskItalicMatch[0].length,
-                text: asteriskItalicMatch[1],
                 bold: false,
                 italic: true,
                 strike: false,
@@ -635,6 +479,7 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}
             previousWasList = false
             previousWasHeader = false
         } else if (parsed.type === 'image') {
+            const crypto = require('crypto')
             const externalId = crypto
                 .createHash('sha256')
                 .update(`${options.editorId || ''}:${parsed.url}`)
@@ -665,7 +510,16 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}
             )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                currentPosition = insertInlineSegment(ytext, currentPosition, segment, options)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
+                currentPosition += segment.text.length
             })
             // Insert newline with header formatting
             ytext.insert(currentPosition, '\n', { header: parsed.level })
@@ -679,7 +533,16 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}
             )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                currentPosition = insertInlineSegment(ytext, currentPosition, segment, options)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
+                currentPosition += segment.text.length
             })
             // Insert newline with list formatting
             const listAttrs = { list: parsed.type === 'bullet' ? 'bullet' : 'ordered' }
@@ -699,7 +562,17 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}
 
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                currentPosition = insertInlineSegment(ytext, currentPosition, segment, options, parsed.checked)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    // Strike through checked items
+                    strike: segment.strike || parsed.checked ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
+                currentPosition += segment.text.length
             })
             // Insert newline with bullet formatting (checkbox becomes a simple bullet item)
             const listAttrs = { list: 'bullet' }
@@ -716,7 +589,16 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}
             console.log(`[markdownToYjs]   -> Inserting regular text: "${parsed.text}" at pos ${currentPosition}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                currentPosition = insertInlineSegment(ytext, currentPosition, segment, options)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
+                currentPosition += segment.text.length
             })
             if (!isLastLine) {
                 if (previousWasList) {

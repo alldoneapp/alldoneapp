@@ -8,12 +8,9 @@ import { Keyboard } from 'react-native'
 
 import ChatInput from './ChatInput'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
-import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
-import { readCommentDraft } from '../../../../utils/commentDraftStore'
 
 const mockInputFocus = jest.fn()
 const mockInputBlur = jest.fn()
-const mockInputClear = jest.fn()
 const mockKeyboardDismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(jest.fn())
 
 const mockState = {
@@ -55,7 +52,7 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({
             blur: mockInputBlur,
-            clear: mockInputClear,
+            clear: jest.fn(),
             focus: mockInputFocus,
             getEditorId: jest.fn(() => 'editor-1'),
             isFocused: jest.fn(() => false),
@@ -123,8 +120,6 @@ jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({
 jest.mock('../../../../utils/backends/Chats/chatsComments', () => ({
     createObjectMessage: jest.fn(() => Promise.resolve()),
 }))
-
-jest.mock('../../Utils/botSpinnerTrigger', () => ({ endBotSpinnerWait: jest.fn() }))
 
 jest.mock('../../../styles/global', () => ({
     colors: {
@@ -217,34 +212,6 @@ describe('ChatInput assistant selection', () => {
         )
 
         tree.unmount()
-    })
-
-    it('ends the local wait when the comment cannot be written', async () => {
-        createObjectMessage.mockRejectedValueOnce(new Error('offline'))
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        const startWaiting = jest.fn()
-        let tree
-
-        await act(async () => {
-            tree = renderer.create(
-                <ChatInput
-                    chat={{ id: 'chat-1', type: 'topics', isAssistantEnabled: true }}
-                    projectId="project-1"
-                    assistantId="anna-assistant"
-                    setWaitingForBotAnswer={startWaiting}
-                    setAmountOfNewCommentsToHighligth={jest.fn()}
-                />
-            )
-        })
-        await act(async () => {
-            tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Hello')
-            await Promise.resolve()
-        })
-
-        expect(startWaiting).toHaveBeenCalledWith(true)
-        expect(endBotSpinnerWait).toHaveBeenCalledWith('project-1', 'chat-1')
-        act(() => tree.unmount())
-        consoleError.mockRestore()
     })
 })
 
@@ -506,196 +473,5 @@ describe('ChatInput auto focus', () => {
         expect(mockInputFocus).toHaveBeenCalled()
 
         tree.unmount()
-    })
-})
-
-// AT-2355: the dictation mic was revealed by hover/focus only, so on touch it appeared only after
-// the composer had already been tapped. The chat composer pins it on, like the assistant line.
-describe('ChatInput dictation mic', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        // `mockState` is module-level and the preceding describe leaves `disableAutoFocusInChat`
-        // at `false`, so this block used to mount ChatInput with auto-focus ENABLED — which
-        // schedules a real focus timeout on mount, because this describe (unlike the one above
-        // it) never installs fake timers. The `not.toHaveBeenCalled()` below was therefore racing
-        // that timeout rather than asserting anything: green on a fast machine, red on a loaded
-        // CI runner, and reproducible on demand by allowing ~50ms of wall clock to pass before
-        // the assertion. Auto-focus has to be OFF for "the mic is visible without focusing the
-        // composer" to be what is actually measured.
-        mockState.disableAutoFocusInChat = true
-        mockState.quotedText = null
-    })
-
-    afterEach(() => {
-        mockState.disableAutoFocusInChat = false
-    })
-
-    it('shows the mic without focusing or hovering the composer', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(
-                <ChatInput
-                    chat={{ id: 'chat-1', type: 'topics' }}
-                    projectId="project-1"
-                    setWaitingForBotAnswer={jest.fn()}
-                    setAmountOfNewCommentsToHighligth={jest.fn()}
-                />
-            )
-        })
-
-        expect(tree.root.findByProps({ testID: 'chat-input' }).props.alwaysShowDictation).toBe(true)
-        expect(mockInputFocus).not.toHaveBeenCalled()
-
-        tree.unmount()
-    })
-})
-
-/**
- * AT-2410 — push-to-talk in the chat composer.
- *
- * This composer already opted in (AT-2405), and the bug that gave AT-2410 its name lived in the
- * OTHER comment surface (the comment popup). Pinning it here anyway: `onDictationSubmit` is the
- * only thing standing between "held the mic" and "posted the comment" for a composer that owns its
- * Enter with a document listener, and it is one prop away from silently disappearing again.
- */
-describe('ChatInput push-to-talk submit', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockState.disableAutoFocusInChat = true
-        mockState.quotedText = null
-    })
-
-    afterEach(() => {
-        mockState.disableAutoFocusInChat = false
-    })
-
-    const renderComposer = async (props = {}) => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(
-                <ChatInput
-                    chat={{ id: 'chat-1', type: 'topics' }}
-                    projectId="project-1"
-                    setWaitingForBotAnswer={jest.fn()}
-                    setAmountOfNewCommentsToHighligth={jest.fn()}
-                    {...props}
-                />
-            )
-        })
-        return tree
-    }
-
-    it('posts the dictated comment when the mic is released', async () => {
-        const tree = await renderComposer()
-
-        await act(async () => {
-            tree.root.findByProps({ testID: 'chat-input' }).props.onDictationSubmit('draft plus transcript')
-        })
-
-        expect(createObjectMessage).toHaveBeenCalledWith(
-            'project-1',
-            'chat-1',
-            'draft plus transcript',
-            'topics',
-            null,
-            null,
-            null,
-            false,
-            expect.anything(),
-            expect.anything()
-        )
-
-        tree.unmount()
-    })
-
-    it('never posts an empty transcript as a new comment', async () => {
-        const tree = await renderComposer()
-
-        await act(async () => {
-            tree.root.findByProps({ testID: 'chat-input' }).props.onDictationSubmit('')
-        })
-
-        expect(createObjectMessage).not.toHaveBeenCalled()
-
-        tree.unmount()
-    })
-
-    it('stands down while an existing message is being edited', async () => {
-        // `onSubmit` posts a NEW comment; editing has to go through `onEdit` instead, so the
-        // composer deliberately hands down nothing here rather than the wrong action.
-        const tree = await renderComposer({ editing: true, messageId: 'message-1', creatorId: 'user-1' })
-
-        expect(tree.root.findByProps({ testID: 'chat-input' }).props.onDictationSubmit).toBeUndefined()
-
-        tree.unmount()
-    })
-})
-
-describe('ChatInput durable submission', () => {
-    const context = { userId: 'user-1', projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' }
-    const renderComposer = () =>
-        renderer.create(
-            <ChatInput
-                chat={{ id: 'chat-1', type: 'topics' }}
-                projectId="project-1"
-                autoFocus={false}
-                setWaitingForBotAnswer={jest.fn()}
-                setAmountOfNewCommentsToHighligth={jest.fn()}
-            />
-        )
-    beforeEach(() => {
-        jest.clearAllMocks()
-        localStorage.clear()
-    })
-
-    it('keeps failed input on disk and restores it when the composer reopens', async () => {
-        createObjectMessage.mockRejectedValueOnce(new Error('Storage refused the submission'))
-        let tree
-        await act(async () => {
-            tree = renderComposer()
-        })
-        await act(async () => {
-            await tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Arguments for our chat')
-        })
-        expect(mockInputClear).not.toHaveBeenCalled()
-        expect(readCommentDraft(context).comment).toBe('Arguments for our chat')
-        expect(JSON.stringify(tree.toJSON())).toContain('Storage refused the submission')
-        act(() => tree.unmount())
-        await act(async () => {
-            tree = renderComposer()
-        })
-        expect(tree.root.findByProps({ testID: 'chat-input' }).props.initialTextExtended).toBe('Arguments for our chat')
-        act(() => tree.unmount())
-    })
-
-    it('blocks duplicate taps and clears the draft only after durable acceptance', async () => {
-        let accept
-        createObjectMessage.mockImplementationOnce(
-            () =>
-                new Promise(resolve => {
-                    accept = resolve
-                })
-        )
-        let tree, pending
-        await act(async () => {
-            tree = renderComposer()
-        })
-        await act(async () => {
-            pending = tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Keep this text')
-            await Promise.resolve()
-        })
-        expect(mockInputClear).not.toHaveBeenCalled()
-        expect(readCommentDraft(context).comment).toBe('Keep this text')
-        await act(async () => {
-            await tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Keep this text')
-        })
-        expect(createObjectMessage).toHaveBeenCalledTimes(1)
-        await act(async () => {
-            accept('comment-id')
-            await pending
-        })
-        expect(mockInputClear).toHaveBeenCalledTimes(1)
-        expect(readCommentDraft(context).comment).toBe('')
-        act(() => tree.unmount())
     })
 })

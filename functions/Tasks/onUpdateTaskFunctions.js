@@ -18,8 +18,6 @@ const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
 const { FieldValue } = require('firebase-admin/firestore')
-const { persistTaskStatusFeed } = require('./taskStatusFeed')
-const { persistCrossUserTaskStatusStatistics } = require('./taskStatusStatistics')
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
@@ -333,7 +331,7 @@ const captureTaskPriorityFeedbackSafely = async (projectId, taskId, oldTask, new
     }
 }
 
-const onUpdateTask = async (taskId, projectId, change, eventId) => {
+const onUpdateTask = async (taskId, projectId, change) => {
     const promises = []
 
     const oldTask = change.before.data()
@@ -380,12 +378,6 @@ const onUpdateTask = async (taskId, projectId, change, eventId) => {
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
     promises.push(reconcileTaskMergeStatusAfterWorkflowChange({ projectId, taskId, oldTask, newTask }))
     promises.push(finalizeAssistantScheduleSource(oldTask, { id: taskId, ...newTask }))
-    promises.push(persistTaskStatusFeed({ projectId, taskId, oldTask, newTask }))
-    promises.push(
-        persistCrossUserTaskStatusStatistics({ eventId, projectId, taskId, oldTask, newTask }).catch(error =>
-            console.error('[task statistics] Cross-user status update failed', { taskId, error: error.message })
-        )
-    )
     promises.push(
         enqueueWorkflowAiRunIfNeeded(projectId, taskId, oldTask, newTask).catch(error =>
             console.error('[workflowAiStep] Enqueue check failed', { taskId, error: error.message })
@@ -393,9 +385,8 @@ const onUpdateTask = async (taskId, projectId, change, eventId) => {
     )
 
     // Handle recurring task creation when task is completed
-    // Assistant-owned tasks use assistantRecurringTasks.js. A chat assistant attached to a human
-    // task does not own its recurrence. Client and scheduler use different assignee type casing.
-    const isAssistantTask = String(newTask.assigneeType || '').toLowerCase() === 'assistant'
+    // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
+    const isAssistantTask = newTask.assigneeType === 'assistant' || newTask.assistantId
 
     if (!isAssistantTask && newTask.recurrence && newTask.recurrence !== 'never') {
         console.log('🔄 RECURRING TASK CHECK:', {

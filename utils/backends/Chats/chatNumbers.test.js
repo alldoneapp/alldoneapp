@@ -4,13 +4,12 @@
 
 import { getChatsAmountQueryLimit, watchChatsAmount, unwatchChatsAmount } from './chatNumbers'
 import { getDb, globalWatcherUnsub } from '../firestore'
-import store from '../../../redux/store'
-import { ALL_TAB, FOLLOWED_TAB } from '../../../components/Feeds/Utils/FeedsConstants'
+import { ALL_TAB, FOLLOWED_TAB, FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
 jest.mock('../firestore', () => ({ getDb: jest.fn(), globalWatcherUnsub: {} }))
 jest.mock('../../../redux/store', () => ({
     __esModule: true,
-    default: { getState: jest.fn() },
+    default: { getState: () => ({ loggedUser: { uid: 'user-1' } }) },
 }))
 
 const LOGGED_USER_ID = 'user-1'
@@ -73,7 +72,6 @@ describe('getChatsAmountQueryLimit', () => {
 describe('watchChatsAmount', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        store.getState.mockReturnValue({ loggedUser: { uid: LOGGED_USER_ID, isAnonymous: false } })
         Object.keys(globalWatcherUnsub).forEach(key => delete globalWatcherUnsub[key])
     })
 
@@ -83,18 +81,12 @@ describe('watchChatsAmount', () => {
         watchChatsAmount('project-1', 'watcher-1', jest.fn(), ALL_TAB, 3)
 
         expect(collection).toHaveBeenCalledWith('chatObjects/project-1/chats')
-        expect(query.where).toHaveBeenCalledWith('readerIds', 'array-contains', LOGGED_USER_ID)
+        expect(query.where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [
+            FEED_PUBLIC_FOR_ALL,
+            LOGGED_USER_ID,
+        ])
         expect(query.limit).toHaveBeenCalledWith(4)
         expect(query.onSnapshot).toHaveBeenCalledTimes(1)
-    })
-
-    it('uses the public projection sentinel for an anonymous shared-project viewer', () => {
-        store.getState.mockReturnValue({ loggedUser: { uid: 'anonymous-user', isAnonymous: true } })
-        const { query } = setupDb()
-
-        watchChatsAmount('project-1', 'watcher-1', jest.fn(), ALL_TAB, 3)
-
-        expect(query.where).toHaveBeenCalledWith('readerIds', 'array-contains', 0)
     })
 
     it('limits the followed tab amount query and keeps its filter', () => {
@@ -102,7 +94,7 @@ describe('watchChatsAmount', () => {
 
         watchChatsAmount('project-1', 'watcher-1', jest.fn(), FOLLOWED_TAB, 10)
 
-        expect(query.where).toHaveBeenCalledWith('followedReaderIds', 'array-contains', LOGGED_USER_ID)
+        expect(query.where).toHaveBeenCalledWith('usersFollowing', 'array-contains', LOGGED_USER_ID)
         expect(query.limit).toHaveBeenCalledWith(11)
     })
 
@@ -129,16 +121,5 @@ describe('watchChatsAmount', () => {
 
         unwatchChatsAmount('watcher-1')
         expect(unsubscribe).toHaveBeenCalledTimes(1)
-    })
-
-    it('degrades a permanently failed amount listener to zero', () => {
-        const { query } = setupDb()
-        const callback = jest.fn()
-
-        watchChatsAmount('project-1', 'watcher-1', callback, ALL_TAB, 3)
-
-        const handleError = query.onSnapshot.mock.calls[0][1]
-        handleError({ code: 'permission-denied' })
-        expect(callback).toHaveBeenCalledWith(0)
     })
 })

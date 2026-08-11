@@ -1,9 +1,9 @@
 import React from 'react'
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 
-import styles, { colors, hexColorToRGBa } from '../../styles/global'
+import styles, { colors } from '../../styles/global'
 import { getPopoverWidth } from '../../../utils/HelperFunctions'
 import Button from '../../UIControls/Button'
 import {
@@ -23,10 +23,8 @@ import { translate } from '../../../i18n/TranslationService'
 import ProgressBar from './ProgressBar'
 import Line from '../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import ModalHeader from '../../UIComponents/FloatModals/ModalHeader'
-import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function LimitModal() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const quotaType = useSelector(state => state.limitQuotaModalData.quotaType)
     const monthlyXp = useSelector(state => state.limitQuotaModalData.monthlyXp)
@@ -64,47 +62,45 @@ export default function LimitModal() {
     const daysUntilNextMonth = moment().tz('Europe/Berlin').endOf('month').fromNow().split('in')[1].trimLeft()
 
     return (
-        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+        <View style={localStyles.parent}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                    <ModalHeader
-                        closeModal={closeModal}
-                        title={header}
-                        description={translate('XP and or Traffic quota reached')}
-                    />
+                <ModalHeader
+                    closeModal={closeModal}
+                    title={header}
+                    description={translate('XP and or Traffic quota reached')}
+                />
 
-                    <View style={localStyles.warning}>
-                        <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
-                        <Text style={localStyles.warningText}>
-                            {daysUntilNextMonth} {translate('until the next month begins')}
-                        </Text>
-                    </View>
+                <View style={localStyles.warning}>
+                    <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
+                    <Text style={localStyles.warningText}>
+                        {daysUntilNextMonth} {translate('until the next month begins')}
+                    </Text>
+                </View>
 
-                    <ProgressBar
-                        percent={xpQuotaPercent}
-                        headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
-                        headerTextStyle={{ color: '#fff' }}
-                    />
+                <ProgressBar
+                    percent={xpQuotaPercent}
+                    headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
+                    headerTextStyle={{ color: '#fff' }}
+                />
 
-                    <ProgressBar
-                        percent={xpTrafficPercent}
-                        headerText={translate('Traffic quota this month')}
-                        containerStyle={{ marginTop: 24 }}
-                        headerTextStyle={{ color: '#fff' }}
-                    />
+                <ProgressBar
+                    percent={xpTrafficPercent}
+                    headerText={translate('Traffic quota this month')}
+                    containerStyle={{ marginTop: 24 }}
+                    headerTextStyle={{ color: '#fff' }}
+                />
 
-                    <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>{footer}</Text>
+                <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>{footer}</Text>
 
-                    <Line style={localStyles.line} />
+                <Line style={localStyles.line} />
 
-                    <Button
-                        title={translate('Upgrade to Premium')}
-                        icon={'crown'}
-                        iconSize={22}
-                        buttonStyle={localStyles.button}
-                        onPress={navigateToPremium}
-                    />
-                </ScrollView>
+                <Button
+                    title={translate('Upgrade to Premium')}
+                    icon={'crown'}
+                    iconSize={22}
+                    buttonStyle={localStyles.button}
+                    onPress={navigateToPremium}
+                />
             </View>
         </View>
     )
@@ -120,11 +116,13 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
-        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        maxHeight: '90%',
+        top: '50%',
+        left: '58.5%',
+        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
+        position: 'fixed',
+        width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

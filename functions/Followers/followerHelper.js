@@ -40,19 +40,6 @@ function addFollowerWithoutFeeds(
             appAdmin.firestore().doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
         }
     }
-
-    // Artifacts keep the same follower fields as notes; they drive the artifacts' "Followed" list.
-    if (followObjectsType === 'artifacts' && actionType !== 'delete' && followObject) {
-        const isPublicFor = Array.isArray(followObject.isPublicFor) ? followObject.isPublicFor : []
-        const updateData = { followersIds: FieldValue.arrayUnion(userFollowingId) }
-        if (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userFollowingId)) {
-            updateData.isVisibleInFollowedFor = FieldValue.arrayUnion(userFollowingId)
-        }
-        appAdmin
-            .firestore()
-            .doc(`artifactItems/${projectId}/artifacts/${followObjectId}`)
-            .set(updateData, { merge: true })
-    }
 }
 
 async function addFollowerToChat(projectId, chatId, userId) {

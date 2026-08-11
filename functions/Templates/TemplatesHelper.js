@@ -1,6 +1,7 @@
 const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const Y = require('yjs')
+const { defineString } = require('firebase-functions/params')
 
 const { cleanGlobalFeeds } = require('../Feeds/globalFeedsHelper')
 
@@ -844,8 +845,7 @@ const generateNewNotesContent = async (
 }
 
 const updateNoteContent = async (appAdmin, templateId, creatorId, guideId, userId, objectsMap, noteId, userName) => {
-    const { getNotesBucketName } = require('../shared/notesStorageBucket')
-    const notesBucketName = getNotesBucketName()
+    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
 
     const notesBucket = appAdmin.storage().bucket(notesBucketName)
 

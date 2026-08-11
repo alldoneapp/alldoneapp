@@ -52,11 +52,10 @@ export const ASSISTANT_CONTROLS_STACKED_HEIGHT = ASSISTANT_CONTROL_BUTTON_SIZE *
 // down to one line keeps the taller composer until the last character is gone —
 // deliberate, and far less jarring than a flapping layout.
 export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked = false }) => {
-    // A wrapped placeholder is still an empty field. Keep its natural height
-    // instead of reserving space for a stacked button column.
-    if (!hasText) return false
     // Grew past a single line: stack immediately so the buttons line up.
     if (Number.isFinite(inputHeight) && inputHeight > ASSISTANT_INPUT_MIN_HEIGHT) return true
+    // Nothing typed: always return to the compact single-row layout.
+    if (!hasText) return false
     // One line but text present: hold whatever we had, never flap.
     return wasStacked
 }
@@ -64,38 +63,28 @@ export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked =
 // While stacked, the cluster is ASSISTANT_CONTROLS_STACKED_HEIGHT tall. Grow the
 // input to at least that height so the two layouts are exactly the same height
 // and the button column cannot overhang the field it belongs to.
-//
-// `maxHeight` is a parameter rather than the constant because a composer holding a dropped or
-// pasted attachment is allowed to grow taller than a text-only one (AT-2444, see
-// assistantComposerMedia.js). It defaults to the text cap, so every existing caller and every
-// text-only render is unchanged.
-export const getAssistantInputDisplayHeight = (inputHeight, isStacked, maxHeight = ASSISTANT_INPUT_MAX_HEIGHT) => {
+export const getAssistantInputDisplayHeight = (inputHeight, isStacked) => {
     if (!Number.isFinite(inputHeight)) return ASSISTANT_INPUT_MIN_HEIGHT
     if (!isStacked) return inputHeight
-    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), resolveMaxHeight(maxHeight))
+    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), ASSISTANT_INPUT_MAX_HEIGHT)
 }
 
-const resolveMaxHeight = maxHeight =>
-    Number.isFinite(maxHeight) && maxHeight >= ASSISTANT_INPUT_MIN_HEIGHT ? maxHeight : ASSISTANT_INPUT_MAX_HEIGHT
-
-export const getAssistantInputLayout = (
-    contentHeight,
-    previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT,
-    maxHeight = ASSISTANT_INPUT_MAX_HEIGHT
-) => {
+export const getAssistantInputLayout = (contentHeight, previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT) => {
     if (!Number.isFinite(contentHeight) || contentHeight < 0) return previousLayout
 
-    const effectiveMaxHeight = resolveMaxHeight(maxHeight)
     const roundedContentHeight = Math.ceil(contentHeight)
     const scrollEnabled = previousLayout.scrollEnabled
-        ? roundedContentHeight > effectiveMaxHeight - ASSISTANT_INPUT_SCROLL_HYSTERESIS
-        : roundedContentHeight > effectiveMaxHeight
+        ? roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT - ASSISTANT_INPUT_SCROLL_HYSTERESIS
+        : roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT
 
     let height
     if (scrollEnabled) {
-        height = effectiveMaxHeight
+        height = ASSISTANT_INPUT_MAX_HEIGHT
     } else {
-        const targetHeight = Math.min(Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight), effectiveMaxHeight)
+        const targetHeight = Math.min(
+            Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight),
+            ASSISTANT_INPUT_MAX_HEIGHT
+        )
         const previousHeight = previousLayout.height
 
         if (targetHeight > previousHeight) {

@@ -97,8 +97,6 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
     addProjectRoutingReasonComment: jest.fn(() => Promise.resolve({ commentId: 'routing-comment-1' })),
 }))
 
-jest.mock('../Email/emailThreadContinuation', () => ({ continueEmailThread: jest.fn(async () => null) }))
-
 const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
@@ -120,7 +118,6 @@ const {
     getExternalRecipientEmails,
     getGmailLabelingLookupKeys,
     processSingleMessage,
-    reconcileEmailCommentReadStateOnPollTick,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantModel,
@@ -149,7 +146,6 @@ function buildDefaultCollectionMock(path) {
 describe('serverSideGmailLabelingSync helpers', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        require('../Email/emailThreadContinuation').continueEmailThread.mockReset().mockResolvedValue(null)
         deductGold.mockResolvedValue({ success: true, newBalance: 99 })
         admin.firestore.mockImplementation(() => ({
             getAll: admin.__mock.getAll,
@@ -159,192 +155,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
         admin.__mock.collection.mockImplementation(path => buildDefaultCollectionMock(path))
     })
 
-    test.each(['actionable', 'informational'])(
-        'automatic %s follow-up continues the task before project/topic routing',
-        async followUpType => {
-            const continued = {
-                taskId: 'original',
-                projectId: 'original-project',
-                existing: true,
-                updated: true,
-                goldCost: 3,
-            }
-            const { continueEmailThread } = require('../Email/emailThreadContinuation')
-            continueEmailThread.mockResolvedValue(continued)
-            const action = await executePostLabelPrompt({
-                userId: 'u',
-                userData: { projectIds: ['original-project', 'new-project'] },
-                selectedDefinition: { key: 'new-label', postLabelPrompt: 'Create a task in the new project' },
-                normalizedMessage: { messageId: 'm2', threadId: 'thread', bodyText: 'New email' },
-                gmailEmail: 'me@example.com',
-                selectedProjectId: 'new-project',
-                followUpType,
-            })
-            expect(action).toMatchObject({ status: 'completed', continuedTask: continued, goldSpent: 3 })
-            expect(continueEmailThread).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    gmailData: expect.objectContaining({ accountUserId: 'u', threadId: 'thread', messageId: 'm2' }),
-                })
-            )
-            expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
-            expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
-        }
-    )
-
-    test('failed continuation queues a retry and cannot fall through to create_task', async () => {
-        require('../Email/emailThreadContinuation').continueEmailThread.mockRejectedValue(
-            new Error('Model unavailable')
-        )
-        const action = await executePostLabelPrompt({
-            userId: 'u',
-            userData: {},
-            selectedDefinition: { postLabelPrompt: 'Create task' },
-            normalizedMessage: { messageId: 'm2', threadId: 'thread' },
-            gmailEmail: 'me@example.com',
-        })
-        expect(action).toMatchObject({ status: 'failed', error: 'Model unavailable', threadContinuationPending: true })
-        expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
-    })
-
-    test('ambiguous informational mail requests a separate suggestion rather than a daily topic comment', async () => {
-        require('../Email/emailThreadContinuation').continueEmailThread.mockResolvedValue({ ambiguous: true })
-        admin.__mock.doc.mockImplementation(path => ({
-            get: async () => ({ exists: true, data: () => ({ assistantId: 'assistant' }) }),
-        }))
-        admin.__mock.getAll.mockResolvedValue([{ exists: true }])
-        assistantHelper.getAssistantForChat.mockResolvedValue({
-            displayName: 'Assistant',
-            allowedTools: ['create_task'],
-            instructions: 'Help',
-        })
-        assistantHelper.interactWithChatStream.mockResolvedValue({})
-        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
-            assistantResponse: 'Suggested a separate review',
-            createdTaskResults: [],
-        })
-        const action = await executePostLabelPrompt({
-            userId: 'u',
-            userData: { defaultProjectId: 'default' },
-            selectedDefinition: {},
-            normalizedMessage: { messageId: 'm2', threadId: 'thread' },
-            gmailEmail: 'me@example.com',
-            followUpType: 'informational',
-        })
-        expect(action.status).toBe('completed')
-        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledWith(
-            expect.objectContaining({
-                toolRuntimeContext: expect.objectContaining({
-                    gmailContext: expect.objectContaining({
-                        followUpType: 'actionable',
-                        taskSuggestionComment: expect.stringContaining('several existing tasks'),
-                    }),
-                }),
-            })
-        )
-        expect(action.prompt).toContain('Create one separate task')
-        expect(action.prompt).toContain('taskOrigin=assistant_suggestion')
-    })
-
-    test('an email without a new label match still continues its existing task', async () => {
-        const auditSet = jest.fn()
-        admin.firestore.mockReturnValue({
-            collection: () => ({
-                doc: () => ({
-                    get: async () => ({ data: () => ({ gold: 99 }) }),
-                    collection: () => ({
-                        doc: () => ({
-                            collection: () => ({
-                                doc: () => ({
-                                    get: async () => ({ exists: false }),
-                                    set: auditSet,
-                                }),
-                            }),
-                        }),
-                    }),
-                }),
-            }),
-        })
-        classifyGmailMessage.mockResolvedValue({
-            matched: false,
-            reasoning: 'No configured label applies',
-            followUpType: 'informational',
-            usage: { totalTokens: 1 },
-        })
-        require('../Email/emailThreadContinuation').continueEmailThread.mockResolvedValue({
-            taskId: 'original',
-            projectId: 'original-project',
-            goldCost: 3,
-        })
-        const result = await processSingleMessage({
-            userId: 'u',
-            userData: {},
-            projectId: 'connection',
-            gmailEmail: 'me@example.com',
-            config: { labelDefinitions: [] },
-            rawMessage: { id: 'm2', threadId: 'thread', internalDate: '123', labelIds: [], payload: {} },
-        })
-        expect(result.goldSpent).toBeGreaterThanOrEqual(3)
-        expect(auditSet).toHaveBeenCalledWith(
-            expect.objectContaining({
-                taskCreated: expect.objectContaining({ taskId: 'original' }),
-                postLabelAction: expect.objectContaining({ status: 'completed' }),
-            }),
-            { merge: true }
-        )
-        expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
-    })
-
-    test('pending continuation retries an archived email without reclassifying or charging classification', async () => {
-        const auditSet = jest.fn()
-        admin.firestore.mockReturnValue({
-            collection: () => ({
-                doc: () => ({
-                    collection: () => ({
-                        doc: () => ({
-                            collection: () => ({
-                                doc: () => ({
-                                    get: async () => ({
-                                        exists: true,
-                                        data: () => ({
-                                            threadContinuationPending: true,
-                                            selectedLabelKey: 'label',
-                                            selectedProjectId: 'new-project',
-                                            archived: true,
-                                        }),
-                                    }),
-                                    set: auditSet,
-                                }),
-                            }),
-                        }),
-                    }),
-                }),
-            }),
-        })
-        require('../Email/emailThreadContinuation').continueEmailThread.mockResolvedValue({
-            taskId: 'original',
-            projectId: 'original-project',
-            goldCost: 3,
-        })
-        const result = await processSingleMessage({
-            userId: 'u',
-            userData: {},
-            projectId: 'connection',
-            gmailEmail: 'me@example.com',
-            config: { labelDefinitions: [{ key: 'label' }] },
-            rawMessage: { id: 'm2', threadId: 'thread', internalDate: '123', labelIds: [], payload: {} },
-        })
-        expect(result).toMatchObject({ threadContinuationPending: false, goldSpent: 3, labeled: 0 })
-        expect(classifyGmailMessage).not.toHaveBeenCalled()
-        expect(deductGold).not.toHaveBeenCalled()
-        expect(auditSet).toHaveBeenCalledWith(
-            expect.objectContaining({
-                threadContinuationPending: false,
-                taskCreated: expect.objectContaining({ projectId: 'original-project' }),
-            }),
-            { merge: true }
-        )
-    })
-
     test('builds a Gmail message web url', () => {
         expect(buildGmailMessageUrl('person@example.com', 'msg-123')).toBe(
             'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/msg-123'
@@ -352,9 +162,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
     })
 
     test('migrates retired Gmail labeling models to Luna and preserves selectable models', () => {
-        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT6_LUNA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT5_6_LUNA')
         expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_TERRA' }).model).toBe('MODEL_GPT5_6_TERRA')
-        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT6_SOL' }).model).toBe('MODEL_GPT6_SOL')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_SOL' }).model).toBe('MODEL_GPT5_6_SOL')
     })
 
     test('account-wide auto-archive overrides label settings for incoming messages only', () => {
@@ -397,7 +207,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
             threadId: 'thread-1',
             webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
             archiveOnComplete: true,
-            archivedByLabeling: false,
             direction: 'incoming',
             followUpType: 'informational',
             taskSuggestionComment: '',
@@ -405,19 +214,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
             targetContactName: '',
             topicChatTitle: '',
         })
-    })
-
-    test('flags a context whose email the labeling sync archived itself (AT-2376)', () => {
-        // The read sync must not read "not in the inbox" as the user having handled an email that
-        // auto-archive took out of the inbox before the comment even existed.
-        expect(
-            buildPostLabelGmailContext({
-                normalizedMessage: { messageId: 'message-1', threadId: 'thread-1' },
-                gmailEmail: 'person@example.com',
-                assistantProjectId: 'project-1',
-                archivedByLabeling: true,
-            }).archivedByLabeling
-        ).toBe(true)
     })
 
     test('collects outgoing recipient emails from To only', () => {
@@ -451,7 +247,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
             'MUST set taskOrigin to "assistant_suggestion", never "user_request"'
         )
         expect(labels[0].postLabelPrompt).toContain('concrete email-based reason')
-        expect(labels[0].postLabelPrompt).toContain('assigned directly to the user')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -479,9 +274,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(prompt).toContain('Do not include the Gmail web URL')
         expect(prompt).not.toContain('LINK: Email from')
         expect(prompt).toContain('hello@cal.com')
-        expect(prompt).toContain('only use update_note when the sender already exists as a contact')
-        expect(prompt).toContain('Set createIfMissing=false')
-        expect(prompt).toContain('a missing contact is never created')
         expect(prompt).toContain('with a space at the end')
     })
 
@@ -491,7 +283,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         ])[0]
 
         expect(resolvePostLabelAssistantModel(defaultDefinition, defaultDefinition.postLabelPrompt)).toBe(
-            'MODEL_GPT6_LUNA'
+            'MODEL_GPT5_6_LUNA'
         )
         expect(resolvePostLabelAssistantModel(defaultDefinition, 'Create a custom follow-up')).toBe(
             'MODEL_GPT5_6_TERRA'
@@ -779,18 +571,13 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         threadId: 'thread-1',
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
-                        archivedByLabeling: false,
                         direction: 'incoming',
                         followUpType: 'informational',
                         taskSuggestionComment:
-                            'The automatically processed email “Urgent request” appears to require follow-up.',
+                            'I suggest this task because the automatically processed email “Urgent request” appears to require follow-up.',
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
                         topicChatTitle: '',
-                        emailContext: expect.objectContaining({
-                            messageId: 'message-1',
-                            bodyText: 'Please respond today',
-                        }),
                     },
                 }),
             })
@@ -1316,104 +1103,5 @@ describe('buildThreadLabelModification (feedback re-label)', () => {
                 targetAutoArchive: false,
             })
         ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: [] })
-    })
-})
-
-// The Gmail → Alldone read sync used to ride on the LABELING interval (`syncIntervalMinutes`,
-// minimum and default 30), which exists to bound Gold spend on classification. Reconciliation
-// spends no Gold, so that coupling made a free, read-only operation wait up to half an hour — the
-// production symptom being "I marked these read in Gmail and Alldone still shows them unread" while
-// every stage was in fact working. It now also runs on the poller's own five-minute cadence.
-//
-// The reconciler is re-required through `jest.isolateModules` with `./emailCommentReadSync` mocked,
-// because the sync destructures it at load time — a later `spyOn` would never be seen.
-describe('reconcileEmailCommentReadStateOnPollTick (AT-2376 follow-up)', () => {
-    const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
-    const idleState = { status: 'idle' }
-
-    const loadWithReconciler = reconcile => {
-        let sync
-        jest.isolateModules(() => {
-            jest.doMock('./emailCommentReadSync', () => ({
-                buildEmailCommentAuditPatch: jest.fn(() => ({})),
-                reconcileEmailCommentReadState: reconcile,
-            }))
-            sync = require('./serverSideGmailLabelingSync')
-        })
-        return sync.reconcileEmailCommentReadStateOnPollTick
-    }
-
-    const summary = { candidates: 2, alreadyRead: 0, looked: 2, markedRead: 2, expired: 0, stillUnread: 0 }
-
-    beforeEach(() => {
-        getAuthorizedOAuth2Client.mockReset()
-        jest.spyOn(console, 'warn').mockImplementation(() => {})
-        jest.spyOn(console, 'log').mockImplementation(() => {})
-    })
-
-    afterEach(() => {
-        console.warn.mockRestore()
-        console.log.mockRestore()
-        jest.dontMock('./emailCommentReadSync')
-    })
-
-    test('reconciles on a tick where the labeling sync is NOT due — the whole point of the fix', async () => {
-        const reconcile = jest.fn(async () => summary)
-
-        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')).resolves.toEqual(summary)
-        expect(reconcile).toHaveBeenCalledTimes(1)
-        expect(reconcile.mock.calls[0][0]).toMatchObject({ userId: 'user-1', connectionKey: 'conn-1' })
-    })
-
-    test('passes a LAZY Gmail factory, not a client — an idle tick must build no authorized client', async () => {
-        // This is what makes running on every five-minute tick for every connection affordable:
-        // with nothing pending the reconciler returns before it ever calls the factory.
-        const reconcile = jest.fn(async () => ({ ...summary, candidates: 0, looked: 0, markedRead: 0 }))
-
-        await loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')
-
-        const { gmail, getGmail } = reconcile.mock.calls[0][0]
-        expect(gmail).toBeUndefined()
-        expect(typeof getGmail).toBe('function')
-        expect(getAuthorizedOAuth2Client).not.toHaveBeenCalled()
-    })
-
-    test('builds the Gmail client at most once, however often the factory is called', async () => {
-        getAuthorizedOAuth2Client.mockResolvedValue({})
-        let getGmail
-        const reconcile = jest.fn(async options => {
-            getGmail = options.getGmail
-            await Promise.all([getGmail(), getGmail(), getGmail()])
-            return summary
-        })
-
-        await loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')
-
-        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
-    })
-
-    test('stands down while a labeling sync holds the lock, so the two never race', async () => {
-        const reconcile = jest.fn(async () => summary)
-        const locked = { status: 'running', lockAcquiredAt: { toMillis: () => Date.now() } }
-
-        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', locked, 'a@b.c')).resolves.toBeNull()
-        expect(reconcile).not.toHaveBeenCalled()
-    })
-
-    test('still runs once a stale lock has timed out, so a dead run cannot block it forever', async () => {
-        const reconcile = jest.fn(async () => summary)
-        const stale = { status: 'running', lockAcquiredAt: { toMillis: () => Date.now() - 60 * 60 * 1000 } }
-
-        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', stale, 'a@b.c')).resolves.toEqual(summary)
-        expect(reconcile).toHaveBeenCalledTimes(1)
-    })
-
-    test('never lets a reconciliation failure escape into the labeling poller', async () => {
-        const reconcile = jest.fn(async () => {
-            throw new Error('EMAIL_AUTH_EXPIRED')
-        })
-
-        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')).resolves.toBeNull()
-        expect(console.warn).toHaveBeenCalled()
     })
 })

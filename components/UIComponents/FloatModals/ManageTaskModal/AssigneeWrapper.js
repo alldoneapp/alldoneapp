@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, TouchableOpacity, Image, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -45,7 +45,7 @@ export default function AssigneeWrapper({
     const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
     return (
-        <AppPopover
+        <Popover
             content={
                 isAssistant ? (
                     <ObserversModal
@@ -110,7 +110,7 @@ export default function AssigneeWrapper({
                     )}
                 </TouchableOpacity>
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }
 

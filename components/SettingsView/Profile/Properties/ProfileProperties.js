@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import GlobalXP from './GlobalXP'
 import GlobalUserInfo from './GlobalUserInfo'
@@ -43,7 +43,6 @@ export function ProfileDescriptionProperty({ user, projectId, projectIndex }) {
             projectIndex={inSettings ? null : projectIndex}
             disabled={!loggedUserCanUpdateObject}
             helperText={inSettings ? 'Global user description helper text' : 'Project user description helper text'}
-            focusOnInitialText={!inSettings}
             onSave={newDescription =>
                 inSettings
                     ? setUserDescription(loggedUserId, newDescription)
@@ -84,7 +83,7 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
                             accessGranted={accessGranted}
                         />
                     )}
-                    <AppPopover
+                    <Popover
                         content={
                             <GoldTransactionsModal
                                 userId={loggedUserId}
@@ -107,7 +106,7 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
                                     : undefined
                             }
                         />
-                    </AppPopover>
+                    </Popover>
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginLeft: smallScreen ? 0 : 36 }}>
                     <GlobalXP user={user} />

@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -15,7 +15,7 @@ import { getUserWorkflow } from '../../../../ContactsView/Utils/ContactsHelper'
 import { checkIsLimitedByXp } from '../../../../Premium/PremiumHelper'
 import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
-import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from '../taskCompletionMotion'
+import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import { taskBypassesWorkflow } from '../../../../../utils/taskExecutionMode'
 import { getEmailTaskArchiveData, isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
@@ -41,10 +41,6 @@ function CheckBoxWrapper(
         pending,
         showWorkflowIndicator,
         isNextStepAi,
-        beginCompletionMotion,
-        cancelCompletionMotion,
-        completionCelebration,
-        completionMotion,
     },
     ref
 ) {
@@ -57,6 +53,7 @@ function CheckBoxWrapper(
     const [emailCompletionSubmitting, setEmailCompletionSubmitting] = useState(false)
     const [pendingEmailArchiveChoice, setPendingEmailArchiveChoice] = useState(null)
     const [recurrenceDateBasisModalIsOpen, setRecurrenceDateBasisModalIsOpen] = useState(false)
+    const [showAnimation, setShowAnimation] = useState(false)
     const [taskTransitionPending, setTaskTransitionPending] = useState(false)
     const checkBoxIdRef = useRef(v4())
     const isUnmountedRef = useRef(false)
@@ -90,27 +87,10 @@ function CheckBoxWrapper(
         }
     }
 
-    /**
-     * AT-2404 — hands the row its completion animation and is told how long to hold the write.
-     *
-     * The duration is decided by `useTaskCompletionMotion`, not here, so the reduced-motion branch
-     * (a statically-filled progress bar and a much shorter hold) needs no knowledge of it at this
-     * level.
-     * Falls back to the standard hold if the row did not supply a handler, which keeps this
-     * component usable — and its existing suite meaningful — outside `TaskPresentation`.
-     *
-     * @param {boolean} isCompletion False when the checkbox advances a workflow task to its next
-     *   step: the row still leaves the list, but the task is not done, so it must not be swept to
-     *   100% or tinted with the success colour.
-     */
-    const startCompletionMotion = isCompletion => {
-        // A subtask row never collapses, so it never needs the buffer that keeps a collapsing row
-        // ahead of its own snapshot. Matters only when there is no row handler at all — inside
-        // `TaskPresentation` the hook returns the authoritative duration.
-        const fallbackHold = task.isSubtask || task.parentId ? RETAINED_HOLD_MS : COMPLETION_HOLD_MS
-        if (typeof beginCompletionMotion !== 'function') return fallbackHold
-        const holdMs = beginCompletionMotion({ isCompletion })
-        return typeof holdMs === 'number' ? holdMs : fallbackHold
+    const safeSetShowAnimation = value => {
+        if (!isUnmountedRef.current) {
+            setShowAnimation(value)
+        }
     }
 
     const rollbackOptimisticCheck = async error => {
@@ -125,9 +105,7 @@ function CheckBoxWrapper(
             console.error('[task transition] Could not reload task after checkbox failure', readError)
         }
         safeSetChecked(persistedTask ? persistedTask.done : done)
-        // The row already swept itself to 100% and collapsed optimistically; the write failed, so
-        // put it back rather than leaving an invisible zero-height row behind.
-        if (typeof cancelCompletionMotion === 'function') cancelCompletionMotion()
+        safeSetShowAnimation(false)
     }
 
     const {
@@ -152,9 +130,7 @@ function CheckBoxWrapper(
         if (taskTransitionPendingRef.current) return
         taskTransitionPendingRef.current = true
         setTaskTransitionPending(true)
-        // Only ever reached for a subtask being completed (the un-complete path writes directly),
-        // so this is always a genuine "done".
-        const holdMs = startCompletionMotion(true)
+        setShowAnimation(true)
         const t = setTimeout(async () => {
             try {
                 await setTaskStatus(
@@ -175,7 +151,7 @@ function CheckBoxWrapper(
                 taskTransitionPendingRef.current = false
                 if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
-        }, holdMs)
+        }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
     }
 
@@ -183,10 +159,7 @@ function CheckBoxWrapper(
         if (taskTransitionPendingRef.current) return
         taskTransitionPendingRef.current = true
         setTaskTransitionPending(true)
-        // `stepToMoveId` is DONE_STEP for a real completion, but a WORKFLOW STEP ID when ticking a
-        // workflow task simply hands it to the next reviewer. Both leave this list and both get the
-        // exit animation; only the first is swept to 100%, because only the first is done.
-        const holdMs = startCompletionMotion(stepToMoveId === DONE_STEP)
+        setShowAnimation(true)
         const t = setTimeout(async () => {
             try {
                 await moveTasksFromOpen(
@@ -205,7 +178,7 @@ function CheckBoxWrapper(
                 taskTransitionPendingRef.current = false
                 if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
-        }, holdMs)
+        }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
     }
 
@@ -328,7 +301,7 @@ function CheckBoxWrapper(
     }
 
     const onCheckboxPress = isLongPress => {
-        if (__DEV__) console.log('onCheckboxPress called - isLongPress:', isLongPress)
+        console.log('onCheckboxPress called - isLongPress:', isLongPress)
         if (taskTransitionPendingRef.current || emailCompletionSubmittingRef.current) return
         if (!checkIsLimitedByXp(projectId)) {
             if (hasUnresolvedSuggestion) {
@@ -372,37 +345,12 @@ function CheckBoxWrapper(
         onCheckboxPress,
     }))
 
-    /**
-     * Built once and spread into all four render branches below. They differ only in which popover
-     * (if any) wraps the checkbox and — for the email branch — in one extra disabling condition, so
-     * repeating twenty identical props four times was how `completionCelebration` could have landed
-     * on three of them and silently done nothing on the fourth.
-     */
-    const checkBoxProps = {
-        isSubtask,
-        isObservedTask,
-        isToReviewTask,
-        isSuggested: hasUnresolvedSuggestion,
-        isActiveOrganizeMode,
-        checkOnDrag,
-        highlightColor,
-        accessGranted,
-        pending,
-        showWorkflowIndicator,
-        showEmailCompletionIndicator: !!emailArchiveData,
-        isNextStepAi,
-        aiStepRunning: isNextStepAi && taskTransitionPending,
-        onCheckboxPress,
-        checkBoxIdRef,
-        checked,
-        completionCelebration,
-        loggedUserCanUpdateObject: loggedUserCanUpdateObject && !taskTransitionPending,
-    }
+    // console.log('CheckBoxWrapper state - showAnimation:', showAnimation)
 
     return (
         <>
             {recurrenceDateBasisModalIsOpen ? (
-                <AppPopover
+                <Popover
                     content={
                         <RecurringTaskDateBasisModal
                             task={task}
@@ -419,10 +367,28 @@ function CheckBoxWrapper(
                     contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
                     disableReposition
                 >
-                    <CheckBoxContainer {...checkBoxProps} />
-                </AppPopover>
+                    <CheckBoxContainer
+                        isSubtask={isSubtask}
+                        isObservedTask={isObservedTask}
+                        isToReviewTask={isToReviewTask}
+                        isSuggested={hasUnresolvedSuggestion}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
+                        pending={pending}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
+                        onCheckboxPress={onCheckboxPress}
+                        checkBoxIdRef={checkBoxIdRef}
+                        checked={checked}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
+                    />
+                </Popover>
             ) : emailCompletionModalIsOpen ? (
-                <AppPopover
+                <Popover
                     content={
                         <EmailTaskCompletionModal
                             closePopover={closeEmailCompletionModal}
@@ -439,14 +405,29 @@ function CheckBoxWrapper(
                     disableReposition
                 >
                     <CheckBoxContainer
-                        {...checkBoxProps}
+                        isSubtask={isSubtask}
+                        isObservedTask={isObservedTask}
+                        isToReviewTask={isToReviewTask}
+                        isSuggested={hasUnresolvedSuggestion}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
+                        pending={pending}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
+                        onCheckboxPress={onCheckboxPress}
+                        checkBoxIdRef={checkBoxIdRef}
+                        checked={checked}
                         loggedUserCanUpdateObject={
                             loggedUserCanUpdateObject && !emailCompletionSubmitting && !taskTransitionPending
                         }
                     />
-                </AppPopover>
+                </Popover>
             ) : isOpen ? (
-                <AppPopover
+                <Popover
                     content={
                         <TaskFlowModal
                             task={task}
@@ -458,7 +439,6 @@ function CheckBoxWrapper(
                             cancelPopover={closeModal}
                             checkBoxIdRef={checkBoxIdRef}
                             setVisiblePopover={setFlowModalVisibility}
-                            completionMotion={completionMotion}
                         />
                     }
                     onClickOutside={closeModal}
@@ -469,11 +449,54 @@ function CheckBoxWrapper(
                     contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
                     disableReposition
                 >
-                    <CheckBoxContainer {...checkBoxProps} />
-                </AppPopover>
+                    <CheckBoxContainer
+                        isSubtask={isSubtask}
+                        isObservedTask={isObservedTask}
+                        isToReviewTask={isToReviewTask}
+                        isSuggested={hasUnresolvedSuggestion}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
+                        pending={pending}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
+                        onCheckboxPress={onCheckboxPress}
+                        checkBoxIdRef={checkBoxIdRef}
+                        checked={checked}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
+                    />
+                </Popover>
             ) : (
-                <CheckBoxContainer {...checkBoxProps} />
+                <CheckBoxContainer
+                    isSubtask={isSubtask}
+                    isObservedTask={isObservedTask}
+                    isToReviewTask={isToReviewTask}
+                    isSuggested={hasUnresolvedSuggestion}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                    checkOnDrag={checkOnDrag}
+                    highlightColor={highlightColor}
+                    accessGranted={accessGranted}
+                    pending={pending}
+                    showWorkflowIndicator={showWorkflowIndicator}
+                    showEmailCompletionIndicator={!!emailArchiveData}
+                    isNextStepAi={isNextStepAi}
+                    aiStepRunning={isNextStepAi && taskTransitionPending}
+                    onCheckboxPress={onCheckboxPress}
+                    checkBoxIdRef={checkBoxIdRef}
+                    checked={checked}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
+                />
             )}
+            <TaskCompletionAnimation
+                visible={showAnimation}
+                onAnimationComplete={() => {
+                    console.log('Animation completed callback')
+                    safeSetShowAnimation(false)
+                }}
+            />
         </>
     )
 }

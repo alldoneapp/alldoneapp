@@ -8,7 +8,7 @@ import store from '../../redux/store'
 import ActionButton from '../../components/FeedView/ActionButton'
 
 import renderer from 'react-test-renderer'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent } from 'react-native-testing-library'
 
 describe('ActionButton component', () => {
     it('should render correctly', () => {
@@ -33,12 +33,18 @@ describe('ActionButton component', () => {
         expect(instance.state.smallScreen).toEqual(expectedValue)
     })
 
+    // getByTestId only matches host elements, and react-native-web hosts are
+    // DOM tags that carry data-testid instead of testID - match the touchable
+    // component by prop instead.
     it('should invoke onPress correctly', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />)
+        const { UNSAFE_getByProps } = render(
+            <ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />
+        )
+        const touchableOpacity = UNSAFE_getByProps({ testID: 'touchableOpacity' })
         // When
-        fireEvent.click(getByTestId('touchableOpacity'))
+        fireEvent.press(touchableOpacity)
         // Then
         expect(mockFn).toHaveBeenCalledTimes(1)
     })
@@ -46,9 +52,10 @@ describe('ActionButton component', () => {
     it('should not invoke onPress', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
+        const { UNSAFE_getByProps } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
+        const touchableOpacity = UNSAFE_getByProps({ testID: 'touchableOpacity' })
         // When
-        fireEvent.click(getByTestId('touchableOpacity'))
+        fireEvent.press(touchableOpacity)
         // Then
         expect(mockFn).toHaveBeenCalledTimes(0)
     })

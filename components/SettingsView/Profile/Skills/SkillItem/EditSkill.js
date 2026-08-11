@@ -1,4 +1,3 @@
-import { runWithLoading } from '../../../../../utils/redux/loadingOperation'
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
@@ -26,7 +25,7 @@ import SkillMoreButton from '../SkillMoreButton/SkillMoreButton'
 import CopySkillLinkButton from '../CopySkillLinkButton'
 import FollowSkillButton from '../FollowSkillButton'
 import NavigationService from '../../../../../utils/NavigationService'
-import { setSelectedNavItem } from '../../../../../redux/actions'
+import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../../../redux/actions'
 import SharedHelper from '../../../../../utils/SharedHelper'
 import { DV_TAB_SKILL_PROPERTIES } from '../../../../../utils/TabNavigationConstants'
 import useSingleFlightSubmit from '../../../../../hooks/useSingleFlightSubmit'
@@ -68,9 +67,7 @@ export default function EditSkill({ refKey, projectId, adding, skill, onCancelAc
     // callback and the done button at once, and every run mints a new id, so
     // the creation is guarded against duplicated in flight submissions.
     const createSkill = useSingleFlightSubmit(async (newSkill, callback) => {
-        const skill = runWithLoading('create_skill', () =>
-            Backend.uploadNewSkill(projectId, newSkill, false, null, callback, true)
-        )
+        const skill = Backend.uploadNewSkill(projectId, newSkill, false, null, callback, true)
         setTimeout(() => {
             onCancelAction()
         })
@@ -128,6 +125,7 @@ export default function EditSkill({ refKey, projectId, adding, skill, onCancelAc
     }
 
     const openDvWhenCreateOrUpdateSkill = skill => {
+        dispatch(stopLoadingData())
         NavigationService.navigate('SkillDetailedView', {
             skillId: skill.id,
             projectId,
@@ -138,7 +136,7 @@ export default function EditSkill({ refKey, projectId, adding, skill, onCancelAc
 
     const openDV = () => {
         const finalSkill = { ...tmpSkill }
-
+        dispatch(startLoadingData())
         if (adding) {
             createSkill(finalSkill, openDvWhenCreateOrUpdateSkill)
         } else {

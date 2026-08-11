@@ -27,42 +27,7 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'public',
 }))
 
-const {
-    findMatchingContacts,
-    resolveContactNoteTarget,
-    resolveContactTarget,
-    resolveProjectForContactNote,
-} = require('./contactNoteTargetHelper')
-
-describe('resolveProjectForContactNote with an explicit projectId', () => {
-    // ProjectService reads users/{uid} and then projects/{id}; both projects exist here, so only
-    // membership can tell them apart.
-    const db = {
-        collection: name => ({
-            doc: id => ({
-                get: async () => {
-                    if (name === 'users') {
-                        return { exists: true, id, data: () => ({ projectIds: ['p-own'] }) }
-                    }
-                    return { exists: true, id, data: () => ({ name: id === 'p-own' ? 'Own' : 'Foreign' }) }
-                },
-            }),
-        }),
-    }
-
-    test('resolves a project the user belongs to', async () => {
-        await expect(resolveProjectForContactNote({ db, userId: 'u-1', projectId: 'p-own' })).resolves.toEqual({
-            id: 'p-own',
-            name: 'Own',
-        })
-    })
-
-    test('refuses an existing project the user does not belong to', async () => {
-        await expect(resolveProjectForContactNote({ db, userId: 'u-1', projectId: 'p-foreign' })).rejects.toThrow(
-            'Target project not found or not accessible: "p-foreign"'
-        )
-    })
-})
+const { findMatchingContacts, resolveContactNoteTarget, resolveContactTarget } = require('./contactNoteTargetHelper')
 
 function createDb(initialDocs = {}) {
     const docs = { ...initialDocs }
@@ -70,17 +35,6 @@ function createDb(initialDocs = {}) {
 
     return {
         docs,
-        batch() {
-            const writes = []
-            return {
-                set(ref, value) {
-                    writes.push(() => ref.set(value))
-                },
-                async commit() {
-                    for (const write of writes) await write()
-                },
-            }
-        },
         collection(path) {
             if (path === '_') {
                 return {
@@ -267,36 +221,6 @@ describe('contactNoteTargetHelper resolution', () => {
         expect(result.matchType).toBe('created')
         expect(result.contact.displayName).toBe('Taylor Swift')
         expect(result.contact.email).toBe('taylor@example.com')
-        expect(db.docs['usersFollowing/project-1/entries/user-1']).toEqual({
-            contacts: { [result.contact.uid]: true },
-        })
-        expect(db.docs[`followers/project-1/contacts/${result.contact.uid}`]).toEqual({
-            usersFollowing: { __op: 'arrayUnion', values: ['user-1'] },
-        })
-    })
-
-    test('does not return a created contact when the contact/follow batch fails', async () => {
-        const db = createDb()
-        db.batch = () => ({ set: jest.fn(), commit: jest.fn().mockRejectedValue(new Error('write failed')) })
-
-        await expect(
-            resolveContactTarget({ db, projectId: 'project-1', userId: 'user-1', contactName: 'New Person' })
-        ).rejects.toThrow('write failed')
-        expect(db.docs).toEqual({})
-    })
-
-    test('matching an existing contact does not change its followers', async () => {
-        const db = createDb({
-            'projectsContacts/project-1/contacts/existing': { displayName: 'Existing Person' },
-        })
-        const result = await resolveContactTarget({
-            db,
-            projectId: 'project-1',
-            userId: 'user-1',
-            contactId: 'existing',
-        })
-        expect(result.contactCreated).toBe(false)
-        expect(db.docs['usersFollowing/project-1/entries/user-1']).toBeUndefined()
     })
 
     test('resolveContactTarget returns no match when createIfMissing is false', async () => {

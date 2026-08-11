@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -9,14 +9,12 @@ import Button from '../../../UIControls/Button'
 import { updateAssistantEmailModel } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
-import AssistantModelGoldRate from '../../../UIComponents/AssistantModelGoldRate'
 
 export default function InboundEmailModelProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
     const inheritedModel = assistant.model || SELECTABLE_ASSISTANT_MODELS[0].model
     const selectedModel = typeof assistant.emailModel === 'string' ? assistant.emailModel : ''
-    const inheritedOption = SELECTABLE_ASSISTANT_MODELS.find(option => option.model === inheritedModel)
     const effectiveOption = SELECTABLE_ASSISTANT_MODELS.find(
         option => option.model === (selectedModel || inheritedModel)
     )
@@ -34,7 +32,6 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
             model: '',
             name: translate('Inherit assistant model'),
             descriptionKey: 'Use the normal assistant model for inbound email.',
-            tokensPerGold: inheritedOption?.tokensPerGold,
         },
         ...SELECTABLE_ASSISTANT_MODELS,
     ]
@@ -51,7 +48,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                 <Text style={[styles.body1, localStyles.currentValue]} numberOfLines={1}>
                     {currentLabel}
                 </Text>
-                <AppPopover
+                <Popover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>{translate('Inbound email model')}</Text>
@@ -78,7 +75,6 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                                         <Text style={[styles.body2, localStyles.optionDescription]}>
                                             {translate(option.descriptionKey)}
                                         </Text>
-                                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                                     </TouchableOpacity>
                                 )
                             })}
@@ -92,7 +88,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

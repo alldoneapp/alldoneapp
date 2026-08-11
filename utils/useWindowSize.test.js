@@ -37,7 +37,6 @@ describe('useWindowSize', () => {
         })
 
         expect(renders[0]).toEqual([390, 664])
-        expect(renders).toHaveLength(1)
 
         act(() => {
             tree.unmount()
@@ -58,12 +57,6 @@ describe('useWindowSize', () => {
         })
 
         expect(renders[renders.length - 1]).toEqual([800, 600])
-
-        const renderCount = renders.length
-        act(() => {
-            window.dispatchEvent(new Event('resize'))
-        })
-        expect(renders).toHaveLength(renderCount)
 
         act(() => {
             tree.unmount()

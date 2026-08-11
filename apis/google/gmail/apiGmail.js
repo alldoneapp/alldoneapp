@@ -14,29 +14,20 @@ class ApiGmail {
 
     constructor(config) {
         this.config = config
-        this.initializationPromise = null
+        this.handleClientLoad()
     }
 
-    async handleClientLoad() {
-        await Promise.all([ProfileInit.ensureInitialized(), scriptLoader.loadScript(scriptSrcGoogle)])
-        this.tokenClient = window.google.accounts.oauth2.initTokenClient({
-            client_id: this.config.client_id,
-            scope: this.config.scope,
+    handleClientLoad() {
+        const self = this
+        scriptLoader.loadScript(scriptSrcGoogle).then(() => {
+            self.tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: self.config.client_id,
+                scope: self.config.scope,
+            })
         })
     }
 
-    ensureInitialized() {
-        if (!this.initializationPromise) {
-            this.initializationPromise = this.handleClientLoad().catch(error => {
-                this.initializationPromise = null
-                throw error
-            })
-        }
-        return this.initializationPromise
-    }
-
-    async requestConsent(callback) {
-        await this.ensureInitialized()
+    requestConsent(callback) {
         if (ProfileInit.checkAccessGranted()) {
             callback()
         } else {
@@ -50,10 +41,9 @@ class ApiGmail {
     }
 
     async listGmail() {
-        await this.ensureInitialized()
-        if (window.gapi) {
+        if (gapi) {
             try {
-                const res = await window.gapi.client.gmail.users.labels.get({
+                const res = await gapi.client.gmail.users.labels.get({
                     userId: 'me',
                     id: 'INBOX',
                 })

@@ -1,10 +1,4 @@
 const {
-    readWorkflowState,
-    getWorkflowProgress,
-    workflowContinuationMessage,
-    assertWorkflowComplete,
-} = require('./assistantWorkflowProgress')
-const {
     interactWithChatStream,
     storeBotAnswerStream,
     addBaseInstructions,
@@ -42,103 +36,51 @@ function getEncoder() {
     return encoder
 }
 
-function getCommentPosition(doc) {
-    if (!doc) return null
-    const data = typeof doc.data === 'function' ? doc.data() || {} : {}
-    const createdAt = Number(data.created)
-
-    return {
-        createdAt: Number.isFinite(createdAt) ? createdAt : 0,
-        commentId: String(doc.id || ''),
-    }
-}
-
 /**
- * Return the latest user-authored message position in a conversation on the
- * user's local day. The document ID is retained as a deterministic tie-breaker
- * when two messages share the same millisecond timestamp.
+ * Check if the user has sent a message in the given topic on the user's current local day.
+ * Used to determine whether to send a plain WhatsApp message or a template.
  */
-async function getLatestUserMessageOnUserLocalDay(
-    projectId,
-    chatId,
-    userId,
-    userData = {},
-    timestamp = Date.now(),
-    objectTypes = ['topics', 'tasks']
-) {
+async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}) {
     try {
         const admin = require('firebase-admin')
-        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, timestamp)
-        const snapshots = await Promise.all(
-            objectTypes.map(objectType =>
-                admin
-                    .firestore()
-                    .collection(`chatComments/${projectId}/${objectType}/${chatId}/comments`)
-                    .where('creatorId', '==', userId)
-                    .where('created', '>=', startOfDay)
-                    .where('created', '<=', endOfDay)
-                    .orderBy('created', 'desc')
-                    .limit(1)
-                    .get()
-            )
-        )
+        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData)
 
-        return snapshots
-            .flatMap(snapshot => snapshot.docs || [])
-            .map(getCommentPosition)
-            .filter(Boolean)
-            .sort((left, right) => {
-                if (left.createdAt !== right.createdAt) return right.createdAt - left.createdAt
-                if (left.commentId === right.commentId) return 0
-                return right.commentId > left.commentId ? 1 : -1
-            })[0]
+        // Check in topics collection (for heartbeat and WhatsApp daily topics)
+        const snapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        if (!snapshot.empty) return true
+
+        // Also check in tasks collection (for pre-config task chats)
+        const tasksSnapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/tasks/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        return !tasksSnapshot.empty
     } catch (error) {
-        console.warn('Error finding recent user messages:', {
+        console.warn('Error checking for recent user messages:', {
             projectId,
             chatId,
             userId,
             userTimezone: userData?.preferredTimezone || userData?.timezone || null,
             error: error.message,
         })
-        return null
+        // Default to template on error (safer)
+        return false
     }
-}
-
-async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}, timestamp = Date.now()) {
-    return !!(await getLatestUserMessageOnUserLocalDay(projectId, chatId, userId, userData, timestamp))
-}
-
-/**
- * Header line for a result mirrored into the daily WhatsApp topic (AT-2387): the user is
- * reading it in a thread they never opened, so it has to say which task produced it.
- * English like every other server-authored notice (the VM origin note, the heartbeat
- * gold notice).
- */
-function buildScheduledTaskSourceLabel(taskMetadata) {
-    const name = String(taskMetadata?.name || '').trim()
-    const recurrence = String(taskMetadata?.recurrence || '').trim()
-    const kind = recurrence && recurrence !== 'never' ? 'recurring task' : 'assistant task'
-    return name ? `From your ${kind} "${name}"` : `From your ${kind}`
-}
-
-// Run-shaping options are read from the OPTIONS parameter (the 13th) only. taskMetadata (the 10th)
-// describes the scheduled task — its name, recurrence and WhatsApp flag — and putting a run option
-// there is a silent no-op: assistantRecurringTasks spent years passing its 25-minute scheduled wall
-// clock in that bag, so every recurring run reported a 55-minute budget while its onSchedule
-// transport was sized for 25, and the run's own guardrail could never fire before the platform cut
-// it off. The two bags look interchangeable at a call site, so name the mistake instead of
-// tolerating it.
-const RUN_SHAPING_OPTION_KEYS = ['maxRunWallClockMs', 'disableToolSearch', 'triggerMessageId', 'serverGrantedTools']
-
-function warnAboutMisplacedRunOptions(taskMetadata) {
-    if (!taskMetadata || typeof taskMetadata !== 'object') return
-    const misplaced = RUN_SHAPING_OPTION_KEYS.filter(key => taskMetadata[key] !== undefined)
-    if (misplaced.length === 0) return
-    console.warn('⚠️ generatePreConfigTaskResult: run options passed as task metadata are ignored', {
-        misplaced,
-        taskName: taskMetadata.name || null,
-        hint: 'Pass them in the options argument (the 13th parameter) instead.',
-    })
 }
 
 async function generatePreConfigTaskResult(
@@ -157,7 +99,6 @@ async function generatePreConfigTaskResult(
     options = {}
 ) {
     const functionStartTime = Date.now()
-    warnAboutMisplacedRunOptions(taskMetadata)
     // Use entry time if provided, otherwise use function start time
     const timeToFirstTokenStart = functionEntryTime || functionStartTime
     console.log('🚀 [TIMING] generatePreConfigTaskResult START', {
@@ -226,7 +167,7 @@ async function generatePreConfigTaskResult(
         const uid = aiSettings.assistantUid || assistantId
         const instructions = aiSettings.systemMessage || 'You are a helpful assistant.'
         settings = {
-            model: normalizeModelKey(aiSettings.model || 'MODEL_GPT6_SOL'),
+            model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
             reasoningEffort: resolveAssistantReasoningEffort(aiSettings),
             instructions,
@@ -251,7 +192,7 @@ async function generatePreConfigTaskResult(
               ? assistant.allowedTools
               : []
         settings = {
-            model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT6_SOL'),
+            model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
             reasoningEffort: resolveAssistantReasoningEffort(aiSettings, assistant.reasoningEffort),
             instructions: fallbackInstructions,
@@ -261,7 +202,7 @@ async function generatePreConfigTaskResult(
         }
     } else {
         const [settingsResult, fetchedUser] = await Promise.all([
-            getTaskOrAssistantSettings(projectId, objectId, assistantId, { objectType, objectId }),
+            getTaskOrAssistantSettings(projectId, objectId, assistantId),
             userPromise,
         ])
         settings = settingsResult
@@ -403,25 +344,6 @@ async function generatePreConfigTaskResult(
             contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
         }
 
-        if (options?.resumeScheduledWorkflow) {
-            const state = await readWorkflowState(admin.firestore(), {
-                projectId,
-                objectType,
-                objectId,
-                assistantId: settings.uid || assistantId,
-            })
-            const progress = getWorkflowProgress(state)
-            contextMessages.push([
-                'system',
-                'Resume this same authorized workflow. Successful updates are already persisted; do not repeat them. ' +
-                    (state.summary ? `Saved working memory: ${state.summary}\n` : '') +
-                    `Verified completed project IDs: ${JSON.stringify(state.projectWorkflow?.completedIds || [])}.\n` +
-                    (progress && progress.completed < progress.total
-                        ? workflowContinuationMessage(progress)
-                        : 'Complete the remaining original request.'),
-            ])
-        }
-
         if (additionalContextMessages.length > 0) {
             const latestUserMessageIndex = contextMessages.map(message => message[0]).lastIndexOf('user')
             const insertionIndex = latestUserMessageIndex >= 0 ? latestUserMessageIndex : contextMessages.length
@@ -451,30 +373,9 @@ async function generatePreConfigTaskResult(
             objectType,
             objectId,
             messageId: triggerMessageId || null,
-            onVmJobStarted: options?.onVmJobStarted,
             userTimezoneOffset,
             language,
             maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,
-            // Unattended runs (recurring assistant tasks, heartbeats) send every tool schema up
-            // front instead of deferring them behind OpenAI's hosted tool search. Tool
-            // search is a token optimization that costs a retry when the model fails to search for
-            // a tool it needs — and in an unattended run there is nobody to retry: the run does the
-            // whole job, reports the tool as unavailable, spends the Gold and is marked done. An
-            // interactive run keeps tool search, because there the user simply asks again.
-            disableToolSearch: options?.disableToolSearch === true,
-            // Tools this SERVER-authored run may execute on top of the assistant's persisted list.
-            // Listing a tool in aiSettings.allowedTools only puts its schema in front of the model;
-            // the execution gate in storeChunks reads the assistant document, so a run that needs a
-            // tool the owner never enabled has to say so here (contact enrichment does).
-            ...(Array.isArray(options?.serverGrantedTools) && options.serverGrantedTools.length > 0
-                ? { serverGrantedTools: options.serverGrantedTools }
-                : {}),
-            // A scheduled/preconfigured run must not be marked successful after its tool loop
-            // wrote a visible error and stopped. storeChunks persists the error first, then
-            // propagates it so the recurring-task lifecycle can record a real failure and retry.
-            failOnToolExecutionError: true,
-            trackWorkflowProgress: objectType === 'tasks' && allowedTools.includes('compact_thread_context'),
-            resumeScheduledWorkflow: options?.resumeScheduledWorkflow === true,
         }
         const latestUserMessage = contextMessages
             .slice()
@@ -591,8 +492,6 @@ async function generatePreConfigTaskResult(
             console.log('🤖 ASSISTANT TASK EXECUTION: No AI comment text generated, skipping gold reduction')
         }
 
-        if (objectType === 'tasks') await assertWorkflowComplete(admin.firestore(), toolRuntimeContext, streamOutput)
-
         const totalDuration = Date.now() - functionStartTime
         console.log('🎯 [TIMING] generatePreConfigTaskResult COMPLETE', {
             totalDuration: `${totalDuration}ms`,
@@ -622,8 +521,7 @@ async function generatePreConfigTaskResult(
             try {
                 const admin = require('firebase-admin')
                 const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-                const whatsappUserData = userDoc.data() || null
-                const userPhone = whatsappUserData?.phone
+                const userPhone = userDoc.data()?.phone
 
                 if (userPhone) {
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
@@ -672,30 +570,6 @@ async function generatePreConfigTaskResult(
 
                     if (whatsappResult.success && streamOutput.commentId) {
                         await removeSingleChatNotification(projectId, userId, streamOutput.commentId)
-                    }
-
-                    // The answer went out over WhatsApp but lives in this task's own thread,
-                    // while a WhatsApp follow-up is answered from the daily topic. Mirror it
-                    // there so the next message has it in context (AT-2387). No-op for the
-                    // heartbeat, which already runs inside the daily topic. Never throws.
-                    if (whatsappResult.success) {
-                        const {
-                            mirrorAssistantResultToWhatsAppDailyTopic,
-                        } = require('../WhatsApp/whatsAppResultMirror')
-                        await mirrorAssistantResultToWhatsAppDailyTopic({
-                            userId,
-                            assistantId: settings.uid || assistantId,
-                            resultText: aiCommentText,
-                            sourceProjectId: projectId,
-                            sourceObjectId: objectId,
-                            sourceObjectType: objectType,
-                            sourceLabel: buildScheduledTaskSourceLabel(taskMetadata),
-                            sourceCommentId: streamOutput.commentId || null,
-                            // The full user doc read above, not the `user` from
-                            // getUserDataOptimized — that one only carries gold + timezone
-                            // fields, and the daily topic needs defaultProjectId.
-                            userData: whatsappUserData ? { uid: userId, ...whatsappUserData } : null,
-                        })
                     }
                 } else {
                     console.log('No phone number found for WhatsApp notification:', { userId })
@@ -802,7 +676,5 @@ async function executeWebhookTask(
 module.exports = {
     generatePreConfigTaskResult,
     executeWebhookTask,
-    getLatestUserMessageOnUserLocalDay,
     hasUserMessageOnUserLocalDay,
-    buildScheduledTaskSourceLabel,
 }

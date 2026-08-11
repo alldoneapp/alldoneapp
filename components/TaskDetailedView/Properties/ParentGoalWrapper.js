@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import v4 from 'uuid/v4'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import ParentGoalButton from './ParentGoalButton'
@@ -31,28 +31,24 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
         }
     }
 
-    const updateGoal = async (goal, goalProjectId) => {
+    const updateGoal = (goal, goalProjectId) => {
         // Use the goal's projectId if the second argument wasn't passed
         const effectiveGoalProjectId = goalProjectId || goal?.projectId
+
+        setActiveGoal(goal)
 
         // Check if the goal is from a different project
         if (goal && effectiveGoalProjectId && effectiveGoalProjectId !== projectId) {
             // Move the task to the goal's project and assign the goal
             const currentProject = ProjectHelper.getProjectById(projectId)
             const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
-            if (!currentProject || !newProject) return false
-
-            await setTaskProjectWithGoal(currentProject, newProject, task, goal)
+            if (currentProject && newProject) {
+                setTaskProjectWithGoal(currentProject, newProject, task, goal)
+            }
         } else {
             // Same project, just update the parent goal
-            await setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+            setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
         }
-
-        // The task watcher is authoritative, but keeping this local state in sync avoids a visible
-        // flash while its Firestore snapshot reaches the detailed view. Do this only after the
-        // relationship write succeeded so the property never displays an assignment that was lost.
-        setActiveGoal(goal)
-        return true
     }
 
     useEffect(() => {
@@ -62,7 +58,7 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
                 setActiveGoal(goal)
             })
             return () => {
-                Backend.unwatch(watcherKey)
+                Backend.unwatch(projectId, watcherKey)
             }
         } else {
             setActiveGoal(null)
@@ -70,7 +66,7 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
     }, [task.parentGoalId, projectId])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <TaskParentGoalModal
                     key={isOpen}
@@ -89,6 +85,6 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
             contentLocation={mobile ? null : undefined}
         >
             <ParentGoalButton activeGoal={activeGoal} onPress={openModal} disabled={disabled} />
-        </AppPopover>
+        </Popover>
     )
 }

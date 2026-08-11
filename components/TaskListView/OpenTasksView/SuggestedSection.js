@@ -1,7 +1,6 @@
 import React from 'react'
 import { useSelector } from 'react-redux'
 import { Image, StyleSheet, Text, View } from 'react-native'
-import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import styles, { colors } from '../../styles/global'
 import TasksHelper from '../Utils/TasksHelper'
@@ -93,7 +92,7 @@ export default function SuggestedSection({
                 const isLastIndex = sortedSuggestedTasks.length - 1 === index
                 const goalIndex = taskByGoalsList.findIndex(data => data[0] === goalId)
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <TaskHierarchyGroup key={goalId}>
+                    <View key={goalId}>
                         {showGneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -113,7 +112,7 @@ export default function SuggestedSection({
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </TaskHierarchyGroup>
+                    </View>
                 ) : (
                     <ParentGoalSection
                         key={goalId}

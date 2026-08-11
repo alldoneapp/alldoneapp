@@ -15,16 +15,15 @@ const {
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
 const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
-const { appendCalendarLearnedRulesToPrompt } = require('./calendarProjectRoutingConfig')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
     "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
 const INCONSISTENT_ROUTING_REASON = 'Classifier returned inconsistent project routing details.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
-    'MODEL_GPT6_SOL',
+    'MODEL_GPT5_6_SOL',
     'MODEL_GPT5_6_TERRA',
-    'MODEL_GPT6_LUNA',
+    'MODEL_GPT5_6_LUNA',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_5',
@@ -44,9 +43,9 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
-    if (normalizedKey === 'MODEL_GPT6_SOL') return 'gpt-6.1-sol'
+    if (normalizedKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
     if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
-    if (normalizedKey === 'MODEL_GPT6_LUNA') return 'gpt-6-luna'
+    if (normalizedKey === 'MODEL_GPT5_6_LUNA') return 'gpt-5.6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'
@@ -80,7 +79,6 @@ function extractJsonFromText(text = '') {
 function normalizeCalendarEventForClassifier(event = {}, calendarEmail = '') {
     return {
         id: event.id || '',
-        recurringEventId: event.recurringEventId || event.seriesMasterId || '',
         summary: event.summary || '',
         description: event.description || '',
         location: event.location || '',
@@ -195,10 +193,10 @@ function buildCalendarClassifierRequestParams({
     // `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are OpenAI extensions
     // with no equivalent on OpenRouter's Chat Completions surface, so they are omitted there rather
     // than sent speculatively. See the matching note in `gmailPromptClassifier`.
-    const supportsExplicitCaching = !isOpenRouter && /^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)
+    const supportsExplicitCaching = !isOpenRouter && selectedModel.startsWith('gpt-5.6')
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const staticUserContent =
-        `Prompt:\n${appendCalendarLearnedRulesToPrompt(config.prompt, config.learnedRules)}\n\n` +
+        `Prompt:\n${config.prompt}\n\n` +
         `Active projects:\n${JSON.stringify(definitions)}\n\n` +
         `Configured confidence threshold: ${config.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD}.`
     const dynamicUserContent =
