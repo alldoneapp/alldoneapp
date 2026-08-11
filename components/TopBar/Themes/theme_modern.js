@@ -4,10 +4,7 @@ const ThemeColors = {
     TopBar: {
         container: {
             backgroundColor: Colors.GraySidebar,
-            shadowColor: 'rgba(4, 20, 47, 0.24)',
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 1,
-            shadowRadius: 6,
+            boxShadow: '0px 0px 6px rgba(4,20,47,0.24)',
             elevation: 3,
         },
 

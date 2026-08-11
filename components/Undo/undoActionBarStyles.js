@@ -31,10 +31,7 @@ const undoActionBarStyles = StyleSheet.create({
         backgroundColor: colors.Text01,
         flexDirection: 'row',
         alignItems: 'center',
-        shadowColor: '#000000',
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
         elevation: 8,
     },
     dismissArea: {

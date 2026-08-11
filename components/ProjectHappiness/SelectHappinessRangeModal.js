@@ -83,10 +83,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     innerContainer: {

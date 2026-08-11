@@ -702,10 +702,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 16,
         paddingVertical: 40,
         paddingHorizontal: 32,
-        shadowColor: '#000000',
-        shadowOpacity: 0.08,
-        shadowRadius: 28,
-        shadowOffset: { width: 0, height: 12 },
+        boxShadow: '0px 12px 28px rgba(0,0,0,0.08)',
     },
     successBadge: {
         width: 64,
@@ -877,10 +874,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 14,
         padding: 20,
-        shadowColor: '#000000',
-        shadowOpacity: 0.2,
-        shadowRadius: 32,
-        shadowOffset: { width: 0, height: 16 },
+        boxShadow: '0px 16px 32px rgba(0,0,0,0.20)',
     },
     pickerHeader: {
         flexDirection: 'row',

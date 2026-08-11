@@ -313,13 +313,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 16,
         width: '100%',
         alignItems: 'center',
-        shadowColor: Colors.Primary100,
-        shadowOffset: {
-            width: 0,
-            height: 8,
-        },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
+        boxShadow: '0px 8px 16px rgba(0,127,255,0.20)',
         elevation: 8,
     },
     primaryButtonText: {
@@ -350,13 +344,7 @@ const localStyles = StyleSheet.create({
         borderColor: Colors.Grey300,
         alignItems: 'center',
         marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        boxShadow: '0px 2px 4px rgba(0,0,0,0.05)',
         elevation: 2,
     },
     optionText: {

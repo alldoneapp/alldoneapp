@@ -72,10 +72,7 @@ const localStyles = StyleSheet.create({
     popup: {
         backgroundColor: colors.Secondary400,
         padding: 16,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
     },

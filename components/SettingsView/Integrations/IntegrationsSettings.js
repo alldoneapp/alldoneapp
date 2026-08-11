@@ -535,10 +535,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 8,
         minWidth: 220,
         maxWidth: 280,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOpacity: 1,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 4 },
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     pickerTitle: {

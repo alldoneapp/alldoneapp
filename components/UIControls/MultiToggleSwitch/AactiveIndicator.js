@@ -82,10 +82,7 @@ const localStyles = StyleSheet.create({
         width: 50,
         backgroundColor: colors.Grey100,
         borderRadius: 12,
-        shadowColor: colors.Text03,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 0px 8px rgba(138,148,166,1.00)',
         elevation: 3,
     },
 })

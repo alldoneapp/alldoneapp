@@ -107,10 +107,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 24,
         minWidth: 200,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
+        boxShadow: '0px 1px 1px rgba(0,0,0,0.10)',
         elevation: 1,
     },
     buttonText: {

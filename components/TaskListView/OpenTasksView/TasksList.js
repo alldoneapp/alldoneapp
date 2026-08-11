@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../ParentTaskContainer'
 import {
+    CALENDAR_TASK_INDEX,
+    EMAIL_TASK_INDEX,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
@@ -57,8 +59,10 @@ export default function TasksList({
         SUGGESTED_TASK_INDEX,
         OBSERVED_TASKS_INDEX,
         STREAM_AND_USER_TASKS_INDEX,
+        EMAIL_TASK_INDEX,
     ]
-    const shouldSortByPriority = priorityTaskListIndexes.includes(taskListIndex)
+    const shouldSortByPriority =
+        priorityTaskListIndexes.includes(taskListIndex) && taskListIndex !== CALENDAR_TASK_INDEX
     const sortedTaskList = shouldSortByPriority
         ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
         : [...taskList]
