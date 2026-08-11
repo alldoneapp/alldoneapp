@@ -1,4 +1,5 @@
-import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
+import { holdWhileEditing, pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
+import { sortTasksByPriority } from '../../../utils/TaskPriority'
 
 const sections = (...ids) => ids.map(id => [id, [{ id: `${id}-task` }]])
 const idsOf = list => list.map(section => section[0])
@@ -130,6 +131,34 @@ describe('focusSectionPin - render sequence', () => {
             'goalA',
             'goalFocus',
         ])
+    })
+
+    /**
+     * The TasksList half of the same guard: the focus task is boosted to index 0 *within* its
+     * section, and that boost must be just as stable while an editor is open.
+     */
+    it('AT-2249: the focus task keeps its place inside its section across an edit session', () => {
+        const heldRef = { current: undefined }
+        const taskList = [{ id: 'a' }, { id: 'b' }, { id: 'focus' }]
+        const pass = isUserEditing =>
+            sortTasksByPriority(taskList, holdWhileEditing('focus', isUserEditing, heldRef)).map(task => task.id)
+
+        expect(pass(false)).toEqual(['focus', 'a', 'b'])
+        expect(pass(true)).toEqual(['focus', 'a', 'b'])
+        expect(pass(false)).toEqual(['focus', 'a', 'b'])
+    })
+
+    it('AT-2203: a background focus change does not reorder tasks inside a section mid-edit', () => {
+        const heldRef = { current: undefined }
+        const taskList = [{ id: 'a' }, { id: 'b' }, { id: 'focus' }]
+        const pass = (liveFocusTaskId, isUserEditing) =>
+            sortTasksByPriority(taskList, holdWhileEditing(liveFocusTaskId, isUserEditing, heldRef)).map(
+                task => task.id
+            )
+
+        expect(pass('focus', false)).toEqual(['focus', 'a', 'b'])
+        expect(pass('b', true)).toEqual(['focus', 'a', 'b'])
+        expect(pass('b', false)).toEqual(['b', 'a', 'focus'])
     })
 
     it('does not pin an unrelated section when a task is edited with no focus task set', () => {

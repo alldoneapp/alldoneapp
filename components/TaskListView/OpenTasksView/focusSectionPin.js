@@ -24,22 +24,31 @@
  */
 
 /**
- * The section id to pin this render: the live one while idle, the last idle one while editing.
+ * The shared primitive: return `liveValue` while idle, the last idle value while editing.
+ *
+ * Both ordering decisions driven by the focus task use it - which section is pinned to the top of
+ * the day (below) and which task is boosted to the top of its own list (TasksList.js) - so a focus
+ * change arriving from anywhere can never reorder the list under an open caret, and neither can the
+ * mere act of opening an editor.
  */
-export const resolvePinnedSectionId = (focusedSectionId, isUserEditing, pinnedRef) => {
-    const liveSectionId = focusedSectionId || null
-
-    if (!pinnedRef) return liveSectionId
+export const holdWhileEditing = (liveValue, isUserEditing, heldRef) => {
+    if (!heldRef) return liveValue
 
     // Never resolved yet: there is no previous order to preserve, so adopt the live value even
-    // when editing (a section mounted mid-edit would otherwise render unpinned and then jump).
-    if (!isUserEditing || pinnedRef.current === undefined) {
-        pinnedRef.current = liveSectionId
-        return liveSectionId
+    // when editing (a list mounted mid-edit would otherwise render unsorted and then jump).
+    if (!isUserEditing || heldRef.current === undefined) {
+        heldRef.current = liveValue
+        return liveValue
     }
 
-    return pinnedRef.current
+    return heldRef.current
 }
+
+/**
+ * The section id to pin this render: the live one while idle, the last idle one while editing.
+ */
+export const resolvePinnedSectionId = (focusedSectionId, isUserEditing, pinnedRef) =>
+    holdWhileEditing(focusedSectionId || null, isUserEditing, pinnedRef)
 
 /**
  * Moves the pinned section to the front of `sections` in place (the array is rebuilt every render,
