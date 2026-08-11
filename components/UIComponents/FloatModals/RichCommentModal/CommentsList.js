@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { View } from 'react-native'
 
 import Comment from '../../../Feeds/FeedsModals/ListCommentsComponents/Comment'
 import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmailActions'
@@ -90,11 +90,6 @@ export default function CommentsList({
                             assistantRun={item.assistantRun}
                             isLoading={effectiveIsLoading}
                             appearance="dark"
-                            // Popup-only breathing room: in the modal the button is the last
-                            // thing in its comment block and would otherwise sit flush against
-                            // the next comment or the "open chat" row. The full chat view keeps
-                            // the component's own spacing.
-                            style={localStyles.stopButton}
                         />
                     </React.Fragment>
                 )
@@ -102,9 +97,3 @@ export default function CommentsList({
         </View>
     )
 }
-
-const localStyles = StyleSheet.create({
-    stopButton: {
-        marginBottom: 8,
-    },
-})

@@ -27,7 +27,9 @@ describe('buildCreatedByMeFilter', () => {
     it('maps every searchable index to its own creator attribute', () => {
         expect(buildCreatedByMeFilter(TASKS_INDEX_NAME_PREFIX, 'me')).toBe('userId:"me"')
         expect(buildCreatedByMeFilter(NOTES_INDEX_NAME_PREFIX, 'me')).toBe('userId:"me"')
-        expect(buildCreatedByMeFilter(GOALS_INDEX_NAME_PREFIX, 'me')).toBe('ownerId:"me"')
+        // NOT `ownerId:"me"` — see CREATOR_ATTRIBUTE_BY_INDEX; `ownerId` is the
+        // assignee-scope and is the `ALL_USERS` sentinel on virtually every goal.
+        expect(buildCreatedByMeFilter(GOALS_INDEX_NAME_PREFIX, 'me')).toBe('creatorId:"me"')
         expect(buildCreatedByMeFilter(CHATS_INDEX_NAME_PREFIX, 'me')).toBe('creatorId:"me"')
     })
 

@@ -13,7 +13,10 @@ import {
 // Which Algolia attribute carries "the user who created this object", per index.
 // These differ per object type because the underlying Firestore docs differ:
 //   tasks/notes  -> userId       (the creator of the task / note)
-//   goals        -> ownerId      (goals have no separate creator; the owner is it)
+//   goals        -> creatorId    (deliberately NOT `ownerId`: that is the goal's
+//                   assignee-scope and defaults to the `ALL_USERS` sentinel, which
+//                   is what virtually every real goal carries, so it can never
+//                   match a uid. `creatorId` is written by `GoalsHelper.createGoal`)
 //   contacts     -> recorderUserId (the member who added the contact to the project;
 //                   deliberately NOT `uid`, which is the contact's own identity —
 //                   my own contact card is not something "I created")
@@ -22,7 +25,7 @@ import {
 // (functions/searchHelper.js), which is what makes them usable in `filters:`.
 export const CREATOR_ATTRIBUTE_BY_INDEX = {
     [TASKS_INDEX_NAME_PREFIX]: 'userId',
-    [GOALS_INDEX_NAME_PREFIX]: 'ownerId',
+    [GOALS_INDEX_NAME_PREFIX]: 'creatorId',
     [NOTES_INDEX_NAME_PREFIX]: 'userId',
     [CONTACTS_INDEX_NAME_PREFIX]: 'recorderUserId',
     [CHATS_INDEX_NAME_PREFIX]: 'creatorId',
