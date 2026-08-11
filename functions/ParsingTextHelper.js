@@ -141,6 +141,16 @@ const mapGoalData = (goalId, algoliaObjectId, goal, projectId, canBeInactive) =>
         completionMilestoneDate: goal.completionMilestoneDate ? goal.completionMilestoneDate : BACKLOG_DATE_NUMERIC,
         isPublicFor: goal.isPublicFor ? goal.isPublicFor : [FEED_PUBLIC_FOR_ALL],
         ownerId: goal.ownerId ? goal.ownerId : ALL_USERS,
+        // Who created the goal (AT-2258). Deliberately NOT `ownerId`: that is the
+        // goal's assignee-scope and defaults to the `ALL_USERS` sentinel, which in
+        // practice is what virtually every goal carries (all 634 goals in the
+        // production index read `ownerId: "ALL_USERS"`), so filtering on it can
+        // never match a uid. The real creator lives on the goal doc as `creatorId`
+        // (written by `GoalsHelper.createGoal`). Empty string rather than
+        // `undefined` — an undefined value is dropped from the Algolia record
+        // entirely, which is indistinguishable from a record indexed before this
+        // change; an empty string is a real value that simply never equals a uid.
+        creatorId: goal.creatorId ? goal.creatorId : '',
         lockKey: goal.lockKey ? goal.lockKey : '',
         lastEditionDate: goal.lastEditionDate ? goal.lastEditionDate : Date.now(),
         canBeInactive,
