@@ -8,7 +8,6 @@ const {
     checkPremiumStatus,
     checkPremiumStatusByTrackingIdAndEmail,
     linkAccountByEmail,
-    PLAN_STATUS_FREE,
     PLAN_STATUS_PREMIUM,
 } = require('../Payment/stripeHelper')
 const { FieldValue } = require('firebase-admin/firestore')
@@ -382,29 +381,30 @@ const checkPremiumStatusById = async (userId, trackingId = null) => {
             stack: error.stack,
         })
 
-        // In case of error, ensure user has free status
+        // Deliberately does NOT downgrade the user. Reaching here means the check did not
+        // complete — a Stripe outage, a rate limit, a missing user document — and none of that is
+        // evidence the user stopped paying. A real "not subscribed" answer comes from Stripe on
+        // the success path above, which writes the status through updateUserPremiumStatus.
+        // Writing FREE here instead cancelled a paying customer's access on any transient fault,
+        // and dailyPremiumStatusCheck runs this for every user holding a stripeCustomerId, so a
+        // single bad minute at Stripe could have downgraded all of them at once.
+        // Only diagnostics are recorded, through dotted paths so premium.status is left intact
+        // (a nested `premium: {...}` update would replace the whole map). The next successful
+        // check clears these, because updateUserPremiumStatus rewrites the map wholesale.
         try {
-            functions.logger.info('Setting user to free status due to error', { userId })
-            await admin
-                .firestore()
-                .doc(`users/${userId}`)
-                .update({
-                    premium: {
-                        status: PLAN_STATUS_FREE,
-                        lastChecked: FieldValue.serverTimestamp(),
-                        error: error.message,
-                    },
-                })
+            await admin.firestore().doc(`users/${userId}`).update({
+                'premium.lastChecked': FieldValue.serverTimestamp(),
+                'premium.lastCheckError': error.message,
+            })
         } catch (updateError) {
-            functions.logger.error(`Error updating user to free status:`, updateError)
+            functions.logger.error(`Error recording premium check failure:`, updateError)
         }
 
         return {
             success: false,
             userId,
-            premiumStatus: PLAN_STATUS_FREE,
             error: error.message,
-            updated: true,
+            updated: false,
         }
     }
 }
@@ -668,9 +668,17 @@ const createStripePortalSession = async (data, context) => {
 }
 
 /**
- * Scheduled function to check premium status for all users (daily)
+ * Scheduled function to check premium status for all users (daily).
+ *
+ * A plain async function on purpose: index.js owns the trigger, wrapping this in a v2
+ * onSchedule with the same '0 2 * * *' cron and calling it directly. Declaring a v1
+ * functions.pubsub.schedule(...) trigger here as well was both redundant and fatal —
+ * firebase-functions v7 has no functions.pubsub.schedule, so this line threw a TypeError at
+ * module scope and took the entire module's require down with it. Because index.js requires
+ * this module lazily inside each handler, that turned every checkUserPremiumStatus call into
+ * a 500 (surfacing client-side as FirebaseError: INTERNAL) and broke the daily check too.
  */
-const dailyPremiumStatusCheck = functions.pubsub.schedule('0 2 * * *').onRun(async context => {
+const dailyPremiumStatusCheck = async context => {
     try {
         functions.logger.info('Starting daily premium status check')
 
@@ -703,7 +711,7 @@ const dailyPremiumStatusCheck = functions.pubsub.schedule('0 2 * * *').onRun(asy
         functions.logger.error('Error in daily premium status check:', error)
         throw error
     }
-})
+}
 
 /**
  * Firebase HTTP callable function for manual account linking
