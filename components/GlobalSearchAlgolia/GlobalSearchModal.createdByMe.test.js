@@ -71,7 +71,7 @@ const loggedUser = {
 
 const CREATOR_ATTRIBUTE_BY_INDEX = {
     dev_tasks: 'userId',
-    dev_goals: 'creatorId',
+    dev_goals: 'ownerId',
     dev_notes: 'userId',
     dev_contacts: 'recorderUserId',
     dev_updates: 'creatorId',

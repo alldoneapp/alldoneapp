@@ -1,6 +1,5 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Platform, ScrollView, StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
 import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
@@ -23,7 +22,6 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
@@ -31,6 +29,7 @@ import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import VmInteractionCard from './VmInteractionCard'
 import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
+import StopAssistantRunButton from './StopAssistantRunButton'
 
 // Helper to check if a comment contains block/special elements that cannot be rendered inline
 const containsBlockOrSpecialElements = text => {
@@ -71,9 +70,6 @@ export default function MessageItemBody({
     canArchiveLinkedEmail,
     containerStyle,
 }) {
-    const loggedUserId = useSelector(state => state.loggedUser?.uid)
-    const [cancellingRun, setCancellingRun] = useState(false)
-
     // Surface a one-tap unsubscribe next to the Archive button for incoming
     // informational emails that carry List-Unsubscribe metadata. Null when the
     // email has no safe unsubscribe destination, so the control stays hidden.
@@ -87,32 +83,6 @@ export default function MessageItemBody({
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
-    const canStopAssistantRun =
-        isLoadingState &&
-        assistantRun?.status === 'running' &&
-        assistantRun?.runId &&
-        assistantRun?.kind &&
-        chat?.id &&
-        (!assistantRun.requestUserId || assistantRun.requestUserId === loggedUserId)
-
-    const stopAssistantRun = async () => {
-        if (!canStopAssistantRun || cancellingRun) return
-        setCancellingRun(true)
-        try {
-            await cancelAssistantRun({
-                projectId,
-                objectType,
-                objectId: chat?.id,
-                commentId: messageId,
-                runKind: assistantRun.kind,
-                runId: assistantRun.runId,
-            })
-        } catch (error) {
-            setCancellingRun(false)
-            console.error('Failed to stop assistant run', error)
-            alert(`Could not stop assistant: ${error.message}`)
-        }
-    }
 
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
@@ -426,17 +396,14 @@ export default function MessageItemBody({
                             <ActivityIndicator size="small" color={colors.PrimaryBlue} />
                         </View>
                     )}
-                    {canStopAssistantRun && (
-                        <TouchableOpacity
-                            style={[localStyles.stopRunButton, cancellingRun && localStyles.stopRunButtonDisabled]}
-                            onPress={stopAssistantRun}
-                            disabled={cancellingRun}
-                            accessibilityLabel="Stop assistant"
-                        >
-                            <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
-                            <Text style={localStyles.stopRunButtonText}>{cancellingRun ? 'Stopping...' : 'Stop'}</Text>
-                        </TouchableOpacity>
-                    )}
+                    <StopAssistantRunButton
+                        projectId={projectId}
+                        objectType={objectType}
+                        objectId={chat?.id}
+                        commentId={messageId}
+                        assistantRun={assistantRun}
+                        isLoading={isLoadingState}
+                    />
                 </View>
             ) : (
                 <>
@@ -598,25 +565,6 @@ const localStyles = StyleSheet.create({
         marginTop: 8,
         flexDirection: 'row',
         alignItems: 'flex-start',
-    },
-    stopRunButton: {
-        alignSelf: 'flex-start',
-        marginTop: 8,
-        minHeight: 24,
-        paddingHorizontal: 8,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: colors.UtilityRed200,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    stopRunButtonDisabled: {
-        opacity: 0.6,
-    },
-    stopRunButtonText: {
-        ...global.caption2,
-        color: colors.UtilityRed200,
-        marginLeft: 4,
     },
     inlineElement: {
         marginRight: 6,

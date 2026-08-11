@@ -20,11 +20,17 @@ export default function useLinkedEmailArchive() {
     const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
     const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
 
-    const archiveLinkedEmails = async emails => {
+    /**
+     * Archives every email that is not already archived or in flight, and reports whether that
+     * succeeded. Callers that render their own failure state (the chat list's bulk buttons) pass
+     * `notifyOnError: false` so the alert is not shown on top of it; the thread keeps the alert,
+     * which is its only failure affordance.
+     */
+    const archiveLinkedEmails = async (emails, { notifyOnError = true } = {}) => {
         const pendingEmails = (emails || []).filter(
             email => email?.key && !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
         )
-        if (pendingEmails.length === 0) return
+        if (pendingEmails.length === 0) return true
 
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
@@ -36,9 +42,11 @@ export default function useLinkedEmailArchive() {
                 )
             )
             setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+            return true
         } catch (error) {
             console.error('Failed to archive linked email', error)
-            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+            if (notifyOnError) alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+            return false
         } finally {
             setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
         }
