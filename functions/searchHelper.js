@@ -563,7 +563,6 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
                     'filterOnly(projectId)',
                     'filterOnly(isPrivate)',
                     'filterOnly(isPublicFor)',
-                    'filterOnly(creatorId)',
                     'filterOnly(lastEditionDate)',
                 ],
                 hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,

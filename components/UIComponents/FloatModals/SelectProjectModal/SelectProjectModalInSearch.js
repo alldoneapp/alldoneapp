@@ -23,7 +23,6 @@ import EmptyResults from '../EmptyResults'
 import { translate } from '../../../../i18n/TranslationService'
 import HeaderInSearch from './HeaderInSearch'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import CreatedByMeOption from '../../../GlobalSearchAlgolia/Filter/CreatedByMeOption'
 
 export const ALL_PROJECTS_OPTION = 'ALL_PROJECTS'
 
@@ -39,8 +38,6 @@ export default function SelectProjectModalInSearch({
     showTemplateTab,
     showArchivedTab,
     showAllProjects,
-    createdByMeOnly,
-    setCreatedByMeOnly,
 }) {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -358,15 +355,6 @@ export default function SelectProjectModalInSearch({
                     )}
                 </CustomScrollView>
             </View>
-
-            {!!setCreatedByMeOnly && (
-                <View style={localStyles.footer}>
-                    <CreatedByMeOption
-                        enabled={!!createdByMeOnly}
-                        onToggle={() => setCreatedByMeOnly(!createdByMeOnly)}
-                    />
-                </View>
-            )}
         </View>
     )
 }
@@ -405,11 +393,5 @@ const localStyles = StyleSheet.create({
     },
     empty: {
         marginBottom: 32,
-    },
-    footer: {
-        paddingHorizontal: 8,
-        paddingTop: 4,
-        borderTopWidth: 1,
-        borderTopColor: colors.Grey300,
     },
 })
