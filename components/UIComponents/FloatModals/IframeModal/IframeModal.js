@@ -205,10 +205,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#1a1a2e',
         borderRadius: 12,
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 24,
+        boxShadow: '0px 8px 24px rgba(0,0,0,0.40)',
     },
     header: {
         height: 44,

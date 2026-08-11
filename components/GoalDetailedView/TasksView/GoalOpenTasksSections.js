@@ -6,8 +6,12 @@ import moment from 'moment'
 import GoalOpenTasksMainSection from './GoalOpenTasksMainSection'
 import OpenGoalTasksSuggestedSectionList from './OpenGoalTasksSuggestedSectionList'
 import GoalOpenTasksMentionSection from './GoalOpenTasksMentionSection'
+import GoalOpenTasksEmailSection from './GoalOpenTasksEmailSection'
+import GoalOpenTasksCalendarSection from './GoalOpenTasksCalendarSection'
 import {
+    CALENDAR_TASK_INDEX,
     DATE_TASK_INDEX,
+    EMAIL_TASK_INDEX,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
     SUGGESTED_TASK_INDEX,
@@ -24,6 +28,8 @@ export default function GoalOpenTasksSections({ tasksData, projectId, dateIndex,
     const mainasksAmount = tasksData[MAIN_TASK_INDEX].length
     const mentionTasksAmount = tasksData[MENTION_TASK_INDEX].length
     const suggestedTasksSectionsAmount = tasksData[SUGGESTED_TASK_INDEX].length
+    const calendarTasksAmount = tasksData[CALENDAR_TASK_INDEX].length
+    const emailTasksAmount = tasksData[EMAIL_TASK_INDEX].length
 
     const isActiveOrganizeMode =
         activeDragTaskModeInDate &&
@@ -63,6 +69,22 @@ export default function GoalOpenTasksSections({ tasksData, projectId, dateIndex,
             {suggestedTasksSectionsAmount > 0 && (
                 <OpenGoalTasksSuggestedSectionList
                     suggestedTasks={tasksData[SUGGESTED_TASK_INDEX].filter(item => taskMatchHashtagFilters(item))}
+                    projectId={projectId}
+                    dateIndex={dateIndex}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                />
+            )}
+            {calendarTasksAmount > 0 && (
+                <GoalOpenTasksCalendarSection
+                    calendarTasks={tasksData[CALENDAR_TASK_INDEX].filter(item => taskMatchHashtagFilters(item))}
+                    projectId={projectId}
+                    dateIndex={dateIndex}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                />
+            )}
+            {emailTasksAmount > 0 && (
+                <GoalOpenTasksEmailSection
+                    emailTasks={tasksData[EMAIL_TASK_INDEX].filter(item => taskMatchHashtagFilters(item))}
                     projectId={projectId}
                     dateIndex={dateIndex}
                     isActiveOrganizeMode={isActiveOrganizeMode}

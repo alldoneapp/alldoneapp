@@ -115,10 +115,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
+        boxShadow: '0px 2px 8px rgba(0,0,0,0.20)',
     },
     popoverTitle: {
         ...styles.subtitle1,

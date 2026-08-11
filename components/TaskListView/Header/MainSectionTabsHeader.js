@@ -210,10 +210,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.UtilityBlue125,
         paddingHorizontal: 10,
         paddingVertical: 8,
-        shadowColor: '#04142F',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
+        boxShadow: '0px 4px 10px rgba(4,20,47,0.08)',
         elevation: 2,
     },
     controlsRowWithRight: {
@@ -231,10 +228,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.UtilityBlue125,
         paddingHorizontal: 10,
         paddingVertical: 8,
-        shadowColor: '#04142F',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
+        boxShadow: '0px 4px 10px rgba(4,20,47,0.08)',
         elevation: 2,
     },
     tabsRow: {

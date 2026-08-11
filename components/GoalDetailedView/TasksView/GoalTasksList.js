@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../../TaskListView/ParentTaskContainer'
+import { CALENDAR_TASK_INDEX } from '../../../utils/backends/Tasks/openGoalTasks'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 
 export default function GoalTasksList({
@@ -16,7 +17,8 @@ export default function GoalTasksList({
 }) {
     const goalOpenSubtasksByParent = useSelector(state => state.goalOpenSubtasksByParent)
     const focusedTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
-    const sortedTaskList = sortTasksByPriority(taskList, focusedTaskId)
+    const sortedTaskList =
+        taskListIndex === CALENDAR_TASK_INDEX ? [...taskList] : sortTasksByPriority(taskList, focusedTaskId)
 
     return (
         <View style={localStyles.container}>

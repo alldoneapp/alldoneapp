@@ -5442,33 +5442,21 @@ async function executeToolNatively(
                     })
 
                     const { setTaskAlertCloud } = require('../shared/AlertService')
-                    const { resolveReminderChannelsFromSource } = require('../Tasks/reminderChannels')
 
                     // Convert UTC timestamp to moment with user's timezone for setTaskAlert
                     const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
-
-                    // A reminder asked for inside WhatsApp is delivered back over WhatsApp (AT-2211)
-                    const alertChannels = resolveReminderChannelsFromSource(toolRuntimeContext?.sourceChannel)
 
                     console.log('📝 CREATE_TASK TOOL: Calling setTaskAlert', {
                         taskId: resolvedTaskId,
                         projectId: resolvedProjectId,
                         alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
-                        alertChannels,
                     })
 
                     // Update alert server-side (Cloud)
-                    await setTaskAlertCloud(
-                        resolvedProjectId,
-                        resolvedTaskId,
-                        true,
-                        alertMoment,
-                        {
-                            ...result.task,
-                            dueDate: processedDueDate,
-                        },
-                        { alertChannels }
-                    )
+                    await setTaskAlertCloud(resolvedProjectId, resolvedTaskId, true, alertMoment, {
+                        ...result.task,
+                        dueDate: processedDueDate,
+                    })
 
                     console.log('📝 CREATE_TASK TOOL: Alert enabled successfully')
                 }
@@ -6687,8 +6675,6 @@ async function executeToolNatively(
                         messageId: toolRuntimeContext?.messageId || null,
                         priorityConfidence: normalizedToolArgs.priorityConfidence,
                         priorityReasonCodes: normalizedToolArgs.priorityReasonCodes,
-                        // Origin channel, so a reminder set from WhatsApp is delivered there (AT-2211)
-                        sourceChannel: toolRuntimeContext?.sourceChannel || '',
                         // Comments written via update_task should show up in the task's feed/chat
                         // history but must not mark the thread/comments as unread (no unread badge,
                         // push, or email). See TaskCommentService.addComment's `silent` handling.

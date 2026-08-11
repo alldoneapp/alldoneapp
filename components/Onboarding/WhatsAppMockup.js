@@ -211,10 +211,7 @@ const styles = StyleSheet.create({
         borderWidth: 8,
         borderColor: '#1c1c1e',
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 20 },
-        shadowOpacity: 0.3,
-        shadowRadius: 40,
+        boxShadow: '0px 20px 40px rgba(0,0,0,0.30)',
         elevation: 20,
     },
     statusBar: {
@@ -303,10 +300,7 @@ const styles = StyleSheet.create({
         padding: 10,
         maxWidth: '80%',
         marginBottom: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 1,
+        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
     },
     messageBubbleSent: {
         alignSelf: 'flex-end',
@@ -316,10 +310,7 @@ const styles = StyleSheet.create({
         padding: 10,
         maxWidth: '80%',
         marginBottom: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 1,
+        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
     },
     messageText: {
         fontSize: 15,
@@ -369,10 +360,7 @@ const styles = StyleSheet.create({
         borderWidth: 2, // Thicker border
         borderColor: Colors.Primary100, // Primary color border
         marginBottom: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 1,
+        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
     },
     optionText: {
         color: Colors.Primary100,
