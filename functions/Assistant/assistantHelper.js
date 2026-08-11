@@ -134,6 +134,7 @@ const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
 const OPENAI_INPUT_TOKEN_ALERT_THRESHOLD = 180000
 const OPENAI_INPUT_TOKEN_TARGET_CEILING = 200000
+const OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT = 150000
 
 const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
@@ -2896,7 +2897,7 @@ async function interactWithChatStream(
                 mcpToolSchemasCount: mcpToolSchemas.length,
                 externalToolsToggleEnabled: runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY),
                 mcpServersToggleEnabled: runtimeAllowedTools.includes(MCP_SERVERS_TOOL_KEY),
-                toolRuntimeContext,
+                toolRuntimeContext: buildConversationSafeToolArgs('tool_runtime_context', toolRuntimeContext, null),
             })
 
             if (
@@ -2990,6 +2991,14 @@ async function interactWithChatStream(
         let activeRequestParams = requestParams
         const createResponsesStream = async () => {
             try {
+                enforceOpenAiInputTokenPreflight(activeRequestParams, {
+                    route:
+                        toolRuntimeContext?.promptCacheScope ||
+                        toolRuntimeContext?.sourceChannel ||
+                        toolRuntimeContext?.objectType ||
+                        'assistant',
+                    model,
+                })
                 return await openai.responses.create(activeRequestParams)
             } catch (error) {
                 if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
@@ -3007,6 +3016,14 @@ async function interactWithChatStream(
                     ...responsesToolConfig,
                     toolSearchEnabled: false,
                 }
+                enforceOpenAiInputTokenPreflight(activeRequestParams, {
+                    route:
+                        toolRuntimeContext?.promptCacheScope ||
+                        toolRuntimeContext?.sourceChannel ||
+                        toolRuntimeContext?.objectType ||
+                        'assistant',
+                    model,
+                })
                 return openai.responses.create(activeRequestParams)
             }
         }
@@ -5115,7 +5132,7 @@ async function executeToolNatively(
         '🔧 executeToolNatively:',
         toolRuntimeContext?.sourceChannel === 'whatsapp_call'
             ? { toolName, toolArgKeys: Object.keys(toolArgs || {}), projectId, sourceChannel: 'whatsapp_call' }
-            : { toolName, toolArgs, projectId }
+            : { toolName, toolArgs: buildConversationSafeToolArgs(toolName, toolArgs, null), projectId }
     )
 
     const admin = require('firebase-admin')
@@ -12734,12 +12751,22 @@ function convertMessagesToResponsesInput(messages, { includePromptCacheBreakpoin
                 type: 'function_call',
                 call_id: toolCall.id,
                 name: toolCall.function.name,
-                arguments: toolCall.function.arguments || '{}',
+                arguments: buildConversationSafeToolCallArguments(toolCall),
             })
         }
     }
 
     return input
+}
+
+function buildConversationSafeToolCallArguments(toolCall) {
+    const serializedArgs = toolCall?.function?.arguments || '{}'
+    try {
+        const toolArgs = JSON.parse(serializedArgs)
+        return JSON.stringify(buildConversationSafeToolArgs(toolCall.function.name, toolArgs, null))
+    } catch (_) {
+        return serializedArgs
+    }
 }
 
 function responsesInputHasPromptCacheBreakpoint(input = []) {
@@ -12891,6 +12918,54 @@ function getOpenAiCacheUsage(usage = {}) {
         uncachedInputTokens: Math.max(0, inputTokens - cachedTokens),
         cacheReadRate: inputTokens > 0 ? Number((cachedTokens / inputTokens).toFixed(4)) : 0,
     }
+}
+
+function estimateOpenAiRequestInputTokens(requestParams = {}) {
+    const serializedPayload = JSON.stringify({
+        input: requestParams.input || [],
+        tools: requestParams.tools || [],
+    })
+    const payloadBytes = Buffer.byteLength(serializedPayload, 'utf8')
+
+    // Every token contains at least one source byte. Small payloads therefore cannot reach the
+    // hard limit and do not need the more expensive tokenizer pass on every request.
+    if (payloadBytes < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) {
+        return {
+            estimatedInputTokens: Math.ceil(payloadBytes / 4),
+            payloadBytes,
+            usedTokenizer: false,
+        }
+    }
+
+    const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
+    try {
+        return {
+            estimatedInputTokens: encoder.encode(serializedPayload).length,
+            payloadBytes,
+            usedTokenizer: true,
+        }
+    } finally {
+        encoder.free()
+    }
+}
+
+function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', model = '' } = {}) {
+    const estimate = estimateOpenAiRequestInputTokens(requestParams)
+    if (estimate.estimatedInputTokens < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) return estimate
+
+    console.warn('🚨 OPENAI INPUT TOKEN PREFLIGHT BLOCK: Request not sent', {
+        route,
+        model,
+        estimatedInputTokens: estimate.estimatedInputTokens,
+        payloadBytes: estimate.payloadBytes,
+        hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
+    })
+    const error = new Error(
+        `OpenAI request blocked before dispatch because the estimated input size (${estimate.estimatedInputTokens} tokens) exceeds the ${OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT}-token safety limit.`
+    )
+    error.code = 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT'
+    error.estimatedInputTokens = estimate.estimatedInputTokens
+    throw error
 }
 
 function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = '', cacheMode = '' } = {}) {
@@ -13609,9 +13684,12 @@ module.exports = {
     buildAssistantPromptCacheKey,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
+    estimateOpenAiRequestInputTokens,
+    enforceOpenAiInputTokenPreflight,
     logOpenAiCacheUsage,
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
     OPENAI_INPUT_TOKEN_TARGET_CEILING,
+    OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     modelSupportsNativeTools,
     modelSupportsToolSearch,
     modelSupportsAssistantReasoningEffort,
