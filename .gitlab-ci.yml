@@ -852,15 +852,26 @@ update:version:staging:
 # has to fire only when a web deploy actually happened: it used to run on every master
 # push, including pushes that changed no web file at all and pushes whose deploy was
 # skipped as superseded, so users were being asked to reload for a bundle that had not
-# changed. The image has no git, so the guard falls back to its GitLab API probe via curl.
+# changed.
+#
+# The guard needs git. Its GitLab API fallback cannot stand in for that here: CI_JOB_TOKEN
+# is only accepted on a small allowlist of endpoints, and `/repository/branches/:branch` is
+# not one of them, so the probe 401s and the guard correctly fails CLOSED (exit 1, which is
+# not in allow_failure). On `curlimages/curl` that made the job fail on every master push —
+# and because this job is what tells clients to reload, a broken version bump leaves users
+# on a stale bundle, which is exactly the symptom the guard was added to avoid. Use an image
+# where both git and curl can be installed (curlimages/curl runs as a non-root user, so it
+# cannot apk add).
 update:version:production:
-    image: curlimages/curl
+    image: alpine:3.20
     stage: 'update_version'
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     interruptible: false
     dependencies:
         - 'deploy_scope'
+    before_script:
+        - apk add --no-cache git curl
     script:
         - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh update:version:production
