@@ -25,7 +25,13 @@ jest.mock('../../hooks/Chats/useGetUnreadChats', () => jest.fn(() => ({ chats: {
 jest.mock('./ChatsByDate', () => () => null)
 jest.mock('./StickyChats', () => () => null)
 jest.mock('./MarkAsRead', () => () => null)
-jest.mock('../TaskListView/Header/ProjectHeader', () => () => null)
+// Renders only what this suite asserts on: the header's right-hand actions.
+jest.mock('../TaskListView/Header/ProjectHeader', () => props => props.customRight || null)
+jest.mock('./ArchiveUnreadEmailsButton', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return props => React.createElement(View, { testID: 'archive-unread-emails', projectId: props.projectId })
+})
 jest.mock('../UIControls/ShowMoreButton', () => () => null)
 jest.mock('../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton', () => () => null)
 jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({ getDateFormat: () => 'DD.MM.YYYY' }))
@@ -185,5 +191,26 @@ describe('ChatsByProject collapse button', () => {
         const requestedAmounts = watchChatsAmount.mock.calls.map(call => call[4])
         expect(requestedAmounts).toEqual([10, 20, 10])
         requestedAmounts.forEach(amount => expect(amount).toBeGreaterThan(0))
+    })
+})
+
+describe('ChatsByProject bulk email archive', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        useGetChats.mockReturnValue({})
+    })
+
+    it('offers a project-scoped archive on the project line in All Projects', () => {
+        // An All Projects section only renders at all once the project has chats.
+        useGetChats.mockReturnValue({ 20260806: [{ id: 'chat-1', lastEditionDate: 1786000000000 }] })
+        const tree = renderView(buildState(3))
+
+        expect(tree.root.findByProps({ testID: 'archive-unread-emails' }).props.projectId).toBe('project-1')
+    })
+
+    it('offers it on the project line of a single project view too', () => {
+        const tree = renderView(buildState(undefined, 0), { isInAllProjects: false })
+
+        expect(tree.root.findByProps({ testID: 'archive-unread-emails' }).props.projectId).toBe('project-1')
     })
 })

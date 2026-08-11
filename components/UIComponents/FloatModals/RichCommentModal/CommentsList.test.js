@@ -1,11 +1,12 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import CommentsList from './CommentsList'
 import { cancelAssistantRun, respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
 import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
 import { resetStopRequests } from '../../../ChatsView/ChatDV/EditorView/stopAssistantRunRequests'
+import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAssistantRunButton'
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUser: { uid: 'user-1' } }),
@@ -241,6 +242,29 @@ describe('RichCommentModal CommentsList stop control', () => {
             const tree = renderPopupComments(assistantRun, overrides)
             expect([label, !!findButton(tree, 'Stop')]).toEqual([label, false])
         })
+    })
+
+    test('leaves a little room under the popup Stop button, without touching the shared component', () => {
+        const tree = renderPopupComments(runningRun(), { isLoading: true })
+        const stopStyle = StyleSheet.flatten(findButton(tree, 'Stop').props.style)
+
+        expect(stopStyle.marginBottom).toBe(8)
+
+        // The spacing is the popup's own decision: the shared button — rendered the way the
+        // full chat view renders it, with no style override — must not carry it.
+        const chatViewTree = renderer.create(
+            <StopAssistantRunButton
+                projectId="project-1"
+                objectType="tasks"
+                objectId="task-1"
+                commentId="comment-1"
+                assistantRun={runningRun()}
+                isLoading={true}
+            />
+        )
+        const chatViewStyle = StyleSheet.flatten(findButton(chatViewTree, 'Stop').props.style)
+
+        expect(chatViewStyle.marginBottom).toBeUndefined()
     })
 
     test('a stop already requested from the full chat view mounts the popup button disabled', async () => {
