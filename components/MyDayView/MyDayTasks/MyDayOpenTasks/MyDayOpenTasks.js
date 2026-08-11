@@ -29,14 +29,16 @@ export default function MyDayOpenTasks() {
 
     const needToShowEmptyBoardPicture = selectedTasksAmount === 0 && myDayOtherTasksAmount === 0
     const showMoreTaskLine = activeDragTaskModeInMyDay ? myDaySortingOtherTasksAmount > 0 : myDayOtherTasksAmount > 0
+    // AT-2262: show the congrats right under the All Projects line (above the
+    // assistant composer) so it is visible without scrolling.
+    const showEmptyInbox = tasksLoaded && needToShowEmptyBoardPicture
 
     return (
         <>
             <AllProjectsLine />
+            {showEmptyInbox && <AllProjectsEmptyInbox />}
             <AssistantLine useAssistantProjectContext={false} />
-            {tasksLoaded && needToShowEmptyBoardPicture ? (
-                <AllProjectsEmptyInbox />
-            ) : (
+            {!showEmptyInbox && (
                 <DragDropContext onDragEnd={onDragEnd} onBeforeCapture={onBeforeCapture}>
                     <View style={{ marginTop: 16, marginBottom: 32 }}>
                         <>
