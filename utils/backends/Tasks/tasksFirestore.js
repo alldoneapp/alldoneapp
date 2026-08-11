@@ -3860,14 +3860,80 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
 }
 
 /**
+ * AT-2251 — the imminent-calendar rule, mirrored for the optimistic pick.
+ *
+ * Both authoritative pickers run this phase FIRST and let it beat everything else: a meeting that
+ * starts within the next 15 minutes becomes the focus task, and it is searched for across every
+ * project rather than just the one the completed task lived in (findAndSetNewFocusedTask above,
+ * and FocusTaskService's Phase 1 in the Cloud Function). The optimistic pick did the opposite — it
+ * filtered calendar tasks out entirely and never left the current project — so completing a focus
+ * task 10 minutes before a meeting showed an ordinary task and then visibly flipped to the meeting
+ * a moment later. That flip is the same class of bug as the random pick this ticket started with:
+ * two pickers, one answer expected.
+ *
+ * Scanning every project in `openTasksMap` is cheap because it is already in Redux. A project the
+ * client has not loaded is invisible here, which is the one case that can still flip — the
+ * authoritative pickers query Firestore directly and will find it.
+ *
+ * Returns `{ task, projectId }` because the winner may live in another project than the one that
+ * just lost its focus task, and the optimistic slice is read per project.
+ */
+function pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserId }) {
+    const now = moment()
+    const fifteenMinutesFromNow = moment().add(15, 'minutes')
+
+    let earliest = null
+    let earliestStart = null
+
+    Object.keys(openTasksMap || {}).forEach(candidateProjectId => {
+        Object.values(openTasksMap[candidateProjectId] || {}).forEach(task => {
+            if (task.id === completedTask.id) return
+            if (isFocusTaskReleased(task.id)) return
+            if (task.done || task.isSubtask) return
+            if (!isTaskOnUserPlate(task, focusUserId)) return
+
+            const start = task.calendarData && task.calendarData.start
+            if (!start) return
+
+            const startDateTime = start.dateTime || start.date
+            if (!startDateTime) return
+
+            const taskStartTime = moment(startDateTime)
+            if (!taskStartTime.isBetween(now, fifteenMinutesFromNow, undefined, '[)')) return
+            if (earliestStart && !taskStartTime.isBefore(earliestStart)) return
+
+            earliest = { task, projectId: candidateProjectId }
+            earliestStart = taskStartTime
+        })
+    })
+
+    return earliest
+}
+
+/**
  * Synchronously picks the next focus task from the Redux store using the same
  * display order as the UI (goals ordered by milestone + general tasks last).
+ *
+ * Returns `{ task, projectId }` (or null): an imminent calendar task can come from a different
+ * project than the one whose focus task was just completed.
  */
 function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = completedTask.userId) {
     // `focusUserId` is the user whose focus task is being replaced (see setOptimisticNextFocusTask);
     // it is only the owner by coincidence in the common single-assignee case.
     const { openTasksMap, goalsByProjectInTasks, openMilestonesByProjectInTasks, doneMilestonesByProjectInTasks } =
         store.getState()
+
+    // AT-2251: an imminent meeting outranks everything, exactly as in both authoritative pickers.
+    const imminentCalendarTask = pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserId })
+    if (imminentCalendarTask) {
+        console.log(`[getOptimisticNextFocusTask] Selected imminent calendar task:`, {
+            id: imminentCalendarTask.task.id,
+            name: imminentCalendarTask.task.name,
+            projectId: imminentCalendarTask.projectId,
+        })
+        return imminentCalendarTask
+    }
+
     const projectTasks = openTasksMap[projectId] || {}
     const goalsById = goalsByProjectInTasks[projectId] || null
     const openMilestones = openMilestonesByProjectInTasks[projectId] || []
@@ -3927,7 +3993,7 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
                 name: nextGeneralTask.name,
                 goalId: nextGeneralTask.parentGoalId,
             })
-            return nextGeneralTask
+            return { task: nextGeneralTask, projectId }
         }
     }
 
@@ -3947,7 +4013,7 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
             name: sameGoalTask.name,
             goalId: sameGoalTask.parentGoalId,
         })
-        return sameGoalTask
+        return { task: sameGoalTask, projectId }
     }
 
     const nonWorkflowTasks = candidateTasks.filter(task => task.userIds?.length === 1)
@@ -3968,7 +4034,7 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
         name: result?.name,
         goalId: result?.parentGoalId,
     })
-    return result
+    return result ? { task: result, projectId } : null
 }
 
 /**
@@ -3980,7 +4046,15 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
 function setOptimisticNextFocusTask(projectId, task, focusUserId = task.userId) {
     const optimisticNext = getOptimisticNextFocusTask(projectId, task, focusUserId)
     if (optimisticNext) {
-        store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId, focusUserId))
+        // The pick carries its own project: an imminent calendar task may live in another one.
+        store.dispatch(
+            setOptimisticFocusTask(
+                optimisticNext.task.id,
+                optimisticNext.projectId,
+                optimisticNext.task.parentGoalId,
+                focusUserId
+            )
+        )
     } else {
         store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId || NOT_PARENT_GOAL_INDEX, focusUserId))
     }
