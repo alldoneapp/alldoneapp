@@ -56,6 +56,8 @@ const UNREAD = {
     unfollowedNotifications: [{ commentId: 'u1', date: 200 }],
 }
 
+const UNFOLLOWED_ONLY = [{ commentId: 'u1', date: 200 }]
+
 const READ = { totalFollowed: 0, totalUnfollowed: 0 }
 
 const buildState = (chatNotifications, chatsActiveTab = ALL_TAB) => ({
@@ -86,8 +88,9 @@ describe('ChatItem unread message preview (AT-2256)', () => {
             expect.objectContaining({
                 project: PROJECT,
                 chat: CHAT,
-                // Oldest first, so the preview reads in the same direction as the thread.
-                unreadCommentIds: ['f1', 'u1', 'f2'],
+                // Oldest first, so the preview reads in the same direction as the thread, and
+                // followed-only because that is what the row's badge is counting.
+                unreadCommentIds: ['f1', 'f2'],
             })
         )
     })
@@ -110,6 +113,12 @@ describe('ChatItem unread message preview (AT-2256)', () => {
         renderChatItem(buildState(UNREAD, FOLLOWED_TAB))
 
         expect(previewProps().unreadCommentIds).toEqual(['f1', 'f2'])
+    })
+
+    it('previews unfollowed messages when they are what the badge is counting', () => {
+        renderChatItem(buildState({ totalFollowed: 0, totalUnfollowed: 1, unfollowedNotifications: UNFOLLOWED_ONLY }))
+
+        expect(previewProps().unreadCommentIds).toEqual(['u1'])
     })
 
     it('previews nothing inside the comment popup', () => {

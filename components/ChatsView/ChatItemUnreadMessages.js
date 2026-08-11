@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import ChatItemUnreadMessage from './ChatItemUnreadMessage'
-import { getTimestampInMilliseconds } from './Utils/ChatHelper'
+import { getTimestampInMilliseconds, onOpenChat } from './Utils/ChatHelper'
 
 // How many unread messages a single row previews in full. A topic that has been running unattended
 // can hold dozens of long assistant answers, and "All Projects" stacks every project's rows on one
@@ -66,11 +66,16 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     return (
         <View style={localStyles.container}>
             {hiddenCount > 0 && (
-                <Text style={localStyles.hiddenCount}>
-                    {translate(hiddenCount === 1 ? 'One earlier unread message' : 'Amount earlier unread messages', {
-                        amount: hiddenCount,
-                    })}
-                </Text>
+                // The capped-away messages are still unread, so this is the one affordance that
+                // must lead into the topic - reading them anywhere else is not possible.
+                <TouchableOpacity onPress={() => onOpenChat(project.id, chat)} accessible={false}>
+                    <Text style={localStyles.hiddenCount}>
+                        {translate(
+                            hiddenCount === 1 ? 'One earlier unread message' : 'Amount earlier unread messages',
+                            { amount: hiddenCount }
+                        )}
+                    </Text>
+                </TouchableOpacity>
             )}
             {visibleMessages.map(message => (
                 <ChatItemUnreadMessage
@@ -98,7 +103,9 @@ const localStyles = StyleSheet.create({
     },
     hiddenCount: {
         ...styles.caption2,
-        color: colors.Text03,
+        // Reads as the link it is: the only way to reach the unread messages the cap hid.
+        color: colors.Primary100,
         marginTop: 4,
+        marginBottom: 2,
     },
 })
