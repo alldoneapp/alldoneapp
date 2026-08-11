@@ -90,16 +90,12 @@ const checkIfNeedToUpdateTask = (oldTask, dataToUpdate) => {
     return !isEqual(oldData, dataToUpdate)
 }
 
-// Compute sortIndex with proper timezone handling for all-day events
-const computeSortIndex = (start, timezoneOffset = 0) => {
-    const isAllDay = start.date && !start.dateTime
-    if (isAllDay) {
-        // For all-day events, apply timezone offset to interpret the date correctly
-        return moment(start.date).utcOffset(timezoneOffset, true).valueOf()
-    }
-    // For timed events, dateTime already includes timezone info
-    return moment(start.dateTime).valueOf()
-}
+// AT-2259 - a calendar task is ordered by when it entered the task list, exactly like a normal
+// task, and NOT by its event start. sortIndex used to hold the event start, a future timestamp
+// that no creation-time index can ever beat, so meetings were pinned to the top of their group and
+// a newly added task could not be placed above them. The event start is still available on
+// calendarData.start for everything that genuinely needs it (My Day timeline, focus selection).
+const generateCalendarTaskSortIndex = () => moment().valueOf()
 
 const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOffset = 0) => {
     const { start, end, summary, htmlLink, description } = event
@@ -281,9 +277,10 @@ const addOrUpdateCalendarTask = async (
             const { id, projectId: oldProjectId, ...persistableTask } = task
             const newTaskData = { ...persistableTask, ...dataToUpdate }
 
-            // Preserve sortIndex when present; otherwise compute from start with timezone
+            // Preserve the existing ordering when present; otherwise treat the move as a fresh
+            // arrival in the list (AT-2259 - never derive it from the event start).
             if (!newTaskData.sortIndex) {
-                newTaskData.sortIndex = computeSortIndex(start, timezoneOffset)
+                newTaskData.sortIndex = generateCalendarTaskSortIndex()
             }
 
             // Create in new project, delete from old
@@ -325,7 +322,7 @@ const addOrUpdateCalendarTask = async (
             syncProjectId,
         })
     } else {
-        dataToUpdate.sortIndex = computeSortIndex(start, timezoneOffset)
+        dataToUpdate.sortIndex = generateCalendarTaskSortIndex()
         const newTask = generateTask(dataToUpdate, userId)
         await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
         await addCalendarRoutingCommentIfNeeded({

@@ -2182,5 +2182,7 @@
     "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)",
     "Only objects I created": "Nur von mir erstellte Objekte",
     "Hides objects created by other people": "Blendet von anderen Personen erstellte Objekte aus",
-    "Created by me": "Von mir erstellt"
+    "Created by me": "Von mir erstellt",
+    "One earlier unread message": "1 frühere ungelesene Nachricht",
+    "Amount earlier unread messages": "%{amount} frühere ungelesene Nachrichten"
 }
