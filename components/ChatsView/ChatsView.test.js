@@ -26,7 +26,13 @@ jest.mock('../../URLSystem/Chats/URLsChats', () => ({
 }))
 jest.mock('../HashtagFilters/HashtagFiltersView', () => () => null)
 jest.mock('../UIComponents/NothingToShowOnChats', () => () => null)
-jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => () => null)
+jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => props => props.customRight || null)
+jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('./ArchiveUnreadEmailsButton', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return props => React.createElement(View, { testID: 'archive-unread-emails', projectId: props.projectId })
+})
 jest.mock('./MarkAsRead', () => () => null)
 jest.mock('./ChatsByProject', () => {
     const React = require('react')
@@ -58,6 +64,7 @@ jest.mock('./ChatFiltersLine', () => {
 })
 
 import ChatsView from './ChatsView'
+import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 
 const projects = [
@@ -173,5 +180,29 @@ describe('ChatsView All Projects section selection', () => {
         const component = renderAllProjectsWith({ loggedUserProjects: [] })
 
         expect(renderedProjectIds(component)).toEqual([])
+    })
+})
+
+describe('ChatsView bulk email archive', () => {
+    beforeEach(() => jest.clearAllMocks())
+
+    it('offers the all-projects archive on the All Projects line, scoped to every project', () => {
+        const component = renderView(-1)
+
+        const button = component.root.findByProps({ testID: 'archive-unread-emails' })
+        // No projectId is what makes it span every project's previews rather than one project's.
+        expect(button.props.projectId).toBeUndefined()
+    })
+
+    it('leaves the all-projects archive out of a single project view, which has its own', () => {
+        const component = renderView(0)
+
+        expect(component.root.findAllByProps({ testID: 'archive-unread-emails' })).toHaveLength(0)
+    })
+
+    it('wraps the whole screen in the shared preview registry the buttons read from', () => {
+        const component = renderView(-1)
+
+        expect(component.root.findAllByType(UnreadEmailArchiveProvider)).toHaveLength(1)
     })
 })

@@ -4,13 +4,8 @@ import { View } from 'react-native'
 import Comment from '../../../Feeds/FeedsModals/ListCommentsComponents/Comment'
 import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import VmInteractionCard from '../../../ChatsView/ChatDV/EditorView/VmInteractionCard'
-import {
-    isAwaitingVmInteraction,
-    resolveEffectiveMessageLoading,
-} from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
+import { isAwaitingVmInteraction } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
-import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAssistantRunButton'
-import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/messageTimestamps'
 
 export default function CommentsList({
     projectId,
@@ -29,14 +24,8 @@ export default function CommentsList({
             {comments.map((item, index) => {
                 const linkedEmail = getLinkedEmailFromMessage(item)
                 const showVmInteraction = isAwaitingVmInteraction(item.assistantRun)
-                // Same stale-spinner rule as the full chat view, so the popup cannot
-                // offer a Stop button (or a progress story) for a run that timed out.
-                const effectiveIsLoading = resolveEffectiveMessageLoading(
-                    item,
-                    getTimestampInMilliseconds(item.lastChangeDate)
-                )
                 const showAssistantProgress =
-                    effectiveIsLoading &&
+                    item.isLoading === true &&
                     item.assistantRun?.kind === 'chat' &&
                     ['running', 'cancel_requested'].includes(item.assistantRun?.status)
                 return (
@@ -79,18 +68,6 @@ export default function CommentsList({
                                 assistantRun={item.assistantRun}
                             />
                         )}
-                        {/* Same control, state and callable as the full chat view, so a run
-                            can be stopped from wherever the comment is shown. It renders
-                            nothing unless the run is actually stoppable. */}
-                        <StopAssistantRunButton
-                            projectId={projectId}
-                            objectType={objectType}
-                            objectId={objectId}
-                            commentId={item.id}
-                            assistantRun={item.assistantRun}
-                            isLoading={effectiveIsLoading}
-                            appearance="dark"
-                        />
                     </React.Fragment>
                 )
             })}
