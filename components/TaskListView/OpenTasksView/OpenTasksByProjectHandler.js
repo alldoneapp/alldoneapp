@@ -99,11 +99,13 @@ export default function OpenTasksByProjectHandler({
         if (currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
             if (projectApis?.calendar) {
-                console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
+                if (__DEV__)
+                    console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
                 checkIfCalendarConnected(projectId)
             }
             if (projectApis?.email || projectApis?.gmail) {
-                console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
+                if (__DEV__)
+                    console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
                 fetchEmailLineSummary(projectId)
             }
         }

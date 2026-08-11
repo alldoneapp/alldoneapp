@@ -10,28 +10,30 @@ export const getTrialTrackingId = () => {
         const timestamp = localStorage.getItem('alldone_trial_timestamp')
         const planType = localStorage.getItem('alldone_trial_plan_type')
 
-        console.log('🔍 Checking trial tracking data:', {
-            trackingId: trackingId ? `${trackingId.substring(0, 20)}...` : null,
-            timestamp,
-            planType,
-            age: timestamp ? `${Math.round((Date.now() - parseInt(timestamp)) / (1000 * 60))} minutes` : null,
-        })
+        if (__DEV__) {
+            console.log('🔍 Checking trial tracking data:', {
+                trackingId: trackingId ? `${trackingId.substring(0, 20)}...` : null,
+                timestamp,
+                planType,
+                age: timestamp ? `${Math.round((Date.now() - parseInt(timestamp)) / (1000 * 60))} minutes` : null,
+            })
+        }
 
         // Check if tracking ID exists and is not too old (30 days)
         if (trackingId && timestamp) {
             const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
             if (parseInt(timestamp) > thirtyDaysAgo) {
-                console.log('✅ Valid tracking ID found:', trackingId.substring(0, 20) + '...')
+                if (__DEV__) console.log('✅ Valid tracking ID found:', trackingId.substring(0, 20) + '...')
                 return trackingId
             } else {
-                console.log('⏰ Tracking ID expired, cleaning up old data')
+                if (__DEV__) console.log('⏰ Tracking ID expired, cleaning up old data')
                 // Clean up old tracking data
                 localStorage.removeItem('alldone_trial_tracking_id')
                 localStorage.removeItem('alldone_trial_plan_type')
                 localStorage.removeItem('alldone_trial_timestamp')
             }
         } else {
-            console.log('❌ No valid tracking ID found in localStorage')
+            if (__DEV__) console.log('❌ No valid tracking ID found in localStorage')
         }
         return null
     } catch (error) {
@@ -63,35 +65,41 @@ export const checkUserPremiumStatusStripe = async (trackingId = null) => {
         // If no tracking ID provided, try to get it from localStorage
         const finalTrackingId = trackingId || getTrialTrackingId()
 
-        console.log('🚀 Checking premium status with Stripe:', {
-            providedTrackingId: trackingId ? `${trackingId.substring(0, 20)}...` : null,
-            finalTrackingId: finalTrackingId ? `${finalTrackingId.substring(0, 20)}...` : null,
-            hasTrackingId: !!finalTrackingId,
-        })
+        if (__DEV__) {
+            console.log('🚀 Checking premium status with Stripe:', {
+                providedTrackingId: trackingId ? `${trackingId.substring(0, 20)}...` : null,
+                finalTrackingId: finalTrackingId ? `${finalTrackingId.substring(0, 20)}...` : null,
+                hasTrackingId: !!finalTrackingId,
+            })
+        }
 
-        console.log('🔧 Calling Firebase function checkUserPremiumStatus with:', {
-            trackingId: finalTrackingId ? `${finalTrackingId.substring(0, 20)}...` : null,
-        })
+        if (__DEV__) {
+            console.log('🔧 Calling Firebase function checkUserPremiumStatus with:', {
+                trackingId: finalTrackingId ? `${finalTrackingId.substring(0, 20)}...` : null,
+            })
+        }
 
         const result = await runHttpsCallableFunction('checkUserPremiumStatus', {
             trackingId: finalTrackingId,
         })
 
-        console.log('🔧 Raw result from Firebase function:', result)
-        console.log('📊 Premium status result:', {
-            success: result.success,
-            premiumStatus: result.premiumStatus,
-            linkedViaTracking: result.linkedViaTracking,
-            hasSubscription: !!result.subscription,
-            hasCustomer: !!result.customer,
-            trackingIdUsed: result.trackingId ? `${result.trackingId.substring(0, 20)}...` : null,
-            resultType: typeof result,
-            resultKeys: Object.keys(result || {}),
-        })
+        if (__DEV__) console.log('🔧 Raw result from Firebase function:', result)
+        if (__DEV__) {
+            console.log('📊 Premium status result:', {
+                success: result.success,
+                premiumStatus: result.premiumStatus,
+                linkedViaTracking: result.linkedViaTracking,
+                hasSubscription: !!result.subscription,
+                hasCustomer: !!result.customer,
+                trackingIdUsed: result.trackingId ? `${result.trackingId.substring(0, 20)}...` : null,
+                resultType: typeof result,
+                resultKeys: Object.keys(result || {}),
+            })
+        }
 
         // If subscription was linked via tracking, clear the tracking data
         if (result.linkedViaTracking && finalTrackingId) {
-            console.log('🔗 Subscription linked via tracking ID, clearing tracking data')
+            if (__DEV__) console.log('🔗 Subscription linked via tracking ID, clearing tracking data')
             clearTrialTrackingId()
         }
 
@@ -104,13 +112,16 @@ export const checkUserPremiumStatusStripe = async (trackingId = null) => {
             trackingId: result.trackingId,
         }
     } catch (error) {
-        console.error('❌ Error checking premium status with Stripe:', error)
-        console.error('❌ Error details:', {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            stack: error.stack,
-        })
+        // One line for a real failure; the full object only when debugging.
+        console.error('❌ Error checking premium status with Stripe:', error?.code || '', error?.message || error)
+        if (__DEV__) {
+            console.error('❌ Error details:', {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                stack: error.stack,
+            })
+        }
 
         return {
             success: false,
@@ -233,7 +244,7 @@ export const debugTrackingId = () => {
         expires: timestamp ? new Date(parseInt(timestamp) + 30 * 24 * 60 * 60 * 1000).toLocaleString() : 'N/A',
     }
 
-    console.log('🔍 Tracking ID Debug Info:', debugInfo)
+    if (__DEV__) console.log('🔍 Tracking ID Debug Info:', debugInfo)
     return debugInfo
 }
 

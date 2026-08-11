@@ -280,6 +280,7 @@ function TaskPresentation(
                 isActiveOrganizeMode={isActiveOrganizeMode}
             />
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}

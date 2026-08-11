@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'objectType', 'channel', 'note', 'callSessionId']
@@ -98,15 +99,39 @@ async function applyGoldChange({
     requireSufficientBalance = false,
     additionalUserFields = {},
     onTransaction,
+    idempotencyKey = '',
 }) {
     const userRef = admin.firestore().doc(`users/${userId}`)
+    const normalizedIdempotencyKey =
+        typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : ''
+    const claimRef = normalizedIdempotencyKey
+        ? userRef
+              .collection('goldChangeClaims')
+              .doc(crypto.createHash('sha256').update(normalizedIdempotencyKey).digest('hex'))
+        : null
     let result = { success: false, message: 'User not found' }
 
     await admin.firestore().runTransaction(async transaction => {
-        const userDoc = await transaction.get(userRef)
+        const [userDoc, claimDoc] = await Promise.all([
+            transaction.get(userRef),
+            claimRef ? transaction.get(claimRef) : Promise.resolve(null),
+        ])
 
         if (!userDoc.exists) {
             result = { success: false, message: 'User not found' }
+            return
+        }
+
+        if (claimDoc?.exists) {
+            const claim = claimDoc.data() || {}
+            result = {
+                success: true,
+                alreadyProcessed: true,
+                previousBalance: claim.previousBalance,
+                newBalance: claim.newBalance,
+                amount: claim.amount,
+                entryId: claim.entryId,
+            }
             return
         }
 
@@ -133,6 +158,19 @@ async function applyGoldChange({
                 newBalance: result.newBalance,
                 amount: result.amount,
                 entryId: result.entryId,
+            })
+        }
+
+        if (result.success && claimRef) {
+            transaction.set(claimRef, {
+                idempotencyKey: normalizedIdempotencyKey,
+                amount: result.amount,
+                direction,
+                source,
+                previousBalance: result.previousBalance,
+                newBalance: result.newBalance,
+                entryId: result.entryId,
+                createdAt: FieldValue.serverTimestamp(),
             })
         }
     })

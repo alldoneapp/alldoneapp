@@ -63,7 +63,7 @@ async function getInitialProjectsData(projectIds) {
     const cachedData = UserDataCache.getCachedGlobalData()
     if (cachedData && cachedData.projectIds && haveSameProjectIds(cachedData.projectIds, projectIds)) {
         if (isCompleteProjectsInitialData(cachedData.projectsInitialData, cachedData.projectIds.length)) {
-            console.log('Using cached project data for faster startup')
+            if (__DEV__) console.log('Using cached project data for faster startup')
 
             // Refresh cache in background
             setTimeout(async () => {
@@ -274,7 +274,7 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
     // Check premium status with Stripe in background (non-blocking)
     checkUserPremiumStatusStripe()
         .then(() => {
-            console.log('Premium status check completed (background)')
+            if (__DEV__) console.log('Premium status check completed (background)')
         })
         .catch(error => {
             console.warn('Premium status check failed during login:', error)
@@ -323,7 +323,7 @@ export const loadGlobalDataAndGetUserResult = async userId => {
     const cachedUserData = UserDataCache.getCachedUserData()
 
     if (cachedUserData && cachedUserData.uid === userId) {
-        console.log('Using cached user data for faster startup')
+        if (__DEV__) console.log('Using cached user data for faster startup')
 
         // Always load global data even when using cached user data
         loadGlobalData()
@@ -333,7 +333,7 @@ export const loadGlobalDataAndGetUserResult = async userId => {
             try {
                 const freshUser = await getUserData(userId, true)
                 if (freshUser && !isEqual(freshUser, cachedUserData)) {
-                    console.log('Updating cached user data with fresh data')
+                    if (__DEV__) console.log('Updating cached user data with fresh data')
                     UserDataCache.setCachedUserData(freshUser)
                     store.dispatch(storeLoggedUser(freshUser))
                 }

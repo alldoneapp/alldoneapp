@@ -260,6 +260,7 @@ export default class ContactItem extends Component {
                 </View>
 
                 <Swipeable
+                    useNativeAnimations={false}
                     ref={this.itemSwipe}
                     rightThreshold={80}
                     leftThreshold={80}

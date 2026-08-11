@@ -477,19 +477,21 @@ const getDefaultAssistant = state => {
         defaultAssistant = projectAssistants[0]
     }
 
-    console.log('Selected default assistant from project:', {
-        projectId: defaultProjectId,
-        projectAssistantId: defaultProject?.assistantId,
-        selectedAssistantId: defaultAssistant?.uid,
-        selectedAssistantName: defaultAssistant?.displayName,
-        isDefault: defaultAssistant?.isDefault,
-        isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
-        allProjectAssistants: projectAssistants.map(a => ({
-            uid: a.uid,
-            name: a.displayName,
-            isDefault: a.isDefault,
-        })),
-    })
+    if (__DEV__) {
+        console.log('Selected default assistant from project:', {
+            projectId: defaultProjectId,
+            projectAssistantId: defaultProject?.assistantId,
+            selectedAssistantId: defaultAssistant?.uid,
+            selectedAssistantName: defaultAssistant?.displayName,
+            isDefault: defaultAssistant?.isDefault,
+            isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
+            allProjectAssistants: projectAssistants.map(a => ({
+                uid: a.uid,
+                name: a.displayName,
+                isDefault: a.isDefault,
+            })),
+        })
+    }
 
     return defaultAssistant || {}
 }
