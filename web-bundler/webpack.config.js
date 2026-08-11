@@ -28,6 +28,43 @@ const CopyPlugin = require('copy-webpack-plugin')
 
 const rootDir = path.resolve(__dirname, '..')
 const outputDir = path.join(rootDir, 'web-build')
+
+// Firebase builds its OAuth handler URL as `https://<authDomain>/__/auth/handler` (the scheme is
+// hardcoded in Google's handler.js). Serving that path from this origin instead of
+// <project>.firebaseapp.com removes the cross-origin helper iframe, whose gapi handshake never
+// completes in embedded browsers — there `signInWithRedirect` hangs with no navigation and no
+// error. Dev only: read the real auth domain from .env so nothing is pinned to one project.
+const readAuthDomainFromEnv = () => {
+    try {
+        const env = require('fs').readFileSync(path.join(rootDir, '.env'), 'utf8')
+        const match = env.match(/^GOOGLE_FIREBASE_WEB_AUTH_DOMAIN=(.+)$/m)
+        return match ? match[1].trim() : null
+    } catch (error) {
+        return null
+    }
+}
+
+// certs/localhost.pem is generated once, signed by the machine's mkcert development CA (see
+// web-bundler/README.md). Gitignored; absent on other machines, which just falls back to
+// webpack's self-signed cert.
+const readLocalCert = () => {
+    const fs = require('fs')
+    const certDir = path.join(__dirname, 'certs')
+    try {
+        return {
+            key: fs.readFileSync(path.join(certDir, 'localhost-key.pem')),
+            cert: fs.readFileSync(path.join(certDir, 'localhost.pem')),
+        }
+    } catch (error) {
+        return null
+    }
+}
+
+const localCert = readLocalCert()
+const devAuthDomain = readAuthDomainFromEnv()
+// Opt-in via DEV_HTTPS=1 (npm run web-webpack-https). Off by default so the ordinary
+// http://localhost:19006 workflow — which works in any normal browser — stays untouched.
+const useHttpsAuthHandler = process.env.DEV_HTTPS === '1' && !!devAuthDomain
 const appJson = require(path.join(rootDir, 'app.json'))
 
 module.exports = (env, argv) => {
@@ -225,8 +262,33 @@ module.exports = (env, argv) => {
         plugins,
         devServer: {
             port: 19006,
-            historyApiFallback: true,
+            // The proxied auth handler must never be rewritten to index.html.
+            historyApiFallback: { rewrites: [{ from: /^\/__\/auth\//, to: ctx => ctx.parsedUrl.pathname }] },
             hot: true,
+            // Chunk filenames are content-hashed, so a browser-cached index.html from an
+            // earlier dev session requests chunks that no longer exist (404 + the SPA
+            // fallback's text/html MIME refusal on load).
+            headers: { 'Cache-Control': 'no-store' },
+            ...(useHttpsAuthHandler
+                ? {
+                      // Firebase hardcodes https for the handler URL, so this origin has to be
+                      // https for the self-hosted handler to be reachable at all. A cert signed
+                      // by the local mkcert CA is used when present: webpack's own generated
+                      // cert is untrusted, and embedded browsers reject it outright instead of
+                      // offering an interstitial to click through.
+                      server: localCert
+                          ? { type: 'https', options: { key: localCert.key, cert: localCert.cert } }
+                          : 'https',
+                      proxy: [
+                          {
+                              context: ['/__/auth'],
+                              target: `https://${devAuthDomain}`,
+                              changeOrigin: true,
+                              secure: true,
+                          },
+                      ],
+                  }
+                : {}),
             static: [
                 { directory: path.join(rootDir, 'web'), publicPath: '/' },
                 { directory: path.join(__dirname, 'static'), publicPath: '/' },

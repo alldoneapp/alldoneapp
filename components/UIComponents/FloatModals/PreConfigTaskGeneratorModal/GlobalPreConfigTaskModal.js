@@ -13,15 +13,6 @@ export default function GlobalPreConfigTaskModal() {
     const gold = useSelector(state => state.loggedUser.gold)
     const { visible, task, assistant, projectId } = preConfigTaskModalData
 
-    console.log('[GlobalPreConfigTaskModal] Render state:', {
-        visible,
-        hasTask: !!task,
-        hasAssistant: !!assistant,
-        assistantUid: assistant?.uid,
-        projectId,
-        gold,
-    })
-
     const closeModal = () => {
         if (isModalOpen(MENTION_MODAL_ID)) return
         dispatch(setPreConfigTaskModalData(false, null, null, null))
@@ -29,14 +20,8 @@ export default function GlobalPreConfigTaskModal() {
 
     // Only require assistant.uid since PreConfigTaskGeneratorModal uses assistant.uid
     if (!visible || !task || !assistant?.uid || !projectId) {
-        console.log('[GlobalPreConfigTaskModal] Not rendering - missing data')
         return null
     }
-
-    console.log('[GlobalPreConfigTaskModal] Rendering modal with:', {
-        taskName: task?.name,
-        assistantName: assistant?.displayName,
-    })
 
     return (
         <View style={localStyles.overlay}>

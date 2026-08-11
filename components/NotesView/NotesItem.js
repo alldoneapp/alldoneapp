@@ -127,18 +127,23 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         setRenderFlag(!renderFlag)
     }
 
-    const renderRightSwipe = (progress, dragX) => {
+    // Swipeable calls these during its own render, so adopting its dragX node synchronously would
+    // set state on this component while another one renders. dragX is stable per Swipeable
+    // instance, so deferring the swap by a microtask adopts it just as reliably, one render later.
+    const adoptPanColor = dragX => {
         if (panColor !== dragX) {
-            setPanColor(dragX)
+            Promise.resolve().then(() => setPanColor(dragX))
         }
+    }
+
+    const renderRightSwipe = (progress, dragX) => {
+        adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }
 
     const renderLeftSwipe = (progress, dragX) => {
-        if (panColor !== dragX) {
-            setPanColor(dragX)
-        }
+        adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }

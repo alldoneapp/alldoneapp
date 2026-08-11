@@ -97,10 +97,17 @@ export default class ContactItem extends Component {
         this.setState(state => ({ showTagsSummarizeArea: !state.showTagsSummarizeArea }))
     }
 
-    renderLeftSwipe = (progress, dragX) => {
+    // Swipeable calls the swipe renderers during its own render, so setting state synchronously
+    // would update this component while another one renders. dragX is stable per Swipeable
+    // instance, so deferring the swap adopts it just as reliably, one render later.
+    adoptPanColor = dragX => {
         if (this.state.panColor !== dragX) {
-            this.setState({ panColor: dragX })
+            Promise.resolve().then(() => this.setState({ panColor: dragX }))
         }
+    }
+
+    renderLeftSwipe = (progress, dragX) => {
+        this.adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }
@@ -118,9 +125,7 @@ export default class ContactItem extends Component {
     }
 
     renderRightSwipe = (progress, dragX) => {
-        if (this.state.panColor !== dragX) {
-            this.setState({ panColor: dragX })
-        }
+        this.adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }

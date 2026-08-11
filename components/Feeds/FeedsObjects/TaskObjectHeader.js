@@ -87,7 +87,12 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
     }
 
     const renderLeftSwipe = (progress, dragX) => {
-        setPanColor(dragX)
+        // Swipeable calls this during its own render, so setting state synchronously would
+        // update this component while another one renders. dragX is stable per Swipeable
+        // instance, so deferring the swap adopts it just as reliably, one render later.
+        if (panColor !== dragX) {
+            Promise.resolve().then(() => setPanColor(dragX))
+        }
         return <View style={{ width: 150 }} />
     }
 

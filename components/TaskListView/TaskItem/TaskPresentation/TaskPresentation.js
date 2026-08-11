@@ -148,8 +148,14 @@ function TaskPresentation(
         },
     }))
 
+    // Swipeable calls renderLeftActions during its own render, so adopting its dragX node here
+    // synchronously would set state on this component while another one renders (React warns and
+    // the update is not batched with the current pass). dragX is stable per Swipeable instance,
+    // so deferring the swap by a microtask adopts it just as reliably, one render later.
     const renderLeftSwipe = (progress, dragX) => {
-        if (panColor != dragX) setPanColor(dragX)
+        if (panColor !== dragX) {
+            Promise.resolve().then(() => setPanColor(dragX))
+        }
         return <View style={{ width: 150 }} />
     }
 

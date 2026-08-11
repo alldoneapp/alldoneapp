@@ -44,6 +44,7 @@ jest.mock('../utils/BackendBridge', () => {
             },
             mapUserData: () => {},
             isMobileDevice: () => false,
+            isLocalDevHost: () => false,
         },
     }
 })

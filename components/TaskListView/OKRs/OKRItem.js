@@ -499,9 +499,7 @@ const localStyles = StyleSheet.create({
     celebrationText: {
         position: 'absolute',
         color: colors.UtilityGreen200,
-        textShadowColor: '#ffffff',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
+        textShadow: '0px 1px 3px #ffffff',
     },
     celebrationDot: {
         position: 'absolute',
