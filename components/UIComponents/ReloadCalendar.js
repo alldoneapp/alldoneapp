@@ -4,7 +4,7 @@ import Icon from '../Icon'
 import { colors } from '../styles/global'
 import { useSelector } from 'react-redux'
 
-const ReloadCalendar = ({ projectId, Promise, containerStyle, size = 20 }) => {
+const ReloadCalendar = ({ projectId, Promise }) => {
     const animateValue = useState(new Animated.Value(0))[0]
 
     const loadEvents = () => {
@@ -47,9 +47,9 @@ const ReloadCalendar = ({ projectId, Promise, containerStyle, size = 20 }) => {
     })
 
     return (
-        <TouchableOpacity style={[localStyles.container, containerStyle]} onPress={loadEvents}>
+        <TouchableOpacity style={[localStyles.container]} onPress={loadEvents}>
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <Icon name={'refresh-cw'} size={size} color={colors.Text03} />
+                <Icon name={'refresh-cw'} size={20} color={colors.Text03} />
             </Animated.View>
         </TouchableOpacity>
     )

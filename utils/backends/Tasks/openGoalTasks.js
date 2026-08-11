@@ -7,6 +7,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView/Utils/TasksHelper'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
+import { isInboxSummaryGmailTask } from '../../Gmail/gmailTaskUtils'
 import { sortTasksByPriority } from '../../TaskPriority'
 
 export const DATE_TASK_INDEX = 0
@@ -15,7 +16,8 @@ export const ESTIMATION_TASKS_INDEX = 2
 export const MAIN_TASK_INDEX = 3
 export const MENTION_TASK_INDEX = 4
 export const SUGGESTED_TASK_INDEX = 5
-// AT-2252: calendar (6) and email (7) buckets were removed — those tasks are ordinary main tasks now.
+export const CALENDAR_TASK_INDEX = 6
+export const EMAIL_TASK_INDEX = 7
 
 export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     const { loggedUser } = store.getState()
@@ -50,11 +52,8 @@ const processTasks = (projectId, docs) => {
 
         const taskTypeIndex = getTaskTypeIndex(task)
 
-        // A goal only ever lists today's calendar events. This used to be keyed off the calendar
-        // bucket; since AT-2252 merged calendar tasks into the main list it is keyed off the
-        // calendar payload itself so the rule survives the merge unchanged.
         if (
-            calendarData &&
+            taskTypeIndex === CALENDAR_TASK_INDEX &&
             moment(calendarData.start.dateTime || calendarData.start.date).format('DDMMYYYY') !==
                 moment().format('DDMMYYYY')
         ) {
@@ -92,7 +91,8 @@ const processTasks = (projectId, docs) => {
     Object.keys(tasksByDate).forEach(date => {
         Object.keys(tasksByDate[date]).forEach(taskTypeIndex => {
             const taskList = orderBy(tasksByDate[date][taskTypeIndex], 'sortIndex', 'desc')
-            tasksByDate[date][taskTypeIndex] = sortTasksByPriority(taskList)
+            tasksByDate[date][taskTypeIndex] =
+                Number(taskTypeIndex) === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         })
     })
 
@@ -102,10 +102,11 @@ const processTasks = (projectId, docs) => {
 }
 
 const getTaskTypeIndex = task => {
-    const { genericData, suggestedBy } = task
+    const { genericData, suggestedBy, calendarData, gmailData } = task
     if (genericData) return MENTION_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    // AT-2252: calendar and inbox-summary email tasks fall through to the main list.
+    if (calendarData) return CALENDAR_TASK_INDEX
+    if (isInboxSummaryGmailTask(gmailData)) return EMAIL_TASK_INDEX
     return MAIN_TASK_INDEX
 }
 
@@ -120,9 +121,20 @@ const generateOpenTasksArray = (tasksByDate, amountOfTasksByDate, estimationByDa
         const estimationTasks = estimationByDate[date]
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? taskByType[MAIN_TASK_INDEX] : []
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? taskByType[MENTION_TASK_INDEX] : []
+        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? taskByType[CALENDAR_TASK_INDEX] : []
+        const emailTasks = taskByType[EMAIL_TASK_INDEX] ? taskByType[EMAIL_TASK_INDEX] : []
         const suggestedTasks = taskByType[SUGGESTED_TASK_INDEX] ? taskByType[SUGGESTED_TASK_INDEX] : []
 
-        openTasksArray.push([date, amountTasks, estimationTasks, mainTasks, mentionTasks, suggestedTasks])
+        openTasksArray.push([
+            date,
+            amountTasks,
+            estimationTasks,
+            mainTasks,
+            mentionTasks,
+            suggestedTasks,
+            calendarTasks,
+            emailTasks,
+        ])
     }
 
     return openTasksArray

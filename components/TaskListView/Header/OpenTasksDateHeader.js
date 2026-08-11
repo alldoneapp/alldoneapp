@@ -9,7 +9,6 @@ import { BACKLOG_DATE_STRING } from '../Utils/TasksHelper'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
 import { generateDateHeaderText } from '../../../utils/EstimationHelper'
-import CalendarSyncButton from '../../UIComponents/CalendarSyncButton'
 import {
     AMOUNT_TASKS_INDEX,
     DATE_TASK_INDEX,
@@ -77,9 +76,6 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
                         {text}
                     </Text>
                 </View>
-                {/* AT-2252: the calendar re-sync lived in the removed "Google Calendar" section. It is
-                    kept here on today's header, and only when this project has a calendar connected. */}
-                {isMainDay && <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />}
             </View>
         </View>
     )
@@ -118,9 +114,5 @@ const localStyles = StyleSheet.create({
     },
     textBacklog: {
         paddingLeft: 0,
-    },
-    syncButton: {
-        marginLeft: 8,
-        marginRight: 8,
     },
 })
