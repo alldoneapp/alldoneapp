@@ -18,6 +18,7 @@ const {
     generateNegativeSortIndex,
 } = require('./HelperFunctionsCloud')
 const { getContactEmails } = require('../shared/contactEmailHelper')
+const { resolveTaskSortIndex } = require('../shared/calendarTaskSortIndex')
 const {
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
@@ -156,6 +157,14 @@ function mapTaskData(taskId, task) {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
     const hasStar = !task.hasStar ? '#FFFFFF' : task.hasStar === true ? '#C7E3FF' : task.hasStar
 
+    const created = task.created ? task.created : Date.now()
+
+    // AT-2259 - calendar tasks written before the fix stored the EVENT START in sortIndex, which
+    // pinned them to the top of their group. Normalize on read so no backfill is needed.
+    const sortIndex = task.sortIndex
+        ? resolveTaskSortIndex(task.sortIndex, task.calendarData, created)
+        : generateNegativeSortIndex()
+
     return {
         id: task.id ? task.id : taskId,
         done: task.done ? task.done : false,
@@ -171,7 +180,7 @@ function mapTaskData(taskId, task) {
         estimationsByObserverIds: task.estimationsByObserverIds ? task.estimationsByObserverIds : {},
         stepHistory: task.stepHistory ? task.stepHistory : [],
         hasStar: hasStar,
-        created: task.created ? task.created : Date.now(),
+        created,
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),
         completed: task.completed ? task.completed : null,
@@ -188,7 +197,7 @@ function mapTaskData(taskId, task) {
         estimations: task.estimations ? task.estimations : { [OPEN_STEP]: ESTIMATION_0_MIN },
         comments: task.comments ? task.comments : [],
         genericData: task.genericData ? task.genericData : null,
-        sortIndex: task.sortIndex ? task.sortIndex : generateNegativeSortIndex(),
+        sortIndex,
         linkedParentNotesIds: task.linkedParentNotesIds ? task.linkedParentNotesIds : [],
         linkedParentTasksIds: task.linkedParentTasksIds ? task.linkedParentTasksIds : [],
         linkedParentContactsIds: task.linkedParentContactsIds ? task.linkedParentContactsIds : [],

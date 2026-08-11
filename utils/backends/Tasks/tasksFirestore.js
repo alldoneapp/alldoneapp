@@ -1668,7 +1668,7 @@ export async function updateFocusedTask(
             if (sortIndexWhenUnfocusPrevious !== undefined && sortIndexWhenUnfocusPrevious !== null) {
                 sortIndexForOldTask = sortIndexWhenUnfocusPrevious
             } else {
-                // Default behavior: try to restore calendar sortIndex or use generic
+                // Default behavior: hand the task an ordinary "just moved" sortIndex.
                 // Need to read the task data. If in a transaction (externalBatch exists), this read might need to be part of it or handled carefully.
                 // For simplicity here, we'll assume non-transactional read if not explicitly passed, or that externalBatch handles gets.
                 try {
@@ -1678,19 +1678,10 @@ export async function updateFocusedTask(
                         : await oldFocusedTaskRef.get()
 
                     if (oldFocusedTaskSnap.exists) {
-                        const oldFocusedTaskData = oldFocusedTaskSnap.data()
-                        if (oldFocusedTaskData.calendarData && oldFocusedTaskData.calendarData.start) {
-                            const oldCalStartTimeString =
-                                oldFocusedTaskData.calendarData.start.dateTime ||
-                                oldFocusedTaskData.calendarData.start.date
-                            sortIndexForOldTask = moment(oldCalStartTimeString).valueOf()
-                            // REMOVE LOGGING HERE
-                            // console.log(`[updateFocusedTask] Restoring calendar sortIndex for ${assignee.inFocusTaskId}: ${sortIndexForOldTask}`);
-                        } else {
-                            sortIndexForOldTask = generateSortIndex()
-                            // REMOVE LOGGING HERE
-                            // console.log(`[updateFocusedTask] Setting generic sortIndex for ${assignee.inFocusTaskId}: ${sortIndexForOldTask}`);
-                        }
+                        // AT-2259 - a task leaving focus rejoins the list at the top like any other
+                        // freshly moved task. It used to be dropped back onto its calendar event
+                        // start, which pinned it above everything in its group forever.
+                        sortIndexForOldTask = generateSortIndex()
                     } else {
                         // REMOVE LOGGING HERE
                         // console.warn(`[updateFocusedTask] Old focused task ${assignee.inFocusTaskId} not found for sortIndex update.`);
@@ -1885,14 +1876,9 @@ export async function setTaskAssignee(
 
     const newObserversIds = task.observersIds.filter(uid => uid !== newAssignee.uid)
 
-    // Determine the sortIndex based on whether it's a calendar task
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     if (task.userIds.length > 1) {
         // The task is in workflow, we need to reset the workflow back to open
@@ -2034,14 +2020,9 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
             isPublicFor.push(newAssignee.uid)
         }
 
-        // Determine the sortIndex based on whether it's a calendar task
-        let sortIndex
-        if (task.calendarData && task.calendarData.start) {
-            const { start } = task.calendarData
-            sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-        } else {
-            sortIndex = generateSortIndex()
-        }
+        // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+        // The event start lives in calendarData.start and is read from there where it is needed.
+        const sortIndex = generateSortIndex()
 
         if (task.userIds.length > 1) {
             // The task is in workflow, we need to reset the workflow back to open
@@ -2144,13 +2125,9 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     taskCopy.parentGoalIsPublicFor = null
     taskCopy.lockKey = ''
 
-    // Preserve the sortIndex for calendar tasks based on their start time
-    if (taskCopy.calendarData && taskCopy.calendarData.start) {
-        const { start } = taskCopy.calendarData
-        taskCopy.sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        taskCopy.sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    taskCopy.sortIndex = generateSortIndex()
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
@@ -2244,13 +2221,9 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
         }
     }
 
-    // Preserve the sortIndex for calendar tasks based on their start time
-    if (taskCopy.calendarData && taskCopy.calendarData.start) {
-        const { start } = taskCopy.calendarData
-        taskCopy.sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        taskCopy.sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    taskCopy.sortIndex = generateSortIndex()
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
@@ -2314,14 +2287,9 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
             }
           : task.goalSuggestion
 
-    // Determine the sortIndex based on whether it's a calendar task
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     const updateData = {
         parentGoalId: goalId,
@@ -2601,14 +2569,9 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
     const currentUserId = currentUser.uid
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
 
-    // Determine the sortIndex based on whether it's a calendar task
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     const commonFields = {
         sortIndex,
@@ -2859,14 +2822,9 @@ export async function moveTasksFromMiddleOfWorkflow(
         logDoneTasks(task.userId, loggedUser.uid, true)
     }
 
-    // Preserve the sortIndex for calendar tasks based on their start time
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     const taskUpdateData = {
         ...updateData,
@@ -3053,14 +3011,9 @@ export async function moveTasksFromOpen(
         await setTaskAssignee(projectId, task.id, loggedUserId, wormstream, loggedUser, task, false, batch)
     }
 
-    // Preserve the sortIndex for calendar tasks based on their start time
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     const taskUpdateData = {
         ...updateData,
@@ -3179,14 +3132,9 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         updateStatistics(projectId, userId, estimations[OPEN_STEP], true, false, task.completed, batch)
     }
 
-    // Preserve the sortIndex for calendar tasks based on their start time
-    let sortIndex
-    if (task.calendarData && task.calendarData.start) {
-        const { start } = task.calendarData
-        sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
-    } else {
-        sortIndex = generateSortIndex()
-    }
+    // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
+    // The event start lives in calendarData.start and is read from there where it is needed.
+    const sortIndex = generateSortIndex()
 
     const taskUpdateData = {
         ...updateData,
@@ -4515,15 +4463,9 @@ async function findAndSetNewFocusedTask(
             // This read is outside the batch write, which is fine for a get.
             const taskSnap = await previouslyFocusedTaskRef.get()
             if (taskSnap.exists) {
-                const taskData = taskSnap.data()
-                let newSortIndexForOldFocused
-                if (taskData.calendarData && taskData.calendarData.start) {
-                    const calStartTimeString = taskData.calendarData.start.dateTime || taskData.calendarData.start.date
-                    newSortIndexForOldFocused = moment(calStartTimeString).valueOf()
-                } else {
-                    newSortIndexForOldFocused = generateSortIndex()
-                }
-                batch.update(previouslyFocusedTaskRef, { sortIndex: newSortIndexForOldFocused })
+                // AT-2259 - see updateFocusedTask: leaving focus never restores the calendar event
+                // start, it hands the task an ordinary "just moved" sortIndex.
+                batch.update(previouslyFocusedTaskRef, { sortIndex: generateSortIndex() })
             }
         } catch (error) {
             console.error('Error fetching/updating sortIndex for previously focused task during clear focus:', error)
