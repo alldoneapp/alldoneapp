@@ -2647,5 +2647,8 @@
     "Could not save the default VM approval policy.": "Could not save the default VM approval policy.",
     "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.",
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.",
-    "Paste your OpenRouter API key (sk-or-…)": "Paste your OpenRouter API key (sk-or-…)"
+    "Paste your OpenRouter API key (sk-or-…)": "Paste your OpenRouter API key (sk-or-…)",
+    "Only objects I created": "Only objects I created",
+    "Hides objects created by other people": "Hides objects created by other people",
+    "Created by me": "Created by me"
 }
