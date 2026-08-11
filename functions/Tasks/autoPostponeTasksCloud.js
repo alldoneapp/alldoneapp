@@ -508,12 +508,16 @@ async function processUserAutoPostpone(userId, userData, now = Date.now()) {
 
     if (postponedFocusTask) {
         const timezoneOffset = getMomentInTimezone(now, timezoneContext).utcOffset()
+        // AT-2251: the task id is an exclusion, not a request for a random pick, and the write only
+        // lands while the focus is still that task — so a client that already swapped wins.
         await focusTaskService.findAndSetNewFocusTask(
             userId,
             postponedFocusTask.projectId,
             postponedFocusTask.parentGoalId,
             postponedFocusTask.taskId,
-            timezoneOffset
+            timezoneOffset,
+            null,
+            { expectedCurrentFocusTaskId: postponedFocusTask.taskId }
         )
     }
 

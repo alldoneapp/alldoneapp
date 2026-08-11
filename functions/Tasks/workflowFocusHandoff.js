@@ -121,12 +121,20 @@ const releaseFocusTaskForUser = async (userId, projectId, taskId, task, deps) =>
         console.warn('[workflowFocusHandoff] Could not resolve timezone, using UTC', { userId })
     }
 
+    // AT-2251: `taskId` is passed to keep the task that just left focus OUT of the candidate list —
+    // it is not a request for variety, and since this ticket it no longer reads as one. The
+    // `expectedCurrentFocusTaskId` guard makes the write conditional on the focus still being that
+    // task at commit time: selection costs many round trips, and the client runs its own handoff for
+    // the acting user in parallel, so without it this trigger routinely landed second and replaced
+    // the task the user was already looking at.
     const replacement = await focusTaskService.findAndSetNewFocusTask(
         userId,
         projectId,
         task.parentGoalId || null,
         taskId,
-        timezoneOffset
+        timezoneOffset,
+        null,
+        { expectedCurrentFocusTaskId: taskId }
     )
 
     if (!replacement) await focusTaskService.clearFocusTask(userId, taskId)

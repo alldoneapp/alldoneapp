@@ -202,7 +202,9 @@ describe('releaseFocusTaskOnWorkflowStepChange', () => {
             PROJECT_ID,
             'goal-1',
             TASK_ID,
-            expect.anything()
+            expect.anything(),
+            null,
+            { expectedCurrentFocusTaskId: TASK_ID }
         )
         // A replacement was found, so nothing needs clearing.
         expect(deps.focusTaskService.clearFocusTask).not.toHaveBeenCalled()
@@ -341,5 +343,104 @@ describe('getWorkflowFocusHandoffCandidates is governed by focus eligibility', (
 
         expect(candidates).toEqual(expect.arrayContaining([OWNER, REVIEWER_A]))
         expect(candidates).not.toContain(DONE_STEP)
+    })
+})
+
+/**
+ * AT-2251 — completing the focus task is the transition the ticket is about.
+ *
+ * The client picks the replacement optimistically the moment the checkbox is ticked, and this
+ * trigger picks one too. They must agree, and where they cannot, the client's pick — the one the
+ * user is already looking at — must win.
+ */
+describe('completing the focus task hands over deterministically (AT-2251)', () => {
+    const buildDeps = (usersById, { replacement = null } = {}) => {
+        const focusTaskService = {
+            findAndSetNewFocusTask: jest.fn().mockResolvedValue(replacement),
+            clearFocusTask: jest.fn().mockResolvedValue({ cleared: true }),
+        }
+        const database = {
+            doc: jest.fn(path => ({
+                get: jest.fn().mockResolvedValue({
+                    exists: !!usersById[path],
+                    data: () => usersById[path],
+                }),
+            })),
+        }
+        return { focusTaskService, database }
+    }
+
+    // Completing writes done:true and hands the task to the Done step, which is what makes the
+    // handoff fire at all (resolveWorkflowStepId maps done:true to DONE_STEP).
+    const completedTask = (overrides = {}) => ({
+        userId: OWNER,
+        userIds: [OWNER],
+        stepHistory: [OPEN_STEP],
+        currentReviewerId: 'Done',
+        done: true,
+        ...overrides,
+    })
+
+    it('asks for a replacement without requesting a random one', async () => {
+        const deps = buildDeps(
+            { [`users/${OWNER}`]: { inFocusTaskId: TASK_ID, timezoneOffset: 120 } },
+            { replacement: { id: 'next-task' } }
+        )
+
+        await releaseFocusTaskOnWorkflowStepChange(
+            PROJECT_ID,
+            TASK_ID,
+            openTask(),
+            completedTask({ parentGoalId: 'goal-1' }),
+            deps
+        )
+
+        const options = deps.focusTaskService.findAndSetNewFocusTask.mock.calls[0][6] || {}
+
+        // The completed task is excluded from the candidates, and that exclusion must NOT be read
+        // as "spread across the top 10" — that is what made this pick disagree with the client's.
+        expect(deps.focusTaskService.findAndSetNewFocusTask.mock.calls[0][3]).toBe(TASK_ID)
+        expect(options.spreadAcrossTopCandidates).toBeFalsy()
+    })
+
+    it('makes its write conditional on the focus not having moved on', async () => {
+        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } }, { replacement: { id: 'next-task' } })
+
+        await releaseFocusTaskOnWorkflowStepChange(PROJECT_ID, TASK_ID, openTask(), completedTask(), deps)
+
+        const options = deps.focusTaskService.findAndSetNewFocusTask.mock.calls[0][6] || {}
+        expect(options.expectedCurrentFocusTaskId).toBe(TASK_ID)
+    })
+
+    it('does nothing when the client already swapped the focus task before the trigger ran', async () => {
+        // The user's focus already points at the client's pick, so there is nothing to release.
+        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: 'client-already-picked-this' } })
+
+        const released = await releaseFocusTaskOnWorkflowStepChange(
+            PROJECT_ID,
+            TASK_ID,
+            openTask(),
+            completedTask(),
+            deps
+        )
+
+        expect(released).toEqual([])
+        expect(deps.focusTaskService.findAndSetNewFocusTask).not.toHaveBeenCalled()
+        expect(deps.focusTaskService.clearFocusTask).not.toHaveBeenCalled()
+    })
+
+    it('still clears the focus task when completing it leaves nothing to pick', async () => {
+        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } }, { replacement: null })
+
+        const released = await releaseFocusTaskOnWorkflowStepChange(
+            PROJECT_ID,
+            TASK_ID,
+            openTask(),
+            completedTask(),
+            deps
+        )
+
+        expect(released).toEqual([OWNER])
+        expect(deps.focusTaskService.clearFocusTask).toHaveBeenCalledWith(OWNER, TASK_ID)
     })
 })

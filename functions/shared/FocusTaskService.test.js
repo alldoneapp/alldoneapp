@@ -195,7 +195,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             currentProjectId,
-            expect.objectContaining({ id: 'general-1' })
+            expect.objectContaining({ id: 'general-1' }),
+            expect.any(Object)
         )
     })
 
@@ -215,7 +216,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             currentProjectId,
-            expect.objectContaining({ id: 'goal-1' })
+            expect.objectContaining({ id: 'goal-1' }),
+            expect.any(Object)
         )
     })
 
@@ -236,7 +238,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             currentProjectId,
-            expect.objectContaining({ id: 'same-goal' })
+            expect.objectContaining({ id: 'same-goal' }),
+            expect.any(Object)
         )
     })
 
@@ -304,7 +307,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             otherProjectId,
-            expect.objectContaining({ id: 'other-goal' })
+            expect.objectContaining({ id: 'other-goal' }),
+            expect.any(Object)
         )
     })
 
@@ -365,7 +369,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             currentProjectId,
-            expect.objectContaining({ id: 'goal-top' })
+            expect.objectContaining({ id: 'goal-top' }),
+            expect.any(Object)
         )
     })
 
@@ -453,7 +458,8 @@ describe('FocusTaskService general task priority', () => {
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             currentProjectId,
-            expect.objectContaining({ id: 'goal-top' })
+            expect.objectContaining({ id: 'goal-top' }),
+            expect.any(Object)
         )
     })
 })
@@ -674,5 +680,211 @@ describe('FocusTaskService.getCurrentFocusTask workflow-step eligibility (AT-219
 
         expect(result).not.toBeNull()
         expect(result.id).toBe('task-1')
+    })
+})
+
+/**
+ * AT-2251 — the frontend's optimistic focus task and the one the backend finally writes must be
+ * the same task.
+ *
+ * The frontend picker (getOptimisticNextFocusTask in utils/backends/Tasks/tasksFirestore.js) is
+ * deterministic: it takes the first task in display order. The backend was not, because
+ * `excludeTaskId` doubled as "pick randomly among the top 10 candidates" — a feature meant for the
+ * explicit "give me a DIFFERENT focus task" action that every replacement path inherited by
+ * accident, completing a focus task chief among them. The two could only agree by luck.
+ */
+describe('FocusTaskService deterministic replacement (AT-2251)', () => {
+    const userId = 'user-1'
+    const currentProjectId = 'project-1'
+    const completedTaskId = 'the-completed-focus-task'
+    const now = moment()
+    const dueToday = now.clone().subtract(1, 'hour').valueOf()
+
+    const baseTask = {
+        userId,
+        done: false,
+        inDone: false,
+        isSubtask: false,
+        userIds: [userId],
+        currentReviewerId: userId,
+        dueDate: dueToday,
+        priority: 'none',
+    }
+
+    // Several equally-ranked candidates: this is precisely the shape the old top-10 random pick
+    // scrambled, and the shape an ordinary "a few tasks due today" project has.
+    const candidates = [
+        { id: 'candidate-a', ...baseTask, sortIndex: 500 },
+        { id: 'candidate-b', ...baseTask, sortIndex: 400 },
+        { id: 'candidate-c', ...baseTask, sortIndex: 300 },
+        { id: 'candidate-d', ...baseTask, sortIndex: 200 },
+        { id: completedTaskId, ...baseTask, sortIndex: 900 },
+    ]
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: currentProjectId }]),
+        }))
+    })
+
+    const createService = ({ docs = {}, collections = {}, stubSet = true } = {}) => {
+        const service = new FocusTaskService({
+            database: createMockDatabase({
+                docs: {
+                    [`users/${userId}`]: {
+                        id: userId,
+                        defaultProjectId: currentProjectId,
+                        inFocusTaskId: completedTaskId,
+                        inFocusTaskProjectId: currentProjectId,
+                    },
+                    ...docs,
+                },
+                collections,
+            }),
+            moment,
+        })
+        if (stubSet) service.setNewFocusTask = jest.fn().mockResolvedValue(true)
+        return service
+    }
+
+    test('picks the same replacement every time after the previous focus task is completed', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+        const picked = new Set()
+
+        for (let run = 0; run < 25; run++) {
+            const service = createService({
+                collections: { [`items/${currentProjectId}/tasks`]: candidates },
+            })
+
+            // Exactly what workflowFocusHandoff does when the focus task is completed: the completed
+            // task is excluded from the candidate list, nothing more.
+            const result = await service.findAndSetNewFocusTask(
+                userId,
+                currentProjectId,
+                null,
+                completedTaskId,
+                null,
+                null,
+                { expectedCurrentFocusTaskId: completedTaskId }
+            )
+
+            picked.add(result.id)
+        }
+
+        // One answer, and it is the top of display order — the same task the client picks.
+        expect([...picked]).toEqual(['candidate-a'])
+        // Belt and braces: the selection never consulted the RNG at all.
+        expect(randomSpy).not.toHaveBeenCalled()
+        randomSpy.mockRestore()
+    })
+
+    test('excluding the completed task does not silently re-enable the random spread', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99)
+
+        const service = createService({
+            collections: { [`items/${currentProjectId}/tasks`]: candidates },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, completedTaskId)
+
+        // With the old behaviour a random() of 0.99 landed on the LAST of the top-10 candidates.
+        expect(result.id).toBe('candidate-a')
+        expect(randomSpy).not.toHaveBeenCalled()
+        randomSpy.mockRestore()
+    })
+
+    test('still spreads across top candidates when the caller explicitly asks for variety', async () => {
+        // The "give me a different focus task" action is the one place the randomness is the point,
+        // so it must survive this ticket rather than be removed along with the accident.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99)
+
+        const service = createService({
+            collections: { [`items/${currentProjectId}/tasks`]: candidates },
+        })
+
+        const result = await service.findAndSetNewFocusTask(
+            userId,
+            currentProjectId,
+            null,
+            completedTaskId,
+            null,
+            null,
+            { spreadAcrossTopCandidates: true }
+        )
+
+        expect(randomSpy).toHaveBeenCalled()
+        expect(result.id).toBe('candidate-d')
+        randomSpy.mockRestore()
+    })
+
+    test('never crosses a priority tier, spread or not', async () => {
+        const withPriority = [
+            { id: 'low-but-newest', ...baseTask, sortIndex: 900, priority: 'could_do' },
+            { id: 'must-do', ...baseTask, sortIndex: 100, priority: 'must_do' },
+            { id: completedTaskId, ...baseTask, sortIndex: 950 },
+        ]
+
+        const service = createService({ collections: { [`items/${currentProjectId}/tasks`]: withPriority } })
+        const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, completedTaskId)
+
+        expect(result.id).toBe('must-do')
+    })
+
+    test('stands down instead of overwriting a replacement the client already installed', async () => {
+        // The race this guard closes: the trigger confirmed the focus was still the completed task,
+        // then spent many round trips selecting, while the client finished its own handoff first.
+        // Landing second used to mean yanking the user off the task they were already looking at.
+        const service = createService({
+            stubSet: false,
+            docs: {
+                [`users/${userId}`]: {
+                    id: userId,
+                    defaultProjectId: currentProjectId,
+                    inFocusTaskId: 'already-chosen-by-the-client',
+                    inFocusTaskProjectId: currentProjectId,
+                },
+            },
+            collections: { [`items/${currentProjectId}/tasks`]: candidates },
+        })
+
+        const result = await service.findAndSetNewFocusTask(
+            userId,
+            currentProjectId,
+            null,
+            completedTaskId,
+            null,
+            null,
+            { expectedCurrentFocusTaskId: completedTaskId }
+        )
+
+        // No replacement installed. (The mock database has no batch(), so reaching the write at all
+        // would throw rather than quietly pass.)
+        expect(result).toBeNull()
+    })
+
+    test('still installs the replacement while the focus is untouched', async () => {
+        const service = createService({
+            collections: { [`items/${currentProjectId}/tasks`]: candidates },
+        })
+
+        const result = await service.findAndSetNewFocusTask(
+            userId,
+            currentProjectId,
+            null,
+            completedTaskId,
+            null,
+            null,
+            { expectedCurrentFocusTaskId: completedTaskId }
+        )
+
+        expect(result.id).toBe('candidate-a')
+        expect(service.setNewFocusTask).toHaveBeenCalledWith(
+            userId,
+            currentProjectId,
+            expect.objectContaining({ id: 'candidate-a' }),
+            { expectedPreviousFocusTaskId: completedTaskId }
+        )
     })
 })
