@@ -9,7 +9,8 @@ import ChatItemUnreadMessage from './ChatItemUnreadMessage'
 import { getTimestampInMilliseconds, onOpenChat } from './Utils/ChatHelper'
 import SharedHelper from '../../utils/SharedHelper'
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
-import { getNewEmailCommentIds } from './ChatDV/linkedEmailActions'
+import { getLinkedEmailsFromMessages, getNewEmailCommentIds } from './ChatDV/linkedEmailActions'
+import { useRegisterUnreadLinkedEmails, useUnreadEmailArchiveContext } from './unreadEmailArchiveContext'
 
 // How many unread messages a single row previews in full. A topic that has been running unattended
 // can hold dozens of long assistant answers, and "All Projects" stacks every project's rows on one
@@ -69,7 +70,13 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     // AT-2256), so the live set is read straight from the same helper the thread's hook uses.
     const newEmailCommentIds = new Set(getNewEmailCommentIds(chatNotifications))
 
-    const { archiveLinkedEmails, isArchivingEmail, isArchivedEmail } = useLinkedEmailArchive()
+    // One archive state for the whole chat list when the list provides one (AT-2256 follow-up), so
+    // the bulk "Archive emails" buttons on the project and All Projects lines and every per-message
+    // button agree on what is in flight and what is already archived. A preview mounted outside
+    // that provider keeps its own state and behaves exactly as before.
+    const sharedArchive = useUnreadEmailArchiveContext()?.archive
+    const localArchive = useLinkedEmailArchive()
+    const { archiveLinkedEmails, isArchivingEmail, isArchivedEmail } = sharedArchive || localArchive
 
     useEffect(() => {
         const interval = setInterval(() => setNow(Date.now()), SERVER_TIME_REFRESH_MS)
@@ -79,22 +86,17 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     const serverTime = resolvePreviewServerTime(messages, now)
     const { hiddenCount, visibleMessages } = splitUnreadMessagesForPreview(messages)
 
+    // What the bulk buttons act on: the emails behind the messages this row actually *previews*,
+    // not every unread message of the topic - the capped-away ones are not on screen, and a header
+    // button that archived emails the user cannot see would be a different, sharper action.
+    // Published only for a project member, which is what gates the bulk buttons for everyone else.
+    const previewedLinkedEmails = accessGranted ? getLinkedEmailsFromMessages(visibleMessages) : []
+    useRegisterUnreadLinkedEmails(`${project.id}:${chat.id}`, project.id, previewedLinkedEmails)
+
     if (visibleMessages.length === 0) return null
 
     return (
         <View style={localStyles.container}>
-            {hiddenCount > 0 && (
-                // The capped-away messages are still unread, so this is the one affordance that
-                // must lead into the topic - reading them anywhere else is not possible.
-                <TouchableOpacity onPress={() => onOpenChat(project.id, chat)} accessible={false}>
-                    <Text style={localStyles.hiddenCount}>
-                        {translate(
-                            hiddenCount === 1 ? 'One earlier unread message' : 'Amount earlier unread messages',
-                            { amount: hiddenCount }
-                        )}
-                    </Text>
-                </TouchableOpacity>
-            )}
             {visibleMessages.map(message => (
                 <ChatItemUnreadMessage
                     key={message.id}
@@ -110,6 +112,21 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
                     onArchiveLinkedEmail={archiveLinkedEmails}
                 />
             ))}
+            {hiddenCount > 0 && (
+                // Sits *below* the previewed messages: they are the newest ones, so what this line
+                // points at is what comes before them, and reading order stays "older above,
+                // newer below" exactly as in the thread. The capped-away messages are still unread,
+                // so this is the one affordance that must lead into the topic - reading them
+                // anywhere else is not possible.
+                <TouchableOpacity onPress={() => onOpenChat(project.id, chat)} accessible={false}>
+                    <Text style={localStyles.hiddenCount}>
+                        {translate(
+                            hiddenCount === 1 ? 'One earlier unread message' : 'Amount earlier unread messages',
+                            { amount: hiddenCount }
+                        )}
+                    </Text>
+                </TouchableOpacity>
+            )}
         </View>
     )
 }
@@ -128,7 +145,7 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         // Reads as the link it is: the only way to reach the unread messages the cap hid.
         color: colors.Primary100,
-        marginTop: 4,
-        marginBottom: 2,
+        // Below the previewed messages now, so it needs the gap above it rather than below.
+        marginTop: 6,
     },
 })

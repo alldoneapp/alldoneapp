@@ -18,6 +18,8 @@ import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 import MarkAsRead from './MarkAsRead'
 import ChatFiltersLine from './ChatFiltersLine'
+import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
+import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -109,45 +111,64 @@ function ChatsView() {
     }, [chatsActiveTab, selectedProjectIndex])
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                inAllProjects && localStyles.containerSpace,
-                smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
-            ]}
-        >
-            {inAllProjects && (
-                <AllProjectsLine
-                    showActions={false}
-                    customRight={<MarkAsRead projectIds={sortedProjectIds} userId={loggedUserId} />}
-                />
-            )}
+        // Holds the chat list's shared linked-email archive state and the registry of which emails
+        // the unread previews are showing, so the bulk archive buttons on the project lines and on
+        // the All Projects line act on exactly what is on screen - deduplicated, and through the
+        // same archive call the per-message button uses. Wrapping here (rather than inside the
+        // list) keeps the state out of ChatsView itself: `children` keeps its identity across the
+        // provider's own re-renders, so a registration re-renders only the buttons that read it.
+        <UnreadEmailArchiveProvider>
+            <View
+                style={[
+                    localStyles.container,
+                    inAllProjects && localStyles.containerSpace,
+                    smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
+                ]}
+            >
+                {inAllProjects && (
+                    <AllProjectsLine
+                        showActions={false}
+                        customRight={
+                            <View style={localStyles.allProjectsActions}>
+                                {/* Archives the emails behind every project's previewed unread
+                                    messages, each one exactly once. */}
+                                <ArchiveUnreadEmailsButton containerStyle={localStyles.archiveEmailsInline} />
+                                <MarkAsRead projectIds={sortedProjectIds} userId={loggedUserId} />
+                            </View>
+                        }
+                    />
+                )}
 
-            <HashtagFiltersView />
+                <HashtagFiltersView />
 
-            <ChatFiltersLine projectIds={filteredProjectIds} unreadOnly={unreadOnly} setUnreadOnly={setUnreadOnly} />
-
-            {inSelectedProject ? (
-                <ChatsByProject
-                    project={loggedUserProjects[selectedProjectIndex]}
-                    setChatXProject={setAreThereChats}
+                <ChatFiltersLine
+                    projectIds={filteredProjectIds}
                     unreadOnly={unreadOnly}
+                    setUnreadOnly={setUnreadOnly}
                 />
-            ) : (
-                <>
-                    {!Object.values(areThereChats).includes(true) && <NothingToShowOnChats isInChats />}
-                    {sortedProjects.map(project => (
-                        <ChatsByProject
-                            key={project.id}
-                            project={project}
-                            isInAllProjects
-                            setChatXProject={setAreThereChats}
-                            unreadOnly={unreadOnly}
-                        />
-                    ))}
-                </>
-            )}
-        </View>
+
+                {inSelectedProject ? (
+                    <ChatsByProject
+                        project={loggedUserProjects[selectedProjectIndex]}
+                        setChatXProject={setAreThereChats}
+                        unreadOnly={unreadOnly}
+                    />
+                ) : (
+                    <>
+                        {!Object.values(areThereChats).includes(true) && <NothingToShowOnChats isInChats />}
+                        {sortedProjects.map(project => (
+                            <ChatsByProject
+                                key={project.id}
+                                project={project}
+                                isInAllProjects
+                                setChatXProject={setAreThereChats}
+                                unreadOnly={unreadOnly}
+                            />
+                        ))}
+                    </>
+                )}
+            </View>
+        </UnreadEmailArchiveProvider>
     )
 }
 
@@ -163,6 +184,13 @@ const localStyles = StyleSheet.create({
     },
     containerTablet: {
         marginHorizontal: 56,
+    },
+    allProjectsActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    archiveEmailsInline: {
+        marginRight: 8,
     },
 })
 
