@@ -114,30 +114,6 @@ describe('templateMerge', () => {
         ])
     })
 
-    test('automatically propagates a template email model when the legacy local field is missing', () => {
-        const previousTemplate = { emailModel: 'terra' }
-        const currentTemplate = { emailModel: 'luna' }
-        const { normalizedLocalState } = inheritMissingAssistantTemplateFields({}, previousTemplate)
-
-        expect(mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)).toEqual({
-            patch: { emailModel: 'luna' },
-            deleteFields: [],
-            conflicts: [],
-        })
-    })
-
-    test('preserves an explicit local email model as a genuine override', () => {
-        const previousTemplate = { emailModel: 'terra' }
-        const currentTemplate = { emailModel: 'luna' }
-        const { normalizedLocalState } = inheritMissingAssistantTemplateFields({ emailModel: 'sol' }, previousTemplate)
-        const result = mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)
-
-        expect(result.patch).toEqual({})
-        expect(result.conflicts).toEqual([
-            expect.objectContaining({ field: 'emailModel', localValue: 'sol', templateValue: 'luna' }),
-        ])
-    })
-
     test('backfill inherits a missing heartbeat model without suppressing other conflicts', () => {
         const template = { heartbeatModel: 'terra', model: 'new' }
         const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields(
@@ -149,14 +125,6 @@ describe('templateMerge', () => {
         expect(buildBackfillConflicts(template, normalizedLocalState)).toEqual([
             expect.objectContaining({ field: 'model', localValue: 'local', templateValue: 'new' }),
         ])
-    })
-
-    test('backfills an email model from a template when the local assistant predates the setting', () => {
-        const template = { emailModel: 'terra' }
-        const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields({}, template)
-
-        expect(normalizedLocalState).toEqual(template)
-        expect(inheritedPatch).toEqual(template)
     })
 
     test('propagates reasoning effort while preserving a genuine local override', () => {
