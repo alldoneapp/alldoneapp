@@ -29,7 +29,7 @@
  -->
         <meta
             name="viewport"
-            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content"
+            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no"
         />
         <meta
             viewport="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -139,25 +139,6 @@
                 flex-grow: 1;
                 display: flex;
                 flex: 1;
-            }
-
-            /* Mobile virtual keyboard (AT-2248). See the identical block in
-               web-bundler/index.html (the deployed template): the shell is
-               shrunk by the strip the keyboard covers, which utils/
-               virtualKeyboard.js measures with `visualViewport` and publishes as
-               --app-keyboard-inset, so inner scrollers can reveal the focused
-               input with a minimal correction. Only <html> takes the
-               subtraction (body and #root resolve 100% against it), and
-               min-height must be released or it would override the height. */
-            html.app-keyboard-open {
-                height: calc(100% - var(--app-keyboard-inset, 0px));
-                min-height: 0;
-            }
-
-            html.app-keyboard-open body,
-            html.app-keyboard-open #root {
-                height: 100%;
-                min-height: 0;
             }
 
             html {
