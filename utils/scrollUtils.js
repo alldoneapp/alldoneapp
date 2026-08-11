@@ -76,20 +76,40 @@ export const revealElementInScrollParent = (element, padding = 0) => {
     const scroller = findScrollParent(element)
     if (!scroller) return 0
 
-    const elementRect = element.getBoundingClientRect()
-    const scrollerRect = scroller.getBoundingClientRect()
-    if (!elementRect.height && !elementRect.width) return 0
+    return revealRectInScrollParent(scroller, element.getBoundingClientRect(), padding)
+}
 
+/**
+ * The rect-level half of `revealElementInScrollParent`, split out so a caller can
+ * reveal something that is not an element: the CARET of a multiline or
+ * contenteditable input (AT-2248). A tall Quill composer can be fully visible
+ * while the line being typed on is under the virtual keyboard, so the mobile
+ * keyboard handler follows the caret rect instead of the input's box.
+ *
+ * Same guarantees as the element version, which are the whole point of not using
+ * `scrollIntoView`: it moves by the smallest amount that makes `rect` fit, only
+ * ever toward it, never past it, never at all when it already fits, and never
+ * walks up beyond the one scroller it was given. Applied by assignment rather
+ * than `scrollTo`, so `scroll-behavior: smooth` cannot animate the correction.
+ *
+ * @returns the number of pixels actually scrolled (0 when nothing was needed).
+ */
+export const revealRectInScrollParent = (scroller, rect, padding = 0) => {
+    if (typeof window === 'undefined' || !scroller || !rect) return 0
+    if (typeof scroller.getBoundingClientRect !== 'function') return 0
+    if (!rect.height && !rect.width) return 0
+
+    const scrollerRect = scroller.getBoundingClientRect()
     const visibleTop = scrollerRect.top + padding
     const visibleBottom = scrollerRect.top + scroller.clientHeight - padding
 
     let delta = 0
-    if (elementRect.bottom > visibleBottom) {
-        // Never push the top out of view in order to reveal the bottom: an
-        // element taller than the visible area is aligned to the top instead.
-        delta = Math.min(elementRect.bottom - visibleBottom, Math.max(0, elementRect.top - visibleTop))
-    } else if (elementRect.top < visibleTop) {
-        delta = elementRect.top - visibleTop
+    if (rect.bottom > visibleBottom) {
+        // Never push the top out of view in order to reveal the bottom: a rect
+        // taller than the visible area is aligned to the top instead.
+        delta = Math.min(rect.bottom - visibleBottom, Math.max(0, rect.top - visibleTop))
+    } else if (rect.top < visibleTop) {
+        delta = rect.top - visibleTop
     }
     if (!delta) return 0
 

@@ -45,39 +45,6 @@ export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
         )
         .map(({ chatId }) => chatId)
 
-/**
- * The unread notifications of a single chat, oldest first, for the preview under a topic (AT-2256).
- *
- * Deliberately reproduces the row badge's own rule - `totalFollowed || totalUnfollowed`, i.e.
- * followed if there are any, otherwise unfollowed - rather than merging both sets. A user who
- * started following a topic part-way through has both kinds, and merging them would preview more
- * messages than the number printed next to them, which reads as a bug in the count.
- *
- * The tab still constrains it: the Followed tab never previews unfollowed notifications, matching
- * `isUnreadChat`. Deciding on the counters rather than the arrays keeps it aligned with the badge
- * even for legacy notification docs that carry no `commentId` - those are dropped here, because
- * there is no comment for them to point at, but they must not flip the choice of set.
- */
-export const getUnreadNotifications = (chatNotifications, chatsActiveTab) => {
-    if (!chatNotifications) return []
-
-    const usesFollowed = (chatNotifications.totalFollowed || 0) > 0
-    let notifications = []
-
-    if (usesFollowed) {
-        notifications = chatNotifications.followedNotifications || []
-    } else if (chatsActiveTab === ALL_TAB) {
-        notifications = chatNotifications.unfollowedNotifications || []
-    }
-
-    return notifications
-        .filter(notification => !!notification?.commentId)
-        .sort((a, b) => (Number(a.date) || 0) - (Number(b.date) || 0))
-}
-
-export const getUnreadCommentIds = (chatNotifications, chatsActiveTab) =>
-    getUnreadNotifications(chatNotifications, chatsActiveTab).map(({ commentId }) => commentId)
-
 export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActiveTab) =>
     Object.keys(chatsByDate).reduce((filteredChats, date) => {
         const unreadChats = chatsByDate[date].filter(chat =>
