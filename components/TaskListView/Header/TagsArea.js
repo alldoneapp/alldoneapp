@@ -92,8 +92,12 @@ export default function TagsArea({
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
+        alignItems: 'center',
         height: 24,
         maxHeight: 24,
+        // Same rule as the other project-line action clusters: the title block on the left is the
+        // one that gives way, so these controls are never squashed on narrow screens (AT-2263).
+        flexShrink: 0,
     },
     workflowIndicator: {
         height: 24,

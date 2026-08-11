@@ -202,6 +202,9 @@ const localStyles = StyleSheet.create({
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
+        // The actions keep their intrinsic width; the project/user title on the left is the
+        // flexible side, so it truncates instead of the buttons overlapping it (AT-2263).
+        flexShrink: 0,
     },
     markAsReadInline: {
         marginRight: 8,

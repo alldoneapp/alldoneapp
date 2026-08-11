@@ -1,10 +1,8 @@
 import React, { useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
-import Icon from '../Icon'
-import global, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { useUnreadLinkedEmailsScope } from './unreadEmailArchiveContext'
+import ProjectLineActionButton from './ProjectLineActionButton'
 
 /**
  * Archives, in one press, every linked email the chat list is currently previewing in its scope:
@@ -53,60 +51,20 @@ export default function ArchiveUnreadEmailsButton({ projectId, containerStyle })
     if (linkedEmails.length === 0) return null
 
     return (
-        <TouchableOpacity
-            accessibilityLabel={translate(error ? "Emails couldn't be archived. Try again" : label)}
-            accessibilityRole="button"
-            accessibilityState={{ busy: loading, disabled }}
-            style={[
-                localStyles.container,
-                disabled && localStyles.disabled,
-                error && localStyles.errorContainer,
-                containerStyle,
-            ]}
-            onPress={archiveEmails}
-            disabled={disabled}
-        >
-            {loading || archivingElsewhere ? (
-                <ActivityIndicator size="small" color={colors.Text03} />
-            ) : (
-                <Icon
-                    name={completed ? 'check' : 'archive'}
-                    size={16}
-                    color={error ? colors.UtilityRed200 : colors.Text03}
-                />
+        <ProjectLineActionButton
+            icon={completed ? 'check' : 'archive'}
+            label={translate(error ? 'try again' : completed ? 'Archived' : label)}
+            // The icon-only variant has no room for "try again"/"Archived", so the state has to be
+            // readable from the accessible name itself - hence the full sentence on failure, and
+            // "Archived" rather than the base label once the check icon has replaced the box.
+            accessibilityLabel={translate(
+                error ? "Emails couldn't be archived. Try again" : completed ? 'Archived' : label
             )}
-            <Text style={[localStyles.text, error && localStyles.errorText]} numberOfLines={1}>
-                {translate(error ? 'try again' : completed ? 'Archived' : label)}
-            </Text>
-        </TouchableOpacity>
+            loading={loading || archivingElsewhere}
+            error={error}
+            disabled={disabled}
+            onPress={archiveEmails}
+            containerStyle={containerStyle}
+        />
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 4,
-        borderColor: colors.Text03,
-        borderWidth: 1,
-        height: 28,
-        paddingVertical: 0,
-        paddingLeft: 6,
-        paddingRight: 10,
-    },
-    text: {
-        ...global.caption1,
-        color: colors.Text03,
-        marginLeft: 6,
-        flexShrink: 0,
-    },
-    disabled: {
-        opacity: 0.6,
-    },
-    errorContainer: {
-        borderColor: colors.UtilityRed200,
-    },
-    errorText: {
-        color: colors.UtilityRed200,
-    },
-})
