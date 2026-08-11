@@ -21,7 +21,6 @@ const {
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
 const { isTaskOnUserPlate } = require('./focusTaskEligibility')
-const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
 
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
@@ -31,14 +30,9 @@ const NOT_PARENT_GOAL_INDEX = '0'
 // next focus when a higher-priority one exists.
 const TASK_PRIORITY_RANK = { none: 0, do_later: 1, could_do: 2, should_do: 3, must_do: 4 }
 const getTaskPriorityRank = priority => TASK_PRIORITY_RANK[priority] || 0
-// AT-2259 - these tasks come straight from `doc.data()`, so a calendar task written before the fix
-// still carries the event start in sortIndex. Left raw it would outrank everything and the next
-// focus would jump to a meeting that is nowhere near the top of the list the user is looking at.
-// (The deliberate imminent-meeting preference is a separate, explicit rule - see AT-2251.)
-const getComparableSortIndex = task => resolveTaskSortIndex(task.sortIndex, task.calendarData, task.created) || 0
 const compareTasksByPriorityThenSortIndex = (a, b) => {
     const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
-    return priorityDiff !== 0 ? priorityDiff : getComparableSortIndex(b) - getComparableSortIndex(a)
+    return priorityDiff !== 0 ? priorityDiff : (b.sortIndex || 0) - (a.sortIndex || 0)
 }
 
 class FocusTaskService {

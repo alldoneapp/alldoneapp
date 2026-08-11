@@ -150,3 +150,63 @@ Three details are load-bearing:
   16px more because the editor card carries a bottom margin, which is empty spacing the user
   does not need to see. The measurement is derived from the DOM rather than a `testID` the
   fix adds, so the same run works against the pre-fix code — where all 12 cases fail.
+
+### `at2257/` — Escape must close the Search popup (and every other popup)
+
+> "Search Popup: I should be able to press ESC on this popup (and all others) to close it
+> again."
+
+The Escape branch in `GlobalSearchModal.onKeyDown` was written in 2021 and had never once
+run. The cause is one line in a dependency:
+
+```js
+// react-native-web/dist/exports/TextInput/index.js
+function handleKeyDown(e) {
+    // Prevent key events bubbling (see #612)
+    e.stopPropagation()
+```
+
+react-native-web's `TextInput` stops propagation of **every** keydown, and React 18 attaches
+its synthetic listeners at the **root container** rather than at `document` — so the native
+event dies inside the app tree. Every Escape-to-close listener in this codebase sits on
+`document` or `window` in the **bubble** phase (~116 hand-rolled sites, `react-dismissible`'s
+`escape` prop, `react-tiny-popover`'s `onKeyDown`, `react-hot-keys`), so all of them are dead
+whenever a field has focus — which, for a modal that autofocuses its input, is always.
+
+Why a browser test: this is a DOM event-propagation defect. Reproducing it needs a real key
+event travelling through a real React root at real focus. In jsdom every layer involved
+(react-native-web, React's root delegation, the browser's capture/bubble phases) would have
+to be a double, and the bug lives precisely in how those layers compose — the AT-2178
+cautionary tale in reverse. The unit suites (`utils/escapeStack.test.js`,
+`hooks/useEscapeKey.test.js`) pin the dispatcher's _logic_; this pins that it fires at all.
+
+`run.js` renders the real `GlobalSearchModal` the way `GlobalModalsContainerApp` mounts it —
+gated on the real `showGlobalSearchPopup` redux flag, so "closed" means the component
+genuinely unmounted — and presses Escape with the real keyboard, on desktop and mobile
+viewports:
+
+- Escape closes the popup **while the search field has focus** (the reported bug);
+- Escape still closes it with focus outside the field (the one case that already worked);
+- Escape after typing is not eaten by `SearchForm`'s early-keystroke buffer;
+- nested: the first Escape closes **only** the project picker and leaves the search popup up,
+  the second closes the popup;
+- the `ModalsManager` registry is left clean, so the next popup is not blocked by a ghost.
+
+Three details are load-bearing:
+
+- **`initFirebase()` must run.** Without it `watchUserProjects` / `getAllUserProjects` throw
+  inside the modal's mount effects and React unwinds the tree before it renders — the popup
+  never exists and every case fails for the wrong reason.
+- **Wait out `SearchForm`'s focus retry.** It re-focuses the field on a 50ms interval for
+  500ms after mount; pressing Escape earlier can land while focus is still on `body`, which
+  is the one state where the bug does _not_ reproduce.
+- **The nested picker is mounted directly**, not opened through the scope row: that row is
+  `disabled` until `getAllUserProjects` returns and the harness has no backend. Both
+  components are still the real ones and register on the real stack in the real order, which
+  is the whole contract under test.
+
+Verified against three builds: with no fix, 10 of the 16 cases fail (the only behavioural
+case that passes is "focus outside the field" — exactly the diagnosis). With the dispatcher
+installed but no component converted, the untouched 2021 handler works again and only the
+nested cases fail, which is what demonstrates the legacy bridge repairs the other ~116 popups
+without editing them. With the full fix, all 16 pass.
