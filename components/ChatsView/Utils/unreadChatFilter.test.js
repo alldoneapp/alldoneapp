@@ -3,6 +3,7 @@ import {
     filterChatsByUnread,
     filterStickyChatsByUnread,
     getUnreadChatIds,
+    getUnreadCommentIds,
     getUnreadThreadCount,
     isUnreadChat,
 } from './unreadChatFilter'
@@ -75,5 +76,36 @@ describe('unread chat filtering', () => {
             20260720: [{ id: 'followed' }],
         })
         expect(filterStickyChatsByUnread(stickyChats, notifications, ALL_TAB)).toEqual([{ id: 'unfollowed' }])
+    })
+})
+
+describe('getUnreadCommentIds', () => {
+    const chatNotifications = {
+        totalFollowed: 2,
+        totalUnfollowed: 1,
+        followedNotifications: [
+            { commentId: 'f2', date: 300 },
+            { commentId: 'f1', date: 100 },
+        ],
+        unfollowedNotifications: [{ commentId: 'u1', date: 200 }],
+    }
+
+    it('returns every unread comment oldest first on the All tab', () => {
+        expect(getUnreadCommentIds(chatNotifications, ALL_TAB)).toEqual(['f1', 'u1', 'f2'])
+    })
+
+    it('ignores unfollowed notifications on the Followed tab, matching isUnreadChat', () => {
+        expect(getUnreadCommentIds(chatNotifications, FOLLOWED_TAB)).toEqual(['f1', 'f2'])
+    })
+
+    it('drops legacy notifications that carry no comment id', () => {
+        expect(
+            getUnreadCommentIds({ followedNotifications: [{ date: 1 }, { commentId: 'f1', date: 2 }] }, ALL_TAB)
+        ).toEqual(['f1'])
+    })
+
+    it('returns nothing for a chat with no notifications at all', () => {
+        expect(getUnreadCommentIds(undefined, ALL_TAB)).toEqual([])
+        expect(getUnreadCommentIds({ totalFollowed: 0, totalUnfollowed: 0 }, ALL_TAB)).toEqual([])
     })
 })

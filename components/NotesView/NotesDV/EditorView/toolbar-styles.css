@@ -137,19 +137,8 @@
 .ql-editor h6 {
     counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
-/* AT-2254: a numbered list must restart at 1 unless it directly continues an
-   ordered list. Quill 2's ListContainer only ever accepts ListItem children
-   (ListContainer.allowedChildren = [ListItem]), so ANY other block -- a
-   paragraph, heading, blockquote, code block, markdown table, divider or image
-   -- necessarily splits the list into a second <ol>. Resetting the counter on
-   the container therefore covers every possible separator, where the previous
-   `p, h1..h6` rule above covered only two of them and let a list that was
-   interrupted by anything else keep counting (1..6 at the top of a note, then
-   7.. much further down). Kept alongside that rule rather than replacing it:
-   it is what stock quill ships, and it costs nothing. */
 .ql-editor ol {
     padding-left: 7.4px; /*Previous value was 0.25em*/
-    counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
 .ql-editor li {
     list-style-type: none;
@@ -199,28 +188,6 @@
 }
 .ql-editor li[data-list] {
     counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-}
-/* AT-2254: the one separator that does NOT split the <ol>. Quill 2 keeps
-   bullets, checkboxes and numbers in a single container and distinguishes them
-   only by li[data-list], so a bulleted or checklist run between two numbered
-   runs leaves them in the same <ol> and the container reset above never fires.
-   `counter-set` is deliberate: it touches list-0 alone, so it cannot collide
-   with the list-1..list-9 `counter-reset` cascade above and in the indent chain
-   below (same property + equal specificity would drop the nested resets). */
-.ql-editor li[data-list='bullet'],
-.ql-editor li[data-list='checked'],
-.ql-editor li[data-list='unchecked'] {
-    counter-set: list-0 0;
-}
-/* Safari < 17.2 has no counter-set. Falling back to counter-reset re-introduces
-   the collision described above, so an INDENTED bullet loses its list-1..list-9
-   reset there; top-level separation -- the reported bug -- still works. */
-@supports not (counter-set: none) {
-    .ql-editor li[data-list='bullet'],
-    .ql-editor li[data-list='checked'],
-    .ql-editor li[data-list='unchecked'] {
-        counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-    }
 }
 .ql-editor li[data-list='ordered'] {
     counter-increment: list-0;
