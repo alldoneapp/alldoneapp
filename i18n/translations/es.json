@@ -2069,6 +2069,9 @@
     "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "No tienes suficiente Oro para transcribir este audio. Por favor actualiza o compra más Oro.",
     "Transcribe": "Transcribir",
     "Stop": "Parar",
+    "Stop assistant": "Parar asistente",
+    "Stopping assistant": "Parando…",
+    "Could not stop assistant": "No se pudo parar el asistente: {{error}}",
     "Please ensure you share audio when selecting the screen/tab.": "Asegúrese de compartir el audio al seleccionar la pantalla/pestaña.",
     "transcription_active_banner": "Transcripción activa. Mantenga la pestaña en primer plano",
     "transcription_header": "Transcripción",
@@ -2595,7 +2598,5 @@
     "Could not save the default VM approval policy.": "No se pudo guardar la política de aprobación de VM predeterminada.",
     "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Elige una ruta para este proveedor. Con tu propia clave API, OpenRouter factura el uso del modelo directamente en tu cuenta y no cuesta Gold por tokens; Alldone Gold usa la clave de OpenRouter de Alldone y cobra Gold por cada token del modelo. El cargo base de 20 Gold y 10 Gold por cada minuto de VM iniciado se aplican a ambas rutas.",
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Se usa cuando eliges un modelo de DeepSeek u otro de OpenRouter para el entorno de Codex. Tu clave se valida con OpenRouter antes de guardarse.",
-    "Paste your OpenRouter API key (sk-or-…)": "Pega tu clave API de OpenRouter (sk-or-…)",
-    "One earlier unread message": "1 mensaje anterior sin leer",
-    "Amount earlier unread messages": "%{amount} mensajes anteriores sin leer"
+    "Paste your OpenRouter API key (sk-or-…)": "Pega tu clave API de OpenRouter (sk-or-…)"
 }

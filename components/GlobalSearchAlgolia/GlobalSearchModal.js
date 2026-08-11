@@ -58,7 +58,6 @@ import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
-import useEscapeKey from '../../hooks/useEscapeKey'
 
 const getProjectAccessIds = (loggedUser, projectId) => {
     if (loggedUser.isAnonymous) return [FEED_PUBLIC_FOR_ALL]
@@ -308,7 +307,9 @@ export default function GlobalSearchModal() {
 
     const onKeyDown = event => {
         const { key } = event
-        if (key === 'Enter') {
+        if (key === 'Escape') {
+            hidePopup()
+        } else if (key === 'Enter') {
             if (projects.length > 0) {
                 if (localText.trim() && (searchInputRef.current.isFocused() || activeItemData.activeIndex === -1)) {
                     onSearch()
@@ -504,15 +505,6 @@ export default function GlobalSearchModal() {
             resetNotesAmounts(),
         ])
     }
-
-    // Escape closes the popup (AT-2257). This cannot be a branch in the
-    // `document` keydown listener above: the search field is autofocused and
-    // re-focused on an interval, and react-native-web's TextInput stops
-    // propagation of every keydown, so that listener never receives Escape while
-    // the field has focus — which is always. The stack listens in the capture
-    // phase instead, and being LIFO it also means the project picker opened from
-    // the scope row closes itself first, leaving this popup open.
-    useEscapeKey(hidePopup)
 
     // The backdrop covers the whole viewport — including the Search control that
     // opened this modal — from the first frame. A press the browser had already
