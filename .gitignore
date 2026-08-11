@@ -379,6 +379,3 @@ browser-tests/**/.build/
 
 # Locally generated dev TLS cert (mkcert-signed), never committed
 web-bundler/certs/
-
-# Claude Code local state (agent worktrees, launch config, scratch)
-.claude/

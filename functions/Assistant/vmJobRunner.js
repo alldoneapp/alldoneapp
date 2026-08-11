@@ -1133,7 +1133,7 @@ async function writeStatusComment(
         console.warn('🖥️ VM JOB: Cannot create fallback status comment without originating assistant', {
             correlationId: pendingWebhook.correlationId,
         })
-        return false
+        return
     }
 
     try {
@@ -1148,7 +1148,7 @@ async function writeStatusComment(
             correlationId: pendingWebhook.correlationId,
             error: error.message,
         })
-        return false
+        return
     }
 
     // Keep the chat object / parent object comment preview in sync and emit the
@@ -1185,7 +1185,6 @@ async function writeStatusComment(
             })
         }
     }
-    return true
 }
 
 /**
@@ -3654,7 +3653,6 @@ async function refundVmJob(pendingWebhook, reason, extraGold = 0) {
         const { refundGold } = require('../Gold/goldHelper')
         await refundGold(pendingWebhook.userId, amount, {
             source: VM_JOB_GOLD_REFUND_SOURCE,
-            idempotencyKey: `vm_job_refund:${pendingWebhook.correlationId}`,
             channel: 'assistant',
             projectId: pendingWebhook.projectId,
             objectId: pendingWebhook.objectId,
