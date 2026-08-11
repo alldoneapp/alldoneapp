@@ -47,12 +47,8 @@ import {
 import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
 import { isAssistantEnabledScopeMatch } from '../Utils/assistantEnabledScope'
 import { ASSISTANT_LOADING_TIMEOUT_MS, resolveEffectiveMessageLoading } from './EditorView/messageLoadingState'
-import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
-import {
-    getLinkedEmailFromMessage,
-    getLinkedEmailsFromMessages,
-    groupLinkedEmailsByConnection,
-} from './linkedEmailActions'
+import { getLinkedEmailFromMessage, getLinkedEmailsFromMessages } from './linkedEmailActions'
+import useLinkedEmailArchive from './useLinkedEmailArchive'
 import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
@@ -88,9 +84,9 @@ export default function ChatBoard({
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
-    const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
-    const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
     const [archivingAllEmails, setArchivingAllEmails] = useState(false)
+    // Shared with the chat list's unread previews (AT-2256) so both archive the same way.
+    const { archivingEmailKeys, archivedEmailKeys, archiveLinkedEmails } = useLinkedEmailArchive()
     const scrollViewRef = useRef()
     const lastScrollPositionRef = useRef(0)
     const contentHeightRef = useRef(0)
@@ -148,30 +144,6 @@ export default function ChatBoard({
 
     const onMessageSent = () => {
         setAutoScrollEnabled(true)
-    }
-
-    const archiveLinkedEmails = async emails => {
-        const pendingEmails = emails.filter(
-            email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
-        )
-        if (pendingEmails.length === 0) return
-
-        const pendingKeys = pendingEmails.map(email => email.key)
-        setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        try {
-            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
-            await Promise.all(
-                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-                )
-            )
-            setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        } catch (error) {
-            console.error('Failed to archive linked email', error)
-            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
-        } finally {
-            setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
-        }
     }
 
     const archiveAllLinkedEmails = async () => {

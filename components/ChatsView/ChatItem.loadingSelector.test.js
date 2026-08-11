@@ -14,6 +14,9 @@ jest.mock('../UIControls/SocialText/SocialText', () => () => null)
 jest.mock('./ChatHeaderItem', () => () => null)
 jest.mock('./ChatIndicator', () => () => null)
 jest.mock('./ChatItemLastComment', () => () => null)
+// Pulls in the chat-comments subscription (and with it BackendBridge); this suite is only about
+// which selectors ChatItem subscribes to.
+jest.mock('./ChatItemUnreadMessages', () => () => null)
 jest.mock('../Tags/ObjectNoteTag', () => () => null)
 jest.mock('../Icon', () => () => null)
 jest.mock('../../assets/svg/SVGGenericUser', () => () => null)

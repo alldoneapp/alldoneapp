@@ -47,6 +47,7 @@ import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
+import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
@@ -3495,6 +3496,16 @@ export function mapTaskData(taskId, task) {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
     const hasStar = !task?.hasStar ? '#FFFFFF' : task.hasStar === true ? '#C7E3FF' : task.hasStar
 
+    const created = task.created ? task.created : Date.now()
+
+    // AT-2259 - calendar tasks written before the fix stored the EVENT START in sortIndex, a future
+    // timestamp that outranks every normal task's creation-time index and pinned meetings to the
+    // top of their group. Normalizing here - the one place every task enters the app - keeps the
+    // list, drag & drop, My Day and focus selection consistent without a data migration.
+    const sortIndex = task.sortIndex
+        ? resolveTaskSortIndex(task.sortIndex, task.calendarData, created)
+        : generateNegativeSortIndex()
+
     const mappedTask = {
         id: task.id ? task.id : taskId,
         done: task.done ? task.done : false,
@@ -3511,7 +3522,7 @@ export function mapTaskData(taskId, task) {
         stepHistory: task.stepHistory ? task.stepHistory : [],
         hasStar: hasStar,
         priority: normalizeTaskPriority(task.priority),
-        created: task.created ? task.created : Date.now(),
+        created,
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),
         alertEnabled: task.alertEnabled === true || task.alertEnabled === false ? task.alertEnabled : false,
@@ -3529,7 +3540,7 @@ export function mapTaskData(taskId, task) {
         estimations: task.estimations ? task.estimations : { [OPEN_STEP]: ESTIMATION_0_MIN },
         comments: task.comments ? task.comments : [],
         genericData: task.genericData ? task.genericData : null,
-        sortIndex: task.sortIndex ? task.sortIndex : generateNegativeSortIndex(),
+        sortIndex,
         linkedParentNotesIds: task.linkedParentNotesIds ? task.linkedParentNotesIds : [],
         linkedParentTasksIds: task.linkedParentTasksIds ? task.linkedParentTasksIds : [],
         linkedParentContactsIds: task.linkedParentContactsIds ? task.linkedParentContactsIds : [],
