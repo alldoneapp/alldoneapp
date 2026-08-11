@@ -80,7 +80,7 @@ describe('unread chat filtering', () => {
 })
 
 describe('getUnreadCommentIds', () => {
-    const chatNotifications = {
+    const bothKinds = {
         totalFollowed: 2,
         totalUnfollowed: 1,
         followedNotifications: [
@@ -90,17 +90,57 @@ describe('getUnreadCommentIds', () => {
         unfollowedNotifications: [{ commentId: 'u1', date: 200 }],
     }
 
-    it('returns every unread comment oldest first on the All tab', () => {
-        expect(getUnreadCommentIds(chatNotifications, ALL_TAB)).toEqual(['f1', 'u1', 'f2'])
+    const unfollowedOnly = {
+        totalFollowed: 0,
+        totalUnfollowed: 2,
+        unfollowedNotifications: [
+            { commentId: 'u2', date: 400 },
+            { commentId: 'u1', date: 200 },
+        ],
+    }
+
+    it('returns the unread comments oldest first, so the preview reads like the thread', () => {
+        expect(getUnreadCommentIds(unfollowedOnly, ALL_TAB)).toEqual(['u1', 'u2'])
     })
 
-    it('ignores unfollowed notifications on the Followed tab, matching isUnreadChat', () => {
-        expect(getUnreadCommentIds(chatNotifications, FOLLOWED_TAB)).toEqual(['f1', 'f2'])
+    it('previews exactly the set the row badge counts when a chat has both kinds', () => {
+        // The badge is `totalFollowed || totalUnfollowed`, so it prints 2 here. Merging both sets
+        // would preview three messages under a badge that says two.
+        expect(getUnreadCommentIds(bothKinds, ALL_TAB)).toEqual(['f1', 'f2'])
+    })
+
+    it('falls back to unfollowed notifications only when there is no followed one', () => {
+        expect(getUnreadCommentIds(unfollowedOnly, ALL_TAB)).toEqual(['u1', 'u2'])
+    })
+
+    it('never previews unfollowed notifications on the Followed tab', () => {
+        expect(getUnreadCommentIds(bothKinds, FOLLOWED_TAB)).toEqual(['f1', 'f2'])
+        expect(getUnreadCommentIds(unfollowedOnly, FOLLOWED_TAB)).toEqual([])
+    })
+
+    it('lets the counters, not the arrays, choose the set', () => {
+        // A legacy followed notification carries no commentId, so the followed array is empty while
+        // the badge still counts it. Previewing the unfollowed set instead would show messages the
+        // red badge is not talking about.
+        expect(
+            getUnreadCommentIds(
+                {
+                    totalFollowed: 1,
+                    totalUnfollowed: 1,
+                    followedNotifications: [{ date: 100 }],
+                    unfollowedNotifications: [{ commentId: 'u1', date: 200 }],
+                },
+                ALL_TAB
+            )
+        ).toEqual([])
     })
 
     it('drops legacy notifications that carry no comment id', () => {
         expect(
-            getUnreadCommentIds({ followedNotifications: [{ date: 1 }, { commentId: 'f1', date: 2 }] }, ALL_TAB)
+            getUnreadCommentIds(
+                { totalFollowed: 2, followedNotifications: [{ date: 1 }, { commentId: 'f1', date: 2 }] },
+                ALL_TAB
+            )
         ).toEqual(['f1'])
     })
 

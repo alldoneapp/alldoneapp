@@ -46,20 +46,31 @@ export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
         .map(({ chatId }) => chatId)
 
 /**
- * The unread notifications of a single chat, for the active tab, oldest first.
+ * The unread notifications of a single chat, oldest first, for the preview under a topic (AT-2256).
  *
- * Mirrors `isUnreadChat`'s tab rule so the preview under a topic (AT-2256) can never disagree with
- * the row's own unread badge: the Followed tab only ever counts followed notifications, the All tab
- * counts both. Entries are `{ commentId, date }`; legacy notification docs without a `commentId`
- * are dropped because there is no comment for them to point at.
+ * Deliberately reproduces the row badge's own rule - `totalFollowed || totalUnfollowed`, i.e.
+ * followed if there are any, otherwise unfollowed - rather than merging both sets. A user who
+ * started following a topic part-way through has both kinds, and merging them would preview more
+ * messages than the number printed next to them, which reads as a bug in the count.
+ *
+ * The tab still constrains it: the Followed tab never previews unfollowed notifications, matching
+ * `isUnreadChat`. Deciding on the counters rather than the arrays keeps it aligned with the badge
+ * even for legacy notification docs that carry no `commentId` - those are dropped here, because
+ * there is no comment for them to point at, but they must not flip the choice of set.
  */
 export const getUnreadNotifications = (chatNotifications, chatsActiveTab) => {
     if (!chatNotifications) return []
 
-    const followed = chatNotifications.followedNotifications || []
-    const unfollowed = chatsActiveTab === ALL_TAB ? chatNotifications.unfollowedNotifications || [] : []
+    const usesFollowed = (chatNotifications.totalFollowed || 0) > 0
+    let notifications = []
 
-    return [...followed, ...unfollowed]
+    if (usesFollowed) {
+        notifications = chatNotifications.followedNotifications || []
+    } else if (chatsActiveTab === ALL_TAB) {
+        notifications = chatNotifications.unfollowedNotifications || []
+    }
+
+    return notifications
         .filter(notification => !!notification?.commentId)
         .sort((a, b) => (Number(a.date) || 0) - (Number(b.date) || 0))
 }

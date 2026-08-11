@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatItemUnreadMessages, {
@@ -13,6 +13,7 @@ import ChatItemUnreadMessages, {
 } from './ChatItemUnreadMessages'
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
+import { onOpenChat } from './Utils/ChatHelper'
 
 jest.mock('../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
 
@@ -33,12 +34,13 @@ jest.mock('../../i18n/TranslationService', () => ({
 // its timestamp coercion, which is the identity for the plain millisecond numbers these tests use.
 jest.mock('./Utils/ChatHelper', () => ({
     getTimestampInMilliseconds: timestamp => (typeof timestamp === 'number' ? timestamp : undefined),
+    onOpenChat: jest.fn(),
 }))
 
 jest.mock('../styles/global', () => ({
     __esModule: true,
     default: { caption2: {} },
-    colors: { Text03: '#000000', Gray300: '#cccccc' },
+    colors: { Text03: '#000000', Gray300: '#cccccc', Primary100: '#007FFF' },
 }))
 
 // The preview's message renderer pulls in the whole thread rendering stack (quill-adjacent
@@ -106,6 +108,26 @@ describe('ChatItemUnreadMessages', () => {
         const texts = renderedTexts(tree)
         expect(texts[0]).toBe('3 earlier unread messages')
         expect(texts.slice(1)).toEqual(['c4:message 4', 'c5:message 5', 'c6:message 6', 'c7:message 7', 'c8:message 8'])
+    })
+
+    it('opens the topic from the earlier-unread line, the only way to reach what the cap hid', () => {
+        const amount = CHAT_ITEM_UNREAD_PREVIEW_LIMIT + 3
+        const tree = renderPreview(
+            makeMessages(amount),
+            makeMessages(amount).map(message => message.id)
+        )
+
+        act(() => {
+            tree.root.findByType(TouchableOpacity).props.onPress()
+        })
+
+        expect(onOpenChat).toHaveBeenCalledWith('project-1', chat)
+    })
+
+    it('offers no earlier-unread link when nothing was capped away', () => {
+        const tree = renderPreview(makeMessages(2), ['c1', 'c2'])
+
+        expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
     })
 
     it('renders nothing while the messages have not arrived yet', () => {
