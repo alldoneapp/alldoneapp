@@ -722,6 +722,7 @@ export default function EditTask({
     return (
         <View
             ref={editorContainerRef}
+            dataSet={{ keyboardRevealTarget: true }}
             onLayout={onContainerLayout}
             style={[
                 localStyles.container,
