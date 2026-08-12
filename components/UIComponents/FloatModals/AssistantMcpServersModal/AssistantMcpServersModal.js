@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Dimensions, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
 import { ASSISTANT_MCP_SERVERS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
@@ -13,10 +12,10 @@ import Icon from '../../../Icon'
 import { connectAssistantMcpServer, disconnectAssistantMcpServer } from '../../../../utils/backends/firestore'
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { startMcpOAuthFlow } from '../../../../utils/Mcp/mcpOAuth'
+import useModalSizing from '../../../../hooks/useModalSizing'
 
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MODAL_HORIZONTAL_MARGIN = 32
-const MODAL_VERTICAL_MARGIN = 16
 const MAX_MODAL_WIDTH = 560
 
 const TRANSPORTS = [
@@ -54,8 +53,7 @@ function ChipSelector({ options, value, onChange, disabled }) {
 }
 
 export default function AssistantMcpServersModal({ projectId, assistant, closeModal }) {
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
+    const { isSheet, width: sheetWidth, maxHeight, windowWidth } = useModalSizing()
 
     const servers = useMemo(
         () => (Array.isArray(assistant.mcpServers) ? assistant.mcpServers : []),
@@ -76,22 +74,14 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
 
-    const { width: windowWidth, height: windowHeight } = windowDimensions
-    const containerWidth = Math.min(
-        Math.max(windowWidth - MODAL_HORIZONTAL_MARGIN * 2, 0),
-        smallScreenNavigation ? windowWidth : MAX_MODAL_WIDTH
-    )
-    const containerMaxHeight = Math.max(windowHeight - MODAL_VERTICAL_MARGIN * 2, 0)
+    const containerWidth = isSheet
+        ? sheetWidth
+        : Math.min(Math.max(windowWidth - MODAL_HORIZONTAL_MARGIN * 2, 0), MAX_MODAL_WIDTH)
+    const containerMaxHeight = maxHeight
 
     useEffect(() => {
         storeModal(ASSISTANT_MCP_SERVERS_MODAL_ID)
         return () => removeModal(ASSISTANT_MCP_SERVERS_MODAL_ID)
-    }, [])
-
-    useEffect(() => {
-        const updateDimensions = ({ window }) => setWindowDimensions(window)
-        Dimensions.addEventListener('change', updateDimensions)
-        return () => Dimensions.removeEventListener('change', updateDimensions)
     }, [])
 
     const resetForm = () => {

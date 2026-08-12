@@ -3,7 +3,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors, hexColorToRGBa, POPOVER_MOBILE_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
+import styles, { colors, hexColorToRGBa, SIDEBAR_MENU_WIDTH } from '../styles/global'
+import { getPopoverWidth } from '../../utils/HelperFunctions'
 import store from '../../redux/store'
 import {
     blockBackgroundTabShortcut,
@@ -738,7 +739,7 @@ export default function GlobalSearchModal() {
         onSearch()
     }
 
-    const width = mobile ? POPOVER_MOBILE_WIDTH : tablet ? 400 : 520
+    const width = mobile ? getPopoverWidth() : tablet ? 400 : 520
     let sidebarOpenStyle = mobile ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
 
     const updateSelectedProject = projectId => {

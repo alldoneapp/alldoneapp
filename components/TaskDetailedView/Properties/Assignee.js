@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from 'react-native'
 import { colors } from '../../styles/global'
 import store from '../../../redux/store'
 import Button from '../../UIControls/Button'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import AssigneePickerModal from '../../UIComponents/FloatModals/AssigneePickerModal/AssigneePickerModal'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -73,7 +73,7 @@ export default class Assignee extends Component {
         const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
         return (
-            <Popover
+            <AppPopover
                 content={
                     isAssistant ? (
                         <ObserversModal
@@ -118,7 +118,7 @@ export default class Assignee extends Component {
                     onPress={this.showPopover}
                     disabled={disableAssigneePicker}
                 />
-            </Popover>
+            </AppPopover>
         )
     }
 

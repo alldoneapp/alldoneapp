@@ -123,7 +123,6 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingTop: 16,
         borderRadius: 4,
-        width: 305,
         overflow: 'visible',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,

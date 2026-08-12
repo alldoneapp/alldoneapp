@@ -2,6 +2,7 @@ import React from 'react'
 import { StyleSheet, View, TouchableOpacity, TouchableWithoutFeedback } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
+import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setPreConfigTaskModalData } from '../../../../redux/actions'
 import PreConfigTaskGeneratorModal from './PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
@@ -61,7 +62,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
     },
     modalContainer: {
         zIndex: 10000,
