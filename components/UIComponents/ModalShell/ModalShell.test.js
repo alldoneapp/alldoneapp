@@ -22,6 +22,7 @@ import { createRoot } from 'react-dom/client'
 import AppPopover from './AppPopover'
 import { highResNow } from '../../../utils/popupDismissGuard'
 import { installEscapeStack, resetEscapeStack } from '../../../utils/escapeStack'
+import { consumePopstateForSheetLayers, resetSheetHistoryLayers } from '../../../utils/sheetHistoryLayers'
 import { isBodyScrollLocked } from '../../../utils/bodyScrollLock'
 import { MODAL_SHEET_BREAKPOINT } from '../../styles/modals'
 
@@ -79,6 +80,7 @@ describe('ModalShell', () => {
     beforeEach(() => {
         window.matchMedia = jest.fn(() => ({ matches: true, addListener: () => {}, removeListener: () => {} }))
         resetEscapeStack()
+        resetSheetHistoryLayers()
         uninstallEscape = installEscapeStack()
     })
 
@@ -171,6 +173,20 @@ describe('ModalShell', () => {
             expect(onClickOutside).toHaveBeenCalledTimes(1)
         })
 
+        it('closes on a browser back press (Phase 5 history layer)', async () => {
+            const onClickOutside = jest.fn()
+            renderShell({ onClickOutside })
+            await settle()
+
+            // What AppContent's wrapped window.onpopstate does on back.
+            act(() => {
+                expect(consumePopstateForSheetLayers()).toBe(true)
+            })
+            await settle()
+
+            expect(onClickOutside).toHaveBeenCalledTimes(1)
+        })
+
         it('closes only once for a backdrop press followed by Escape', async () => {
             const onClickOutside = jest.fn()
             renderShell({ onClickOutside })
@@ -181,6 +197,94 @@ describe('ModalShell', () => {
             await settle()
 
             expect(onClickOutside).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('focus trap (Phase 5 a11y)', () => {
+        const pressTab = (shiftKey = false) => {
+            act(() => {
+                document.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true })
+                )
+            })
+        }
+
+        it('cycles Tab within the sheet and pulls outside focus in', async () => {
+            window.innerWidth = 500
+            window.innerHeight = 700
+            renderShell({
+                content: (
+                    <>
+                        <button data-testid={'first-button'}>first</button>
+                        <button data-testid={'second-button'}>second</button>
+                    </>
+                ),
+            })
+            await settle()
+
+            const first = document.querySelector('[data-testid="first-button"]')
+            const second = document.querySelector('[data-testid="second-button"]')
+
+            // Focus is outside the sheet (body): Tab pulls it to the first
+            // focusable inside instead of walking the app behind the scrim.
+            pressTab()
+            expect(document.activeElement).toBe(first)
+
+            // Tab from the last focusable wraps to the first.
+            second.focus()
+            pressTab()
+            expect(document.activeElement).toBe(first)
+
+            // Shift+Tab from the first wraps to the last.
+            pressTab(true)
+            expect(document.activeElement).toBe(second)
+        })
+    })
+
+    describe('exit animation (Phase 5 deferred unmount)', () => {
+        it('keeps the sheet mounted for the exit animation, then removes it', async () => {
+            window.innerWidth = 500
+            window.innerHeight = 700
+            renderShell()
+            await settle()
+            expect(sheetNode()).toBeTruthy()
+
+            act(() => {
+                root.render(
+                    <AppPopover isOpen={false} onClickOutside={() => {}} content={<Text>SHEET CONTENT</Text>}>
+                        <Text>TRIGGER</Text>
+                    </AppPopover>
+                )
+            })
+            // Still in the DOM right after close — the slide-out is playing.
+            expect(sheetNode()).toBeTruthy()
+            // And the dying sheet must not swallow taps.
+            expect(sheetNode().style.pointerEvents).toBe('none')
+
+            await settle()
+            expect(sheetNode()).toBeNull()
+        })
+
+        it('re-opening mid-exit cancels the pending unmount', async () => {
+            window.innerWidth = 500
+            window.innerHeight = 700
+            renderShell()
+            await settle()
+
+            const rerender = isOpen =>
+                act(() => {
+                    root.render(
+                        <AppPopover isOpen={isOpen} onClickOutside={() => {}} content={<Text>SHEET CONTENT</Text>}>
+                            <Text>TRIGGER</Text>
+                        </AppPopover>
+                    )
+                })
+
+            rerender(false)
+            rerender(true)
+            await settle()
+            expect(sheetNode()).toBeTruthy()
+            expect(sheetNode().style.pointerEvents).not.toBe('none')
         })
     })
 

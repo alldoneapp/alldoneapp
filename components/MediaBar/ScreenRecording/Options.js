@@ -158,14 +158,14 @@ const Options = ({
 const localStyles = StyleSheet.create({
     center: {
         position: 'fixed',
-        left: '48.5%',
+        left: '50%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
     container: {
         width: 317,

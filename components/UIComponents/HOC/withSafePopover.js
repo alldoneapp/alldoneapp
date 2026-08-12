@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import Popover from 'react-tiny-popover'
 
 /**
  * A Higher Order Component that wraps Popover components to prevent memory leaks

@@ -604,22 +604,6 @@ export default class Backend {
         return await bridge.getFeedObjectsLastStateList(projectId, objectType)
     }
 
-    static getMeetings(projectId, setMeetings, setZero) {
-        return bridge.getMeetings(projectId, setMeetings, setZero)
-    }
-
-    static acceptJoinEvent(projectId, roomId, userEmail) {
-        return bridge.acceptJoinEvent(projectId, roomId, userEmail)
-    }
-
-    static rejectJoinEvent(projectId, roomId, userEmail, reasons, callback) {
-        return bridge.rejectJoinEvent(projectId, roomId, userEmail, reasons, callback)
-    }
-
-    static deleteEvent(projectId, roomId) {
-        return bridge.deleteEvent(projectId, roomId)
-    }
-
     static getObjectFromUrl(objectType, url, callback) {
         return bridge.getObjectFromUrl(objectType, url, callback)
     }

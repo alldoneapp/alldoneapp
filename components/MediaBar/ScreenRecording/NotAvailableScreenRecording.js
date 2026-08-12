@@ -1,16 +1,14 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import global, { colors } from '../../styles/global'
+import { Platform, StyleSheet, Text, View } from 'react-native'
+import global, { colors, hexColorToRGBa } from '../../styles/global'
 import CloseButton from '../../FollowUp/CloseButton'
 import Button from '../../UIControls/Button'
 import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
-import { useSelector } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
+import { MODAL_Z_CONTENT } from '../../styles/modals'
 
 const NotAvailableScreenRecording = ({ onPress }) => {
-    const mobile = useSelector(state => state.smallScreenNavigation)
-
     return (
         <Hotkeys
             keyName={'Esc'}
@@ -19,51 +17,60 @@ const NotAvailableScreenRecording = ({ onPress }) => {
             }}
             filter={e => true}
         >
-            <View style={[localStyles.container, applyPopoverWidth(), mobile && localStyles.mobile]}>
-                <View style={{ paddingHorizontal: 16 }}>
-                    <Text style={[global.title7, localStyles.title]}>{translate('Ups, feature not available')}</Text>
-                    <Text style={[global.body1, localStyles.subTitle]}>
-                        {translate('Ups, feature not available description')}
-                    </Text>
+            <View style={localStyles.parent}>
+                <View style={[localStyles.container, applyPopoverWidth()]}>
+                    <View style={{ paddingHorizontal: 16 }}>
+                        <Text style={[global.title7, localStyles.title]}>
+                            {translate('Ups, feature not available')}
+                        </Text>
+                        <Text style={[global.body1, localStyles.subTitle]}>
+                            {translate('Ups, feature not available description')}
+                        </Text>
+                    </View>
+
+                    <View style={localStyles.sectionSeparator} />
+
+                    <View style={localStyles.button}>
+                        <Button title={'Ok'} onPress={() => onPress()} />
+                    </View>
+
+                    <CloseButton
+                        close={e => {
+                            if (e) {
+                                e.preventDefault()
+                                e.stopPropagation()
+                            }
+                            onPress()
+                        }}
+                    />
                 </View>
-
-                <View style={localStyles.sectionSeparator} />
-
-                <View style={localStyles.button}>
-                    <Button title={'Ok'} onPress={() => onPress()} />
-                </View>
-
-                <CloseButton
-                    close={e => {
-                        if (e) {
-                            e.preventDefault()
-                            e.stopPropagation()
-                        }
-                        onPress()
-                    }}
-                />
             </View>
         </Hotkeys>
     )
 }
 
 const localStyles = StyleSheet.create({
+    // Window-centered overlay with scrim (round-3 policy) — this is a pure
+    // info dialog, so unlike the recorder cards a scrim is safe here.
+    parent: {
+        position: 'absolute',
+        zIndex: MODAL_Z_CONTENT,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: { position: 'fixed' } }),
+    },
     container: {
-        flex: 1,
-        position: 'fixed',
-        zIndex: 1,
-        left: '48.5%',
+        maxHeight: '90%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
-        height: 'auto',
-        top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    mobile: {
-        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
     },
     sectionSeparator: {
         borderBottomWidth: 1,

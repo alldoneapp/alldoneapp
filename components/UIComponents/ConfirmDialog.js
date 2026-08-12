@@ -50,7 +50,7 @@ export default function ConfirmDialog({
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth()]}>
+        <View accessibilityRole={'dialog'} aria-modal={true} style={[localStyles.container, applyPopoverWidth()]}>
             <View style={{ paddingHorizontal: 16 }}>
                 <Text style={[styles.title7, { color: 'white' }]}>{translate(title)}</Text>
                 <Text style={[styles.body2, { color: colors.Text03 }]}>

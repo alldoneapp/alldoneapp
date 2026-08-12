@@ -8,7 +8,6 @@ import { colors } from '../../../styles/global'
 import AddFeedAttachButton from '../../../Feeds/AddFeed/AddFeedAttachButton'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
-import GoogleMeetButton from './GoogleMeetButton'
 import { insertAttachmentInsideEditor } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { execShortcutFn } from '../../../../utils/HelperFunctions'
 import { setQuotedText } from '../../../../redux/actions'
@@ -102,7 +101,6 @@ export default function ChatInputButtons({
                         projectId={projectId}
                     />
                 )}
-                {false && !editing && <GoogleMeetButton title={chatTitle} members={members} projectId={projectId} />}
                 <Hotkeys
                     keyName={'alt+Q'}
                     disabled={blockShortcuts}

@@ -58,6 +58,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
   >
     <Calendar
       current="2019-04-22"
+      firstDay={0}
       markingType="simple"
       minDate="2019-04-22"
       onDayPress={[Function]}
