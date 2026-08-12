@@ -13,6 +13,7 @@ import { setShowNotificationAboutTheBotBehavior } from '../../../../../redux/act
 import { BOT_WARNING_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
 import { setThatTheUserWasNotifiedAboutTheBotBehavior } from '../../../../../utils/backends/Users/usersFirestore'
 import { fixedModalOverlayStyle } from '../../../../../utils/fixedModalPosition'
+import useEscapeKey from '../../../../../hooks/useEscapeKey'
 
 export default function BotWarningModal() {
     const dispatch = useDispatch()
@@ -21,6 +22,10 @@ export default function BotWarningModal() {
     const closeModal = () => {
         dispatch(setShowNotificationAboutTheBotBehavior(false))
     }
+
+    // The Ok button was the only way out (hideCloseButton drops the header X
+    // and its escape registration).
+    useEscapeKey(closeModal)
 
     useEffect(() => {
         setThatTheUserWasNotifiedAboutTheBotBehavior()
@@ -35,7 +40,11 @@ export default function BotWarningModal() {
 
     return (
         <View style={localStyles.parent}>
-            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+            {/* -64 on top of the gap: the overlay reserves 80px above + 16 below
+                (fixedModalOverlayStyle), so height-32 alone overflowed the fold. */}
+            <View
+                style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP - 64 }]}
+            >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         title={translate('Caution')}

@@ -32,7 +32,10 @@ export default function AccessDeniedPopup() {
     }
 
     return (
-        <View style={localStyles.container} onTouchStart={closeModal}>
+        // Dismissal lives on the backdrop element only: an onTouchStart on the
+        // container bubbled up from the card, so tapping the text inside
+        // dismissed the popup on touch devices.
+        <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.backdrop} onPress={closeModal} />
             <View style={localStyles.popup}>
                 <View style={localStyles.body}>

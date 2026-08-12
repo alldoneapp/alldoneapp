@@ -18,6 +18,12 @@ import useModalSizing from '../../../hooks/useModalSizing'
 export default function AppPopover({ content, children, isOpen, onClickOutside, modalId, ...popoverProps }) {
     const { isSheet } = useModalSizing()
 
+    // A few legacy dialogs render an AppPopover with content={null} and
+    // position their card themselves. Never turn that into an EMPTY bottom
+    // sheet: its scrim painted over the self-positioned GoogleMeet dialogs
+    // and made them unusable on phones.
+    if (isSheet && !content) return children || null
+
     if (!isSheet) {
         return (
             <Popover content={content} isOpen={isOpen} onClickOutside={onClickOutside} {...popoverProps}>

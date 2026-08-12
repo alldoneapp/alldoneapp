@@ -1,9 +1,9 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 
-import styles, { colors } from '../../styles/global'
+import styles, { colors, hexColorToRGBa } from '../../styles/global'
 import { getPopoverWidth } from '../../../utils/HelperFunctions'
 import Button from '../../UIControls/Button'
 import {
@@ -64,43 +64,45 @@ export default function LimitModal() {
     return (
         <View style={localStyles.parent}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
-                <ModalHeader
-                    closeModal={closeModal}
-                    title={header}
-                    description={translate('XP and or Traffic quota reached')}
-                />
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    <ModalHeader
+                        closeModal={closeModal}
+                        title={header}
+                        description={translate('XP and or Traffic quota reached')}
+                    />
 
-                <View style={localStyles.warning}>
-                    <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
-                    <Text style={localStyles.warningText}>
-                        {daysUntilNextMonth} {translate('until the next month begins')}
-                    </Text>
-                </View>
+                    <View style={localStyles.warning}>
+                        <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
+                        <Text style={localStyles.warningText}>
+                            {daysUntilNextMonth} {translate('until the next month begins')}
+                        </Text>
+                    </View>
 
-                <ProgressBar
-                    percent={xpQuotaPercent}
-                    headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
-                    headerTextStyle={{ color: '#fff' }}
-                />
+                    <ProgressBar
+                        percent={xpQuotaPercent}
+                        headerText={translate('App usage in current month from XP quote', { xpQuotaLimit })}
+                        headerTextStyle={{ color: '#fff' }}
+                    />
 
-                <ProgressBar
-                    percent={xpTrafficPercent}
-                    headerText={translate('Traffic quota this month')}
-                    containerStyle={{ marginTop: 24 }}
-                    headerTextStyle={{ color: '#fff' }}
-                />
+                    <ProgressBar
+                        percent={xpTrafficPercent}
+                        headerText={translate('Traffic quota this month')}
+                        containerStyle={{ marginTop: 24 }}
+                        headerTextStyle={{ color: '#fff' }}
+                    />
 
-                <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>{footer}</Text>
+                    <Text style={[styles.body1, { color: colors.Grey400, marginTop: 32 }]}>{footer}</Text>
 
-                <Line style={localStyles.line} />
+                    <Line style={localStyles.line} />
 
-                <Button
-                    title={translate('Upgrade to Premium')}
-                    icon={'crown'}
-                    iconSize={22}
-                    buttonStyle={localStyles.button}
-                    onPress={navigateToPremium}
-                />
+                    <Button
+                        title={translate('Upgrade to Premium')}
+                        icon={'crown'}
+                        iconSize={22}
+                        buttonStyle={localStyles.button}
+                        onPress={navigateToPremium}
+                    />
+                </ScrollView>
             </View>
         </View>
     )
@@ -116,13 +118,11 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        top: '50%',
-        left: '58.5%',
-        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
-        position: 'fixed',
-        width: 432,
+        maxHeight: '90%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

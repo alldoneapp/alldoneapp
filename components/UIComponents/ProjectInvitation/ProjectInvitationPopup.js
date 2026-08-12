@@ -28,7 +28,6 @@ import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 export default function ProjectInvitationPopup() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const newUserNeedToJoinToProject = useSelector(state => state.newUserNeedToJoinToProject)
     const data = useSelector(state => state.showProjectInvitationPopup.data)
     const [processing, setProcessing] = useState(false)
@@ -87,11 +86,9 @@ export default function ProjectInvitationPopup() {
         unmountProjectWhenDeclineInvitation()
     }
 
-    let sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
         <View style={localStyles.container}>
-            <View style={[localStyles.popup, applyPopoverWidth(), sidebarOpenStyle]}>
+            <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <ModalHeader
                     closeModal={closeModalWithoutAcceptInvitation}
                     title={translate(

@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import ChangeContactInfoModal from './ChangeContactInfoModal'
 import { setUserInfoModalWhenUserJoinsToGuide } from '../../../redux/actions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
+import { colors, hexColorToRGBa } from '../../styles/global'
 
 export default function ChangeContactInfoModalContainerForNewGuideUsers() {
     const dispatch = useDispatch()
@@ -46,8 +46,12 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
+        // Truly centered (not the top-pinned overlay: the child caps itself at
+        // height-32, which overflowed the 80/16 reserve), and with a real
+        // scrim - this was an invisible full-screen click blocker before.
         justifyContent: 'center',
         alignItems: 'center',
-        ...Platform.select({ web: fixedModalOverlayStyle }),
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
 })
