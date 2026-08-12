@@ -153,6 +153,14 @@ const getTypesenseClient = () => {
     return cachedClient
 }
 
+// Millisecond-timestamp fields that legacy documents occasionally carry with garbage values.
+// Typesense auto-types a field from the first document it sees (int64 for these), then
+// rejects anything else with "Field `dueDate` must be an int64". Both shapes were found on
+// real production tasks during the Phase 2 backfill: floats (rounded — semantically safe for
+// timestamps) and outright corruption (one task carried a whole task OBJECT under `dueDate`;
+// dropped — the fields are optional in the schema, so the record stays searchable).
+const TIMESTAMP_FIELDS = ['dueDate', 'created', 'lastEditionDate', 'completed', 'date']
+
 // Algolia records carry objectID; Typesense wants `id`. isPublicFor mixes the numeric
 // FEED_PUBLIC_FOR_ALL sentinel with uid/workstream strings, so it is normalized to string[]
 // to match the declared facet type (filters compare against the stringified sentinel too).
@@ -162,6 +170,15 @@ const normalizeDocumentForTypesense = object => {
     if (Array.isArray(doc.isPublicFor)) {
         doc.isPublicFor = doc.isPublicFor.map(value => String(value))
     }
+    TIMESTAMP_FIELDS.forEach(field => {
+        const value = doc[field]
+        if (value == null) return
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            if (!Number.isInteger(value)) doc[field] = Math.round(value)
+        } else {
+            delete doc[field]
+        }
+    })
     Object.keys(doc).forEach(key => {
         if (doc[key] === undefined) delete doc[key]
     })
@@ -235,8 +252,22 @@ const importTypesenseDocuments = async (collectionName, objects) => {
         if (!client) return { imported, failed: objects.length }
         for (let i = 0; i < objects.length; i += IMPORT_BATCH_SIZE) {
             const batch = objects.slice(i, i + IMPORT_BATCH_SIZE).map(normalizeDocumentForTypesense)
-            const results = await client.collections(collectionName).documents().import(batch, { action: 'upsert' })
-            const failures = results.filter(result => !result.success)
+            let results
+            try {
+                results = await client.collections(collectionName).documents().import(batch, { action: 'upsert' })
+            } catch (importError) {
+                // typesense-js THROWS an ImportError when any document in the batch fails —
+                // the successful documents are already imported; the per-doc outcomes are on
+                // error.importResults. Only a transport-level error has no importResults.
+                if (importError && Array.isArray(importError.importResults)) {
+                    results = importError.importResults
+                } else {
+                    throw importError
+                }
+            }
+            const failures = results
+                .map((result, index) => ({ ...result, document: batch[index] }))
+                .filter(result => !result.success)
             imported += batch.length - failures.length
             failed += failures.length
             if (failures.length > 0) {
@@ -244,7 +275,7 @@ const importTypesenseDocuments = async (collectionName, objects) => {
                     `Typesense import: ${failures.length}/${batch.length} documents failed (${collectionName}):`,
                     failures
                         .slice(0, 3)
-                        .map(failure => failure.error)
+                        .map(failure => `${failure.document && failure.document.id}: ${failure.error}`)
                         .join(' | ')
                 )
             }
