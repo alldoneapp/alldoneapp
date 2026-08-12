@@ -191,7 +191,11 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
         object = mapGoalData(objectId, algoliaObjectId, baseObject, projectId)
     } else if (objectsType === NOTES_OBJECTS_TYPE) {
         console.log(`Processing note ${objectId} for Algolia indexing`)
-        object = mapNoteData(objectId, baseObject)
+        // mapNoteData is (noteId, algoliaObjectId, note, projectId) — this call used to pass
+        // (objectId, baseObject), so `note` was undefined and EVERY note in a bulk reindex
+        // threw at `note.extendedTitle`. Pre-AT-2258 the unawaited rejection was swallowed;
+        // afterwards it failed the whole notes indexation. Found by the Typesense backfill.
+        object = mapNoteData(objectId, algoliaObjectId, baseObject, projectId)
         // Add note content to the Algolia record
         console.log('Getting note content...')
         object.content = await getNoteContent(projectId, objectId)

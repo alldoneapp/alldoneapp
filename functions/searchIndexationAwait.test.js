@@ -17,8 +17,20 @@
  * So this suite asserts the property directly: after any builder runs, the
  * list must contain resolved records and never a thenable.
  */
-jest.mock('firebase-admin', () => ({ firestore: () => ({}) }), { virtual: true })
+jest.mock(
+    'firebase-admin',
+    () => ({
+        firestore: () => ({}),
+        // addNotesToList → getNoteContent reaches storage; exists:false short-circuits
+        // to '' so the notes builder can run without real note content.
+        storage: () => ({ bucket: () => ({ file: () => ({ exists: async () => [false] }) }) }),
+    }),
+    { virtual: true }
+)
 jest.mock('algoliasearch', () => () => ({ initIndex: () => ({}) }), { virtual: true })
+jest.mock('firebase-functions/params', () => ({ defineString: () => ({ value: () => 'test-bucket' }) }), {
+    virtual: true,
+})
 
 const searchHelper = require('./searchHelper')
 
@@ -47,6 +59,7 @@ const GOAL = {
     lastEditionDate: Date.now(),
     isPublicFor: [0],
 }
+const NOTE = { title: 'Meeting notes', extendedTitle: 'Meeting notes', userId: 'user-1', isPublicFor: [0] }
 const TASK = { name: 'Do the thing', userId: 'user-1', done: false, isSubtask: false, isPublicFor: [0] }
 const CONTACT = { name: 'Ada', recorderUserId: 'user-1', isPublicFor: [0] }
 const ASSISTANT = { name: 'Anna', isPublicFor: [0] }
@@ -80,6 +93,16 @@ describe('bulk indexation builders resolve every record before uploading', () =>
             name: 'addAssistantsToList',
             run: objectsList =>
                 searchHelper.addAssistantsToList('project-1', {}, objectsList, makeDb([docOf('a-1', ASSISTANT)])),
+        },
+        {
+            // The notes pre-map used to call mapNoteData(objectId, baseObject) — two args
+            // against a four-arg signature — so `note` was undefined and EVERY note in a
+            // bulk reindex threw at `note.extendedTitle`. Found by the Typesense backfill.
+            name: 'addNotesToList',
+            run: objectsList =>
+                searchHelper.addNotesToList('project-1', {}, objectsList, makeDb([docOf('note-1', NOTE)])),
+            expectCreator: 'userId',
+            creatorValue: 'user-1',
         },
     ]
 
