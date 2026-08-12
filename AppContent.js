@@ -317,7 +317,6 @@ export default function AppContent() {
                 )
             ) : (
                 <>
-                    {/*<CookieClickerPopup />*/}
                     {loggedIn && processedInitialURL && (
                         <>
                             <GlobalModalsContainerApp />

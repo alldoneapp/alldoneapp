@@ -11,7 +11,6 @@ import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 export default function NoteMaxLengthModal() {
     const dispatch = useDispatch()
     const showNoteMaxLengthModal = useSelector(state => state.showNoteMaxLengthModal)
-    const mobile = useSelector(state => state.smallScreenNavigation)
 
     const close = () => {
         dispatch(setShowNoteMaxLengthModal(false))
@@ -20,7 +19,7 @@ export default function NoteMaxLengthModal() {
     return (
         showNoteMaxLengthModal && (
             <View style={localStyles.parent}>
-                <View style={[localStyles.container, !mobile && { marginLeft: 263 }]}>
+                <View style={localStyles.container}>
                     <Text style={[styles.title7, localStyles.title]}>{translate('Note size limit reached')}</Text>
                     <View style={{ flexDirection: 'row' }}>
                         <Icon name="info" color={colors.Text03} size={18} style={{ marginTop: 2, marginRight: 8 }} />

@@ -160,9 +160,25 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         lockBodyScroll()
         if (modalId) getModalsManager().storeModal(modalId)
         animate(1, MODAL_ENTER_MS)
+        // Focus return: restore where the user was when the sheet closes —
+        // but never to an editable element, which would pop the software
+        // keyboard right after dismissing a sheet.
+        const previouslyFocused = typeof document !== 'undefined' ? document.activeElement : null
         return () => {
             unlockBodyScroll()
             if (modalId) getModalsManager().removeModal(modalId)
+            const isEditable =
+                previouslyFocused &&
+                (['INPUT', 'TEXTAREA'].includes(previouslyFocused.tagName) || previouslyFocused.isContentEditable)
+            if (
+                previouslyFocused &&
+                previouslyFocused.isConnected &&
+                !isEditable &&
+                typeof previouslyFocused.focus === 'function' &&
+                document.activeElement === document.body
+            ) {
+                previouslyFocused.focus()
+            }
         }
     }, [isOpen])
 
@@ -186,6 +202,8 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             />
             <Animated.View
                 testID={'bottom-sheet'}
+                accessibilityRole={'dialog'}
+                aria-modal={true}
                 style={[
                     localStyles.sheet,
                     {
