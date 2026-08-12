@@ -3307,6 +3307,88 @@ describe('assistant create_task project routing comments', () => {
     })
 })
 
+// Model-authored JSON (assistant tool calls and the MCP server, which delegates to
+// executeToolNatively) can put anything under dueDate; the create funnel must refuse
+// garbage instead of persisting it to Firestore.
+describe('assistant create_task dueDate validation', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockCreateAndPersistTask.mockReset()
+        ProjectService.mockClear()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-default', name: 'Default Project' }]),
+        }))
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                defaultProjectId: 'project-default',
+                projectIds: ['project-default'],
+                timezone: 'UTC+02:00',
+            }),
+        })
+    })
+
+    test('rejects a dueDate holding an object before persisting anything', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                {
+                    name: 'Task with garbage dueDate',
+                    projectName: 'Default Project',
+                    dueDate: { id: 'task-1', name: 'an entire task object' },
+                },
+                'project-default',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Invalid dueDate: received an object')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('rejects an unparseable dueDate string, naming the value for the retry', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                { name: 'Task with bad date string', projectName: 'Default Project', dueDate: 'not-a-real-date' },
+                'project-default',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('could not interpret "not-a-real-date" as a date')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('keeps Number.MAX_SAFE_INTEGER ("Someday") valid and forwards it', async () => {
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-someday',
+            projectId: 'project-default',
+            message: 'Task created',
+            task: { id: 'task-someday', name: 'Someday task', userId: 'user-1', commentsData: { amount: 0 } },
+        })
+
+        await executeToolNatively(
+            'create_task',
+            { name: 'Someday task', projectName: 'Default Project', dueDate: Number.MAX_SAFE_INTEGER },
+            'project-default',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({ dueDate: Number.MAX_SAFE_INTEGER }),
+            expect.anything()
+        )
+    })
+})
+
 describe('assistant get chats tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()

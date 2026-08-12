@@ -620,9 +620,13 @@ class TaskUpdateService {
                 console.log('🔄 TaskUpdateService: Converted dueDate', {
                     from: updateFields.dueDate,
                     to: processedDueDate,
-                    asDate: new Date(processedDueDate).toISOString(),
                 })
             }
+
+            // Model-authored JSON (assistant tool calls, MCP) can put anything under
+            // dueDate; refuse garbage here instead of persisting it to Firestore.
+            const { validateDueDateForPersistence } = require('./dueDateValidation')
+            processedDueDate = validateDueDateForPersistence(processedDueDate, updateFields.dueDate)
 
             const result = await this.taskService.updateAndPersistTask({
                 taskId: currentTask.id,
