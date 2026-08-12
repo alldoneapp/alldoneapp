@@ -18,7 +18,7 @@ import GoalProgress from './GoalProgress'
 import { isEmpty } from 'lodash'
 import { isWorkstream } from '../../../Workstreams/WorkstreamHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { FEED_PUBLIC_FOR_ALL } from '../../Utils/FeedsConstants'
+import { isPrivateObject } from './privacyMarker'
 
 export default function MentionsItems({
     selectItemToMention,
@@ -136,10 +136,6 @@ export default function MentionsItems({
         return itemId === getActiveItemId()
     }
 
-    const isPrivateItem = item => {
-        return item.isPrivate || (Array.isArray(item.isPublicFor) && !item.isPublicFor.includes(FEED_PUBLIC_FOR_ALL))
-    }
-
     useEffect(() => {
         if (activeItemRef) {
             const activeItemId = getActiveItemId()
@@ -193,7 +189,7 @@ export default function MentionsItems({
                             maxHeight={48}
                             shortTags={true}
                         />
-                        {showPrivacyMarker && isPrivateItem(item) && (
+                        {showPrivacyMarker && isPrivateObject(item) && (
                             <View style={localStyles.privacyMarker}>
                                 <Icon name="lock" size={16} color={colors.Text03} />
                             </View>

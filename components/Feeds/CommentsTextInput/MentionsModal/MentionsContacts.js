@@ -7,7 +7,7 @@ import SVGGenericUser from '../../../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_CONTACTS_TAB } from '../textInputHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import SocialText from '../../../UIControls/SocialText/SocialText'
-import { FEED_PUBLIC_FOR_ALL } from '../../Utils/FeedsConstants'
+import { isPrivateObject } from './privacyMarker'
 import Icon from '../../../Icon'
 
 export default function MentionsContacts({
@@ -46,10 +46,6 @@ export default function MentionsContacts({
             }
         }
     }, [activeUserIndex])
-
-    const isPrivateUser = user => {
-        return user.isPrivate || (Array.isArray(user.isPublicFor) && !user.isPublicFor.includes(FEED_PUBLIC_FOR_ALL))
-    }
 
     return (
         <View style={externalContainerStyle}>
@@ -104,7 +100,7 @@ export default function MentionsContacts({
                                 </Text>
                             )}
                         </View>
-                        {showPrivacyMarker && isPrivateUser(user) && (
+                        {showPrivacyMarker && isPrivateObject(user) && (
                             <View style={localStyles.privacyMarker}>
                                 <Icon name="lock" size={16} color={colors.Text03} />
                             </View>
