@@ -660,6 +660,10 @@ const uploadObjectsToAlgolia = async (algoliaClient, objectsList, objectsType) =
     objectsGroups.forEach(group => {
         promises.push(algoliaIndex.saveObjects(group))
     })
+    // Dual-write (TYPESENSE_MIGRATION.md Phase 1): bulk indexation mirrors into Typesense.
+    // The import never throws, so Algolia bulk uploads are unaffected by Typesense state.
+    const { importTypesenseDocuments } = require('./typesenseHelper')
+    promises.push(importTypesenseDocuments(indexName, objectsList))
     await Promise.all(promises)
 }
 
@@ -780,9 +784,9 @@ const startAssistantsIndextion = async (projectId, activeFullSearchDate) => {
     }
 }
 
-const startUsersIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
+// Shared with the Typesense backfill (migration/backfillTypesense.js): builds the per-project
+// member records exactly as startUsersIndextion always has.
+const buildProjectUsersSearchRecords = async projectId => {
     const promises = []
     promises.push(getProject(projectId, admin))
     promises.push(getProjectUsers(projectId, false))
@@ -796,6 +800,13 @@ const startUsersIndextion = async (projectId, activeFullSearchDate) => {
         fillRolCompanyAndDescriptionInUser([project], projectId, userInProject)
         parsedUsers.push(userInProject)
     })
+    return parsedUsers
+}
+
+const startUsersIndextion = async (projectId, activeFullSearchDate) => {
+    const algoliaClient = getAlgoliaClient()
+
+    const parsedUsers = await buildProjectUsersSearchRecords(projectId)
 
     await uploadObjectsToAlgolia(algoliaClient, parsedUsers, USERS_OBJECTS_TYPE)
     await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/users`).delete()
@@ -856,6 +867,7 @@ module.exports = {
     addContactsToList,
     addAssistantsToList,
     addChatsToList,
+    buildProjectUsersSearchRecords,
     configAlgoliaIndex,
     uploadObjectsToAlgolia,
     createAlgoliaIndexes,

@@ -1,0 +1,327 @@
+/**
+ * Typesense write layer for the Algolia → Typesense migration (see TYPESENSE_MIGRATION.md).
+ *
+ * Phase 1 contract (dual-write):
+ * - Collections are named EXACTLY like the Algolia index prefixes (dev_tasks, dev_goals,
+ *   dev_notes, dev_contacts, dev_updates) so the existing prefix-keyed write paths need no
+ *   mapping table.
+ * - Every exported write op is a guaranteed no-throw: Typesense being down, slow, or not yet
+ *   provisioned must never fail an Algolia write or the Firestore trigger hosting it. Gaps
+ *   are healed by re-running the Phase 2 backfill.
+ * - With TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY unset, everything here is a silent no-op,
+ *   so this code is safe to deploy before the cluster exists.
+ */
+const Typesense = require('typesense')
+
+const { getEnvFunctions } = require('./envFunctionsHelper')
+
+const TASKS_COLLECTION = 'dev_tasks'
+const GOALS_COLLECTION = 'dev_goals'
+const NOTES_COLLECTION = 'dev_notes'
+const CONTACTS_COLLECTION = 'dev_contacts'
+const CHATS_COLLECTION = 'dev_updates'
+
+const ALL_COLLECTIONS = [TASKS_COLLECTION, GOALS_COLLECTION, NOTES_COLLECTION, CONTACTS_COLLECTION, CHATS_COLLECTION]
+
+const IMPORT_BATCH_SIZE = 500
+
+// Explicit fields cover everything used in filter_by / sort_by; the `.*` auto field absorbs
+// the many display-only attributes the map*Data mappers emit without enumerating them.
+// No default_sorting_field on purpose: queries pass sort_by explicitly, and a required
+// sorting field would reject any record where it is missing.
+const COLLECTION_SCHEMAS = {
+    [TASKS_COLLECTION]: {
+        name: TASKS_COLLECTION,
+        // Let `#123` / humanReadableId tokens match when users search task ids.
+        token_separators: ['#', '-', '_'],
+        fields: [
+            { name: 'name', type: 'string', optional: true },
+            { name: 'humanReadableId', type: 'string', optional: true },
+            { name: 'humanReadableIdSearchable', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'userId', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'done', type: 'bool', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lockKey', type: 'string', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: 'created', type: 'int64', optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+    [GOALS_COLLECTION]: {
+        name: GOALS_COLLECTION,
+        fields: [
+            { name: 'name', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'ownerId', type: 'string', facet: true, optional: true },
+            { name: 'creatorId', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'lockKey', type: 'string', facet: true, optional: true },
+            { name: 'canBeInactive', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: 'created', type: 'int64', optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+    [NOTES_COLLECTION]: {
+        name: NOTES_COLLECTION,
+        fields: [
+            { name: 'title', type: 'string', optional: true },
+            { name: 'content', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'userId', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+    [CONTACTS_COLLECTION]: {
+        name: CONTACTS_COLLECTION,
+        fields: [
+            { name: 'displayName', type: 'string', optional: true },
+            { name: 'cleanDescription', type: 'string', optional: true },
+            { name: 'role', type: 'string', optional: true },
+            { name: 'company', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'uid', type: 'string', facet: true, optional: true },
+            { name: 'recorderUserId', type: 'string', facet: true, optional: true },
+            { name: 'isAssistant', type: 'bool', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+    [CHATS_COLLECTION]: {
+        name: CHATS_COLLECTION,
+        fields: [
+            { name: 'cleanName', type: 'string', optional: true },
+            { name: 'cleanLastComment', type: 'string', optional: true },
+            { name: 'cleanComments', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'creatorId', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+}
+
+let cachedClient = null
+const ensuredCollections = {}
+
+const getTypesenseConfig = () => {
+    const { TYPESENSE_HOST, TYPESENSE_ADMIN_API_KEY } = getEnvFunctions()
+    if (!TYPESENSE_HOST || !TYPESENSE_ADMIN_API_KEY) return null
+    // Accept a bare Typesense Cloud host ("xyz.a1.typesense.net") or a full origin
+    // ("https://xyz.a1.typesense.net:443").
+    let host = TYPESENSE_HOST
+    let protocol = 'https'
+    let port = 443
+    if (host.includes('://')) {
+        try {
+            const url = new URL(host)
+            host = url.hostname
+            protocol = url.protocol.replace(':', '') || 'https'
+            port = url.port ? parseInt(url.port, 10) : protocol === 'https' ? 443 : 80
+        } catch (error) {
+            console.error('Invalid TYPESENSE_HOST value, disabling Typesense writes:', error.message)
+            return null
+        }
+    }
+    return { host, protocol, port, apiKey: TYPESENSE_ADMIN_API_KEY }
+}
+
+const isTypesenseConfigured = () => {
+    return !!getTypesenseConfig()
+}
+
+const getTypesenseClient = () => {
+    if (cachedClient) return cachedClient
+    const config = getTypesenseConfig()
+    if (!config) return null
+    cachedClient = new Typesense.Client({
+        nodes: [{ host: config.host, port: config.port, protocol: config.protocol }],
+        apiKey: config.apiKey,
+        connectionTimeoutSeconds: 10,
+        numRetries: 3,
+        retryIntervalSeconds: 1,
+    })
+    return cachedClient
+}
+
+// Algolia records carry objectID; Typesense wants `id`. isPublicFor mixes the numeric
+// FEED_PUBLIC_FOR_ALL sentinel with uid/workstream strings, so it is normalized to string[]
+// to match the declared facet type (filters compare against the stringified sentinel too).
+const normalizeDocumentForTypesense = object => {
+    const { objectID, ...rest } = object
+    const doc = { ...rest, id: String(objectID != null ? objectID : object.id) }
+    if (Array.isArray(doc.isPublicFor)) {
+        doc.isPublicFor = doc.isPublicFor.map(value => String(value))
+    }
+    Object.keys(doc).forEach(key => {
+        if (doc[key] === undefined) delete doc[key]
+    })
+    return doc
+}
+
+const ensureCollection = async collectionName => {
+    const client = getTypesenseClient()
+    if (!client) return null
+    if (!ensuredCollections[collectionName]) {
+        ensuredCollections[collectionName] = (async () => {
+            try {
+                await client.collections(collectionName).retrieve()
+            } catch (error) {
+                if (error && error.httpStatus === 404) {
+                    const schema = COLLECTION_SCHEMAS[collectionName]
+                    if (!schema) throw new Error(`No Typesense schema defined for collection ${collectionName}`)
+                    try {
+                        await client.collections().create(schema)
+                    } catch (createError) {
+                        // A concurrent instance may have created it between retrieve and create.
+                        if (!createError || createError.httpStatus !== 409) throw createError
+                    }
+                } else {
+                    throw error
+                }
+            }
+            return client
+        })()
+        // A failed ensure must not poison the cache for the whole cold start.
+        ensuredCollections[collectionName].catch(() => {
+            delete ensuredCollections[collectionName]
+        })
+    }
+    return ensuredCollections[collectionName]
+}
+
+const upsertTypesenseDocument = async (collectionName, object) => {
+    if (!isTypesenseConfigured()) return
+    try {
+        const client = await ensureCollection(collectionName)
+        if (!client) return
+        await client.collections(collectionName).documents().upsert(normalizeDocumentForTypesense(object))
+    } catch (error) {
+        console.error(`Typesense upsert failed (${collectionName}, ${object && object.objectID}):`, error.message)
+    }
+}
+
+const deleteTypesenseDocument = async (collectionName, documentId) => {
+    if (!isTypesenseConfigured()) return
+    try {
+        const client = await ensureCollection(collectionName)
+        if (!client) return
+        await client.collections(collectionName).documents(String(documentId)).delete()
+    } catch (error) {
+        // Deleting a document that was never indexed is not a failure.
+        if (error && error.httpStatus === 404) return
+        console.error(`Typesense delete failed (${collectionName}, ${documentId}):`, error.message)
+    }
+}
+
+// Returns {imported, failed} so callers that care (the Phase 2 backfill) can verify;
+// dual-write callers ignore the result. Still never throws.
+const importTypesenseDocuments = async (collectionName, objects) => {
+    if (!isTypesenseConfigured()) return { imported: 0, failed: 0 }
+    if (!objects || objects.length === 0) return { imported: 0, failed: 0 }
+    let imported = 0
+    let failed = 0
+    try {
+        const client = await ensureCollection(collectionName)
+        if (!client) return { imported, failed: objects.length }
+        for (let i = 0; i < objects.length; i += IMPORT_BATCH_SIZE) {
+            const batch = objects.slice(i, i + IMPORT_BATCH_SIZE).map(normalizeDocumentForTypesense)
+            const results = await client.collections(collectionName).documents().import(batch, { action: 'upsert' })
+            const failures = results.filter(result => !result.success)
+            imported += batch.length - failures.length
+            failed += failures.length
+            if (failures.length > 0) {
+                console.error(
+                    `Typesense import: ${failures.length}/${batch.length} documents failed (${collectionName}):`,
+                    failures
+                        .slice(0, 3)
+                        .map(failure => failure.error)
+                        .join(' | ')
+                )
+            }
+        }
+    } catch (error) {
+        failed += objects.length - imported - failed
+        console.error(`Typesense import failed (${collectionName}, ${objects.length} docs):`, error.message)
+    }
+    return { imported, failed }
+}
+
+const deleteTypesenseDocumentsByFilter = async (collectionName, filterBy) => {
+    if (!isTypesenseConfigured()) return
+    try {
+        const client = await ensureCollection(collectionName)
+        if (!client) return
+        await client.collections(collectionName).documents().delete({ filter_by: filterBy })
+    } catch (error) {
+        console.error(`Typesense delete-by-filter failed (${collectionName}, ${filterBy}):`, error.message)
+    }
+}
+
+// Real project deletion only — the Algolia-side expiry/inactivity cleanups must NOT call
+// this: Typesense keeps everything (that is the point of the migration).
+const deleteTypesenseProjectRecords = async projectId => {
+    if (!isTypesenseConfigured()) return
+    await Promise.all(
+        ALL_COLLECTIONS.map(collectionName =>
+            deleteTypesenseDocumentsByFilter(collectionName, `projectId:=${JSON.stringify(String(projectId))}`)
+        )
+    )
+}
+
+// Verification helper (Phase 2 backfill): live document counts per collection. Unlike the
+// write ops this THROWS on failure — a verification that silently reports nothing is worse
+// than one that fails loudly.
+const getTypesenseCollectionStats = async () => {
+    const client = getTypesenseClient()
+    if (!client) throw new Error('Typesense is not configured (TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY)')
+    const stats = []
+    for (const collectionName of ALL_COLLECTIONS) {
+        try {
+            const collection = await client.collections(collectionName).retrieve()
+            stats.push({ name: collectionName, numDocuments: collection.num_documents })
+        } catch (error) {
+            if (error && error.httpStatus === 404) {
+                stats.push({ name: collectionName, numDocuments: 0, missing: true })
+            } else {
+                throw error
+            }
+        }
+    }
+    return stats
+}
+
+// Test seam: reset module-level caches between tests.
+const __resetTypesenseCachesForTests = () => {
+    cachedClient = null
+    Object.keys(ensuredCollections).forEach(key => delete ensuredCollections[key])
+}
+
+module.exports = {
+    TASKS_COLLECTION,
+    GOALS_COLLECTION,
+    NOTES_COLLECTION,
+    CONTACTS_COLLECTION,
+    CHATS_COLLECTION,
+    ALL_COLLECTIONS,
+    COLLECTION_SCHEMAS,
+    isTypesenseConfigured,
+    getTypesenseClient,
+    normalizeDocumentForTypesense,
+    upsertTypesenseDocument,
+    deleteTypesenseDocument,
+    importTypesenseDocuments,
+    deleteTypesenseDocumentsByFilter,
+    deleteTypesenseProjectRecords,
+    getTypesenseCollectionStats,
+    __resetTypesenseCachesForTests,
+}
