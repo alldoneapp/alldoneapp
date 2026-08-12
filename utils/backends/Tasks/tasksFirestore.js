@@ -119,6 +119,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
 import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
+import { getDefaultCalendarSortIndex } from '../../CalendarTaskSortIndex'
 import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
@@ -1681,7 +1682,13 @@ export async function updateFocusedTask(
                         // AT-2259 - a task leaving focus rejoins the list at the top like any other
                         // freshly moved task. It used to be dropped back onto its calendar event
                         // start, which pinned it above everything in its group forever.
-                        sortIndexForOldTask = generateSortIndex()
+                        // AT-2270 - except a calendar task, which rejoins the calendar block at the
+                        // bottom of the group instead. The focus boost overwrote whatever ordering
+                        // it had, so the only sensible value to come back to is its default one -
+                        // otherwise an auto-focused meeting ends up parked on top of the list.
+                        const oldFocusedTaskData = oldFocusedTaskSnap.data()
+                        const calendarSortIndex = getDefaultCalendarSortIndex(oldFocusedTaskData?.calendarData)
+                        sortIndexForOldTask = calendarSortIndex !== null ? calendarSortIndex : generateSortIndex()
                     } else {
                         // REMOVE LOGGING HERE
                         // console.warn(`[updateFocusedTask] Old focused task ${assignee.inFocusTaskId} not found for sortIndex update.`);
