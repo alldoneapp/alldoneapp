@@ -325,6 +325,24 @@ debt worth fixing when touched: the standard body has NO width constraint at all
 `maxWidth: 432` is only on the INFO variant), no maxHeight, and
 `document.getElementById('root').click()` inside the DELETE_TASK case.
 
+### Fixes round 2026-08-12 (same day, continued) — ✅
+
+**Global search is a mobile takeover**: below the sheet breakpoint it renders opaque,
+edge-to-edge, `bottom: keyboardInset` (rides the software keyboard), no radius; desktop
+palette unchanged. Its close X got the 44px hit-target treatment. (It was missed by the
+Phase 3 codemod because it is a fixed-overlay dialog, not a react-tiny-popover consumer.)
+
+**Confirm-dialog tier executed**: canonical `components/UIComponents/ConfirmDialog.js`
+(presentational card; host owns positioning — desktop centers via `popoverToCenter`,
+mobile becomes a sheet through AppPopover; Escape on the LIFO stack). Folded in and
+deleted: `Premium/PremiumTab/ConfirmationModal` (with its `left:'58.5%'`/317×162 hack) and
+`ManageTaskModal/ConfirmationModal`. `NotAllowRemoveUserModal` deleted — both call sites
+now dispatch the existing `CONFIRM_POPUP_TRIGGER_INFO`, so both branches of those
+decisions use one dialog system. `RevisionHistoryConfirmationModal`: strings translated
+(new key added to en/de/es), hardcoded `#091540`/317×206 box replaced with tokens-friendly
+maxWidth and natural height. `ConfirmPopup`'s standard body finally has a width cap
+(maxWidth 432 — it previously grew unbounded with long translations).
+
 ### Phase 5 — remaining polish (~3–5 days)
 
 Swipe-down-to-dismiss on sheets · back-button close · `prefers-reduced-motion` audit ·

@@ -4,7 +4,7 @@ import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa, SIDEBAR_MENU_WIDTH } from '../styles/global'
-import { getPopoverWidth } from '../../utils/HelperFunctions'
+import useModalSizing from '../../hooks/useModalSizing'
 import store from '../../redux/store'
 import {
     blockBackgroundTabShortcut,
@@ -38,10 +38,14 @@ import {
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
 import { buildSearchFilters } from './searchFilters'
+import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
+import { multiSearchTypesense } from '../../utils/typesenseSearch'
+import { useTypesenseSearch } from '../../utils/searchEngine'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
 import ProjectFilter from './Filter/ProjectFilter'
 import CreatedByMeOption from './Filter/CreatedByMeOption'
+import SearchScopeOptions from './Filter/SearchScopeOptions'
 import ActiveFullSearch from './Filter/ActiveFullSearch'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
@@ -104,6 +108,21 @@ export default function GlobalSearchModal() {
     // resets to off every time Search is opened and the default search
     // behaviour is unchanged.
     const [createdByMeOnly, setCreatedByMeOnly] = useState(false)
+    // Search scope (TYPESENSE_MIGRATION.md Phase 3): an all-projects search covers only
+    // ACTIVE projects unless these are switched on. Typesense indexes everything, so what
+    // used to be hidden by index absence (archived/template/guide records simply not
+    // existing in Algolia) must now be an explicit scope choice. Component state for the
+    // same reset-on-open reason as createdByMeOnly.
+    const [includeArchived, setIncludeArchived] = useState(false)
+    const [includeTemplatesAndGuides, setIncludeTemplatesAndGuides] = useState(false)
+    // Which bucket each project belongs to, from updateTemporaryProjectsAndUsers — the
+    // per-user categorization (archived is per-user!) that scope filtering needs.
+    const [projectBuckets, setProjectBuckets] = useState({
+        activeIds: [],
+        guideIds: [],
+        templateIds: [],
+        archivedIds: [],
+    })
     const searchInstanceIdRef = useRef(v4())
     const modalRef = useRef(null)
     const searchInputRef = useRef(null)
@@ -167,6 +186,13 @@ export default function GlobalSearchModal() {
         const guides = ProjectHelper.getGuideProjects(projectsList, loggedUser)
         const templates = ProjectHelper.getTemplateProjects(projectsList, loggedUser)
         const archived = ProjectHelper.getArchivedProjects2(projectsList, loggedUser)
+
+        setProjectBuckets({
+            activeIds: activeProjects.map(project => project.id),
+            guideIds: guides.map(project => project.id),
+            templateIds: templates.map(project => project.id),
+            archivedIds: archived.map(project => project.id),
+        })
 
         let sortedProjects = [
             ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
@@ -501,6 +527,95 @@ export default function GlobalSearchModal() {
         hidePopup(event)
     }
 
+    // Projects an all-projects search runs against. Archived and template/guide projects
+    // are excluded unless their toggle is on: their records now EXIST in the index
+    // (Typesense indexes everything), so scope must be an explicit filter choice rather
+    // than the index absence that used to hide them. Selecting a specific project in the
+    // picker always searches it — explicit selection is consent.
+    const getProjectsInSearchScope = () => {
+        if (inSelectedProject) return [selectedProject]
+        return projects.filter(project => {
+            if (projectBuckets.activeIds.includes(project.id)) return true
+            if (includeArchived && projectBuckets.archivedIds.includes(project.id)) return true
+            if (
+                includeTemplatesAndGuides &&
+                (projectBuckets.guideIds.includes(project.id) || projectBuckets.templateIds.includes(project.id))
+            ) {
+                return true
+            }
+            return false
+        })
+    }
+
+    // Shared result processing for both engines: groups hits by project, applies the
+    // guide-project visibility rules, and publishes the tab's results. Hits arrive in
+    // the Algolia shape (the Typesense adapter reproduces it).
+    const applySearchHits = (indexPrefix, hits, setResults, setResultsAmount, tab, searchInstanceId) => {
+        const { loggedUser } = store.getState()
+
+        if (searchInstanceId !== searchInstanceIdRef.current) return
+
+        const objectsResult = {}
+        for (let project of projects) {
+            objectsResult[project.id] = []
+        }
+
+        let objectsResultAmount = hits.length
+
+        if (inSelectedProject) {
+            objectsResult[selectedProject.id] = hits
+        } else {
+            // Group results by project
+            for (let i = 0; i < hits.length; i++) {
+                const hit = hits[i]
+                if (objectsResult[hit.projectId]) objectsResult[hit.projectId].push(hit)
+            }
+        }
+
+        if (indexPrefix !== CHATS_INDEX_NAME_PREFIX) {
+            const entries = Object.entries(objectsResult)
+            objectsResultAmount = 0
+            for (let i = 0; i < entries.length; i++) {
+                const projectId = entries[i][0]
+                const resultsInProject = entries[i][1]
+
+                const project = projects.find(project => project.id === projectId)
+                const isGuide = project && !!project.parentTemplateId
+                if (isGuide) {
+                    if (indexPrefix === TASKS_INDEX_NAME_PREFIX || indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+                        objectsResult[projectId] = resultsInProject.filter(object => {
+                            const needToShowObject = object.userId === loggedUser.uid
+                            if (needToShowObject) objectsResultAmount++
+                            return needToShowObject
+                        })
+                    } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
+                        objectsResult[projectId] = resultsInProject.filter(object => {
+                            const needToShowObject = object.ownerId === loggedUser.uid
+                            if (needToShowObject) objectsResultAmount++
+                            return needToShowObject
+                        })
+                    } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+                        objectsResult[projectId] = resultsInProject.filter(object => {
+                            const needToShowObject =
+                                object.uid === loggedUser.uid || object.recorderUserId === loggedUser.uid
+                            if (needToShowObject) objectsResultAmount++
+                            return needToShowObject
+                        })
+                    }
+                } else {
+                    objectsResultAmount += objectsResult[projectId].length
+                }
+            }
+        }
+
+        setResults(objectsResult)
+        setResultsAmount(objectsResultAmount)
+
+        setProcessing(processing => {
+            return { ...processing, [tab]: false }
+        })
+    }
+
     const onSearchInAlgolia = async (client, indexPrefix, setResults, setResultsAmount, tab, searchInstanceId) => {
         const { loggedUser } = store.getState()
 
@@ -509,7 +624,7 @@ export default function GlobalSearchModal() {
 
         const algoliaIndex = client.initIndex(indexPrefix)
 
-        const projectsToSearch = inSelectedProject ? [selectedProject] : projects
+        const projectsToSearch = getProjectsInSearchScope()
         const filters = buildSearchFilters({
             indexPrefix,
             projects: projectsToSearch,
@@ -528,71 +643,104 @@ export default function GlobalSearchModal() {
 
         try {
             const results = await algoliaIndex.search(localText, { filters: filters })
-
-            if (searchInstanceId === searchInstanceIdRef.current) {
-                const objectsResult = {}
-                for (let project of projects) {
-                    objectsResult[project.id] = []
-                }
-
-                let objectsResultAmount = results.hits.length
-
-                if (inSelectedProject) {
-                    objectsResult[selectedProject.id] = results.hits
-                } else {
-                    // Group results by project
-                    for (let i = 0; i < results.hits.length; i++) {
-                        const hit = results.hits[i]
-                        objectsResult[hit.projectId].push(hit)
-                    }
-                }
-
-                if (indexPrefix !== CHATS_INDEX_NAME_PREFIX) {
-                    const entries = Object.entries(objectsResult)
-                    objectsResultAmount = 0
-                    for (let i = 0; i < entries.length; i++) {
-                        const projectId = entries[i][0]
-                        const resultsInProject = entries[i][1]
-
-                        const project = projects.find(project => project.id === projectId)
-                        const isGuide = project && !!project.parentTemplateId
-                        if (isGuide) {
-                            if (indexPrefix === TASKS_INDEX_NAME_PREFIX || indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-                                objectsResult[projectId] = resultsInProject.filter(object => {
-                                    const needToShowObject = object.userId === loggedUser.uid
-                                    if (needToShowObject) objectsResultAmount++
-                                    return needToShowObject
-                                })
-                            } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
-                                objectsResult[projectId] = resultsInProject.filter(object => {
-                                    const needToShowObject = object.ownerId === loggedUser.uid
-                                    if (needToShowObject) objectsResultAmount++
-                                    return needToShowObject
-                                })
-                            } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-                                objectsResult[projectId] = resultsInProject.filter(object => {
-                                    const needToShowObject =
-                                        object.uid === loggedUser.uid || object.recorderUserId === loggedUser.uid
-                                    if (needToShowObject) objectsResultAmount++
-                                    return needToShowObject
-                                })
-                            }
-                        } else {
-                            objectsResultAmount += objectsResult[projectId].length
-                        }
-                    }
-                }
-
-                setResults(objectsResult)
-                setResultsAmount(objectsResultAmount)
-
-                setProcessing(processing => {
-                    return { ...processing, [tab]: false }
-                })
-            }
+            applySearchHits(indexPrefix, results.hits, setResults, setResultsAmount, tab, searchInstanceId)
         } catch (error) {
             setProcessing(processing => {
                 return { ...processing, [tab]: false }
+            })
+        }
+    }
+
+    // Typesense path: all five tabs in ONE multi_search round-trip (the Algolia path
+    // fires five requests). Same filters contract: an empty filter_by means "skip this
+    // tab", never "search unscoped".
+    const onSearchInTypesense = async searchInstanceId => {
+        const { loggedUser } = store.getState()
+
+        const tabsConfig = [
+            {
+                indexPrefix: TASKS_INDEX_NAME_PREFIX,
+                setResults: setTasksResult,
+                setResultsAmount: setTasksResultAmount,
+                tab: MENTION_MODAL_TASKS_TAB,
+            },
+            {
+                indexPrefix: GOALS_INDEX_NAME_PREFIX,
+                setResults: setGoalsResult,
+                setResultsAmount: setGoalsResultAmount,
+                tab: MENTION_MODAL_GOALS_TAB,
+            },
+            {
+                indexPrefix: NOTES_INDEX_NAME_PREFIX,
+                setResults: setNotesResult,
+                setResultsAmount: setNotesResultAmount,
+                tab: MENTION_MODAL_NOTES_TAB,
+            },
+            {
+                indexPrefix: CONTACTS_INDEX_NAME_PREFIX,
+                setResults: setContactsResult,
+                setResultsAmount: setContactsResultAmount,
+                tab: MENTION_MODAL_CONTACTS_TAB,
+            },
+            {
+                indexPrefix: CHATS_INDEX_NAME_PREFIX,
+                setResults: setChatsResult,
+                setResultsAmount: setChatsResultAmount,
+                tab: MENTION_MODAL_TOPICS_TAB,
+            },
+        ]
+
+        tabsConfig.forEach(({ setResults, setResultsAmount }) => {
+            setResults({})
+            setResultsAmount(0)
+        })
+
+        const projectsToSearch = getProjectsInSearchScope()
+
+        const searchableTabs = []
+        tabsConfig.forEach(config => {
+            const filterBy = buildTypesenseSearchFilters({
+                indexPrefix: config.indexPrefix,
+                projects: projectsToSearch,
+                loggedUser,
+                createdByMeOnly,
+            })
+            if (filterBy) {
+                searchableTabs.push({ ...config, filterBy })
+            } else {
+                setProcessing(processing => {
+                    return { ...processing, [config.tab]: false }
+                })
+            }
+        })
+        if (searchableTabs.length === 0) return
+
+        try {
+            const results = await multiSearchTypesense(
+                searchableTabs.map(({ indexPrefix, filterBy }) => ({
+                    collection: indexPrefix,
+                    query: localText,
+                    filterBy,
+                }))
+            )
+            searchableTabs.forEach((config, index) => {
+                applySearchHits(
+                    config.indexPrefix,
+                    results[index].hits,
+                    config.setResults,
+                    config.setResultsAmount,
+                    config.tab,
+                    searchInstanceId
+                )
+            })
+        } catch (error) {
+            console.log('Typesense search failed:', error.message)
+            setProcessing({
+                [MENTION_MODAL_CONTACTS_TAB]: false,
+                [MENTION_MODAL_GOALS_TAB]: false,
+                [MENTION_MODAL_NOTES_TAB]: false,
+                [MENTION_MODAL_TASKS_TAB]: false,
+                [MENTION_MODAL_TOPICS_TAB]: false,
             })
         }
     }
@@ -654,6 +802,12 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_TOPICS_TAB]: true,
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
+
+            if (useTypesenseSearch()) {
+                onSearchInTypesense(searchInstanceId)
+                return
+            }
+
             const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
 
             const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
@@ -723,6 +877,15 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [createdByMeOnly])
 
+    // Same immediate re-run for the scope toggles (archived / templates & guides).
+    const scopeAppliedRef = useRef(`${includeArchived}|${includeTemplatesAndGuides}`)
+    useEffect(() => {
+        const scopeKey = `${includeArchived}|${includeTemplatesAndGuides}`
+        if (scopeAppliedRef.current === scopeKey) return
+        scopeAppliedRef.current = scopeKey
+        if (localText.trim() !== '') onSearch()
+    }, [includeArchived, includeTemplatesAndGuides])
+
     const activateFullSearch = async () => {
         setIndexing(true)
         const { loggedUser } = store.getState()
@@ -739,8 +902,16 @@ export default function GlobalSearchModal() {
         onSearch()
     }
 
-    const width = mobile ? getPopoverWidth() : tablet ? 400 : 520
-    let sidebarOpenStyle = mobile ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
+    // Below the sheet breakpoint search is a full-screen takeover: opaque,
+    // edge to edge, riding above the software keyboard. Desktop keeps the
+    // anchored palette card. (Pure window-width decision, like the shell.)
+    const { isSheet: isTakeover, keyboardInset } = useModalSizing()
+    const width = isTakeover ? '100%' : tablet ? 400 : 520
+    const sidebarOpenStyle = isTakeover ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
+    const takeoverContainerStyle = isTakeover
+        ? { paddingTop: 0, paddingBottom: 0, bottom: keyboardInset, alignItems: 'stretch' }
+        : null
+    const takeoverPopupStyle = isTakeover ? { height: '100%', borderRadius: 0, alignSelf: 'stretch' } : null
 
     const updateSelectedProject = projectId => {
         const project =
@@ -751,7 +922,7 @@ export default function GlobalSearchModal() {
     }
 
     return (
-        <View style={localStyles.container} ref={modalRef}>
+        <View style={[localStyles.container, takeoverContainerStyle]} ref={modalRef}>
             <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
 
             {showSelectProjectModal ? (
@@ -768,7 +939,7 @@ export default function GlobalSearchModal() {
                     showAllProjects={true}
                 />
             ) : (
-                <View style={[localStyles.popup, { width: width }, sidebarOpenStyle]}>
+                <View style={[localStyles.popup, { width: width }, sidebarOpenStyle, takeoverPopupStyle]}>
                     <View style={localStyles.titleContainer}>
                         <Text style={[styles.title7, localStyles.title]}>Search</Text>
                     </View>
@@ -786,6 +957,16 @@ export default function GlobalSearchModal() {
                         onToggle={() => setCreatedByMeOnly(!createdByMeOnly)}
                         disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
                     />
+
+                    {!inSelectedProject && (
+                        <SearchScopeOptions
+                            includeArchived={includeArchived}
+                            includeTemplatesAndGuides={includeTemplatesAndGuides}
+                            onToggleArchived={() => setIncludeArchived(!includeArchived)}
+                            onToggleTemplatesAndGuides={() => setIncludeTemplatesAndGuides(!includeTemplatesAndGuides)}
+                            disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        />
+                    )}
 
                     <ActiveFullSearch
                         activeFullSearchInAllProjects={
@@ -885,5 +1066,8 @@ const localStyles = StyleSheet.create({
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
+        // 44px touch target without moving the icon (same as FollowUp/CloseButton).
+        padding: 10,
+        margin: -10,
     },
 })

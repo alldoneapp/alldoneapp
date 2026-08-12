@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import algoliasearch from 'algoliasearch'
+import { searchTypesenseCollection } from '../../../utils/typesenseSearch'
+import { useTypesenseSearch } from '../../../utils/searchEngine'
+import { formatTypesenseValue } from '../../GlobalSearchAlgolia/typesenseSearchFilters'
 
 import { colors } from '../../styles/global'
 import {
@@ -247,6 +250,38 @@ export default function MentionsModal({
         }
     }
 
+    // Typesense port of the inline Algolia filters below (same scopes, Typesense syntax).
+    // isPublicFor is a string[] in Typesense, so the numeric public sentinel is quoted.
+    const getTypesenseMentionFilter = (indexPrefix, isGuide) => {
+        const publicScope = `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(
+            loggedUser.uid
+        )}]`
+        const projectScope = `projectId:=${formatTypesenseValue(projectId)}`
+
+        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
+            return isGuide
+                ? `${projectScope} && userId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
+                : `${projectScope} && ${publicScope}`
+        }
+        if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+            // Search notes across all projects the user has access to
+            return publicScope
+        }
+        if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
+            return isGuide
+                ? `${projectScope} && ownerId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
+                : `${projectScope} && ${publicScope}`
+        }
+        if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+            // Search contacts across all projects the user has access to
+            return publicScope
+        }
+        if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
+            return `${projectScope} && ${publicScope}`
+        }
+        return ''
+    }
+
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
@@ -273,7 +308,9 @@ export default function MentionsModal({
             filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         }
 
-        const results = await algoliaIndex.search(mentionText, { filters: filters })
+        const results = useTypesenseSearch()
+            ? await searchTypesenseCollection(indexPrefix, mentionText, getTypesenseMentionFilter(indexPrefix, isGuide))
+            : await algoliaIndex.search(mentionText, { filters: filters })
 
         let items = results.hits
 

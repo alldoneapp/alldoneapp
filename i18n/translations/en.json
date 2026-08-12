@@ -1045,6 +1045,7 @@
     "Write the title of the goal": "Write the title of the goal",
     "Write the title of the skill": "Write the title of the skill",
     "Do you really want to perform this action?": "Do you really want to perform this action?",
+    "Recovering this version will overwrite the current version. However you can always switch back to the previous version if you want to.": "Recovering this version will overwrite the current version. However you can always switch back to the previous version if you want to.",
     "Milestone": "Milestone",
     "Workstream": "Workstream",
     "Highlight": "Highlight",
@@ -2659,6 +2660,8 @@
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.",
     "Paste your OpenRouter API key (sk-or-…)": "Paste your OpenRouter API key (sk-or-…)",
     "Only objects I created": "Only objects I created",
+    "Include archived projects": "Include archived projects",
+    "Include templates & guides": "Include templates & guides",
     "One earlier unread message": "1 earlier unread message",
     "Amount earlier unread messages": "%{amount} earlier unread messages"
 }
