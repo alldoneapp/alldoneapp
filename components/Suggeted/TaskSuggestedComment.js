@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { updateTaskSuggestedCommentModalData } from '../../redux/actions'
 import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Icon from '../Icon'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { getWorkstreamById, WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
@@ -59,7 +59,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
 
     return (
         <View style={[localStyles.container]}>
-            <Popover isOpen={true} content={null} onClickOutside={closeModal}>
+            <AppPopover isOpen={true} content={null} onClickOutside={closeModal}>
                 <RichCommentModal
                     projectId={projectId}
                     objectType={'tasks'}
@@ -85,7 +85,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
                         </View>
                     }
                 />
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

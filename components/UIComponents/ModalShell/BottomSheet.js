@@ -17,8 +17,14 @@ import useEscapeKey from '../../../hooks/useEscapeKey'
 import { highResNow, registerPopupDismiss, shouldIgnorePressFromBeforeOpen } from '../../../utils/popupDismissGuard'
 import { lockBodyScroll, unlockBodyScroll } from '../../../utils/bodyScrollLock'
 import { getSafeAreaBottomInset } from '../../../utils/safeAreaInsets'
-import { removeModal, storeModal } from '../../ModalsManager/modalsManager'
 import { ModalShellContext } from './ModalShellContext'
+
+// Lazy on purpose: modalsManager imports the whole redux store/actions, and a
+// top-level import here puts that behind every component that renders an
+// AppPopover — which in jsdom flips the winner of the pre-existing
+// SharedHelper <-> TranslationService import cycle and breaks unrelated
+// suites at load. Only executed when a modalId is actually passed.
+const getModalsManager = () => require('../../ModalsManager/modalsManager')
 
 const SLIDE_DISTANCE = 240
 const HANDLE_STRIP_HEIGHT = 20
@@ -90,11 +96,11 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         openedAtRef.current = highResNow()
         closingRef.current = false
         lockBodyScroll()
-        if (modalId) storeModal(modalId)
+        if (modalId) getModalsManager().storeModal(modalId)
         animate(1, MODAL_ENTER_MS)
         return () => {
             unlockBodyScroll()
-            if (modalId) removeModal(modalId)
+            if (modalId) getModalsManager().removeModal(modalId)
         }
     }, [isOpen])
 

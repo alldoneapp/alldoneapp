@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import Button from '../../../UIControls/Button'
 import { useSelector } from 'react-redux'
 import AppThemeModal, { themeOptionsMap } from '../../../UIComponents/FloatModals/AppThemeModal'
@@ -21,7 +21,7 @@ export default function Theme({ userId, themeName }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <AppThemeModal userId={userId} themeName={themeName} closePopover={() => setOpen(false)} />
                     }
@@ -38,7 +38,7 @@ export default function Theme({ userId, themeName }) {
                         title={translate(themeOptionsMap[themeName].name)}
                         onPress={() => setOpen(true)}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

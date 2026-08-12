@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
 
@@ -127,7 +127,7 @@ export default function DayRateLogging({ projectId, disabled, dayRateTimeLog }) 
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Day-rate logging')}</Text>
             <View style={localStyles.buttonContainer}>
-                <Popover
+                <AppPopover
                     content={
                         <DayRateLoggingModal
                             projectId={projectId}
@@ -149,7 +149,7 @@ export default function DayRateLogging({ projectId, disabled, dayRateTimeLog }) 
                         onPress={() => setOpen(true)}
                         disabled={disabled}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

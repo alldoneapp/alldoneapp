@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet } from 'react-native'
 import { shallowEqual, useSelector, useDispatch } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import styles from '../../../styles/global'
 import Button from '../../../UIControls/Button'
@@ -68,7 +68,7 @@ export default function BotOptionsModalWrapper({
     const finalDisplayName = isWebhookTask ? `${displayName} (${parentObject.name})` : displayName
 
     return (
-        <Popover
+        <AppPopover
             content={
                 gold > 0 ? (
                     <BotOptionsModal
@@ -100,7 +100,7 @@ export default function BotOptionsModalWrapper({
                 title={finalDisplayName}
                 titleStyle={localStyles.text}
             />
-        </Popover>
+        </AppPopover>
     )
 }
 

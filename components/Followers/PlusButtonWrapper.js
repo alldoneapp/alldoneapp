@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, StyleSheet } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import FollowersModal from './FollowersModal'
 import UsersPlusButton from './UsersPlusButton'
@@ -18,7 +18,7 @@ export default function PlusButtonWrapper({ followers, markAssignee = false, fol
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <View>
                     <FollowersModal
@@ -36,7 +36,7 @@ export default function PlusButtonWrapper({ followers, markAssignee = false, fol
             align={'start'}
         >
             <UsersPlusButton usersAmount={followers.length} openModal={openModal} maxUsersToShow={MAX_USERS_TO_SHOW} />
-        </Popover>
+        </AppPopover>
     )
 }
 

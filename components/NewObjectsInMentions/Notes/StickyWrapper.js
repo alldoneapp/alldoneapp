@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
@@ -30,7 +30,7 @@ export default function StickyWrapper({ note, projectId, setSticky, disabled = f
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <SelectStickynessPopup
                     projectId={projectId}
@@ -66,6 +66,6 @@ export default function StickyWrapper({ note, projectId, setSticky, disabled = f
                     forceShowShortcut={true}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

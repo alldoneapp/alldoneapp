@@ -1,6 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { popoverToSafePosition } from '../../utils/HelperFunctions'
 import { useSelector } from 'react-redux'
 import RichCreateTaskModal from '../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
@@ -9,7 +9,7 @@ export default function SwipeNewTaskWrapper({ projectId, objectId, sourceType, s
     const mobile = useSelector(state => state.smallScreenNavigation)
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <RichCreateTaskModal
                     initialProjectId={projectId}
@@ -27,6 +27,6 @@ export default function SwipeNewTaskWrapper({ projectId, objectId, sourceType, s
             disableReposition
         >
             <View />
-        </Popover>
+        </AppPopover>
     )
 }

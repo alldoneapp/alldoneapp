@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 
 import {
@@ -211,7 +211,7 @@ export default function DvBotButton({
     )
 
     return (
-        <Popover
+        <AppPopover
             content={
                 resolveProjectAssistant && !assistant ? null : gold > 0 ? (
                     <BotOptionsModal
@@ -243,7 +243,7 @@ export default function DvBotButton({
             ) : (
                 assistantButton
             )}
-        </Popover>
+        </AppPopover>
     )
 }
 

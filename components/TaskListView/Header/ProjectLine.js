@@ -21,7 +21,7 @@ import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/Col
 import { DV_TAB_PROJECT_PROPERTIES, DV_TAB_ROOT_GOALS } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -116,7 +116,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
     )
 
     return isOpen ? (
-        <Popover
+        <AppPopover
             isOpen={true}
             position={mobile ? ['bottom'] : ['bottom', 'top', 'right', 'left']}
             align="start"
@@ -158,7 +158,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             }
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     ) : (
         trigger
     )

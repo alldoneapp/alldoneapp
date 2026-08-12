@@ -1,6 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import MoreButton from './MoreButton'
@@ -74,7 +74,7 @@ function MoreButtonWrapper(
     return (
         <View style={wrapperStyle}>
             {isOpen ? (
-                <Popover
+                <AppPopover
                     key={contentKey}
                     content={
                         customModal || (
@@ -102,7 +102,7 @@ function MoreButtonWrapper(
                         shortcut={shortcut}
                         iconSize={iconSize}
                     />
-                </Popover>
+                </AppPopover>
             ) : (
                 <MoreButton
                     onPress={openModal}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { useSelector } from 'react-redux'
 
@@ -25,7 +25,7 @@ export default function EstimationWrapper({ task, projectId, setEstimation, setA
     const cleanedName = task.extendedName.trim()
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -61,6 +61,6 @@ export default function EstimationWrapper({ task, projectId, setEstimation, setA
                     disabled={!cleanedName}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

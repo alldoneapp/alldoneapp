@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -60,7 +60,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                         {`${chancePercent}%`}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangeNumberTodayTasks
                             customTitle={translate(config.modalTitle)}
@@ -84,7 +84,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

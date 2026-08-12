@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { Calendar, LocaleConfig } from 'react-native-calendars'
 import v4 from 'uuid/v4'
 import moment from 'moment'
@@ -150,7 +150,7 @@ export default function ProjectHappinessView({ project, userId }) {
                 <View style={localStyles.addBox}>
                     <Text style={localStyles.sectionTitle}>{translate('Add past date')}</Text>
                     <View style={localStyles.addHeader}>
-                        <Popover
+                        <AppPopover
                             isOpen={showDatePicker}
                             onClickOutside={() => setShowDatePicker(false)}
                             position={['bottom', 'top', 'right', 'left']}
@@ -193,7 +193,7 @@ export default function ProjectHappinessView({ project, userId }) {
                                     buttonStyle={localStyles.dateButton}
                                 />
                             </View>
-                        </Popover>
+                        </AppPopover>
                         <HappinessRatingPicker value={rating} onChange={setRating} compact />
                     </View>
                     <TextInput

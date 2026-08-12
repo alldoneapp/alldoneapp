@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -43,7 +43,7 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantReasoningEffortModal
                     closeModal={closeModal}
@@ -73,6 +73,6 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
                     title={translate(getAssistantReasoningEffortLabelKey(reasoningEffort))}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

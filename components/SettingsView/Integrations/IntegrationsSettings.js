@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -74,7 +74,7 @@ function ProjectPicker({ projects, onSelect, closePopover }) {
 function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
@@ -95,7 +95,7 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
                 </Text>
                 <Icon name="chevron-down" size={13} color={colors.Text03} />
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 
@@ -277,7 +277,7 @@ function ConnectionCard({ service, connection, projects }) {
                     </TouchableOpacity>
                 )}
                 {hasSettingsSection && (
-                    <Popover
+                    <AppPopover
                         isOpen={settingsOpen}
                         position={['right', 'bottom', 'left', 'top']}
                         padding={4}
@@ -305,7 +305,7 @@ function ConnectionCard({ service, connection, projects }) {
                             <Icon name="settings" size={13} color={colors.Primary100} />
                             <Text style={[styles.caption1, localStyles.textActionLabel]}>{translate('Settings')}</Text>
                         </TouchableOpacity>
-                    </Popover>
+                    </AppPopover>
                 )}
                 <TouchableOpacity style={localStyles.textAction} onPress={disconnect} disabled={busy}>
                     <Icon name="unlink" size={13} color={colors.UtilityRed200} />
@@ -346,7 +346,7 @@ function ConnectionsSection({ service, title, connections, projects }) {
             ))}
             <View style={localStyles.connectRow}>
                 {[PROVIDER_GOOGLE, PROVIDER_MICROSOFT].map(provider => (
-                    <Popover
+                    <AppPopover
                         key={provider}
                         isOpen={connectPicker === provider}
                         position={['bottom', 'top', 'right', 'left']}
@@ -369,7 +369,7 @@ function ConnectionsSection({ service, title, connections, projects }) {
                             buttonStyle={{ marginRight: 12 }}
                             onPress={() => setConnectPicker(provider)}
                         />
-                    </Popover>
+                    </AppPopover>
                 ))}
             </View>
         </View>

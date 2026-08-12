@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -68,7 +68,7 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 <AssistantModal
@@ -90,6 +90,6 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
                 assistantId={currentAssistantId}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }

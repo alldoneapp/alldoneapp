@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -35,7 +35,7 @@ export default function RealtimeVoiceWrapper({ disabled, projectId, assistant })
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantRealtimeVoiceModal
                     closeModal={closeModal}
@@ -56,6 +56,6 @@ export default function RealtimeVoiceWrapper({ disabled, projectId, assistant })
                 disabled={isOpen || disabled}
                 title={realtimeVoice.charAt(0).toUpperCase() + realtimeVoice.slice(1)}
             />
-        </Popover>
+        </AppPopover>
     )
 }

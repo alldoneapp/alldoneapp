@@ -4,7 +4,7 @@ import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import store from '../../redux/store'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 export default class ActionButton extends Component {
     constructor(props) {
@@ -48,7 +48,7 @@ export default class ActionButton extends Component {
 
         return (
             <View style={[{ marginRight: 4 }, disabledStyle]}>
-                <Popover
+                <AppPopover
                     content={
                         this.props.modalContent
                             ? React.cloneElement(this.props.modalContent, { hidePopover: this.hidePopover })
@@ -83,7 +83,7 @@ export default class ActionButton extends Component {
                             <Text style={[styles.buttonLabel, { color: colors.Text03 }]}>{this.props.text.text}</Text>
                         </View>
                     </TouchableOpacity>
-                </Popover>
+                </AppPopover>
             </View>
         )
     }

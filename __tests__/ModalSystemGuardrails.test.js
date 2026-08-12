@@ -26,10 +26,13 @@ import { nudgeIntoViewportWhen } from '../utils/popoverPositioning'
 
 const ROOT = path.join(__dirname, '..')
 
-// 226 at the Phase 1 audit; Phase 2 migrated the six pilot wrappers onto
-// AppPopover (−6) and added the shell itself (+2, one import + one comment
-// mention — the ratchet matches file content, not just import lines).
-const RAW_POPOVER_IMPORT_BASELINE = 222
+// 226 at the Phase 1 audit; 222 after the Phase 2 pilot; 26 after the Phase 3
+// sweep (196 files codemodded onto AppPopover). What remains is the deliberate
+// keep-list — the shell itself, editor-caret popups (mentions/autoformat/notes
+// editor), drag-coordinate modals, DueDateSinglePopup's centered-overlay
+// pattern, RichCommentModal's dismiss-surface system — plus comment mentions
+// (the ratchet matches file content, not just import lines).
+const RAW_POPOVER_IMPORT_BASELINE = 26
 
 const collectJsFiles = dir => {
     const results = []

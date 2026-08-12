@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -39,7 +39,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {currentOption?.name || currentModel}
                 </Text>
-                <Popover
+                <AppPopover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>{translate('Heartbeat model')}</Text>
@@ -79,7 +79,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

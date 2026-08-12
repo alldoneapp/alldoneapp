@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Backend from '../../../utils/BackendBridge'
 import { getObjectData, OBJECT_DATA_ID, OBJECT_DATA_TYPE, STAYWARD_COMMENT } from '../Utils/HelperFunctions'
 import Button from '../../UIControls/Button'
@@ -197,7 +197,7 @@ export default function CommentsWrapper({
 
     return (
         <View>
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         projectId={projectId}
@@ -238,7 +238,7 @@ export default function CommentsWrapper({
                         disabled={disabled}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

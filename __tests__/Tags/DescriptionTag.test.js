@@ -17,6 +17,8 @@ jest.mock('../../components/styles/global', () => ({
     default: { subtitle2: {} },
     colors: { Gray300: '#eee', Text03: '#333', UtilityBlue200: '#00f' },
     windowTagStyle: () => ({}),
+    // components/styles/modals.js calls this at module load (AppPopover chain).
+    hexColorToRGBa: (color, alpha) => `rgba(0,0,0,${alpha})`,
 }))
 jest.mock('../../components/UIComponents/FloatModals/DescriptionModal/DescriptionModal', () => 'DescriptionModal')
 jest.mock('../../functions/Utils/parseTextUtils', () => ({

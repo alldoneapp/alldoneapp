@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import v4 from 'uuid/v4'
 
 import Icon from '../../../../Icon'
@@ -67,7 +67,7 @@ export default function DefaultProject({ user }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <SelectProjectFromListModal
                             closeModal={closeModal}
@@ -102,7 +102,7 @@ export default function DefaultProject({ user }) {
                             disabled={activeProjects.length === 0}
                         />
                     )}
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

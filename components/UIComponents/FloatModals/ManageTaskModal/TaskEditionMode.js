@@ -4,7 +4,7 @@ import v4 from 'uuid/v4'
 import ReactQuill from 'react-quill-new'
 import { cloneDeep, isEqual } from 'lodash'
 import Hotkeys from 'react-hot-keys'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 
 import { colors } from '../../../styles/global'
 import TasksHelper, { OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
@@ -755,7 +755,7 @@ export default class TaskEditionMode extends Component {
                         forceShowShortcut={true}
                     />
                 </View>
-                <Popover
+                <AppPopover
                     content={
                         <ConfirmationModal closeModal={this.closeConfirmationModal} deleteTask={this.deleteTask} />
                     }
@@ -765,7 +765,7 @@ export default class TaskEditionMode extends Component {
                     isOpen={showConfirmationModal}
                 >
                     <View />
-                </Popover>
+                </AppPopover>
             </View>
         )
     }

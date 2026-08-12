@@ -25,7 +25,7 @@ import Icon from '../../../Icon'
 import moment from 'moment'
 import DueDateCalendarModal from '../../FloatModals/DueDateCalendarModal/DueDateCalendarModal'
 import { getTimeFormat } from '../../FloatModals/DateFormatPickerModal'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import RecurrenceModal from '../RecurrenceModal'
 import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
@@ -269,7 +269,7 @@ const MemoizedModalContent = memo(
                                         {translate('Start date')}
                                     </Text>
                                     <View style={{ marginLeft: 'auto' }}>
-                                        <Popover
+                                        <AppPopover
                                             isOpen={showDatePicker}
                                             positions={['bottom', 'left', 'right', 'top']}
                                             padding={4}
@@ -310,7 +310,7 @@ const MemoizedModalContent = memo(
                                                     {moment(startDate).format('DD.MM.YYYY')}
                                                 </Text>
                                             </TouchableOpacity>
-                                        </Popover>
+                                        </AppPopover>
                                     </View>
                                 </View>
                                 <View style={localStyles.recurrenceContainer}>
@@ -321,7 +321,7 @@ const MemoizedModalContent = memo(
                                         {translate('Start time')}
                                     </Text>
                                     <View style={{ marginLeft: 'auto' }}>
-                                        <Popover
+                                        <AppPopover
                                             isOpen={showTimePicker}
                                             positions={['bottom', 'left', 'right', 'top']}
                                             padding={4}
@@ -348,7 +348,7 @@ const MemoizedModalContent = memo(
                                                     {moment(startDate).format(timeFormat)}
                                                 </Text>
                                             </TouchableOpacity>
-                                        </Popover>
+                                        </AppPopover>
                                     </View>
                                 </View>
                             </>

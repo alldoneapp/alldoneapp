@@ -1,5 +1,5 @@
 import React from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 import { View } from 'react-native'
 
@@ -14,7 +14,7 @@ export default function DoneModalItemWrapper({ moveMilestone, closeModal, projec
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ConfirmDoneMilestoneModal
                     projectId={projectId}
@@ -32,6 +32,6 @@ export default function DoneModalItemWrapper({ moveMilestone, closeModal, projec
             contentLocation={mobile ? null : undefined}
         >
             <View />
-        </Popover>
+        </AppPopover>
     )
 }

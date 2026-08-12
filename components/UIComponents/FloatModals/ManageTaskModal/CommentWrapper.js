@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 
 import { colors } from '../../../styles/global'
@@ -27,7 +27,7 @@ export default function CommentWrapper({ task, projectId, setComment }) {
     const cleanedName = task.extendedName.trim()
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     processDone={addComment}
@@ -66,6 +66,6 @@ export default function CommentWrapper({ task, projectId, setComment }) {
                     disabled={!cleanedName}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

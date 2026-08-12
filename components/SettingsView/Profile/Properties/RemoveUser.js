@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
@@ -44,7 +44,7 @@ export default function RemoveUser({ user }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <NotAllowRemoveUserModal
                     closeModal={closeModal}
@@ -68,7 +68,7 @@ export default function RemoveUser({ user }) {
                 onPress={openDeleteUserModal}
                 accessible={false}
             />
-        </Popover>
+        </AppPopover>
     )
 }
 

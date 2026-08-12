@@ -1,6 +1,6 @@
 import React, { Component } from 'react'
 import { Keyboard, StyleSheet, TextInput, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
@@ -205,7 +205,7 @@ class EditContactStatus extends Component {
                 <View style={localStyles.buttonContainer}>
                     <View style={[localStyles.buttonSection]}>
                         <View style={[localStyles.buttonSection, isMiddleScreen ? undefined : { marginRight: 32 }]}>
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ColorPickerModal
                                         color={color}
@@ -228,7 +228,7 @@ class EditContactStatus extends Component {
                                     <View style={[localStyles.colorButtonDot, { backgroundColor: color }]} />
                                     <Icon name="chevron-down" size={16} color={colors.Text03} />
                                 </TouchableOpacity>
-                            </Popover>
+                            </AppPopover>
 
                             {formType === 'edit' && (
                                 <Button

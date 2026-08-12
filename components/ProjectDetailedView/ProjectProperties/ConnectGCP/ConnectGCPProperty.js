@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import ConnectGCPModal from './ConnectGCPModal/ConnectGCPModal'
 import ConnectGCPButton from './ConnectGCPButton'
@@ -53,7 +53,7 @@ export default function ConnectGCPProperty({ project, disabled }) {
     }, [dispatch])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ConnectGCPModal project={project} closePopover={closeModal} onConnectionChange={refreshConnection} />
             }
@@ -73,6 +73,6 @@ export default function ConnectGCPProperty({ project, disabled }) {
             }}
         >
             <ConnectGCPButton projectId={projectId} disabled={disabled} connected={connected} onPress={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }

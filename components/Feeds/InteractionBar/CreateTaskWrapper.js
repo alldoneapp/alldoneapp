@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import Button from '../../UIControls/Button'
 import Hotkeys from 'react-hot-keys'
@@ -45,7 +45,7 @@ export default function CreateTaskWrapper({
 
     return (
         <View>
-            <Popover
+            <AppPopover
                 content={
                     <RichCreateTaskModal
                         initialProjectId={projectId}
@@ -83,7 +83,7 @@ export default function CreateTaskWrapper({
                         disabled={disabled}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

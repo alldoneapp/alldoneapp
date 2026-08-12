@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 
 import TaskEditionMode from './TaskEditionMode'
 import TaskPresentationMode from './TaskPresentationMode'
@@ -176,7 +176,7 @@ export default function TaskArea({
                     objectUrl={objectUrl}
                 />
             ) : recurrenceDateBasisModalIsOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <RecurringTaskDateBasisModal
                             task={task}
@@ -194,7 +194,7 @@ export default function TaskArea({
                     disableReposition
                 >
                     {presentationMode}
-                </Popover>
+                </AppPopover>
             ) : (
                 presentationMode
             )}

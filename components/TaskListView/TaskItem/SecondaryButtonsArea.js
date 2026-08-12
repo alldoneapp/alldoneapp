@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
 import HighlightButton from '../../UIComponents/FloatModals/HighlightColorModal/HighlightButton'
@@ -256,7 +256,7 @@ export default function SecondaryButtonsArea({
             )}
 
             {loggedUserCanUpdateObject && !isAssistant && !tmpTask.isSubtask && hasName && accessGranted && (
-                <Popover
+                <AppPopover
                     content={
                         showParentGoalModalUI ? (
                             <TaskParentGoalModal
@@ -299,7 +299,7 @@ export default function SecondaryButtonsArea({
                             shortcutText={'G'}
                         />
                     </Hotkeys>
-                </Popover>
+                </AppPopover>
             )}
 
             {!adding && tmpTask.done && loggedUserCanUpdateObject && !isAssistant && (

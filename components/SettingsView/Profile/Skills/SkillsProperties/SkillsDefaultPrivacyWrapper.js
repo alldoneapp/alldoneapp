@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 
 import PrivacyModal from '../../../../UIComponents/FloatModals/PrivacyModal/PrivacyModal'
@@ -47,7 +47,7 @@ export default function SkillsDefaultPrivacyWrapper({ projectId, style, savePriv
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <PrivacyModal
                     object={defaultPrivacyObject}
@@ -88,6 +88,6 @@ export default function SkillsDefaultPrivacyWrapper({ projectId, style, savePriv
                     accessible={false}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

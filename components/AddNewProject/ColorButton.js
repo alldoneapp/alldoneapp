@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native'
 import { colors, em2px } from '../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import ColorPickerModal from '../UIComponents/FloatModals/ColorPickerModal'
 import store from '../../redux/store'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
@@ -34,7 +34,7 @@ export default function ColorButton({ value = PROJECT_COLOR_BLUE, setColor, styl
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ColorPickerModal color={value} selectColor={changeColor} closePopover={hideModal} inSidebar={true} />
             }
@@ -53,7 +53,7 @@ export default function ColorButton({ value = PROJECT_COLOR_BLUE, setColor, styl
                 <View style={[localStyles.projectColorBall, { backgroundColor: value }]} />
                 <Text style={[localStyles.text, theme.text]}>Color</Text>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 const localStyles = StyleSheet.create({

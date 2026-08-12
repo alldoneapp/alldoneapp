@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -57,7 +57,7 @@ export default function SkillsAccessWrapper({ disabled, projectId, assistant }) 
     const buttonLabel = `${translate('Edit')} (${enabledSkillIds.length}/${skills.length})`
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantSkillsModal
                     skills={skills}
@@ -79,6 +79,6 @@ export default function SkillsAccessWrapper({ disabled, projectId, assistant }) 
                 disabled={isOpen || disabled}
                 title={buttonLabel}
             />
-        </Popover>
+        </AppPopover>
     )
 }

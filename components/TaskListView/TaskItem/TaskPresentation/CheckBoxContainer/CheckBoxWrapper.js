@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -350,7 +350,7 @@ function CheckBoxWrapper(
     return (
         <>
             {recurrenceDateBasisModalIsOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <RecurringTaskDateBasisModal
                             task={task}
@@ -386,9 +386,9 @@ function CheckBoxWrapper(
                         checked={checked}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                     />
-                </Popover>
+                </AppPopover>
             ) : emailCompletionModalIsOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <EmailTaskCompletionModal
                             closePopover={closeEmailCompletionModal}
@@ -425,9 +425,9 @@ function CheckBoxWrapper(
                             loggedUserCanUpdateObject && !emailCompletionSubmitting && !taskTransitionPending
                         }
                     />
-                </Popover>
+                </AppPopover>
             ) : isOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <TaskFlowModal
                             task={task}
@@ -468,7 +468,7 @@ function CheckBoxWrapper(
                         checked={checked}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                     />
-                </Popover>
+                </AppPopover>
             ) : (
                 <CheckBoxContainer
                     isSubtask={isSubtask}

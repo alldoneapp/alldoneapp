@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import HourlyRateAndCurrencyModal from './HourlyRateAndCurrencyModal'
 import HourlyRateAndCurrencyButton from './HourlyRateAndCurrencyButton'
@@ -16,7 +16,7 @@ export default function HourlyRateAndCurrencyWrapper({ hourlyRatesData, projectI
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <HourlyRateAndCurrencyModal
                     projectId={projectId}
@@ -31,6 +31,6 @@ export default function HourlyRateAndCurrencyWrapper({ hourlyRatesData, projectI
             align={'end'}
         >
             <HourlyRateAndCurrencyButton currency={hourlyRatesData.currency} openModal={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }

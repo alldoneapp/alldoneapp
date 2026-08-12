@@ -229,7 +229,20 @@ full Jest suite, production webpack build. Import ratchet lowered 226 → 222.
 3. Pilot on the 6 highest-traffic popups: `DueDateModal`, `AssigneePickerModal`,
    `TaskPriorityModal`, `EstimationModal`, `SelectProjectModal`, one `MoreButton` menu.
 
-### Phase 3 — Migration sweep (mechanical, parallelizable; ~2–4 weeks elapsed)
+### Phase 3 — Migration sweep — ✅ DONE 2026-08-12 (single codemod pass)
+
+196 files codemodded from `<Popover>` to `<AppPopover>` in one deterministic pass —
+every direct react-tiny-popover consumer except a 16-file keep-list that needs deliberate
+treatment: editor-caret popups (mentions, autoformat tags, notes-editor popups),
+drag-coordinate modals, `DueDateSinglePopup`'s centered-overlay pattern,
+`RichCommentModal`'s dismiss-surface system, `DismissibleModal`/`withSafePopover`.
+Import ratchet 222 → 26. Two jsdom-only fallouts fixed: `BottomSheet` now lazy-requires
+`modalsManager` (its top-level import pulls the whole redux store behind every AppPopover
+consumer and flipped a pre-existing SharedHelper↔TranslationService import-cycle winner in
+14 test suites), and `DescriptionTag.test.js`'s hand-rolled styles/global mock gained
+`hexColorToRGBa`. Verified: full Jest suite (2,540 tests), production webpack build,
+browser-tests/modalsheet all green. Tier 3 (fixed-overlay dialogs onto a `centered`
+presentation) folds into Phase 4/5 alongside consolidation.
 
 - Tier 1: remaining anchored pickers/menus (~70) — swap `<Popover>` for the shell.
 - Tier 2: form modals (~40) — centered dialog on desktop, sheet on mobile.

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch } from 'react-redux'
 
 import OptionButton from '../OptionButtons/OptionButton'
@@ -35,7 +35,7 @@ export default function AssistantTaskSearchButtonWrapper() {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={<AssistantTaskSearchModal closeModal={closeModal} />}
             align={'start'}
             position={['bottom', 'left', 'right', 'top']}
@@ -53,7 +53,7 @@ export default function AssistantTaskSearchButtonWrapper() {
                 textStyle={localStyles.searchText}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }
 
