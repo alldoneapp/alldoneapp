@@ -14,6 +14,13 @@ const {
     shouldAddConferencing,
 } = require('../Calendar/conferencing')
 const {
+    dayKeepsMinimumFreeTime,
+    getMinFreeHoursPerDayForUser,
+    minFreeHoursToMinutes,
+    normalizeMinFreeHoursPerDay,
+    sumBusyMinutesInWindow,
+} = require('../Calendar/dailyFreeTime')
+const {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
     getMicrosoftCalendarBusyIntervalsForAssistantRequest,
@@ -380,8 +387,10 @@ function buildAvailabilityOptions({
     workingHoursStart,
     workingHoursEnd,
     includeWeekends,
+    minFreeMinutesPerDay = 0,
 }) {
     const options = []
+    const skippedDays = []
     let day = rangeStart.clone().tz(timeZone).startOf('day')
     const lastDay = rangeEnd.clone().tz(timeZone).startOf('day')
 
@@ -391,6 +400,23 @@ function buildAvailabilityOptions({
             const date = day.format('YYYY-MM-DD')
             const dayStart = moment.tz(`${date}T${workingHoursStart}:00`, timeZone)
             const dayEnd = moment.tz(`${date}T${workingHoursEnd}:00`, timeZone)
+
+            // AT-2278: a day the user has already filled up is skipped whole, before any slot
+            // is generated. The load is measured across the entire working-hours window of the
+            // day (see dayKeepsMinimumFreeTime) — which is why the caller fetches busy events
+            // for whole days rather than only for the searched slice.
+            const keepsMinimumFreeTime = dayKeepsMinimumFreeTime({
+                capacityMinutes: dayEnd.diff(dayStart, 'minutes', true),
+                busyMinutes: sumBusyMinutesInWindow(busyIntervals, dayStart.valueOf(), dayEnd.valueOf()),
+                durationMinutes,
+                minFreeMinutes: minFreeMinutesPerDay,
+            })
+            if (!keepsMinimumFreeTime) {
+                skippedDays.push(date)
+                day.add(1, 'day')
+                continue
+            }
+
             let candidate = moment.max(rangeStart, dayStart)
             const candidateLimit = moment.min(rangeEnd, dayEnd)
             candidate = ceilMomentToInterval(candidate, dayStart, slotIntervalMinutes)
@@ -417,7 +443,7 @@ function buildAvailabilityOptions({
         day.add(1, 'day')
     }
 
-    return options
+    return { options, skippedDays }
 }
 
 async function getGoogleBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax, calendarId, timeZone }) {
@@ -472,6 +498,9 @@ async function findCalendarAvailabilityForAssistantRequest({
     includeWeekends = false,
     bufferBeforeMinutes = 0,
     bufferAfterMinutes = 0,
+    // Left undefined on purpose: undefined means "use the user's saved setting" (default 4h),
+    // while an explicit number — including 0, which disables the rule — is an override.
+    minFreeHoursPerDay = undefined,
 }) {
     const requestedTimeZone = safeTrim(timeZone)
     const resolvedTimeZone =
@@ -519,9 +548,21 @@ async function findCalendarAvailabilityForAssistantRequest({
         return { success: false, options: [], message: 'workingHoursEnd must be after workingHoursStart.' }
     }
 
+    const hasMinFreeHoursOverride = minFreeHoursPerDay !== undefined && minFreeHoursPerDay !== null
+    const normalizedMinFreeHoursPerDay = hasMinFreeHoursOverride
+        ? normalizeMinFreeHoursPerDay(minFreeHoursPerDay)
+        : await getMinFreeHoursPerDayForUser(userId)
+    const minFreeMinutesPerDay = minFreeHoursToMinutes(normalizedMinFreeHoursPerDay)
+
     const normalizedCalendarId = normalizeCalendarId(calendarId)
-    const normalizedTimeMin = rangeStart.toISOString()
-    const normalizedTimeMax = rangeEnd.toISOString()
+    // Busy events are fetched for WHOLE days covering the requested range, not just the
+    // requested slice: the daily-free-time rule has to see the meetings that sit outside the
+    // searched window but inside the same working day. Slot generation is still clamped to
+    // the requested range below, so the wider fetch cannot invent options outside it.
+    const loadWindowStart = moment.min(rangeStart.clone(), rangeStart.clone().tz(resolvedTimeZone).startOf('day'))
+    const loadWindowEnd = moment.max(rangeEnd.clone(), rangeEnd.clone().tz(resolvedTimeZone).endOf('day'))
+    const normalizedTimeMin = loadWindowStart.toISOString()
+    const normalizedTimeMax = loadWindowEnd.toISOString()
     const googleAccounts = await getConnectedCalendarAccounts(userId)
     const googleResults = await settleAll(
         googleAccounts.map(account =>
@@ -578,19 +619,41 @@ async function findCalendarAvailabilityForAssistantRequest({
     }
 
     const bufferedBusyIntervals = applyBusyIntervalBuffers(busyIntervals, bufferBeforeMinutes, bufferAfterMinutes)
-    const mergedBusyIntervals = mergeBusyIntervals(bufferedBusyIntervals, rangeStart.valueOf(), rangeEnd.valueOf())
-    const options = buildAvailabilityOptions({
-        busyIntervals: mergedBusyIntervals,
-        rangeStart,
-        rangeEnd,
-        timeZone: resolvedTimeZone,
-        durationMinutes: normalizedDurationMinutes,
-        maxOptions: normalizedMaxOptions,
-        slotIntervalMinutes: normalizedSlotIntervalMinutes,
-        workingHoursStart: normalizedWorkingHoursStart,
-        workingHoursEnd: normalizedWorkingHoursEnd,
-        includeWeekends: includeWeekends === true,
-    })
+    const mergedBusyIntervals = mergeBusyIntervals(
+        bufferedBusyIntervals,
+        loadWindowStart.valueOf(),
+        loadWindowEnd.valueOf()
+    )
+    const buildOptions = minFreeMinutes =>
+        buildAvailabilityOptions({
+            busyIntervals: mergedBusyIntervals,
+            rangeStart,
+            rangeEnd,
+            timeZone: resolvedTimeZone,
+            durationMinutes: normalizedDurationMinutes,
+            maxOptions: normalizedMaxOptions,
+            slotIntervalMinutes: normalizedSlotIntervalMinutes,
+            workingHoursStart: normalizedWorkingHoursStart,
+            workingHoursEnd: normalizedWorkingHoursEnd,
+            includeWeekends: includeWeekends === true,
+            minFreeMinutesPerDay: minFreeMinutes,
+        })
+
+    const constrained = buildOptions(minFreeMinutesPerDay)
+
+    // Soft fallback: the minimum is a guardrail, not a wall. If honouring it leaves the user
+    // with nothing at all in the whole requested range, offer the options anyway and say so
+    // (minFreeHours.applied === false) so the assistant can flag that these eat into the
+    // protected free time instead of answering "no availability" to someone who asked.
+    let options = constrained.options
+    let minFreeHoursApplied = true
+    if (options.length === 0 && minFreeMinutesPerDay > 0 && constrained.skippedDays.length > 0) {
+        const relaxed = buildOptions(0)
+        if (relaxed.options.length > 0) {
+            options = relaxed.options
+            minFreeHoursApplied = false
+        }
+    }
 
     return {
         success: true,
@@ -607,14 +670,41 @@ async function findCalendarAvailabilityForAssistantRequest({
             bufferBeforeMinutes: Math.max(parseInt(bufferBeforeMinutes, 10) || 0, 0),
             bufferAfterMinutes: Math.max(parseInt(bufferAfterMinutes, 10) || 0, 0),
         },
+        // AT-2278. `skippedDays` carries dates only — no event data — so the privacy contract
+        // of this tool ("free options, never calendar contents") is unchanged.
+        minFreeHours: {
+            perDay: normalizedMinFreeHoursPerDay,
+            source: hasMinFreeHoursOverride ? 'request' : 'settings',
+            applied: minFreeHoursApplied,
+            skippedDays: constrained.skippedDays,
+        },
         searchedCalendarCount,
         failedCalendarCount,
         options,
-        message:
-            options.length > 0
-                ? `Found ${options.length} free meeting option${options.length === 1 ? '' : 's'}.`
-                : 'No free meeting options were found in the requested range.',
+        message: buildAvailabilityMessage({
+            optionCount: options.length,
+            minFreeHoursPerDay: normalizedMinFreeHoursPerDay,
+            minFreeHoursApplied,
+            skippedDayCount: constrained.skippedDays.length,
+        }),
     }
+}
+
+function buildAvailabilityMessage({ optionCount, minFreeHoursPerDay, minFreeHoursApplied, skippedDayCount }) {
+    if (optionCount === 0) {
+        return 'No free meeting options were found in the requested range.'
+    }
+
+    const found = `Found ${optionCount} free meeting option${optionCount === 1 ? '' : 's'}.`
+    if (!minFreeHoursApplied) {
+        return `${found} Every day in this range is already at the user's limit of ${minFreeHoursPerDay}h of free calendar time per day, so these options cut into that protected time — say so when offering them.`
+    }
+    if (skippedDayCount > 0) {
+        return `${found} ${skippedDayCount} day${
+            skippedDayCount === 1 ? ' was' : 's were'
+        } skipped to keep at least ${minFreeHoursPerDay}h of free calendar time per day.`
+    }
+    return found
 }
 
 function normalizeCalendarEvent(event, account, calendarId, includeDescription = true) {

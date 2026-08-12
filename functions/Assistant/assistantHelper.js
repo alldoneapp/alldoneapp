@@ -9325,6 +9325,9 @@ async function executeToolNatively(
                     workingHoursStart: toolArgs.workingHoursStart,
                     workingHoursEnd: toolArgs.workingHoursEnd,
                     includeWeekends: toolArgs.includeWeekends,
+                    // Undefined here means "use the user's saved minimum free hours per day"
+                    // (AT-2278). Only an explicit tool argument overrides the setting.
+                    minFreeHoursPerDay: toolArgs.minFreeHoursPerDay,
                 })
 
                 console.log('📅 FIND_CALENDAR_AVAILABILITY TOOL: Search completed', {
@@ -9332,6 +9335,8 @@ async function executeToolNatively(
                     searchedCalendarCount: result.searchedCalendarCount || 0,
                     failedCalendarCount: result.failedCalendarCount || 0,
                     optionCount: result.options?.length || 0,
+                    minFreeHoursPerDay: result.minFreeHours?.perDay,
+                    minFreeHoursApplied: result.minFreeHours?.applied,
                 })
 
                 return result
@@ -11958,7 +11963,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account.',
+            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {

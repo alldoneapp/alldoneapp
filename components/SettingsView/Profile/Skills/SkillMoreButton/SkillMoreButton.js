@@ -18,8 +18,7 @@ import RichCreateTaskModal from '../../../../UIComponents/FloatModals/RichCreate
 import SelectProjectModal from '../../../../UIComponents/FloatModals/SelectProjectModal/SelectProjectModal'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import HighlightColorModal from '../../../../UIComponents/FloatModals/HighlightColorModal/HighlightColorModal'
-import FollowingModalItem from '../../../../UIComponents/FloatModals/MorePopupsOfEditModals/Common/FollowingModalItem'
-import { FOLLOWER_SKILLS_TYPE } from '../../../../Followers/FollowerConstants'
+import FollowingModalItem from './FollowingModalItem'
 import CopyLinkModalItem from '../../../../UIComponents/FloatModals/MorePopupsOfEditModals/Common/CopyLinkModalItem'
 import DescriptionModal from '../../../../UIComponents/FloatModals/DescriptionModal/DescriptionModal'
 import GoalModalItem from '../../../../UIComponents/FloatModals/MorePopupsOfEditModals/Goals/GoalModalItem'
@@ -174,9 +173,7 @@ export default function SkillMoreButton({
                 <FollowingModalItem
                     key={'mbtn-following'}
                     projectId={projectId}
-                    followObjectsType={FOLLOWER_SKILLS_TYPE}
-                    followObjectId={skill.id}
-                    followObject={skill}
+                    skill={skill}
                     closeModal={dismissModal}
                     shortcut={shortcut}
                     onChangeFollowState={updateFollowState}

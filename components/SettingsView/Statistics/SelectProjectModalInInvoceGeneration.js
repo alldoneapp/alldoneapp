@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux'
 
 import store from '../../../redux/store'
 import ProjectHelper from '../ProjectsSettings/ProjectHelper'
-import ProjectListModal from '../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
+import SelectSimpleProjectListModal from '../../UIComponents/FloatModals/SelectSimpleProjectListModal'
 import { translate } from '../../../i18n/TranslationService'
 import { setSelectedNavItem, switchProject } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
@@ -35,14 +35,12 @@ export default function SelectProjectModalInInvoceGeneration({ closeModal }) {
     }, [])
 
     return (
-        <ProjectListModal
+        <SelectSimpleProjectListModal
             closeModal={closeModal}
             projects={projects}
             title={translate('Select one of the projects')}
             description={translate('You need to select a project to generate an invoice')}
-            onSelectProject={project => navigateToProject(project.index)}
-            commitMode={'confirm'}
-            confirmLabel={translate('Go to selected project')}
+            onSelectProject={navigateToProject}
         />
     )
 }

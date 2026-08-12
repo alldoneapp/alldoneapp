@@ -251,81 +251,13 @@ presentation) folds into Phase 4/5 alongside consolidation.
   and `MODAL_MAX_HEIGHT_GAP` math. Good fit for AI-workflow/VM-agent batches: each modal
   is an independent, verifiable unit with a repeating recipe.
 
-### Phase 4 — Consolidation — ✅ PARTIAL 2026-08-12 (judgment-scoped)
-
-Done: the shared `FollowUp/CloseButton` moved onto the LIFO escape stack (`useEscapeKey`),
-upgrading all 37 consuming modals at once — nested pickers now take Escape first, and
-Escape works while an RNW input has focus; the unimported `DescriptionModal/CloseButton.js`
-was deleted (dead code). `FollowingModalItem` 5 → 1
-(`MorePopupsOfEditModals/Common/FollowingModalItem.js`; entity knowledge — follower type,
-id field, contacts' member/uid switch — stays at the call sites). GitHub + GitLab connect
-modals merged into config-driven `ConnectRepo/ConnectRepoModal.js` (2×269 lines → 1 shared
-
-- 2 ~35-line provider configs; import sites unchanged), now reactive via `useModalSizing`.
-
-Deliberately NOT consolidated, after inspection: `RichCommentModal`/`BotLine` close buttons
-(different composites that merely share a name); `DeleteModalItem` copies (29–60 diff lines
-of entity-specific behavior — merging would only relocate code); the `MorePopups*` wrapper
-fork (different modal IDs, lock mechanisms and lifecycle guards — a real state-machine
-unification, high popup-lifecycle risk for zero user-visible gain); GCP/Calendar/Gmail
-connect modals (structurally different flows). Still open for a future session: project
-pickers 7 → 1 and calendar grids 3 → 1 (each is its own careful project), confirm dialogs
-8 → 1.
+### Phase 4 — Consolidation (parallel to Phase 3 tail)
 
 Project pickers 7 → 1 (options-driven) · calendar grids 3 → 1 · confirms 8 → rebuilt
 `ConfirmPopup` on the shell · OAuth connect modals 5 → 1 config-driven · merge the
 `MorePopups*` fork + its 14 duplicated item components · close buttons 4 → shell-provided.
 
-### Phase 4b/5 — Second consolidation pass + polish — ✅ PARTIAL 2026-08-12
-
-**Swipe-to-dismiss shipped**: drag the sheet handle down >96px (or flick) to dismiss;
-short drags spring back. Implemented with raw pointer events + `setPointerCapture` on the
-handle's DOM node — react-native-web's responder layer failed to deliver in both jsdom
-(presses) and Chromium touch emulation (mouse drags), so the shell now bypasses it for
-gestures, same as the backdrop's `onClick`. Covered by two new `browser-tests/modalsheet`
-cases (18 total, all green).
-
-**Project pickers, tractable tier shipped**: new
-`components/UIComponents/FloatModals/ProjectListModal/ProjectListModal.js` — flat pick-list,
-`commitMode: 'click' | 'confirm'`, keyboard nav with arithmetic scroll-follow (the old
-`measure()`-based follow silently no-oped: refs on a non-forwardRef row), Escape via
-ModalHeader's stack-registered CloseButton. Migrated: DefaultProject settings picker
-(duplicated 77-line `ProjectModalItem` fork deleted), invoice-generation picker (also fixes
-its never-closing-modal leak), guide-projects picker. `SelectSimpleProjectListModal.js` and
-`DefaultProject/SelectProjectFromListModal.js` deleted. Net: 3 picker implementations gone.
-
-**Analysis banked for the remaining pickers** (agent-audited 2026-08-12): the "7 pickers"
-are really 4 lists + 2 adapters + 1 trigger + a hidden ninth (`IntegrationsSettings.js:51`
-local picker). None has a search field. Remaining work: (1) migrate
-`SelectProjectModalInSearch` — closest to being the unified component; carries the
-`ALL_PROJECTS_OPTION` sentinel (5 importers) and the AT-2257 harness; (2) split
-`SelectProjectModal` into list + a `useMoveObjectToProject` hook — ~120 lines of
-cross-entity move engine gated by a dead `onProjectClick` prop; **hazards**:
-`MoveNoteOwner.test.js` regex-matches the source file's `else if (type === 'note')` branch
-including its indentation (guards AT-2194 — rewrite it against the new location, never
-delete), and #1 uses plain `guideProjectIds`-style id sets where #2 uses `real*` ones — a
-product decision must pick one before merging their tab logic.
-
-**Confirm-dialog analysis banked** (agent-audited 2026-08-12, implementation deferred):
-`ConfirmPopup` is really a global modal multiplexer (5 triggers render entirely different
-child components; presentation switch at :311). Tractable moves, in order: promote
-`Premium/PremiumTab/ConfirmationModal` (already `{onProceed, closeModal, title,
-description}`) to a canonical presentational `ConfirmDialog` and delete its
-`left:'58.5%'/width:317/height:162` positioning hack; fold
-`ManageTaskModal/ConfirmationModal` into it (copy is byte-identical to ConfirmPopup's
-defaults); `NotAllowRemoveUserModal` → the existing `INFO` trigger (needs an i18n-key pass:
-callers pass pre-translated strings, INFO translates keys);
-`RevisionHistoryConfirmationModal` → shared body + drop its pointless redux funnel (its
-switch case is an empty `break`), and add the missing `translate()` calls (it ships raw
-English literals today, hardcoded 317×206 will clip de/es). Leave alone:
-`KickUserConfirmPopup` (async precondition gates Proceed; note its "Delete user content"
-option row is decorative — `selectedUserId` is never read) and `ConfirmDoneMilestoneModal`
-(live firestore count in the description, deliberately anchored not centered). ConfirmPopup
-debt worth fixing when touched: the standard body has NO width constraint at all (the
-`maxWidth: 432` is only on the INFO variant), no maxHeight, and
-`document.getElementById('root').click()` inside the DELETE_TASK case.
-
-### Phase 5 — remaining polish (~3–5 days)
+### Phase 5 — Polish & hardening (~3–5 days)
 
 Swipe-down-to-dismiss on sheets · back-button close · `prefers-reduced-motion` audit ·
 a11y pass (focus trap/return, `aria-modal`, contrast) · theme QA (light/dark) · device

@@ -1,9 +1,8 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
 import { colors } from '../styles/global'
 import Icon from '../Icon'
-import useEscapeKey from '../../hooks/useEscapeKey'
 
 export default function CloseButton({ close, style, disabledEscape }) {
     const onPress = event => {
@@ -12,11 +11,22 @@ export default function CloseButton({ close, style, disabledEscape }) {
         })
     }
 
-    // On the LIFO escape stack (AT-2257) rather than a document listener: a
-    // picker opened over the modal now takes Escape first and the modal
-    // survives, and Escape works while a react-native-web input has focus.
-    // This upgrades every modal that renders this button at once.
-    useEscapeKey(close, { enabled: !disabledEscape })
+    const onKeyDown = event => {
+        const { key } = event
+
+        if (key === 'Escape') {
+            close(event)
+        }
+    }
+
+    useEffect(() => {
+        if (!disabledEscape) {
+            document.addEventListener('keydown', onKeyDown)
+            return () => {
+                document.removeEventListener('keydown', onKeyDown)
+            }
+        }
+    })
 
     return (
         <View style={[localStyles.closeContainer, style]}>
