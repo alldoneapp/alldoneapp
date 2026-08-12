@@ -23,8 +23,7 @@ import store from '../../redux/store'
 import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
-import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeOption, { CREATED_BY_ME_OPTION_LABEL } from './Filter/CreatedByMeOption'
+import { ScopeChip, ToggleChip, CREATED_BY_ME_CHIP_LABEL } from './Filter/SearchFilterChips'
 import { translate } from '../../i18n/TranslationService'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
 
@@ -121,16 +120,16 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await act(async () => component.root.findByType(SearchForm).props.onPressButton())
     }
 
-    const openScopeModal = async () =>
-        act(async () => component.root.findByType(ProjectFilter).props.setShowSelectProjectModal())
+    const openScopeModal = async () => act(async () => component.root.findByType(ScopeChip).props.onPress())
 
-    const createdByMeOption = () => component.root.findByType(CreatedByMeOption)
+    const createdByMeChip = () =>
+        component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-created-by-me')
 
-    // Presses the row the way the user does, rather than calling a state setter,
+    // Presses the chip the way the user does, rather than calling a state setter,
     // so the assertion covers the wiring and not just the reducer.
     const setCreatedByMe = async value => {
-        if (createdByMeOption().props.enabled === value) return
-        await act(async () => createdByMeOption().props.onToggle())
+        if (createdByMeChip().props.selected === value) return
+        await act(async () => createdByMeChip().props.onPress())
     }
 
     beforeEach(() => {
@@ -152,13 +151,13 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         })
     })
 
-    it('renders the option in the popup itself, off by default', async () => {
+    it('renders the chip in the popup itself, off by default', async () => {
         await mount()
 
         // No scope modal opened first: this is the whole point of the follow-up.
         expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
-        expect(createdByMeOption().props.enabled).toBe(false)
-        expect(typeof createdByMeOption().props.onToggle).toBe('function')
+        expect(createdByMeChip().props.selected).toBe(false)
+        expect(typeof createdByMeChip().props.onPress).toBe('function')
     })
 
     it('renders the row into the MOBILE popup output, where it was reported missing', async () => {
@@ -171,7 +170,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await mount({ smallScreenNavigation: true })
 
         expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
-        expect(JSON.stringify(component.toJSON())).toContain(translate(CREATED_BY_ME_OPTION_LABEL))
+        expect(JSON.stringify(component.toJSON())).toContain(translate(CREATED_BY_ME_CHIP_LABEL))
     })
 
     it('keeps the scope modal free of the creator filter', async () => {
@@ -184,7 +183,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         const modal = component.root.findByType(SelectProjectModalInSearch)
         expect(modal.props.createdByMeOnly).toBeUndefined()
         expect(modal.props.setCreatedByMeOnly).toBeUndefined()
-        expect(component.root.findAllByType(CreatedByMeOption)).toHaveLength(0)
+        expect(component.root.findAllByType(ToggleChip)).toHaveLength(0)
     })
 
     it('re-runs the search filtered to the logged user, on every index', async () => {
@@ -223,15 +222,15 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         expect(searchCalls).toHaveLength(0)
     })
 
-    it('shows the active state on the row, and clears it when turned back off', async () => {
+    it('shows the active state on the chip, and clears it when turned back off', async () => {
         await mount()
-        expect(createdByMeOption().props.enabled).toBe(false)
+        expect(createdByMeChip().props.selected).toBe(false)
 
         await setCreatedByMe(true)
-        expect(createdByMeOption().props.enabled).toBe(true)
+        expect(createdByMeChip().props.selected).toBe(true)
 
         await setCreatedByMe(false)
-        expect(createdByMeOption().props.enabled).toBe(false)
+        expect(createdByMeChip().props.selected).toBe(false)
     })
 
     it('reverts to unfiltered results when the option is turned back off', async () => {
