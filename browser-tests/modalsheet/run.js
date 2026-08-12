@@ -150,7 +150,7 @@ async function runMobile(server, chromium) {
     s = await state(page)
     check('mobile: Escape closes the sheet while its input has focus', !s.outerOpen, JSON.stringify(s))
 
-    // --- 3b. swipe-down on the handle dismisses; a short drag does not -----
+    // --- 3b. handle follows bounded drags; deliberate swipe dismisses ------
     await page.evaluate(() => window.__openOuter())
     await page.waitForTimeout(PAST_GRACE_MS)
     const dragHandle = async distance => {
@@ -163,12 +163,38 @@ async function runMobile(server, chromium) {
             await page.mouse.move(startX, startY + (distance * step) / 6)
             await page.waitForTimeout(16)
         }
+        const whileDragging = await state(page)
         await page.mouse.up()
+        return whileDragging
     }
-    await dragHandle(30)
+    const beforeDrag = await state(page)
+    const whileDraggingUp = await dragHandle(-120)
+    check(
+        'mobile: upward handle movement is bounded',
+        Math.abs(whileDraggingUp.sheetRect.bottom - (beforeDrag.sheetRect.bottom - 48)) <= 1,
+        JSON.stringify({ before: beforeDrag.sheetRect, during: whileDraggingUp.sheetRect })
+    )
     await page.waitForTimeout(SETTLE_MS)
     s = await state(page)
-    check('mobile: a short handle drag springs back and does not close', s.outerOpen, JSON.stringify(s))
+    check(
+        'mobile: an upward drag springs back and does not close',
+        s.outerOpen && Math.abs(s.sheetRect.bottom - beforeDrag.sheetRect.bottom) <= 1,
+        JSON.stringify(s)
+    )
+
+    const whileDraggingDown = await dragHandle(30)
+    check(
+        'mobile: the sheet follows a downward handle drag',
+        Math.abs(whileDraggingDown.sheetRect.bottom - (s.sheetRect.bottom + 30)) <= 1,
+        JSON.stringify({ before: s.sheetRect, during: whileDraggingDown.sheetRect })
+    )
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check(
+        'mobile: a short handle drag springs back and does not close',
+        s.outerOpen && Math.abs(s.sheetRect.bottom - beforeDrag.sheetRect.bottom) <= 1,
+        JSON.stringify(s)
+    )
 
     await dragHandle(160)
     await page.waitForTimeout(SETTLE_MS)
