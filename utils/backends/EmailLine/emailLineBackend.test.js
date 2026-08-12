@@ -28,6 +28,7 @@ const {
     performEmailLineAction,
     performEmailLineSweepInBackground,
     isEmailAuthExpiredError,
+    reconcileEmailLineLabelCount,
 } = require('./emailLineBackend')
 
 // Shape of the callable rejection: the server maps EmailLineAuthError to a
@@ -218,5 +219,32 @@ describe('listEmailLineMessages', () => {
         await Promise.all([listEmailLineMessages('c1', 'L1'), listEmailLineMessages('c1', 'L2')])
 
         expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('reconcileEmailLineLabelCount', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockGetState.mockReturnValue({ emailLineSummaryByProject: { c1: summaryWithLabel } })
+    })
+
+    it('updates only the matching label count in the Redux summary', () => {
+        expect(reconcileEmailLineLabelCount('c1', 'L1', 2)).toBe(true)
+
+        const action = mockDispatch.mock.calls[0][0]
+        expect(action.key).toBe('c1')
+        expect(action.summary.labels).toEqual([
+            { labelId: 'L1', displayName: 'Ads', threadCount: 2, unreadCount: 3 },
+            summaryWithLabel.labels[1],
+        ])
+        expect(action.summary.provider).toBe('google')
+    })
+
+    it('accepts zero but ignores missing, unchanged, and invalid counts', () => {
+        expect(reconcileEmailLineLabelCount('c1', 'L1', 0)).toBe(true)
+        expect(reconcileEmailLineLabelCount('c1', 'missing', 1)).toBe(false)
+        expect(reconcileEmailLineLabelCount('c1', 'L1', 5)).toBe(false)
+        expect(reconcileEmailLineLabelCount('c1', 'L1', Number.NaN)).toBe(false)
+        expect(mockDispatch).toHaveBeenCalledTimes(1)
     })
 })

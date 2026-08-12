@@ -12,6 +12,7 @@ import {
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
+    reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import NavigationService from '../../../../utils/NavigationService'
@@ -37,6 +38,7 @@ jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     invalidateEmailLineSummaryCooldown: jest.fn(),
     getCachedEmailLineSections: jest.fn(() => null),
     cacheEmailLineSections: jest.fn(),
+    reconcileEmailLineLabelCount: jest.fn(),
 }))
 
 jest.mock('../emailLineHelper', () => ({
@@ -149,6 +151,57 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('Two')
         expect(texts).toContain('Google · a@gmail.com')
         expect(texts).toContain('Microsoft · b@outlook.com')
+    })
+
+    it('reconciles the opened chip and each account summary from provider totals', async () => {
+        const onThreadCountReconciled = jest.fn()
+        listEmailLineMessages.mockImplementation(connectionId =>
+            Promise.resolve({
+                messages: messagesByConnection[connectionId] || [],
+                nextPageToken: null,
+                totalCount: connectionId === 'c1' ? 4 : 3,
+            })
+        )
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <EmailLabelModal
+                    group={group}
+                    closePopover={() => {}}
+                    onThreadCountReconciled={onThreadCountReconciled}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c1', 'INBOX', 4)
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c2', 'f_inbox', 3)
+        expect(onThreadCountReconciled).toHaveBeenCalledWith(7)
+        expect(tree.root).toBeTruthy()
+    })
+
+    it('shows a loaded zero immediately but defers its Redux commit until close', async () => {
+        const onThreadCountReconciled = jest.fn()
+        listEmailLineMessages.mockResolvedValue({ messages: [], nextPageToken: null, totalCount: 0 })
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <EmailLabelModal
+                    group={workGroup}
+                    closePopover={() => {}}
+                    onThreadCountReconciled={onThreadCountReconciled}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(onThreadCountReconciled).toHaveBeenCalledWith(0)
+        expect(reconcileEmailLineLabelCount).not.toHaveBeenCalled()
+
+        await act(async () => tree.unmount())
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c1', 'Label_work', 0)
     })
 
     it('shows working account headers immediately while the initial email content is loading', async () => {
