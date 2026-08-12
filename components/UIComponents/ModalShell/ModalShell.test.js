@@ -52,6 +52,20 @@ const settle = () =>
 
 const sheetNode = () => document.querySelector('[data-testid="bottom-sheet"]')
 const backdropNode = () => document.querySelector('[data-testid="bottom-sheet-backdrop"]')
+const handleNode = () => document.querySelector('[data-testid="bottom-sheet-handle"]')
+
+const dispatchPointer = (node, type, clientY, pointerId = 1) => {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperties(event, {
+        button: { value: 0 },
+        clientY: { value: clientY },
+        isPrimary: { value: true },
+        pointerId: { value: pointerId },
+        pointerType: { value: 'touch' },
+    })
+    act(() => node.dispatchEvent(event))
+    return event
+}
 
 describe('ModalShell', () => {
     let container
@@ -197,6 +211,53 @@ describe('ModalShell', () => {
             await settle()
 
             expect(onClickOutside).toHaveBeenCalledTimes(1)
+        })
+
+        it('dismisses on a deliberate downward handle drag', async () => {
+            const onClickOutside = jest.fn()
+            renderShell({ onClickOutside })
+            await settle()
+
+            dispatchPointer(handleNode(), 'pointerdown', 100)
+            dispatchPointer(window, 'pointermove', 220)
+            dispatchPointer(window, 'pointerup', 220)
+            await settle()
+
+            expect(onClickOutside).toHaveBeenCalledTimes(1)
+        })
+
+        it('keeps the sheet open after a tiny or upward handle drag', async () => {
+            const onClickOutside = jest.fn()
+            renderShell({ onClickOutside })
+            await settle()
+
+            dispatchPointer(handleNode(), 'pointerdown', 100)
+            dispatchPointer(window, 'pointermove', 108)
+            dispatchPointer(window, 'pointerup', 108)
+            dispatchPointer(handleNode(), 'pointerdown', 100, 2)
+            dispatchPointer(window, 'pointermove', -100, 2)
+            dispatchPointer(window, 'pointerup', -100, 2)
+            await settle()
+
+            expect(onClickOutside).not.toHaveBeenCalled()
+        })
+
+        it('does not claim gestures that begin in scrollable sheet content', async () => {
+            const onClickOutside = jest.fn()
+            renderShell({
+                onClickOutside,
+                content: <div data-testid={'scrollable-sheet-content'}>SCROLLABLE CONTENT</div>,
+            })
+            await settle()
+
+            const content = document.querySelector('[data-testid="scrollable-sheet-content"]')
+            dispatchPointer(content, 'pointerdown', 100)
+            const moveEvent = dispatchPointer(window, 'pointermove', 240)
+            dispatchPointer(window, 'pointerup', 240)
+            await settle()
+
+            expect(onClickOutside).not.toHaveBeenCalled()
+            expect(moveEvent.defaultPrevented).toBe(false)
         })
     })
 
