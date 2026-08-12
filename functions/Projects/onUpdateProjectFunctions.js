@@ -9,7 +9,6 @@ const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteNote, getNoteByParentId } = require('../Notes/notesFirestoreCloud')
 const { getGlobalAssistants } = require('../Firestore/assistantsFirestore')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
-const { startProjectIndexationInAlgolia } = require('../AlgoliaGlobalSearchHelper')
 const { setProjectAssistant } = require('./projectsFirestore')
 const {
     safelySyncHeartbeatSchedules,
@@ -127,7 +126,6 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
         'assistantId',
         'active',
         'isTemplate',
-        'activeFullSearch',
         'monthlyXp',
         'monthlyTraffic',
         'parentTemplateId',
@@ -235,11 +233,9 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     //     }
     // }
 
-    if (!newProject.activeFullSearch && !oldProject.active && newProject.active && !newProject.parentTemplateId) {
-        console.log(`[onUpdateProject] Project activated, starting Algolia indexation`)
-        executionReasons.push('algolia_indexation_start')
-        promises.push(startProjectIndexationInAlgolia([newProject], null))
-    }
+    // The reactivation reindex is gone since Phase 4 of the Typesense migration: every
+    // record is indexed regardless of project state, so a reactivated project has nothing
+    // to catch up on (and its algoliaIndexation trigger flow no longer exists).
 
     console.log(`[onUpdateProject] Execution reasons: ${executionReasons.join(', ')}`)
     console.log(`[onUpdateProject] Executing ${promises.length} operations for projectId: ${projectId}`)

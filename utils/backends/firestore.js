@@ -3716,7 +3716,6 @@ export function mapUserData(userId, user) {
         noteIdsByProject: user.noteIdsByProject ? user.noteIdsByProject : {},
         assistantId: user.assistantId ? user.assistantId : '',
         isAssistantEnabled: user.isAssistantEnabled,
-        activeFullSearchDate: user.activeFullSearchDate ? user.activeFullSearchDate : null,
         commentsData: user.commentsData ? user.commentsData : {},
         firstLoginDateInDay: user.firstLoginDateInDay ? user.firstLoginDateInDay : 0,
         activeTaskStartingDate: user.activeTaskStartingDate ? user.activeTaskStartingDate : 0,

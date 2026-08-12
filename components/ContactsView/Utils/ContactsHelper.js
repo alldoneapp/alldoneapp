@@ -772,7 +772,6 @@ export const getNewDefaultUser = (customData = {}) => {
         inFocusTaskId: '',
         inFocusTaskProjectId: '',
         assistantId: '',
-        activeFullSearchDate: null,
         commentsData: {},
         firstLoginDateInDay: dateNow,
         activeTaskStartingDate: dateNow,
