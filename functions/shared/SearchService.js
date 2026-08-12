@@ -12,6 +12,7 @@
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let algoliasearch, moment, getAlgoliaClient, getNoteContent, parseTextForSearch
+let shouldReadFromTypesense, searchTypesenseDocuments, formatTypesenseFilterValue
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
@@ -23,9 +24,13 @@ async function loadDependencies() {
                 moment = require('moment')
                 const searchHelper = require('../searchHelper')
                 const parsingHelper = require('../ParsingTextHelper')
+                const typesenseHelper = require('../typesenseHelper')
                 getAlgoliaClient = searchHelper.getAlgoliaClient
                 getNoteContent = searchHelper.getNoteContent
                 parseTextForSearch = parsingHelper.parseTextForSearch
+                shouldReadFromTypesense = typesenseHelper.shouldReadFromTypesense
+                searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
+                formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
             } else {
                 // Fall back to ES6 imports (React Native/Web)
                 const [algolia, momentLib] = await Promise.all([import('algoliasearch'), import('moment')])
@@ -960,19 +965,44 @@ class SearchService {
                 return []
             }
 
-            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status)
+            let hits
+            if (shouldReadFromTypesense && shouldReadFromTypesense()) {
+                const filterBy = this.buildTypesenseFilters(
+                    userProjects,
+                    projectId,
+                    parsedQuery,
+                    entityType,
+                    userId,
+                    status
+                )
+                const response = await searchTypesenseDocuments(indexName, searchQuery, {
+                    filterBy,
+                    perPage: Math.min(limit, 250),
+                })
+                hits = response.hits
+            } else {
+                const filters = this.buildAlgoliaFilters(
+                    userProjects,
+                    projectId,
+                    parsedQuery,
+                    entityType,
+                    userId,
+                    status
+                )
 
-            const searchOptions = {
-                filters,
-                hitsPerPage: limit,
-                attributesToRetrieve: this.getAttributesToRetrieve(entityType),
-                attributesToHighlight: this.getAttributesToHighlight(entityType),
-                timeout: 5000, // 5 second timeout per search
+                const searchOptions = {
+                    filters,
+                    hitsPerPage: limit,
+                    attributesToRetrieve: this.getAttributesToRetrieve(entityType),
+                    attributesToHighlight: this.getAttributesToHighlight(entityType),
+                    timeout: 5000, // 5 second timeout per search
+                }
+
+                const searchResponse = await index.search(searchQuery, searchOptions)
+                hits = searchResponse.hits
             }
 
-            const searchResponse = await index.search(searchQuery, searchOptions)
-
-            return searchResponse.hits.map(hit => {
+            return hits.map(hit => {
                 let cleanId = hit.objectID || hit.id
                 // Remove project ID suffix from Algolia objectID (format: noteId + projectId)
                 if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
@@ -1081,6 +1111,67 @@ class SearchService {
         }
 
         return filters.join(' AND ')
+    }
+
+    /**
+     * Typesense port of buildAlgoliaFilters (TYPESENSE_MIGRATION.md Phase 3). Same access
+     * model, Typesense syntax. One deliberate addition: with everything indexed in
+     * Typesense, the eligibility gate that used to be implicit (inactive/template
+     * projects simply had no records) becomes an explicit project scope — assistant
+     * search covers active, non-template projects only, exactly the corpus it saw before.
+     */
+    buildTypesenseFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
+        const filters = []
+
+        // Project access filter
+        if (projectId) {
+            filters.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
+        } else {
+            const searchableProjects = userProjects.filter(
+                project => project && project.active !== false && !project.parentTemplateId
+            )
+            const projectIdsList = searchableProjects.map(project => formatTypesenseFilterValue(project.id)).join(',')
+            if (projectIdsList) {
+                filters.push(`projectId:=[${projectIdsList}]`)
+            }
+        }
+
+        // Visibility filters (critical for security) — isPublicFor is string[] in
+        // Typesense, so the numeric public sentinel is compared as a string.
+        const publicScope = `isPublicFor:=[${formatTypesenseFilterValue(
+            FEED_PUBLIC_FOR_ALL
+        )},${formatTypesenseFilterValue(userId)}]`
+        switch (entityType) {
+            case ENTITY_TYPES.ASSISTANTS:
+                filters.push('isAssistant:=true')
+                filters.push(publicScope)
+                break
+            case ENTITY_TYPES.USERS:
+                filters.push(publicScope)
+                filters.push('isAssistant:=false')
+                break
+            default:
+                filters.push(publicScope)
+                break
+        }
+
+        // Task status filter (only applies to tasks)
+        if (entityType === ENTITY_TYPES.TASKS && status) {
+            if (status === 'done') {
+                filters.push('done:=true')
+            } else if (status === 'open') {
+                filters.push('done:=false')
+            }
+            // status === 'all' means no status filtering
+        }
+
+        // Date range filter - use lastEditionDate (updated when tasks are completed)
+        if (parsedQuery.dateFilter) {
+            const { startDate, endDate } = parsedQuery.dateFilter
+            filters.push(`lastEditionDate:>=${startDate} && lastEditionDate:<=${endDate}`)
+        }
+
+        return filters.join(' && ')
     }
 
     /**
