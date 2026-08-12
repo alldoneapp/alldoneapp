@@ -14,9 +14,9 @@ export const CREATED_BY_ME_OPTION_LABEL = 'Only objects I created'
 // any new filters in the search popup". The creator filter is an independent
 // dimension from the project scope, so it gets its own always-visible row.
 //
-// Deliberately mirrors `ActiveFullSearch`'s single-line checkbox row: the two
-// sit directly next to each other, and any difference in height, padding or
-// alignment between them reads as a mistake. That is also why there is no
+// Deliberately a single-line checkbox row matching the SearchScopeOptions rows
+// stacked next to it: any difference in height, padding or alignment between
+// them reads as a mistake. That is also why there is no
 // explanatory hint line here — the label is self-describing, and vertical space
 // in this popup belongs to the results.
 export default function CreatedByMeOption({ enabled, onToggle, disabled }) {

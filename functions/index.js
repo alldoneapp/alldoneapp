@@ -1546,25 +1546,6 @@ exports.autoCancelSubscriptionsSecondGen = onSchedule(
 
 //ALGOLIA
 
-exports.indexProjectsRecordsInAlgoliaSecondGen = onCall(
-    {
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { indexProjectsRecordsInAlgolia } = require('./AlgoliaGlobalSearchHelper')
-            const { userId } = data
-            await indexProjectsRecordsInAlgolia(userId)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
-    }
-)
-
 // AT-2258 — repairs the "Only objects I created" filter for the goals and chats
 // indexes (facet never declared in production + records never backfilled).
 // Idempotent via a `systemMigrations` marker, so the schedule below runs it once
@@ -1620,23 +1601,10 @@ exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     }
 )
 
-// "Every Day at 00:00."
-exports.checkAndRemoveInactiveObjectsFromAlgoliaSecondGen = onSchedule(
-    {
-        schedule: '0 0 * * *',
-        timeZone: 'Europe/Berlin',
-        region: 'europe-west1',
-        timeoutSeconds: 540,
-        memory: '2GiB',
-    },
-    async event => {
-        const { checkAndRemoveInactiveObjectsFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
-        await checkAndRemoveInactiveObjectsFromAlgolia()
-        return null
-    }
-)
-
-// "Every Day at 00:00."
+// "Every Day at 00:00." — deactivates projects nobody opened in 30 days. Since the
+// Typesense migration (Phase 4) it only flips projects.active; search records are kept
+// in both stores (Typesense keeps everything by design, and Algolia is only a rollback
+// target until Phase 5 removes it).
 exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
     {
         schedule: '0 0 * * *',
@@ -1648,126 +1616,6 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
     async event => {
         const { checkAndRemoveProjectsWithoutActivityFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
         await checkAndRemoveProjectsWithoutActivityFromAlgolia()
-    }
-)
-
-exports.onStartIndexingAlgoliaTasksSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/tasks`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startTasksIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startTasksIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaGoalsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/goals`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startGoalsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startGoalsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaNotesSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/notes`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startNotesIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startNotesIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaContactsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/contacts`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startContactsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startContactsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaAssistantsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/assistants`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startAssistantsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startAssistantsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaChatsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/chats`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startChatsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startChatsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaUsersSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/users`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startUsersIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startUsersIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onEndIndexingAlgoliaFullSearchSecondGen = onDocumentUpdated(
-    {
-        document: `algoliaFullSearchIndexation/{projectId}`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { checkAlgoliaFullSearchIndeaxtion } = require('./searchHelper')
-        const { projectId } = event.params
-        const fullSearchIndeaxtion = event.data.after.data()
-        await checkAlgoliaFullSearchIndeaxtion(projectId, fullSearchIndeaxtion)
     }
 )
 

@@ -15,7 +15,6 @@ import ArchivedProjects from '../ArchivedProjects'
 import TemplateProjects from '../TemplateProjects'
 import SettingsItem from '../SettingsItem'
 import AdminItem from '../AdminItem'
-import AlgoliaItemForIndexGlobalAssistantRecords from '../AlgoliaItemForIndexGlobalAssistantRecords'
 
 export default function LoggedUserSidebarBody({ navigation, expanded, scrollView }) {
     const administratorUserId = useSelector(state => state.administratorUser.uid)
@@ -43,9 +42,6 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             <AddProject scrollToBottom={scrollToBottom} />
             <GuideProjects navigation={navigation} />
             {loggedUserIsAdminUser && <AdminItem />}
-            {(loggedUserId === '64s4RwKszFXPYlmRCpdx91L3tiC3' || loggedUserId === 'W6mJp7iqgVWAyZq8BoOheotf6H72') && (
-                <AlgoliaItemForIndexGlobalAssistantRecords />
-            )}
             <ArchivedProjects navigation={navigation} />
             {showTemplatesArea && <TemplateProjects navigation={navigation} scrollToBottom={scrollToBottom} />}
             <SharedProjectsList navigation={navigation} />
