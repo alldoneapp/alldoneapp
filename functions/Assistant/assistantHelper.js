@@ -5365,9 +5365,13 @@ async function executeToolNatively(
                 console.log('📝 CREATE_TASK TOOL: Converted dueDate', {
                     from: toolArgs.dueDate,
                     to: processedDueDate,
-                    asDate: new Date(processedDueDate).toISOString(),
                 })
             }
+
+            // Model-authored JSON can put anything under dueDate; refuse garbage
+            // here instead of persisting it to Firestore.
+            const { validateDueDateForPersistence } = require('../shared/dueDateValidation')
+            processedDueDate = validateDueDateForPersistence(processedDueDate, toolArgs.dueDate)
 
             // Validate alert requirements
             if (toolArgs.alertEnabled && !processedDueDate) {
