@@ -23,7 +23,8 @@ import SelectProjectModal from '../../SelectProjectModal/SelectProjectModal'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import useGetTaskWorkflow from '../../../../../utils/useGetTaskWorkflow'
 import StatusPicker from '../../../../TaskDetailedView/Properties/StatusPicker'
-import FollowingModalItem from './FollowingModalItem'
+import FollowingModalItem from '../Common/FollowingModalItem'
+import { FOLLOWER_TASKS_TYPE } from '../../../../Followers/FollowerConstants'
 import GenericModalItem from '../Common/GenericModalItem'
 import CopyLinkModalItem from '../Common/CopyLinkModalItem'
 import TaskParentGoalModal from '../../TaskParentGoalModal/TaskParentGoalModal'
@@ -362,7 +363,9 @@ export default function TaskMoreButton({
                     <FollowingModalItem
                         key={'mbtn-following'}
                         projectId={projectId}
-                        task={task}
+                        followObjectsType={FOLLOWER_TASKS_TYPE}
+                        followObjectId={task.id}
+                        followObject={task}
                         closeModal={hideNoModalsProperties}
                         shortcut={shortcut}
                     />
