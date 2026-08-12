@@ -3,7 +3,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors, hexColorToRGBa, SIDEBAR_MENU_WIDTH } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
+import { MODAL_EDGE_GAP } from '../styles/modals'
 import useModalSizing from '../../hooks/useModalSizing'
 import store from '../../redux/store'
 import {
@@ -40,9 +41,7 @@ import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
 import { multiSearchTypesense } from '../../utils/typesenseSearch'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
-import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeOption from './Filter/CreatedByMeOption'
-import SearchScopeOptions from './Filter/SearchScopeOptions'
+import SearchFilterChips from './Filter/SearchFilterChips'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
     ALL_PROJECTS_OPTION,
@@ -51,6 +50,7 @@ import { getAllUserProjects } from '../../utils/backends/firestore'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import BottomSheet from '../UIComponents/ModalShell/BottomSheet'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
 import useEscapeKey from '../../hooks/useEscapeKey'
 
@@ -60,7 +60,6 @@ export default function GlobalSearchModal() {
     const realTemplateProjectsAmount = useSelector(state => state.loggedUser.realTemplateProjectIds.length)
     const searchText = useSelector(state => state.searchText)
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const tablet = useSelector(state => state.isMiddleScreen)
     const [projects, setProjects] = useState([])
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
@@ -97,7 +96,6 @@ export default function GlobalSearchModal() {
     // existing in Algolia) must now be an explicit scope choice. Component state for the
     // same reset-on-open reason as createdByMeOnly.
     const [includeArchived, setIncludeArchived] = useState(false)
-    const [includeTemplatesAndGuides, setIncludeTemplatesAndGuides] = useState(false)
     // Which bucket each project belongs to, from updateTemporaryProjectsAndUsers — the
     // per-user categorization (archived is per-user!) that scope filtering needs.
     const [projectBuckets, setProjectBuckets] = useState({
@@ -500,22 +498,17 @@ export default function GlobalSearchModal() {
         hidePopup(event)
     }
 
-    // Projects an all-projects search runs against. Archived and template/guide projects
-    // are excluded unless their toggle is on: their records now EXIST in the index
-    // (Typesense indexes everything), so scope must be an explicit filter choice rather
-    // than the index absence that used to hide them. Selecting a specific project in the
-    // picker always searches it — explicit selection is consent.
+    // Projects an all-projects search runs against. Archived projects are excluded
+    // unless their chip is on: their records EXIST in the index (Typesense indexes
+    // everything), so scope must be an explicit filter choice rather than the index
+    // absence that used to hide them. Template/guide projects are NEVER part of an
+    // all-projects search — picking one explicitly in the scope picker is the only
+    // way to search them (the "Include templates & guides" toggle was removed).
     const getProjectsInSearchScope = () => {
         if (inSelectedProject) return [selectedProject]
         return projects.filter(project => {
             if (projectBuckets.activeIds.includes(project.id)) return true
             if (includeArchived && projectBuckets.archivedIds.includes(project.id)) return true
-            if (
-                includeTemplatesAndGuides &&
-                (projectBuckets.guideIds.includes(project.id) || projectBuckets.templateIds.includes(project.id))
-            ) {
-                return true
-            }
             return false
         })
     }
@@ -727,25 +720,32 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [createdByMeOnly])
 
-    // Same immediate re-run for the scope toggles (archived / templates & guides).
-    const scopeAppliedRef = useRef(`${includeArchived}|${includeTemplatesAndGuides}`)
+    // Same immediate re-run for the archived-scope chip.
+    const scopeAppliedRef = useRef(includeArchived)
     useEffect(() => {
-        const scopeKey = `${includeArchived}|${includeTemplatesAndGuides}`
-        if (scopeAppliedRef.current === scopeKey) return
-        scopeAppliedRef.current = scopeKey
+        if (scopeAppliedRef.current === includeArchived) return
+        scopeAppliedRef.current = includeArchived
         if (localText.trim() !== '') onSearch()
-    }, [includeArchived, includeTemplatesAndGuides])
+    }, [includeArchived])
 
-    // Below the sheet breakpoint search is a full-screen takeover: opaque,
-    // edge to edge, riding above the software keyboard. Desktop keeps the
-    // anchored palette card. (Pure window-width decision, like the shell.)
-    const { isSheet: isTakeover, keyboardInset } = useModalSizing()
-    const width = isTakeover ? '100%' : tablet ? 400 : 520
-    const sidebarOpenStyle = isTakeover ? null : { marginLeft: SIDEBAR_MENU_WIDTH }
-    const takeoverContainerStyle = isTakeover
-        ? { paddingTop: 0, paddingBottom: 0, bottom: keyboardInset, alignItems: 'stretch' }
+    // Desktop: a window-centered card at the L token width (round-3 centering
+    // policy; the old marginLeft sidebar offset pushed it right of center).
+    // Phones: the standard BottomSheet, same as every other popup — which
+    // brings the scrim, drag handle, swipe/back-button dismissal, scroll lock
+    // and keyboard riding along for free. The card height stays bounded (the
+    // results list needs a definite height to scroll internally) but follows
+    // the sheet's keyboard-aware maxHeight.
+    const { isSheet: isPhone, width: cardWidth, maxHeight: sheetMaxHeight } = useModalSizing({ size: 'L' })
+    const width = isPhone ? '100%' : cardWidth
+    const sheetCardStyle = isPhone
+        ? {
+              width: '100%',
+              borderRadius: 0,
+              boxShadow: 'none',
+              backgroundColor: 'transparent',
+              height: Math.min(512, sheetMaxHeight - 48),
+          }
         : null
-    const takeoverPopupStyle = isTakeover ? { height: '100%', borderRadius: 0, alignSelf: 'stretch' } : null
 
     const updateSelectedProject = projectId => {
         const project =
@@ -755,95 +755,95 @@ export default function GlobalSearchModal() {
         setSelectedProject(project)
     }
 
+    const body = showSelectProjectModal ? (
+        <SelectProjectModalInSearch
+            projectId={selectedProject.id}
+            closePopover={() => {
+                setShowSelectProjectModal(false)
+            }}
+            projects={projects}
+            setSelectedProjectId={updateSelectedProject}
+            showGuideTab={true}
+            showTemplateTab={realTemplateProjectsAmount > 0}
+            showArchivedTab={true}
+            showAllProjects={true}
+        />
+    ) : (
+        <View style={[localStyles.popup, { width: width }, sheetCardStyle]}>
+            <View style={localStyles.titleContainer}>
+                <Text style={[styles.title7, localStyles.title]}>Search</Text>
+            </View>
+            <SearchFilterChips
+                selectedProject={selectedProject}
+                onOpenScope={() => {
+                    setShowSelectProjectModal(true)
+                }}
+                createdByMeOnly={createdByMeOnly}
+                onToggleCreatedByMe={() => setCreatedByMeOnly(!createdByMeOnly)}
+                includeArchived={includeArchived}
+                onToggleArchived={() => setIncludeArchived(!includeArchived)}
+                showArchivedChip={!inSelectedProject}
+                disabled={projects.length === 0}
+            />
+
+            <Line style={{ width: '100%', marginTop: 0, marginBottom: 16 }} />
+            <SearchForm
+                searchInputRef={searchInputRef}
+                onPressButton={onSearch}
+                localText={localText}
+                setLocalText={setLocalText}
+                showShortcuts={showShortcuts}
+                placeholder="Search term..."
+                buttonIcon="search"
+                disabledButton={projects.length === 0}
+                onSubmitEditing={onSearch}
+            />
+
+            <ResultLists
+                projects={projects}
+                processing={processing}
+                tasksResultAmount={tasksResultAmount}
+                tasksResult={tasksResult}
+                goalsResultAmount={goalsResultAmount}
+                goalsResult={goalsResult}
+                notesResultAmount={notesResultAmount}
+                notesResult={notesResult}
+                contactsResultAmount={contactsResultAmount}
+                contactsResult={contactsResult}
+                chatsResultAmount={chatsResultAmount}
+                chatsResult={chatsResult}
+                activeItemData={activeItemData}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                activeItemRef={activeItemRef}
+                scrollRef={scrollRef}
+                resultsContainerRef={resultsContainerRef}
+                showShortcuts={showShortcuts}
+            />
+
+            <View style={localStyles.closeContainer}>
+                <TouchableOpacity style={localStyles.closeButton} onPress={hidePopup}>
+                    <Icon name={'x'} size={24} color={colors.Text03} />
+                </TouchableOpacity>
+            </View>
+        </View>
+    )
+
+    // Phones: the standard bottom sheet, like every other popup. Its own
+    // backdrop/Escape/back-button handling replaces the overlay below (the
+    // AT-2236 mount grace is baked into the sheet's backdrop too).
+    if (isPhone) {
+        return (
+            <BottomSheet isOpen={true} onRequestClose={hidePopup}>
+                {body}
+            </BottomSheet>
+        )
+    }
+
     return (
-        <View style={[localStyles.container, takeoverContainerStyle]} ref={modalRef}>
+        <View style={localStyles.container} ref={modalRef}>
             <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
-
-            {showSelectProjectModal ? (
-                <SelectProjectModalInSearch
-                    projectId={selectedProject.id}
-                    closePopover={() => {
-                        setShowSelectProjectModal(false)
-                    }}
-                    projects={projects}
-                    setSelectedProjectId={updateSelectedProject}
-                    showGuideTab={true}
-                    showTemplateTab={realTemplateProjectsAmount > 0}
-                    showArchivedTab={true}
-                    showAllProjects={true}
-                />
-            ) : (
-                <View style={[localStyles.popup, { width: width }, sidebarOpenStyle, takeoverPopupStyle]}>
-                    <View style={localStyles.titleContainer}>
-                        <Text style={[styles.title7, localStyles.title]}>Search</Text>
-                    </View>
-                    <ProjectFilter
-                        setShowSelectProjectModal={() => {
-                            setShowSelectProjectModal(true)
-                        }}
-                        selectedProject={selectedProject}
-                        containerStyle={inSelectedProject && { marginBottom: 16 }}
-                        disabled={projects.length === 0}
-                    />
-
-                    <CreatedByMeOption
-                        enabled={createdByMeOnly}
-                        onToggle={() => setCreatedByMeOnly(!createdByMeOnly)}
-                        disabled={projects.length === 0}
-                    />
-
-                    {!inSelectedProject && (
-                        <SearchScopeOptions
-                            includeArchived={includeArchived}
-                            includeTemplatesAndGuides={includeTemplatesAndGuides}
-                            onToggleArchived={() => setIncludeArchived(!includeArchived)}
-                            onToggleTemplatesAndGuides={() => setIncludeTemplatesAndGuides(!includeTemplatesAndGuides)}
-                            disabled={projects.length === 0}
-                        />
-                    )}
-
-                    <Line style={{ width: '100%', marginTop: 0, marginBottom: 16 }} />
-                    <SearchForm
-                        searchInputRef={searchInputRef}
-                        onPressButton={onSearch}
-                        localText={localText}
-                        setLocalText={setLocalText}
-                        showShortcuts={showShortcuts}
-                        placeholder="Search term..."
-                        buttonIcon="search"
-                        disabledButton={projects.length === 0}
-                        onSubmitEditing={onSearch}
-                    />
-
-                    <ResultLists
-                        projects={projects}
-                        processing={processing}
-                        tasksResultAmount={tasksResultAmount}
-                        tasksResult={tasksResult}
-                        goalsResultAmount={goalsResultAmount}
-                        goalsResult={goalsResult}
-                        notesResultAmount={notesResultAmount}
-                        notesResult={notesResult}
-                        contactsResultAmount={contactsResultAmount}
-                        contactsResult={contactsResult}
-                        chatsResultAmount={chatsResultAmount}
-                        chatsResult={chatsResult}
-                        activeItemData={activeItemData}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                        activeItemRef={activeItemRef}
-                        scrollRef={scrollRef}
-                        resultsContainerRef={resultsContainerRef}
-                        showShortcuts={showShortcuts}
-                    />
-
-                    <View style={localStyles.closeContainer}>
-                        <TouchableOpacity style={localStyles.closeButton} onPress={hidePopup}>
-                            <Icon name={'x'} size={24} color={colors.Text03} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
+            {body}
         </View>
     )
 }
@@ -854,6 +854,12 @@ const localStyles = StyleSheet.create({
         zIndex: 10000,
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         alignItems: 'center',
+        // Mid-centered card with one edge gap on every side (the base overlay
+        // style top-pins at 80px, which read as off-center on desktop).
+        justifyContent: 'center',
+        paddingTop: MODAL_EDGE_GAP,
+        paddingBottom: MODAL_EDGE_GAP,
+        paddingHorizontal: MODAL_EDGE_GAP,
     },
     backdrop: {
         position: 'absolute',
