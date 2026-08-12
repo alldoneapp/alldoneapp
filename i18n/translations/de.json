@@ -1958,6 +1958,8 @@
     "Buffer before": "Puffer davor",
     "Buffer after": "Puffer danach",
     "Include weekends": "Wochenenden einbeziehen",
+    "Minimum free hours per day": "Minimum an freien Stunden pro Tag",
+    "Minimum free hours per day description": "Anna und dein Buchungslink halten pro Arbeitstag mindestens so viel Zeit frei. Tage, die darunter fallen würden, werden nicht angeboten. Standard: 4 Stunden.",
     "Allow same day booking": "Buchung am selben Tag erlauben",
     "Allow same day booking description": "Wenn deaktiviert, kann frühestens für morgen in deiner Zeitzone gebucht werden.",
     "Additional guests": "Zusätzliche Gäste",

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import store from '../../../../redux/store'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import ProjectListModal from '../../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
+import SelectSimpleProjectListModal from '../../../UIComponents/FloatModals/SelectSimpleProjectListModal'
 import { translate } from '../../../../i18n/TranslationService'
 import {
     hideWebSideBar,
@@ -59,14 +59,12 @@ export default function SelectProjectModalInGuideProjectsProperty({ closeModal, 
     }, [])
 
     return (
-        <ProjectListModal
+        <SelectSimpleProjectListModal
             closeModal={closeModal}
             projects={projects}
             title={translate('Select one of the projects')}
             description={translate('You need to select a project to go there')}
-            onSelectProject={project => navigateToProject(project.index, project)}
-            commitMode={'confirm'}
-            confirmLabel={translate('Go to selected project')}
+            onSelectProject={navigateToProject}
         />
     )
 }

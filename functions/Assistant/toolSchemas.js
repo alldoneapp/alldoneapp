@@ -1917,6 +1917,11 @@ const toolSchemas = {
                         type: 'boolean',
                         description: 'Optional: include Saturdays and Sundays. Defaults to false.',
                     },
+                    minFreeHoursPerDay: {
+                        type: 'number',
+                        description:
+                            "Optional minimum hours of free calendar time the user wants to keep on a day (measured inside working hours). Omit to use the user's saved setting (4 hours by default) — only pass a value when the user explicitly asks for a different limit for this request, and pass 0 to ignore the limit. Days that would drop below it are skipped; if no day in the range qualifies, options are returned anyway with minFreeHours.applied set to false, which you must mention when offering them.",
+                    },
                 },
                 required: ['timeMin', 'timeMax'],
             },

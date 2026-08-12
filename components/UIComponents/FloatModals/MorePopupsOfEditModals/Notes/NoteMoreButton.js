@@ -15,8 +15,7 @@ import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import RichCreateTaskModal from '../../RichCreateTaskModal/RichCreateTaskModal'
 import SelectProjectModal from '../../SelectProjectModal/SelectProjectModal'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
-import FollowingModalItem from '../Common/FollowingModalItem'
-import { FOLLOWER_NOTES_TYPE } from '../../../../Followers/FollowerConstants'
+import FollowingModalItem from './FollowingModalItem'
 import GenericModalItem from '../Common/GenericModalItem'
 import CopyLinkModalItem from '../Common/CopyLinkModalItem'
 
@@ -133,9 +132,7 @@ export default function NoteMoreButton({
                     <FollowingModalItem
                         key={'mbtn-following'}
                         projectId={projectId}
-                        followObjectsType={FOLLOWER_NOTES_TYPE}
-                        followObjectId={note.id}
-                        followObject={note}
+                        note={note}
                         closeModal={hideTaskPopup}
                         shortcut={shortcut}
                     />

@@ -2376,6 +2376,8 @@
     "Buffer before": "Margen antes",
     "Buffer after": "Margen después",
     "Include weekends": "Incluir fines de semana",
+    "Minimum free hours per day": "Horas libres mínimas por día",
+    "Minimum free hours per day description": "Anna y tu enlace de reservas mantienen al menos este tiempo sin reservar cada día laborable. Los días que quedarían por debajo no se ofrecen. Valor predeterminado: 4 horas.",
     "Allow same day booking": "Permitir reservas el mismo día",
     "Allow same day booking description": "Si está desactivado, lo más pronto que se puede reservar es mañana en tu zona horaria.",
     "Additional guests": "Invitados adicionales",

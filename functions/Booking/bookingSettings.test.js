@@ -70,6 +70,68 @@ describe('bookingSettings helpers', () => {
     })
 })
 
+describe('minimum free calendar time per day (AT-2278)', () => {
+    beforeEach(() => {
+        findCalendarAvailabilityForAssistantRequest.mockReset()
+        findCalendarAvailabilityForAssistantRequest.mockResolvedValue({ success: true, options: [] })
+    })
+
+    test('defaults to 4 hours for settings saved before the field existed', () => {
+        // Backward compatibility: no field on the doc must read as the product default,
+        // not as "no minimum".
+        expect(normalizeBookingSettings({}).minFreeHoursPerDay).toBe(4)
+        expect(normalizeBookingSettings({ slug: 'x' }).minFreeHoursPerDay).toBe(4)
+    })
+
+    test('keeps explicit values, including 0 and halves, and rejects junk', () => {
+        expect(normalizeBookingSettings({ minFreeHoursPerDay: 0 }).minFreeHoursPerDay).toBe(0)
+        expect(normalizeBookingSettings({ minFreeHoursPerDay: 3.5 }).minFreeHoursPerDay).toBe(3.5)
+        expect(normalizeBookingSettings({ minFreeHoursPerDay: '6' }).minFreeHoursPerDay).toBe(6)
+        expect(normalizeBookingSettings({ minFreeHoursPerDay: 'soon' }).minFreeHoursPerDay).toBe(4)
+        expect(normalizeBookingSettings({ minFreeHoursPerDay: -3 }).minFreeHoursPerDay).toBe(4)
+    })
+
+    test('clamps to the working-hours window so a day always stays bookable', () => {
+        // A 3h working window cannot keep 4h free. Clamping (rather than rejecting) is what
+        // lets a host with a short window save their settings at all.
+        const shortDay = normalizeBookingSettings({ workingHoursStart: '09:00', workingHoursEnd: '12:00' })
+        expect(shortDay.minFreeHoursPerDay).toBe(2.5)
+
+        const greedy = normalizeBookingSettings({
+            workingHoursStart: '09:00',
+            workingHoursEnd: '17:00',
+            minFreeHoursPerDay: 20,
+        })
+        expect(greedy.minFreeHoursPerDay).toBe(7.5)
+        expect(validateBookingSettings({ ...greedy, slug: 'host' })).toBeUndefined()
+    })
+
+    test('the public booking link enforces the same minimum as the assistant', async () => {
+        await findPublicBookingSlots(
+            {
+                userId: 'user-1',
+                settings: {
+                    timeZone: 'Europe/Berlin',
+                    availableDurations: [30],
+                    durationMinutes: 30,
+                    allowSameDayBooking: true,
+                    minFreeHoursPerDay: 5,
+                },
+            },
+            {
+                start: '2026-09-01T09:00:00+02:00',
+                end: '2026-09-02T17:00:00+02:00',
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+            }
+        )
+
+        expect(findCalendarAvailabilityForAssistantRequest).toHaveBeenCalledWith(
+            expect.objectContaining({ minFreeHoursPerDay: 5 })
+        )
+    })
+})
+
 describe('same-day booking setting (AT-2271)', () => {
     // 2026-08-12 14:00 in Berlin. Fixed so "today"/"tomorrow" can be asserted exactly.
     const NOW = moment.tz('2026-08-12T14:00:00', 'Europe/Berlin').valueOf()

@@ -9,7 +9,7 @@ import styles, { colors } from '../../../../styles/global'
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
 import ProjectHelper from '../../../ProjectsSettings/ProjectHelper'
-import ProjectListModal from '../../../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
+import SelectProjectFromListModal from './SelectProjectFromListModal'
 import { unwatch, watchActiveAndArchivedProjects, watchProject } from '../../../../../utils/backends/firestore'
 import { setDefaultProjectId } from '../../../../../utils/backends/Users/usersFirestore'
 
@@ -69,13 +69,13 @@ export default function DefaultProject({ user }) {
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
                 <AppPopover
                     content={
-                        <ProjectListModal
+                        <SelectProjectFromListModal
                             closeModal={closeModal}
                             projects={activeProjects}
                             title={translate('Select one of the projects')}
                             description={translate('You need to select a default project')}
-                            onSelectProject={project => onSelectProject(project.id)}
-                            selectedProjectId={defaultProject ? defaultProject.id : ''}
+                            onSelectProject={onSelectProject}
+                            activeProjectId={defaultProject ? defaultProject.id : ''}
                         />
                     }
                     onClickOutside={closeModal}
