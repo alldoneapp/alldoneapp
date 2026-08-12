@@ -14,16 +14,6 @@ import {
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
 
-function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends, now = moment() }) {
-    const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
-    return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
-        moment(now)
-            .tz(timeZone)
-            .add(index + firstBookableDayOffset, 'days')
-            .startOf('day')
-    ).filter(day => includeWeekends || (day.day() !== 0 && day.day() !== 6))
-}
-
 function formatZoneLabel(zone) {
     if (!zone) return ''
     const offset = moment.tz(zone).format('Z')
@@ -74,17 +64,16 @@ export default function MeetingBookingPage({ navigation }) {
     // missing value as false, which keeps booking links created before this setting existed
     // on the no-same-day rule.
     const allowSameDayBooking = page?.settings?.allowSameDayBooking === true
-    // The availability engine already treats a missing value as false. Mirror that here so
-    // legacy booking links do not show weekend cards that can never return a slot.
-    const includeWeekends = page?.settings?.includeWeekends === true
+    const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
 
     const days = useMemo(() => {
-        return buildPublicBookingDays({
-            timeZone: hostTimeZone,
-            allowSameDayBooking,
-            includeWeekends,
-        })
-    }, [hostTimeZone, allowSameDayBooking, includeWeekends])
+        return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
+            moment()
+                .tz(hostTimeZone)
+                .add(index + firstBookableDayOffset, 'days')
+                .startOf('day')
+        )
+    }, [hostTimeZone, firstBookableDayOffset])
 
     const changeLanguage = nextLanguage => {
         setLanguage(nextLanguage)
@@ -112,12 +101,12 @@ export default function MeetingBookingPage({ navigation }) {
                 setPage(result.page)
                 const durations = result.page?.settings?.availableDurations || [30]
                 setSelectedDuration(durations.includes(30) ? 30 : durations[0])
-                const initialDays = buildPublicBookingDays({
-                    timeZone: result.page?.settings?.timeZone || moment.tz.guess() || 'UTC',
-                    allowSameDayBooking: result.page?.settings?.allowSameDayBooking === true,
-                    includeWeekends: result.page?.settings?.includeWeekends === true,
-                })
-                setSelectedDay(initialDays[0] || null)
+                setSelectedDay(
+                    moment()
+                        .tz(result.page?.settings?.timeZone || moment.tz.guess())
+                        .add(result.page?.settings?.allowSameDayBooking === true ? 0 : 1, 'days')
+                        .startOf('day')
+                )
             } catch (loadError) {
                 setPageUnavailable(true)
                 if (loadError.message) setError(loadError.message)
