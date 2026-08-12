@@ -20,8 +20,6 @@ jest.mock('./bookingSettings', () => ({
     getConnectedCalendarCount: jest.fn(),
     getHostingUrl: jest.fn(() => 'https://my.alldone.app'),
     getPublicBookingPage: jest.fn(),
-    // Null = no same-day restriction, which is what the pre-existing cases assume.
-    resolveEarliestBookableStart: jest.fn(() => null),
     resolvePublicDuration: jest.fn(
         (settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30
     ),
@@ -31,7 +29,6 @@ jest.mock('./bookingSettings', () => ({
             .toLowerCase(),
 }))
 
-const moment = require('moment-timezone')
 const admin = require('firebase-admin')
 const { createCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
 const bookingSettings = require('./bookingSettings')
@@ -86,7 +83,6 @@ describe('public booking API', () => {
         jest.clearAllMocks()
         bookingSettings.getPublicBookingPage.mockResolvedValue(page)
         bookingSettings.getConnectedCalendarCount.mockResolvedValue(1)
-        bookingSettings.resolveEarliestBookableStart.mockReturnValue(null)
         bookingSettings.findPublicBookingSlots.mockResolvedValue({
             success: true,
             timeZone: 'Europe/Berlin',
@@ -166,61 +162,6 @@ describe('public booking API', () => {
 
         expect(res.statusCode).toBe(409)
         expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
-    })
-
-    describe('same-day booking rule (AT-2271)', () => {
-        const sameDayBody = {
-            slug: 'karsten-wysk',
-            start: '2026-06-18T09:00:00+02:00',
-            end: '2026-06-18T09:30:00+02:00',
-            visitorName: 'Visitor',
-            visitorEmail: 'visitor@example.com',
-        }
-
-        test('exposes the flag on the public page, defaulting to false', async () => {
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
-
-            // The page doc predates the setting, so the visitor page must read false.
-            expect(res.body.page.settings.allowSameDayBooking).toBe(false)
-        })
-
-        test('exposes the flag as true once the host opts in', async () => {
-            bookingSettings.getPublicBookingPage.mockResolvedValue({
-                ...page,
-                settings: { ...page.settings, allowSameDayBooking: true },
-            })
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
-
-            expect(res.body.page.settings.allowSameDayBooking).toBe(true)
-        })
-
-        test('refuses a same-day booking posted straight to the API', async () => {
-            // The visitor page never offers today, but nothing stops a direct POST.
-            bookingSettings.resolveEarliestBookableStart.mockReturnValue(moment.parseZone('2026-06-19T00:00:00+02:00'))
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ method: 'POST', path: '/book', body: sameDayBody }), res)
-
-            expect(res.statusCode).toBe(409)
-            expect(res.body.error).toMatch(/same-day/i)
-            // Rejected before the availability re-check, so no calendar work happens at all.
-            expect(bookingSettings.findPublicBookingSlots).not.toHaveBeenCalled()
-            expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
-        })
-
-        test('allows a booking at or after the earliest bookable instant', async () => {
-            bookingSettings.resolveEarliestBookableStart.mockReturnValue(moment.parseZone('2026-06-18T00:00:00+02:00'))
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ method: 'POST', path: '/book', body: sameDayBody }), res)
-
-            expect(res.statusCode).toBe(200)
-            expect(createCalendarEventForAssistantRequest).toHaveBeenCalled()
-        })
     })
 
     test('creates a calendar event and booking record on success', async () => {

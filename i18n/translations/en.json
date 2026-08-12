@@ -2407,8 +2407,6 @@
     "Buffer before": "Buffer before",
     "Buffer after": "Buffer after",
     "Include weekends": "Include weekends",
-    "Allow same day booking": "Allow same-day booking",
-    "Allow same day booking description": "When off, the earliest people can book is tomorrow in your timezone.",
     "Additional guests": "Additional guests",
     "Additional guests description": "These people are automatically invited as guests to every booked meeting — handy to block a shared calendar or loop in colleagues. One email per line.",
     "Additional guests placeholder": "colleague@example.com\nteam@example.com",
