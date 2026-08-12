@@ -13,6 +13,13 @@ const {
     mapAssistantData,
 } = require('./ParsingTextHelper')
 const { removeProjectObjectsFromAlgolia, getAlgoliaClient } = require('./searchHelper')
+const {
+    upsertTypesenseDocument,
+    deleteTypesenseDocument,
+    importTypesenseDocuments,
+    deleteTypesenseProjectRecords,
+    isTypesenseConfigured,
+} = require('./typesenseHelper')
 const { getProject, updateFullSearchInProject, getUserProjects } = require('./Firestore/generalFirestoreCloud')
 const { getGoalTasksAndSubtasks } = require('./Goals/goalsFirestore')
 const { getGoalData } = require('./Goals/goalsFirestore')
@@ -42,24 +49,33 @@ const getAlgoliaIndex = indexPrefix => {
     return getAlgoliaClient().initIndex(indexPrefix)
 }
 
+// Dual-write (TYPESENSE_MIGRATION.md Phase 1): every record that reaches Algolia also goes
+// to Typesense. Collection names equal the index prefixes, and the Typesense ops never throw,
+// so Algolia behavior is unchanged even with the cluster missing or down.
 const addAlgoliaRecord = async (object, indexPrefix) => {
     const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.saveObject(object)
+    await Promise.all([algoliaIndex.saveObject(object), upsertTypesenseDocument(indexPrefix, object)])
 }
 
 const addAlgoliaRecords = async (objects, indexPrefix) => {
     const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.saveObjects(objects)
+    await Promise.all([algoliaIndex.saveObjects(objects), importTypesenseDocuments(indexPrefix, objects)])
 }
 
 const deleteAlgoliaRecord = async (algoliaObjectId, indexPrefix) => {
     const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.deleteObject(algoliaObjectId)
+    await Promise.all([
+        algoliaIndex.deleteObject(algoliaObjectId),
+        deleteTypesenseDocument(indexPrefix, algoliaObjectId),
+    ])
 }
 
 const deleteAlgoliaRecords = async (algoliaObjectIds, indexPrefix) => {
     const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.deleteObjects(algoliaObjectIds)
+    await Promise.all([
+        algoliaIndex.deleteObjects(algoliaObjectIds),
+        ...algoliaObjectIds.map(algoliaObjectId => deleteTypesenseDocument(indexPrefix, algoliaObjectId)),
+    ])
 }
 
 const updateAlgoliaRecord = async (object, indexPrefix) => {
@@ -143,7 +159,11 @@ const createRecord = async (projectId, objectId, item, objectsType, db, canBeIna
             : paramProject || (await getProject(projectId, admin))
 
     if (!project) return
-    if (!project.activeFullSearch && (!project.active || project.parentTemplateId)) return
+    // Algolia keeps its historical record-count gates (inactive/template projects are not
+    // indexed there); Typesense indexes everything (TYPESENSE_MIGRATION.md Phase 1). With
+    // Typesense unconfigured the old early-return is preserved, so nothing extra runs.
+    const eligibleForAlgolia = !!(project.activeFullSearch || (project.active && !project.parentTemplateId))
+    if (!eligibleForAlgolia && !isTypesenseConfigured()) return
 
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
@@ -161,7 +181,11 @@ const createRecord = async (projectId, objectId, item, objectsType, db, canBeIna
         })
     }
 
-    await addAlgoliaRecord(object, indexPrefix)
+    if (eligibleForAlgolia) {
+        await addAlgoliaRecord(object, indexPrefix)
+    } else {
+        await upsertTypesenseDocument(indexPrefix, object)
+    }
 }
 
 const deleteRecord = async (objectId, projectId, objectsType) => {
@@ -183,7 +207,12 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
         console.log(`Project not found for ${objectId}, skipping update`)
         return
     }
-    if (!project.activeFullSearch && (!project.active || project.parentTemplateId)) {
+    // The historical gates below decide only whether ALGOLIA gets the write (they exist to
+    // cap its billable record count); Typesense receives every update regardless
+    // (TYPESENSE_MIGRATION.md Phase 1). With Typesense unconfigured the old early-returns
+    // are preserved so behavior and cost are exactly as before.
+    let eligibleForAlgolia = !!(project.activeFullSearch || (project.active && !project.parentTemplateId))
+    if (!eligibleForAlgolia && !isTypesenseConfigured()) {
         console.log(`Project ${projectId} not eligible for search indexing, skipping update`)
         return
     }
@@ -193,16 +222,16 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
 
     if (objectsType === CHATS_OBJECTS_TYPE) {
         if (objectIsInactive) {
-            console.log(`Chat ${objectId} is inactive, skipping update`)
-            return
+            console.log(`Chat ${objectId} is inactive, skipping Algolia update`)
+            eligibleForAlgolia = false
         }
         canBeInactive = true
     } else if (objectsType === TASKS_OBJECTS_TYPE) {
         const { isSubtask, parentDone, done } = newItem
         const isDone = isSubtask ? parentDone : done
         if (isDone && objectIsInactive) {
-            console.log(`Task ${objectId} is done and inactive, skipping update`)
-            return
+            console.log(`Task ${objectId} is done and inactive, skipping Algolia update`)
+            eligibleForAlgolia = false
         }
         canBeInactive = isDone
     } else if (objectsType === GOALS_OBJECTS_TYPE) {
@@ -238,11 +267,15 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
             !isDynamicCompletedAndOpen &&
             objectIsInactive
         ) {
-            console.log(`Goal ${objectId} is complete and inactive, skipping update`)
-            return
+            console.log(`Goal ${objectId} is complete and inactive, skipping Algolia update`)
+            eligibleForAlgolia = false
         }
         canBeInactive = !isIncompleted && !isDynamicIncompleted && !isCompletedAndOpen && !isDynamicCompletedAndOpen
     }
+
+    // Old behavior preserved when Typesense is off: an object gated out of Algolia has
+    // nowhere to be written.
+    if (!eligibleForAlgolia && !isTypesenseConfigured()) return
 
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
@@ -272,10 +305,12 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
     })
 
     if (Object.keys(changes).length > 0 || hasContentChanged) {
-        console.log(
-            `Updating Algolia record for ${objectsType} ${objectId} with ${Object.keys(changes).length} changes`
-        )
-        await addAlgoliaRecord(objectAfter, indexPrefix)
+        console.log(`Updating search record for ${objectsType} ${objectId} with ${Object.keys(changes).length} changes`)
+        if (eligibleForAlgolia) {
+            await addAlgoliaRecord(objectAfter, indexPrefix)
+        } else {
+            await upsertTypesenseDocument(indexPrefix, objectAfter)
+        }
     } else {
         console.log(`No significant changes detected for ${objectsType} ${objectId}, skipping update`)
     }
@@ -400,7 +435,10 @@ const fillRolCompanyAndDescriptionInUser = (project, user) => {
     user.cleanDescription = parseTextForSearch(extendedDescription, true)
 }
 
-const removeAlgoliaRecordsInProject = async projectId => {
+// `alsoRemoveFromTypesense` distinguishes a REAL project deletion (onDeleteProjectFunctions,
+// which must clear both stores) from the Algolia-only record-count cleanups
+// (checkAndRemoveProjectsWithoutActivityFromAlgolia) — Typesense keeps everything on those.
+const removeAlgoliaRecordsInProject = async (projectId, { alsoRemoveFromTypesense = false } = {}) => {
     const filters = `projectId:${projectId}`
     const promises = []
     promises.push(removeProjectObjectsFromAlgolia(TASKS_OBJECTS_TYPE, filters))
@@ -408,6 +446,7 @@ const removeAlgoliaRecordsInProject = async projectId => {
     promises.push(removeProjectObjectsFromAlgolia(NOTES_OBJECTS_TYPE, filters))
     promises.push(removeProjectObjectsFromAlgolia(USERS_OBJECTS_TYPE, filters))
     promises.push(removeProjectObjectsFromAlgolia(CHATS_OBJECTS_TYPE, filters))
+    if (alsoRemoveFromTypesense) promises.push(deleteTypesenseProjectRecords(projectId))
     await Promise.all(promises)
 }
 
