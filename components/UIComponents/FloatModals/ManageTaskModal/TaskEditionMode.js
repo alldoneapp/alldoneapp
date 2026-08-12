@@ -27,7 +27,8 @@ import Button from '../../../UIControls/Button'
 import NavigationService from '../../../../utils/NavigationService'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import EstimationWrapper from './EstimationWrapper'
-import ConfirmationModal from './ConfirmationModal'
+import ConfirmDialog from '../../ConfirmDialog'
+import { popoverToCenter } from '../../../../utils/HelperFunctions'
 import AssigneeWrapper from './AssigneeWrapper'
 import DueDateWrapper from './DueDateWrapper'
 import CommentWrapper from './CommentWrapper'
@@ -757,11 +758,16 @@ export default class TaskEditionMode extends Component {
                 </View>
                 <AppPopover
                     content={
-                        <ConfirmationModal closeModal={this.closeConfirmationModal} deleteTask={this.deleteTask} />
+                        <ConfirmDialog
+                            closeModal={this.closeConfirmationModal}
+                            onProceed={this.deleteTask}
+                            title={'Be careful with this action'}
+                            description={'Do you really want to perform this action?'}
+                        />
                     }
                     align={'start'}
                     position={['bottom']}
-                    contentLocation={{ top: 0, left: 0 }}
+                    contentLocation={popoverToCenter}
                     isOpen={showConfirmationModal}
                 >
                     <View />
