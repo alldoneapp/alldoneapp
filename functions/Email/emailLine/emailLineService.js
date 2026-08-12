@@ -572,9 +572,10 @@ async function addDraftReplyLinkComment({ userId, userData = {}, sourceProjectId
     }
 }
 
-// Returns { messages, nextPageToken, partialFailure, failedCount }. `partialFailure` means the
-// provider dropped some rows it could not fetch — without it, a page whose fetches all failed is
-// indistinguishable from a genuinely empty label.
+// Returns { messages, nextPageToken, totalCount, partialFailure, failedCount }. `totalCount` is
+// the provider's count for the same label query and lets the client reconcile a stale chip when
+// it opens the actual rows. `partialFailure` means the provider dropped some rows it could not
+// fetch — without it, a page whose fetches all failed is indistinguishable from an empty label.
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
     const startedAt = Date.now()
     const { pageToken, userData: providedUserData } = options
@@ -659,6 +660,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
         return {
             messages,
             nextPageToken: result?.nextPageToken || null,
+            totalCount: Number.isFinite(result?.totalCount) ? result.totalCount : null,
             failedCount,
             partialFailure: !!result?.partialFailure,
         }

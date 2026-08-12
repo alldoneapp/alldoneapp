@@ -125,6 +125,7 @@ describe('microsoftEmailLine', () => {
                     internetMessageHeaders: [{ name: 'List-Unsubscribe', value: '<https://ex.com/u>' }],
                 },
             ],
+            '@odata.count': 31,
             '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders/f1/messages?$skiptoken=abc',
         })
 
@@ -135,6 +136,8 @@ describe('microsoftEmailLine', () => {
         expect(row.isUnread).toBe(true)
         expect(row.webUrl).toBe('https://outlook/mail/m1')
         expect(row.unsubscribe).toEqual({ httpsUrl: 'https://ex.com/u' })
+        expect(result.totalCount).toBe(31)
+        expect(mockRequest.mock.calls[0][0]).toContain('%24count=true')
         // nextLink stripped of graph root → path only.
         expect(result.nextPageToken).toBe('/me/mailFolders/f1/messages?$skiptoken=abc')
     })

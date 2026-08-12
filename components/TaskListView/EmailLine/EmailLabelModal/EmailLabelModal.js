@@ -20,6 +20,7 @@ import {
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
+    reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
 import EmailRow from './EmailRow'
@@ -55,6 +56,7 @@ function EmailLabelModal({
     allGroups,
     labelOptionsByConnectionId,
     labelingDisabledByConnectionId,
+    onThreadCountReconciled,
     closePopover,
     windowSize,
 }) {
@@ -78,6 +80,10 @@ function EmailLabelModal({
     // the summary refresh on close (see handleRelabeled) rather than immediately, so relabeling the
     // last email of a label doesn't unmount its chip — and this popover with it — mid-feedback.
     const pendingSummaryRefreshRef = useRef(new Set())
+    // A zero update would remove the chip from its parent list and therefore unmount this
+    // anchored popover. Show zero on the still-mounted chip immediately, but commit it to Redux
+    // only when the popover closes.
+    const pendingZeroCountReconciliationsRef = useRef(new Map())
 
     const smallScreen = useSelector(state => state.smallScreen)
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
@@ -110,6 +116,7 @@ function EmailLabelModal({
                         ...entry,
                         messages: result?.messages || [],
                         nextPageToken: result?.nextPageToken || null,
+                        totalCount: Number.isFinite(result?.totalCount) ? result.totalCount : null,
                         // The call succeeded but the provider couldn't fetch every thread of
                         // the page, so this section's list is incomplete.
                         partialFailure: !!result?.partialFailure,
@@ -134,6 +141,21 @@ function EmailLabelModal({
             })
             if (activeGroupKeyRef.current !== loadingGroupKey) return
             setSections(results)
+            const exactResults = results.filter(section => !section.failed && Number.isFinite(section.totalCount))
+            exactResults.forEach(section => {
+                const reconciliationKey = sectionKey(section)
+                if (section.totalCount === 0) {
+                    pendingZeroCountReconciliationsRef.current.set(reconciliationKey, section)
+                } else {
+                    pendingZeroCountReconciliationsRef.current.delete(reconciliationKey)
+                    reconcileEmailLineLabelCount(section.connectionId, section.labelId, section.totalCount)
+                }
+            })
+            // Only replace the merged chip total when every account returned a count. A partial
+            // account failure must not turn the other accounts' successful subtotal into the total.
+            if (loadingGroupKey === group?.key && exactResults.length === results.length) {
+                onThreadCountReconciled?.(exactResults.reduce((total, section) => total + section.totalCount, 0))
+            }
             // Never cache a wholesale failure: its empty rows would be seeded on the next open
             // and render as the empty state, hiding the error we just detected.
             if (!results.every(section => section.failed)) cacheSections(results)
@@ -234,7 +256,12 @@ function EmailLabelModal({
     // chip counts and destination labels catch up without disrupting the open modal.
     useEffect(() => {
         const pending = pendingSummaryRefreshRef.current
+        const pendingZeroCounts = pendingZeroCountReconciliationsRef.current
         return () => {
+            pendingZeroCounts.forEach(section =>
+                reconcileEmailLineLabelCount(section.connectionId, section.labelId, section.totalCount)
+            )
+            pendingZeroCounts.clear()
             pending.forEach(connectionId => {
                 invalidateEmailLineSummaryCooldown(connectionId)
                 fetchEmailLineSummary(connectionId, { force: true }).catch(() => {})
