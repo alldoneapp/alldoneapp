@@ -3,7 +3,7 @@ import { Image, Keyboard, Modal, StyleSheet, Text, View } from 'react-native'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import store from '../../redux/store'
-import styles, { colors } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { cloneDeep, isEqual } from 'lodash'
 import Backend from '../../utils/BackendBridge'
 import Popover from 'react-tiny-popover'
@@ -875,7 +875,7 @@ const localStyles = StyleSheet.create({
     },
     copyModalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
     },

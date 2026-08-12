@@ -87,7 +87,6 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        width: 305,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },

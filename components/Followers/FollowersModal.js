@@ -52,7 +52,6 @@ export default function FollowersModal({ closeModal, followers, markAssignee = f
 const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
-        width: 298,
         borderRadius: 4,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,

@@ -56,5 +56,9 @@ const localStyles = StyleSheet.create({
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
+        // Grow the 24px icon to a 44px touch target without moving it or
+        // affecting any caller's absolute positioning of closeContainer.
+        padding: 10,
+        margin: -10,
     },
 })

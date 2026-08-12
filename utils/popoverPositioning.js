@@ -16,6 +16,17 @@ import { Dimensions } from 'react-native'
 
 export const POPOVER_VIEWPORT_PADDING = 8
 
+// The named form of the `contentLocation={mobile ? null : undefined}` idiom
+// (~136 call sites). react-tiny-popover distinguishes the two values inside
+// renderPopover (replacement_node_modules/react-tiny-popover/dist/Popover.js):
+// `null` — being `typeof 'object'` — disables the position-flip search, so the
+// popover keeps the first candidate position and is only nudged into the
+// viewport; being falsy, it also skips the caller-placed-coordinates branch.
+// `undefined` keeps the library's full positioning behavior. On small screens
+// the flip search thrashes (every candidate violates), so "nudge only" is the
+// deliberate mobile mode. Guarded by __tests__/ModalSystemGuardrails.test.js.
+export const nudgeIntoViewportWhen = condition => (condition ? null : undefined)
+
 export const clampToRange = (value, min, max) => {
     if (max < min) {
         return min

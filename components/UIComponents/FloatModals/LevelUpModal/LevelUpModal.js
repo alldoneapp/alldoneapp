@@ -56,7 +56,6 @@ const localStyles = StyleSheet.create({
         left: '58.5%',
         transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
         position: 'fixed',
-        width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

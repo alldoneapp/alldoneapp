@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import { useSelector } from 'react-redux'
 
-import styles, { colors } from '../../styles/global'
+import styles, { colors, hexColorToRGBa } from '../../styles/global'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -237,7 +237,6 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        width: 305,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
@@ -290,7 +289,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 100,

@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 import '@firebase/functions'
 import Icon from '../../../Icon'
-import { colors } from '../../../styles/global'
+import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
 
 export default function IframeModal() {
@@ -191,7 +191,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         zIndex: 9999,
         justifyContent: 'center',
         alignItems: 'center',

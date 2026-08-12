@@ -282,7 +282,48 @@ The fix is the **phase**, not the handler. `utils/escapeStack.js` installs ONE `
 
 **Chat message edit dismiss race**: In `components/ChatsView/ChatDV/EditorView/MessageItem.js`, opening the per-message edit `DismissibleItem` directly from the timestamp/pencil click can mount `react-dismissible` early enough that the same click is interpreted as an outside-dismiss click. Symptoms: the edit handler fires, `openModal()` runs, `onToggleModal(true)` is immediately followed by `onToggleModal(false)`, and nothing appears on screen. Defer the `openModal(true)` call with `setTimeout(..., 0)` after dispatching `setActiveChatMessageId(message.id)`, and clear the timeout on unmount. If diagnosing this path, use scoped logs around `MessageItemHeader` click handling, `enableEditMode`, and `MessageItemContent`'s `onToggleModal`.
 
-**Popover Width Control**: Most modals use `applyPopoverWidth()` from `utils/HelperFunctions.js` which applies fixed widths based on screen size (mobile/tablet/desktop). This helper overrides inline styles due to how it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. To create larger modals that use more screen width, avoid `applyPopoverWidth()` and calculate width dynamically using `Dimensions.get('window').width`.
+**Modal system (target state — MODAL_IMPROVEMENT_PLAN.md)**: new/migrated popups size
+themselves through `hooks/useModalSizing.js` + the tokens in `components/styles/modals.js`
+(width scale S/M/L/XL, `MODAL_EDGE_GAP` 16/side, `MODAL_SHEET_BREAKPOINT` 640 — a **pure
+window-width** mobile check, unlike `smallScreenNavigation` which flips at 818/611 depending
+on `loggedUser.sidebarExpanded`). The hook is reactive (resize + visualViewport) and
+**keyboard-aware**: it subtracts the visual-viewport keyboard inset from `maxHeight`,
+because popover portals are `position: fixed` and the app shell's `--app-keyboard-inset`
+shrink cannot move them (iOS never resizes the layout viewport for the keyboard). The
+`contentLocation={mobile ? null : undefined}` idiom has a named home:
+`nudgeIntoViewportWhen` in `utils/popoverPositioning.js` (`null` is `typeof 'object'`, which
+makes the vendored react-tiny-popover skip its position-flip search — pinned by
+`__tests__/ModalSystemGuardrails.test.js`, which also ratchets direct `react-tiny-popover`
+imports: the count may only go down; build new popups on the shared system instead).
+
+**ModalShell (Phase 2)**: `components/UIComponents/ModalShell/AppPopover.js` is the drop-in
+replacement for a direct `<Popover>` — desktop renders the vendored react-tiny-popover
+unchanged (all props pass through); below `MODAL_SHEET_BREAKPOINT` the content renders as
+`BottomSheet.js`: a full-width bottom sheet portal with scrim, drag-handle, slide-up motion
+(reduced-motion aware), document scroll lock (`utils/bodyScrollLock.js`), safe-area padding
+(`utils/safeAreaInsets.js` — env() measured via probe, CSS can't reach fixed portals),
+keyboard-riding (`bottom: keyboardInset`), Escape via `useEscapeKey` (LIFO — a nested sheet
+closes first), and the AT-2236 mount-grace + dismiss-replay guards baked in. **Sheet
+dismissal is its own backdrop element, not a window click listener**, so taps in nested
+portals can structurally never dismiss the parent (the EmailLabelChip/RichCommentModal bug
+class). Sheet close is synchronous by design — wrappers unmount the subtree on close, so an
+exit animation could never play (and RNW Animated completion callbacks don't fire under
+jsdom); slide-out polish is Phase 5. The sheet card is `colors.Secondary400`, matching the
+FloatModals card color, so existing modal contents render seamlessly inside it without
+relinquishing their own chrome (that migration comes per-modal via `ModalShellContext`).
+Migrated so far: DueDateButton, EstimationButton, TaskPriorityWrapper, TaskDetailedView
+Assignee + ProjectPicker, MorePopupsOfEditModals MoreButtonWrapper. Pinned by
+`components/UIComponents/ModalShell/ModalShell.test.js` (jsdom, real guard + escape stack)
+and `browser-tests/modalsheet` (real Chromium: touch grace timing, focused-input Escape,
+nested LIFO, scroll lock).
+
+**Popover Width Control (legacy, unmigrated modals)**: Most modals still use
+`applyPopoverWidth()` from `utils/HelperFunctions.js`, which applies an exact width per
+breakpoint — since Phase 0 that is **full window width minus 32 on mobile**
+(`smallScreenNavigation`), 368 tablet / 432 desktop — clamped to the window, read
+imperatively from the store (not resize-reactive). It overrides inline styles due to how
+it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
+`useModalSizing` for anything new.
 
 **React Native Dimensions Compatibility**: Do not use `useWindowDimensions()` in this codebase. The current React Native/web setup does not provide it reliably and it causes runtime failures such as `TypeError: useWindowDimensions is not a function`. Use `Dimensions.get('window')` instead when sizing responsive modals or panels.
 
