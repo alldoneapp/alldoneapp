@@ -1,37 +1,27 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import global, { colors } from '../../styles/global'
-import CustomScrollView from '../../UIControls/CustomScrollView'
-import Button from '../../UIControls/Button'
-import { translate } from '../../../i18n/TranslationService'
+import { StyleSheet, View } from 'react-native'
 
+import ConfirmDialog from '../../UIComponents/ConfirmDialog'
+
+/**
+ * "Discard this recording?" — the canonical ConfirmDialog in a window-centered
+ * host. Deliberately NO scrim: this shows over a LIVE screen recording, and a
+ * scrim would darken the user's screen and be captured into the video.
+ * Escape backs out of the confirm (LIFO stack — it wins over ScreenRecording's
+ * own Esc handler, which is what opened this); Proceed stops and discards.
+ */
 const CancelRecord = ({ setShowClose, closeModal }) => {
     return (
         <View style={localStyles.center}>
-            <CustomScrollView contentContainerStyle={localStyles.container}>
-                <Text style={[global.title7, { color: 'white' }]}>
-                    {translate('Be careful, this action is permanent')}
-                </Text>
-                <Text style={[global.body2, { color: colors.Text03 }]}>
-                    {translate('Do you really want to cancel the screen recording and lose the video?')}
-                </Text>
-                <View style={localStyles.footer}>
-                    <Button
-                        title={translate('Cancel')}
-                        type={'secondary'}
-                        buttonStyle={{ marginRight: 8 }}
-                        onPress={() => setShowClose(false)}
-                    />
-                    <Button
-                        title={translate('Proceed')}
-                        type={'danger'}
-                        onPress={() => {
-                            window.stopCallback && window.stopCallback()
-                            closeModal()
-                        }}
-                    />
-                </View>
-            </CustomScrollView>
+            <ConfirmDialog
+                title={'Be careful, this action is permanent'}
+                description={'Do you really want to cancel the screen recording and lose the video?'}
+                closeModal={() => setShowClose(false)}
+                onProceed={() => {
+                    window.stopCallback && window.stopCallback()
+                    closeModal()
+                }}
+            />
         </View>
     )
 }
@@ -39,25 +29,9 @@ const CancelRecord = ({ setShowClose, closeModal }) => {
 const localStyles = StyleSheet.create({
     center: {
         position: 'fixed',
-        left: '48.5%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
-        elevation: 3,
-        borderRadius: 4,
-        backgroundColor: colors.Secondary400,
-        paddingVertical: 16,
-        paddingHorizontal: 16,
-        height: 'auto',
+        left: '50%',
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    container: {
-        width: 317,
-    },
-    footer: {
-        flex: 0,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        marginTop: 20,
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
 })
 

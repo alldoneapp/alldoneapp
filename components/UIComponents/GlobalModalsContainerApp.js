@@ -12,9 +12,6 @@ import RecordVideo from '../MediaBar/RecordVideo/RecordVideo'
 import { updateRecordVideoModalData, updateScreenRecordingModalData } from '../../redux/actions'
 import NotAvailableScreenRecording from '../MediaBar/ScreenRecording/NotAvailableScreenRecording'
 import ScreenRecording from '../MediaBar/ScreenRecording/ScreenRecording'
-import ChatGoogleMeetModal from '../ChatsView/ChatDV/EditorView/ChatGoogleMeetModal'
-import GoogleMeetModal from '../GoogleCalendar/GoogleMeetModal'
-import GoogleMeetNotificationModal from '../GoogleCalendar/GoogleMeetNotificationModal'
 import TaskSuggestedComment from '../Suggeted/TaskSuggestedComment'
 import GlobalSearchModal from '../GlobalSearchAlgolia/GlobalSearchModal'
 import AccessDeniedPopup from './AccessDeniedPopup'
@@ -39,9 +36,6 @@ export default function GlobalModalsContainerApp() {
     const showNotificationAboutTheBotBehavior = useSelector(state => state.showNotificationAboutTheBotBehavior)
     const recordVideoModalData = useSelector(state => state.recordVideoModalData)
     const screenRecordingModalData = useSelector(state => state.screenRecordingModalData)
-    const chatGoogleMeetModalData = useSelector(state => state.chatGoogleMeetModalData)
-    const googleMeetModalData = useSelector(state => state.googleMeetModalData)
-    const googleMeetNotificationModalData = useSelector(state => state.googleMeetNotificationModalData)
     const taskSuggestedCommentModalData = useSelector(state => state.taskSuggestedCommentModalData)
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const showAccessDeniedPopup = useSelector(state => state.showAccessDeniedPopup)
@@ -75,24 +69,6 @@ export default function GlobalModalsContainerApp() {
                     projectId={taskSuggestedCommentModalData.projectId}
                     task={taskSuggestedCommentModalData.task}
                     taskName={taskSuggestedCommentModalData.taskName}
-                />
-            )}
-            {googleMeetNotificationModalData.visible && (
-                <GoogleMeetNotificationModal
-                    projectId={googleMeetNotificationModalData.projectId}
-                    userEmail={googleMeetNotificationModalData.email}
-                    meeting={googleMeetNotificationModalData.meeting}
-                />
-            )}
-            {googleMeetModalData.visible && (
-                <GoogleMeetModal uid={googleMeetModalData.userId} projectId={googleMeetModalData.projectId} />
-            )}
-            {chatGoogleMeetModalData.visible && (
-                <ChatGoogleMeetModal
-                    uid={chatGoogleMeetModalData.userId}
-                    title={chatGoogleMeetModalData.title}
-                    selectedUsers={chatGoogleMeetModalData.userIds}
-                    projectId={chatGoogleMeetModalData.projectId}
                 />
             )}
             {recordVideoModalData.visible && (

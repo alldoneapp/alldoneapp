@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 
 import EditorsModal from './EditorsModal'
 import EditorAvatar from './EditorAvatar'
@@ -20,7 +20,7 @@ export default function EditorAvatarWrapper({ editors, avatarUrl, avatarColor, m
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <View>
                     <EditorsModal closeModal={closeModal} editors={editors} markAssignee={markAssignee} />
@@ -39,7 +39,7 @@ export default function EditorAvatarWrapper({ editors, avatarUrl, avatarColor, m
                     <Text style={localStyles.badgeText}>{`+${editors.length - 1}`}</Text>
                 </View>
             )}
-        </Popover>
+        </AppPopover>
     )
 }
 

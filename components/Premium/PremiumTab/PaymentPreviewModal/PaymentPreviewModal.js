@@ -146,12 +146,12 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
 }
 
 const localStyles = StyleSheet.create({
+    // A plain card on purpose (the full rework deferred from the round-3
+    // sweep): the HOST owns positioning. As PaymentPreviewModalWrapper content
+    // it is centered via popoverToCenter on desktop and becomes a bottom sheet
+    // on phones; inside SelectPremiumUsersModal it renders in place of the
+    // users list, so the two steps of the flow no longer jump around.
     container: {
-        top: '50%',
-        left: '50%',
-        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
-        position: 'fixed',
-        width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

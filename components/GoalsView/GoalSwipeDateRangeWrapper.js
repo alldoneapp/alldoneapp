@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Dimensions, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import GoalMilestoneRangeModal from '../UIComponents/FloatModals/GoalMilestoneRangeModal/GoalMilestoneRangeModal'
@@ -37,7 +37,7 @@ export default function GoalSwipeDateRangeWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <GoalMilestoneRangeModal
                     projectId={projectId}
@@ -58,6 +58,6 @@ export default function GoalSwipeDateRangeWrapper({
             contentLocation={openMilestoneModal ? updateModalLocation() : null}
         >
             <View />
-        </Popover>
+        </AppPopover>
     )
 }

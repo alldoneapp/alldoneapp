@@ -1,27 +1,27 @@
 /**
  * @jest-environment jsdom
  *
- * AT-2189 regression: the swipe "postpone" popup was not visible on mobile.
+ * AT-2189 regression, updated for the ModalShell migration: the swipe
+ * "postpone" popup was not visible on mobile.
  *
- * These drive the REAL (patched) react-tiny-popover and the REAL viewport math
- * from utils/popoverPositioning, because the failure modes only appear once
- * those two are combined:
- *   1. an unclamped centred contentLocation placed the portal above the top
- *      edge of a short phone viewport,
- *   2. the compatibility mouse events a touch device replays after the swipe
- *      release reached the popover's own window `click` listener and dismissed
- *      the popup in the frame it appeared, and
- *   3. the dominant one, which survived the first two fixes: with a centred
- *      target every candidate position violates on a phone, and the popover
- *      gave up mid-render - portal and overlay mounted, container left at
- *      opacity 0. See __tests__/UIComponents/ReactTinyPopoverNoFittingPosition
- *      for the library-level contract.
+ * Since DueDateSinglePopup moved onto AppPopover, a phone viewport renders a
+ * BottomSheet — the original failure class ("no popover position fits around
+ * a centred target on a phone") is structurally impossible there, and this
+ * suite pins the replacement contract instead: the sheet mounts, the
+ * transparent centring overlay stops intercepting pointer events, and the
+ * sheet's AT-2236 mount grace covers the replayed compatibility click.
  *
- * TARGET GEOMETRY MATTERS. Version one of this suite mocked every non-container
- * element - the Popover's target included - as 0x0 at (0, 0), which put the
- * target in the top-left corner where the 'right' position is viable. That hid
- * mode 3 completely. The target is an empty <Text /> inside a full-screen
- * overlay that centres its children, so it must be modelled CENTRED.
+ * The popover path still exists on desktop, including SHORT/NARROW desktop
+ * windows just past the sheet breakpoint — the original geometry pins run
+ * there now (real patched react-tiny-popover + real viewport math from
+ * utils/popoverPositioning; see __tests__/UIComponents/
+ * ReactTinyPopoverNoFittingPosition for the library-level contract).
+ *
+ * TARGET GEOMETRY MATTERS. Version one of this suite mocked every
+ * non-container element as 0x0 at (0, 0), which put the target in the
+ * top-left corner where the 'right' position is viable and hid the
+ * no-fitting-position mode completely. The target is an empty <Text /> inside
+ * a full-screen overlay that centres its children, so it is modelled CENTRED.
  */
 import React from 'react'
 import ReactDOM from 'react-dom'
@@ -29,6 +29,12 @@ import { act } from 'react-dom/test-utils'
 
 const PHONE_WIDTH = 390
 const PHONE_HEIGHT = 664
+// Just past MODAL_SHEET_BREAKPOINT (640): the popover path, on a window too
+// small to fit a 304x450 modal beside a centred target.
+const NARROW_DESKTOP_WIDTH = 640
+const NARROW_DESKTOP_HEIGHT = 664
+
+let viewport = { width: PHONE_WIDTH, height: PHONE_HEIGHT }
 
 // The natural (unclamped) size the popover portal measures.
 let contentSize = { width: 304, height: 450 }
@@ -78,8 +84,10 @@ jest.mock('../../utils/HelperFunctions', () => {
 })
 
 const DueDateSinglePopup = require('./DueDateSinglePopup').default
+const { highResNow } = require('../../utils/popupDismissGuard')
 
 const setViewport = (width, height) => {
+    viewport = { width, height }
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
     Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: width })
@@ -93,51 +101,126 @@ const flushTimers = async () => {
     })
 }
 
-describe('DueDateSinglePopup on a phone viewport', () => {
+const installLayoutMocks = host => {
+    global.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+    // react-tiny-popover's outside-click handler consults the selection.
+    window.getSelection = () => ({ toString: () => '' })
+
+    // jsdom has no layout, so model what a real browser produces:
+    //  - the portal container: the size the real modal would have, at
+    //    wherever the popover just placed it;
+    //  - everything in the app tree, i.e. the Popover's TARGET: a zero-size
+    //    box at the CENTRE of the viewport (see the file header).
+    jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
+        if (this.classList && this.classList.contains('react-tiny-popover-container')) {
+            const top = parseFloat(this.style.top) || 0
+            const left = parseFloat(this.style.left) || 0
+            return {
+                top,
+                left,
+                width: contentSize.width,
+                height: contentSize.height,
+                right: left + contentSize.width,
+                bottom: top + contentSize.height,
+            }
+        }
+        if (host.contains(this)) {
+            const midX = viewport.width / 2
+            const midY = viewport.height / 2
+            return { top: midY, left: midX, width: 0, height: 0, right: midX, bottom: midY }
+        }
+        return { top: 0, left: 0, width: 0, height: 0, right: 0, bottom: 0 }
+    })
+}
+
+describe('DueDateSinglePopup on a phone viewport (sheet presentation)', () => {
     let host
 
     beforeEach(() => {
         mockDispatch.mockClear()
         mockState.smallScreenNavigation = true
         contentSize = { width: 304, height: 450 }
-
-        global.ResizeObserver = class {
-            observe() {}
-            unobserve() {}
-            disconnect() {}
-        }
         setViewport(PHONE_WIDTH, PHONE_HEIGHT)
-        // react-tiny-popover's outside-click handler consults the selection.
-        window.getSelection = () => ({ toString: () => '' })
-
         host = document.createElement('div')
         document.body.appendChild(host)
+        installLayoutMocks(host)
+    })
 
-        // jsdom has no layout, so model what a real browser produces:
-        //  - the portal container: the size the real modal would have, at
-        //    wherever the popover just placed it;
-        //  - everything in the app tree, i.e. the Popover's TARGET: a zero-size
-        //    box at the CENTRE of the viewport (see the file header).
-        jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
-            if (this.classList && this.classList.contains('react-tiny-popover-container')) {
-                const top = parseFloat(this.style.top) || 0
-                const left = parseFloat(this.style.left) || 0
-                return {
-                    top,
-                    left,
-                    width: contentSize.width,
-                    height: contentSize.height,
-                    right: left + contentSize.width,
-                    bottom: top + contentSize.height,
-                }
-            }
-            if (host.contains(this)) {
-                const midX = PHONE_WIDTH / 2
-                const midY = PHONE_HEIGHT / 2
-                return { top: midY, left: midX, width: 0, height: 0, right: midX, bottom: midY }
-            }
-            return { top: 0, left: 0, width: 0, height: 0, right: 0, bottom: 0 }
+    afterEach(() => {
+        act(() => {
+            ReactDOM.unmountComponentAtNode(host)
         })
+        host.remove()
+        jest.restoreAllMocks()
+        delete window.ontouchstart
+    })
+
+    const mount = () => {
+        act(() => {
+            ReactDOM.render(<DueDateSinglePopup />, host)
+        })
+    }
+
+    const pressBackdrop = timeStamp => {
+        const backdrop = document.querySelector('[data-testid="bottom-sheet-backdrop"]')
+        expect(backdrop).not.toBeNull()
+        act(() => {
+            ;['mousedown', 'mouseup', 'click'].forEach(type => {
+                const event = new MouseEvent(type, { bubbles: true, cancelable: true, view: window })
+                Object.defineProperty(event, 'timeStamp', { value: timeStamp })
+                backdrop.dispatchEvent(event)
+            })
+        })
+    }
+
+    it('renders the postpone modal as a bottom sheet (no invisible popover possible)', () => {
+        mount()
+        expect(document.querySelector('[data-testid="bottom-sheet"]')).not.toBeNull()
+        expect(document.querySelector('.react-tiny-popover-container')).toBeNull()
+    })
+
+    it('the centring overlay must not intercept taps meant for the sheet backdrop', () => {
+        mount()
+        // The overlay sits at zIndex 10000, ABOVE the sheet backdrop (9990);
+        // with pointer events it would eat every backdrop tap.
+        const overlay = host.firstChild
+        expect(overlay.style.pointerEvents).toBe('none')
+    })
+
+    it('ignores the replayed compatibility click but honours a genuine backdrop tap', async () => {
+        // The touch device replays the opening swipe as mouse events whose
+        // timeStamp predates the sheet's mount (AT-2236 / AT-2189). The guard
+        // only honours timestamps SHORTLY before open, so capture it first.
+        const replayedAt = highResNow() - 5
+        mount()
+        await flushTimers()
+
+        pressBackdrop(replayedAt)
+        await flushTimers()
+        expect(mockDispatch).not.toHaveBeenCalled()
+
+        pressBackdrop(highResNow() + 10000)
+        await flushTimers()
+        expect(mockDispatch).toHaveBeenCalled()
+        expect(mockDispatch.mock.calls[0][0]).toEqual(expect.arrayContaining([{ type: 'hideSwipeDueDatePopup' }]))
+    })
+})
+
+describe('DueDateSinglePopup on a short, narrow desktop window (popover presentation)', () => {
+    let host
+
+    beforeEach(() => {
+        mockDispatch.mockClear()
+        mockState.smallScreenNavigation = true
+        contentSize = { width: 304, height: 450 }
+        setViewport(NARROW_DESKTOP_WIDTH, NARROW_DESKTOP_HEIGHT)
+        host = document.createElement('div')
+        document.body.appendChild(host)
+        installLayoutMocks(host)
     })
 
     afterEach(() => {
@@ -160,12 +243,11 @@ describe('DueDateSinglePopup on a phone viewport', () => {
         left: parseFloat(popover.style.left),
     })
 
-    // The reported symptom, and the one that survived the first round of fixes:
-    // the overlay mounted and locked the rest of the UI, but the popup itself
-    // stayed invisible. No position fits a 305x450 modal around a centred target
-    // on a 390x664 phone, and the popover used to abandon the render at that
-    // point - leaving the container at its initial opacity 0, with the
-    // contentLocation helper never called (so also at top 0 / left 0).
+    // The original AT-2189 symptom: the overlay mounted and locked the rest of
+    // the UI, but the popup itself stayed invisible (container abandoned at
+    // opacity 0). No position fits a 304x450 modal around a centred target on
+    // a 640x664 window either, so the vendored last-candidate commit is still
+    // what keeps this visible.
     it('makes the popup visible instead of leaving a locked, invisible overlay', () => {
         const popover = mount()
 
@@ -186,25 +268,22 @@ describe('DueDateSinglePopup on a phone viewport', () => {
         const { top, left } = geometry(popover)
 
         expect(popover.style.position).toBe('fixed')
-        expect(top).toBe((PHONE_HEIGHT - 450) / 2)
-        expect(left).toBe((PHONE_WIDTH - 304) / 2)
+        expect(top).toBe((NARROW_DESKTOP_HEIGHT - 450) / 2)
+        expect(left).toBe((NARROW_DESKTOP_WIDTH - 304) / 2)
     })
 
-    // The failing case: a reminder modal taller than a short phone viewport used
-    // to be centred to a negative top, so its header and close button rendered
-    // above the top edge and the popup read as "not visible".
+    // A reminder modal taller than a short viewport used to be centred to a
+    // negative top, so its header and close button rendered above the top edge.
     it('keeps a popup taller than the viewport on screen', () => {
         contentSize = { width: 304, height: 900 }
 
         const popover = mount()
         const { top, left } = geometry(popover)
 
-        // Assert visibility as well: an abandoned render leaves the container at
-        // top/left 0, which would satisfy the bounds checks vacuously.
         expect(popover.style.opacity).toBe('1')
         expect(top).toBeGreaterThanOrEqual(0)
         expect(left).toBeGreaterThanOrEqual(0)
-        expect(top).toBeLessThan(PHONE_HEIGHT)
+        expect(top).toBeLessThan(NARROW_DESKTOP_HEIGHT)
     })
 
     it('keeps the popup on screen when the desktop sidebar offset is applied on a narrow viewport', () => {
@@ -215,11 +294,11 @@ describe('DueDateSinglePopup on a phone viewport', () => {
 
         expect(popover.style.opacity).toBe('1')
         expect(left).toBeGreaterThanOrEqual(0)
-        expect(left + contentSize.width).toBeLessThanOrEqual(PHONE_WIDTH)
+        expect(left + contentSize.width).toBeLessThanOrEqual(NARROW_DESKTOP_WIDTH)
     })
 })
 
-describe('DueDateSinglePopup opening-gesture dismissal guard', () => {
+describe('DueDateSinglePopup opening-gesture dismissal guard (popover presentation)', () => {
     let host
 
     beforeEach(() => {
@@ -231,7 +310,7 @@ describe('DueDateSinglePopup opening-gesture dismissal guard', () => {
             unobserve() {}
             disconnect() {}
         }
-        setViewport(PHONE_WIDTH, PHONE_HEIGHT)
+        setViewport(NARROW_DESKTOP_WIDTH, NARROW_DESKTOP_HEIGHT)
         jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({
             top: 0,
             left: 0,

@@ -31,6 +31,7 @@ import {
     startMicrosoftServerSideAuth,
 } from '../../../apis/microsoft/MicrosoftOAuthServerSide'
 import ConnectionSettingsModal from './ConnectionSettingsModal'
+import ProjectListModal from '../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
 import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
 import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
@@ -47,30 +48,8 @@ function microsoftServiceFor(service) {
     return service === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'email'
 }
 
-// Simple project list popover — connecting an account REQUIRES choosing its default project.
-function ProjectPicker({ projects, onSelect, closePopover }) {
-    return (
-        <View style={localStyles.pickerContainer}>
-            <Text style={[styles.subtitle2, localStyles.pickerTitle]}>{translate('Choose a default project')}</Text>
-            {projects.map(project => (
-                <TouchableOpacity
-                    key={project.id}
-                    style={localStyles.pickerRow}
-                    onPress={() => {
-                        closePopover()
-                        onSelect(project)
-                    }}
-                >
-                    <View style={[localStyles.projectDot, { backgroundColor: project.color || colors.Primary100 }]} />
-                    <Text style={[styles.body2, localStyles.pickerRowText]} numberOfLines={1}>
-                        {project.name}
-                    </Text>
-                </TouchableOpacity>
-            ))}
-        </View>
-    )
-}
-
+// Connecting an account REQUIRES choosing its default project. The list is
+// the shared ProjectListModal (this was the plan's "hidden ninth picker").
 function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     return (
@@ -81,7 +60,14 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
             padding={4}
             containerStyle={POPOVER_CONTAINER_STYLE}
             onClickOutside={() => setIsOpen(false)}
-            content={<ProjectPicker projects={projects} onSelect={onSelect} closePopover={() => setIsOpen(false)} />}
+            content={
+                <ProjectListModal
+                    closeModal={() => setIsOpen(false)}
+                    projects={projects}
+                    title={translate('Choose a default project')}
+                    onSelectProject={onSelect}
+                />
+            }
         >
             <TouchableOpacity
                 style={localStyles.projectButton}
@@ -527,37 +513,5 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 4,
-    },
-    pickerContainer: {
-        backgroundColor: colors.Secondary400,
-        borderRadius: 4,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
-        minWidth: 220,
-        maxWidth: 280,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
-        elevation: 3,
-    },
-    pickerTitle: {
-        color: '#ffffff',
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-    },
-    pickerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        height: 36,
-        borderRadius: 4,
-    },
-    projectDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        marginRight: 8,
-    },
-    pickerRowText: {
-        color: '#ffffff',
-        flexShrink: 1,
     },
 })

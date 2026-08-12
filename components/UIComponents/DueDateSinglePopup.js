@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import Popover from 'react-tiny-popover'
+import AppPopover from './ModalShell/AppPopover'
+import useModalSizing from '../../hooks/useModalSizing'
 import { hideFloatPopup, hideSwipeDueDatePopup, setSwipeDueDatePopupData } from '../../redux/actions'
 import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
@@ -37,6 +38,7 @@ export default function DueDateSinglePopup() {
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const data = useSelector(state => state.showSwipeDueDatePopup.data)
+    const { isSheet } = useModalSizing()
     const [visibleCalendar, setVisibleCalendar] = useState(false)
     const openedAtRef = useRef(Date.now())
     const openingDismissConsumedRef = useRef(false)
@@ -74,7 +76,10 @@ export default function DueDateSinglePopup() {
     }
 
     const onClickOutside = () => {
-        if (isOpeningGestureReplay()) return
+        // In sheet mode the BottomSheet's own AT-2236 mount grace already
+        // blocks the replayed compatibility click; running this guard on top
+        // would swallow the first GENUINE backdrop tap within the window.
+        if (!isSheet && isOpeningGestureReplay()) return
         delayHidePopover()
     }
 
@@ -118,9 +123,13 @@ export default function DueDateSinglePopup() {
     }
 
     return (
-        <View style={localStyles.container}>
+        // In sheet mode the transparent centering overlay must not intercept
+        // pointer events: it sits ABOVE the sheet's backdrop (10000 vs 9990)
+        // and would eat every backdrop tap. It only exists to center the
+        // zero-size desktop anchor.
+        <View style={[localStyles.container, isSheet && NO_POINTER_EVENTS_STYLE]}>
             <View style={localStyles.popup}>
-                <Popover
+                <AppPopover
                     content={
                         <>
                             <DueDateModal
@@ -154,11 +163,13 @@ export default function DueDateSinglePopup() {
                     containerStyle={popoverToTopContainerStyle}
                 >
                     <Text />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
 }
+
+const NO_POINTER_EVENTS_STYLE = { pointerEvents: 'none' }
 
 const localStyles = StyleSheet.create({
     container: {

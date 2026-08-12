@@ -232,12 +232,52 @@ async function runDesktop(server, chromium) {
     await browser.close()
 }
 
+// Device-width matrix (Phase 5 QA): every width below MODAL_SHEET_BREAKPOINT
+// gets an edge-to-edge sheet, every width at/above it gets the anchored
+// popover. Catches breakpoint regressions and width caps (a maxWidth left on
+// a card shows up here as sheetRect.width < viewport).
+async function runWidthMatrix(server, chromium) {
+    const browser = await chromium.launch()
+    for (const width of [360, 375, 414, 639]) {
+        const context = await browser.newContext({ viewport: { width, height: 700 }, hasTouch: true })
+        const page = await context.newPage()
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.tap('[data-testid="open-outer"]')
+        await page.waitForTimeout(SETTLE_MS)
+        const s = await state(page)
+        check(
+            `matrix ${width}px: full-width sheet`,
+            s.sheets === 1 && s.sheetRect && s.sheetRect.width === width && s.sheetRect.left === 0,
+            JSON.stringify(s.sheetRect)
+        )
+        await context.close()
+    }
+    for (const width of [640, 768, 1052, 1440]) {
+        const context = await browser.newContext({ viewport: { width, height: 800 } })
+        const page = await context.newPage()
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.click('[data-testid="open-outer"]')
+        await page.waitForTimeout(SETTLE_MS)
+        const s = await state(page)
+        check(
+            `matrix ${width}px: anchored popover, no sheet`,
+            s.sheets === 0 && s.popoverContainers >= 1,
+            JSON.stringify(s)
+        )
+        await context.close()
+    }
+    await browser.close()
+}
+
 async function main() {
     build()
     const server = await serve()
     const { chromium } = requirePlaywright()
     await runMobile(server, chromium)
     await runDesktop(server, chromium)
+    await runWidthMatrix(server, chromium)
     server.close()
 
     console.log('')

@@ -3,10 +3,14 @@ import { StyleSheet, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import ProjectModalItem from '../SelectProjectModal/ProjectModalItem'
+import AllProjectItem from '../SelectProjectModal/AllProjectItem'
+import HeaderInSearch from '../SelectProjectModal/HeaderInSearch'
+import { ALL_PROJECTS_OPTION } from '../SelectProjectModal/projectPickerConstants'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Button from '../../../UIControls/Button'
 import ModalHeader from '../ModalHeader'
 import Line from '../GoalMilestoneModal/Line'
+import EmptyResults from '../EmptyResults'
 import { blockBackgroundTabShortcut, unblockBackgroundTabShortcut } from '../../../../redux/actions'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
@@ -23,25 +27,51 @@ const ROW_HEIGHT = 48
  * (the go-to-project flows). Always closes itself after a commit. Escape comes
  * through ModalHeader's CloseButton, which sits on the LIFO escape stack.
  *
- * The tabbed pickers (SelectProjectModal + SelectProjectModalInSearch) are not
- * on this component yet — see the plan for the real*-vs-plain id-set decision
- * and the move-engine split that migration needs first.
+ * Tab support: pass `tabs` ([{ key, name, projects }]) instead of `projects`
+ * and the modal owns the active tab (Tab/ArrowRight/ArrowLeft cycle it, the
+ * header renders as HeaderInSearch). Callers still own filtering and sorting
+ * per tab — which is what keeps the two tabbed pickers' different id-set
+ * semantics (real* vs plain) out of this component. `leadingAllOption`
+ * prepends the "All projects" row (index -1) on the FIRST tab and commits the
+ * ALL_PROJECTS_OPTION sentinel.
  */
 export default function ProjectListModal({
     closeModal,
     projects,
+    tabs,
+    initialTabIndex = 0,
+    leadingAllOption = false,
     title,
     description,
     onSelectProject, // (project, arrayIndex) => void
     commitMode = 'click',
     confirmLabel,
     selectedProjectId,
+    containerStyle,
+    emptyText,
 }) {
     const dispatch = useDispatch()
-    const [activeOptionIndex, setActiveOptionIndex] = useState(-1)
+    const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
+    const currentProjects = tabs ? tabs[activeTabIndex]?.projects || [] : projects
+    const allOptionVisible = leadingAllOption && (!tabs || activeTabIndex === 0)
+    const [activeOptionIndex, setActiveOptionIndex] = useState(() => {
+        const selectedIndex = selectedProjectId
+            ? (tabs ? tabs[initialTabIndex]?.projects || [] : projects).findIndex(
+                  project => project.id === selectedProjectId
+              )
+            : -1
+        return selectedIndex >= 0 ? selectedIndex : -1
+    })
     const viewportRef = useRef({ top: 0, height: 0 })
     const [, height] = useWindowSize()
     const scrollRef = useRef()
+
+    const changeTab = tabIndex => {
+        if (!tabs || tabIndex === activeTabIndex) return
+        setActiveTabIndex(tabIndex)
+        setActiveOptionIndex(-1)
+        scrollRef.current?.scrollTo({ y: 0, animated: false })
+    }
 
     useEffect(() => {
         dispatch(blockBackgroundTabShortcut())
@@ -66,20 +96,36 @@ export default function ProjectListModal({
     }
 
     const moveSelection = delta => {
-        if (projects.length === 0) return
-        const next =
-            activeOptionIndex === -1
-                ? delta > 0
-                    ? 0
-                    : projects.length - 1
-                : (activeOptionIndex + delta + projects.length) % projects.length
+        if (currentProjects.length === 0 && !allOptionVisible) return
+        let next
+        if (allOptionVisible) {
+            // The All row is index -1 and part of the cycle.
+            const span = currentProjects.length + 1
+            next = ((activeOptionIndex + 1 + delta + span) % span) - 1
+        } else {
+            next =
+                activeOptionIndex === -1
+                    ? delta > 0
+                        ? 0
+                        : currentProjects.length - 1
+                    : (activeOptionIndex + delta + currentProjects.length) % currentProjects.length
+        }
         setActiveOptionIndex(next)
-        revealRow(next)
+        if (next >= 0) revealRow(next)
+        else scrollRef.current?.scrollTo({ y: 0, animated: false })
     }
 
-    const commit = index => {
-        if (index < 0 || !projects[index]) return
-        onSelectProject(projects[index], index)
+    // Awaits the handler on purpose: the move-object flow must finish its
+    // backend work before the picker reports itself closed (the old tabbed
+    // modal awaited the move before calling closePopover).
+    const commit = async index => {
+        if (index === -1 && allOptionVisible) {
+            await onSelectProject({ id: ALL_PROJECTS_OPTION }, -1)
+            closeModal()
+            return
+        }
+        if (index < 0 || !currentProjects[index]) return
+        await onSelectProject(currentProjects[index], index)
         closeModal()
     }
 
@@ -94,8 +140,12 @@ export default function ProjectListModal({
             if (key === 'ArrowUp') moveSelection(-1)
             else if (key === 'ArrowDown') moveSelection(1)
             else if (key === 'Enter') {
-                if (activeOptionIndex === -1) closeModal()
+                if (activeOptionIndex === -1 && !allOptionVisible) closeModal()
                 else commit(activeOptionIndex)
+            } else if (tabs && (key === 'Tab' || key === 'ArrowRight')) {
+                changeTab(activeTabIndex + 1 === tabs.length ? 0 : activeTabIndex + 1)
+            } else if (tabs && key === 'ArrowLeft') {
+                changeTab(activeTabIndex === 0 ? tabs.length - 1 : activeTabIndex - 1)
             }
             if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'Enter') {
                 event.preventDefault()
@@ -107,8 +157,21 @@ export default function ProjectListModal({
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View
+            style={[
+                localStyles.container,
+                applyPopoverWidth(),
+                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
+                containerStyle,
+            ]}
+        >
             <ModalHeader closeModal={closeModal} title={title} description={description} />
+
+            {tabs && (
+                <View style={localStyles.tabsContainer}>
+                    <HeaderInSearch activeTabIndex={activeTabIndex} changeTab={changeTab} tabs={tabs} />
+                </View>
+            )}
 
             <View style={localStyles.projectListContainer}>
                 <CustomScrollView
@@ -123,21 +186,36 @@ export default function ProjectListModal({
                         viewportRef.current = { ...viewportRef.current, top: nativeEvent.contentOffset.y }
                     }}
                 >
-                    {projects.map((projectItem, index) => (
-                        <ProjectModalItem
-                            key={projectItem.id}
-                            selectedProjectId={
-                                commitMode === 'confirm'
-                                    ? index === activeOptionIndex
-                                        ? projectItem.id
-                                        : '-1'
-                                    : selectedProjectId || '-1'
-                            }
-                            newProject={projectItem}
-                            active={index === activeOptionIndex}
-                            onProjectSelect={() => onRowPress(index)}
+                    {allOptionVisible && (
+                        <AllProjectItem
+                            selectedProjectId={selectedProjectId}
+                            onProjectSelect={() => commit(-1)}
+                            active={activeOptionIndex === -1}
                         />
-                    ))}
+                    )}
+
+                    {currentProjects.length > 0 ? (
+                        currentProjects.map((projectItem, index) => (
+                            <ProjectModalItem
+                                key={projectItem.id}
+                                selectedProjectId={
+                                    commitMode === 'confirm'
+                                        ? index === activeOptionIndex
+                                            ? projectItem.id
+                                            : '-1'
+                                        : selectedProjectId || '-1'
+                                }
+                                newProject={projectItem}
+                                active={index === activeOptionIndex}
+                                onProjectSelect={() => onRowPress(index)}
+                            />
+                        ))
+                    ) : (
+                        <EmptyResults
+                            text={emptyText || translate('There are not projects to show here')}
+                            style={localStyles.empty}
+                        />
+                    )}
                 </CustomScrollView>
             </View>
 
@@ -179,6 +257,12 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         marginHorizontal: -8,
+    },
+    tabsContainer: {
+        marginTop: 12,
+    },
+    empty: {
+        marginBottom: 32,
     },
     buttonsContainer: {
         marginTop: 8,

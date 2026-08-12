@@ -27,12 +27,16 @@ import { nudgeIntoViewportWhen } from '../utils/popoverPositioning'
 const ROOT = path.join(__dirname, '..')
 
 // 226 at the Phase 1 audit; 222 after the Phase 2 pilot; 26 after the Phase 3
-// sweep (196 files codemodded onto AppPopover). What remains is the deliberate
-// keep-list — the shell itself, editor-caret popups (mentions/autoformat/notes
-// editor), drag-coordinate modals, DueDateSinglePopup's centered-overlay
-// pattern, RichCommentModal's dismiss-surface system — plus comment mentions
-// (the ratchet matches file content, not just import lines).
-const RAW_POPOVER_IMPORT_BASELINE = 26
+// sweep (196 files codemodded onto AppPopover); 14 after the keep-list pass;
+// 13 after DueDateSinglePopup and DragTaskModal migrated too. The only real
+// importers left are the shell itself and WrapperMentionsModal — the latter is
+// a PERMANENT keep: a caret-anchored typeahead positioned from Quill caret
+// bounds whose onClickOutside is a mention COMMIT, not a dismiss; a bottom
+// sheet is the wrong presentation for suggestions under a live caret, so it
+// stays on the raw library by design. Everything else in the count is
+// comment/CSS-selector mentions (the ratchet matches file content, not just
+// import lines).
+const RAW_POPOVER_IMPORT_BASELINE = 13
 
 const collectJsFiles = dir => {
     const results = []

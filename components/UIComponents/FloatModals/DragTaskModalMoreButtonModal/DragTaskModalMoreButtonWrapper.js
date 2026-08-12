@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import DragTaskModalMoreButtonModal from './DragTaskModalMoreButtonModal'
 import MoreButton from '../MorePopupsOfEditModals/Common/MoreButton'
 import { useSelector } from 'react-redux'
@@ -17,19 +17,6 @@ export default function DragTaskModalMoreButtonWrapperjs({
     const smallScreen = useSelector(state => state.smallScreen)
     const [showHighlight, setShowHighlight] = useState(false)
 
-    const onKeyDown = event => {
-        if (showHighlight && event.key === 'Escape') {
-            closeModal()
-        }
-    }
-
-    useEffect(() => {
-        window.addEventListener('keydown', onKeyDown)
-        return () => {
-            window.removeEventListener('keydown', onKeyDown)
-        }
-    })
-
     const openModal = () => {
         setShowHighlight(false)
         setOpenMoreOptions(true)
@@ -42,7 +29,7 @@ export default function DragTaskModalMoreButtonWrapperjs({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <View key={openMoreOptions}>
                     {showHighlight ? (
@@ -69,6 +56,6 @@ export default function DragTaskModalMoreButtonWrapperjs({
             contentLocation={smallScreen ? null : undefined}
         >
             <MoreButton noBorder={true} onPress={openModal} disabled={disabled} iconColor="#ffffff" />
-        </Popover>
+        </AppPopover>
     )
 }

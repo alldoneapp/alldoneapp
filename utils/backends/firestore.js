@@ -1123,19 +1123,6 @@ export async function watchProjectInvitations(projectId, callback, watcherKey) {
         })
 }
 
-export async function watchProjectMeetings(projectId, callback, watcherKey) {
-    globalWatcherUnsub[watcherKey] = firebase
-        .firestore()
-        .collection(`events/${projectId}/rooms`)
-        .onSnapshot(docs => {
-            const meetings = []
-            docs.forEach(doc => {
-                meetings.push(doc.data())
-            })
-            callback(meetings)
-        })
-}
-
 export function proccessAssistantDialyTopicIfNeeded() {
     const { loggedUser } = store.getState()
     const { dailyTopicDate, previousDailyTopicDate, defaultProjectId } = loggedUser
@@ -6263,52 +6250,6 @@ export function storeOldFeeds(projectId, formatedDate, feedObjectId, feedObject,
         objectType: feedObject.type,
         feedId: feedId,
         feedType: feed.type,
-    })
-}
-
-export function acceptJoinEvent(projectId, roomId, userEmail) {
-    const load = db.collection(`events/${projectId}/rooms`).doc(roomId)
-    load.get().then(function (doc) {
-        if (doc.exists) {
-            const guests = doc.data().guests
-            const foundIndex = doc.data().guests.findIndex(x => x.email === userEmail)
-            guests[foundIndex] = { attend: 1, email: userEmail }
-            db.collection(`events/${projectId}/rooms`).doc(roomId).update({ guests })
-        }
-    })
-}
-
-export function rejectJoinEvent(projectId, roomId, userEmail, reasons, callback) {
-    const load = db.collection(`events/${projectId}/rooms`).doc(roomId)
-    load.get().then(function (doc) {
-        if (doc.exists) {
-            const guests = doc.data().guests
-            const foundIndex = doc.data().guests.findIndex(x => x.email === userEmail)
-            guests[foundIndex] = { attend: -1, email: userEmail, reasons }
-            db.collection(`events/${projectId}/rooms`)
-                .doc(roomId)
-                .update({ guests })
-                .then(() => callback)
-        }
-    })
-}
-
-export function deleteEvent(projectId, roomId) {
-    db.collection(`events/${projectId}/rooms`).doc(roomId).delete()
-}
-
-export function getMeetings(projectId, setMeetings, setZero) {
-    db.collection(`events/${projectId}/rooms`).onSnapshot(function handleSnapshot(snapshot) {
-        const meets = snapshot.docs
-            .filter(item => item)
-            .map(doc => {
-                return {
-                    id: doc.id,
-                    ...doc.data(),
-                }
-            })
-        setMeetings(meets)
-        setZero()
     })
 }
 

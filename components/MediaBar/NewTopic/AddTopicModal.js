@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import styles, { colors } from '../../styles/global'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -29,7 +28,6 @@ export default function AddTopicModal({
     botIsActive,
 }) {
     const mentionsModalActiveRef = useRef(false)
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const [width, height] = useWindowSize()
 
     const assistantId = getDefaultAssistantInProjectById(projectId)
@@ -57,14 +55,7 @@ export default function AddTopicModal({
     }, [])
 
     return (
-        <View
-            style={[
-                localStyles.parent,
-                applyPopoverWidth(),
-                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
-                mobile && localStyles.mobile,
-            ]}
-        >
+        <View style={[localStyles.parent, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.innerContainer2} showsVerticalScrollIndicator={false}>
                 <View>
                     <View style={{ marginBottom: 20 }}>
@@ -129,21 +120,16 @@ const localStyles = StyleSheet.create({
         flex: 1,
         position: 'fixed',
         zIndex: 1,
-        left: '48.5%',
+        left: '50%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        maxWidth: 305,
-        minWidth: 305,
         height: 'auto',
         paddingHorizontal: 8,
         paddingVertical: 8,
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    mobile: {
-        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
     innerContainer2: {
         paddingHorizontal: 8,

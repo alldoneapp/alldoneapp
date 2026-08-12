@@ -1,483 +1,80 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import { TouchableOpacity } from 'react-native-gesture-handler'
-import CustomScrollView from '../../../UIControls/CustomScrollView'
-import { findIndex } from 'lodash'
+import React, { useMemo, useRef } from 'react'
+import { useSelector } from 'react-redux'
 
-import styles, { colors } from '../../../styles/global'
-import Icon from '../../../Icon'
-import ProjectModalItem from './ProjectModalItem'
-import { useDispatch, useSelector } from 'react-redux'
-import Hotkeys from 'react-hot-keys'
-import URLsTasks, { URL_TASK_DETAILS_PROPERTIES } from '../../../../URLSystem/Tasks/URLsTasks'
-import URLsChats, { URL_CHAT_DETAILS_PROPERTIES } from '../../../../URLSystem/Chats/URLsChats'
-import Backend from '../../../../utils/BackendBridge'
-import {
-    blockBackgroundTabShortcut,
-    hideProjectPicker,
-    setAssignee,
-    setSelectedNavItem,
-    setSelectedSidebarTab,
-    setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
-    switchProject,
-    unblockBackgroundTabShortcut,
-} from '../../../../redux/actions'
-import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { applyPopoverWidth, dismissAllPopups, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
-import {
-    DV_TAB_CHAT_PROPERTIES,
-    DV_TAB_ROOT_CHATS,
-    DV_TAB_ROOT_CONTACTS,
-    DV_TAB_SKILL_PROPERTIES,
-    DV_TAB_TASK_PROPERTIES,
-} from '../../../../utils/TabNavigationConstants'
-import useWindowSize from '../../../../utils/useWindowSize'
+import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { PROJECT_TYPE_ACTIVE, PROJECT_TYPE_ARCHIVED } from '../../../SettingsView/ProjectsSettings/ProjectsSettings'
-import Header, { PROJECT_MODAL_ACTIVE_TAB, PROJECT_MODAL_ARCHIVED_TAB } from './Header'
-import NavigationService from '../../../../utils/NavigationService'
-import EmptyResults from '../EmptyResults'
-import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
+import ProjectListModal from '../ProjectListModal/ProjectListModal'
 import { translate } from '../../../../i18n/TranslationService'
-import { setTaskAssignee, setTaskProject } from '../../../../utils/backends/Tasks/tasksFirestore'
-import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
-import { findNoteOwnerInProject, resolveMovedNoteOwnerId } from '../../../NotesView/NoteFilters/noteOwnerFilterHelper'
-import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
-import { moveInnerFeedsOnMoveObjectFromProject } from '../../../../utils/backends/firestore'
-import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
-import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
-import store from '../../../../redux/store'
+import useMoveObjectToProject from './useMoveObjectToProject'
 
+/**
+ * The "move this object to another project" picker, now an adapter over the
+ * shared ProjectListModal (MODAL_IMPROVEMENT_PLAN.md, project-picker
+ * consolidation — the last tabbed picker to migrate). This component keeps
+ * what is specific to the move flow and hands the tabs/list/keyboard/Escape
+ * mechanics to the shared modal:
+ *
+ * - the PLAIN id-set semantics (ProjectHelper.getProjectsByType + the
+ *   projectIds membership filter — deliberately NOT merged with
+ *   SelectProjectModalInSearch's real* sets; callers own filtering),
+ * - the move engine (useMoveObjectToProject) and its ordering: move, then
+ *   dismissAllPopups, then closePopover(newProject) — some hosts
+ *   (NoteMoreButton) read the argument to know a move actually happened,
+ * - picking the CURRENT project just closes without moving.
+ */
 export default function SelectProjectModal({
     item,
     project,
     closePopover,
     headerText,
     subheaderText,
-    onProjectClick,
     onSelectProject,
 }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const [width, height] = useWindowSize()
-    const [offsets, setOffsets] = useState({ top: 0, bottom: 0 })
-    const [scrollHeight, setScrollHeight] = useState(0)
-    const [activeOptionIndex, setActiveOptionIndex] = useState(0)
     const loggedUser = useSelector(state => state.loggedUser)
-    const selectedTab = useSelector(state => state.selectedNavItem)
-    const dispatch = useDispatch()
-    const { projectIds } = loggedUser
-    const [projectsByType, setProjectsByType] = useState({ active: [], archived: [] })
-    const [currentProjectList, setCurrentProjectList] = useState(projectsByType.active)
-    const [activeTab, setActiveTab] = useState(PROJECT_MODAL_ACTIVE_TAB)
-    const scrollRef = useRef()
-    const itemsRef = useRef([])
+    const moveObjectToProject = useMoveObjectToProject()
+    // closePopover's argument is the committed project (or undefined for a
+    // plain dismiss); ProjectListModal's closeModal callback carries no args.
+    const committedProjectRef = useRef(undefined)
+
+    const { tabs, initialTabIndex } = useMemo(() => {
+        const { projectIds } = loggedUser
+        const buildTab = type =>
+            ProjectHelper.sortProjects(
+                ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, type),
+                loggedUser.uid
+            ).filter(projectItem => projectIds.includes(projectItem.id))
+
+        const tabs = [
+            { key: PROJECT_TYPE_ACTIVE, name: 'Active', projects: buildTab(PROJECT_TYPE_ACTIVE) },
+            { key: PROJECT_TYPE_ARCHIVED, name: 'Archived', projects: buildTab(PROJECT_TYPE_ARCHIVED) },
+        ]
+        const projectType = ProjectHelper.getTypeOfProject(loggedUser, project.id)
+        return { tabs, initialTabIndex: projectType === PROJECT_TYPE_ARCHIVED ? 1 : 0 }
+    }, [loggedUserProjects, loggedUser, project.id])
 
     const header = headerText || `${translate('Move')} ${translate(item.type)}`
     const subheader =
         subheaderText || translate('Select the project this itemType will move to', { itemType: translate(item.type) })
 
-    const filterProjects = callback => {
-        const activeProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ACTIVE)
-        const archivedProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ARCHIVED)
-        const sortedActiveProjects = ProjectHelper.sortProjects(activeProjects, loggedUser.uid)
-        const sortedArchivedProjects = ProjectHelper.sortProjects(archivedProjects, loggedUser.uid)
-
-        setProjectsByType({
-            active: sortedActiveProjects,
-            archived: sortedArchivedProjects,
-        })
-        setCurrentProjectList(sortedActiveProjects)
-        if (callback) {
-            callback({
-                active: sortedActiveProjects,
-                archived: sortedArchivedProjects,
-            })
-        }
-    }
-
-    const updateList = tab => {
-        if (tab === PROJECT_MODAL_ACTIVE_TAB) {
-            setCurrentProjectList(projectsByType.active)
-            setActiveOptionIndex(0)
-        } else if (tab === PROJECT_MODAL_ARCHIVED_TAB) {
-            setCurrentProjectList(projectsByType.archived)
-            setActiveOptionIndex(0)
-        }
-    }
-
-    useEffect(() => {
-        dispatch(blockBackgroundTabShortcut())
-        return () => {
-            document.removeEventListener('keydown', onKeyDown)
-            dispatch(unblockBackgroundTabShortcut())
-        }
-    }, [])
-
-    useEffect(() => {
-        document.addEventListener('keydown', onKeyDown)
-        return () => {
-            document.removeEventListener('keydown', onKeyDown)
-        }
-    })
-
-    useEffect(() => {
-        filterProjects(({ active, archived }) => {
-            const projectType = ProjectHelper.getTypeOfProject(loggedUser, project.id)
-            let index = 0
-            if (projectType === PROJECT_TYPE_ACTIVE) {
-                index = findIndex(active, ['id', project.id])
-                setActiveTab(PROJECT_MODAL_ACTIVE_TAB)
-                setCurrentProjectList(active)
-            } else if (projectType === PROJECT_TYPE_ARCHIVED) {
-                index = findIndex(active, ['id', project.id])
-                setActiveTab(PROJECT_MODAL_ARCHIVED_TAB)
-                setCurrentProjectList(archived)
-            }
-            setActiveOptionIndex(index >= 0 ? index : 0)
-        })
-    }, [project, loggedUserProjects])
-
-    const onCLickProject = async (e, project, newProject) => {
-        if (e != null) {
-            e.preventDefault()
-            e.stopPropagation()
-        }
-
-        if (project.id === newProject.id) {
-            closePopover(newProject)
-            return
-        }
-
+    const handleSelect = async newProject => {
+        committedProjectRef.current = newProject
+        if (newProject.id === project.id) return
         if (onSelectProject) onSelectProject()
-
-        if (onProjectClick) {
-            onProjectClick(newProject)
-        } else {
-            const { type, data } = item
-            const objectType = type === 'chat' ? 'topics' : type + 's'
-            const beforeDeleteSource =
-                type === 'chat'
-                    ? movedChat => {
-                          NavigationService.navigate('ChatDetailedView', {
-                              chat: movedChat,
-                              projectId: newProject.id,
-                          })
-                          const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
-                          dispatch([
-                              setSelectedSidebarTab(DV_TAB_ROOT_CHATS),
-                              switchProject(newProject.index),
-                              setSelectedTypeOfProject(projectType),
-                              setSelectedNavItem(DV_TAB_CHAT_PROPERTIES),
-                          ])
-                      }
-                    : null
-
-            if (type === 'chat') dispatch(startLoadingData())
-
-            await moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
-            if (type !== 'chat') dispatch(stopLoadingData())
-            // Keep the object's "Updates" activity history with it across the move (chat is handled above).
-            await moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id)
-
-            if (type === 'chat') {
-                dispatch(stopLoadingData())
-            } else if (type === 'task') {
-                const task = data
-                const taskOwner = TasksHelper.getTaskOwner(task.userId, project.id)
-                dispatch(startLoadingData())
-
-                if (!newProject.userIds.includes(taskOwner.uid) && task.userId !== DEFAULT_WORKSTREAM_ID) {
-                    setTaskAssignee(project.id, task.id, loggedUser.uid, taskOwner, loggedUser, task).then(
-                        updatedTask => {
-                            setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
-                            dispatch([setAssignee(loggedUser), hideProjectPicker()])
-                        }
-                    )
-                } else {
-                    setTaskProject(project, newProject, task)
-                    dispatch(hideProjectPicker())
-                }
-                setActiveOptionIndex(activeOptionIndex)
-            } else if (type === 'note') {
-                const note = data
-                // A note can be owned by an assistant since AT-2194, and an assistant is not a
-                // project *user*. The old `getUserInProject` member check therefore resolved to
-                // undefined for every assistant-owned note and reassigned it to the acting human
-                // — and it did so by mutating `note.userId` BEFORE `setNoteProject` ran, which
-                // bypassed `resolveMovedNoteOwnerId` (notesFirestore.js) entirely, defeating the
-                // guard that exists precisely to keep an assistant owner across a move.
-                //
-                // Mirror the task branch above, which already uses the cross-project-aware
-                // `TasksHelper.getTaskOwner`: resolve the owner with the notes resolver and let
-                // the backend stay the single authority on whether it survives the move.
-                const noteOwner = findNoteOwnerInProject(project.id, note.userId)
-                const movedOwnerId = resolveMovedNoteOwnerId(newProject.id, note.userId, loggedUser.uid)
-
-                dispatch(startLoadingData())
-                if (movedOwnerId !== note.userId) {
-                    setNoteProject(project, newProject, note, noteOwner, loggedUser).then(() => {
-                        dispatch(stopLoadingData())
-                    })
-                } else {
-                    setNoteProject(project, newProject, note).then(() => {
-                        dispatch(stopLoadingData())
-                    })
-                }
-                dispatch(hideProjectPicker())
-                setActiveOptionIndex(activeOptionIndex)
-            } else if (type === 'goal') {
-                const goal = data
-                updateGoalProject(project, newProject, goal)
-            } else if (type === 'skill') {
-                const skill = data
-                const { loggedUser, route } = store.getState()
-                Backend.updateSkillProject(project, newProject, skill, () => {
-                    if (route === 'SkillDetailedView') {
-                        NavigationService.navigate('SkillDetailedView', {
-                            skillId: skill.id,
-                            projectId: newProject.id,
-                            skill,
-                        })
-                        const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
-                        store.dispatch([
-                            setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
-                            switchProject(newProject.index),
-                            setSelectedTypeOfProject(projectType),
-                            setSelectedNavItem(DV_TAB_SKILL_PROPERTIES),
-                        ])
-                    }
-                })
-            } else if (type === 'contact') {
-                const contact = data
-                dispatch(startLoadingData())
-                await setContactProject(project, newProject, contact)
-                dispatch(stopLoadingData())
-            }
-
-            writeBrowserUrl(newProject)
-            dismissAllPopups()
-            closePopover(newProject)
-        }
+        await moveObjectToProject(item, project, newProject)
+        dismissAllPopups()
     }
-
-    const writeBrowserUrl = newProject => {
-        if (item.type === 'task') {
-            const task = item.data
-            if (selectedTab === DV_TAB_TASK_PROPERTIES) {
-                const data = { noHistory: true, projectId: newProject.id, task: task.id }
-                URLsTasks.push(URL_TASK_DETAILS_PROPERTIES, data, newProject.id, task.id)
-            }
-        } else if (item.type === 'chat' && selectedTab === DV_TAB_CHAT_PROPERTIES) {
-            const chat = item.data
-            const data = { noHistory: true, projectId: newProject.id, chatId: chat.id }
-            URLsChats.push(URL_CHAT_DETAILS_PROPERTIES, data, newProject.id, chat.id)
-        }
-    }
-
-    const selectDown = () => {
-        scrollToFocusItem(activeOptionIndex)
-        if (activeOptionIndex + 1 === currentProjectList.length) {
-            setActiveOptionIndex(0)
-        } else {
-            setActiveOptionIndex(activeOptionIndex + 1)
-        }
-    }
-
-    const selectUp = () => {
-        scrollToFocusItem(activeOptionIndex, true)
-        if (activeOptionIndex === 0) {
-            setActiveOptionIndex(currentProjectList.length - 1)
-        } else {
-            setActiveOptionIndex(activeOptionIndex - 1)
-        }
-    }
-
-    const scrollToFocusItem = (key, up = false) => {
-        if (up && key === 0) {
-            scrollRef.current.scrollTo({ y: currentProjectList.length * 48, animated: false })
-        } else if (!up && key + 1 === currentProjectList.length) {
-            scrollRef.current.scrollTo({ y: 0, animated: false })
-        } else {
-            const space = up ? 96 : 144
-            itemsRef.current[key]?.measure((fx, fy, width, height, px, py) => {
-                if (up && fy - space < offsets.top) {
-                    scrollRef.current.scrollTo({ y: fy - space, animated: false })
-                } else if (up && fy > offsets.bottom) {
-                    scrollRef.current.scrollTo({ y: fy + 48 - scrollHeight, animated: false })
-                } else if (!up && fy + space > offsets.bottom) {
-                    scrollRef.current.scrollTo({ y: fy + space - scrollHeight, animated: false })
-                } else if (!up && fy + 48 < offsets.top) {
-                    scrollRef.current.scrollTo({ y: fy + 48, animated: false })
-                }
-            })
-        }
-    }
-
-    const onLayoutScroll = data => {
-        scrollRef.current.scrollTo({ y: 0, animated: false })
-        setOffsets({ top: 0, bottom: data.nativeEvent.layout.height })
-        setScrollHeight(data.nativeEvent.layout.height)
-    }
-
-    const onPressEnter = e => {
-        onCLickProject(e, project, currentProjectList[activeOptionIndex])
-    }
-
-    const onKeyDown = ({ key }) => {
-        if (key === 'Tab' || key === 'ArrowRight') {
-            if (activeTab === PROJECT_MODAL_ACTIVE_TAB) {
-                changeTab(PROJECT_MODAL_ARCHIVED_TAB)
-            } else {
-                changeTab(PROJECT_MODAL_ACTIVE_TAB)
-            }
-        } else if (key === 'ArrowLeft') {
-            if (activeTab === PROJECT_MODAL_ACTIVE_TAB) {
-                changeTab(PROJECT_MODAL_ARCHIVED_TAB)
-            } else {
-                changeTab(PROJECT_MODAL_ACTIVE_TAB)
-            }
-        }
-    }
-
-    const onKeyPress = (s, e, handler) => {
-        switch (handler.key) {
-            case 'up': {
-                selectUp()
-                break
-            }
-            case 'down': {
-                selectDown()
-                break
-            }
-            case 'enter': {
-                onPressEnter(e)
-                break
-            }
-            case 'esc': {
-                e.preventDefault()
-                e.stopPropagation()
-                closePopover()
-                break
-            }
-        }
-    }
-
-    const changeTab = tab => {
-        if (activeTab !== tab) {
-            setActiveTab(tab)
-            updateList(tab)
-        }
-    }
-
-    const containerWidthStyle = useMemo(() => {
-        const availableWidth = typeof width === 'number' ? width - 32 : undefined
-        if (!availableWidth || availableWidth >= 305) {
-            return applyPopoverWidth()
-        }
-        const resolvedWidth = availableWidth > 0 ? availableWidth : 305
-        return { width: resolvedWidth, maxWidth: resolvedWidth, minWidth: resolvedWidth }
-    }, [width])
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                containerWidthStyle,
-                { maxHeight: Math.min(height * 0.7, height - MODAL_MAX_HEIGHT_GAP) },
-            ]}
-        >
-            <View style={localStyles.heading}>
-                <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
-                    <View style={localStyles.title}>
-                        <Text style={[styles.title7, { color: 'white' }]}>{header}</Text>
-                        <Text style={[styles.body2, { color: colors.Text03 }]}>{subheader}</Text>
-                    </View>
-                </Hotkeys>
-
-                <View style={localStyles.closeContainer}>
-                    <TouchableOpacity style={localStyles.closeSubContainer} onPress={closePopover}>
-                        <Icon name="x" size={24} color={colors.Text03} />
-                    </TouchableOpacity>
-                </View>
-
-                <View style={{ marginTop: 20 }}>
-                    <Header activeTab={activeTab} changeTab={changeTab} hideGuideTab={true} />
-                </View>
-            </View>
-
-            <View style={localStyles.projectListContainer}>
-                <CustomScrollView
-                    ref={scrollRef}
-                    showsVerticalScrollIndicator={false}
-                    indicatorStyle={{ right: -6 }}
-                    scrollOnLayout={onLayoutScroll}
-                    onScroll={({ nativeEvent }) => {
-                        const y = nativeEvent.contentOffset.y
-                        setOffsets({ top: y, bottom: y + scrollHeight })
-                    }}
-                >
-                    {currentProjectList.length > 0 ? (
-                        currentProjectList.map((projectItem, index) => {
-                            return (
-                                projectIds.includes(projectItem.id) && (
-                                    <View ref={ref => (itemsRef.current[index] = ref)} key={projectItem.id}>
-                                        <ProjectModalItem
-                                            key={projectItem.id}
-                                            project={project}
-                                            newProject={projectItem}
-                                            active={index === activeOptionIndex}
-                                            onProjectSelect={onCLickProject}
-                                        />
-                                    </View>
-                                )
-                            )
-                        })
-                    ) : (
-                        <EmptyResults
-                            text={translate('There are not projects to show here')}
-                            style={localStyles.empty}
-                        />
-                    )}
-                </CustomScrollView>
-            </View>
-        </View>
+        <ProjectListModal
+            closeModal={() => closePopover(committedProjectRef.current)}
+            tabs={tabs}
+            initialTabIndex={initialTabIndex}
+            title={header}
+            description={subheader}
+            selectedProjectId={project.id}
+            onSelectProject={handleSelect}
+        />
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'column',
-        paddingVertical: 8,
-        borderRadius: 4,
-        backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
-        elevation: 3,
-        maxHeight: 356,
-    },
-    projectListContainer: {
-        flex: 1,
-        flexDirection: 'column',
-        paddingHorizontal: 8,
-    },
-    closeSubContainer: {
-        width: 24,
-        height: 24,
-    },
-    closeContainer: {
-        position: 'absolute',
-        top: 0,
-        right: 8,
-    },
-    heading: {
-        paddingHorizontal: 16,
-    },
-    title: {
-        flexDirection: 'column',
-        marginTop: 8,
-    },
-    empty: {
-        marginBottom: 32,
-    },
-})

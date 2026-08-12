@@ -374,6 +374,144 @@ recorder family relayouts (usable now, layout off-pattern — four different sel
 idioms documented in the audit banked here), the two picker migrations, the Phase 3
 keep-list, calendar grids, exit animations, back-button (URLSystem design first).
 
+### Deferred-items round, 2026-08-12 (same day, continued) — ✅
+
+**Sheet exit animations shipped**: BottomSheet defers its unmount by `MODAL_EXIT_MS`
+(setTimeout, never Animated callbacks — unreliable under jsdom) and slides out; wrappers
+that unmount the whole AppPopover simply skip the animation. During exit the dying sheet
+is `pointerEvents: 'none'` (plain-object style on purpose — RNW inlines those, and the
+test asserts the inline style). Gotcha fixed en route: the drag-handle listeners attach in
+an effect keyed `[isOpen]`, which on a reopen-after-unmount runs before the handle node
+exists — the effect now also keys on the internal `isMounted`.
+
+**Back-button closes sheets (mobile)**: `utils/sheetHistoryLayers.js` — every open
+BottomSheet pushes one same-URL history entry (sentinel state) onto a LIFO layer stack;
+`AppContent`'s `window.onpopstate` runs through `withSheetHistoryLayers(SharedHelper.onHistoryPop)`,
+so a back press closes the top sheet instead of navigating, an Escape/backdrop dismissal
+unwinds its entry (`history.back()` + swallow the resulting pop), and a sheet whose app
+navigated on top of it just drops its layer (unwinding would eat the real entry). In-app
+back _buttons_ call `onHistoryPop(commonPath)` directly and are untouched. Pinned by
+`utils/sheetHistoryLayers.test.js` + a ModalShell case.
+
+**Keep-list migrated 16 → 3 raw importers** (ratchet 26 → 14): withSafePopover's import
+was dead code; PlusButtonWrapper, EditorAvatarWrapper, RichCommentModal/SubmitButton,
+DragTaskModalMoreButtonWrapper (its hand-rolled window Escape deleted), Hashtag/Email/
+Mention/Milestone/TaskTag/Url tag wrappers and GoalSwipeDateRangeWrapper all moved to
+AppPopover (MilestoneTagWrapper's unreachable `<View/>` content fallback became `null`
+for the sheet guard). Deliberately still raw: WrapperMentionsModal (caret-anchored;
+`onClickOutside` is a COMMIT, not a dismiss), DueDateSinglePopup (AT-2189 replay guard +
+its own positioning suite), DragTaskModal (five popovers off a bottom-pinned bar — one
+unit, own session).
+
+**Calendar grids — the audit line above was stale**: there are no hand-rolled grids;
+`react-native-calendars` had FOUR live `<Calendar>` configurations (DueDateCalendarModal,
+CustomFollowUpDateModal, CustomDateRangeModal, plus an inline drifted copy in
+ProjectHappinessView the original audit missed). All four now render
+`components/UIComponents/Calendar/AppCalendar.js` — the one theme/arrow/locale/firstDay
+wiring (the boolean-into-numeric `firstDay` coercion is now explicit). The range modal's
+74-line inline tap-reducer moved to `dateRangeSelection.js` (pure, 7 tests — it was the
+group's highest-risk untested code). `DueDateCalendarModal/Arrow.js` deleted; the
+happiness view's drifted theme (Primary300, missing week styles) is gone. Still open:
+`Day.js` writes Firestore/redux from inside a day cell — extracting that into `onChange`
+at the five DueDateModal-family call sites is the remaining (careful) step to a true
+single grid.
+
+**Project pickers**: `SelectProjectModal` split — the ~120-line cross-entity move engine
+(chat/task/note/goal/skill/contact + URL rewrite) is now
+`SelectProjectModal/useMoveObjectToProject.js`; the dead `onProjectClick` prop is gone;
+`MoveNoteOwner.test.js` (AT-2194) re-pointed at the hook. `ProjectListModal` gained
+optional `tabs` (+ `leadingAllOption`, rendered via HeaderInSearch) — callers own
+filtering per tab, which is what makes the real*-vs-plain id-set question moot at the
+component level — and `SelectProjectModalInSearch` is now a ~120-line adapter over it
+(kept: real* id-set semantics, ALL_PROJECTS_OPTION sentinel — now in
+`projectPickerConstants.js` to break an import cycle, re-exported for its 5 importers —
+sidebar offset, AT-2257 Escape via the shared close button). Remaining: fold
+`SelectProjectModal`'s own tab logic onto ProjectListModal tabs (needs the plain-id-set
+lists passed in), and the hidden `IntegrationsSettings.js` local picker.
+
+**GoogleMeet trio DELETED** (user decision 2026-08-12): it was dead code — both entry
+points compiled out (`{false && ...}` in MediaBar and ChatInputButtons), and the
+notification modal only triggered on meetings the disabled modals could create. Removed:
+8 files (GoogleMeet, GoogleMeetModal, GoogleMeetNotificationModal, RejectMeetReasonsModal,
+ChatGoogleMeetModal, GoogleMeetButton, both single-consumer UserItems), 3 redux
+actions/state fields/reducer cases, the InitLoadView meetings-notification effects, and
+`acceptJoinEvent`/`rejectJoinEvent` (bridge + firestore). NOTE the plan's "Meet modals
+host live screen-share/mic" premise was wrong — they opened Meet in a new tab; the real
+live-media holders are the recorders. Still present (adjacent, not deleted):
+CurrentMeet/useCurrentMeet chips, the per-project `watchProjectMeetings` firestore
+watcher and the `projectsMeetings` store slice — a candidate for a follow-up deletion
+since nothing can create rooms anymore.
+
+**Recorder family + AddTopicModal relayout (minimal on purpose)**:
+NotAvailableScreenRecording (pure info dialog) is on the round-3 centered-overlay+scrim
+pattern; AddTopicModal, NewTopic's sibling wrapper, RecordVideo, CancelRecord and Options
+lost the hand-tuned `left:'48.5%'/translateX(-43%)` idiom for true window-centering
+(50/-50, mobile overrides deleted), and AddTopicModal's `maxWidth/minWidth: 305` cap —
+which was silently defeating the Phase 0 full-width-on-mobile change — is gone. The
+recorder cards deliberately did NOT gain scrims (a scrim would darken a live recording
+and be captured by `getDisplayMedia`) or new dismiss paths (live `getUserMedia` streams,
+module-level recorder singletons, `window.stopCallback` globals — see the banked audit).
+Deeper unification (CancelRecord → ConfirmDialog etc.) stays open; there is zero test
+coverage on this family.
+
+**QA sweep**: `browser-tests/modalsheet` gained a device-width matrix
+(360/375/414/639 → edge-to-edge sheet; 640/768/1052/1440 → anchored popover; 26 cases
+total, all green). ConfirmDialog got `role="dialog"` + `aria-modal` (BottomSheet already
+had them). Verified this round: full Jest suite (2,573 tests), production webpack build,
+modalsheet harness. **Still manual**: real-device iOS Safari / Android Chrome keyboard
+QA, light-theme contrast pass, focus-trap (focus RETURN is implemented on sheets; a full
+trap is still open).
+
+### Final round, 2026-08-12 (same day, continued) — ✅ the plan is COMPLETE
+
+Everything that remained open above is now done or explicitly settled:
+
+**Day.js purified**: the due-date calendar's decision tree (Firestore writes, redux
+dispatches, task/multi-select/goal branching) moved from the day CELL to
+`DueDateCalendarModal/daySelection.js` (`applyDaySelection`, 6 branch tests — it was
+untested); `Day.js` is presentational (`date`, `disabled`, `currentDueDate`,
+`onSelectDate`). The dead `updateDate` prop at the PreConfigTask call site is gone.
+
+**Project pickers, finished**: `SelectProjectModal` is now a ~75-line adapter over
+`ProjectListModal` tabs (plain id-sets + `projectIds` membership filter stay at the
+adapter; the move engine ordering — move → dismissAllPopups → closePopover(newProject) —
+is preserved because ProjectListModal now AWAITS async onSelectProject before closing;
+NoteMoreButton reads that argument). `SelectProjectModal/Header.js` deleted (dead). The
+hidden `IntegrationsSettings` picker renders ProjectListModal. Every project picker in
+the app is now ProjectListModal or an adapter over it.
+
+**Ratchet 14 → 13, final keep-list = 1**: `DueDateSinglePopup` migrated (its transparent
+centring overlay goes `pointerEvents: none` in sheet mode — it sits above the sheet
+backdrop and would eat every tap; its consume-once replay guard defers to the sheet's
+AT-2236 grace there; the positioning suite was rewritten — phone cases pin the sheet
+contract, the popover geometry pins moved to a 640px short-desktop viewport where they
+still apply). `DragTaskModal`'s five popovers tag-swapped. **WrapperMentionsModal is the
+one permanent keep** (caret-anchored typeahead; onClickOutside is a mention COMMIT).
+
+**Focus trap shipped**: document-capture Tab cycling within the open sheet
+(BottomSheet), incl. pulling outside focus in; pinned in ModalShell.test.js (13 cases).
+
+**Recorder polish**: `CancelRecord` is the canonical ConfirmDialog in a window-centered
+host (still no scrim — it shows over a live recording; Escape now backs out of the
+confirm via the LIFO stack instead of fighting ScreenRecording's own Esc handler). Dock
+safe-area turned out moot: screen recording is desktop-gated (`MyPlatform.isDesktop`).
+
+**Meetings plumbing deleted** (follow-up to the Meet trio): CurrentMeet/useCurrentMeet,
+the per-project `watchProjectMeetings` firestore watcher (live reads for a feature
+nothing can create data for), the `projectsMeetings` store slice (26 references across
+the project add/remove reducers), `setMeetingsInProject`, and the
+`getMeetings`/`deleteEvent` backends. `events/{projectId}/rooms` is now referenced
+nowhere in the app.
+
+**PaymentPreviewModal reworked**: a plain card — the host owns positioning
+(PaymentPreviewModalWrapper centers via popoverToCenter on desktop / sheet on phones;
+inside SelectPremiumUsersModal it renders in place of the users list, so the flow's two
+steps no longer jump).
+
+**What genuinely remains is manual-only**: real-device iOS Safari / Android Chrome
+keyboard QA, a light-theme contrast pass, and a smoke of the untested recorder /
+New-Topic flows.
+
 ### Phase 5 — remaining polish (~3–5 days)
 
 Swipe-down-to-dismiss on sheets · back-button close · `prefers-reduced-motion` audit ·

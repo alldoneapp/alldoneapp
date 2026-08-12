@@ -10,6 +10,7 @@ import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
+import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -267,7 +268,9 @@ export default function AppContent() {
     const initFirebase = async () => {
         Backend.initFirebase(async firebaseUser => {
             await onInitFirabase(firebaseUser)
-            window.onpopstate = SharedHelper.onHistoryPop
+            // Sheets get the back button first (Phase 5): while a bottom
+            // sheet is open a pop closes it instead of navigating.
+            window.onpopstate = withSheetHistoryLayers(SharedHelper.onHistoryPop)
         })
     }
 

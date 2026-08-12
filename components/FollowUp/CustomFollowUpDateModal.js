@@ -3,25 +3,19 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Icon from '../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
-import { Calendar, LocaleConfig } from 'react-native-calendars'
 import moment from 'moment'
 import CloseButton from './CloseButton'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import { FOLLOW_UP_CUSTOM_DUE_DATE_MODAL_ID, removeModal, storeModal } from '../ModalsManager/modalsManager'
-import { locales } from '../StatisticsView/StatisticsSection/CalendarLocales'
+import AppCalendar from '../UIComponents/Calendar/AppCalendar'
 import { translate } from '../../i18n/TranslationService'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 
-LocaleConfig.locales = locales
-
 const funnyWhite = hexColorToRGBa('#FFFFFF', 0.2)
 export default function CustomFollowUpDateModal({ selectDate, backToDueDate, hidePopover }) {
-    const language = useSelector(state => state.loggedUser.language)
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const mondayFirstInCalendar = useSelector(state => state.loggedUser.mondayFirstInCalendar)
-    LocaleConfig.defaultLocale = language
 
     const onPress = e => {
         selectDate('', moment(e.dateString, 'YYYY-MM-DD'))
@@ -53,24 +47,11 @@ export default function CustomFollowUpDateModal({ selectDate, backToDueDate, hid
                 </View>
             </View>
             <View style={localStyles.calendarContainer}>
-                <Calendar
+                <AppCalendar
                     current={moment().format('YYYY-MM-DD')}
                     minDate={moment().format('YYYY-MM-DD')}
                     onDayPress={onPress}
-                    firstDay={mondayFirstInCalendar}
                     markingType={'simple'}
-                    renderArrow={direction =>
-                        direction === 'left' ? (
-                            <View style={{ marginLeft: -10 }}>
-                                <Icon name="chevron-left" size={24} color={colors.Text03} />
-                            </View>
-                        ) : (
-                            <View style={{ marginRight: -10 }}>
-                                <Icon name="chevron-right" size={24} color={colors.Text03} />
-                            </View>
-                        )
-                    }
-                    theme={calendarTheme}
                 />
             </View>
             <Hotkeys keyName={'B'} onKeyDown={backToDueDate} filter={e => true}>
@@ -88,62 +69,6 @@ export default function CustomFollowUpDateModal({ selectDate, backToDueDate, hid
             <CloseButton close={closePopup} />
         </View>
     )
-}
-
-const calendarTheme = {
-    backgroundColor: colors.Secondary400,
-    calendarBackground: colors.Secondary400,
-    textSectionTitleColor: colors.Text03,
-    selectedDayBackgroundColor: '#00adf5',
-    selectedDayTextColor: '#ffffff',
-    todayTextColor: 'white',
-    dayTextColor: colors.Text03,
-    textDisabledColor: colors.Text02,
-    dotColor: '#00adf5',
-    selectedDotColor: '#ffffff',
-    arrowColor: 'orange',
-    disabledArrowColor: '#d9e1e8',
-    monthTextColor: 'white',
-    indicatorColor: 'blue',
-    textDayFontFamily: styles.overline.fontFamily,
-    textDayFontSize: 16,
-    textDayFontWeight: '300',
-    textDayHeaderFontFamily: styles.overline.fontFamily,
-    textDayHeaderFontWeight: 'normal',
-    textDayHeaderFontSize: styles.overline.fontSize,
-    textMonthFontFamily: styles.subtitle1.fontFamily,
-    textMonthFontWeight: '500',
-    textMonthFontSize: styles.subtitle1.fontSize,
-    'stylesheet.calendar.header': {
-        header: {
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            paddingVertical: 0,
-            marginTop: 0,
-            alignItems: 'center',
-            paddingHorizontal: 0,
-        },
-        week: {
-            marginTop: 5,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            borderBottomWidth: 1,
-            paddingHorizontal: 0,
-            paddingTop: 12,
-            paddingBottom: 4,
-            marginHorizontal: 0,
-            borderBottomColor: hexColorToRGBa('#ffffff', 0.2),
-        },
-    },
-    'stylesheet.calendar.main': {
-        week: {
-            marginTop: 7,
-            marginBottom: 7,
-            marginHorizontal: -4,
-            flexDirection: 'row',
-            justifyContent: 'space-around',
-        },
-    },
 }
 
 const localStyles = StyleSheet.create({
