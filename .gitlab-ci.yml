@@ -347,16 +347,14 @@ test:web:full:
         # in deploy_scope's comment: this job gates deploy:web through `needs`, so it has
         # to exist in every pipeline that might deploy the web — including one whose own
         # push touched nothing web-relevant but which has to ship what a superseded
-        # pipeline left behind. Exit 76 = "web is already up to date", declared allowed
-        # below so the skip is visible without reddening the pipeline.
-        - sh ci/deployScope.sh require web-production
+        # pipeline left behind. Exit 76 = "web is already up to date". Translate that
+        # expected no-op to a successful early exit so GitLab does not label it a failed
+        # job; every other non-zero status remains a real failure.
+        - sh ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         # No selection step here — this is the whole web suite by design.
         # ci/jest.web.config.js excludes functions/, whose separate dependency
         # tree this image does not carry.
         - npm test -- --config ci/jest.web.config.js --runInBand
-    # Only 76. A real test failure is any other non-zero code and still blocks deploy:web.
-    allow_failure:
-        exit_codes: 76
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
         - if: '$CI_COMMIT_BRANCH == "develop"'
@@ -452,8 +450,8 @@ build_web_production:
     # `mirror:github` job, leaving this a pure build that can be auto-cancelled again.
     before_script:
         # Scoped by the deploy marker, not by `changes:` — see deploy_scope. Exit 76 means
-        # the live site already has this commit's web content; declared allowed below.
-        - sh ci/deployScope.sh require web-production
+        # the live site already has this commit's web content; end green without building.
+        - sh ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - pwd
         - ls -la ci/
         - chmod +x ci/replace-envs.sh
@@ -469,9 +467,6 @@ build_web_production:
         paths:
             - web-build/
             - firebase.json
-    # Only 76 (nothing to deploy). A real build failure still blocks deploy:web.
-    allow_failure:
-        exit_codes: 76
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -563,7 +558,7 @@ deploy:web:
         - command -v git >/dev/null 2>&1 || apk add --no-cache git
         # Exit 76 = the live site already serves this content. Checked before the newest-
         # commit guard so a no-op pipeline reports "nothing to do" rather than "superseded".
-        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         # A stale pipeline would replace the live bundle with an older build. See
         # ci/assertNewestCommit.sh; exit 75 means "superseded", declared allowed below.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web
@@ -577,7 +572,7 @@ deploy:web:
         name: production
     interruptible: false
     allow_failure:
-        exit_codes: [75, 76]
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -673,7 +668,7 @@ deploy:cloud:functions:production:
         # First, before any of the setup below: exit 76 when the deployed functions already
         # match this commit. Scoped by the deploy marker rather than `changes:` so this job
         # also ships what a superseded pipeline skipped — see deploy_scope.
-        - sh ci/deployScope.sh require functions-production
+        - sh ci/deployScope.sh require functions-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - echo "Environment variables for MCP functions (PROD):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_PROD:0:20}...
         - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD
@@ -711,7 +706,7 @@ deploy:cloud:functions:production:
         # carries the runtime, region and ignore list).
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-production
     allow_failure:
-        exit_codes: [75, 76]
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -763,7 +758,7 @@ deploy:cloud:runner:production:
     before_script:
         # Exit 76 when the baked runner image already matches this commit's functions/
         # source. Marker-scoped, so it also covers what a superseded pipeline skipped.
-        - sh ci/deployScope.sh require runner-production
+        - sh ci/deployScope.sh require runner-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > /tmp/runner-deploy-sa.json
         - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > functions/env_functions.json
@@ -789,7 +784,7 @@ deploy:cloud:runner:production:
         - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record runner-production
     allow_failure:
-        exit_codes: [75, 76]
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -873,8 +868,8 @@ update:version:production:
     before_script:
         - apk add --no-cache git curl
     script:
-        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh update:version:production
         - curl "$NEW_APP_VERSION_FUNCTION_PROD"
     allow_failure:
-        exit_codes: [75, 76]
+        exit_codes: 75

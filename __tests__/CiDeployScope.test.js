@@ -52,9 +52,11 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(recordIndex).toBeGreaterThan(deployIndex)
     })
 
-    it.each(Object.entries(MARKER_SCOPED_JOBS))('%s allows both the skip and superseded codes', name => {
-        const codes = (job(name).allow_failure || {}).exit_codes || []
-        expect(codes).toEqual(expect.arrayContaining([SUPERSEDED_EXIT_CODE, NOT_NEEDED_EXIT_CODE]))
+    it.each(Object.entries(MARKER_SCOPED_JOBS))('%s keeps superseded visible but handles no-op as success', name => {
+        const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
+        expect(codes).toContain(SUPERSEDED_EXIT_CODE)
+        expect(codes).not.toContain(NOT_NEEDED_EXIT_CODE)
+        expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
     })
 
     it('computes the scope exactly once and hands it to every consumer', () => {
@@ -77,11 +79,10 @@ describe('production deploys are scoped by what shipped, not by what this push t
         // web deploy, and `needs` would be unresolvable.
         for (const name of ['build_web_production', 'test:web:full']) {
             expect(allLines(job(name))).toContain('deployScope.sh require web-production')
-            // Only 76 is allowed: a real build or test failure is any other non-zero code
-            // and must still block deploy:web. A bare `allow_failure: true` would not.
-            const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
-            expect(`${name}:${codes.join(',')}`).toBe(`${name}:${NOT_NEEDED_EXIT_CODE}`)
-            expect(job(name).allow_failure).not.toBe(true)
+            // A deliberate no-op exits the job successfully; no failure code is allowed,
+            // so a real build or test failure still blocks deploy:web.
+            expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
+            expect(job(name).allow_failure).toBeUndefined()
         }
     })
 
@@ -204,5 +205,71 @@ describe('deployScope.sh require', () => {
 
     it('fails safe toward deploying when the target has no entry', () => {
         expect(runRequire('runner-production', 'DEPLOY_WEB_PRODUCTION=1\n')).toBe(0)
+    })
+
+    it('lets the CI wrapper end an intentional no-op green without continuing the job', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-gate-'))
+        const scopeFile = path.join(dir, 'deploy-scope.env')
+        fs.writeFileSync(scopeFile, 'DEPLOY_WEB_PRODUCTION=0\n')
+        const gate = job('test:web:full').script.find(line => line.includes('deployScope.sh require'))
+
+        try {
+            const stdout = execFileSync('sh', ['-c', `${gate}\nprintf 'continued\\n'`], {
+                cwd: REPO_ROOT,
+                encoding: 'utf8',
+                env: {
+                    PATH: process.env.PATH,
+                    CI_PROJECT_DIR: REPO_ROOT,
+                    DEPLOY_SCOPE_FILE: scopeFile,
+                },
+            })
+            expect(stdout).toContain('Skipping on purpose')
+            expect(stdout).not.toContain('continued')
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
+    })
+})
+
+describe('deploy marker credentials', () => {
+    const source = fs.readFileSync(SCOPE_SCRIPT, 'utf8')
+
+    it('supports the short-lived same-project CI job token', () => {
+        expect(source).toContain('marker_push_user="gitlab-ci-token"')
+        expect(source).toContain('MARKER_PUSH_TOKEN="$CI_JOB_TOKEN"')
+    })
+
+    it('retains the explicit project access token as a fallback', () => {
+        expect(source).toContain('MARKER_PUSH_TOKEN="$DEPLOY_MARKER_TOKEN"')
+    })
+
+    it('pushes with a same-project job token without putting the token in git arguments', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-record-'))
+        const argsFile = path.join(dir, 'git-args')
+        const fakeGit = path.join(dir, 'git')
+        fs.writeFileSync(fakeGit, '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$GIT_ARGS_FILE"\n')
+        fs.chmodSync(fakeGit, 0o755)
+
+        try {
+            const stdout = execFileSync('sh', [SCOPE_SCRIPT, 'record', 'web-production'], {
+                encoding: 'utf8',
+                env: {
+                    PATH: `${dir}:${process.env.PATH}`,
+                    GIT_ARGS_FILE: argsFile,
+                    CI_PROJECT_DIR: REPO_ROOT,
+                    CI_SERVER_HOST: 'gitlab.example.com',
+                    CI_PROJECT_PATH: 'group/project',
+                    CI_COMMIT_SHA: 'a'.repeat(40),
+                    CI_JOB_TOKEN: 'job-token-secret',
+                },
+            })
+            const args = fs.readFileSync(argsFile, 'utf8')
+            expect(stdout).toContain('marker refs/tags/deployed/web-production now points')
+            expect(args).toContain('username=gitlab-ci-token')
+            expect(args).toContain('password=${MARKER_PUSH_TOKEN}')
+            expect(args).not.toContain('job-token-secret')
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
     })
 })
