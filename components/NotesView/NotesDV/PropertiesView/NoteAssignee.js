@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Image, StyleSheet } from 'react-native'
 import { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import NoteAssigneePicker from './NoteAssigneePicker'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { useSelector } from 'react-redux'
@@ -47,7 +47,7 @@ export default function NoteAssignee({ projectId, note, disabled }) {
 
     return (
         owner && (
-            <Popover
+            <AppPopover
                 content={
                     <NoteAssigneePicker
                         note={note}
@@ -71,7 +71,7 @@ export default function NoteAssignee({ projectId, note, disabled }) {
                     onPress={showPopover}
                     disabled={disabled}
                 />
-            </Popover>
+            </AppPopover>
         )
     )
 }

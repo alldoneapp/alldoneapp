@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
@@ -65,7 +65,7 @@ export default function OrganizationWrapper({
 
     const title = smallScreen ? null : moment(milestone.date).format(getDateFormat())
     return (
-        <Popover
+        <AppPopover
             content={
                 modalsState === ORGANIZATION_MODAL_IS_OPEN ? (
                     <GoalOrganizationModal
@@ -115,6 +115,6 @@ export default function OrganizationWrapper({
                     shortcutText={'R'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

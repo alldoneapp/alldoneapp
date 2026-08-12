@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -57,7 +57,7 @@ export default function EmailSignatureProperty({ disabled, projectId, assistant 
             <Icon name="mail" size={24} color={colors.Text03} style={localStyles.icon} />
             <Text style={localStyles.text}>{translate('Email signature')}</Text>
             <View style={localStyles.buttons}>
-                <Popover
+                <AppPopover
                     content={
                         <AssistantInstructionsModal
                             disabled={disabled}
@@ -76,7 +76,7 @@ export default function EmailSignatureProperty({ disabled, projectId, assistant 
                     contentLocation={null}
                 >
                     <Button type={'ghost'} icon={'edit-2'} onPress={openModal} disabled={isOpen || disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

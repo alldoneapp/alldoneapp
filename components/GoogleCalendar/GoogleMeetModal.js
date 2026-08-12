@@ -3,7 +3,7 @@ import { Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { useSelector, useStore, useDispatch } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import { sortBy } from 'lodash'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import styles from '../styles/global'
 import global, { colors, SIDEBAR_MENU_WIDTH } from '../styles/global'
 import CustomScrollView from '../UIControls/CustomScrollView'
@@ -155,7 +155,7 @@ const GoogleMeetModal = ({ uid, projectId }) => {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={null}
             onClickOutside={() => {
                 dispatch(updateGoogleMeetModalData(false, '', ''))
@@ -263,7 +263,7 @@ const GoogleMeetModal = ({ uid, projectId }) => {
                     />
                 </View>
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import GlobalXP from './GlobalXP'
 import GlobalUserInfo from './GlobalUserInfo'
@@ -83,7 +83,7 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
                             accessGranted={accessGranted}
                         />
                     )}
-                    <Popover
+                    <AppPopover
                         content={
                             <GoldTransactionsModal
                                 userId={loggedUserId}
@@ -106,7 +106,7 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
                                     : undefined
                             }
                         />
-                    </Popover>
+                    </AppPopover>
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginLeft: smallScreen ? 0 : 36 }}>
                     <GlobalXP user={user} />

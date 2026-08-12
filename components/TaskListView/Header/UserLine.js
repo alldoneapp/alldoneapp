@@ -30,7 +30,7 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import store from '../../../redux/store'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen }) {
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
@@ -113,7 +113,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
     )
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             positions={['bottom', 'top', 'left', 'right']}
             align="start"
@@ -148,7 +148,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
             }
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     )
 }
 

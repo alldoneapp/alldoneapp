@@ -1,5 +1,5 @@
 import React, { useState, forwardRef, useImperativeHandle } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
@@ -26,7 +26,7 @@ const AddAssistantWrapper = forwardRef(({ project }, ref) => {
     }))
 
     return (
-        <Popover
+        <AppPopover
             content={<AddAssistantModal project={project} closeModal={closeModal} />}
             align={'start'}
             position={['top']}
@@ -35,7 +35,7 @@ const AddAssistantWrapper = forwardRef(({ project }, ref) => {
             contentLocation={null}
         >
             <AddAssistant onPress={openModal} />
-        </Popover>
+        </AppPopover>
     )
 })
 

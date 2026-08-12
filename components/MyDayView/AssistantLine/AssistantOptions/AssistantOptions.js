@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
@@ -258,7 +258,7 @@ export default function AssistantOptions({
                     showScrollIndicator={inputLayout.scrollEnabled}
                     autoExpand={true}
                 />
-                <Popover
+                <AppPopover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
                     align={'start'}
                     position={['top', 'bottom', 'left', 'right']}
@@ -291,7 +291,7 @@ export default function AssistantOptions({
                             accessible={true}
                         />
                     </View>
-                </Popover>
+                </AppPopover>
             </View>
             {hasQuickActions && (
                 <View style={localStyles.quickActions}>

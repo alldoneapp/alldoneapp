@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import AttachmentsSelectorModal from './AttachmentsSelectorModal'
@@ -40,7 +40,7 @@ export default function NotesAttachmentsSelectorModal({ projectId, addAttachment
     return (
         <View style={{ marginTop: space != null ? space : 20 }}>
             {openModals[ATTACHMENTS_SELECTOR_MODAL_ID] && (
-                <Popover
+                <AppPopover
                     content={
                         <AttachmentsSelectorModal
                             projectId={projectId}
@@ -55,7 +55,7 @@ export default function NotesAttachmentsSelectorModal({ projectId, addAttachment
                     align={'start'}
                 >
                     <View />
-                </Popover>
+                </AppPopover>
             )}
         </View>
     )

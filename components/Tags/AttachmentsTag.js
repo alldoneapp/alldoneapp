@@ -4,7 +4,7 @@ import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import Backend from '../../utils/BackendBridge'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import ShowAttachmentsModal from '../FeedView/ShowAttachmentsModal'
 import Spinner from '../UIComponents/Spinner'
 
@@ -24,7 +24,7 @@ const AttachmentsTag = memo(props => {
     const showPopover = () => setVisible(true)
 
     return (
-        <Popover
+        <AppPopover
             content={<ShowAttachmentsModal attachments={attachments} hidePopover={hidePopover}></ShowAttachmentsModal>}
             onClickOutside={hidePopover}
             isOpen={visible}
@@ -59,7 +59,7 @@ const AttachmentsTag = memo(props => {
                     </Text>
                 </View>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 })
 

@@ -1,6 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import WorkflowModal from '../../../WorkflowModal/WorkflowModal'
@@ -18,7 +18,7 @@ export default function WorkflowModalWrapper({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
     return (
-        <Popover
+        <AppPopover
             content={
                 <WorkflowModal
                     workflow={workflow}
@@ -39,6 +39,6 @@ export default function WorkflowModalWrapper({
             disableReposition
         >
             <View />
-        </Popover>
+        </AppPopover>
     )
 }

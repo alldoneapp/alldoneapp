@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import GhostButton from '../../../UIControls/GhostButton'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import SaveHistoryModal from '../../../UIComponents/FloatModals/SaveHistoryModal'
@@ -25,7 +25,7 @@ export default function SaveVersion({ projectId, note }) {
     return (
         <View style={localStyles.container}>
             <View style={{ marginLeft: 'auto' }}>
-                <Popover
+                <AppPopover
                     content={<SaveHistoryModal projectId={projectId} note={note} closeModal={closeModal} />}
                     onClickOutside={closeModal}
                     isOpen={open}
@@ -40,7 +40,7 @@ export default function SaveVersion({ projectId, note }) {
                         icon="file-plus"
                         onPress={openModal}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

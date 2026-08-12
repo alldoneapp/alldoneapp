@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import TaskCommentsTag from './TaskCommentsTag'
 import { useSelector } from 'react-redux'
@@ -134,7 +134,7 @@ export default function TaskCommentsWrapper({
     }
 
     return showModal && !isUnmountedRef.current ? (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -170,7 +170,7 @@ export default function TaskCommentsWrapper({
                 outline={outline}
                 compact={compact}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <TaskCommentsTag
             commentsData={commentsData}

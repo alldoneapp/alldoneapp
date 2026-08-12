@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -48,7 +48,7 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
     const buttonLabel = `${translate('Edit')} (${allowedTools.length}/${TOOL_OPTIONS.length})`
 
     return (
-        <Popover
+        <AppPopover
             content={<AssistantToolsModal allowedTools={allowedTools} onApply={applyTools} closeModal={closeModal} />}
             align={'start'}
             position={['bottom']}
@@ -72,6 +72,6 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
                     title={buttonLabel}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

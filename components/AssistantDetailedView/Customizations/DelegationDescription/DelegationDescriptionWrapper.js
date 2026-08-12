@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -36,7 +36,7 @@ export default function DelegationDescriptionWrapper({ disabled, projectId, assi
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantDelegationDescriptionModal
                     disabled={disabled}
@@ -68,6 +68,6 @@ export default function DelegationDescriptionWrapper({ disabled, projectId, assi
                     shortcutText={'K'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

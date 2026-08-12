@@ -9,7 +9,7 @@ import { translate } from '../../i18n/TranslationService'
 import ChangeObjectListModal from '../UIComponents/FloatModals/ChangeObjectListModal'
 import Shortcut from '../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function HeaderGlobalProject({
@@ -42,7 +42,7 @@ export default function HeaderGlobalProject({
                 onKeyDown={() => setOpen(true)}
                 filter={e => true}
             />
-            <Popover
+            <AppPopover
                 content={<ChangeObjectListModal closePopover={() => setOpen(false)} />}
                 onClickOutside={() => setOpen(false)}
                 isOpen={open}
@@ -54,7 +54,7 @@ export default function HeaderGlobalProject({
                 <TouchableOpacity disabled={!accessGranted} accessible={false} onPress={() => setOpen(true)}>
                     <Text style={localStyles.title}>{translate('Updates')}</Text>
                 </TouchableOpacity>
-            </Popover>
+            </AppPopover>
             {showShortcuts && showFloatPopup === 0 && accessGranted && !mobile && (
                 <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
             )}

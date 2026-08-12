@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -38,7 +38,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {translate(getAssistantReasoningEffortLabelKey(currentEffort))}
                 </Text>
-                <Popover
+                <AppPopover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>
@@ -77,7 +77,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

@@ -1,6 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import FollowUpModal from '../../../FollowUp/FollowUpModal'
@@ -9,7 +9,7 @@ import { popoverToCenter } from '../../../../utils/HelperFunctions'
 export default function FollowUpModalWrapper({ task, projectId, followUpModalIsOpen, closeFollowUpModal }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     return (
-        <Popover
+        <AppPopover
             content={
                 <FollowUpModal
                     task={task}
@@ -27,6 +27,6 @@ export default function FollowUpModalWrapper({ task, projectId, followUpModalIsO
             disableReposition
         >
             <View />
-        </Popover>
+        </AppPopover>
     )
 }

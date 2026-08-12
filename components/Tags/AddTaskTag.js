@@ -8,7 +8,7 @@ import RichCreateTaskModal from '../UIComponents/FloatModals/RichCreateTaskModal
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { translate } from '../../i18n/TranslationService'
 import withSafePopover from '../UIComponents/HOC/withSafePopover'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 function AddTaskTag({
     projectId,
@@ -74,7 +74,7 @@ function AddTaskTag({
     )
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             positions={['bottom', 'top', 'left', 'right']}
             align="start"
@@ -110,7 +110,7 @@ function AddTaskTag({
             }
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     )
 }
 

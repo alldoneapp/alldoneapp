@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
@@ -44,7 +44,7 @@ export default function PaymentPreviewModalWrapper({
         (isPendingSubscription || isEditingUsersPendingSubscription || isActivationPendingSubscription) && 'credit-card'
 
     return (
-        <Popover
+        <AppPopover
             position={['top', 'left', 'right', 'bottom']}
             padding={4}
             align={'center'}
@@ -68,6 +68,6 @@ export default function PaymentPreviewModalWrapper({
                 onPress={openModal}
                 icon={showButtonCreditCardIcon}
             />
-        </Popover>
+        </AppPopover>
     )
 }

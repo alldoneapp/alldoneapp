@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
@@ -26,7 +26,7 @@ export default function CancelSubscriptionPaidByOtherUserWrapper({ userPayingId 
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={showModal}
             content={
                 <ConfirmationModal
@@ -52,6 +52,6 @@ export default function CancelSubscriptionPaidByOtherUserWrapper({ userPayingId 
                 accessible={false}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import GhostButton from '../../../UIControls/GhostButton'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import SelectStickynessPopup from './SelectStickynessPopup'
 import { translate } from '../../../../i18n/TranslationService'
@@ -27,7 +27,7 @@ export default function StickynessPicker({ projectId, note, disabled, isChat }) 
     }, [note])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <SelectStickynessPopup projectId={projectId} note={note} hidePopover={hidePopover} isChat={isChat} />
             }
@@ -39,7 +39,7 @@ export default function StickynessPicker({ projectId, note, disabled, isChat }) 
             contentLocation={smallScreen ? null : undefined}
         >
             <GhostButton type={'ghost'} title={selectedSticky} onPress={showPopover} disabled={disabled} />
-        </Popover>
+        </AppPopover>
     )
 }
 

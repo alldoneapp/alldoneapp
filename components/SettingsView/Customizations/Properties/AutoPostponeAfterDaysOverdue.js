@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
@@ -29,7 +29,7 @@ export default function AutoPostponeAfterDaysOverdue({ userId, autoPostponeAfter
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <AutoPostponeAfterDaysOverdueModal
                             userId={userId}
@@ -45,7 +45,7 @@ export default function AutoPostponeAfterDaysOverdue({ userId, autoPostponeAfter
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} title={currentLabel} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

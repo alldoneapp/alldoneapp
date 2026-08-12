@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
@@ -57,7 +57,7 @@ export default function DateRangeWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <GoalMilestoneRangeModal
                     projectId={projectId}
@@ -96,6 +96,6 @@ export default function DateRangeWrapper({
                     shortcutText={'R'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -51,7 +51,7 @@ export default function DelegationTargetsAccessWrapper({
     const buttonLabel = `${translate('Edit')} (${selectionCount}/${availableTargets.length})`
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantDelegationTargetsModal
                     assistant={assistant}
@@ -82,6 +82,6 @@ export default function DelegationTargetsAccessWrapper({
                     title={buttonLabel}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

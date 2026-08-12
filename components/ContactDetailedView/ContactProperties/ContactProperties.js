@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import store from '../../../redux/store'
 import PropTypes from 'prop-types'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import UserPropertiesHeader from '../../UserDetailedView/UserProperties/UserPropertiesHeader'
 import styles, { colors } from '../../styles/global'
@@ -302,7 +302,7 @@ class ContactProperties extends Component {
                     {/* Profile Header: Big photo + Info */}
                     <View style={[localStyles.profileHeader, mobile && localStyles.profileHeaderMobile]}>
                         <View style={localStyles.profilePhotoContainer}>
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ImagePickerModal
                                         closePopover={() => this.hideModal('showPictureModal')}
@@ -334,7 +334,7 @@ class ContactProperties extends Component {
                                         </View>
                                     )}
                                 </TouchableOpacity>
-                            </Popover>
+                            </AppPopover>
                         </View>
                         <View style={localStyles.profileInfo}>
                             <View style={{ flex: 1 }}>
@@ -363,7 +363,7 @@ class ContactProperties extends Component {
                                 )}
                             </View>
                         </View>
-                        <Popover
+                        <AppPopover
                             content={
                                 <ChangeContactInfoModal
                                     projectId={projectId}
@@ -389,7 +389,7 @@ class ContactProperties extends Component {
                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                                 buttonStyle={localStyles.profileEditButton}
                             />
-                        </Popover>
+                        </AppPopover>
                     </View>
 
                     <View style={[localStyles.properties, mobile ? localStyles.propertiesMobile : undefined]}>
@@ -429,7 +429,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     </View>
                                     <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                        <Popover
+                                        <AppPopover
                                             content={
                                                 <ChangeTextFieldModal
                                                     header={'Edit LinkedIn URL'}
@@ -454,7 +454,7 @@ class ContactProperties extends Component {
                                                 onPress={() => this.showModal('showLinkedInModal')}
                                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                                             />
-                                        </Popover>
+                                        </AppPopover>
                                     </View>
                                 </View>
 
@@ -554,7 +554,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     )}
 
-                                    <Popover
+                                    <AppPopover
                                         content={
                                             <ChangeTextFieldModal
                                                 header={'Edit phone'}
@@ -579,7 +579,7 @@ class ContactProperties extends Component {
                                             onPress={() => this.showModal('showPhoneModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
-                                    </Popover>
+                                    </AppPopover>
                                 </View>
                             </View>
                             {accessGranted && (
@@ -659,7 +659,7 @@ class ContactProperties extends Component {
                                         </Text>
                                     )}
 
-                                    <Popover
+                                    <AppPopover
                                         content={
                                             <ChangeTextFieldModal
                                                 header={'Edit email addresses'}
@@ -689,14 +689,14 @@ class ContactProperties extends Component {
                                             onPress={() => this.showModal('showEmailsModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
-                                    </Popover>
+                                    </AppPopover>
                                 </View>
                             </View>
 
                             {accessGranted && loggedUserCanUpdateObject && (
                                 <View style={localStyles.bottomContainer}>
                                     <View style={localStyles.addTaskButton}>
-                                        <Popover
+                                        <AppPopover
                                             content={
                                                 <RichCreateTaskModal
                                                     initialProjectId={projectId}
@@ -719,7 +719,7 @@ class ContactProperties extends Component {
                                                 onPress={() => this.setState({ showAddTaskModal: true })}
                                                 accessible={false}
                                             />
-                                        </Popover>
+                                        </AppPopover>
                                     </View>
                                     <ObjectRevisionHistory projectId={projectId} noteId={user.noteId} />
                                     <View style={localStyles.deleteButton}>

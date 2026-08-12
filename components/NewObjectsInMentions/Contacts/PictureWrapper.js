@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
@@ -35,7 +35,7 @@ export default function PictureWrapper({ contact, setPicture, disabled = false }
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ImagePickerModal
                     closePopover={closeModal}
@@ -71,6 +71,6 @@ export default function PictureWrapper({ contact, setPicture, disabled = false }
                     forceShowShortcut={true}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

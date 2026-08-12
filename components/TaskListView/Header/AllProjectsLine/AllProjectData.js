@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import { dismissAllPopups, popoverToSafePosition } from '../../../../utils/HelperFunctions'
 import { setSelectedTypeOfProject, storeCurrentUser, switchProject, storeLoggedUser } from '../../../../redux/actions'
@@ -71,7 +71,7 @@ export default function AllProjectData() {
     }
 
     return showPopup ? (
-        <Popover
+        <AppPopover
             content={
                 <SelectProjectModalInSearch
                     projectId={ALL_PROJECTS_OPTION}
@@ -112,7 +112,7 @@ export default function AllProjectData() {
             }
         >
             <AllProjectsButton onPress={openPopover} />
-        </Popover>
+        </AppPopover>
     ) : (
         <AllProjectsButton onPress={openPopover} />
     )

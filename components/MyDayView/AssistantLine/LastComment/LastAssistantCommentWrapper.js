@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -102,7 +102,7 @@ export default function LastAssistantCommentWrapper({
     const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
     return showModal ? (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -135,7 +135,7 @@ export default function LastAssistantCommentWrapper({
                 projectId={projectId}
                 compact={compact}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <LastAssistantComment
             isNew={isNew}

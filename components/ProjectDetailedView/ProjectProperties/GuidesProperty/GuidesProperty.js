@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -32,7 +32,7 @@ export default function GuidesProperty({ project }) {
                 <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Community project')}</Text>
             </View>
             <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <SelectProjectModalInGuideProjectsProperty closeModal={closeModal} projectId={project.id} />
                     }
@@ -49,7 +49,7 @@ export default function GuidesProperty({ project }) {
                         buttonStyle={{ maxWidth: 240 }}
                         onPress={openModal}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

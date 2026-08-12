@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, View, Image, TouchableOpacity } from 'react-native'
 
@@ -44,7 +44,7 @@ export default function AvatarWrapper({ disabled, projectId, assistant }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ImagePickerModal
                     closePopover={closeModal}
@@ -67,7 +67,7 @@ export default function AvatarWrapper({ disabled, projectId, assistant }) {
                     </View>
                 )}
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
 import GhostButton from './GhostButton'
@@ -133,7 +133,7 @@ class CommentButton extends Component {
         const { disabled, style, inEditTask, projectId, shortcutText, task } = this.props
         const { visiblePopover, smallScreen } = this.state
         return visiblePopover ? (
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         processDone={this.changeValue}
@@ -175,7 +175,7 @@ class CommentButton extends Component {
                         shortcutText={shortcutText}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         ) : (
             <Hotkeys
                 keyName={`alt+${shortcutText}`}

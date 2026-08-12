@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../UIControls/Button'
 import { execShortcutFn } from '../../../utils/HelperFunctions'
@@ -37,7 +37,7 @@ export default function AddFeedAttachButton({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AttachmentsSelectorModal
                     closeModal={closeModal}
@@ -69,6 +69,6 @@ export default function AddFeedAttachButton({
                     shortcutText={'U'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

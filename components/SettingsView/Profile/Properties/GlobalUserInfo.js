@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'
@@ -53,7 +53,7 @@ export default function GlobalUserInfo({ userId, role, company, description }) {
                         {userInfo}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangeContactInfoModal
                             closePopover={() => setOpen(false)}
@@ -72,7 +72,7 @@ export default function GlobalUserInfo({ userId, role, company, description }) {
                     contentLocation={smallScreen ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
