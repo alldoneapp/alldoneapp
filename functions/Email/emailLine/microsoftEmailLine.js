@@ -136,13 +136,17 @@ async function listMessagesForLabel(userId, projectId, folderId, { pageToken } =
             $select: MESSAGE_SELECT,
             $orderby: 'receivedDateTime desc',
             $top: MESSAGES_PER_PAGE,
+            $count: true,
         })}`
 
     const response = await client.request(path)
     const value = Array.isArray(response?.value) ? response.value : []
+    const providerTotal = Number(response?.['@odata.count'])
+    const nextPageToken = nextLinkToPath(response?.['@odata.nextLink'])
     return {
         messages: value.map(normalizeListRow),
-        nextPageToken: nextLinkToPath(response?.['@odata.nextLink']),
+        nextPageToken,
+        totalCount: Number.isFinite(providerTotal) ? providerTotal : nextPageToken ? null : value.length,
     }
 }
 

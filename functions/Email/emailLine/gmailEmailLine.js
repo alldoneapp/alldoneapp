@@ -579,7 +579,13 @@ async function listMessagesForLabelImpl(
             failedCount,
             page: pageToken ? 'next' : 'first',
         })
-        return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
+        return {
+            messages,
+            nextPageToken,
+            totalCount: targetThreadIds.length,
+            failedCount,
+            partialFailure: failedCount > 0,
+        }
     }
 
     if (isNoLabelId(labelId)) {
@@ -618,7 +624,13 @@ async function listMessagesForLabelImpl(
             failedCount,
             page: pageToken ? 'next' : 'first',
         })
-        return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
+        return {
+            messages,
+            nextPageToken,
+            totalCount: targetThreadIds.length,
+            failedCount,
+            partialFailure: failedCount > 0,
+        }
     }
 
     // The inbox itself is already inbox-scoped by its Gmail query, so a single paged
@@ -632,6 +644,14 @@ async function listMessagesForLabelImpl(
     const threadsListedAt = Date.now()
     const threadRefs = Array.isArray(listResponse?.data?.threads) ? listResponse.data.threads : []
     const nextPageToken = listResponse?.data?.nextPageToken || null
+    const estimatedTotal = Number(listResponse?.data?.resultSizeEstimate)
+    // A terminal page gives us an exact total. For a paginated inbox Gmail only exposes
+    // resultSizeEstimate, which is still the provider's best count for the exact query.
+    const totalCount = nextPageToken
+        ? Number.isFinite(estimatedTotal)
+            ? Math.max(threadRefs.length, estimatedTotal)
+            : null
+        : threadRefs.length
     const threadIds = threadRefs.map(ref => ref.id).filter(Boolean)
     const { rows: messages, failedCount } = await fetchThreadRows(gmail, threadIds, labelId, emailAddress)
     const rowsReadyAt = Date.now()
@@ -646,7 +666,7 @@ async function listMessagesForLabelImpl(
         failedCount,
         page: pageToken ? 'next' : 'first',
     })
-    return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
+    return { messages, nextPageToken, totalCount, failedCount, partialFailure: failedCount > 0 }
 }
 
 // Ids of the newest unread inbox messages — a single list call, no per-message fetches.

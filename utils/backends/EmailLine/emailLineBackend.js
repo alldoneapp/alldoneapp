@@ -99,6 +99,27 @@ export function invalidateEmailLineSummaryCooldown(projectId) {
     if (projectId) summaryCooldownCache.delete(projectId)
 }
 
+// The summary is normally the chip-count source of truth. Opening a chip performs a fresher,
+// label-scoped provider query though, so fold that query's authoritative total back into the
+// existing summary without replacing unrelated labels or background-update fields.
+export function reconcileEmailLineLabelCount(projectId, labelId, threadCount) {
+    if (!projectId || !labelId || !Number.isFinite(threadCount) || threadCount < 0) return false
+    const summary = store.getState().emailLineSummaryByProject?.[projectId]
+    if (!summary) return false
+    let matched = false
+    let changed = false
+    const labels = (summary.labels || []).map(label => {
+        if (label.labelId !== labelId) return label
+        matched = true
+        if (label.threadCount === threadCount) return label
+        changed = true
+        return { ...label, threadCount }
+    })
+    if (!matched || !changed) return false
+    store.dispatch(setEmailLineSummary(projectId, { ...summary, labels }))
+    return true
+}
+
 // In-memory cache of the last-loaded message sections per merged label group, keyed
 // by the group key (the stable lowercase display name from mergeLabelsAcrossConnections).
 // Lets the label modal render its emails instantly on reopen while a fresh Gmail fetch

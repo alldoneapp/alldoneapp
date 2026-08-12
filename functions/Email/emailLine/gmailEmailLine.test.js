@@ -413,6 +413,7 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsGet).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', format: 'metadata' }))
         expect(mockThreadsGet).not.toHaveBeenCalledWith(expect.objectContaining({ id: 't_archived' }))
         expect(result.messages).toHaveLength(1)
+        expect(result.totalCount).toBe(1)
         expect(result.nextPageToken).toBeNull()
         const row = result.messages[0]
         expect(row.messageId).toBe('m1')
@@ -438,10 +439,12 @@ describe('gmailEmailLine', () => {
 
         const page1 = await listMessagesForLabel('u', 'p', 'Label_ads', {})
         expect(page1.messages).toHaveLength(25) // MESSAGES_PER_PAGE
+        expect(page1.totalCount).toBe(30)
         expect(page1.nextPageToken).toBe('inbox-label:25')
 
         const page2 = await listMessagesForLabel('u', 'p', 'Label_ads', { pageToken: page1.nextPageToken })
         expect(page2.messages).toHaveLength(5)
+        expect(page2.totalCount).toBe(30)
         expect(page2.nextPageToken).toBeNull()
         // Page two reuses the resolved inbox/label intersection instead of rescanning both sets.
         expect(mockThreadsList).toHaveBeenCalledTimes(2)
@@ -500,13 +503,33 @@ describe('gmailEmailLine', () => {
 
         const noLabel = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
         expect(noLabel.messages).toEqual([])
+        expect(noLabel.totalCount).toBe(1)
         expect(noLabel.failedCount).toBe(1)
         expect(noLabel.partialFailure).toBe(true)
 
         const inbox = await listMessagesForLabel('u', 'p', 'INBOX', {})
         expect(inbox.messages).toEqual([])
+        expect(inbox.totalCount).toBe(1)
         expect(inbox.failedCount).toBe(1)
         expect(inbox.partialFailure).toBe(true)
+    })
+
+    test('uses Gmail resultSizeEstimate for a paginated inbox total', async () => {
+        mockThreadsList.mockResolvedValue({
+            data: {
+                threads: makeThreadRefs(['t1']),
+                nextPageToken: 'next',
+                resultSizeEstimate: 42,
+            },
+        })
+        mockThreadsGet.mockResolvedValue({
+            data: { id: 't1', messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [] } }] },
+        })
+
+        const result = await listMessagesForLabel('u', 'p', 'INBOX', {})
+
+        expect(result.totalCount).toBe(42)
+        expect(result.nextPageToken).toBe('next')
     })
 
     test('getGmailLabelSummary warms the resolved-set cache so the modal open skips the rescans', async () => {

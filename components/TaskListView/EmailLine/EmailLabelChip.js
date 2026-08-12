@@ -23,6 +23,7 @@ export default function EmailLabelChip({
     showIcon = true,
 }) {
     const [isOpen, setIsOpen] = useState(false)
+    const [loadedCount, setLoadedCount] = useState(null)
     const smallScreen = useSelector(state => state.smallScreen)
     const mobile = useSelector(state => state.smallScreenNavigation)
     if (!group) return null
@@ -30,12 +31,20 @@ export default function EmailLabelChip({
     // mail icon + count. The full-width standalone Email line keeps its names so labels stay
     // distinguishable.
     const iconOnly = compact && mobile && showIcon
+    // Keep the just-loaded total visible even when the parent summary is one render behind.
+    // Non-zero totals are also reconciled into Redux; zero is deliberately committed on close
+    // so the chip cannot unmount the popover that is currently anchored to it.
+    const displayCount = Number.isFinite(loadedCount) ? loadedCount : group.threadCount
+    const close = () => {
+        setIsOpen(false)
+        setLoadedCount(null)
+    }
 
     const trigger = (
         <TouchableOpacity
             style={[localStyles.chip, compact && localStyles.chipCompact, iconOnly && localStyles.chipIconOnly, style]}
             onPress={() => setIsOpen(true)}
-            accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
+            accessibilityLabel={`${group.displayName}: ${displayCount}`}
         >
             {showIcon && (
                 <Icon
@@ -53,9 +62,9 @@ export default function EmailLabelChip({
             {group.sweeping ? (
                 <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.sweepSpinner} />
             ) : (
-                group.threadCount > 0 && (
+                displayCount > 0 && (
                     <View style={[localStyles.badge, compact && localStyles.badgeCompact]}>
-                        <Text style={[styles.caption2, localStyles.badgeText]}>{group.threadCount}</Text>
+                        <Text style={[styles.caption2, localStyles.badgeText]}>{displayCount}</Text>
                     </View>
                 )
             )}
@@ -73,7 +82,7 @@ export default function EmailLabelChip({
                 // Selecting an option in the nested label-options popover reads as an outside click
                 // here (it lives in a separate portal); ignore it so picking a label keeps the modal
                 // open. Genuine outside taps still dismiss.
-                if (!shouldIgnoreEmailLabelModalDismiss()) setIsOpen(false)
+                if (!shouldIgnoreEmailLabelModalDismiss()) close()
             }}
             contentLocation={smallScreen ? null : undefined}
             content={
@@ -82,7 +91,8 @@ export default function EmailLabelChip({
                     allGroups={allGroups}
                     labelOptionsByConnectionId={labelOptionsByConnectionId}
                     labelingDisabledByConnectionId={labelingDisabledByConnectionId}
-                    closePopover={() => setIsOpen(false)}
+                    onThreadCountReconciled={setLoadedCount}
+                    closePopover={close}
                 />
             }
         >
