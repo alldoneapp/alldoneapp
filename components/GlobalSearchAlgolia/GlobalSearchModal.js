@@ -29,7 +29,6 @@ import {
     MENTION_MODAL_TASKS_TAB,
     MENTION_MODAL_TOPICS_TAB,
 } from '../Feeds/CommentsTextInput/textInputHelper'
-import algoliasearch from 'algoliasearch'
 import {
     CHATS_INDEX_NAME_PREFIX,
     CONTACTS_INDEX_NAME_PREFIX,
@@ -37,10 +36,8 @@ import {
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
-import { buildSearchFilters } from './searchFilters'
 import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
 import { multiSearchTypesense } from '../../utils/typesenseSearch'
-import { useTypesenseSearch } from '../../utils/searchEngine'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
 import ProjectFilter from './Filter/ProjectFilter'
@@ -592,43 +589,7 @@ export default function GlobalSearchModal() {
         })
     }
 
-    const onSearchInAlgolia = async (client, indexPrefix, setResults, setResultsAmount, tab, searchInstanceId) => {
-        const { loggedUser } = store.getState()
-
-        setResults({})
-        setResultsAmount(0)
-
-        const algoliaIndex = client.initIndex(indexPrefix)
-
-        const projectsToSearch = getProjectsInSearchScope()
-        const filters = buildSearchFilters({
-            indexPrefix,
-            projects: projectsToSearch,
-            loggedUser,
-            createdByMeOnly,
-        })
-
-        // Nothing to search against (no accessible projects) — avoid an empty
-        // filter, which would either error or leak unscoped results.
-        if (!filters) {
-            setProcessing(processing => {
-                return { ...processing, [tab]: false }
-            })
-            return
-        }
-
-        try {
-            const results = await algoliaIndex.search(localText, { filters: filters })
-            applySearchHits(indexPrefix, results.hits, setResults, setResultsAmount, tab, searchInstanceId)
-        } catch (error) {
-            setProcessing(processing => {
-                return { ...processing, [tab]: false }
-            })
-        }
-    }
-
-    // Typesense path: all five tabs in ONE multi_search round-trip (the Algolia path
-    // fires five requests). Same filters contract: an empty filter_by means "skip this
+    // All five tabs in ONE multi_search round-trip. An empty filter_by means "skip this
     // tab", never "search unscoped".
     const onSearchInTypesense = async searchInstanceId => {
         const { loggedUser } = store.getState()
@@ -752,67 +713,7 @@ export default function GlobalSearchModal() {
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
 
-            if (useTypesenseSearch()) {
-                onSearchInTypesense(searchInstanceId)
-                return
-            }
-
-            const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
-
-            const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
-
-            const promises = []
-            promises.push(
-                onSearchInAlgolia(
-                    client,
-                    TASKS_INDEX_NAME_PREFIX,
-                    setTasksResult,
-                    setTasksResultAmount,
-                    MENTION_MODAL_TASKS_TAB,
-                    searchInstanceId
-                )
-            )
-            promises.push(
-                onSearchInAlgolia(
-                    client,
-                    GOALS_INDEX_NAME_PREFIX,
-                    setGoalsResult,
-                    setGoalsResultAmount,
-                    MENTION_MODAL_GOALS_TAB,
-                    searchInstanceId
-                )
-            )
-            promises.push(
-                onSearchInAlgolia(
-                    client,
-                    NOTES_INDEX_NAME_PREFIX,
-                    setNotesResult,
-                    setNotesResultAmount,
-                    MENTION_MODAL_NOTES_TAB,
-                    searchInstanceId
-                )
-            )
-            promises.push(
-                onSearchInAlgolia(
-                    client,
-                    CONTACTS_INDEX_NAME_PREFIX,
-                    setContactsResult,
-                    setContactsResultAmount,
-                    MENTION_MODAL_CONTACTS_TAB,
-                    searchInstanceId
-                )
-            )
-            promises.push(
-                onSearchInAlgolia(
-                    client,
-                    CHATS_INDEX_NAME_PREFIX,
-                    setChatsResult,
-                    setChatsResultAmount,
-                    MENTION_MODAL_TOPICS_TAB,
-                    searchInstanceId
-                )
-            )
-            Promise.all(promises)
+            onSearchInTypesense(searchInstanceId)
         }
     }
 

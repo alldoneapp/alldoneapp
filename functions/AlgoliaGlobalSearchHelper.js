@@ -1,4 +1,3 @@
-const algoliasearch = require('algoliasearch')
 const { isEqual } = require('lodash')
 const admin = require('firebase-admin')
 
@@ -12,7 +11,6 @@ const {
     mapChatData,
     mapAssistantData,
 } = require('./ParsingTextHelper')
-const { removeProjectObjectsFromAlgolia, getAlgoliaClient } = require('./searchHelper')
 const {
     upsertTypesenseDocument,
     deleteTypesenseDocument,
@@ -43,49 +41,22 @@ const CHATS_OBJECTS_TYPE = 'chats'
 const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
 const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
 
-const getAlgoliaIndex = indexPrefix => {
-    return getAlgoliaClient().initIndex(indexPrefix)
+// Typesense-only since Phase 5 of the search migration (TYPESENSE_MIGRATION.md) — the
+// Algolia halves of these writes were removed together with the algoliasearch dependency.
+const addSearchRecord = async (object, indexPrefix) => {
+    await upsertTypesenseDocument(indexPrefix, object)
 }
 
-// Dual-write (TYPESENSE_MIGRATION.md Phase 1): every record that reaches Algolia also goes
-// to Typesense. Collection names equal the index prefixes, and the Typesense ops never throw,
-// so Algolia behavior is unchanged even with the cluster missing or down.
-const addAlgoliaRecord = async (object, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await Promise.all([algoliaIndex.saveObject(object), upsertTypesenseDocument(indexPrefix, object)])
+const addSearchRecords = async (objects, indexPrefix) => {
+    await importTypesenseDocuments(indexPrefix, objects)
 }
 
-const addAlgoliaRecords = async (objects, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await Promise.all([algoliaIndex.saveObjects(objects), importTypesenseDocuments(indexPrefix, objects)])
+const deleteSearchRecord = async (searchObjectId, indexPrefix) => {
+    await deleteTypesenseDocument(indexPrefix, searchObjectId)
 }
 
-const deleteAlgoliaRecord = async (algoliaObjectId, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await Promise.all([
-        algoliaIndex.deleteObject(algoliaObjectId),
-        deleteTypesenseDocument(indexPrefix, algoliaObjectId),
-    ])
-}
-
-const deleteAlgoliaRecords = async (algoliaObjectIds, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await Promise.all([
-        algoliaIndex.deleteObjects(algoliaObjectIds),
-        ...algoliaObjectIds.map(algoliaObjectId => deleteTypesenseDocument(indexPrefix, algoliaObjectId)),
-    ])
-}
-
-const updateAlgoliaRecord = async (object, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.partialUpdateObject(object)
-}
-
-const updateAlgoliaRecords = async (objects, indexPrefix) => {
-    const algoliaIndex = getAlgoliaIndex(indexPrefix)
-    await algoliaIndex.partialUpdateObjects(objects, {
-        createIfNotExists: false,
-    })
+const deleteSearchRecords = async (searchObjectIds, indexPrefix) => {
+    await Promise.all(searchObjectIds.map(searchObjectId => deleteTypesenseDocument(indexPrefix, searchObjectId)))
 }
 
 const getPrefix = objectsType => {
@@ -126,7 +97,7 @@ const getCleanChatComments = async (db, projectId, chatId, chatType = 'topics') 
 
         return cleanedComments.join(' ').substring(0, CHAT_COMMENTS_TEXT_MAX_LENGTH)
     } catch (error) {
-        console.log(`Failed to load chat comments for Algolia indexing (${projectId}/${chatId}):`, error.message)
+        console.log(`Failed to load chat comments for search indexing (${projectId}/${chatId}):`, error.message)
         return ''
     }
 }
@@ -150,10 +121,9 @@ const mapObject = async (projectId, objectId, algoliaObjectId, object, objectsTy
     return cleanObject
 }
 
-// Since Phase 4 of the Typesense migration there are NO eligibility gates here: every
-// record is indexed regardless of project state (inactive/template/guide content is hidden
-// from default results by the client's scope filters, not by index absence). Both stores
-// receive the write while Algolia remains the rollback target; Phase 5 removes it.
+// Since Phase 4 of the search migration there are NO eligibility gates here: every record
+// is indexed regardless of project state (inactive/template/guide content is hidden from
+// default results by the client's scope filters, not by index absence).
 const createRecord = async (projectId, objectId, item, objectsType, db, canBeInactive, paramProject) => {
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
@@ -164,28 +134,27 @@ const createRecord = async (projectId, objectId, item, objectsType, db, canBeIna
     if (objectsType === NOTES_OBJECTS_TYPE) {
         const { getNoteContent } = require('./searchHelper')
         object.content = await getNoteContent(projectId, objectId)
-        console.log(`Creating Algolia record for note ${objectId}:`, {
+        console.log(`Creating search record for note ${objectId}:`, {
             objectID: object.objectID,
             title: object.title,
             contentLength: object.content ? object.content.length : 0,
         })
     }
 
-    await addAlgoliaRecord(object, indexPrefix)
+    await addSearchRecord(object, indexPrefix)
 }
 
 const deleteRecord = async (objectId, projectId, objectsType) => {
     const indexPrefix = getPrefix(objectsType)
     const algoliaObjectId = objectId + projectId
-    await deleteAlgoliaRecord(algoliaObjectId, indexPrefix)
+    await deleteSearchRecord(algoliaObjectId, indexPrefix)
 }
 
 const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, db) => {
     console.log(`Processing update for ${objectsType} ${objectId} in project ${projectId}`)
 
-    // Since Phase 4 of the Typesense migration there are no eligibility gates or
-    // recency windows here — every update is indexed in both stores. canBeInactive is
-    // still computed because the mapped record carries it as an attribute.
+    // No eligibility gates or recency windows (Phase 4) — every update is indexed.
+    // canBeInactive is still computed because the mapped record carries it as an attribute.
     let canBeInactive = false
 
     if (objectsType === CHATS_OBJECTS_TYPE) {
@@ -251,7 +220,7 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
 
     if (Object.keys(changes).length > 0 || hasContentChanged) {
         console.log(`Updating search record for ${objectsType} ${objectId} with ${Object.keys(changes).length} changes`)
-        await addAlgoliaRecord(objectAfter, indexPrefix)
+        await addSearchRecord(objectAfter, indexPrefix)
     } else {
         console.log(`No significant changes detected for ${objectsType} ${objectId}, skipping update`)
     }
@@ -280,7 +249,7 @@ const createUserRecord = async (userId, originalUser) => {
     const projectId = user.projectIds[0]
     user.objectID = userId + projectId
     user.projectId = projectId
-    await addAlgoliaRecord(user, indexPrefix)
+    await addSearchRecord(user, indexPrefix)
 }
 
 const deleteUserRecord = async (userId, user) => {
@@ -289,7 +258,7 @@ const deleteUserRecord = async (userId, user) => {
     const promises = []
     user.projectIds.forEach(projectId => {
         const algoliaObjectId = userId + projectId
-        promises.push(deleteAlgoliaRecord(algoliaObjectId, indexPrefix))
+        promises.push(deleteSearchRecord(algoliaObjectId, indexPrefix))
     })
     await Promise.all(promises)
 }
@@ -315,14 +284,14 @@ const updateUserRecord = async (userId, change, admin) => {
             user.objectID = userId + projectId
             user.projectId = projectId
             user.cleanDescription = parseTextForSearch(user.extendedDescription, true)
-            promises.push(addAlgoliaRecord(user, indexPrefix))
+            promises.push(addSearchRecord(user, indexPrefix))
         }
 
         const deletedProjectsIds = oldUser.projectIds.filter(projectId => !newUser.projectIds.includes(projectId))
         for (let i = 0; i < deletedProjectsIds.length; i++) {
             const projectId = deletedProjectsIds[i]
             const algoliaObjectId = userId + projectId
-            promises.push(deleteAlgoliaRecord(algoliaObjectId, indexPrefix))
+            promises.push(deleteSearchRecord(algoliaObjectId, indexPrefix))
         }
         await Promise.all(promises)
 
@@ -346,7 +315,7 @@ const updateAlgoliaUserRecords = async (projectIds, userAfter, indexPrefix, db) 
         user.objectID = user.uid + projectId
         user.projectId = projectId
         fillRolCompanyAndDescriptionInUser(project, user)
-        promises.push(addAlgoliaRecord(user, indexPrefix))
+        promises.push(addSearchRecord(user, indexPrefix))
     })
     await Promise.all(promises)
 }
@@ -376,19 +345,9 @@ const fillRolCompanyAndDescriptionInUser = (project, user) => {
     user.cleanDescription = parseTextForSearch(extendedDescription, true)
 }
 
-// `alsoRemoveFromTypesense` distinguishes a REAL project deletion (onDeleteProjectFunctions,
-// which must clear both stores) from the Algolia-only record-count cleanups
-// (checkAndRemoveProjectsWithoutActivityFromAlgolia) — Typesense keeps everything on those.
-const removeAlgoliaRecordsInProject = async (projectId, { alsoRemoveFromTypesense = false } = {}) => {
-    const filters = `projectId:${projectId}`
-    const promises = []
-    promises.push(removeProjectObjectsFromAlgolia(TASKS_OBJECTS_TYPE, filters))
-    promises.push(removeProjectObjectsFromAlgolia(GOALS_OBJECTS_TYPE, filters))
-    promises.push(removeProjectObjectsFromAlgolia(NOTES_OBJECTS_TYPE, filters))
-    promises.push(removeProjectObjectsFromAlgolia(USERS_OBJECTS_TYPE, filters))
-    promises.push(removeProjectObjectsFromAlgolia(CHATS_OBJECTS_TYPE, filters))
-    if (alsoRemoveFromTypesense) promises.push(deleteTypesenseProjectRecords(projectId))
-    await Promise.all(promises)
+// Real project deletion: clear the project's records from the search index.
+const removeAlgoliaRecordsInProject = async projectId => {
+    await deleteTypesenseProjectRecords(projectId)
 }
 
 // Deactivates projects nobody opened in 30 days. Since Phase 4 of the Typesense migration

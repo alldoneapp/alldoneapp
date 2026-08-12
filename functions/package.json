@@ -23,7 +23,6 @@
         "@mollie/api-client": "^4.6.0",
         "@sparticuz/chromium": "^149.0.0",
         "@tavily/core": "^0.7.6",
-        "algoliasearch": "^4.10.5",
         "chalk": "^4.1.0",
         "clear": "^0.1.0",
         "clui": "^0.3.6",

@@ -873,10 +873,6 @@ export default class Backend {
         return bridge.unwatchHastagsColors(hashtagId)
     }
 
-    static getAlgoliaSearchOnlyKeys() {
-        return bridge.getAlgoliaSearchOnlyKeys()
-    }
-
     static getTypesenseSearchKeys() {
         return bridge.getTypesenseSearchKeys()
     }

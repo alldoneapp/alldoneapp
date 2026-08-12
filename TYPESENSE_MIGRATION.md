@@ -1,5 +1,19 @@
 # Algolia → Typesense Cloud Migration Plan
 
+> **Phase 5 implemented (2026-08-12) — MIGRATION COMPLETE.** Algolia is out of the
+> codebase: `algoliasearch` uninstalled (root + functions), dual-writes removed (the write
+> primitives in `AlgoliaGlobalSearchHelper.js` are Typesense-only, renamed `*SearchRecord*`),
+> `creatorFacetReindex` + its two `index.js` exports deleted, client/server engine flags
+> removed (`utils/searchEngine.js` gone — Typesense IS the engine), `searchFilters.js`
+> merged into `typesenseSearchFilters.js` (which now owns `CREATOR_ATTRIBUTE_BY_INDEX` +
+> `getProjectAccessIds`), `getAlgoliaSearchOnlyKeys`/`ALGOLIA_*` env removed from
+> firestore.js/BackendBridge/replace-envs.sh/envFunctionsHelper. The AT-2258 facet contract
+> test now pins the Typesense COLLECTION_SCHEMAS. **User actions to finish decommissioning:**
+> cancel the Algolia subscription, and optionally delete the GitLab `ALGOLIA_*` CI variables
+> (`ALGOLIA_APP_ID_DEV/_PROD`, `ALGOLIA_SEARCH_ONLY_API_KEY_DEV/_PROD`, and the admin keys
+> inside the `GOOGLE_FUNCTIONS_ENV_DEV/_PROD` blobs). `components/GlobalSearchAlgolia/` keeps
+> its legacy directory name on purpose (a rename is pure churn; do it opportunistically).
+>
 > **Phase 4 implemented (2026-08-12):** the "Activate full search for 500 Gold" checkbox
 > (`ActiveFullSearch.js`), its gold/indexing flow, the admin reindex sidebar item, the
 > two i18n strings, and the `activeFullSearchDate` user mapping are deleted. Server side:

@@ -30,17 +30,8 @@ import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjec
 
 const searchCalls = []
 
-jest.mock('algoliasearch', () => () => ({
-    initIndex: indexName => ({
-        search: async (text, options) => {
-            searchCalls.push({ indexName, text, filters: options?.filters })
-            return { hits: [] }
-        },
-    }),
-}))
-
-// The Typesense path batches all five tabs into one multi_search call; capturing each
-// entry separately keeps the per-index assertions below identical for both engines.
+// The search batches all five tabs into one multi_search call; capturing each entry
+// separately keeps the assertions per-index.
 jest.mock('../../utils/typesenseSearch', () => ({
     multiSearchTypesense: async searches => {
         searches.forEach(({ collection, query, filterBy }) => {
@@ -50,16 +41,9 @@ jest.mock('../../utils/typesenseSearch', () => ({
     },
 }))
 
-// This suite pins the WIRING of whichever engine is live (utils/searchEngine.js), so it
-// keeps guarding search when the flag is flipped for a rollback. Only the filter STRING
-// syntax differs per engine. useTypesenseSearch() (not the bare flag) decides, because it
-// is also key-aware: in an env without Typesense keys (CI has no .env) the modal takes the
-// Algolia path, and the expectations here follow it.
-const { useTypesenseSearch } = jest.requireActual('../../utils/searchEngine')
-const IS_TYPESENSE = useTypesenseSearch()
-const projectConjunct = projectId => (IS_TYPESENSE ? `projectId:=[\`${projectId}\`]` : `projectId:"${projectId}"`)
-const creatorConjunct = (attribute, uid) => (IS_TYPESENSE ? `${attribute}:=\`${uid}\`` : `${attribute}:"${uid}"`)
-const assistantExclusionConjunct = IS_TYPESENSE ? 'isAssistant:=false' : 'isAssistant:false'
+const projectConjunct = projectId => `projectId:=[\`${projectId}\`]`
+const creatorConjunct = (attribute, uid) => `${attribute}:=\`${uid}\``
+const assistantExclusionConjunct = 'isAssistant:=false'
 
 const PROJECT = { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } }
 

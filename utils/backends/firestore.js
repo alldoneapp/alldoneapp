@@ -37,8 +37,6 @@ import {
     HOSTING_URL,
     CURRENT_ENVIORNMENT,
     NOTES_COLLABORATION_SERVER,
-    ALGOLIA_APP_ID,
-    ALGOLIA_SEARCH_ONLY_API_KEY,
     TYPESENSE_HOST,
     TYPESENSE_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
@@ -7076,10 +7074,6 @@ export const inProductionEnvironment = () => {
 
 export const inStagingEnvironment = () => {
     return CURRENT_ENVIORNMENT === 'Staging'
-}
-
-export function getAlgoliaSearchOnlyKeys() {
-    return { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY }
 }
 
 export function getTypesenseSearchKeys() {
