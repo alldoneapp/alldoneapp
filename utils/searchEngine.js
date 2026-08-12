@@ -16,3 +16,6 @@ export const useTypesenseSearch = () => {
         return false
     }
 }
+// Deploy note: the TYPESENSE_* CI variables were initially created as "protected" in a
+// project with no protected branches, so the first cutover build injected empty strings
+// and this flag fell back to Algolia. Fixed 2026-08-12; this comment triggered the rebuild.
