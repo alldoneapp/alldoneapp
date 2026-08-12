@@ -543,3 +543,160 @@ describe('calendarTasks routing', () => {
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
     })
 })
+
+describe('AT-2270 - a synced meeting lands at the bottom of its group, in event order', () => {
+    const { getDefaultCalendarSortIndex } = require('../shared/calendarTaskSortIndex')
+
+    const buildExistingTask = (overrides = {}) => ({
+        id: 'event-1',
+        projectId: 'target-project',
+        created: Date.parse('2026-04-20T08:00:00Z'),
+        calendarData: {
+            link: event.htmlLink,
+            start: event.start,
+            end: event.end,
+            email: 'me@example.com',
+            provider: 'google',
+            originalProjectId: 'connected-project',
+        },
+        name: event.summary,
+        extendedName: event.summary,
+        description: event.description,
+        estimations: { open: 60 },
+        ...overrides,
+    })
+
+    beforeEach(() => {
+        admin.__mock.reset()
+        addProjectRoutingReasonComment.mockClear()
+        updateStatistics.mockClear()
+    })
+
+    test('creates the task with the sortIndex derived from the event start', async () => {
+        await addOrUpdateCalendarTask('connected-project', 'target-project', null, event, 'user-1', 'me@example.com', 0)
+
+        const expected = getDefaultCalendarSortIndex({ start: event.start })
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: expected })
+        )
+        // Below every generated ordering index, so it sits under the ordinary tasks of the group.
+        expect(expected).toBeLessThan(-Date.now())
+    })
+
+    test('an earlier event sorts above a later one', async () => {
+        const earlier = getDefaultCalendarSortIndex({ start: { dateTime: '2026-04-24T09:00:00Z' } })
+        const later = getDefaultCalendarSortIndex({ start: { dateTime: '2026-04-24T15:00:00Z' } })
+
+        expect(earlier).toBeGreaterThan(later)
+    })
+
+    test('re-sorts an untouched task when the event is rescheduled', async () => {
+        const rescheduled = {
+            ...event,
+            start: { dateTime: '2026-04-24T16:00:00Z' },
+            end: { dateTime: '2026-04-24T17:00:00Z' },
+        }
+        const existingTask = buildExistingTask({
+            sortIndex: getDefaultCalendarSortIndex({ start: event.start }),
+        })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            rescheduled,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').update).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: getDefaultCalendarSortIndex({ start: rescheduled.start }) })
+        )
+    })
+
+    test('leaves a task the user rearranged exactly where it is, even when the event moves', async () => {
+        const rescheduled = {
+            ...event,
+            start: { dateTime: '2026-04-24T16:00:00Z' },
+            end: { dateTime: '2026-04-24T17:00:00Z' },
+        }
+        // Dragged to the top of the list: an ordinary "just moved" index.
+        const existingTask = buildExistingTask({ sortIndex: Date.parse('2026-04-23T11:22:33.444Z') })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            rescheduled,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        const updateCall = admin.__mock.refs.get('items/target-project/tasks/event-1').update.mock.calls[0][0]
+        expect(updateCall).not.toHaveProperty('sortIndex')
+    })
+
+    test('does not write a sortIndex when nothing about the event changed', async () => {
+        const existingTask = buildExistingTask({
+            sortIndex: getDefaultCalendarSortIndex({ start: event.start }),
+        })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            event,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        // No write at all: the sortIndex is only re-derived inside an update that was needed
+        // anyway, so an unchanged event does not churn the document on every sync.
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1')).toBeUndefined()
+    })
+
+    test('moves an untouched task to the new default when it is routed to another project', async () => {
+        const existingTask = buildExistingTask({
+            projectId: 'old-project',
+            sortIndex: Date.parse('2026-04-20T08:00:00Z') + 1, // pre-AT-2270 arrival index
+        })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            event,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: getDefaultCalendarSortIndex({ start: event.start }) }),
+            { merge: true }
+        )
+    })
+
+    test('carries a user placement across a project move', async () => {
+        const placed = Date.parse('2026-04-23T11:22:33.444Z')
+        const existingTask = buildExistingTask({ projectId: 'old-project', sortIndex: placed })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            event,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: placed }),
+            { merge: true }
+        )
+    })
+})

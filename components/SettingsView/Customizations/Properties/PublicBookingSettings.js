@@ -17,10 +17,6 @@ const DEFAULT_SETTINGS = {
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
     includeWeekends: false,
-    // Off by default — a public link must not let strangers book into the day that is
-    // already running. The server treats a missing value as false too, so existing links
-    // keep this rule without a migration.
-    allowSameDayBooking: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
     additionalGuestEmails: [],
@@ -209,20 +205,6 @@ export default function PublicBookingSettings() {
                         />
                     </View>
 
-                    <View style={localStyles.toggleRow}>
-                        <View style={localStyles.toggleText}>
-                            <Text style={localStyles.weekendLabel}>{translate('Allow same day booking')}</Text>
-                            <Text style={localStyles.toggleHint}>
-                                {translate('Allow same day booking description')}
-                            </Text>
-                        </View>
-                        <Switch
-                            active={settings.allowSameDayBooking === true}
-                            activeSwitch={() => updateField('allowSameDayBooking', true)}
-                            deactiveSwitch={() => updateField('allowSameDayBooking', false)}
-                        />
-                    </View>
-
                     <View style={localStyles.guestSection}>
                         <Text style={localStyles.label}>{translate('Additional guests')}</Text>
                         <Text style={localStyles.guestHint}>{translate('Additional guests description')}</Text>
@@ -349,21 +331,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 12,
-    },
-    toggleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: 16,
-    },
-    toggleText: {
-        flex: 1,
-        paddingRight: 16,
-    },
-    toggleHint: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginTop: 2,
     },
     guestSection: {
         marginTop: 16,
