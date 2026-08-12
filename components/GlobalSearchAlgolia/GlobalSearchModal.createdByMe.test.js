@@ -39,6 +39,28 @@ jest.mock('algoliasearch', () => () => ({
     }),
 }))
 
+// The Typesense path batches all five tabs into one multi_search call; capturing each
+// entry separately keeps the per-index assertions below identical for both engines.
+jest.mock('../../utils/typesenseSearch', () => ({
+    multiSearchTypesense: async searches => {
+        searches.forEach(({ collection, query, filterBy }) => {
+            searchCalls.push({ indexName: collection, text: query, filters: filterBy })
+        })
+        return searches.map(() => ({ hits: [] }))
+    },
+}))
+
+// This suite pins the WIRING of whichever engine is live (utils/searchEngine.js), so it
+// keeps guarding search when the flag is flipped for a rollback. Only the filter STRING
+// syntax differs per engine. useTypesenseSearch() (not the bare flag) decides, because it
+// is also key-aware: in an env without Typesense keys (CI has no .env) the modal takes the
+// Algolia path, and the expectations here follow it.
+const { useTypesenseSearch } = jest.requireActual('../../utils/searchEngine')
+const IS_TYPESENSE = useTypesenseSearch()
+const projectConjunct = projectId => (IS_TYPESENSE ? `projectId:=[\`${projectId}\`]` : `projectId:"${projectId}"`)
+const creatorConjunct = (attribute, uid) => (IS_TYPESENSE ? `${attribute}:=\`${uid}\`` : `${attribute}:"${uid}"`)
+const assistantExclusionConjunct = IS_TYPESENSE ? 'isAssistant:=false' : 'isAssistant:false'
+
 const PROJECT = { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } }
 
 jest.mock('../../utils/backends/firestore', () => {
@@ -141,8 +163,8 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         expect(searchCalls).toHaveLength(5)
         searchCalls.forEach(call => {
-            expect(call.filters).toContain('projectId:"project-1"')
-            expect(call.filters).not.toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).toContain(projectConjunct('project-1'))
+            expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
     })
 
@@ -192,9 +214,9 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         expect(Object.keys(CREATOR_ATTRIBUTE_BY_INDEX).sort()).toEqual(searchCalls.map(c => c.indexName).sort())
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
-            expect(call.filters).toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
             // The pre-existing access scoping must survive alongside it.
-            expect(call.filters).toContain('projectId:"project-1"')
+            expect(call.filters).toContain(projectConjunct('project-1'))
             expect(call.filters).toContain('isPublicFor:')
         })
     })
@@ -207,7 +229,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await setCreatedByMe(true)
 
         const contacts = searchCalls.find(call => call.indexName === 'dev_contacts')
-        expect(contacts.filters).toContain('isAssistant:false')
+        expect(contacts.filters).toContain(assistantExclusionConjunct)
     })
 
     it('does not fire a search when toggled with an empty search box', async () => {
@@ -238,7 +260,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         expect(searchCalls).toHaveLength(5)
         searchCalls.forEach(call => {
-            expect(call.filters).not.toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
     })
 })
