@@ -59,11 +59,21 @@ export default function MeetingBookingPage({ navigation }) {
     const hostTimeZone = page?.settings?.timeZone || visitorTimeZone
     const activeTimeZone = displayTimeZone || visitorTimeZone
 
+    // Unless the host opted in, today is not offered at all — the server refuses same-day
+    // slots anyway, so showing today would only ever render an empty day. Both sides read a
+    // missing value as false, which keeps booking links created before this setting existed
+    // on the no-same-day rule.
+    const allowSameDayBooking = page?.settings?.allowSameDayBooking === true
+    const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
+
     const days = useMemo(() => {
         return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
-            moment().tz(hostTimeZone).add(index, 'days').startOf('day')
+            moment()
+                .tz(hostTimeZone)
+                .add(index + firstBookableDayOffset, 'days')
+                .startOf('day')
         )
-    }, [hostTimeZone])
+    }, [hostTimeZone, firstBookableDayOffset])
 
     const changeLanguage = nextLanguage => {
         setLanguage(nextLanguage)
@@ -94,6 +104,7 @@ export default function MeetingBookingPage({ navigation }) {
                 setSelectedDay(
                     moment()
                         .tz(result.page?.settings?.timeZone || moment.tz.guess())
+                        .add(result.page?.settings?.allowSameDayBooking === true ? 0 : 1, 'days')
                         .startOf('day')
                 )
             } catch (loadError) {

@@ -1958,6 +1958,8 @@
     "Buffer before": "Puffer davor",
     "Buffer after": "Puffer danach",
     "Include weekends": "Wochenenden einbeziehen",
+    "Allow same day booking": "Buchung am selben Tag erlauben",
+    "Allow same day booking description": "Wenn deaktiviert, kann frühestens für morgen in deiner Zeitzone gebucht werden.",
     "Additional guests": "Zusätzliche Gäste",
     "Additional guests description": "Diese Personen werden automatisch als Gäste zu jeder gebuchten Besprechung eingeladen – praktisch, um einen gemeinsamen Kalender zu blockieren oder Kolleg:innen einzubeziehen. Eine E-Mail pro Zeile.",
     "Additional guests placeholder": "kollege@beispiel.com\nteam@beispiel.com",

@@ -2376,6 +2376,8 @@
     "Buffer before": "Margen antes",
     "Buffer after": "Margen después",
     "Include weekends": "Incluir fines de semana",
+    "Allow same day booking": "Permitir reservas el mismo día",
+    "Allow same day booking description": "Si está desactivado, lo más pronto que se puede reservar es mañana en tu zona horaria.",
     "Additional guests": "Invitados adicionales",
     "Additional guests description": "Estas personas se invitan automáticamente como invitados a cada reunión reservada, ideal para bloquear un calendario compartido o incluir a colegas. Un correo por línea.",
     "Additional guests placeholder": "colega@ejemplo.com\nequipo@ejemplo.com",
