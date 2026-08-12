@@ -1036,6 +1036,7 @@
     "Write the title of the goal": "Escribe el título de la meta",
     "Write the title of the skill": "Escribe el título de la habilidad",
     "Do you really want to perform this action?": "¿Realmente quieres realizar esta acción?",
+    "Recovering this version will overwrite the current version. However you can always switch back to the previous version if you want to.": "Recuperar esta versión sobrescribirá la versión actual. Sin embargo, siempre puedes volver a la versión anterior si lo deseas.",
     "Milestone": "Hito",
     "Workstream": "Grupo de trabajo",
     "Highlight": "Resaltar",
@@ -2607,6 +2608,8 @@
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Se usa cuando eliges un modelo de DeepSeek u otro de OpenRouter para el entorno de Codex. Tu clave se valida con OpenRouter antes de guardarse.",
     "Paste your OpenRouter API key (sk-or-…)": "Pega tu clave API de OpenRouter (sk-or-…)",
     "Only objects I created": "Solo objetos creados por mí",
+    "Include archived projects": "Incluir proyectos archivados",
+    "Include templates & guides": "Incluir plantillas y guías",
     "One earlier unread message": "1 mensaje anterior sin leer",
     "Amount earlier unread messages": "%{amount} mensajes anteriores sin leer"
 }

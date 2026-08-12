@@ -307,10 +307,7 @@ export default function RichCreateTaskModal({
         dispatch(hideFloatPopup())
     }
 
-    // DueDateModal invokes saveDueDateBeforeSaveTask as (task, date, isObserved) —
-    // reading the first argument as the date stored the whole draft task object
-    // under dueDate (found via the Typesense backfill's schema rejections).
-    const saveDueDate = (taskFromModal, dueDate) => {
+    const saveDueDate = dueDate => {
         if (dueDate !== undefined) setTask({ ...task, dueDate })
         setShowDueDateModal(false)
         dispatch(hideFloatPopup())
