@@ -21,23 +21,34 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     generateNegativeSortIndex: () => -1,
 }))
 
-const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
+const { getDefaultCalendarSortIndex, resolveTaskSortIndex } = require('./calendarTaskSortIndex')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
 
 const MEETING_START = '2026-08-20T10:00:00+02:00'
 const CREATED = moment('2026-08-08T09:00:00+02:00').valueOf()
+const DEFAULT_PLACEMENT = getDefaultCalendarSortIndex({ start: { dateTime: MEETING_START } })
 
-describe('AT-2259 - server-side task mapping normalizes the legacy calendar sortIndex', () => {
-    it('maps a legacy calendar sortIndex onto the task creation time', () => {
-        const mapped = mapTaskData('task-1', {
+describe('AT-2259 / AT-2270 - server-side task mapping normalizes the calendar sortIndex', () => {
+    it('maps an untouched calendar sortIndex onto the default placement, in both stored shapes', () => {
+        const legacy = mapTaskData('task-1', {
             name: 'Weekly sync',
             userId: 'user-1',
             created: CREATED,
             calendarData: { eventId: 'event-1', start: { dateTime: MEETING_START } },
-            sortIndex: moment(MEETING_START).valueOf(),
+            sortIndex: moment(MEETING_START).valueOf(), // pre-AT-2259: the event start
         })
+        expect(legacy.sortIndex).toBe(DEFAULT_PLACEMENT)
 
-        expect(mapped.sortIndex).toBe(CREATED)
+        const arrival = mapTaskData('task-1b', {
+            name: 'Weekly sync',
+            userId: 'user-1',
+            created: CREATED,
+            calendarData: { eventId: 'event-1', start: { dateTime: MEETING_START } },
+            sortIndex: CREATED + 1, // post-AT-2259: the arrival index
+        })
+        expect(arrival.sortIndex).toBe(DEFAULT_PLACEMENT)
+        // Below every generated index, so the meeting sits under the ordinary tasks of its group.
+        expect(DEFAULT_PLACEMENT).toBeLessThan(-moment().valueOf())
     })
 
     it('leaves a normal task and a user-influenced calendar task untouched', () => {
@@ -67,28 +78,33 @@ describe('AT-2259 - server-side task mapping normalizes the legacy calendar sort
 })
 
 describe('resolveTaskSortIndex', () => {
-    it('only rewrites the untouched calendar-derived value', () => {
+    it('only rewrites a sortIndex no user has influenced', () => {
         const legacy = moment(MEETING_START).valueOf()
         const calendarData = { start: { dateTime: MEETING_START } }
 
-        expect(resolveTaskSortIndex(legacy, calendarData, CREATED)).toBe(CREATED)
+        expect(resolveTaskSortIndex(legacy, calendarData, CREATED)).toBe(DEFAULT_PLACEMENT)
         expect(resolveTaskSortIndex(legacy + 1, calendarData, CREATED)).toBe(legacy + 1)
         expect(resolveTaskSortIndex(legacy, null, CREATED)).toBe(legacy)
-        expect(resolveTaskSortIndex(legacy, calendarData, undefined)).toBe(legacy)
+        // A legacy value is recognisable without `created`, an arrival index is not.
+        expect(resolveTaskSortIndex(legacy, calendarData, undefined)).toBe(DEFAULT_PLACEMENT)
+        expect(resolveTaskSortIndex(CREATED, calendarData, undefined)).toBe(CREATED)
     })
 })
 
-describe('the calendar sync no longer stores the event start as the ordering key', () => {
-    it('has no source path deriving sortIndex from calendarData.start', () => {
+describe('the calendar sync never stores a sortIndex that can outrank an ordinary task', () => {
+    it('derives every calendar sortIndex through the shared helper', () => {
         const source = require('fs').readFileSync(
             require('path').join(__dirname, '../GoogleCalendarTasks/calendarTasks.js'),
             'utf8'
         )
-        const assignments = source.match(/sortIndex\s*=\s*[^\n]*/g) || []
+        const assignments = source.match(/^\s*[\w.]*sortIndex\s*=\s*[^\n]*/gm) || []
 
         expect(assignments.length).toBeGreaterThan(0)
         assignments.forEach(assignment => {
-            expect(assignment).not.toMatch(/start|dateTime|timezoneOffset/)
+            // AT-2259: the event start must never be assigned raw. AT-2270: the only permitted
+            // source is generateCalendarTaskSortIndex(), which derives the below-everything band.
+            expect(assignment).toMatch(/generateCalendarTaskSortIndex\(/)
+            expect(assignment).not.toMatch(/moment\(|timezoneOffset/)
         })
     })
 })
