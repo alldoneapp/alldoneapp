@@ -54,7 +54,6 @@ import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { getGoalData } from './backends/Goals/goalsFirestore'
 import { getChatMeta } from './backends/Chats/chatsFirestore'
 import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
-import URLsBookingTrigger from '../URLSystem/Booking/URLsBookingTrigger'
 
 class SharedHelper {
     static normalizeInternalUrl = rawUrl => {
@@ -107,18 +106,6 @@ class SharedHelper {
             }
         }
         return false
-    }
-
-    // Public standalone pages: pages an unregistered visitor is meant to open directly, with no
-    // account, no Firebase session and no app shell around them. Currently that is the public
-    // meeting booking page (/meet/<slug>), which is served by unauthenticated HTTP endpoints
-    // (/api/booking/*), so it needs no authentication at all. These URLs must never mount the
-    // login ("you are not registered") screen on the way in — that screen rewrites the address bar
-    // to /login and starts an anonymous sign-in, i.e. it both flashes and loses the link.
-    static matchesPublicPageUrl = rawUrl => {
-        const url = SharedHelper.normalizeInternalUrl(rawUrl)
-        const pathname = url.split('?')[0].split('#')[0]
-        return URLsBookingTrigger.match(pathname) !== URL_NOT_MATCH
     }
 
     static processUrl = async (isLoggedIn, URL, onIsMember, onIsShared, onNotShared, onNotMatch, onJoinToTemplate) => {
@@ -444,14 +431,10 @@ class SharedHelper {
 
         const onNotMatch = URL => {
             // If URL is public then process it
-            // We have public URLs: /login, /starttrial, /paymentsuccess and /meet/<slug>
+            // We have public URLs: /login, /starttrial, and /paymentsuccess
             // The /login route is processed in other component, not here
             // For /starttrial and /paymentsuccess, we should handle them directly
-            if (
-                URL.startsWith('/starttrial') ||
-                URL.startsWith('/paymentsuccess') ||
-                SharedHelper.matchesPublicPageUrl(URL)
-            ) {
+            if (URL.startsWith('/starttrial') || URL.startsWith('/paymentsuccess') || URL.startsWith('/meet/')) {
                 URLTrigger.directProcessUrl(NavigationService, URL)
             }
         }
