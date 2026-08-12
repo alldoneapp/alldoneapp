@@ -18,14 +18,12 @@ const {
     deleteTypesenseDocument,
     importTypesenseDocuments,
     deleteTypesenseProjectRecords,
-    isTypesenseConfigured,
 } = require('./typesenseHelper')
-const { getProject, updateFullSearchInProject, getUserProjects } = require('./Firestore/generalFirestoreCloud')
+const { getProject } = require('./Firestore/generalFirestoreCloud')
 const { getGoalTasksAndSubtasks } = require('./Goals/goalsFirestore')
 const { getGoalData } = require('./Goals/goalsFirestore')
 const moment = require('moment')
 const { DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
-const { BatchWrapper } = require('./BatchWrapper/batchWrapper')
 const { mapProjectData } = require('./Utils/MapDataFuncions')
 const { GLOBAL_PROJECT_ID } = require('./Firestore/assistantsFirestore')
 
@@ -152,19 +150,11 @@ const mapObject = async (projectId, objectId, algoliaObjectId, object, objectsTy
     return cleanObject
 }
 
+// Since Phase 4 of the Typesense migration there are NO eligibility gates here: every
+// record is indexed regardless of project state (inactive/template/guide content is hidden
+// from default results by the client's scope filters, not by index absence). Both stores
+// receive the write while Algolia remains the rollback target; Phase 5 removes it.
 const createRecord = async (projectId, objectId, item, objectsType, db, canBeInactive, paramProject) => {
-    const project =
-        projectId === GLOBAL_PROJECT_ID
-            ? { id: GLOBAL_PROJECT_ID, activeFullSearch: true }
-            : paramProject || (await getProject(projectId, admin))
-
-    if (!project) return
-    // Algolia keeps its historical record-count gates (inactive/template projects are not
-    // indexed there); Typesense indexes everything (TYPESENSE_MIGRATION.md Phase 1). With
-    // Typesense unconfigured the old early-return is preserved, so nothing extra runs.
-    const eligibleForAlgolia = !!(project.activeFullSearch || (project.active && !project.parentTemplateId))
-    if (!eligibleForAlgolia && !isTypesenseConfigured()) return
-
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
 
@@ -181,11 +171,7 @@ const createRecord = async (projectId, objectId, item, objectsType, db, canBeIna
         })
     }
 
-    if (eligibleForAlgolia) {
-        await addAlgoliaRecord(object, indexPrefix)
-    } else {
-        await upsertTypesenseDocument(indexPrefix, object)
-    }
+    await addAlgoliaRecord(object, indexPrefix)
 }
 
 const deleteRecord = async (objectId, projectId, objectsType) => {
@@ -195,45 +181,18 @@ const deleteRecord = async (objectId, projectId, objectsType) => {
 }
 
 const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, db) => {
-    const lastEditionDate = moment().endOf('day').subtract(30, 'day').valueOf()
     console.log(`Processing update for ${objectsType} ${objectId} in project ${projectId}`)
 
-    const project =
-        projectId === GLOBAL_PROJECT_ID
-            ? { id: GLOBAL_PROJECT_ID, activeFullSearch: true }
-            : await getProject(projectId, admin)
-
-    if (!project) {
-        console.log(`Project not found for ${objectId}, skipping update`)
-        return
-    }
-    // The historical gates below decide only whether ALGOLIA gets the write (they exist to
-    // cap its billable record count); Typesense receives every update regardless
-    // (TYPESENSE_MIGRATION.md Phase 1). With Typesense unconfigured the old early-returns
-    // are preserved so behavior and cost are exactly as before.
-    let eligibleForAlgolia = !!(project.activeFullSearch || (project.active && !project.parentTemplateId))
-    if (!eligibleForAlgolia && !isTypesenseConfigured()) {
-        console.log(`Project ${projectId} not eligible for search indexing, skipping update`)
-        return
-    }
-
-    const objectIsInactive = !project.activeFullSearch && newItem.lastEditionDate <= lastEditionDate
+    // Since Phase 4 of the Typesense migration there are no eligibility gates or
+    // recency windows here — every update is indexed in both stores. canBeInactive is
+    // still computed because the mapped record carries it as an attribute.
     let canBeInactive = false
 
     if (objectsType === CHATS_OBJECTS_TYPE) {
-        if (objectIsInactive) {
-            console.log(`Chat ${objectId} is inactive, skipping Algolia update`)
-            eligibleForAlgolia = false
-        }
         canBeInactive = true
     } else if (objectsType === TASKS_OBJECTS_TYPE) {
         const { isSubtask, parentDone, done } = newItem
-        const isDone = isSubtask ? parentDone : done
-        if (isDone && objectIsInactive) {
-            console.log(`Task ${objectId} is done and inactive, skipping Algolia update`)
-            eligibleForAlgolia = false
-        }
-        canBeInactive = isDone
+        canBeInactive = isSubtask ? parentDone : done
     } else if (objectsType === GOALS_OBJECTS_TYPE) {
         const milestoneDocs = await db
             .collection(`goalsMilestones/${projectId}/milestonesItems`)
@@ -260,22 +219,8 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
             completionMilestoneDate >= goalsDate.start &&
             startingMilestoneDate <= goalsDate.end
 
-        if (
-            !isIncompleted &&
-            !isDynamicIncompleted &&
-            !isCompletedAndOpen &&
-            !isDynamicCompletedAndOpen &&
-            objectIsInactive
-        ) {
-            console.log(`Goal ${objectId} is complete and inactive, skipping Algolia update`)
-            eligibleForAlgolia = false
-        }
         canBeInactive = !isIncompleted && !isDynamicIncompleted && !isCompletedAndOpen && !isDynamicCompletedAndOpen
     }
-
-    // Old behavior preserved when Typesense is off: an object gated out of Algolia has
-    // nowhere to be written.
-    if (!eligibleForAlgolia && !isTypesenseConfigured()) return
 
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
@@ -306,11 +251,7 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
 
     if (Object.keys(changes).length > 0 || hasContentChanged) {
         console.log(`Updating search record for ${objectsType} ${objectId} with ${Object.keys(changes).length} changes`)
-        if (eligibleForAlgolia) {
-            await addAlgoliaRecord(objectAfter, indexPrefix)
-        } else {
-            await upsertTypesenseDocument(indexPrefix, objectAfter)
-        }
+        await addAlgoliaRecord(objectAfter, indexPrefix)
     } else {
         console.log(`No significant changes detected for ${objectsType} ${objectId}, skipping update`)
     }
@@ -398,14 +339,14 @@ const updateAlgoliaUserRecords = async (projectIds, userAfter, indexPrefix, db) 
     projectsDocs.forEach(projectDoc => {
         const project = mapProjectData(projectDoc.id, projectDoc.data(), {})
 
-        if (project.activeFullSearch || (project.active && !project.parentTemplateId)) {
-            const projectId = projectDoc.id
-            const user = { ...userAfter }
-            user.objectID = user.uid + projectId
-            user.projectId = projectId
-            fillRolCompanyAndDescriptionInUser(project, user)
-            promises.push(addAlgoliaRecord(user, indexPrefix))
-        }
+        // No eligibility gate since Phase 4 of the Typesense migration — member records
+        // are indexed for every project the user belongs to.
+        const projectId = projectDoc.id
+        const user = { ...userAfter }
+        user.objectID = user.uid + projectId
+        user.projectId = projectId
+        fillRolCompanyAndDescriptionInUser(project, user)
+        promises.push(addAlgoliaRecord(user, indexPrefix))
     })
     await Promise.all(promises)
 }
@@ -450,6 +391,12 @@ const removeAlgoliaRecordsInProject = async (projectId, { alsoRemoveFromTypesens
     await Promise.all(promises)
 }
 
+// Deactivates projects nobody opened in 30 days. Since Phase 4 of the Typesense migration
+// it only flips projects.active — search records are KEPT in both stores (Typesense keeps
+// everything by design; deleting from Algolia would degrade it as the rollback target).
+// The query shape (including the vestigial activeFullSearch clause) is deliberately
+// unchanged: it matches the existing composite index, and firestore.indexes.json must not
+// be touched casually (see CLAUDE.md).
 const checkAndRemoveProjectsWithoutActivityFromAlgolia = async () => {
     const date = moment().subtract(30, 'day').valueOf()
     const projectDocs = (
@@ -464,7 +411,6 @@ const checkAndRemoveProjectsWithoutActivityFromAlgolia = async () => {
 
     const promises = []
     projectDocs.forEach(doc => {
-        promises.push(removeAlgoliaRecordsInProject(doc.id))
         promises.push(admin.firestore().doc(`projects/${doc.id}`).update({ active: false }))
     })
     await Promise.all(promises)
@@ -487,143 +433,6 @@ const proccessAlgoliaRecordsWhenUnlockGoal = async (projectId, goalId, admin) =>
     await Promise.all(promises)
 }
 
-const checkAndRemoveInactiveObjectsFromAlgolia = async () => {
-    const client = getAlgoliaClient()
-    const chatsIndex = client.initIndex(CHATS_INDEX_NAME_PREFIX)
-    const notesIndex = client.initIndex(NOTES_INDEX_NAME_PREFIX)
-    const tasksIndex = client.initIndex(TASKS_INDEX_NAME_PREFIX)
-    const goalsIndex = client.initIndex(GOALS_INDEX_NAME_PREFIX)
-    const contactsIndex = client.initIndex(CONTACTS_INDEX_NAME_PREFIX)
-
-    const activeFullSearchLimit = moment().endOf('day').subtract(14, 'day').valueOf()
-
-    let promises = []
-    promises.push(
-        admin
-            .firestore()
-            .collection(`users`)
-            .where('activeFullSearchDate', '<', activeFullSearchLimit)
-            .where('activeFullSearchDate', '!=', null)
-            .get()
-    )
-    promises.push(admin.firestore().collection(`projects`).where('activeFullSearch', '!=', null).get())
-
-    const [userDocs, projectDocs] = await Promise.all(promises)
-
-    const projectIdsWithFullSearch = []
-    const notSearchableProjectsThatLostFullSearch = []
-    promises = []
-    userDocs.forEach(doc => {
-        promises.push(admin.firestore().doc(`users/${doc.id}`).update({ activeFullSearchDate: null }))
-    })
-    projectDocs.forEach(doc => {
-        const project = mapProjectData(doc.id, doc.data(), {})
-        if (project.activeFullSearch !== 'indexing') {
-            if (project.activeFullSearch > activeFullSearchLimit) {
-                projectIdsWithFullSearch.push(doc.id)
-            } else {
-                if (!project.active || project.parentTemplateId) notSearchableProjectsThatLostFullSearch.push(doc.id)
-                promises.push(admin.firestore().doc(`projects/${doc.id}`).update({ activeFullSearch: null }))
-            }
-        }
-    })
-
-    let fullSearchProjectsIdsFilter = ''
-    if (projectIdsWithFullSearch.length === 1) {
-        fullSearchProjectsIdsFilter = `NOT projectId:${projectIdsWithFullSearch[0]}`
-    } else {
-        for (let i = 0; i < projectIdsWithFullSearch.length; i++) {
-            const id = projectIdsWithFullSearch[i]
-            i === 0
-                ? (fullSearchProjectsIdsFilter = `NOT projectId:${id}`)
-                : (fullSearchProjectsIdsFilter += ` AND NOT projectId:${id}`)
-        }
-    }
-
-    let notSearchableProjectIdsFilter = ''
-    if (notSearchableProjectsThatLostFullSearch.length === 1) {
-        notSearchableProjectIdsFilter = `projectId:${notSearchableProjectsThatLostFullSearch[0]}`
-    } else {
-        for (let i = 0; i < notSearchableProjectsThatLostFullSearch.length; i++) {
-            const id = notSearchableProjectsThatLostFullSearch[i]
-            i === 0
-                ? (notSearchableProjectIdsFilter = `projectId:${id}`)
-                : (notSearchableProjectIdsFilter += ` OR projectId:${id}`)
-        }
-    }
-
-    const lastEditionDate = moment().endOf('day').subtract(30, 'day').valueOf()
-
-    const chatsFilter = fullSearchProjectsIdsFilter
-        ? `(${fullSearchProjectsIdsFilter}) AND lastEditionDate <= ${lastEditionDate}`
-        : `lastEditionDate <= ${lastEditionDate}`
-    promises.push(chatsIndex.deleteBy({ filters: chatsFilter }))
-    if (notSearchableProjectIdsFilter) promises.push(chatsIndex.deleteBy({ filters: notSearchableProjectIdsFilter }))
-
-    const tasksFilter = fullSearchProjectsIdsFilter
-        ? `(${fullSearchProjectsIdsFilter}) AND done:true AND lastEditionDate <= ${lastEditionDate}`
-        : `done:true AND lastEditionDate <= ${lastEditionDate}`
-    promises.push(tasksIndex.deleteBy({ filters: tasksFilter }))
-    if (notSearchableProjectIdsFilter) promises.push(tasksIndex.deleteBy({ filters: notSearchableProjectIdsFilter }))
-
-    const goalsFilter = fullSearchProjectsIdsFilter
-        ? `(${fullSearchProjectsIdsFilter}) AND canBeInactive:true AND lastEditionDate <= ${lastEditionDate}`
-        : `canBeInactive:true AND lastEditionDate <= ${lastEditionDate}`
-    promises.push(goalsIndex.deleteBy({ filters: goalsFilter }))
-    if (notSearchableProjectIdsFilter) promises.push(goalsIndex.deleteBy({ filters: notSearchableProjectIdsFilter }))
-
-    if (notSearchableProjectIdsFilter) promises.push(notesIndex.deleteBy({ filters: notSearchableProjectIdsFilter }))
-    if (notSearchableProjectIdsFilter) promises.push(contactsIndex.deleteBy({ filters: notSearchableProjectIdsFilter }))
-
-    await Promise.all(promises)
-}
-
-const startProjectIndexationInAlgolia = async (projects, activeFullSearchDate) => {
-    const batch = new BatchWrapper(admin.firestore())
-    projects.forEach(project => {
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/tasks`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/goals`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/notes`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/users`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/contacts`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/chats`), {
-            activeFullSearchDate,
-        })
-        batch.set(admin.firestore().doc(`algoliaIndexation/${project.id}/objectTypes/assistants`), {
-            activeFullSearchDate,
-        })
-    })
-    await batch.commit(true)
-}
-
-const indexProjectsRecordsInAlgolia = async userId => {
-    const projects = await getUserProjects(userId, admin)
-    const activeFullSearchDate = Date.now()
-
-    const batch = new BatchWrapper(admin.firestore())
-    batch.update(admin.firestore().doc(`users/${userId}`), { activeFullSearchDate })
-    projects.forEach(project => {
-        if (project.activeFullSearch) {
-            if (project.activeFullSearch !== 'indexing')
-                updateFullSearchInProject(project.id, activeFullSearchDate, admin.firestore(), batch)
-        } else {
-            updateFullSearchInProject(project.id, 'indexing', admin.firestore(), batch)
-        }
-    })
-    await batch.commit()
-    await startProjectIndexationInAlgolia(projects, activeFullSearchDate)
-}
-
 module.exports = {
     removeAlgoliaRecordsInProject,
     TASKS_OBJECTS_TYPE,
@@ -639,8 +448,5 @@ module.exports = {
     deleteRecord,
     updateRecord,
     proccessAlgoliaRecordsWhenUnlockGoal,
-    checkAndRemoveInactiveObjectsFromAlgolia,
-    indexProjectsRecordsInAlgolia,
-    startProjectIndexationInAlgolia,
     checkAndRemoveProjectsWithoutActivityFromAlgolia,
 }

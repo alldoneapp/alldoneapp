@@ -673,123 +673,13 @@ const uploadObjectsToAlgolia = async (algoliaClient, objectsList, objectsType) =
 
 //////////////////////
 
-const getProjectAndUsersMap = async projectId => {
-    const usersMap = {}
+// The seven start*Indextion entry points, getProjectAndUsersMap and
+// checkAlgoliaFullSearchIndeaxtion were removed in Phase 4 of the Typesense migration
+// together with their algoliaIndexation/algoliaFullSearchIndexation triggers. Bulk
+// (re)indexation is Typesense-only now: migration/backfillTypesense.js.
 
-    const promises = []
-    promises.push(getProject(projectId, admin))
-    promises.push(mapUsersInProject(projectId, admin.firestore(), usersMap))
-    const [project] = await Promise.all(promises)
-
-    return { project, usersMap }
-}
-
-const startTasksIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const { project, usersMap } = await getProjectAndUsersMap(projectId)
-
-    const tasks = []
-    await addTasksToList(projectId, usersMap, tasks, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, tasks, TASKS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/tasks`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ tasksFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startGoalsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const { project, usersMap } = await getProjectAndUsersMap(projectId)
-
-    const goals = []
-    await addGoalsToList(projectId, usersMap, goals, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, goals, GOALS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/goals`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ goalsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startNotesIndextion = async (projectId, activeFullSearchDate) => {
-    console.log(`Starting notes indexation for project ${projectId}`)
-    const algoliaClient = getAlgoliaClient()
-
-    const notes = []
-    console.log('Fetching notes from Firestore...')
-    await addNotesToList(projectId, {}, notes, admin.firestore())
-    console.log(`Found ${notes.length} notes to index`)
-
-    console.log('Uploading notes to Algolia...')
-    await uploadObjectsToAlgolia(algoliaClient, notes, NOTES_OBJECTS_TYPE)
-    console.log('Notes uploaded to Algolia')
-
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/notes`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ notesFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-    console.log('Notes indexation completed')
-}
-
-const startChatsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const project = await getProject(projectId, admin)
-
-    const chats = []
-    await addChatsToList(projectId, {}, chats, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, chats, CHATS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/chats`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ chatsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startContactsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const contacts = []
-    await addContactsToList(projectId, {}, contacts, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, contacts, CONTACTS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/contacts`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ contactsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startAssistantsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const assistants = []
-    await addAssistantsToList(projectId, {}, assistants, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, assistants, ASSISTANTS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/assistants`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ assistantsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-// Shared with the Typesense backfill (migration/backfillTypesense.js): builds the per-project
-// member records exactly as startUsersIndextion always has.
+// Used by the Typesense backfill (migration/backfillTypesense.js): builds the per-project
+// member records exactly as the retired startUsersIndextion always did.
 const buildProjectUsersSearchRecords = async projectId => {
     const promises = []
     promises.push(getProject(projectId, admin))
@@ -807,61 +697,10 @@ const buildProjectUsersSearchRecords = async projectId => {
     return parsedUsers
 }
 
-const startUsersIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const parsedUsers = await buildProjectUsersSearchRecords(projectId)
-
-    await uploadObjectsToAlgolia(algoliaClient, parsedUsers, USERS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/users`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ usersFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const checkAlgoliaFullSearchIndeaxtion = async (projectId, fullSearchIndeaxtion) => {
-    const {
-        tasksFullSearchIndexed,
-        goalsFullSearchIndexed,
-        notesFullSearchIndexed,
-        chatsFullSearchIndexed,
-        contactsFullSearchIndexed,
-        assistantsFullSearchIndexed,
-        usersFullSearchIndexed,
-        activeFullSearchDate,
-    } = fullSearchIndeaxtion
-
-    if (
-        tasksFullSearchIndexed &&
-        goalsFullSearchIndexed &&
-        notesFullSearchIndexed &&
-        chatsFullSearchIndexed &&
-        contactsFullSearchIndexed &&
-        assistantsFullSearchIndexed &&
-        usersFullSearchIndexed
-    ) {
-        const batch = new BatchWrapper(admin.firestore())
-        batch.delete(admin.firestore().doc(`algoliaFullSearchIndexation/${projectId}`))
-        batch.update(admin.firestore().doc(`projects/${projectId}`), { activeFullSearch: activeFullSearchDate })
-        await batch.commit()
-    }
-}
-
 /////////////////////
 
 module.exports = {
     removeProjectObjectsFromAlgolia,
-    startTasksIndextion,
-    startGoalsIndextion,
-    startNotesIndextion,
-    startContactsIndextion,
-    startAssistantsIndextion,
-    startChatsIndextion,
-    startUsersIndextion,
-    checkAlgoliaFullSearchIndeaxtion,
     getAlgoliaClient,
     getNoteContent,
     processObject,

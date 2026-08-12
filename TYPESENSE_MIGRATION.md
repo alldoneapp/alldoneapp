@@ -1,5 +1,17 @@
 # Algolia → Typesense Cloud Migration Plan
 
+> **Phase 4 implemented (2026-08-12):** the "Activate full search for 500 Gold" checkbox
+> (`ActiveFullSearch.js`), its gold/indexing flow, the admin reindex sidebar item, the
+> two i18n strings, and the `activeFullSearchDate` user mapping are deleted. Server side:
+> the `indexProjectsRecordsInAlgoliaSecondGen` callable, all 7 `onStartIndexingAlgolia*`
+> triggers, `onEndIndexingAlgoliaFullSearch`, and the 14-day expiry job
+> (`checkAndRemoveInactiveObjectsFromAlgolia`) are gone; `createRecord`/`updateRecord`
+> index EVERYTHING with no gates or recency windows (both stores — Algolia stays a
+> faithful rollback target until Phase 5); the stale-project job now only flips
+> `projects.active` (query shape kept for index safety). The Guide tab in the search
+> project picker always shows. Vestigial `activeFullSearch*` writes remain in
+> HelperScripts.js admin utilities (inert). Remaining: Phase 5 after 2–4 stable weeks.
+>
 > **Status (2026-08-12): Phases 0–2 COMPLETE.** Dual-write deployed to production
 > (pipeline #8171) and confirmed live. Full backfill executed against `alldonealeph`:
 > 4,824 projects + global assistants, **223,731 documents, 0 failures** (dev_tasks 185,975 ·
@@ -21,9 +33,12 @@
 > SearchService (active-project default scope), TaskSearchService ported. Client search-only
 > key generated (key id 1, `documents:search` on the 5 collections) and wired through
 > `.env` / `replace-envs.sh` / `getTypesenseSearchKeys()`.
-> **Before the production WEB deploy:** add GitLab CI variables `TYPESENSE_HOST` and
-> `TYPESENSE_SEARCH_ONLY_API_KEY` (plain variables, used by `ci/replace-envs.sh`) — until
-> they exist, production web quietly keeps reading from Algolia.
+> **Phase 3 DEPLOYED (2026-08-12):** client + server reads live on Typesense in production;
+> verified by grepping the deployed bundle for the cluster host. Gotcha for posterity: the
+> GitLab variables `TYPESENSE_HOST` / `TYPESENSE_SEARCH_ONLY_API_KEY` were first created as
+> "protected" in a project with **no protected branches**, so every pipeline saw empty
+> strings and the key-aware flag silently kept Algolia reads — the working variables here
+> are all unprotected; match that.
 > **QA gate (run before Phase 4, two accounts A/B):**
 >
 > 1. B's private task/note never appears for A (isPublicFor).

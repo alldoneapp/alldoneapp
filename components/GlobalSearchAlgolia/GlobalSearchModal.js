@@ -46,19 +46,11 @@ import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './se
 import ProjectFilter from './Filter/ProjectFilter'
 import CreatedByMeOption from './Filter/CreatedByMeOption'
 import SearchScopeOptions from './Filter/SearchScopeOptions'
-import ActiveFullSearch from './Filter/ActiveFullSearch'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
     ALL_PROJECTS_OPTION,
 } from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
-import {
-    watchUserProjects,
-    unwatch,
-    runHttpsCallableFunction,
-    spentGold,
-    getAllUserProjects,
-} from '../../utils/backends/firestore'
-import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
+import { getAllUserProjects } from '../../utils/backends/firestore'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
@@ -68,17 +60,11 @@ import useEscapeKey from '../../hooks/useEscapeKey'
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
 
-    const activeFullSearchDate = useSelector(state => state.loggedUser.activeFullSearchDate)
-    const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const realTemplateProjectsAmount = useSelector(state => state.loggedUser.realTemplateProjectIds.length)
     const searchText = useSelector(state => state.searchText)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreen)
     const [projects, setProjects] = useState([])
-    const [fullSearchMap, setFullSearchMap] = useState({ all: false, indexing: true })
-    const [activeFullSearchInAllProjects, setActiveFullSearchInAllProjects] = useState(false)
-    const [indexingFullSearchInAllProjects, setIndexingActiveFullSearchInAllProjects] = useState(false)
-    const [indexing, setIndexing] = useState(false)
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
@@ -147,16 +133,6 @@ export default function GlobalSearchModal() {
             setShowShortcuts(false)
             event.preventDefault()
         }
-    }
-
-    const isSearching = () => {
-        return (
-            processing[MENTION_MODAL_CONTACTS_TAB] ||
-            processing[MENTION_MODAL_CONTACTS_TAB] ||
-            processing[MENTION_MODAL_CONTACTS_TAB] ||
-            processing[MENTION_MODAL_CONTACTS_TAB] ||
-            processing[MENTION_MODAL_CONTACTS_TAB]
-        )
     }
 
     const updateTemporaryProjectsAndUsers = async () => {
@@ -763,33 +739,6 @@ export default function GlobalSearchModal() {
         }
     }
 
-    const updateIndexationDataAndFullSearchData = projects => {
-        const fullSearchMap = { all: true, indexing: false }
-        projects.forEach(project => {
-            fullSearchMap[project.id] = project.activeFullSearch
-            if (!project.activeFullSearch || project.activeFullSearch === 'indexing') fullSearchMap.all = false
-            if (project.activeFullSearch === 'indexing') fullSearchMap.indexing = true
-        })
-        setFullSearchMap(fullSearchMap)
-    }
-
-    useEffect(() => {
-        const { loggedUser } = store.getState()
-        const watcherKey = v4()
-        watchUserProjects(loggedUser.uid, watcherKey, updateIndexationDataAndFullSearchData)
-        return () => {
-            unwatch(watcherKey)
-        }
-    }, [])
-
-    useEffect(() => {
-        const activeFullSearchInAllProjects = inSelectedProject
-            ? fullSearchMap[selectedProject.id] && fullSearchMap[selectedProject.id] !== 'indexing'
-            : fullSearchMap.all
-        setActiveFullSearchInAllProjects(activeFullSearchInAllProjects)
-        setIndexingActiveFullSearchInAllProjects(fullSearchMap.indexing)
-    }, [inSelectedProject, JSON.stringify(selectedProject), JSON.stringify(fullSearchMap)])
-
     const onSearch = async () => {
         if (localText.trim() !== '') {
             searchInstanceIdRef.current = v4()
@@ -886,22 +835,6 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [includeArchived, includeTemplatesAndGuides])
 
-    const activateFullSearch = async () => {
-        setIndexing(true)
-        const { loggedUser } = store.getState()
-        const goldResult = await spentGold(loggedUser.uid, 500, {
-            source: 'global_search',
-            channel: 'search',
-        })
-        if (!goldResult?.success) {
-            setIndexing(false)
-            return
-        }
-        await runHttpsCallableFunction('indexProjectsRecordsInAlgoliaSecondGen', { userId: loggedUser.uid })
-        setIndexing(false)
-        onSearch()
-    }
-
     // Below the sheet breakpoint search is a full-screen takeover: opaque,
     // edge to edge, riding above the software keyboard. Desktop keeps the
     // anchored palette card. (Pure window-width decision, like the shell.)
@@ -933,7 +866,7 @@ export default function GlobalSearchModal() {
                     }}
                     projects={projects}
                     setSelectedProjectId={updateSelectedProject}
-                    showGuideTab={!!activeFullSearchDate}
+                    showGuideTab={true}
                     showTemplateTab={realTemplateProjectsAmount > 0}
                     showArchivedTab={true}
                     showAllProjects={true}
@@ -949,13 +882,13 @@ export default function GlobalSearchModal() {
                         }}
                         selectedProject={selectedProject}
                         containerStyle={inSelectedProject && { marginBottom: 16 }}
-                        disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        disabled={projects.length === 0}
                     />
 
                     <CreatedByMeOption
                         enabled={createdByMeOnly}
                         onToggle={() => setCreatedByMeOnly(!createdByMeOnly)}
-                        disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        disabled={projects.length === 0}
                     />
 
                     {!inSelectedProject && (
@@ -964,20 +897,9 @@ export default function GlobalSearchModal() {
                             includeTemplatesAndGuides={includeTemplatesAndGuides}
                             onToggleArchived={() => setIncludeArchived(!includeArchived)}
                             onToggleTemplatesAndGuides={() => setIncludeTemplatesAndGuides(!includeTemplatesAndGuides)}
-                            disabled={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                            disabled={projects.length === 0}
                         />
                     )}
-
-                    <ActiveFullSearch
-                        activeFullSearchInAllProjects={
-                            activeFullSearchDate &&
-                            activeFullSearchInAllProjects &&
-                            premiumStatus === PLAN_STATUS_PREMIUM
-                        }
-                        activateFullSearch={activateFullSearch}
-                        disabled={isSearching() || projects.length === 0 || indexing || indexingFullSearchInAllProjects}
-                        closeModalSearchModal={hidePopup}
-                    />
 
                     <Line style={{ width: '100%', marginTop: 0, marginBottom: 16 }} />
                     <SearchForm
@@ -988,7 +910,7 @@ export default function GlobalSearchModal() {
                         showShortcuts={showShortcuts}
                         placeholder="Search term..."
                         buttonIcon="search"
-                        disabledButton={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        disabledButton={projects.length === 0}
                         onSubmitEditing={onSearch}
                     />
 
@@ -1012,7 +934,6 @@ export default function GlobalSearchModal() {
                         scrollRef={scrollRef}
                         resultsContainerRef={resultsContainerRef}
                         showShortcuts={showShortcuts}
-                        indexing={indexing || indexingFullSearchInAllProjects}
                     />
 
                     <View style={localStyles.closeContainer}>
