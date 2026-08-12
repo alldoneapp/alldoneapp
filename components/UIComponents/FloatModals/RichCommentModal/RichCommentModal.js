@@ -61,7 +61,11 @@ import SharedHelper from '../../../../utils/SharedHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
-import shouldAutoFocusChatInput from '../../../ChatsView/Utils/shouldAutoFocusChatInput'
+import useCommentPopupAutoFocus, {
+    COMMENT_POPUP_FOCUS_BLUR,
+    COMMENT_POPUP_FOCUS_DELAYED,
+    resolveCommentPopupFocusAction,
+} from './commentPopupAutoFocus'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
@@ -86,6 +90,7 @@ export default function RichCommentModal({
     objectName,
     externalAssistantId,
     initialAssistantEnabled = false,
+    openedFromUnreadComment = false,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -135,7 +140,11 @@ export default function RichCommentModal({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = shouldAutoFocusChatInput(smallScreenNavigation)
+    const shouldAutoFocusInput = useCommentPopupAutoFocus({
+        mobile: smallScreenNavigation,
+        chatNotifications,
+        openedFromUnreadComment,
+    })
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)
@@ -368,21 +377,40 @@ export default function RichCommentModal({
     }, [messages])
 
     useEffect(() => {
-        if (inSuggested) return
+        // On mobile the input is focused by CustomTextInput3's own mount-time
+        // `autoFocus` (passed to EditForm below), which runs inside the tap that
+        // opened the pop-up — being inside that gesture is precisely what lets the
+        // browser raise the software keyboard (AT-2269). This is the same path
+        // `TaskInput` has always used to open the keyboard when a task line turns
+        // into an editor, so nothing new is being relied on.
+        //
+        // The delayed re-focus below is therefore skipped on mobile. It could not
+        // open the keyboard even if it wanted to — a second later it is long
+        // outside the gesture — while it can very easily re-open one the user just
+        // dismissed to read the comments underneath. It also focuses the notes
+        // document editor via `exportRef`, whose scroll-into-view is deliberately
+        // unconfined (AT-2220), which on a phone would drag the page around.
+        const focusAction = resolveCommentPopupFocusAction({
+            inSuggested,
+            shouldAutoFocus: shouldAutoFocusInput,
+            mobile: smallScreenNavigation,
+        })
 
-        if (!shouldAutoFocusInput) {
+        if (focusAction === COMMENT_POPUP_FOCUS_BLUR) {
             exportRef?.getEditor()?.blur()
             editForm?.current?.blur()
             Keyboard.dismiss()
             return
         }
 
+        if (focusAction !== COMMENT_POPUP_FOCUS_DELAYED) return
+
         const focusTimeout = setTimeout(() => {
             exportRef?.getEditor()?.focus()
             editForm?.current?.focus()
         }, 1000)
         return () => clearTimeout(focusTimeout)
-    }, [inSuggested, shouldAutoFocusInput])
+    }, [inSuggested, shouldAutoFocusInput, smallScreenNavigation])
 
     useEffect(() => {
         storeModal(COMMENT_MODAL_ID)
