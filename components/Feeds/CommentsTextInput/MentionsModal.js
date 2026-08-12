@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import algoliasearch from 'algoliasearch'
 import { searchTypesenseCollection } from '../../../utils/typesenseSearch'
-import { useTypesenseSearch } from '../../../utils/searchEngine'
 import { formatTypesenseValue } from '../../GlobalSearchAlgolia/typesenseSearchFilters'
 
 import { colors } from '../../styles/global'
@@ -93,11 +91,6 @@ export default function MentionsModal({
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
     const tmpHeight = height - (contentLocation?.top || 0) - MODAL_MAX_HEIGHT_GAP
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
-    const [algoliaClient, setAlgoliaClient] = useState(() => {
-        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
-        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
-        return client
-    })
     const loggedUser = useSelector(state => state.loggedUser)
 
     const onKeyDown = event => {
@@ -286,31 +279,12 @@ export default function MentionsModal({
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
         const isGuide = !!parentTemplateId
-        const algoliaIndex = algoliaClient.initIndex(indexPrefix)
 
-        let filters = ''
-
-        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
-            filters = isGuide
-                ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-            // Search notes across all projects the user has access to
-            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
-            filters = isGuide
-                ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            // Search contacts across all projects the user has access to
-            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
-            filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        }
-
-        const results = useTypesenseSearch()
-            ? await searchTypesenseCollection(indexPrefix, mentionText, getTypesenseMentionFilter(indexPrefix, isGuide))
-            : await algoliaIndex.search(mentionText, { filters: filters })
+        const results = await searchTypesenseCollection(
+            indexPrefix,
+            mentionText,
+            getTypesenseMentionFilter(indexPrefix, isGuide)
+        )
 
         let items = results.hits
 

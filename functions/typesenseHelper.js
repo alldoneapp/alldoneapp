@@ -309,11 +309,6 @@ const deleteTypesenseProjectRecords = async projectId => {
     )
 }
 
-// Server-side READ flag (Phase 3) — mirror of the client's utils/searchEngine.js. Writes
-// dual-write regardless; flipping this to false sends server-side searches back to Algolia.
-const SEARCH_READS_FROM_TYPESENSE = true
-const shouldReadFromTypesense = () => SEARCH_READS_FROM_TYPESENSE && isTypesenseConfigured()
-
 // Per-collection query parameters — Typesense takes these per query where Algolia carried
 // them in index settings. Must stay in sync with the client's utils/typesenseSearch.js.
 const SEARCH_QUERY_CONFIG = {
@@ -426,7 +421,6 @@ module.exports = {
     deleteTypesenseDocumentsByFilter,
     deleteTypesenseProjectRecords,
     getTypesenseCollectionStats,
-    shouldReadFromTypesense,
     searchTypesenseDocuments,
     formatTypesenseFilterValue,
     __resetTypesenseCachesForTests,

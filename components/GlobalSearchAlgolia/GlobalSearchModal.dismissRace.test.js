@@ -25,7 +25,9 @@ import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import { highResNow } from '../../utils/popupDismissGuard'
 
-jest.mock('algoliasearch', () => () => ({ initIndex: () => ({ search: async () => ({ hits: [] }) }) }))
+jest.mock('../../utils/typesenseSearch', () => ({
+    multiSearchTypesense: async searches => searches.map(() => ({ hits: [] })),
+}))
 
 jest.mock('../../utils/backends/firestore', () => {
     const actual = jest.requireActual('../../utils/backends/firestore')

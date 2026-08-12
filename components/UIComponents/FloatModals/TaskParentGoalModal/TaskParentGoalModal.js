@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import algoliasearch from 'algoliasearch'
 import { searchTypesenseCollection } from '../../../../utils/typesenseSearch'
-import { useTypesenseSearch } from '../../../../utils/searchEngine'
 import { formatTypesenseValue } from '../../../GlobalSearchAlgolia/typesenseSearchFilters'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -65,11 +63,6 @@ export default function TaskParentGoalModal({
     const [endedFirstSearch, setEndedFirstSearch] = useState(false)
     const [activeTab, setActiveTab] = useState(CURRENT_MILESTONE)
     const [filterText, setFilterText] = useState('')
-    const [algoliaClient, setAlgoliaClient] = useState(() => {
-        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
-        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
-        return client
-    })
 
     const getIfGoalsAreInCurrentMilestone = goal => {
         const { startingMilestoneDate, completionMilestoneDate, progress, dynamicProgress } = goal
@@ -242,18 +235,12 @@ export default function TaskParentGoalModal({
     }
 
     const updateResults = async () => {
-        const algoliaIndex = algoliaClient.initIndex(GOALS_INDEX_NAME_PREFIX)
         // Search goals across all projects the user has access to (similar to contacts)
-        const filters = activeGoal
-            ? `NOT id:${activeGoal.id} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-            : `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-        const results = useTypesenseSearch()
-            ? await searchTypesenseCollection(
-                  GOALS_INDEX_NAME_PREFIX,
-                  filterText,
-                  `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(loggedUserId)}]`
-              )
-            : await algoliaIndex.search(filterText, { filters })
+        const results = await searchTypesenseCollection(
+            GOALS_INDEX_NAME_PREFIX,
+            filterText,
+            `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(loggedUserId)}]`
+        )
         let hits = results.hits
 
         // Filter out goals from projects the user doesn't have access to. The active-goal

@@ -6972,7 +6972,6 @@ async function executeToolNatively(
                 cachedSearchService = new SearchService({
                     database: db,
                     moment: moment,
-                    enableAlgolia: true,
                     enableNoteContent: true,
                     enableDateParsing: true,
                     isCloudFunction: true,
@@ -7939,7 +7938,6 @@ async function executeToolNatively(
             const searchService = new SearchService({
                 database: admin.firestore(),
                 moment: moment,
-                enableAlgolia: true,
                 enableNoteContent: true,
                 enableDateParsing: true,
                 isCloudFunction: true,
@@ -8040,7 +8038,6 @@ async function executeToolNatively(
                 const searchService = new SearchService({
                     database: admin.firestore(),
                     moment: moment,
-                    enableAlgolia: true,
                     enableNoteContent: true,
                     enableDateParsing: true,
                     isCloudFunction: true,
@@ -13546,7 +13543,6 @@ async function searchForAssistant(userId, projectId, query, options = {}) {
         const searchService = new SearchService({
             database: admin.firestore(),
             moment: moment,
-            enableAlgolia: true,
             enableNoteContent: true,
             enableDateParsing: true,
             isCloudFunction: true,

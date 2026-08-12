@@ -48,8 +48,6 @@ const getEnvFunctions = () => {
             TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
             TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
             TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-            ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-            ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
             IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -93,8 +91,6 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: envJson.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: envJson.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: envJson.TWILIO_WHATSAPP_FROM || '',
-                    ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
-                    ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: envJson.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: envJson.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: envJson.IP_REGISTRY_API_KEY || '',
@@ -159,8 +155,6 @@ const getEnvFunctions = () => {
                         TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                         TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                         TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                        ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                        ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         SIB_API_KEY: process.env.SIB_API_KEY || '',
                         SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                         IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -202,8 +196,6 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                    ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                    ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: process.env.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -244,8 +236,6 @@ const getEnvFunctions = () => {
                 TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                 TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                 TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                 SIB_API_KEY: process.env.SIB_API_KEY || '',
                 SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                 IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -311,12 +301,6 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.OPEN_AI_KEY || isPlaceholderValue(envFunctions.OPEN_AI_KEY)) {
         console.warn('Warning: OPENAI_API_KEY is not set or is a placeholder')
-    }
-    if (!envFunctions.ALGOLIA_APP_ID || isPlaceholderValue(envFunctions.ALGOLIA_APP_ID)) {
-        console.warn('Warning: ALGOLIA_APP_ID is not set or is a placeholder')
-    }
-    if (!envFunctions.ALGOLIA_ADMIN_API_KEY || isPlaceholderValue(envFunctions.ALGOLIA_ADMIN_API_KEY)) {
-        console.warn('Warning: ALGOLIA_ADMIN_API_KEY is not set or is a placeholder')
     }
     if (!envFunctions.SIB_API_KEY || isPlaceholderValue(envFunctions.SIB_API_KEY)) {
         console.warn('Warning: SIB_API_KEY is not set or is a placeholder')

@@ -27,7 +27,6 @@ jest.mock(
     }),
     { virtual: true }
 )
-jest.mock('algoliasearch', () => () => ({ initIndex: () => ({}) }), { virtual: true })
 jest.mock('firebase-functions/params', () => ({ defineString: () => ({ value: () => 'test-bucket' }) }), {
     virtual: true,
 })
