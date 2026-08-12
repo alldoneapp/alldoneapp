@@ -3,7 +3,7 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
-import styles, { colors } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { setLanguage, translate } from '../../i18n/TranslationService'
 import { BOOKING_LANGUAGES, getInitialBookingLanguage, persistBookingLanguage } from './bookingLanguage'
 import {
@@ -876,7 +876,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
     },
     pickerCard: {
         width: '100%',

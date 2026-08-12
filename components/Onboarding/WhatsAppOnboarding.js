@@ -13,7 +13,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 
-import styles from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Colors from '../../Themes/Colors'
 import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
@@ -778,7 +778,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,

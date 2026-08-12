@@ -11,6 +11,7 @@ import {
     POPOVER_TABLET_WIDTH_V2,
     SIDEBAR_MENU_WIDTH,
 } from '../components/styles/global'
+import { MODAL_EDGE_GAP } from '../components/styles/modals'
 import store from '../redux/store'
 import {
     hideFloatPopup,
@@ -88,7 +89,7 @@ class HelperFunctions {
     }
 }
 
-export const MODAL_MAX_HEIGHT_GAP = 32
+export const MODAL_MAX_HEIGHT_GAP = MODAL_EDGE_GAP * 2
 export const MENTION_MODAL_MIN_HEIGHT = 150
 
 export const chronoKeysOrder = (a, b) => {
@@ -216,8 +217,13 @@ const getScrollOffsets = () => {
 // above the top edge; and on a narrow screen the desktop sidebar offset pushes
 // the container past the right edge, where `overflow: hidden` clips it.
 // The math lives in utils/popoverPositioning.js so it can be unit-tested.
-export const popoverToCenter = (positioningData = {}, isMobile = true) =>
-    centerPopoverInWindow(positioningData, isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2)
+//
+// Centers in the WINDOW on every screen size. It used to add half the sidebar
+// width on desktop to center over the content area, but these popups dim the
+// whole window (sidebar included), so the offset read as "not centered"
+// (2026-08-12, same call as EndDayStatisticsModal). Callers still pass their
+// legacy isMobile argument; it is deliberately ignored.
+export const popoverToCenter = (positioningData = {}) => centerPopoverInWindow(positioningData, 0)
 
 export const popoverToSafePosition = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
@@ -436,16 +442,23 @@ export const calculateTimeDuration = secs => {
     return hr + ':' + min + ':' + sec
 }
 
+const POPOVER_EDGE_GUTTER = MODAL_EDGE_GAP * 2
+
 export const getPopoverWidth = () => {
     const { isMiddleScreen: tablet, smallScreenNavigation: mobile } = store.getState()
-    return mobile ? POPOVER_MOBILE_WIDTH : tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    if (!mobile) return tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    // Mobile popups use the full window width minus the gutter; the fixed
+    // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
+    // the window width is not measurable yet.
+    const { width: windowWidth } = Dimensions.get('window')
+    const fullWidth = windowWidth - POPOVER_EDGE_GUTTER
+    return fullWidth > 0 ? fullWidth : POPOVER_MOBILE_WIDTH
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
     const { width: windowWidth } = Dimensions.get('window')
-    const gutter = 32
-    const availableWidth = windowWidth - gutter
+    const availableWidth = windowWidth - POPOVER_EDGE_GUTTER
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }

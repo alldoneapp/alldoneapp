@@ -43,7 +43,6 @@ import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
-import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -525,7 +524,6 @@ export default function EndDayStatisticsModal() {
                     style={[
                         localStyles.container,
                         compactModalLayout && localStyles.mobileContainer,
-                        !smallScreenNavigation && { marginLeft: 263 },
                         applyPopoverWidth(),
                     ]}
                 >
@@ -680,14 +678,19 @@ const localStyles = StyleSheet.create({
         right: 0,
         bottom: 0,
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        // Centered in the WINDOW on both axes (no sidebar offset — same call
+        // as popoverToCenter, 2026-08-12). The card caps itself below, so
+        // centering can never clip it.
         justifyContent: 'center',
         alignItems: 'center',
-        ...Platform.select({ web: fixedModalOverlayStyle }),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
         backgroundColor: colors.Secondary400,
         padding: 24,
         borderRadius: 8,
+        // Content taller than the cap scrolls inside the card (deliberate:
+        // window-level scrolling was tried on 2026-08-12 and rolled back).
         maxHeight: '90%',
         ...Platform.select({
             web: {

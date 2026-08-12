@@ -124,7 +124,6 @@ export default function GlobalModalsContainerApp() {
             {showLimitQuotaModal && <LimitModal />}
             {loggedUserId && !isAnonymous && <FreePlanWarning />}
             {showLimitedFeatureModal && <LimitedFeatureModal />}
-            {showLimitedFeatureModal && <LimitedFeatureModal />}
             {showLevelUpModal && !isAnonymous && <LevelUpModal setShowLevelUpModal={setShowLevelUpModal} />}
             <IframeModal />
             <GlobalPreConfigTaskModal />
