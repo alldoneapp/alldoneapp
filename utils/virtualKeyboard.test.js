@@ -4,6 +4,7 @@ import {
     KEYBOARD_REVEAL_MARGIN_PX,
     applyKeyboardInset,
     getCaretRect,
+    getKeyboardRevealTarget,
     isEditableElement,
     isLayoutViewportShrunk,
     measureKeyboardInset,
@@ -366,15 +367,46 @@ describe('revealFocusedInput', () => {
             expect(scroller.scrollTop).toBe(0)
         })
 
-        it('reveals the whole composer, not just the caret, while it still fits', () => {
-            // A two-line task input: showing only the caret would leave its
-            // action bar behind the keyboard, which is the AT-2220 complaint.
-            const { scroller, editor } = buildEditor({ editorTop: 400, editorHeight: 120, caretTop: 410 })
+        it('reveals an opted-in task editor including its action bar, not just the focused input', () => {
+            const editor = document.createElement('div')
+            editor.setAttribute('contenteditable', 'true')
+            const taskEditor = document.createElement('div')
+            taskEditor.setAttribute('data-keyboard-reveal-target', 'true')
+            taskEditor.appendChild(editor)
+
+            const { scroller } = buildSurface({ field: taskEditor, fieldTop: 400, fieldHeight: 120 })
+            layoutIn(editor, { top: 400, height: 45 }, scroller)
+
+            const textNode = document.createTextNode('typing')
+            editor.appendChild(textNode)
+            window.getSelection = () => ({
+                rangeCount: 1,
+                getRangeAt: () => ({
+                    startContainer: textNode,
+                    getClientRects: () => [rectAt(410, 18)],
+                }),
+            })
 
             const scrolled = revealFocusedInput(editor)
 
+            // The focused 45px input already fits. The 32px correction is for
+            // the bottom of the 120px task editor, which includes the buttons.
             expect(scrolled).toBe(520 - SCROLLER_HEIGHT + KEYBOARD_REVEAL_MARGIN_PX)
             expect(scroller.scrollTop).toBe(32)
+        })
+
+        it('uses the focused editor inside its nested scroller, then the task boundary in the list', () => {
+            const taskEditor = document.createElement('div')
+            taskEditor.setAttribute('data-keyboard-reveal-target', 'true')
+            const innerScroller = document.createElement('div')
+            const editor = document.createElement('div')
+            editor.setAttribute('contenteditable', 'true')
+            innerScroller.appendChild(editor)
+            taskEditor.appendChild(innerScroller)
+            const { scroller } = buildSurface({ field: taskEditor })
+
+            expect(getKeyboardRevealTarget(editor, innerScroller)).toBe(editor)
+            expect(getKeyboardRevealTarget(editor, scroller)).toBe(taskEditor)
         })
 
         it('falls back to the editor box when the caret rect cannot be resolved', () => {
