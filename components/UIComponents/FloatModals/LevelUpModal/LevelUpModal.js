@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 
-import styles, { colors } from '../../../styles/global'
+import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import CloseButton from '../../../FollowUp/CloseButton'
 import { translate } from '../../../../i18n/TranslationService'
@@ -50,12 +50,11 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        top: '50%',
-        left: '58.5%',
-        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
-        position: 'fixed',
+        maxHeight: '90%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,

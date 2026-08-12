@@ -10,7 +10,6 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
     dir={null}
     style={
       {
-        "marginLeft": "300px",
         "maxWidth": "432px",
         "minWidth": "432px",
         "width": "432px",

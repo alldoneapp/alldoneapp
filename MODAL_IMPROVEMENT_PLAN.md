@@ -343,6 +343,37 @@ decisions use one dialog system. `RevisionHistoryConfirmationModal`: strings tra
 maxWidth and natural height. `ConfirmPopup`'s standard body finally has a width cap
 (maxWidth 432 — it previously grew unbounded with long translations).
 
+### Fixes round 3, 2026-08-12 — overlay-family sweep + sheet a11y — ✅
+
+**Shell**: BottomSheet gained `role="dialog"` + `aria-modal` and focus return (never to an
+editable element — that would re-pop the keyboard). **AppPopover guards `content={null}`**:
+it no longer renders an empty bottom sheet — this was FATAL for GoogleMeetModal /
+ChatGoogleMeetModal on phones (their self-positioned card sat behind the phantom sheet's
+scrim, Meet creation unusable) and cosmetic for TaskSuggestedComment.
+
+**Overlay dialogs swept** (agent-audited, then patched): Premium
+LimitModal/LimitModalPremium/LimitedFeatureModal/FreePlanWarning and LevelUpModal lost the
+broken `left:'58.5%'/translateX(-60%)` self-centering (5 copies) — now flex-centered in the
+window with a real scrim (they were invisible full-screen click blockers), maxHeight 90%,
+and internal scroll on the three tall ones. PaymentPreviewModal's `57%` variant now centers
+at 50/-50 (full rework deferred — it renders both as popover content and nested in
+SelectPremiumUsersModal). Sidebar offsets removed (window-centering policy):
+ProjectDontExistInInvitationModal + ProjectInvitationPopup (`marginLeft: 300` — which was
+also 18.5px wrong vs the 263px sidebar) and NoteMaxLengthModal (`263`). AccessDeniedPopup's
+container-level `onTouchStart` no longer dismisses on taps INSIDE the card.
+BotWarningModal: +Escape (it had none — `hideCloseButton` had dropped the only handler) and
+the 64px maxHeight overflow under the top-pinned overlay fixed;
+ChangeContactInfoModalContainerForNewGuideUsers: real scrim + truly centered (its child's
+height cap fits centered overlays, not the 80/16 top-pinned one). EndCopyProjectNotification
+dead backdrop + dead maxWidth removed; GlobalPreConfigTaskModal onto the shared z ladder;
+IframeModal: +Escape (deliberately NO backdrop-press — it hosts live screen-share/mic
+surfaces); CookieClickerPopup deleted (dead code, only a commented-out render referenced it).
+
+**Still deliberately open** (each its own project): GoogleMeet trio + AddTopicModal +
+recorder family relayouts (usable now, layout off-pattern — four different self-centering
+idioms documented in the audit banked here), the two picker migrations, the Phase 3
+keep-list, calendar grids, exit animations, back-button (URLSystem design first).
+
 ### Phase 5 — remaining polish (~3–5 days)
 
 Swipe-down-to-dismiss on sheets · back-button close · `prefers-reduced-motion` audit ·

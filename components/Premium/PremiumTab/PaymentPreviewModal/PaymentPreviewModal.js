@@ -148,8 +148,8 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
 const localStyles = StyleSheet.create({
     container: {
         top: '50%',
-        left: '57%',
-        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
+        left: '50%',
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
         position: 'fixed',
         width: 432,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',

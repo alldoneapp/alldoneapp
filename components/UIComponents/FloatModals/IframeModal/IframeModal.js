@@ -6,6 +6,7 @@ import '@firebase/functions'
 import Icon from '../../../Icon'
 import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
+import useEscapeKey from '../../../../hooks/useEscapeKey'
 
 export default function IframeModal() {
     const dispatch = useDispatch()
@@ -19,6 +20,11 @@ export default function IframeModal() {
     const closeModal = () => {
         dispatch(setIframeModalData(false, '', ''))
     }
+
+    // Escape only — no backdrop-press dismiss on purpose: the iframe hosts
+    // live third-party surfaces (screen share, mic) where a stray outside tap
+    // must not tear the session down.
+    useEscapeKey(closeModal, { enabled: !!visible })
 
     useEffect(() => {
         if (!visible) return

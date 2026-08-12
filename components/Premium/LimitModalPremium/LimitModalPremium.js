@@ -1,9 +1,9 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 
-import styles, { colors } from '../../styles/global'
+import styles, { colors, hexColorToRGBa } from '../../styles/global'
 import { getPopoverWidth } from '../../../utils/HelperFunctions'
 import Button from '../../UIControls/Button'
 import { getPremiumTrafficQuote, getPersonalXpQuote, PERSONAL_XP_QUOTE_LIMIT } from '../PremiumHelper'
@@ -26,41 +26,43 @@ export default function LimitModalPremium() {
     return (
         <View style={localStyles.parent}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
-                <ModalHeader
-                    closeModal={closeModal}
-                    title={translate('Monthly traffic limit reached')}
-                    description={translate('Traffic limit reached')}
-                />
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    <ModalHeader
+                        closeModal={closeModal}
+                        title={translate('Monthly traffic limit reached')}
+                        description={translate('Traffic limit reached')}
+                    />
 
-                <View style={localStyles.warning}>
-                    <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
-                    <Text style={localStyles.warningText}>
-                        {moment().tz('Europe/Berlin').endOf('month').fromNow().split('in')[1].trimLeft()}{' '}
-                        {translate('until the next month begins')}
+                    <View style={localStyles.warning}>
+                        <Icon name={'info'} size={16} color={colors.UtilityYellow150} style={{ marginRight: 8 }} />
+                        <Text style={localStyles.warningText}>
+                            {moment().tz('Europe/Berlin').endOf('month').fromNow().split('in')[1].trimLeft()}{' '}
+                            {translate('until the next month begins')}
+                        </Text>
+                    </View>
+
+                    <ProgressPremiumBar
+                        containerStyle={{ marginTop: 20 }}
+                        headerText={translate('XP gained compared with limit in freemium')}
+                        percent={getPersonalXpQuote(monthlyXp)}
+                        barInnerText={`${monthlyXp}XP/${PERSONAL_XP_QUOTE_LIMIT}XP`}
+                    />
+
+                    <ProgressPremiumBar
+                        containerStyle={{ marginTop: 24 }}
+                        headerText={translate('Traffic quota this month')}
+                        percent={getPremiumTrafficQuote(monthlyTraffic)}
+                        barInnerText={`${getPremiumTrafficQuote(monthlyTraffic)}%`}
+                    />
+
+                    <Text style={localStyles.text}>
+                        {translate('Please just wait until next month to refill the quota')}
                     </Text>
-                </View>
 
-                <ProgressPremiumBar
-                    containerStyle={{ marginTop: 20 }}
-                    headerText={translate('XP gained compared with limit in freemium')}
-                    percent={getPersonalXpQuote(monthlyXp)}
-                    barInnerText={`${monthlyXp}XP/${PERSONAL_XP_QUOTE_LIMIT}XP`}
-                />
+                    <Line style={localStyles.line} />
 
-                <ProgressPremiumBar
-                    containerStyle={{ marginTop: 24 }}
-                    headerText={translate('Traffic quota this month')}
-                    percent={getPremiumTrafficQuote(monthlyTraffic)}
-                    barInnerText={`${getPremiumTrafficQuote(monthlyTraffic)}%`}
-                />
-
-                <Text style={localStyles.text}>
-                    {translate('Please just wait until next month to refill the quota')}
-                </Text>
-
-                <Line style={localStyles.line} />
-
-                <Button title={'OK'} iconSize={22} buttonStyle={localStyles.button} onPress={closeModal} />
+                    <Button title={'OK'} iconSize={22} buttonStyle={localStyles.button} onPress={closeModal} />
+                </ScrollView>
             </View>
         </View>
     )
@@ -76,13 +78,11 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        top: '50%',
-        left: '58.5%',
-        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
-        position: 'fixed',
-        width: 432,
+        maxHeight: '90%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         padding: 16,
         elevation: 3,
