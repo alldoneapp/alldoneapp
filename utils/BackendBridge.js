@@ -877,10 +877,6 @@ export default class Backend {
         return bridge.getAlgoliaSearchOnlyKeys()
     }
 
-    static getTypesenseSearchKeys() {
-        return bridge.getTypesenseSearchKeys()
-    }
-
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {
         return bridge.watchNoteRevisionHistoryCopies(projectId, noteId, callback)
     }

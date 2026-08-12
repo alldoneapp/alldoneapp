@@ -309,78 +309,6 @@ const deleteTypesenseProjectRecords = async projectId => {
     )
 }
 
-// Server-side READ flag (Phase 3) — mirror of the client's utils/searchEngine.js. Writes
-// dual-write regardless; flipping this to false sends server-side searches back to Algolia.
-const SEARCH_READS_FROM_TYPESENSE = true
-const shouldReadFromTypesense = () => SEARCH_READS_FROM_TYPESENSE && isTypesenseConfigured()
-
-// Per-collection query parameters — Typesense takes these per query where Algolia carried
-// them in index settings. Must stay in sync with the client's utils/typesenseSearch.js.
-const SEARCH_QUERY_CONFIG = {
-    [TASKS_COLLECTION]: {
-        query_by: 'humanReadableIdSearchable,humanReadableId,name',
-        num_typos: 2,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
-    },
-    [GOALS_COLLECTION]: {
-        query_by: 'name',
-        num_typos: 0,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
-    },
-    [NOTES_COLLECTION]: {
-        query_by: 'title,content',
-        num_typos: 2,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
-    },
-    [CONTACTS_COLLECTION]: {
-        query_by: 'displayName,cleanDescription,role,company',
-        num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
-    },
-    [CHATS_COLLECTION]: {
-        query_by: 'cleanName,cleanLastComment,cleanComments',
-        num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
-    },
-}
-
-// Read path (server-side consumers: SearchService, TaskSearchService). THROWS on failure —
-// the callers own their fallback behavior, and a silent empty result would read as
-// "nothing matched" when the truth is "the search never ran".
-// Hits come back in the Algolia shape: objectID = composite document id, `id` = the
-// object's own bare id (reconstructed by stripping the projectId suffix).
-const searchTypesenseDocuments = async (collectionName, query, { filterBy, perPage = 20 } = {}) => {
-    const client = await ensureCollection(collectionName)
-    if (!client) throw new Error('Typesense is not configured (TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY)')
-    const config = SEARCH_QUERY_CONFIG[collectionName]
-    if (!config) throw new Error(`No Typesense query config for collection ${collectionName}`)
-
-    const result = await client.collections(collectionName).documents().search({
-        q: query,
-        query_by: config.query_by,
-        num_typos: config.num_typos,
-        sort_by: config.sort_by,
-        filter_by: filterBy,
-        per_page: perPage,
-        highlight_fields: 'none',
-    })
-
-    const hits = (result.hits || []).map(hit => {
-        const document = hit.document || {}
-        const objectID = String(document.id || '')
-        const bareId =
-            document.projectId && objectID.endsWith(document.projectId)
-                ? objectID.slice(0, -String(document.projectId).length)
-                : objectID
-        return { ...document, id: bareId, objectID }
-    })
-    return { hits }
-}
-
-// Backtick-quoted value for filter_by strings; a backtick inside a value would break out
-// of the quoting, so it is stripped (no legitimate id carries one).
-const formatTypesenseFilterValue = value => '`' + String(value).replace(/`/g, '') + '`'
-
 // Verification helper (Phase 2 backfill): live document counts per collection. Unlike the
 // write ops this THROWS on failure — a verification that silently reports nothing is worse
 // than one that fails loudly.
@@ -426,8 +354,5 @@ module.exports = {
     deleteTypesenseDocumentsByFilter,
     deleteTypesenseProjectRecords,
     getTypesenseCollectionStats,
-    shouldReadFromTypesense,
-    searchTypesenseDocuments,
-    formatTypesenseFilterValue,
     __resetTypesenseCachesForTests,
 }

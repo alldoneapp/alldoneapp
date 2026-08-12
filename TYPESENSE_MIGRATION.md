@@ -11,31 +11,7 @@
 > Two corrupt task docs in Firestore itself:
 > `items/-OdN3r3av39Be2Cbii8H/tasks/-OdN4DDMkRPF8byMNWrn` and
 > `items/-Of0mXwuHe-fcjsFE5IU/tasks/-Of0rp0rgly-APXNG2LV` (whole task object under `dueDate`)
-> — indexed without dueDate; consider repairing the docs (repair running in separate session).
->
-> **Phase 3 implemented (2026-08-12):** reads cut over behind flags — client
-> `utils/searchEngine.js` (`SEARCH_ENGINE = 'typesense'`, key-aware: missing env falls back
-> to Algolia reads), server `SEARCH_READS_FROM_TYPESENSE` in `functions/typesenseHelper.js`.
-> GlobalSearchModal searches all 5 tabs in ONE multi_search; scope toggles ship with it
-> (archived / templates & guides off by default); MentionsModal, TaskParentGoalModal,
-> SearchService (active-project default scope), TaskSearchService ported. Client search-only
-> key generated (key id 1, `documents:search` on the 5 collections) and wired through
-> `.env` / `replace-envs.sh` / `getTypesenseSearchKeys()`.
-> **Before the production WEB deploy:** add GitLab CI variables `TYPESENSE_HOST` and
-> `TYPESENSE_SEARCH_ONLY_API_KEY` (plain variables, used by `ci/replace-envs.sh`) — until
-> they exist, production web quietly keeps reading from Algolia.
-> **QA gate (run before Phase 4, two accounts A/B):**
->
-> 1. B's private task/note never appears for A (isPublicFor).
-> 2. A sees nothing from a project A is not a member of.
-> 3. Workstream-scoped objects only for members of that workstream.
-> 4. Anonymous/guide access only surfaces public records.
-> 5. "Only objects I created" narrows on all 5 tabs.
-> 6. Default all-projects search returns nothing from archived/template/guide projects;
->    each toggle widens correctly; per-user archived respected (archive for A only → hidden
->    for A, visible for B).
-> 7. Mention autocomplete + parent-goal picker return sane results.
-> 8. Old content (done tasks >30 days, old chats) IS now findable — the point of it all.
+> — indexed without dueDate; consider repairing the docs. Next: Phase 3 (client read cutover).
 
 **Goal:** Replace Algolia with Typesense Cloud (Frankfurt), index _all_ content permanently (no more 30-day windows), and delete the "Activate full search for 500 Gold" mechanic plus every expiry/cleanup job that exists only to keep the Algolia record count down.
 

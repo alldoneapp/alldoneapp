@@ -39,8 +39,6 @@ import {
     NOTES_COLLABORATION_SERVER,
     ALGOLIA_APP_ID,
     ALGOLIA_SEARCH_ONLY_API_KEY,
-    TYPESENSE_HOST,
-    TYPESENSE_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
 } from 'react-native-dotenv'
 // END-ENVS
@@ -7081,10 +7079,6 @@ export const inStagingEnvironment = () => {
 
 export function getAlgoliaSearchOnlyKeys() {
     return { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY }
-}
-
-export function getTypesenseSearchKeys() {
-    return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
 }
 
 export function getSentryVariables() {

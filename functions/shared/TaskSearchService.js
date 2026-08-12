@@ -14,7 +14,6 @@
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let algoliasearch, getAlgoliaClient
-let shouldReadFromTypesense, searchTypesenseDocuments, formatTypesenseFilterValue
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
@@ -24,11 +23,7 @@ async function loadDependencies() {
             if (typeof require !== 'undefined') {
                 algoliasearch = require('algoliasearch')
                 const searchHelper = require('../searchHelper')
-                const typesenseHelper = require('../typesenseHelper')
                 getAlgoliaClient = searchHelper.getAlgoliaClient
-                shouldReadFromTypesense = typesenseHelper.shouldReadFromTypesense
-                searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
-                formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
             }
         } catch (error) {
             console.warn('Failed to load Algolia dependencies for TaskSearchService:', error.message)
@@ -713,30 +708,8 @@ class TaskSearchService {
                 timeout: 5000, // 5 second timeout
             }
 
-            // Engine dispatch (TYPESENSE_MIGRATION.md Phase 3): same filters contract in
-            // Typesense syntax; both return hits carrying objectID + projectId, which is
-            // all the processing below reads.
-            const typesenseFilterParts = []
-            if (projectId) {
-                typesenseFilterParts.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
-            } else {
-                const projectIdsList = targetProjects.map(p => formatTypesenseFilterValue(p.id)).join(',')
-                if (projectIdsList) typesenseFilterParts.push(`projectId:=[${projectIdsList}]`)
-            }
-            typesenseFilterParts.push(
-                `isPublicFor:=[${formatTypesenseFilterValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseFilterValue(
-                    userId
-                )}]`
-            )
-            const typesenseFilterBy = typesenseFilterParts.join(' && ')
-
-            const runSearch = async query =>
-                shouldReadFromTypesense && shouldReadFromTypesense()
-                    ? searchTypesenseDocuments(TASKS_INDEX_NAME, query, { filterBy: typesenseFilterBy, perPage: 50 })
-                    : index.search(query, searchOptions)
-
             // Try initial search
-            let searchResponse = await runSearch(taskName)
+            let searchResponse = await index.search(taskName, searchOptions)
             const projectsMap = new Map(targetProjects.map(p => [p.id, p]))
             const matches = []
             const seenTaskIds = new Set() // Track seen tasks to avoid duplicates
@@ -768,7 +741,7 @@ class TaskSearchService {
                     if (variation === taskName) continue // Skip original, already tried
 
                     try {
-                        const fuzzyResponse = await runSearch(variation)
+                        const fuzzyResponse = await index.search(variation, searchOptions)
                         for (const hit of fuzzyResponse.hits) {
                             const project = projectsMap.get(hit.projectId)
                             if (!project) continue
@@ -829,7 +802,7 @@ class TaskSearchService {
                     if (importantWords.length > 0 && importantWords.length < words.length) {
                         const partialQuery = importantWords.join(' ')
                         try {
-                            const partialResponse = await runSearch(partialQuery)
+                            const partialResponse = await index.search(partialQuery, searchOptions)
                             for (const hit of partialResponse.hits) {
                                 const project = projectsMap.get(hit.projectId)
                                 if (!project) continue
@@ -857,7 +830,7 @@ class TaskSearchService {
                         for (const word of importantWords.slice(0, 3)) {
                             // Try each important word individually
                             try {
-                                const wordResponse = await runSearch(word)
+                                const wordResponse = await index.search(word, searchOptions)
                                 for (const hit of wordResponse.hits) {
                                     const project = projectsMap.get(hit.projectId)
                                     if (!project) continue

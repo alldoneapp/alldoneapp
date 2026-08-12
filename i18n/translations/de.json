@@ -900,7 +900,6 @@
     "Optional comment": "Optionaler Kommentar",
     "Write the title of the goal": "Schreibe den Titel des Ziels",
     "Do you really want to perform this action?": "Möchtest Du das wirklich machen?",
-    "Recovering this version will overwrite the current version. However you can always switch back to the previous version if you want to.": "Das Wiederherstellen dieser Version überschreibt die aktuelle Version. Du kannst jedoch jederzeit zur vorherigen Version zurückwechseln.",
     "Milestone": "Meilenstein",
     "Workstream": "Workstream",
     "Highlight": "Highlight",
@@ -2192,8 +2191,6 @@
     "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Wird verwendet, wenn du ein DeepSeek- oder anderes OpenRouter-Modell für die Codex-Umgebung auswählst. Dein Key wird vor dem Speichern gegen OpenRouter validiert.",
     "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)",
     "Only objects I created": "Nur von mir erstellte Objekte",
-    "Include archived projects": "Archivierte Projekte einbeziehen",
-    "Include templates & guides": "Vorlagen & Guides einbeziehen",
     "One earlier unread message": "1 frühere ungelesene Nachricht",
     "Amount earlier unread messages": "%{amount} frühere ungelesene Nachrichten"
 }

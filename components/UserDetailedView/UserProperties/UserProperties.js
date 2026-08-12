@@ -1,15 +1,13 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import UserPropertiesHeader from './UserPropertiesHeader'
 import styles, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
 import { showConfirmPopup } from '../../../redux/actions'
-import {
-    CONFIRM_POPUP_TRIGGER_INFO,
-    CONFIRM_POPUP_TRIGGER_KICK_USER_FROM_PROJECT,
-} from '../../UIComponents/ConfirmPopup'
+import { CONFIRM_POPUP_TRIGGER_KICK_USER_FROM_PROJECT } from '../../UIComponents/ConfirmPopup'
 import Icon from '../../Icon'
 import URLsPeople, { URL_PEOPLE_DETAILS_PROPERTIES } from '../../../URLSystem/People/URLsPeople'
 import FollowObject from '../../Followers/FollowObject'
@@ -23,6 +21,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 import { translate } from '../../../i18n/TranslationService'
 import ObjectRevisionHistory from '../../NotesView/NotesDV/PropertiesView/ObjectRevisionHistory'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import NotAllowRemoveUserModal from '../../SettingsView/Profile/Properties/NotAllowRemoveUserModal'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 
 const UserProperties = ({ user, project }) => {
@@ -30,7 +29,18 @@ const UserProperties = ({ user, project }) => {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const mobile = useSelector(state => state.smallScreen)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const adminEmail = useSelector(state => state.administratorUser.email)
+
+    const [isOpen, setIsOpen] = useState(false)
+
+    const openModal = () => {
+        setIsOpen(true)
+    }
+
+    const closeModal = () => {
+        setIsOpen(false)
+    }
 
     const highlightColor = ProjectHelper.getUserHighlightInProject(project.index, user)
     ContactsHelper.getAndAssignUserPrivacy(project.index, user)
@@ -47,18 +57,7 @@ const UserProperties = ({ user, project }) => {
 
     const openKickUserModal = () => {
         if (cannotLeaveTemplate || cannotLeaveGuide) {
-            dispatch(
-                showConfirmPopup({
-                    trigger: CONFIRM_POPUP_TRIGGER_INFO,
-                    object: {
-                        headerText: 'You cannot kick this user',
-                        headerQuestion: cannotLeaveGuide
-                            ? 'This user is the guide creator and cannot leave the guide'
-                            : 'This template has some active guides',
-                        headerQuestionParams: { email: adminEmail },
-                    },
-                })
-            )
+            openModal()
         } else {
             dispatch(
                 showConfirmPopup({
@@ -158,15 +157,37 @@ const UserProperties = ({ user, project }) => {
                         <View style={localStyles.bottomContainer}>
                             <ObjectRevisionHistory projectId={projectId} noteId={user.noteIdsByProject[projectId]} />
                             <View style={localStyles.deleteButton}>
-                                <Button
-                                    icon={'kick'}
-                                    title={translate('Kick from project')}
-                                    type={'ghost'}
-                                    iconColor={colors.UtilityRed200}
-                                    titleStyle={{ color: colors.UtilityRed200 }}
-                                    buttonStyle={{ borderColor: colors.UtilityRed200, borderWidth: 2 }}
-                                    onPress={openKickUserModal}
-                                />
+                                <AppPopover
+                                    content={
+                                        <NotAllowRemoveUserModal
+                                            closeModal={closeModal}
+                                            title={translate('You cannot kick this user')}
+                                            description={translate(
+                                                cannotLeaveGuide
+                                                    ? 'This user is the guide creator and cannot leave the guide'
+                                                    : 'This template has some active guides',
+                                                {
+                                                    email: adminEmail,
+                                                }
+                                            )}
+                                        />
+                                    }
+                                    align={'start'}
+                                    position={['top']}
+                                    onClickOutside={closeModal}
+                                    isOpen={isOpen}
+                                    contentLocation={smallScreenNavigation ? null : undefined}
+                                >
+                                    <Button
+                                        icon={'kick'}
+                                        title={translate('Kick from project')}
+                                        type={'ghost'}
+                                        iconColor={colors.UtilityRed200}
+                                        titleStyle={{ color: colors.UtilityRed200 }}
+                                        buttonStyle={{ borderColor: colors.UtilityRed200, borderWidth: 2 }}
+                                        onPress={openKickUserModal}
+                                    />
+                                </AppPopover>
                             </View>
                         </View>
                     )}

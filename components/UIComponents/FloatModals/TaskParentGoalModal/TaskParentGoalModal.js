@@ -1,9 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import algoliasearch from 'algoliasearch'
-import { searchTypesenseCollection } from '../../../../utils/typesenseSearch'
-import { useTypesenseSearch } from '../../../../utils/searchEngine'
-import { formatTypesenseValue } from '../../../GlobalSearchAlgolia/typesenseSearchFilters'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -247,21 +244,12 @@ export default function TaskParentGoalModal({
         const filters = activeGoal
             ? `NOT id:${activeGoal.id} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
             : `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-        const results = useTypesenseSearch()
-            ? await searchTypesenseCollection(
-                  GOALS_INDEX_NAME_PREFIX,
-                  filterText,
-                  `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(loggedUserId)}]`
-              )
-            : await algoliaIndex.search(filterText, { filters })
+        const results = await algoliaIndex.search(filterText, { filters })
         let hits = results.hits
 
-        // Filter out goals from projects the user doesn't have access to. The active-goal
-        // exclusion happens here rather than in the engine filter (Algolia's `NOT id:` has
-        // no direct Typesense analogue on the bare goal id), so it holds for both engines.
+        // Filter out goals from projects the user doesn't have access to
         const { loggedUserProjectsMap } = store.getState()
         hits = hits.filter(goal => loggedUserProjectsMap[goal.projectId])
-        if (activeGoal) hits = hits.filter(goal => goal.id !== activeGoal.id)
 
         // Sort: current project goals first, then others
         hits.sort((a, b) => {

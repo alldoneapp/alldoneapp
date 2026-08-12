@@ -5,8 +5,7 @@ import { useSelector } from 'react-redux'
 import { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
-import ConfirmDialog from '../../../UIComponents/ConfirmDialog'
-import { popoverToCenter } from '../../../../utils/HelperFunctions'
+import ConfirmationModal from '../ConfirmationModal'
 import { removeUserFromSubscription } from '../../../../utils/backends/Premium/premiumFirestore'
 
 export default function CancelSubscriptionPaidByOtherUserWrapper({ userPayingId }) {
@@ -29,9 +28,8 @@ export default function CancelSubscriptionPaidByOtherUserWrapper({ userPayingId 
     return (
         <AppPopover
             isOpen={showModal}
-            contentLocation={popoverToCenter}
             content={
-                <ConfirmDialog
+                <ConfirmationModal
                     onProceed={cancelSubscriptionPaidByOtherUser}
                     closeModal={closeModal}
                     title="Be careful, this action is permanent"

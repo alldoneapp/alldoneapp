@@ -408,11 +408,6 @@ const localStyles = StyleSheet.create({
         boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
-        // The card used to have no width constraint at all: a long translated
-        // headerQuestion grew it arbitrarily wide (the 432 cap existed only on
-        // the INFO variant). 16px keeps a gutter on narrow screens.
-        maxWidth: 432,
-        marginHorizontal: 16,
     },
     title: {
         color: '#ffffff',

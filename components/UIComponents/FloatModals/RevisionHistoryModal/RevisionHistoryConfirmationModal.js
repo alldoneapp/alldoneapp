@@ -11,7 +11,6 @@ import { CURRENT_DAY_VERSION_ID } from './RevisionHistoryModal'
 import Backend from '../../../../utils/BackendBridge'
 import Button from '../../../UIControls/Button'
 import { goToObjectDetailView, goToObjectNoteView } from '../../../GlobalSearchAlgolia/searchFunctions'
-import { translate } from '../../../../i18n/TranslationService'
 
 export default function RevisionHistoryConfirmationModal({
     projectId,
@@ -68,9 +67,8 @@ export default function RevisionHistoryConfirmationModal({
         )
         elementsData.push(icon)
 
-        const description = translate(
+        const description =
             'Recovering this version will overwrite the current version. However you can always switch back to the previous version if you want to.'
-        )
         const text = generatorParserTextElement([localStyles.description, { overflow: 'hidden' }], description)
         elementsData.push(text)
 
@@ -80,7 +78,7 @@ export default function RevisionHistoryConfirmationModal({
     const elementsData = parseFeed()
     return (
         <View style={localStyles.container}>
-            <Text style={localStyles.title}>{translate('Important info')}</Text>
+            <Text style={localStyles.title}>Important info</Text>
             <MultilineParser elementsData={elementsData} externalContainerStyle={localStyles.descriptionContainer} />
             <View style={localStyles.buttonsContainer}>
                 <TouchableOpacity
@@ -88,12 +86,12 @@ export default function RevisionHistoryConfirmationModal({
                     onPress={closeModal}
                     disabled={processing}
                 >
-                    <Text style={[localStyles.buttonText, localStyles.cancelButtonText]}>{translate('Cancel')}</Text>
+                    <Text style={[localStyles.buttonText, localStyles.cancelButtonText]}>Cancel</Text>
                 </TouchableOpacity>
                 <Button
                     type={'ghost'}
-                    processingTitle={translate('Proceed')}
-                    title={translate('Proceed')}
+                    processingTitle={'Proceed'}
+                    title={'Proceed'}
                     onPress={restoreNoteVersion}
                     noBorder={true}
                     titleStyle={[localStyles.buttonText, localStyles.proceedButtonText]}
@@ -108,12 +106,9 @@ export default function RevisionHistoryConfirmationModal({
 
 const localStyles = StyleSheet.create({
     container: {
-        // No fixed height, and a max width instead of an exact one: German
-        // and Spanish strings are longer than the English this card was sized
-        // against and were clipped by the old 317x206 box.
-        maxWidth: 432,
-        marginHorizontal: 16,
-        backgroundColor: colors.Secondary400,
+        width: 317,
+        height: 206,
+        backgroundColor: '#091540',
         padding: 16,
         borderRadius: 4,
         ...Platform.select({
