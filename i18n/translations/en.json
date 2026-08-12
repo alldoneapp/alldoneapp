@@ -2407,6 +2407,8 @@
     "Buffer before": "Buffer before",
     "Buffer after": "Buffer after",
     "Include weekends": "Include weekends",
+    "Minimum free hours per day": "Minimum free hours per day",
+    "Minimum free hours per day description": "Anna and your booking link keep at least this much unbooked time in each working day. Days that would drop below it are not offered. Default: 4 hours.",
     "Allow same day booking": "Allow same-day booking",
     "Allow same day booking description": "When off, the earliest people can book is tomorrow in your timezone.",
     "Additional guests": "Additional guests",

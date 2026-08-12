@@ -19,6 +19,16 @@ describe('Calendar assistant tool schemas', () => {
         ])
     })
 
+    test('exposes the optional daily free-time guardrail on availability searches (AT-2278)', () => {
+        const property = toolSchemas.find_calendar_availability.function.parameters.properties.minFreeHoursPerDay
+
+        expect(property.type).toBe('number')
+        // The saved setting is the default; the argument only exists for an explicit
+        // per-request override, and the model must be told that.
+        expect(property.description).toMatch(/saved setting/i)
+        expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('minFreeHoursPerDay')
+    })
+
     test('defines required fields for calendar event writes', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).toEqual(['timeMin', 'timeMax'])
         expect(toolSchemas.create_calendar_event.function.parameters.required).toEqual(['summary', 'start', 'end'])

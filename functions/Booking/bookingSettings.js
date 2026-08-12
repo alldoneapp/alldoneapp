@@ -7,6 +7,7 @@ const {
     findCalendarAvailabilityForAssistantRequest,
     __private__: { getConnectedCalendarAccounts },
 } = require('../GoogleCalendar/assistantCalendarTools')
+const { DEFAULT_MIN_FREE_HOURS_PER_DAY, normalizeMinFreeHoursPerDay } = require('../Calendar/dailyFreeTime')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const DEFAULT_BOOKING_SETTINGS = {
@@ -23,6 +24,10 @@ const DEFAULT_BOOKING_SETTINGS = {
     allowSameDayBooking: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
+    // AT-2278 — how much of the working day must stay unbooked. Shared with Anna's
+    // find_calendar_availability tool, so this one number governs both the assistant's
+    // suggestions and what visitors of the public booking link can take.
+    minFreeHoursPerDay: DEFAULT_MIN_FREE_HOURS_PER_DAY,
     additionalGuestEmails: [],
 }
 
@@ -115,6 +120,21 @@ function resolveUserIanaTimeZone(userData = {}) {
     return 'UTC'
 }
 
+// Keeps at least MIN_BOOKABLE_MINUTES_PER_DAY of the working window bookable, so the
+// minimum can never make a day structurally impossible to book.
+const MIN_BOOKABLE_MINUTES_PER_DAY = 30
+
+function workingHoursSpanHours(startClock, endClock) {
+    const [startHour, startMinute] = startClock.split(':').map(Number)
+    const [endHour, endMinute] = endClock.split(':').map(Number)
+    return (endHour * 60 + endMinute - (startHour * 60 + startMinute)) / 60
+}
+
+function clampMinFreeHoursToWorkingHours(hours, startClock, endClock) {
+    const maxHours = Math.max(workingHoursSpanHours(startClock, endClock) - MIN_BOOKABLE_MINUTES_PER_DAY / 60, 0)
+    return normalizeMinFreeHoursPerDay(Math.min(hours, maxHours), 0)
+}
+
 function normalizeBookingSettings(input = {}, userData = {}) {
     const defaults = {
         ...DEFAULT_BOOKING_SETTINGS,
@@ -125,6 +145,7 @@ function normalizeBookingSettings(input = {}, userData = {}) {
     const workingHoursEnd = normalizeClockTime(input.workingHoursEnd, defaults.workingHoursEnd)
     const availableDurations = normalizeAvailableDurations(input.availableDurations)
     const durationMinutes = normalizeBoundedInteger(input.durationMinutes, defaults.durationMinutes, 5, 480)
+    const resolvedWorkingHoursEnd = workingHoursEnd > workingHoursStart ? workingHoursEnd : defaults.workingHoursEnd
 
     return {
         enabled: input.enabled === true,
@@ -133,7 +154,7 @@ function normalizeBookingSettings(input = {}, userData = {}) {
         availableDurations,
         slotIntervalMinutes: normalizeBoundedInteger(input.slotIntervalMinutes, defaults.slotIntervalMinutes, 5, 120),
         workingHoursStart,
-        workingHoursEnd: workingHoursEnd > workingHoursStart ? workingHoursEnd : defaults.workingHoursEnd,
+        workingHoursEnd: resolvedWorkingHoursEnd,
         includeWeekends: input.includeWeekends === true,
         // Strict `=== true` is what makes backward compatibility work: booking links saved
         // before this setting existed carry no field at all, so they read as false and keep
@@ -141,6 +162,17 @@ function normalizeBookingSettings(input = {}, userData = {}) {
         allowSameDayBooking: input.allowSameDayBooking === true,
         bufferBeforeMinutes: normalizeBoundedInteger(input.bufferBeforeMinutes, defaults.bufferBeforeMinutes, 0, 240),
         bufferAfterMinutes: normalizeBoundedInteger(input.bufferAfterMinutes, defaults.bufferAfterMinutes, 0, 240),
+        // A settings doc written before this field existed carries no value, so it reads as
+        // the 4h default — the backward-compatible path, no migration needed. Clamped, not
+        // rejected: a minimum that swallows the whole working window would make every day
+        // fail the check, which the soft fallback then silently undoes — the setting would
+        // look active while doing nothing. Clamping also means a host whose window is
+        // shorter than the 4h default (e.g. 09:00-12:00) can still save their settings.
+        minFreeHoursPerDay: clampMinFreeHoursToWorkingHours(
+            normalizeMinFreeHoursPerDay(input.minFreeHoursPerDay, defaults.minFreeHoursPerDay),
+            workingHoursStart,
+            resolvedWorkingHoursEnd
+        ),
         additionalGuestEmails: normalizeGuestEmails(input.additionalGuestEmails),
         timeZone: moment.tz.zone(safeTrim(input.timeZone))
             ? safeTrim(input.timeZone)
@@ -183,6 +215,10 @@ function buildPublicBookingPage(userId, userData, settings) {
             allowSameDayBooking: settings.allowSameDayBooking === true,
             bufferBeforeMinutes: settings.bufferBeforeMinutes,
             bufferAfterMinutes: settings.bufferAfterMinutes,
+            // Host-private, like additionalGuestEmails: findPublicBookingSlots reads it
+            // server-side to drop days that are already full. handleGetPage does not expose
+            // it, so a visitor never learns how loaded the host's calendar is.
+            minFreeHoursPerDay: settings.minFreeHoursPerDay,
             // Host-private: consumed server-side in handleBook to add fixed guests to the
             // event. Never returned to visitors (handleGetPage whitelists the fields it exposes).
             additionalGuestEmails: normalizeGuestEmails(settings.additionalGuestEmails),
@@ -358,12 +394,14 @@ async function findPublicBookingSlots(page, { start, end, timeZone, durationMinu
         includeWeekends: settings.includeWeekends,
         bufferBeforeMinutes: settings.bufferBeforeMinutes,
         bufferAfterMinutes: settings.bufferAfterMinutes,
+        minFreeHoursPerDay: settings.minFreeHoursPerDay,
     })
     return { ...result, durationMinutes: resolvedDurationMinutes }
 }
 
 module.exports = {
     DEFAULT_BOOKING_SETTINGS,
+    clampMinFreeHoursToWorkingHours,
     MAX_BOOKING_RANGE_DAYS,
     ALLOWED_BOOKING_DURATIONS,
     buildDefaultSlug,

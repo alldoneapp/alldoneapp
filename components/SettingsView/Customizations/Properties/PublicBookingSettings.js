@@ -23,10 +23,22 @@ const DEFAULT_SETTINGS = {
     allowSameDayBooking: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
+    // AT-2278 — also honoured by the assistant's meeting-time suggestions, not just this
+    // link. The server treats a missing value as 4 too, so existing settings need no migration.
+    minFreeHoursPerDay: 4,
     additionalGuestEmails: [],
 }
 
 const numericFields = new Set(['durationMinutes', 'slotIntervalMinutes', 'bufferBeforeMinutes', 'bufferAfterMinutes'])
+// Hours accept a half hour ("3.5"), so this field keeps a single decimal separator instead
+// of having every non-digit stripped like the minute fields above.
+const decimalFields = new Set(['minFreeHoursPerDay'])
+
+const sanitizeDecimal = value =>
+    String(value)
+        .replace(/,/g, '.')
+        .replace(/[^0-9.]/g, '')
+        .replace(/^(\d*\.?\d*).*$/, '$1')
 const durationOptions = [15, 30, 60]
 
 const formatGuestEmails = list => (Array.isArray(list) ? list.join('\n') : '')
@@ -65,7 +77,11 @@ export default function PublicBookingSettings() {
         setError('')
         setSettings(current => ({
             ...current,
-            [field]: numericFields.has(field) ? value.replace(/[^0-9]/g, '') : value,
+            [field]: numericFields.has(field)
+                ? value.replace(/[^0-9]/g, '')
+                : decimalFields.has(field)
+                  ? sanitizeDecimal(value)
+                  : value,
         }))
     }
 
@@ -197,6 +213,17 @@ export default function PublicBookingSettings() {
                             label={translate('Buffer after')}
                             value={String(settings.bufferAfterMinutes)}
                             onChangeText={v => updateField('bufferAfterMinutes', v)}
+                        />
+                    </View>
+
+                    <View style={localStyles.freeTimeSection}>
+                        <Text style={localStyles.label}>{translate('Minimum free hours per day')}</Text>
+                        <Text style={localStyles.guestHint}>{translate('Minimum free hours per day description')}</Text>
+                        <TextInput
+                            value={String(settings.minFreeHoursPerDay ?? '')}
+                            onChangeText={v => updateField('minFreeHoursPerDay', v)}
+                            style={[localStyles.input, localStyles.hoursInput]}
+                            keyboardType="numeric"
                         />
                     </View>
 
@@ -367,6 +394,13 @@ const localStyles = StyleSheet.create({
     },
     guestSection: {
         marginTop: 16,
+    },
+    freeTimeSection: {
+        marginTop: 16,
+    },
+    hoursInput: {
+        width: 180,
+        marginTop: 4,
     },
     guestHint: {
         ...styles.caption2,

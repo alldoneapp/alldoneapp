@@ -121,6 +121,21 @@ describe('public booking API', () => {
         expect(res.body.success).toBe(false)
     })
 
+    test('never exposes the host minimum free hours to visitors (AT-2278)', async () => {
+        // The rule is enforced server-side in findPublicBookingSlots. Publishing it would
+        // tell any stranger how loaded the host's calendar is.
+        bookingSettings.getPublicBookingPage.mockResolvedValue({
+            ...page,
+            settings: { ...page.settings, minFreeHoursPerDay: 4 },
+        })
+        const res = createResponse()
+
+        await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
+
+        expect(res.statusCode).toBe(200)
+        expect(res.body.page.settings).not.toHaveProperty('minFreeHoursPerDay')
+    })
+
     test('rejects booking without visitor name and email', async () => {
         const res = createResponse()
 

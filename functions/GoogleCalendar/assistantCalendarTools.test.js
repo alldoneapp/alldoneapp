@@ -18,6 +18,7 @@ const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler
 
 const firestoreState = {
     users: {},
+    bookingSettings: {},
 }
 
 const calendarClients = {}
@@ -40,6 +41,15 @@ function buildFirestore() {
                 })),
             }
         }),
+        // AT-2278: the meeting settings doc that carries minFreeHoursPerDay.
+        doc: jest.fn(path => {
+            const match = /^users\/([^/]+)\/bookingSettings\/default$/.exec(path)
+            if (!match) throw new Error(`Unexpected doc path: ${path}`)
+            const data = firestoreState.bookingSettings[match[1]]
+            return {
+                get: jest.fn().mockResolvedValue({ exists: !!data, data: () => data }),
+            }
+        }),
     }
 }
 
@@ -53,6 +63,7 @@ describe('assistantCalendarTools', () => {
 
     beforeEach(() => {
         firestoreState.users = {}
+        firestoreState.bookingSettings = {}
         Object.keys(calendarClients).forEach(key => delete calendarClients[key])
         jest.clearAllMocks()
 
@@ -71,6 +82,10 @@ describe('assistantCalendarTools', () => {
 
     function setUser(userId, data) {
         firestoreState.users[userId] = data
+    }
+
+    function setBookingSettings(userId, data) {
+        firestoreState.bookingSettings[userId] = data
     }
 
     function setCalendarClient(projectId, overrides = {}) {
@@ -285,6 +300,132 @@ describe('assistantCalendarTools', () => {
             { start: '2026-03-10T11:00:00+01:00', end: '2026-03-10T11:30:00+01:00' },
             { start: '2026-03-10T11:30:00+01:00', end: '2026-03-10T12:00:00+01:00' },
         ])
+    })
+
+    describe('minimum free calendar time per day (AT-2278)', () => {
+        const CALENDAR_USER = {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        }
+
+        function busyEvent(startIso, endIso) {
+            return { status: 'confirmed', start: { dateTime: startIso }, end: { dateTime: endIso } }
+        }
+
+        test('skips a day that would drop below the default 4 free hours and keeps the next one', async () => {
+            setUser('user-1', CALENDAR_USER)
+            const client = setCalendarClient('p1')
+            // 5h booked inside a 09:00-17:00 window leaves 3h free — a 30min meeting would
+            // leave 2.5h, below the 4h default. The following day is empty.
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-11T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 2,
+            })
+
+            expect(result.success).toBe(true)
+            expect(result.minFreeHours).toEqual({
+                perDay: 4,
+                source: 'settings',
+                applied: true,
+                skippedDays: ['2026-03-10'],
+            })
+            expect(result.options).toEqual([
+                { start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' },
+                { start: '2026-03-11T09:30:00+01:00', end: '2026-03-11T10:00:00+01:00' },
+            ])
+            expect(result.message).toContain('1 day was skipped')
+        })
+
+        test('counts meetings outside the searched window but inside the same working day', async () => {
+            setUser('user-1', CALENDAR_USER)
+            const client = setCalendarClient('p1')
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                // The morning load sits entirely outside this window; the day is still full.
+                timeMin: '2026-03-10T15:00:00+01:00',
+                timeMax: '2026-03-10T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 2,
+            })
+
+            expect(client.events.list).toHaveBeenCalledWith(
+                expect.objectContaining({ timeMin: '2026-03-09T23:00:00.000Z' })
+            )
+            // Soft fallback: no day in the range qualifies, so the options are offered anyway
+            // and flagged as cutting into the protected free time.
+            expect(result.minFreeHours).toMatchObject({ perDay: 4, applied: false, skippedDays: ['2026-03-10'] })
+            expect(result.options).toEqual([
+                { start: '2026-03-10T15:00:00+01:00', end: '2026-03-10T15:30:00+01:00' },
+                { start: '2026-03-10T15:30:00+01:00', end: '2026-03-10T16:00:00+01:00' },
+            ])
+            expect(result.message).toContain('cut into that protected time')
+        })
+
+        test('uses the saved per-user setting instead of the default', async () => {
+            setUser('user-1', CALENDAR_USER)
+            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
+            const client = setCalendarClient('p1')
+            // 2h booked leaves 6h free: fine under the 4h default, too little under 6h.
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T11:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-11T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 1,
+            })
+
+            expect(result.minFreeHours).toMatchObject({
+                perDay: 6,
+                source: 'settings',
+                applied: true,
+                skippedDays: ['2026-03-10'],
+            })
+            expect(result.options).toEqual([{ start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' }])
+        })
+
+        test('an explicit request value overrides the setting, and 0 disables the rule', async () => {
+            setUser('user-1', CALENDAR_USER)
+            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
+            const client = setCalendarClient('p1')
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-10T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 1,
+                minFreeHoursPerDay: 0,
+            })
+
+            expect(result.minFreeHours).toEqual({
+                perDay: 0,
+                source: 'request',
+                applied: true,
+                skippedDays: [],
+            })
+            expect(result.options).toEqual([{ start: '2026-03-10T14:00:00+01:00', end: '2026-03-10T14:30:00+01:00' }])
+        })
     })
 
     test('fails closed when any connected calendar cannot be checked', async () => {
