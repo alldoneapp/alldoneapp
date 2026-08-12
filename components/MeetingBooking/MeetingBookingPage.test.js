@@ -154,7 +154,9 @@ describe('MeetingBookingPage', () => {
             await flushPromises()
         })
 
-        const firstDay = moment().tz('Europe/Berlin').startOf('day')
+        // Tomorrow, not today: this fixture page has no allowSameDayBooking, so the day
+        // strip starts at the first bookable day (AT-2271).
+        const firstDay = moment().tz('Europe/Berlin').add(1, 'days').startOf('day')
         const firstDayButton = tree.root.findByProps({ testID: `booking-day-${firstDay.format('YYYY-MM-DD')}` })
 
         await act(async () => {
@@ -186,6 +188,71 @@ describe('MeetingBookingPage', () => {
                 end: futureDay.clone().endOf('day').format(),
             })
         )
+    })
+
+    describe('same-day booking (AT-2271)', () => {
+        const dayTestId = day => `booking-day-${day.format('YYYY-MM-DD')}`
+        const today = () => moment().tz('Europe/Berlin').startOf('day')
+        const tomorrow = () => moment().tz('Europe/Berlin').add(1, 'days').startOf('day')
+
+        const render = async () => {
+            let tree
+            await act(async () => {
+                tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+                await flushPromises()
+                await flushPromises()
+            })
+            return tree
+        }
+
+        test('does not offer today when the setting is absent (existing booking links)', async () => {
+            const tree = await render()
+
+            expect(tree.root.findAllByProps({ testID: dayTestId(today()) })).toHaveLength(0)
+            expect(tree.root.findAllByProps({ testID: dayTestId(tomorrow()) }).length).toBeGreaterThan(0)
+        })
+
+        test('does not offer today when the host explicitly disabled it', async () => {
+            getPublicBookingPage.mockResolvedValue({
+                success: true,
+                page: { ...page, settings: { ...page.settings, allowSameDayBooking: false } },
+            })
+            const tree = await render()
+
+            expect(tree.root.findAllByProps({ testID: dayTestId(today()) })).toHaveLength(0)
+        })
+
+        test('preselects tomorrow, so the first availability request skips today', async () => {
+            await render()
+
+            expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    start: tomorrow().format(),
+                    end: tomorrow().clone().endOf('day').format(),
+                })
+            )
+        })
+
+        test('offers today and preselects it when the host allows same-day booking', async () => {
+            getPublicBookingPage.mockResolvedValue({
+                success: true,
+                page: { ...page, settings: { ...page.settings, allowSameDayBooking: true } },
+            })
+            const tree = await render()
+
+            expect(tree.root.findAllByProps({ testID: dayTestId(today()) }).length).toBeGreaterThan(0)
+            // Today starts from "now" rather than midnight so past slots aren't offered.
+            expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
+                expect.objectContaining({ end: today().clone().endOf('day').format() })
+            )
+        })
+
+        test('still shows a full month of days when today is excluded', async () => {
+            const tree = await render()
+            const lastDay = moment().tz('Europe/Berlin').add(31, 'days').startOf('day')
+
+            expect(tree.root.findAllByProps({ testID: dayTestId(lastDay) }).length).toBeGreaterThan(0)
+        })
     })
 
     test('books a selected slot after visitor details are entered', async () => {
