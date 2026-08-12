@@ -13,31 +13,23 @@
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
-let algoliasearch, getAlgoliaClient
-let shouldReadFromTypesense, searchTypesenseDocuments, formatTypesenseFilterValue
+let searchTypesenseDocuments, formatTypesenseFilterValue
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
-    if (!algoliasearch) {
+    if (!searchTypesenseDocuments) {
         try {
-            // Try CommonJS first (Node.js/Cloud Functions)
-            if (typeof require !== 'undefined') {
-                algoliasearch = require('algoliasearch')
-                const searchHelper = require('../searchHelper')
-                const typesenseHelper = require('../typesenseHelper')
-                getAlgoliaClient = searchHelper.getAlgoliaClient
-                shouldReadFromTypesense = typesenseHelper.shouldReadFromTypesense
-                searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
-                formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
-            }
+            const typesenseHelper = require('../typesenseHelper')
+            searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
+            formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
         } catch (error) {
-            console.warn('Failed to load Algolia dependencies for TaskSearchService:', error.message)
-            // Continue without Algolia - will fall back to Firestore
+            console.warn('Failed to load Typesense dependencies for TaskSearchService:', error.message)
+            // Continue without search - will fall back to Firestore
         }
     }
 }
 
-// Algolia index name for tasks
+// Search collection name for tasks
 const TASKS_INDEX_NAME = 'dev_tasks'
 
 class TaskSearchService {
@@ -57,7 +49,6 @@ class TaskSearchService {
 
         this.initialized = false
         this.projectService = null
-        this.algoliaClient = null
     }
 
     /**
@@ -70,15 +61,10 @@ class TaskSearchService {
             throw new Error('Database interface is required for TaskSearchService')
         }
 
-        // Load Algolia dependencies (required)
+        // Load Typesense dependencies (required)
         await loadDependencies()
-        if (!getAlgoliaClient) {
-            throw new Error('Algolia client not available. TaskSearchService requires Algolia.')
-        }
-        try {
-            this.algoliaClient = getAlgoliaClient()
-        } catch (error) {
-            throw new Error(`Failed to initialize Algolia client: ${error.message}`)
+        if (!searchTypesenseDocuments) {
+            throw new Error('Typesense search not available. TaskSearchService requires Typesense.')
         }
 
         // Initialize ProjectService for proper project filtering
@@ -640,10 +626,6 @@ class TaskSearchService {
             return []
         }
 
-        if (!this.algoliaClient) {
-            throw new Error('Algolia client not available. TaskSearchService requires Algolia for searching.')
-        }
-
         // Filter projects based on search criteria
         let targetProjects = userProjects
 
@@ -670,52 +652,9 @@ class TaskSearchService {
      * @returns {Array} Array of task matches with scores
      */
     async searchTasksWithAlgolia(userId, taskName, targetProjects, projectId) {
-        if (!this.algoliaClient) {
-            throw new Error('Algolia client not available')
-        }
-
         try {
-            const index = this.algoliaClient.initIndex(TASKS_INDEX_NAME)
-
-            // Build filters for project access and visibility
-            const filters = []
+            // Filters for project access and visibility (Typesense; isPublicFor is string[])
             const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
-
-            // Project filter
-            if (projectId) {
-                filters.push(`projectId:"${projectId}"`)
-            } else {
-                const projectFilters = targetProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
-                if (projectFilters) {
-                    filters.push(`(${projectFilters})`)
-                }
-            }
-
-            // Enforce visibility via access list, not isPrivate flag
-            filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
-
-            const searchOptions = {
-                filters: filters.join(' AND '),
-                hitsPerPage: 50, // Limit results per search
-                attributesToRetrieve: [
-                    'objectID',
-                    'name',
-                    'description',
-                    'projectId',
-                    'userId',
-                    'humanReadableId',
-                    'humanReadableIdSearchable',
-                    'done',
-                    'created',
-                    'lastEditionDate',
-                ],
-                attributesToHighlight: ['name', 'description', 'humanReadableId', 'humanReadableIdSearchable'],
-                timeout: 5000, // 5 second timeout
-            }
-
-            // Engine dispatch (TYPESENSE_MIGRATION.md Phase 3): same filters contract in
-            // Typesense syntax; both return hits carrying objectID + projectId, which is
-            // all the processing below reads.
             const typesenseFilterParts = []
             if (projectId) {
                 typesenseFilterParts.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
@@ -731,9 +670,7 @@ class TaskSearchService {
             const typesenseFilterBy = typesenseFilterParts.join(' && ')
 
             const runSearch = async query =>
-                shouldReadFromTypesense && shouldReadFromTypesense()
-                    ? searchTypesenseDocuments(TASKS_INDEX_NAME, query, { filterBy: typesenseFilterBy, perPage: 50 })
-                    : index.search(query, searchOptions)
+                searchTypesenseDocuments(TASKS_INDEX_NAME, query, { filterBy: typesenseFilterBy, perPage: 50 })
 
             // Try initial search
             let searchResponse = await runSearch(taskName)

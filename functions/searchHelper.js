@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const algoliasearch = require('algoliasearch')
 const moment = require('moment')
 const Y = require('yjs')
 
@@ -16,11 +15,7 @@ const {
 const { mapUsersInProject, getProject } = require('./Firestore/generalFirestoreCloud')
 const { DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
 const { getProjectUsers } = require('./Users/usersFirestore')
-const { BatchWrapper } = require('./BatchWrapper/batchWrapper')
-const { getEnvFunctions } = require('./envFunctionsHelper')
 
-const APP_ID = '????'
-const ADMIN_API_KEY = '??????????'
 const TASKS_INDEX_NAME_PREFIX = 'dev_tasks'
 const GOALS_INDEX_NAME_PREFIX = 'dev_goals'
 const NOTES_INDEX_NAME_PREFIX = 'dev_notes'
@@ -36,13 +31,6 @@ const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
 const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
 const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
-
-const AMOUNT_OF_SEARCH_BY_PROJECT = 100
-
-const getAlgoliaClient = () => {
-    const { ALGOLIA_APP_ID, ALGOLIA_ADMIN_API_KEY } = getEnvFunctions()
-    return algoliasearch(ALGOLIA_APP_ID, ALGOLIA_ADMIN_API_KEY)
-}
 
 const parseObject = (objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive) => {
     if (objectsType === TASKS_OBJECTS_TYPE) {
@@ -480,196 +468,10 @@ const getIndexName = objectsType => {
     return indexName
 }
 
-const createAlgoliaIndexes = async () => {
-    const algoliaClient = getAlgoliaClient()
-
-    const objectTypes = [
-        TASKS_OBJECTS_TYPE,
-        GOALS_OBJECTS_TYPE,
-        NOTES_OBJECTS_TYPE,
-        CONTACTS_OBJECTS_TYPE,
-        ASSISTANTS_OBJECTS_TYPE,
-        USERS_OBJECTS_TYPE,
-        CHATS_OBJECTS_TYPE,
-    ]
-
-    const promises = []
-    objectTypes.forEach(objectType => {
-        const indexName = getIndexName(objectType)
-        const algoliaIndex = algoliaClient.initIndex(indexName)
-        promises.push(configAlgoliaIndex(algoliaIndex, objectType))
-    })
-
-    await Promise.all(promises)
-}
-
-// Pushes each index's Algolia settings. Two things to know before adding an
-// attribute to `attributesForFaceting` here (both learned from AT-2258):
-//
-//  1. THIS FUNCTION IS NOT CALLED BY A DEPLOY. It runs only from
-//     `createAlgoliaIndexes` and the bulk-upload path, so shipping a new
-//     `filterOnly(...)` line does not make that attribute filterable in
-//     production — the settings have to be pushed explicitly.
-//  2. DECLARING A FACET DOES NOT BACKFILL IT. Records indexed before the
-//     matching `map*Data` change carry no such attribute, so they simply never
-//     match. Existing objects need a reindex
-//     (`startProjectIndexationInAlgolia` in AlgoliaGlobalSearchHelper.js).
-//
-// Both failures are silent: Algolia answers a filter that matches nothing with
-// an empty result set, not an error, so the tab just renders "no results".
-const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
-    if (objectsType === TASKS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['humanReadableIdSearchable', 'humanReadableId', 'name'],
-                typoTolerance: true, // Enable typo tolerance for better partial matching
-                ignorePlurals: false,
-                customRanking: ['desc(created)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(done)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(userId)',
-                    'filterOnly(lockKey)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === GOALS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['name'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(created)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(id)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(ownerId)',
-                    'filterOnly(creatorId)',
-                    'filterOnly(lockKey)',
-                    'filterOnly(lastEditionDate)',
-                    'filterOnly(canBeInactive)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === NOTES_OBJECTS_TYPE) {
-        console.log('Configuring Algolia index for notes with searchable attributes:', ['title', 'content'])
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['title', 'content'],
-                typoTolerance: true,
-                ignorePlurals: true,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(userId)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-        // Verify the settings were applied
-        const settings = await algoliaIndex.getSettings()
-        console.log('Verified notes index settings:', settings)
-    } else if (
-        objectsType === CONTACTS_OBJECTS_TYPE ||
-        objectsType === USERS_OBJECTS_TYPE ||
-        objectsType === ASSISTANTS_OBJECTS_TYPE
-    ) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['displayName', 'cleanDescription', 'role', 'company'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(uid)',
-                    'filterOnly(recorderUserId)',
-                    'filterOnly(isAssistant)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === CHATS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['cleanName', 'cleanLastComment', 'cleanComments'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(creatorId)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    }
-}
-
-const removeProjectObjectsFromAlgolia = async (objectsType, filters) => {
-    const algoliaClient = getAlgoliaClient()
-    const indexName = getIndexName(objectsType)
-    const algoliaIndex = algoliaClient.initIndex(indexName)
-
-    let matchingRecordIds = []
-    await algoliaIndex.browseObjects({
-        batch: hits => {
-            const hitIds = hits.map(hit => hit.objectID)
-            matchingRecordIds = matchingRecordIds.concat(hitIds)
-        },
-        query: '',
-        attributesToRetrieve: ['objectID'],
-        filters: filters,
-    })
-    await algoliaIndex.deleteObjects(matchingRecordIds)
-}
-
-const uploadObjectsToAlgolia = async (algoliaClient, objectsList, objectsType) => {
-    const indexName = getIndexName(objectsType)
-    const algoliaIndex = algoliaClient.initIndex(indexName)
-    await configAlgoliaIndex(algoliaIndex, objectsType)
-
-    const objectsGroups = chunkArray(objectsList, 500)
-
-    const promises = []
-    objectsGroups.forEach(group => {
-        promises.push(algoliaIndex.saveObjects(group))
-    })
-    // Dual-write (TYPESENSE_MIGRATION.md Phase 1): bulk indexation mirrors into Typesense.
-    // The import never throws, so Algolia bulk uploads are unaffected by Typesense state.
-    const { importTypesenseDocuments } = require('./typesenseHelper')
-    promises.push(importTypesenseDocuments(indexName, objectsList))
-    await Promise.all(promises)
-}
+// The Algolia index-settings/config, bulk-upload and browse-delete helpers were removed in
+// Phase 5 of the search migration together with the algoliasearch dependency. Typesense
+// collections are created from schemas in typesenseHelper.js; bulk indexation is
+// migration/backfillTypesense.js.
 
 //////////////////////
 
@@ -700,8 +502,6 @@ const buildProjectUsersSearchRecords = async projectId => {
 /////////////////////
 
 module.exports = {
-    removeProjectObjectsFromAlgolia,
-    getAlgoliaClient,
     getNoteContent,
     processObject,
     addNotesToList,
@@ -711,9 +511,6 @@ module.exports = {
     addAssistantsToList,
     addChatsToList,
     buildProjectUsersSearchRecords,
-    configAlgoliaIndex,
-    uploadObjectsToAlgolia,
-    createAlgoliaIndexes,
     getIndexName,
     GOALS_OBJECTS_TYPE,
     CHATS_OBJECTS_TYPE,
