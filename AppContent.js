@@ -17,6 +17,7 @@ import { processNewUser } from './utils/InitialLoad/newUserHelper'
 import { loadGlobalDataAndGetUserResult, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
 import { LOGIN_FAILURE_ACTIONS, describeLoginError, resolveLoginFailureAction } from './utils/Auth/authErrorHelper'
 import { AppContainer } from './AppNavigator'
+import URLTrigger from './URLSystem/URLTrigger'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
@@ -30,6 +31,22 @@ import UndoActionBar from './components/Undo/UndoActionBar'
 const MAX_LOGIN_ATTEMPTS = 3
 const LOGIN_RETRY_DELAY_MS = 3000
 
+const getCurrentUrl = () => `${window.location.pathname}${window.location.search}`
+
+// A public page (currently the /meet/<slug> booking page) belongs to nobody: it needs no account,
+// no Firebase session and no app data, and an unregistered visitor must land on it directly. The
+// route is therefore resolved during the FIRST render, before anything is committed - not from an
+// effect. Mounting the login screen even for one frame is not harmless: its own effects rewrite the
+// address bar to /login (losing the booking link on a refresh) and start an anonymous sign-in.
+const resolvePublicPageUrl = () => {
+    const url = getCurrentUrl()
+    if (!SharedHelper.matchesPublicPageUrl(url)) return null
+    // Only NavigationService's route store is touched here (no redux dispatch during render):
+    // AppContainer reads it when it is constructed, i.e. right after this render returns.
+    URLTrigger.directProcessUrl(NavigationService, url)
+    return url
+}
+
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
     // NOTE: the dismissible-touch DOM capture listener that master's incident
@@ -40,6 +57,7 @@ export default function AppContent() {
     const loadingStep = useSelector(state => state.loadingStep)
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
+    const [publicPageUrl] = useState(resolvePublicPageUrl)
     const [connectingMessage] = useState(() => getConnectingMessage())
     // onAuthStateChanged can fire again while an initial load (incl. its retries) is still
     // running. Two concurrent loads race on the same watchers and redux state, so the second one
@@ -47,7 +65,18 @@ export default function AppContent() {
     const loginInProgressUid = useRef(null)
 
     const logoutUser = async () => {
-        const currentUrl = window.location.pathname + window.location.search
+        const currentUrl = getCurrentUrl()
+
+        // Public page: on boot it is already on screen (resolvePublicPageUrl routed it during the
+        // first render). Keep it there - no login UI, and no anonymous sign-in either, since
+        // nothing on the page reads Firestore. This reads the CURRENT url rather than the one
+        // captured at boot, so signing out somewhere else in the app still ends on the login
+        // screen. Access control for every other route is untouched.
+        if (SharedHelper.matchesPublicPageUrl(currentUrl)) {
+            store.dispatch(LogOut())
+            URLTrigger.directProcessUrl(NavigationService, currentUrl)
+            return
+        }
 
         // Anonymous visitor opening a shared resource detail link (chat, note, task, …): resolve it
         // and forward straight to the view in the boot path, WITHOUT ever mounting the login screen.
@@ -243,6 +272,10 @@ export default function AppContent() {
     }
 
     useEffect(() => {
+        if (publicPageUrl) store.dispatch(setInitialUrl(publicPageUrl))
+    }, [publicPageUrl])
+
+    useEffect(() => {
         initFirebase()
         // Initialize IP registry in background after Firebase auth
         setTimeout(() => {
@@ -276,7 +309,7 @@ export default function AppContent() {
     return (
         <>
             <AnalyticsConsentManager />
-            {loggedIn === null ? (
+            {loggedIn === null && !publicPageUrl ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
                 ) : (
