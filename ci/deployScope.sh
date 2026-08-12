@@ -53,11 +53,11 @@
 # EXIT CODES
 #
 #   0   this target needs deploying (or the answer could not be determined - see below)
-#   76  nothing to do for this target; the caller should stop. Callers declare it
-#       `allow_failure.exit_codes` so the job is VISIBLY skipped in the pipeline graph,
-#       matching the exit-75 "superseded" convention in ci/assertNewestCommit.sh. It is
-#       deliberately not exit 0: a deploy job reporting plain success without deploying
-#       is the trap this repo already hit with `xargs -r` in test:web:changed.
+#   76  nothing to do for this target; the caller should stop. CI callers translate this
+#       deliberate no-op to a successful early exit so GitLab does not render an expected
+#       skip as a failed-with-warnings job. The explicit log and the wrapper's early exit
+#       preserve the distinction from the historical `xargs -r` bug, where no test ran
+#       accidentally and the script silently continued.
 #
 # FAILING SAFE
 #
@@ -67,13 +67,12 @@
 #
 # SETUP (one-time, and it degrades gracefully until it is done)
 #
-# Recording a marker pushes a tag, which the pipeline's CI_JOB_TOKEN is not allowed to do.
-# Create a project access token with `write_repository` and expose it as the masked CI/CD
-# variable DEPLOY_MARKER_TOKEN. Until that exists, `record` logs a warning and does
-# nothing, markers never appear, and every target falls back to the old push-range
-# comparison - i.e. exactly today's behaviour, no regression, hole still open. Once the
-# variable is set the first successful deploy of each target lays its marker and the
-# catch-up behaviour switches itself on.
+# Recording a marker pushes a tag. The short-lived CI_JOB_TOKEN can do that when GitLab's
+# same-project "Allow Git push requests to the repository" setting is enabled. A masked
+# DEPLOY_MARKER_TOKEN with write_repository remains an explicit override for older GitLab
+# instances or projects that deliberately keep job-token pushes disabled.
+# Until either route works, `record` warns and the target falls back to the old push-range
+# comparison - no deployment regression, but the superseded-pipeline hole remains open.
 #
 # Tag pipelines cannot be triggered by this: the workflow rules in .gitlab-ci.yml only
 # admit pipelines that have $CI_COMMIT_BRANCH, which a tag push does not.
@@ -280,13 +279,20 @@ cmd_require() {
 cmd_record() {
     [ -n "$TARGET" ] || die "record needs a target"
 
-    if [ -z "${DEPLOY_MARKER_TOKEN:-}" ]; then
-        log "WARNING: DEPLOY_MARKER_TOKEN is not set, so the deploy marker cannot be"
-        log "         recorded. Every pipeline will keep falling back to its own push"
-        log "         diff. Create a project access token with write_repository and add"
-        log "         it as a masked CI/CD variable named DEPLOY_MARKER_TOKEN."
+    marker_push_user=""
+    if [ -n "${DEPLOY_MARKER_TOKEN:-}" ]; then
+        marker_push_user="deploy-marker"
+        MARKER_PUSH_TOKEN="$DEPLOY_MARKER_TOKEN"
+    elif [ -n "${CI_JOB_TOKEN:-}" ]; then
+        marker_push_user="gitlab-ci-token"
+        MARKER_PUSH_TOKEN="$CI_JOB_TOKEN"
+    else
+        log "WARNING: neither CI_JOB_TOKEN nor DEPLOY_MARKER_TOKEN is available, so the"
+        log "         deploy marker cannot be recorded. Every pipeline will keep"
+        log "         falling back to its own push diff."
         return 0
     fi
+    export MARKER_PUSH_TOKEN
 
     if ! have_git; then
         log "WARNING: git is unavailable, so the deploy marker was not recorded."
@@ -300,15 +306,16 @@ cmd_record() {
     # it never appears in a remote URL, a process command line or a GIT_TRACE dump - the
     # same precaution ci/github-push.sh takes.
     if g \
-        -c "credential.${url}.helper=!f() { echo username=deploy-marker; echo password=\${DEPLOY_MARKER_TOKEN}; }; f" \
+        -c "credential.${url}.helper=!f() { echo username=${marker_push_user}; echo password=\${MARKER_PUSH_TOKEN}; }; f" \
         push --force --quiet "$url" "${CI_COMMIT_SHA}:${ref}" >/dev/null 2>&1; then
         log "marker ${ref} now points at ${CI_COMMIT_SHA}."
     else
         # Not fatal: the deploy itself succeeded. The next pipeline will simply compare
         # against the older marker and redeploy this range, which is wasteful but correct.
         log "WARNING: could not push ${ref}. The deploy succeeded; the next pipeline will"
-        log "         redeploy this range. Check DEPLOY_MARKER_TOKEN's scope and that the"
-        log "         tag is not protected."
+        log "         redeploy this range. For CI_JOB_TOKEN, enable Settings > CI/CD >"
+        log "         Job token permissions > Allow Git push requests to the repository."
+        log "         For DEPLOY_MARKER_TOKEN, check write_repository and tag protection."
     fi
     return 0
 }
