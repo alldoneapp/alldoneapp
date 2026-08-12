@@ -1,13 +1,17 @@
 # Algolia → Typesense Cloud Migration Plan
 
-> **Status (2026-08-12):** Phase 0 (cluster + env keys) done. Phase 1 (server-side
-> dual-write) implemented — `functions/typesenseHelper.js` + hooks in
-> `AlgoliaGlobalSearchHelper.js` / `searchHelper.js`; silent no-op while `TYPESENSE_*` env is
-> unset. Phase 2 implemented as a LOCAL script (`migration/backfillTypesense.js`, follows the
-> `backfillGoldStats.js` conventions — no cloud function, no timeout ceiling): dry-run by
-> default, `--execute` to apply, resumable via `typesenseBackfill/{projectId}` markers,
-> Typesense-only writes (Algolia record count stays flat). Run order: deploy dual-write to
-> production (merge to master → CI), THEN run the backfill.
+> **Status (2026-08-12): Phases 0–2 COMPLETE.** Dual-write deployed to production
+> (pipeline #8171) and confirmed live. Full backfill executed against `alldonealeph`:
+> 4,824 projects + global assistants, **223,731 documents, 0 failures** (dev_tasks 185,975 ·
+> dev_goals 17,772 · dev_notes 4,546 · dev_contacts 8,402 · dev_updates 7,036). Three defects
+> found & fixed along the way: the bulk notes path called `mapNoteData` with 2 args (every
+> bulk note reindex threw — pre-existing, also broke the legacy 500-gold flow), typesense-js
+> throws `ImportError` instead of returning per-doc results, and legacy tasks carry garbage
+> `dueDate` values (floats + one whole task object; normalizer now rounds/drops).
+> Two corrupt task docs in Firestore itself:
+> `items/-OdN3r3av39Be2Cbii8H/tasks/-OdN4DDMkRPF8byMNWrn` and
+> `items/-Of0mXwuHe-fcjsFE5IU/tasks/-Of0rp0rgly-APXNG2LV` (whole task object under `dueDate`)
+> — indexed without dueDate; consider repairing the docs. Next: Phase 3 (client read cutover).
 
 **Goal:** Replace Algolia with Typesense Cloud (Frankfurt), index _all_ content permanently (no more 30-day windows), and delete the "Activate full search for 500 Gold" mechanic plus every expiry/cleanup job that exists only to keep the Algolia record count down.
 

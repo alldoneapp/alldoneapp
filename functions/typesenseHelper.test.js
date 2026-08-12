@@ -86,6 +86,30 @@ describe('document normalization', () => {
         expect('ghost' in doc).toBe(false)
         expect(doc.name).toBe('Do the thing')
     })
+
+    it('rounds float timestamp fields so auto-typed int64 fields accept legacy documents', () => {
+        const doc = normalizeDocumentForTypesense({
+            objectID: 'a1',
+            dueDate: 1754912345678.5,
+            created: 1754912345678,
+            progress: 62.5,
+        })
+        expect(doc.dueDate).toBe(1754912345679)
+        expect(doc.created).toBe(1754912345678)
+        expect(doc.progress).toBe(62.5)
+    })
+
+    it('drops non-numeric timestamp values (production corruption: a task object under dueDate)', () => {
+        const doc = normalizeDocumentForTypesense({
+            objectID: 'a1',
+            dueDate: { name: 'whole task object stored under dueDate', dueDate: 1762414310979 },
+            completed: null,
+            lastEditionDate: NaN,
+        })
+        expect('dueDate' in doc).toBe(false)
+        expect('lastEditionDate' in doc).toBe(false)
+        expect(doc.completed).toBeNull()
+    })
 })
 
 describe('configured environment', () => {
@@ -136,6 +160,24 @@ describe('configured environment', () => {
         Typesense.Client.mockImplementation(() => client)
 
         await expect(deleteTypesenseDocument(TASKS_COLLECTION, 'gone')).resolves.toBeUndefined()
+    })
+
+    it('recovers per-document outcomes when the client throws ImportError', async () => {
+        getEnvFunctions.mockReturnValue(CONFIGURED_ENV)
+        const { client, importFn } = makeFakeClient()
+        // typesense-js throws when any doc in the batch fails; successes are already applied.
+        importFn.mockRejectedValue(
+            Object.assign(new Error('1 documents failed'), {
+                importResults: [{ success: true }, { success: false, error: 'field done: expected bool' }],
+            })
+        )
+        Typesense.Client.mockImplementation(() => client)
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        const result = await importTypesenseDocuments(TASKS_COLLECTION, [{ objectID: 'a1' }, { objectID: 'a2' }])
+        expect(result).toEqual({ imported: 1, failed: 1 })
+        expect(errorSpy.mock.calls.join(' ')).toContain('a2: field done: expected bool')
+        errorSpy.mockRestore()
     })
 
     it('imports in upsert mode and reports per-document failures without throwing', async () => {
