@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import ChangeNumberTodayTasks from '../../../UIComponents/FloatModals/ChangeNumberTodayTasks'
 import Button from '../../../UIControls/Button'
 import { useSelector } from 'react-redux'
@@ -39,7 +39,7 @@ export default function MaxNumberTasksToday({ userId, numberTodayTasks }) {
                         {numberTodayTasks == 0 ? 'Unlimited' : numberTodayTasks}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangeNumberTodayTasks
                             closePopover={() => setOpen(false)}
@@ -55,7 +55,7 @@ export default function MaxNumberTasksToday({ userId, numberTodayTasks }) {
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

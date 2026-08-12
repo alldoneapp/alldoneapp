@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -63,7 +63,7 @@ export default function EmailLabelChip({
     )
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
@@ -87,7 +87,7 @@ export default function EmailLabelChip({
             }
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     )
 }
 

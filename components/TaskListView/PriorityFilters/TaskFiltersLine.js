@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, windowTagStyle } from '../../styles/global'
@@ -171,7 +171,7 @@ export default function TaskFiltersLine({ projectId }) {
                 <Text style={[styles.caption1, localStyles.headerText]}>{translate('Task Filters')}</Text>
                 {priorityData.prioritized > 0 &&
                     (showAutoPostpone ? (
-                        <Popover
+                        <AppPopover
                             content={
                                 <AutoPostponeTasksModal
                                     projectId={projectId}
@@ -187,7 +187,7 @@ export default function TaskFiltersLine({ projectId }) {
                             onClickOutside={delayCloseAutoPostpone}
                         >
                             <AutoPostponeButton onPress={delayCloseAutoPostpone} mobile={smallScreenNavigation} />
-                        </Popover>
+                        </AppPopover>
                     ) : (
                         <AutoPostponeButton onPress={openAutoPostpone} mobile={smallScreenNavigation} />
                     ))}

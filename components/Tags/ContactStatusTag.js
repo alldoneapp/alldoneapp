@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import { hideFloatPopup, setContactStatusFilter, showFloatPopup } from '../../redux/actions'
@@ -71,7 +71,7 @@ const ContactStatusTag = ({ projectId, contactStatusId, contact, style }) => {
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 <ContactStatusModal
@@ -88,7 +88,7 @@ const ContactStatusTag = ({ projectId, contactStatusId, contact, style }) => {
             contentLocation={mobile ? null : undefined}
         >
             {tagContent}
-        </Popover>
+        </AppPopover>
     )
 }
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import styles, { colors } from '../styles/global'
@@ -38,7 +38,7 @@ export default function GoalScheduleModeTag({ projectId, goal, style, disabled }
     }
 
     return (
-        <Popover
+        <AppPopover
             content={<ScheduleModeModal projectId={projectId} goal={goal} closePopover={hidePopover} />}
             onClickOutside={hidePopover}
             isOpen={visiblePopover}
@@ -60,7 +60,7 @@ export default function GoalScheduleModeTag({ projectId, goal, style, disabled }
                     {translate(isDynamic ? 'Dynamic' : 'Fixed')}
                 </Text>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

@@ -1,7 +1,7 @@
 import React, { Component } from 'react'
 import HighlightColorModal from './HighlightColorModal'
 import Circle from './Circle'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import store from '../../../../redux/store'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../../../utils/HelperFunctions'
@@ -141,7 +141,7 @@ class HighlightButton extends Component {
         const buttonTitle = translate(BACKGROUND_COLORS[index >= 0 ? index : 0].name)
 
         return (
-            <Popover
+            <AppPopover
                 content={<HighlightColorModal onPress={this.onPress} selectedColor={object.hasStar} />}
                 onClickOutside={this.delayHidePopover}
                 isOpen={visiblePopover}
@@ -190,7 +190,7 @@ class HighlightButton extends Component {
                         />
                     </Hotkeys>
                 )}
-            </Popover>
+            </AppPopover>
         )
     }
 }

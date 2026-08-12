@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import v4 from 'uuid/v4'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import ParentGoalButton from './ParentGoalButton'
@@ -66,7 +66,7 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
     }, [task.parentGoalId, projectId])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <TaskParentGoalModal
                     key={isOpen}
@@ -85,6 +85,6 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
             contentLocation={mobile ? null : undefined}
         >
             <ParentGoalButton activeGoal={activeGoal} onPress={openModal} disabled={disabled} />
-        </Popover>
+        </AppPopover>
     )
 }

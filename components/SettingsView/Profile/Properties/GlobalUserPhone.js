@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'
@@ -59,7 +59,7 @@ export default function GlobalUserPhone({ userId, phone }) {
                         {phoneDisplay}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangePhoneModal
                             closePopover={() => setOpen(false)}
@@ -75,7 +75,7 @@ export default function GlobalUserPhone({ userId, phone }) {
                     contentLocation={smallScreen ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
                 <AssistantVoiceCallButton
                     compact
                     assistant={defaultAssistant}

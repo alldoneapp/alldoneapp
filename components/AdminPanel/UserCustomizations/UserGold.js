@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../styles/global'
 import ChangeNumberTodayTasks from '../../UIComponents/FloatModals/ChangeNumberTodayTasks'
@@ -39,7 +39,7 @@ export default function UserGold({ userId, gold }) {
                         {Math.floor(gold)}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangeNumberTodayTasks
                             closePopover={() => setOpen(false)}
@@ -61,7 +61,7 @@ export default function UserGold({ userId, gold }) {
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

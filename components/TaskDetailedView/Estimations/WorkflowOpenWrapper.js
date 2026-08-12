@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import WorkflowOpen from './WorkflowOpen'
 import EstimationModal from '../../UIComponents/FloatModals/EstimationModal/EstimationModal'
@@ -30,7 +30,7 @@ export default function WorkflowOpenWrapper({ onStepPress, currentEstimation, ta
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -56,6 +56,6 @@ export default function WorkflowOpenWrapper({ onStepPress, currentEstimation, ta
                 currentEstimation={currentEstimation}
                 disabled={disabled}
             />
-        </Popover>
+        </AppPopover>
     )
 }

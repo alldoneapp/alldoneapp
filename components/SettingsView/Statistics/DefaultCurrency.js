@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../Icon'
 import styles, { colors } from '../../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Button from '../../UIControls/Button'
 import { useSelector, useDispatch } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
@@ -37,7 +37,7 @@ export default function DefaultCurrency({ userId, defaultCurrency }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <DefaultCurrencyModal
                             userId={userId}
@@ -53,7 +53,7 @@ export default function DefaultCurrency({ userId, defaultCurrency }) {
                     contentLocation={smallScreen ? null : undefined}
                 >
                     <Button type={'ghost'} onPress={showPopover} title={currentCurrency} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

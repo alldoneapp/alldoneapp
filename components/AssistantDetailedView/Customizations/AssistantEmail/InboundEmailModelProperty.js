@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -48,7 +48,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                 <Text style={[styles.body1, localStyles.currentValue]} numberOfLines={1}>
                     {currentLabel}
                 </Text>
-                <Popover
+                <AppPopover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>{translate('Inbound email model')}</Text>
@@ -88,7 +88,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

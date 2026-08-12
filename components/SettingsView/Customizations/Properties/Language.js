@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import Button from '../../../UIControls/Button'
 import { useSelector } from 'react-redux'
 import LanguagePickerModal from '../../../UIComponents/FloatModals/LanguagePickerModal'
@@ -40,7 +40,7 @@ export default function Language({ userId, language }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <LanguagePickerModal userId={userId} language={language} closePopover={() => setOpen(false)} />
                     }
@@ -57,7 +57,7 @@ export default function Language({ userId, language }) {
                         title={getLanguageName(language)}
                         onPress={() => setOpen(true)}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

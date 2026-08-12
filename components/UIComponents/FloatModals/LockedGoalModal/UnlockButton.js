@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 
 import { colors } from '../../../styles/global'
 import { UNLOCK_GOAL_COST } from '../../../Guides/guidesHelper'
@@ -33,7 +33,7 @@ export default function UnlockButton({ projectId, lockKey, goalId, ownerId }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             onClickOutside={closeModal}
             align={'center'}
@@ -48,6 +48,6 @@ export default function UnlockButton({ projectId, lockKey, goalId, ownerId }) {
                 type={'secondary'}
                 buttonStyle={{ backgroundColor: colors.UtilityYellow150 }}
             />
-        </Popover>
+        </AppPopover>
     )
 }

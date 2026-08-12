@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
@@ -39,7 +39,7 @@ export default function DoneStateWrapper({ projectId, milestone }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ConfirmDoneMilestoneModal
                     projectId={projectId}
@@ -63,6 +63,6 @@ export default function DoneStateWrapper({ projectId, milestone }) {
                 checked={checked}
                 disabled={loggedUser.isAnonymous}
             />
-        </Popover>
+        </AppPopover>
     )
 }

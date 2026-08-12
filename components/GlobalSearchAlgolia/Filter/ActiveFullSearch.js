@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../styles/global'
 import CheckBox from '../../CheckBox'
@@ -46,7 +46,7 @@ export default function ActiveFullSearch({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <RunOutOfGoldAssistantModal
                     closeModal={closeModal}
@@ -82,7 +82,7 @@ export default function ActiveFullSearch({
                         : translate('Activate full search for 14 days for 500 Gold')}
                 </Text>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

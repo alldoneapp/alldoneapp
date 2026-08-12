@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import GoalSprintCapacityModal from '../UIComponents/FloatModals/GoalSprintCapacityModal/GoalSprintCapacityModal'
@@ -38,7 +38,7 @@ export default function MilestoneAssigneeCapacityWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <GoalSprintCapacityModal
                     capacitySelected={capacityDate}
@@ -61,6 +61,6 @@ export default function MilestoneAssigneeCapacityWrapper({
                 assignee={assignee}
                 milestoneCapacity={milestoneCapacity}
             />
-        </Popover>
+        </AppPopover>
     )
 }

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import Icon from '../../Icon'
 import styles, { colors } from '../../styles/global'
@@ -222,7 +222,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
     )
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
@@ -234,7 +234,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
             content={<OKRModal projectId={projectId} okr={okr} closePopover={() => setIsOpen(false)} />}
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     )
 }
 
@@ -333,7 +333,7 @@ export function OKREmptyItem({ projectId, canUpdate, compact }) {
     )
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
@@ -345,7 +345,7 @@ export function OKREmptyItem({ projectId, canUpdate, compact }) {
             content={<OKRModal projectId={projectId} closePopover={() => setIsOpen(false)} />}
         >
             {trigger}
-        </Popover>
+        </AppPopover>
     )
 }
 

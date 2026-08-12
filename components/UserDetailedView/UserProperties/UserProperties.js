@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import UserPropertiesHeader from './UserPropertiesHeader'
@@ -157,7 +157,7 @@ const UserProperties = ({ user, project }) => {
                         <View style={localStyles.bottomContainer}>
                             <ObjectRevisionHistory projectId={projectId} noteId={user.noteIdsByProject[projectId]} />
                             <View style={localStyles.deleteButton}>
-                                <Popover
+                                <AppPopover
                                     content={
                                         <NotAllowRemoveUserModal
                                             closeModal={closeModal}
@@ -187,7 +187,7 @@ const UserProperties = ({ user, project }) => {
                                         buttonStyle={{ borderColor: colors.UtilityRed200, borderWidth: 2 }}
                                         onPress={openKickUserModal}
                                     />
-                                </Popover>
+                                </AppPopover>
                             </View>
                         </View>
                     )}

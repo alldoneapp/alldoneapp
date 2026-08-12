@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import Button from '../../../UIControls/Button'
 import CopyProjectModal from './CopyProjectModal'
 import { translate } from '../../../../i18n/TranslationService'
@@ -8,7 +8,7 @@ const CopyProjectWrapper = ({ project, disabled }) => {
     const [isOpen, setIsOpen] = useState(false)
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             onClickOutside={() => setIsOpen(false)}
             align={'end'}
@@ -24,7 +24,7 @@ const CopyProjectWrapper = ({ project, disabled }) => {
                 onPress={() => setIsOpen(!isOpen)}
                 buttonStyle={{ marginTop: 16 }}
             />
-        </Popover>
+        </AppPopover>
     )
 }
 

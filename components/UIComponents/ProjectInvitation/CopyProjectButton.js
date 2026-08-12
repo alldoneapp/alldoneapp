@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../ModalShell/AppPopover'
 import Button from '../../UIControls/Button'
 import CopyProjectModal from '../../ProjectDetailedView/ProjectProperties/CopyProject/CopyProjectModal'
 import { translate } from '../../../i18n/TranslationService'
@@ -13,7 +13,7 @@ const CopyProjectButton = ({ project, hidePopup }) => {
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             onClickOutside={() => setIsOpen(false)}
             align={'end'}
@@ -22,7 +22,7 @@ const CopyProjectButton = ({ project, hidePopup }) => {
             padding={8}
         >
             <Button title={translate('Duplicate Project')} type={'primary'} onPress={() => setIsOpen(!isOpen)} />
-        </Popover>
+        </AppPopover>
     )
 }
 

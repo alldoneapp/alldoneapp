@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Button from '../../UIControls/Button'
 import StatisticChartsOptions from './StatisticChartsOptions'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
@@ -42,7 +42,7 @@ const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeTo
 
     return (
         <View style={localStyles.container}>
-            <Popover
+            <AppPopover
                 content={
                     <StatisticChartsOptions
                         chart={selectedChart}
@@ -71,7 +71,7 @@ const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeTo
                         onPress={showPopover}
                     />
                 </View>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

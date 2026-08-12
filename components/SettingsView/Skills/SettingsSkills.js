@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../styles/global'
@@ -104,7 +104,7 @@ export default function SettingsSkills() {
                                     </Text>
                                 </View>
                                 {canEditOverlay && (
-                                    <Popover
+                                    <AppPopover
                                         content={
                                             <TaskPriorityLearningOverlayModal skill={skill} closeModal={closeOverlay} />
                                         }
@@ -120,7 +120,7 @@ export default function SettingsSkills() {
                                             onPress={() => setOverlaySkill(skill)}
                                             disabled={overlaySkill?.uid === skill.uid}
                                         />
-                                    </Popover>
+                                    </AppPopover>
                                 )}
                             </View>
                             {!!body && (

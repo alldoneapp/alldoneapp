@@ -6,7 +6,7 @@ import store from '../../redux/store'
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { cloneDeep, isEqual } from 'lodash'
 import Backend from '../../utils/BackendBridge'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import ImagePickerModal from '../UIComponents/FloatModals/ImagePickerModal'
 import {
     hideFloatPopup,
@@ -492,7 +492,7 @@ export default class EditContact extends Component {
                         </View>
 
                         {loggedUserCanUpdateObject && (
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ChangeContactInfoModal
                                         projectId={projectId}
@@ -531,11 +531,11 @@ export default class EditContact extends Component {
                                         shortcutText={'I'}
                                     />
                                 </Hotkeys>
-                            </Popover>
+                            </AppPopover>
                         )}
 
                         {!isMember && loggedUserCanUpdateObject && (
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ImagePickerModal
                                         closePopover={this.hidePictureModal}
@@ -571,7 +571,7 @@ export default class EditContact extends Component {
                                         shortcutText={'1'}
                                     />
                                 </Hotkeys>
-                            </Popover>
+                            </AppPopover>
                         )}
 
                         {(isMember || isNew) && loggedUserCanUpdateObject && (

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -44,7 +44,7 @@ export default function SomedayTaskTriggerPercent({ userId, somedayTaskTriggerPe
                         {`${somedayTaskTriggerPercent}%`}
                     </Text>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <ChangeNumberTodayTasks
                             customTitle={translate('Chance for random someday task')}
@@ -67,7 +67,7 @@ export default function SomedayTaskTriggerPercent({ userId, somedayTaskTriggerPe
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

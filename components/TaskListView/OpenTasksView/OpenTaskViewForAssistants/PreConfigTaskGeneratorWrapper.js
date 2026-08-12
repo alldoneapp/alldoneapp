@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -116,7 +116,7 @@ export default function PreConfigTaskGeneratorWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 gold > 0 ? (
@@ -146,6 +146,6 @@ export default function PreConfigTaskGeneratorWrapper({
                     disabled={executionDisabled}
                 />
             )}
-        </Popover>
+        </AppPopover>
     )
 }

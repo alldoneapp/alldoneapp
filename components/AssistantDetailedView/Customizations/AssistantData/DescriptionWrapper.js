@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -48,7 +48,7 @@ export default function DescriptionWrapper({ projectId, assistant, disabled }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <DescriptionModal
                     projectId={projectId}
@@ -81,6 +81,6 @@ export default function DescriptionWrapper({ projectId, assistant, disabled }) {
                     shortcutText={'D'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

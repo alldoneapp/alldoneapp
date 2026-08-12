@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
@@ -30,7 +30,7 @@ export default function AddGoalTag({ projectId, style }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={<RichCreateGoalModal projectId={projectId} closeModal={closeModal} />}
             onClickOutside={closeModal}
             isOpen={showModal}
@@ -50,7 +50,7 @@ export default function AddGoalTag({ projectId, style }) {
                     <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{translate('Add goal')}</Text>
                 )}
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

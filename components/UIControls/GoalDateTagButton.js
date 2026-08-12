@@ -1,4 +1,4 @@
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import moment from 'moment'
 import { useDispatch, useSelector } from 'react-redux'
 import React, { useState } from 'react'
@@ -48,7 +48,7 @@ export default function GoalDateTagButton({
     const firstTask = isEmptyGoal ? { dueDate: assigneesReminderDate[currentUserId] } : parentGoaltasks[0]
 
     return visiblePopover ? (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     projectId={projectId}
@@ -79,7 +79,7 @@ export default function GoalDateTagButton({
                 disabled={disabled}
                 style={{ marginLeft: 8 }}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <DateTag date={date} onPress={showPopover} icon={'calendar'} disabled={disabled} style={{ marginLeft: 8 }} />
     )

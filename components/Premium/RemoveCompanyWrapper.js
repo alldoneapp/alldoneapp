@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import Button from '../UIControls/Button'
 import { translate } from '../../i18n/TranslationService'
@@ -17,7 +17,7 @@ export default function RemoveCompanyWrapper({ removeCompany }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={showModal}
             content={
                 <ConfirmationModal
@@ -35,6 +35,6 @@ export default function RemoveCompanyWrapper({ removeCompany }) {
                 buttonStyle={{ marginRight: 8 }}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -39,7 +39,7 @@ export default function AddPreConfigTaskWrapper({ disabled, projectId, assistant
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <PreConfigTaskModal
                     projectId={projectId}
@@ -89,6 +89,6 @@ export default function AddPreConfigTaskWrapper({ disabled, projectId, assistant
                     disabled={isOpen}
                 />
             )}
-        </Popover>
+        </AppPopover>
     )
 }

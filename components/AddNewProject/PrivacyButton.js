@@ -3,7 +3,7 @@ import { TouchableOpacity } from 'react-native-gesture-handler'
 import { View, Text, StyleSheet } from 'react-native'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import ProjectPrivacyModal from '../ProjectDetailedView/ProjectProperties/PrivacyProperty/ProjectPrivacyModal'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
@@ -35,7 +35,7 @@ export default function PrivacyButton({ value, setPrivacy, disabled }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             onClickOutside={() => setIsOpen(false)}
             align={'center'}
@@ -57,7 +57,7 @@ export default function PrivacyButton({ value, setPrivacy, disabled }) {
                     <Icon name={ProjectHelper.getProjectPrivacyIcon(value)} size={20} color={colors.Grey100} />
                 </View>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

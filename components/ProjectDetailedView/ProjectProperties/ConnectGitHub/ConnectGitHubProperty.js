@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import ConnectGitHubModal from './ConnectGitHubModal/ConnectGitHubModal'
 import ConnectGitHubButton from './ConnectGitHubButton'
@@ -62,7 +62,7 @@ export default function ConnectGitHubProperty({ project, disabled }) {
     }, [dispatch])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ConnectGitHubModal
                     project={project}
@@ -86,6 +86,6 @@ export default function ConnectGitHubProperty({ project, disabled }) {
             }}
         >
             <ConnectGitHubButton projectId={projectId} disabled={disabled} connected={connected} onPress={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }
