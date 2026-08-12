@@ -299,8 +299,9 @@ imports: the count may only go down; build new popups on the shared system inste
 **ModalShell (Phase 2)**: `components/UIComponents/ModalShell/AppPopover.js` is the drop-in
 replacement for a direct `<Popover>` — desktop renders the vendored react-tiny-popover
 unchanged (all props pass through); below `MODAL_SHEET_BREAKPOINT` the content renders as
-`BottomSheet.js`: a full-width bottom sheet portal with scrim, drag-handle, slide-up motion
-(reduced-motion aware), document scroll lock (`utils/bodyScrollLock.js`), safe-area padding
+`BottomSheet.js`: a full-width bottom sheet portal with scrim, bounded bidirectional handle
+dragging, distance/velocity swipe-down dismissal, snap-back motion (reduced-motion aware),
+document scroll lock (`utils/bodyScrollLock.js`), safe-area padding
 (`utils/safeAreaInsets.js` — env() measured via probe, CSS can't reach fixed portals),
 keyboard-riding (`bottom: keyboardInset`), Escape via `useEscapeKey` (LIFO — a nested sheet
 closes first), and the AT-2236 mount-grace + dismiss-replay guards baked in. **Sheet
