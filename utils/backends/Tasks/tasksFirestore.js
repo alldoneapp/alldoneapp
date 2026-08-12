@@ -457,7 +457,10 @@ export async function uploadNewTask(
         taskCopy.priority = normalizeTaskPriority(taskCopy.priority)
         taskCopy.created = taskCopy.created ? taskCopy.created : Date.now()
         taskCopy.creatorId = taskCopy.creatorId ? taskCopy.creatorId : ''
-        taskCopy.dueDate = taskCopy.dueDate ? taskCopy.dueDate : Date.now()
+        // dueDate must be a positive millisecond timestamp (Number.MAX_SAFE_INTEGER = Someday).
+        // A miswired date-picker callback once passed a whole task object through here and
+        // Firestore stored it verbatim, so anything non-numeric falls back to "today".
+        taskCopy.dueDate = Number.isFinite(taskCopy.dueDate) && taskCopy.dueDate > 0 ? taskCopy.dueDate : Date.now()
         taskCopy.completed = taskCopy.completed ? taskCopy.completed : null
         taskCopy.isPrivate = taskCopy.isPrivate ? taskCopy.isPrivate : false
         taskCopy.isPublicFor = taskCopy.isPublicFor ? taskCopy.isPublicFor : [FEED_PUBLIC_FOR_ALL, taskCopy.userId]
