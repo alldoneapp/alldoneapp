@@ -29,6 +29,8 @@ const getModalsManager = () => require('../../ModalsManager/modalsManager')
 const SLIDE_DISTANCE = 240
 const HANDLE_STRIP_HEIGHT = 20
 const SHEET_BOTTOM_PADDING = 8
+const SWIPE_DISMISS_DISTANCE = 96
+const SWIPE_DISMISS_VELOCITY = 0.8
 
 const SHELL_CONTEXT_VALUE = { presentation: 'sheet' }
 
@@ -67,6 +69,18 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     const openedAtRef = useRef(highResNow())
     const closingRef = useRef(false)
 
+    // Swipe-down on the handle strip dismisses the sheet. Raw pointer events
+    // on the handle's DOM node rather than PanResponder — pointer events unify
+    // mouse and touch, setPointerCapture keeps the stream on the handle for
+    // the whole gesture, and react-native-web's responder layer has already
+    // proven undeliverable in two environments here (jsdom presses, and mouse
+    // drags under Chromium touch emulation in browser-tests/modalsheet).
+    const dragYRef = useRef(null)
+    if (dragYRef.current === null) dragYRef.current = new Animated.Value(0)
+    const dragY = dragYRef.current
+    const requestCloseRef = useRef(() => {})
+    const handleRef = useRef(null)
+
     const animate = (toValue, duration) => {
         Animated.timing(progress, {
             toValue,
@@ -89,12 +103,60 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         requestClose()
     }
 
+    requestCloseRef.current = requestClose
+
+    useEffect(() => {
+        const node = handleRef.current
+        if (!isOpen || !node) return
+        let startY = null
+        let startedAt = 0
+        const settleDragBack = () => {
+            Animated.timing(dragYRef.current, { toValue: 0, duration: 120, useNativeDriver: false }).start()
+        }
+        const onPointerDown = event => {
+            startY = event.clientY
+            startedAt = highResNow()
+            if (node.setPointerCapture && event.pointerId != null) node.setPointerCapture(event.pointerId)
+        }
+        const onPointerMove = event => {
+            if (startY === null) return
+            dragYRef.current.setValue(Math.max(0, event.clientY - startY))
+        }
+        const onPointerUp = event => {
+            if (startY === null) return
+            const distance = event.clientY - startY
+            const elapsed = Math.max(highResNow() - startedAt, 1)
+            startY = null
+            // velocity in px/ms, matching the RN gesture convention
+            if (distance > SWIPE_DISMISS_DISTANCE || distance / elapsed > SWIPE_DISMISS_VELOCITY) {
+                requestCloseRef.current()
+            } else {
+                settleDragBack()
+            }
+        }
+        const onPointerCancel = () => {
+            startY = null
+            settleDragBack()
+        }
+        node.addEventListener('pointerdown', onPointerDown)
+        node.addEventListener('pointermove', onPointerMove)
+        node.addEventListener('pointerup', onPointerUp)
+        node.addEventListener('pointercancel', onPointerCancel)
+        return () => {
+            node.removeEventListener('pointerdown', onPointerDown)
+            node.removeEventListener('pointermove', onPointerMove)
+            node.removeEventListener('pointerup', onPointerUp)
+            node.removeEventListener('pointercancel', onPointerCancel)
+        }
+    }, [isOpen])
+
     useEscapeKey(() => requestClose(), { enabled: !!isOpen })
 
     useEffect(() => {
         if (!isOpen) return
         openedAtRef.current = highResNow()
         closingRef.current = false
+        dragYRef.current.setValue(0)
         lockBodyScroll()
         if (modalId) getModalsManager().storeModal(modalId)
         animate(1, MODAL_ENTER_MS)
@@ -133,16 +195,19 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                         opacity: progress,
                         transform: [
                             {
-                                translateY: progress.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [SLIDE_DISTANCE, 0],
-                                }),
+                                translateY: Animated.add(
+                                    progress.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [SLIDE_DISTANCE, 0],
+                                    }),
+                                    dragY
+                                ),
                             },
                         ],
                     },
                 ]}
             >
-                <View style={localStyles.handleStrip}>
+                <View ref={handleRef} testID={'bottom-sheet-handle'} style={localStyles.handleStrip}>
                     <View style={localStyles.handle} />
                 </View>
                 <View style={[localStyles.content, { maxHeight: contentMaxHeight }]}>{children}</View>
@@ -179,6 +244,8 @@ const localStyles = StyleSheet.create({
         alignSelf: 'stretch',
         alignItems: 'center',
         justifyContent: 'center',
+        // Without this the browser competes for the vertical drag gesture.
+        touchAction: 'none',
     },
     handle: {
         width: 36,

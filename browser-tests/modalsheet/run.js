@@ -150,6 +150,31 @@ async function runMobile(server, chromium) {
     s = await state(page)
     check('mobile: Escape closes the sheet while its input has focus', !s.outerOpen, JSON.stringify(s))
 
+    // --- 3b. swipe-down on the handle dismisses; a short drag does not -----
+    await page.evaluate(() => window.__openOuter())
+    await page.waitForTimeout(PAST_GRACE_MS)
+    const dragHandle = async distance => {
+        const box = await page.locator('[data-testid="bottom-sheet-handle"]').boundingBox()
+        const startX = box.x + box.width / 2
+        const startY = box.y + box.height / 2
+        await page.mouse.move(startX, startY)
+        await page.mouse.down()
+        for (let step = 1; step <= 6; step++) {
+            await page.mouse.move(startX, startY + (distance * step) / 6)
+            await page.waitForTimeout(16)
+        }
+        await page.mouse.up()
+    }
+    await dragHandle(30)
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: a short handle drag springs back and does not close', s.outerOpen, JSON.stringify(s))
+
+    await dragHandle(160)
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: swiping the handle down dismisses the sheet', !s.outerOpen && s.sheets === 0, JSON.stringify(s))
+
     // --- 4. nesting: inner taps never dismiss the outer sheet, Escape pops LIFO
     await page.evaluate(() => window.__openOuter())
     await page.waitForTimeout(PAST_GRACE_MS)
