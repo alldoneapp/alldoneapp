@@ -10,7 +10,6 @@ import {
     setFollowedFeedsData,
     setAllFeedsData,
     setLoadedNewFeeds,
-    updateGoogleMeetNotificationModalData,
 } from '../../redux/actions'
 import useReachEmptyInbox from '../../hooks/useReachEmptyInbox'
 import {
@@ -29,7 +28,6 @@ export default function InitLoadView({}) {
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const projectsMeetings = useSelector(state => state.projectsMeetings)
     const [timeOfFeedsLoaded, setTimeOfFeedsLoaded] = useState(0)
     const [watchedProjectsIds, setWatchedProjectsIds] = useState([])
     useReachEmptyInbox()
@@ -42,31 +40,6 @@ export default function InitLoadView({}) {
     let followedData = {}
     let allData = {}
     let timeOfFeedsLoadedInternal = 0
-
-    const { email } = loggedUser
-    const [meetings, setMeetings] = useState([])
-    const [counter, setCounter] = useState(0)
-
-    useEffect(() => {
-        Object.keys(projectsMeetings).map(function (key, index) {
-            if (projectsMeetings[key].length > 0) {
-                setMeetings(projectsMeetings[key])
-            }
-        })
-    }, [Object.values(projectsMeetings)])
-
-    useEffect(() => {
-        meetings.length > 0 &&
-            counter === 0 &&
-            meetings.map(item => {
-                setCounter(counter + 1)
-                const guest = item.guests.find(f => f.email === email)
-                if (guest && guest.attend === 0) {
-                    dispatch(updateGoogleMeetNotificationModalData(true, item.projectId, email, item))
-                }
-                setCounter(0)
-            })
-    }, [meetings])
 
     //////////////////////// Feeds counting ////////////////////////
 

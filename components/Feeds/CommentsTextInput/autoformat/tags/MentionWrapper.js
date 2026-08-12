@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import ReactQuill from 'react-quill-new'
 
@@ -184,7 +184,7 @@ export default function MentionWrapper({ data }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 contact === undefined ? null : (!userId ||
                       userId === NOT_USER_MENTIONED ||
@@ -226,6 +226,6 @@ export default function MentionWrapper({ data }) {
                 projectId={projectId}
                 contact={contact}
             />
-        </Popover>
+        </AppPopover>
     )
 }

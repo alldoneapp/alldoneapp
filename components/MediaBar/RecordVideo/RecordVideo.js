@@ -20,7 +20,6 @@ let timeout
 
 const RecordVideo = ({ projectId, setVideoToExternalParent, closeModal }) => {
     const dispatch = useDispatch()
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const { defaultAudioInputId, defaultCameraId } = useSelector(state => state.loggedUser)
     const [isPaused, setIsPaused] = useState(false)
     const [isMuted, setIsMuted] = useState(false)
@@ -192,7 +191,7 @@ const RecordVideo = ({ projectId, setVideoToExternalParent, closeModal }) => {
     }, [])
 
     return (
-        <View style={[localStyles.parent, mobile && localStyles.mobile]}>
+        <View style={localStyles.parent}>
             {showNewTopic ? (
                 <NewTopic projectId={projectId} propFiles={file} close={closeModal} />
             ) : (
@@ -352,7 +351,7 @@ const localStyles = StyleSheet.create({
         flex: 1,
         position: 'fixed',
         zIndex: 1,
-        left: '48.5%',
+        left: '50%',
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         borderRadius: 4,
@@ -360,10 +359,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 16,
         height: 'auto',
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    mobile: {
-        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
     container: {
         width: 330,

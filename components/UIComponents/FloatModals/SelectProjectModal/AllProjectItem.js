@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { ALL_PROJECTS_OPTION } from './SelectProjectModalInSearch'
+import { ALL_PROJECTS_OPTION } from './projectPickerConstants'
 
 export default function AllProjectItem({ selectedProjectId, onProjectSelect, active }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)

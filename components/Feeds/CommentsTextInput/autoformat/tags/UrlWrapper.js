@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
@@ -399,7 +399,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 showEditObjectPopup ? (
                     <EditObjectsInLinks
@@ -443,6 +443,6 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                 setIsPrivate={setIsPrivate}
                 setUserIsMember={setUserIsMember}
             />
-        </Popover>
+        </AppPopover>
     )
 }

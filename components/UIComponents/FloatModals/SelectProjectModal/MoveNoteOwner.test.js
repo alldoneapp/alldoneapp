@@ -17,14 +17,17 @@ const path = require('path')
  *
  * A behavioural test would have to mount the whole modal (Backend/firestore/dotenv imports), so
  * this guards the contract at the source level, following `__tests__/WebShellScrollContainers.test.js`.
+ *
+ * The move engine now lives in useMoveObjectToProject.js (extracted from
+ * SelectProjectModal in the picker consolidation); this suite guards it there.
  */
 
-const MODAL_PATH = 'components/UIComponents/FloatModals/SelectProjectModal/SelectProjectModal.js'
+const MODAL_PATH = 'components/UIComponents/FloatModals/SelectProjectModal/useMoveObjectToProject.js'
 
 const readNoteBranch = () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../../..', MODAL_PATH), 'utf8')
-    // The `} else if (type === 'note') {` block, up to the next `} else if (`.
-    const match = source.match(/else if \(type === 'note'\) \{([\s\S]*?)\n {12}\} else if \(/)
+    // The `} else if (type === 'note') {` block, up to the next `} else if (` at any depth.
+    const match = source.match(/else if \(type === 'note'\) \{([\s\S]*?)\n +\} else if \(/)
     return { source, branch: match ? match[1] : null }
 }
 

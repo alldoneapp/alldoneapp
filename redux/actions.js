@@ -555,15 +555,6 @@ export const setContactsInProject = (projectId, contacts) => {
     return action
 }
 
-export const setMeetingsInProject = (projectId, meetings) => {
-    const action = {
-        type: 'Set meetings in project',
-        projectId,
-        meetings,
-    }
-    return action
-}
-
 export const setWorkstreamsInProject = (projectId, workstreams) => {
     const action = {
         type: 'Set workstreams in project',
@@ -1124,30 +1115,6 @@ export const updateScreenRecordingModalData = (visible, projectId) => {
     const action = {
         type: 'Update screen recording modal data',
         screenRecordingModalData: { visible, projectId },
-    }
-    return action
-}
-
-export const updateChatGoogleMeetModalData = (visible, projectId, userId, userIds, title) => {
-    const action = {
-        type: 'Update chat google meet modal data',
-        chatGoogleMeetModalData: { visible, projectId, userId, userIds, title },
-    }
-    return action
-}
-
-export const updateGoogleMeetModalData = (visible, projectId, userId) => {
-    const action = {
-        type: 'Update google meet modal data',
-        googleMeetModalData: { visible, projectId, userId },
-    }
-    return action
-}
-
-export const updateGoogleMeetNotificationModalData = (visible, projectId, email, meeting) => {
-    const action = {
-        type: 'Update google meet notification modal data',
-        googleMeetNotificationModalData: { visible, projectId, email, meeting },
     }
     return action
 }

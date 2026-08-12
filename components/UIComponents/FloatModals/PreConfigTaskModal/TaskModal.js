@@ -282,13 +282,6 @@ const MemoizedModalContent = memo(
                                                         closePopover={() => {
                                                             setShowDatePicker(false)
                                                         }}
-                                                        updateDate={date => {
-                                                            const newDate = moment(date)
-                                                                .hour(moment(startDate).hour())
-                                                                .minute(moment(startDate).minute())
-                                                                .valueOf()
-                                                            setStartDate(newDate)
-                                                        }}
                                                         saveDueDateBeforeSaveTask={(date, isObservedTabActive) => {
                                                             const newDate = moment(date)
                                                                 .hour(moment(startDate).hour())

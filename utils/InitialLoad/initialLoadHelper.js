@@ -11,7 +11,6 @@ import {
     unwatch,
     watchProject,
     watchProjectInvitations,
-    watchProjectMeetings,
     watchUserData,
 } from '../backends/firestore'
 import {
@@ -22,7 +21,6 @@ import {
     setContactsInProject,
     setGlobalAssistants,
     setInvitationsInProject,
-    setMeetingsInProject,
     setUsersInProject,
     setWorkstreamsInProject,
     setShowEndCopyProjectPopup,
@@ -98,12 +96,8 @@ export const watchProjectDataThatIsOnlyForProjectMembers = (projectId, watchChat
     const updateInvitations = invitations => {
         store.dispatch(setInvitationsInProject(projectId, invitations))
     }
-    const updateMeetings = meetings => {
-        store.dispatch(setMeetingsInProject(projectId, meetings))
-    }
 
     watchProjectInvitations(projectId, updateInvitations, `${projectId}Invitations`)
-    watchProjectMeetings(projectId, updateMeetings, `${projectId}Mettings`)
     if (watchChatNotifications) watchProjectChatNotifications(projectId)
 }
 

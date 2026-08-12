@@ -2,11 +2,11 @@
 
 exports[`SelectProjectModal component SelectProjectModal snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingBlock-11f147o"
+  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-padding-nsbfu8 r-zIndex-vpjg5r"
   dir={null}
   style={
     {
-      "maxHeight": "537.5999999999999px",
+      "maxHeight": "736px",
       "maxWidth": "432px",
       "minWidth": "432px",
       "width": "432px",
@@ -14,174 +14,138 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
   }
 >
   <div
-    className="css-view-g5y9jx r-paddingInline-3pj75a"
+    className="css-view-g5y9jx"
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-knv0ih"
+      className="css-view-g5y9jx r-position-u8s1d r-zIndex-184en5c r-right-1svt5kg r-top-1wghi3f"
       dir={null}
     >
       <div
-        className="css-text-146c3p1"
-        dir="auto"
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci r-margin-1vuahiu r-padding-1sp51qo"
+        dir={null}
+        onClick={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           {
-            "color": "rgba(255,255,255,1.00)",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": "18px",
-            "lineHeight": "26px",
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        Move task
-      </div>
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
-        style={
-          {
-            "color": "rgba(138,148,166,1.00)",
-            "fontFamily": "Roboto-Regular",
-            "fontSize": "14px",
-            "letterSpacing": "0.32px",
-            "lineHeight": "22px",
-          }
-        }
-      >
-        Select the project this task will move to
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
+        >
+          <div
+            className="css-text-146c3p1"
+            dir="auto"
+            style={
+              {
+                "color": "rgba(138,148,166,1.00)",
+                "fontFamily": "alldone",
+                "fontSize": "24px",
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </div>
+        </div>
       </div>
     </div>
     <div
-      className="css-view-g5y9jx r-position-u8s1d r-right-3mc0re r-top-ipm5af"
+      className="css-text-146c3p1 r-color-jwli3a r-fontFamily-1k9400p r-fontSize-1i10wst r-lineHeight-eaezby"
+      dir="auto"
+    >
+      Move task
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
+      dir="auto"
+    >
+      Select the project this task will move to
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-marginTop-1s2bzr4"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-marginBottom-1ifxtd0"
       dir={null}
     >
-      <button
-        className="css-view-g5y9jx"
+      <div
+        className="css-view-g5y9jx r-flex-13awgt0"
         dir={null}
-        role="button"
-        style={
-          {
-            "overflowX": "hidden",
-            "overflowY": "hidden",
-          }
-        }
-        type="button"
       >
         <div
-          className="css-view-g5y9jx r-height-1472mwg r-width-lrsllp"
+          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
           dir={null}
+          onClick={[Function]}
+          onContextMenu={[Function]}
+          onKeyDown={[Function]}
           style={
             {
-              "opacity": 1,
+              "transitionDuration": "0s",
             }
           }
+          tabIndex="0"
         >
           <div
-            className="css-view-g5y9jx"
-            dir={null}
+            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j r-color-jwli3a"
+            dir="auto"
           >
-            <div
-              className="css-text-146c3p1"
-              dir="auto"
-              style={
-                {
-                  "color": "rgba(138,148,166,1.00)",
-                  "fontFamily": "alldone",
-                  "fontSize": "24px",
-                  "opacity": 1,
-                }
-              }
-            >
-              
-            </div>
+            Active
           </div>
+          <div
+            className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu r-backgroundColor-1kq6gdg"
+            dir={null}
+          />
         </div>
-      </button>
-    </div>
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-      style={
-        {
-          "marginTop": "20px",
-        }
-      }
-    >
+        <div
+          className="css-view-g5y9jx r-height-109y4c4 r-width-13qz1uu r-backgroundColor-1kq6gdg"
+          dir={null}
+        />
+      </div>
       <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-marginBottom-1ifxtd0"
+        className="css-view-g5y9jx r-flex-13awgt0"
         dir={null}
       >
         <div
-          className="css-view-g5y9jx r-flex-13awgt0"
+          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
           dir={null}
+          onClick={[Function]}
+          onContextMenu={[Function]}
+          onKeyDown={[Function]}
+          style={
+            {
+              "transitionDuration": "0s",
+            }
+          }
+          tabIndex="0"
         >
           <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
+            className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+            dir="auto"
           >
-            <div
-              className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j r-color-jwli3a"
-              dir="auto"
-            >
-              Active
-            </div>
-            <div
-              className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu r-backgroundColor-1kq6gdg"
-              dir={null}
-            />
+            Archived
           </div>
           <div
-            className="css-view-g5y9jx r-height-109y4c4 r-width-13qz1uu r-backgroundColor-1kq6gdg"
+            className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu"
             dir={null}
           />
         </div>
         <div
-          className="css-view-g5y9jx r-flex-13awgt0"
+          className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
           dir={null}
-        >
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
-              dir="auto"
-            >
-              Archived
-            </div>
-            <div
-              className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu"
-              dir={null}
-            />
-          </div>
-          <div
-            className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
-            dir={null}
-          />
-        </div>
+        />
       </div>
     </div>
   </div>
   <div
-    className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-eqz5dr r-paddingInline-is05cd"
+    className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-eqz5dr r-marginInline-1xidu1v"
     dir={null}
   >
     <div

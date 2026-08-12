@@ -23,7 +23,6 @@ import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/as
 
 export default function NewTopic({ projectId, propFiles, close }) {
     const dispatch = useDispatch()
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const { uid } = useSelector(state => state.loggedUser)
     const openModals = useSelector(state => state.openModals)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -160,7 +159,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                 <AttachmentsSelectorModal
                     closeModal={setShowFileSelector}
                     addAttachmentTag={addAttachmentTag}
-                    style={[localStyles.parent, mobile && localStyles.mobile]}
+                    style={localStyles.parent}
                     projectId={projectId}
                 />
             ) : showPrivacyModalRef.current ? (
@@ -171,7 +170,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                     closePopover={setShowPrivacyModal}
                     delayClosePopover={setShowPrivacyModal}
                     savePrivacyBeforeSaveObject={setPrivacy}
-                    style={[localStyles.parent, mobile && localStyles.mobile]}
+                    style={localStyles.parent}
                 />
             ) : (
                 <AddTopicModal
@@ -200,11 +199,8 @@ const localStyles = StyleSheet.create({
         flex: 1,
         position: 'fixed',
         zIndex: 1,
-        left: '48.5%',
+        left: '50%',
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    mobile: {
-        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
 })

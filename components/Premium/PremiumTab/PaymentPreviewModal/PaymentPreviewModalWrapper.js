@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../../UIControls/Button'
+import { popoverToCenter } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import PaymentPreviewModal from './PaymentPreviewModal'
 import { getSubscriptionStatus } from '../../PremiumHelper'
@@ -48,6 +49,7 @@ export default function PaymentPreviewModalWrapper({
             position={['top', 'left', 'right', 'bottom']}
             padding={4}
             align={'center'}
+            contentLocation={popoverToCenter}
             onClickOutside={closeModal}
             isOpen={showModal}
             content={

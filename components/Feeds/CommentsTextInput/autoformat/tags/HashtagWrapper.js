@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import ReactQuill from 'react-quill-new'
 
@@ -115,7 +115,7 @@ export default function HashtagWrapper({ data }) {
     }, [projectId, text, tagId])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <HashtagsInteractionPopup
                     text={text}
@@ -131,6 +131,6 @@ export default function HashtagWrapper({ data }) {
             isOpen={isOpen}
         >
             <HashtagTag disabled={loggedUser.isAnonymous} text={text} onPress={openModal} colorKey={colorKey} />
-        </Popover>
+        </AppPopover>
     )
 }

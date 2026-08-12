@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Linking } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 import ReactQuill from 'react-quill-new'
 
@@ -85,7 +85,7 @@ const EmailWrapper = ({ data }) => {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <TagsInteractionPopup
                     ico="mail"
@@ -103,7 +103,7 @@ const EmailWrapper = ({ data }) => {
             isOpen={isOpen}
         >
             <EmailTag value={cleanedText} onPress={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }
 

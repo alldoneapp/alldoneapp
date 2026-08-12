@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, View } from 'react-native'
 import { createPortal } from 'react-dom'
 
@@ -16,6 +16,7 @@ import useModalSizing from '../../../hooks/useModalSizing'
 import useEscapeKey from '../../../hooks/useEscapeKey'
 import { highResNow, registerPopupDismiss, shouldIgnorePressFromBeforeOpen } from '../../../utils/popupDismissGuard'
 import { lockBodyScroll, unlockBodyScroll } from '../../../utils/bodyScrollLock'
+import { pushSheetHistoryLayer, releaseSheetHistoryLayer } from '../../../utils/sheetHistoryLayers'
 import { getSafeAreaBottomInset } from '../../../utils/safeAreaInsets'
 import { ModalShellContext } from './ModalShellContext'
 
@@ -27,12 +28,21 @@ import { ModalShellContext } from './ModalShellContext'
 const getModalsManager = () => require('../../ModalsManager/modalsManager')
 
 const SLIDE_DISTANCE = 240
+// Unmount a hair after the exit animation lands so the last frame paints.
+const EXIT_UNMOUNT_BUFFER_MS = 20
 const HANDLE_STRIP_HEIGHT = 20
 const SHEET_BOTTOM_PADDING = 8
 const SWIPE_DISMISS_DISTANCE = 96
 const SWIPE_DISMISS_VELOCITY = 0.8
 
 const SHELL_CONTEXT_VALUE = { presentation: 'sheet' }
+
+const FOCUSABLE_SELECTOR =
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+// A plain object (not StyleSheet.create) on purpose: react-native-web inlines
+// plain-object styles, and ModalShell.test.js asserts the inline style.
+const NO_POINTER_EVENTS_STYLE = { pointerEvents: 'none' }
 
 const prefersReducedMotion = () =>
     typeof window !== 'undefined' &&
@@ -55,14 +65,19 @@ const prefersReducedMotion = () =>
  * trailing synthesized click cannot activate a row underneath (AT-2189
  * companion).
  *
- * Close is synchronous: every current wrapper unmounts the popover subtree
- * the moment it is asked to close, so an exit animation could never play —
- * notifying behind one would only add latency (and react-native-web's
- * Animated completion callbacks are unreliable under jsdom). Slide-out
- * polish is a Phase 5 item and needs wrappers that defer unmount.
+ * Close notifies the wrapper synchronously (onRequestClose fires the moment
+ * the user dismisses), but the sheet itself defers its unmount by
+ * MODAL_EXIT_MS and slides out (Phase 5). The unmount is driven by a
+ * setTimeout, never by the Animated completion callback — react-native-web's
+ * completion callbacks are unreliable under jsdom. Wrappers that unmount the
+ * whole <AppPopover> on close simply skip the exit animation, which is the
+ * pre-Phase-5 behavior; nothing waits on the animation.
  */
 export default function BottomSheet({ isOpen, onRequestClose, modalId, children }) {
     const { maxHeight, keyboardInset } = useModalSizing()
+    // Kept true for MODAL_EXIT_MS after isOpen flips false so the slide-out
+    // can play; the render gate below is this, not isOpen.
+    const [isMounted, setIsMounted] = useState(!!isOpen)
     const progressRef = useRef(null)
     if (progressRef.current === null) progressRef.current = new Animated.Value(0)
     const progress = progressRef.current
@@ -148,9 +163,67 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             node.removeEventListener('pointerup', onPointerUp)
             node.removeEventListener('pointercancel', onPointerCancel)
         }
-    }, [isOpen])
+        // isMounted matters: on a reopen after a full (deferred) unmount the
+        // first isOpen flush runs before the handle node exists — the effect
+        // must re-run once the sheet has actually rendered.
+    }, [isOpen, isMounted])
 
     useEscapeKey(() => requestClose(), { enabled: !!isOpen })
+
+    // Focus trap (Phase 5 a11y): while the sheet is open, Tab cycles within
+    // it — the app behind the scrim is inert to the pointer, so it must be
+    // inert to the keyboard too. Capture phase for the same reason as the
+    // escape stack: nothing downstream can swallow the key first.
+    const sheetNodeRef = useRef(null)
+    useEffect(() => {
+        if (!isOpen) return
+        const onKeyDown = event => {
+            if (event.key !== 'Tab') return
+            const sheetNode = sheetNodeRef.current
+            if (!sheetNode) return
+            const focusables = Array.from(sheetNode.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+                element => element.getAttribute('aria-hidden') !== 'true'
+            )
+            if (focusables.length === 0) {
+                event.preventDefault()
+                return
+            }
+            const first = focusables[0]
+            const last = focusables[focusables.length - 1]
+            const active = document.activeElement
+            if (!sheetNode.contains(active)) {
+                event.preventDefault()
+                first.focus()
+            } else if (!event.shiftKey && active === last) {
+                event.preventDefault()
+                first.focus()
+            } else if (event.shiftKey && active === first) {
+                event.preventDefault()
+                last.focus()
+            }
+        }
+        document.addEventListener('keydown', onKeyDown, true)
+        return () => document.removeEventListener('keydown', onKeyDown, true)
+    }, [isOpen])
+
+    // Exit choreography: when the wrapper flips isOpen off (whether via our
+    // own requestClose or its own item-selection path), keep rendering while
+    // the sheet slides out, then unmount. Re-opening mid-exit cancels the
+    // pending unmount and the open effect below re-runs the enter animation.
+    useEffect(() => {
+        if (isOpen) {
+            setIsMounted(true)
+            return
+        }
+        if (!isMounted) return
+        if (!closingRef.current) {
+            closingRef.current = true
+            animate(0, MODAL_EXIT_MS)
+        }
+        const exitMs = prefersReducedMotion() ? 0 : MODAL_EXIT_MS
+        const timer = setTimeout(() => setIsMounted(false), exitMs + EXIT_UNMOUNT_BUFFER_MS)
+        return () => clearTimeout(timer)
+    }, [isOpen, isMounted])
 
     useEffect(() => {
         if (!isOpen) return
@@ -159,6 +232,9 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         dragYRef.current.setValue(0)
         lockBodyScroll()
         if (modalId) getModalsManager().storeModal(modalId)
+        // Back-button close (Phase 5): the sheet owns one history entry; a
+        // back press pops the sheet, any other dismissal releases the entry.
+        const historyLayerId = pushSheetHistoryLayer(() => requestCloseRef.current())
         animate(1, MODAL_ENTER_MS)
         // Focus return: restore where the user was when the sheet closes —
         // but never to an editable element, which would pop the software
@@ -166,6 +242,7 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         const previouslyFocused = typeof document !== 'undefined' ? document.activeElement : null
         return () => {
             unlockBodyScroll()
+            releaseSheetHistoryLayer(historyLayerId)
             if (modalId) getModalsManager().removeModal(modalId)
             const isEditable =
                 previouslyFocused &&
@@ -182,8 +259,12 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         }
     }, [isOpen])
 
-    if (!isOpen || typeof document === 'undefined') return null
+    if (!isMounted || typeof document === 'undefined') return null
 
+    // While exiting, the dying sheet must neither swallow the user's next tap
+    // nor deliver one to its own rows — pointer events fall through to
+    // nothing (the dismiss-replay guard already covers the row underneath).
+    const isExiting = !isOpen
     // The keyboard covers the safe area, so only one of the two applies.
     const bottomInset = keyboardInset > 0 ? keyboardInset : getSafeAreaBottomInset()
     const bottomPadding = SHEET_BOTTOM_PADDING
@@ -198,14 +279,16 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             <Animated.View
                 testID={'bottom-sheet-backdrop'}
                 onClick={onBackdropPress}
-                style={[localStyles.backdrop, { opacity: progress }]}
+                style={[localStyles.backdrop, { opacity: progress }, isExiting && NO_POINTER_EVENTS_STYLE]}
             />
             <Animated.View
+                ref={sheetNodeRef}
                 testID={'bottom-sheet'}
                 accessibilityRole={'dialog'}
                 aria-modal={true}
                 style={[
                     localStyles.sheet,
+                    isExiting && NO_POINTER_EVENTS_STYLE,
                     {
                         bottom: bottomInset,
                         maxHeight: maxHeight,

@@ -60,7 +60,6 @@ export const initialState = {
     projectContacts: {},
     projectAssistants: {},
     projectWorkstreams: {},
-    projectsMeetings: {},
     projectInvitations: {},
     projectChatNotifications: {},
     projectChatLastNotification: {},
@@ -338,9 +337,6 @@ export const initialState = {
     goalDoneTasksExpandedAmount: 0,
     recordVideoModalData: { visible: false, projectId: '' },
     screenRecordingModalData: { visible: false, projectId: '' },
-    chatGoogleMeetModalData: { visible: false, projectId: '', userId: '', userIds: [], title: '' },
-    googleMeetModalData: { visible: false, projectId: '', userId: '' },
-    googleMeetNotificationModalData: { visible: false, projectId: '', email: '', meeting: null },
     taskSuggestedCommentModalData: { visible: false, projectId: '', task: null, taskName: '' },
     activeChatData: { projectId: '', chatId: '', chatType: '' },
     quillTextInputProjectIdsByEditorId: {},
@@ -857,11 +853,6 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams, [projectId]: workstreams }
 
             return { ...state, projectWorkstreams, currentUser }
-        }
-        case 'Set meetings in project': {
-            const { projectId, meetings } = action
-            const projectsMeetings = { ...state.projectsMeetings, [projectId]: meetings }
-            return { ...state, projectsMeetings }
         }
         case 'Set invitations in projects': {
             const { projectId, invitations } = action
@@ -1812,27 +1803,6 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
-        case 'Update chat google meet modal data': {
-            return {
-                ...state,
-                chatGoogleMeetModalData: action.chatGoogleMeetModalData,
-            }
-        }
-
-        case 'Update google meet modal data': {
-            return {
-                ...state,
-                googleMeetModalData: action.googleMeetModalData,
-            }
-        }
-
-        case 'Update google meet notification modal data': {
-            return {
-                ...state,
-                googleMeetNotificationModalData: action.googleMeetNotificationModalData,
-            }
-        }
-
         case 'Update task suggested comment modal data': {
             return {
                 ...state,
@@ -2324,7 +2294,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { [project.id]: workstreams },
                 projectContacts: { [project.id]: contacts },
                 projectAssistants: { [project.id]: assistants },
-                projectsMeetings: { [project.id]: [] },
                 projectInvitations: { [project.id]: [] },
                 projectChatNotifications: { [project.id]: { totalUnfollowed: 0, totalFollowed: 0 } },
                 globalAssistants,
@@ -2345,13 +2314,11 @@ export const theReducer = (state = initialState, action) => {
                 projectAssistants,
             } = action
 
-            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projects.forEach(project => {
-                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2384,7 +2351,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 loggedIn: true,
@@ -2430,13 +2396,11 @@ export const theReducer = (state = initialState, action) => {
             const { projectsArray, projectsMap, projectUsers, projectWorkstreams, projectContacts, projectAssistants } =
                 action
 
-            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projectsArray.forEach(project => {
-                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2457,7 +2421,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 processedInitialURL: true,
@@ -2485,7 +2448,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2522,7 +2484,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2548,7 +2509,6 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
-            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2559,7 +2519,6 @@ export const theReducer = (state = initialState, action) => {
                 delete projectWorkstreams[projectId]
                 delete projectContacts[projectId]
                 delete projectAssistants[projectId]
-                delete projectsMeetings[projectId]
                 delete projectInvitations[projectId]
                 delete projectChatNotifications[projectId]
                 delete projectChatLastNotification[projectId]
@@ -2582,7 +2541,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 projectChatLastNotification,
@@ -2599,7 +2557,6 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
-            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2609,7 +2566,6 @@ export const theReducer = (state = initialState, action) => {
             delete projectWorkstreams[projectId]
             delete projectContacts[projectId]
             delete projectAssistants[projectId]
-            delete projectsMeetings[projectId]
             delete projectInvitations[projectId]
             delete projectChatNotifications[projectId]
             delete projectChatLastNotification[projectId]
@@ -2635,7 +2591,6 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
-                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2657,7 +2612,6 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
-                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2679,7 +2633,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,

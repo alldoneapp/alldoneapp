@@ -2,63 +2,19 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import moment from 'moment'
-import { useDispatch } from 'react-redux'
-import { setSelectedTasks, setLastSelectedDueDate } from '../../../../redux/actions'
-import Backend from '../../../../utils/BackendBridge'
-import { setTaskDueDate } from '../../../../utils/backends/Tasks/tasksFirestore'
 
-export default function Day({
-    date,
-    disabled,
-    currentDueDate,
-    updateDate,
-    task,
-    projectId,
-    saveDueDateBeforeSaveTask,
-    tasks,
-    multipleTasks,
-    updateGoalMilestone,
-    isObservedTabActive,
-    closePopover,
-    updateParentGoalReminderDate,
-}) {
-    const dispatch = useDispatch()
-
-    const selectDate = (event, { year, month, day }) => {
+/**
+ * Presentational day cell for the due-date calendar. It renders and reports
+ * the press — nothing else. The decision tree that used to live here
+ * (Firestore writes, redux dispatches, the goal/task/multi-select branching)
+ * moved to daySelection.js and runs in DueDateCalendarModal's onSelectDate,
+ * which is what lets the shared AppCalendar treat this like any other cell.
+ */
+export default function Day({ date, disabled, currentDueDate, onSelectDate }) {
+    const onPress = event => {
         event.preventDefault()
         event.stopPropagation()
-
-        let selectedDate = new Date(year, month - 1, day)
-        let selectedMoment = moment(selectedDate)
-        let dueDate = selectedDate.getTime()
-        let today = moment()
-
-        if (selectedMoment.isSameOrAfter(today, 'day')) {
-            updateDate(dueDate)
-
-            if (saveDueDateBeforeSaveTask) {
-                saveDueDateBeforeSaveTask(dueDate, isObservedTabActive)
-            } else if (task) {
-                if (multipleTasks) {
-                    Backend.setTaskDueDateMultiple(tasks, dueDate)
-                    dispatch(setSelectedTasks(null, true))
-                    if (updateParentGoalReminderDate) updateParentGoalReminderDate(dueDate)
-                } else if (updateParentGoalReminderDate) {
-                    updateParentGoalReminderDate(dueDate)
-                } else {
-                    setTaskDueDate(projectId, task.id, dueDate, task, isObservedTabActive, null)
-                }
-            } else if (updateGoalMilestone) {
-                updateGoalMilestone(selectedMoment.hour(12).minute(0).valueOf())
-            }
-            closePopover()
-            dispatch(setLastSelectedDueDate(dueDate))
-            return false
-        }
-    }
-
-    const onPress = event => {
-        selectDate(event, date)
+        onSelectDate(date)
     }
 
     const dateObj = new Date(date.year, date.month - 1, date.day)

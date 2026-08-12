@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
-import { Calendar, LocaleConfig } from 'react-native-calendars'
+import AppCalendar from '../../UIComponents/Calendar/AppCalendar'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
@@ -23,10 +23,7 @@ import {
 import { getStatisticsFilterData, getFilterOption } from '../../StatisticsView/statisticsHelper'
 import HappinessFilterBy from '../../ProjectHappiness/HappinessFilterBy'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
-import { locales } from '../../StatisticsView/StatisticsSection/CalendarLocales'
 import Icon from '../../Icon'
-
-LocaleConfig.locales = locales
 
 function HappinessRow({ entry, project, userId }) {
     const [comment, setComment] = useState(entry.comment || '')
@@ -75,8 +72,6 @@ function HappinessRow({ entry, project, userId }) {
 }
 
 export default function ProjectHappinessView({ project, userId }) {
-    const language = useSelector(state => state.loggedUser.language)
-    const mondayFirstInCalendar = useSelector(state => state.loggedUser.mondayFirstInCalendar)
     const smallScreen = useSelector(state => state.smallScreen)
     const [entries, setEntries] = useState([])
     const [filterData, setFilterData] = useState(() => getStatisticsFilterData(HAPPINESS_RANGE_LAST_30_DAYS))
@@ -86,7 +81,6 @@ export default function ProjectHappinessView({ project, userId }) {
     const [rating, setRating] = useState(null)
     const [comment, setComment] = useState('')
     const watcherKeyRef = useRef(`project_happiness_${v4()}`)
-    LocaleConfig.defaultLocale = language
 
     const updateRange = (filterOption, customDateRange) => {
         setFilterData(getStatisticsFilterData(filterOption, customDateRange))
@@ -159,10 +153,9 @@ export default function ProjectHappinessView({ project, userId }) {
                             contentLocation={smallScreen ? null : undefined}
                             content={
                                 <View style={localStyles.calendarContainer}>
-                                    <Calendar
+                                    <AppCalendar
                                         current={selectedDateString}
                                         maxDate={moment().format('YYYY-MM-DD')}
-                                        firstDay={mondayFirstInCalendar}
                                         onDayPress={selectDate}
                                         markingType="custom"
                                         markedDates={{
@@ -172,14 +165,6 @@ export default function ProjectHappinessView({ project, userId }) {
                                                 selected: false,
                                             },
                                         }}
-                                        renderArrow={direction => (
-                                            <Icon
-                                                name={direction === 'left' ? 'chevron-left' : 'chevron-right'}
-                                                size={24}
-                                                color={colors.Text03}
-                                            />
-                                        )}
-                                        theme={calendarTheme}
                                     />
                                 </View>
                             }
@@ -349,42 +334,6 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
     },
 })
-
-const calendarTheme = {
-    backgroundColor: colors.Secondary400,
-    calendarBackground: colors.Secondary400,
-    textSectionTitleColor: colors.Text03,
-    selectedDayBackgroundColor: colors.Primary300,
-    selectedDayTextColor: '#ffffff',
-    todayTextColor: '#ffffff',
-    dayTextColor: colors.Text03,
-    textDisabledColor: colors.Text02,
-    dotColor: colors.Primary300,
-    selectedDotColor: '#ffffff',
-    monthTextColor: '#ffffff',
-    textDayFontFamily: styles.overline.fontFamily,
-    textDayFontSize: 16,
-    textDayFontWeight: '300',
-    textDayHeaderFontFamily: styles.overline.fontFamily,
-    textDayHeaderFontWeight: 'normal',
-    textDayHeaderFontSize: styles.overline.fontSize,
-    textMonthFontFamily: styles.subtitle1.fontFamily,
-    textMonthFontWeight: '500',
-    textMonthFontSize: styles.subtitle1.fontSize,
-    'stylesheet.calendar.header': {
-        week: {
-            marginTop: 5,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            borderBottomWidth: 1,
-            paddingHorizontal: 0,
-            paddingTop: 12,
-            paddingBottom: 4,
-            marginHorizontal: 0,
-            borderBottomColor: hexColorToRGBa('#ffffff', 0.2),
-        },
-    },
-}
 
 const customStylesMarkedDatesCalendar = {
     container: {
