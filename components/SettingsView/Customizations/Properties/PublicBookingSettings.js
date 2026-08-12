@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 
 import Button from '../../../UIControls/Button'
 import Switch from '../../../UIControls/Switch'
-import Spinner from '../../../UIComponents/Spinner'
 import styles, { colors } from '../../../styles/global'
 import { copyTextToClipboard } from '../../../../utils/HelperFunctions'
 import { getBookingSettings, saveBookingSettings } from '../../../../utils/backends/Booking/bookingFirestore'
@@ -45,7 +44,6 @@ const durationOptions = [15, 30, 60]
 const formatGuestEmails = list => (Array.isArray(list) ? list.join('\n') : '')
 
 export default function PublicBookingSettings() {
-    const contentRef = useRef(null)
     const [settings, setSettings] = useState(DEFAULT_SETTINGS)
     const [guestEmailsText, setGuestEmailsText] = useState('')
     const [publicUrl, setPublicUrl] = useState('')
@@ -73,15 +71,6 @@ export default function PublicBookingSettings() {
     useEffect(() => {
         loadSettings()
     }, [])
-
-    useEffect(() => {
-        const node = contentRef.current
-        if (!node || typeof node !== 'object') return undefined
-        node.inert = loading
-        return () => {
-            if (contentRef.current) contentRef.current.inert = false
-        }
-    }, [loading])
 
     const updateField = (field, value) => {
         setMessage('')
@@ -159,166 +148,156 @@ export default function PublicBookingSettings() {
 
     return (
         <View style={localStyles.container}>
-            <View
-                ref={contentRef}
-                style={loading && localStyles.loadingContent}
-                pointerEvents={loading ? 'none' : 'auto'}
-                testID="public-booking-settings-content"
-            >
-                <View style={localStyles.headerRow}>
-                    <View style={localStyles.headerText}>
-                        <Text style={localStyles.title}>{translate('Public booking link')}</Text>
-                        <Text style={localStyles.description}>{translate('Public booking link description')}</Text>
-                    </View>
-                    <Switch
-                        active={settings.enabled}
-                        activeSwitch={() => updateField('enabled', true)}
-                        deactiveSwitch={() => updateField('enabled', false)}
-                        disabled={switchDisabled}
-                    />
+            <View style={localStyles.headerRow}>
+                <View style={localStyles.headerText}>
+                    <Text style={localStyles.title}>{translate('Public booking link')}</Text>
+                    <Text style={localStyles.description}>{translate('Public booking link description')}</Text>
                 </View>
-
-                {!loading && disabledByCalendar && (
-                    <Text style={localStyles.warning}>
-                        {translate('Connect calendar before enabling booking link')}
-                    </Text>
-                )}
-                <View style={localStyles.durationSection}>
-                    <Text style={localStyles.label}>{translate('Meeting duration options')}</Text>
-                    <View style={localStyles.durationRow}>
-                        {durationOptions.map(duration => {
-                            const active = (settings.availableDurations || []).includes(duration)
-                            return (
-                                <Button
-                                    key={duration}
-                                    title={translate(`${duration} minute duration`)}
-                                    type={active ? 'primary' : 'ghost'}
-                                    onPress={() => toggleDuration(duration)}
-                                    buttonStyle={localStyles.durationButton}
-                                />
-                            )
-                        })}
-                    </View>
-                </View>
-
-                <View style={localStyles.grid}>
-                    <LabeledInput
-                        label={translate('Link slug')}
-                        value={settings.slug}
-                        onChangeText={v => updateField('slug', v)}
-                    />
-                    <LabeledInput
-                        label={translate('Work starts')}
-                        value={settings.workingHoursStart}
-                        onChangeText={v => updateField('workingHoursStart', v)}
-                    />
-                    <LabeledInput
-                        label={translate('Work ends')}
-                        value={settings.workingHoursEnd}
-                        onChangeText={v => updateField('workingHoursEnd', v)}
-                    />
-                    <LabeledInput
-                        label={translate('Buffer before')}
-                        value={String(settings.bufferBeforeMinutes)}
-                        onChangeText={v => updateField('bufferBeforeMinutes', v)}
-                    />
-                    <LabeledInput
-                        label={translate('Buffer after')}
-                        value={String(settings.bufferAfterMinutes)}
-                        onChangeText={v => updateField('bufferAfterMinutes', v)}
-                    />
-                </View>
-
-                <View style={localStyles.freeTimeSection}>
-                    <Text style={localStyles.label}>{translate('Minimum free hours per day')}</Text>
-                    <Text style={localStyles.guestHint}>{translate('Minimum free hours per day description')}</Text>
-                    <TextInput
-                        value={String(settings.minFreeHoursPerDay ?? '')}
-                        onChangeText={v => updateField('minFreeHoursPerDay', v)}
-                        style={[localStyles.input, localStyles.hoursInput]}
-                        keyboardType="numeric"
-                    />
-                </View>
-
-                <View style={localStyles.weekendRow}>
-                    <Text style={localStyles.weekendLabel}>{translate('Include weekends')}</Text>
-                    <Switch
-                        active={settings.includeWeekends}
-                        activeSwitch={() => updateField('includeWeekends', true)}
-                        deactiveSwitch={() => updateField('includeWeekends', false)}
-                    />
-                </View>
-
-                <View style={localStyles.toggleRow}>
-                    <View style={localStyles.toggleText}>
-                        <Text style={localStyles.weekendLabel}>{translate('Allow same day booking')}</Text>
-                        <Text style={localStyles.toggleHint}>{translate('Allow same day booking description')}</Text>
-                    </View>
-                    <Switch
-                        active={settings.allowSameDayBooking === true}
-                        activeSwitch={() => updateField('allowSameDayBooking', true)}
-                        deactiveSwitch={() => updateField('allowSameDayBooking', false)}
-                    />
-                </View>
-
-                <View style={localStyles.guestSection}>
-                    <Text style={localStyles.label}>{translate('Additional guests')}</Text>
-                    <Text style={localStyles.guestHint}>{translate('Additional guests description')}</Text>
-                    <TextInput
-                        value={guestEmailsText}
-                        onChangeText={updateGuestEmails}
-                        style={[localStyles.input, localStyles.textArea]}
-                        multiline
-                        placeholder={translate('Additional guests placeholder')}
-                        placeholderTextColor={colors.Text03}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        keyboardType="email-address"
-                    />
-                </View>
-
-                {!!getDisplayUrl() && (
-                    <View style={localStyles.linkRow}>
-                        <Text style={localStyles.linkText}>{getDisplayUrl()}</Text>
-                        <Button
-                            title={translate('Copy')}
-                            type="ghost"
-                            onPress={() => {
-                                copyTextToClipboard(getDisplayUrl())
-                                setMessage(translate('Link copied'))
-                            }}
-                        />
-                        <Button
-                            title={translate('Open booking link')}
-                            type="ghost"
-                            onPress={openBookingLink}
-                            buttonStyle={localStyles.openButton}
-                        />
-                    </View>
-                )}
-
-                {!!error && <Text style={localStyles.error}>{error}</Text>}
-                {!!message && <Text style={localStyles.success}>{message}</Text>}
-
-                <Button
-                    title={translate('Save booking settings')}
-                    onPress={onSave}
-                    processing={saving}
-                    processingTitle={translate('Saving')}
-                    disabled={saving}
-                    buttonStyle={localStyles.saveButton}
+                <Switch
+                    active={settings.enabled}
+                    activeSwitch={() => updateField('enabled', true)}
+                    deactiveSwitch={() => updateField('enabled', false)}
+                    disabled={switchDisabled}
                 />
             </View>
-            {loading && (
-                <View
-                    style={localStyles.loadingOverlay}
-                    pointerEvents="none"
-                    accessibilityRole="progressbar"
-                    accessibilityLabel={translate('Loading booking settings')}
-                    testID="public-booking-settings-spinner"
-                >
-                    <Spinner containerSize={64} spinnerSize={40} containerColor={colors.Grey300} />
-                </View>
+
+            {loading ? (
+                <Text style={localStyles.meta}>{translate('Loading booking settings')}</Text>
+            ) : (
+                <>
+                    {disabledByCalendar && (
+                        <Text style={localStyles.warning}>
+                            {translate('Connect calendar before enabling booking link')}
+                        </Text>
+                    )}
+                    <View style={localStyles.durationSection}>
+                        <Text style={localStyles.label}>{translate('Meeting duration options')}</Text>
+                        <View style={localStyles.durationRow}>
+                            {durationOptions.map(duration => {
+                                const active = (settings.availableDurations || []).includes(duration)
+                                return (
+                                    <Button
+                                        key={duration}
+                                        title={translate(`${duration} minute duration`)}
+                                        type={active ? 'primary' : 'ghost'}
+                                        onPress={() => toggleDuration(duration)}
+                                        buttonStyle={localStyles.durationButton}
+                                    />
+                                )
+                            })}
+                        </View>
+                    </View>
+
+                    <View style={localStyles.grid}>
+                        <LabeledInput
+                            label={translate('Link slug')}
+                            value={settings.slug}
+                            onChangeText={v => updateField('slug', v)}
+                        />
+                        <LabeledInput
+                            label={translate('Work starts')}
+                            value={settings.workingHoursStart}
+                            onChangeText={v => updateField('workingHoursStart', v)}
+                        />
+                        <LabeledInput
+                            label={translate('Work ends')}
+                            value={settings.workingHoursEnd}
+                            onChangeText={v => updateField('workingHoursEnd', v)}
+                        />
+                        <LabeledInput
+                            label={translate('Buffer before')}
+                            value={String(settings.bufferBeforeMinutes)}
+                            onChangeText={v => updateField('bufferBeforeMinutes', v)}
+                        />
+                        <LabeledInput
+                            label={translate('Buffer after')}
+                            value={String(settings.bufferAfterMinutes)}
+                            onChangeText={v => updateField('bufferAfterMinutes', v)}
+                        />
+                    </View>
+
+                    <View style={localStyles.freeTimeSection}>
+                        <Text style={localStyles.label}>{translate('Minimum free hours per day')}</Text>
+                        <Text style={localStyles.guestHint}>{translate('Minimum free hours per day description')}</Text>
+                        <TextInput
+                            value={String(settings.minFreeHoursPerDay ?? '')}
+                            onChangeText={v => updateField('minFreeHoursPerDay', v)}
+                            style={[localStyles.input, localStyles.hoursInput]}
+                            keyboardType="numeric"
+                        />
+                    </View>
+
+                    <View style={localStyles.weekendRow}>
+                        <Text style={localStyles.weekendLabel}>{translate('Include weekends')}</Text>
+                        <Switch
+                            active={settings.includeWeekends}
+                            activeSwitch={() => updateField('includeWeekends', true)}
+                            deactiveSwitch={() => updateField('includeWeekends', false)}
+                        />
+                    </View>
+
+                    <View style={localStyles.toggleRow}>
+                        <View style={localStyles.toggleText}>
+                            <Text style={localStyles.weekendLabel}>{translate('Allow same day booking')}</Text>
+                            <Text style={localStyles.toggleHint}>
+                                {translate('Allow same day booking description')}
+                            </Text>
+                        </View>
+                        <Switch
+                            active={settings.allowSameDayBooking === true}
+                            activeSwitch={() => updateField('allowSameDayBooking', true)}
+                            deactiveSwitch={() => updateField('allowSameDayBooking', false)}
+                        />
+                    </View>
+
+                    <View style={localStyles.guestSection}>
+                        <Text style={localStyles.label}>{translate('Additional guests')}</Text>
+                        <Text style={localStyles.guestHint}>{translate('Additional guests description')}</Text>
+                        <TextInput
+                            value={guestEmailsText}
+                            onChangeText={updateGuestEmails}
+                            style={[localStyles.input, localStyles.textArea]}
+                            multiline
+                            placeholder={translate('Additional guests placeholder')}
+                            placeholderTextColor={colors.Text03}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            keyboardType="email-address"
+                        />
+                    </View>
+
+                    {!!getDisplayUrl() && (
+                        <View style={localStyles.linkRow}>
+                            <Text style={localStyles.linkText}>{getDisplayUrl()}</Text>
+                            <Button
+                                title={translate('Copy')}
+                                type="ghost"
+                                onPress={() => {
+                                    copyTextToClipboard(getDisplayUrl())
+                                    setMessage(translate('Link copied'))
+                                }}
+                            />
+                            <Button
+                                title={translate('Open booking link')}
+                                type="ghost"
+                                onPress={openBookingLink}
+                                buttonStyle={localStyles.openButton}
+                            />
+                        </View>
+                    )}
+
+                    {!!error && <Text style={localStyles.error}>{error}</Text>}
+                    {!!message && <Text style={localStyles.success}>{message}</Text>}
+
+                    <Button
+                        title={translate('Save booking settings')}
+                        onPress={onSave}
+                        processing={saving}
+                        processingTitle={translate('Saving')}
+                        disabled={saving}
+                        buttonStyle={localStyles.saveButton}
+                    />
+                </>
             )}
         </View>
     )
@@ -358,18 +337,10 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 4,
     },
-    loadingContent: {
-        opacity: 0.4,
-    },
-    loadingOverlay: {
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1,
+    meta: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 12,
     },
     warning: {
         ...styles.body2,
