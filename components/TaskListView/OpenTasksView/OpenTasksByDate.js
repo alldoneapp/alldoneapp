@@ -13,6 +13,7 @@ import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/Proj
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
+import TaskListSkeleton from '../TaskListSkeleton'
 
 export default function OpenTasksByDate({
     projectId,
@@ -58,6 +59,8 @@ export default function OpenTasksByDate({
     const initialLoadingEndObservedTasks = useSelector(state =>
         state.initialLoadingEndObservedTasks[instanceKey] ? state.initialLoadingEndObservedTasks[instanceKey] : false
     )
+    const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
+    const showFallbackSkeleton = initialTaskDataIsLoading && amountTasks === 0 && emptyGoalsAmount === 0
 
     const openTasksShowMoreData = useSelector(state => state.openTasksShowMoreData[projectId])
     const hasFutureTasks = openTasksShowMoreData?.hasFutureTasks
@@ -125,16 +128,20 @@ export default function OpenTasksByDate({
             />
             {!!assistantTaskCreatorContext && <WorkflowTaskCreator {...assistantTaskCreatorContext} />}
 
-            <TasksSections
-                projectId={projectId}
-                dateIndex={dateIndex}
-                projectIndex={projectIndex}
-                instanceKey={instanceKey}
-                isActiveOrganizeMode={isActiveOrganizeMode}
-                pressedShowMoreMainSection={pressedShowMoreMainSection}
-                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                assistantProfileMode={assistantProfileMode}
-            />
+            {showFallbackSkeleton ? (
+                <TaskListSkeleton />
+            ) : (
+                <TasksSections
+                    projectId={projectId}
+                    dateIndex={dateIndex}
+                    projectIndex={projectIndex}
+                    instanceKey={instanceKey}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                    pressedShowMoreMainSection={pressedShowMoreMainSection}
+                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                    assistantProfileMode={assistantProfileMode}
+                />
+            )}
             {assistantScheduleOccurrences.length > 0 && (
                 <AssistantScheduleRows
                     projectId={projectId}

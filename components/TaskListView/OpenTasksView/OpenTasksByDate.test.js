@@ -24,6 +24,7 @@ jest.mock('../../../utils/backends/openTasks', () => ({
 }))
 jest.mock('../Header/OpenTasksDateHeader', () => 'OpenTasksDateHeader')
 jest.mock('./TasksSections', () => 'TasksSections')
+jest.mock('../TaskListSkeleton', () => 'TaskListSkeleton')
 jest.mock('./TopShowMoreButton', () => 'TopShowMoreButton')
 jest.mock('./MiddleShowMoreButton', () => 'MiddleShowMoreButton')
 jest.mock('./SelectedProjectEmptyInbox', () => 'SelectedProjectEmptyInbox')
@@ -55,8 +56,8 @@ describe('OpenTasksByDate assistant task creation layout', () => {
             thereAreLaterEmptyGoals: { 'project-1': false },
             thereAreSomedayOpenTasks: { 'project-1': false },
             thereAreSomedayEmptyGoals: { 'project-1': false },
-            initialLoadingEndOpenTasks: { instance: false },
-            initialLoadingEndObservedTasks: { instance: false },
+            initialLoadingEndOpenTasks: { instance: true },
+            initialLoadingEndObservedTasks: { instance: true },
             openTasksShowMoreData: {},
         }
     })
@@ -110,8 +111,18 @@ describe('OpenTasksByDate assistant task creation layout', () => {
     })
 
     it('keeps the empty-inbox illustration for a normal user task list', () => {
-        mockState.initialLoadingEndOpenTasks.instance = true
-        mockState.initialLoadingEndObservedTasks.instance = true
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />
+            )
+        })
+
+        expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(1)
+    })
+
+    it('shows ghost tasks until both initial task streams have loaded', () => {
+        mockState.initialLoadingEndObservedTasks.instance = false
 
         let tree
         act(() => {
@@ -120,6 +131,21 @@ describe('OpenTasksByDate assistant task creation layout', () => {
             )
         })
 
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(0)
+        expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(0)
+    })
+
+    it('replaces the fallback ghosts with the real empty state only after loading', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />
+            )
+        })
+
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
         expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(1)
     })
 })
