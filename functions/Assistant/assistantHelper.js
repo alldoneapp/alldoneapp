@@ -113,7 +113,7 @@ const {
     resolveAssistantModelProvider,
     getOpenRouterAssistantModelId,
 } = require('./assistantModelRouting')
-const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+const { SELECTABLE_ASSISTANT_MODELS, getAssistantModelTokensPerGold } = require('./selectableAssistantModels')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -1080,14 +1080,17 @@ const modelSupportsCustomTemperature = modelKey => {
 }
 
 const getTokensPerGold = modelKey => {
+    // The shared selectable-model list is also the pricing authority for every model exposed in the
+    // UI. That keeps assistant, heartbeat, scheduled-task, Gmail and calendar pickers identical to
+    // what this billing path actually charges.
+    const selectableRate = getAssistantModelTokensPerGold(modelKey)
+    if (selectableRate) return selectableRate
+
     if (modelKey === MODEL_GPT3_5) return 100
     if (modelKey === MODEL_GPT4) return 100
     if (modelKey === MODEL_GPT4O) return 100
     if (modelKey === MODEL_GPT5_1) return 100
     if (modelKey === MODEL_GPT5_5) return 100
-    if (modelKey === MODEL_GPT5_6_SOL) return 100
-    if (modelKey === MODEL_GPT5_6_TERRA) return 200
-    if (modelKey === MODEL_GPT5_6_LUNA) return 500
     // GPT-5.4 mini is 30% of GPT-5.4 pricing for both input and output tokens,
     // so preserve the existing gold baseline and scale mini proportionally.
     if (modelKey === MODEL_GPT5_4_MINI) return 333
@@ -1100,11 +1103,6 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_SONAR_REASONING) return 20
     if (modelKey === MODEL_SONAR_REASONING_PRO) return 15
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 10
-    // DeepSeek V4 Flash 0731 costs $0.08/$0.18 per 1M input/output upstream against Sol's $5/$30 —
-    // roughly 80x cheaper at a chat-shaped token mix. The rate passes a deliberate fraction of that
-    // through rather than all of it, matching how Luna (25x cheaper upstream) is priced at 5x. That
-    // keeps margin on a model whose whole appeal is high-volume labeling and heartbeat work.
-    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 2000
 }
 
 const getMaxTokensForModel = modelKey => {
@@ -13678,6 +13676,7 @@ module.exports = {
     generateSearchSummary,
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
+    getTokensPerGold,
     calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
     isToolAllowedForExecution,

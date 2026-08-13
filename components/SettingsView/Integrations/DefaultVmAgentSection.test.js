@@ -35,8 +35,8 @@ const CATALOGS = {
     claude: {
         families: [
             { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true, tokensPerGold: 100 },
-            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 100 },
-            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 100 },
+            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 250 },
+            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 500 },
         ],
         source: 'live',
     },
@@ -116,7 +116,10 @@ describe('DefaultVmAgentSection model family picker', () => {
         const labels = optionLabels(tree)
         expect(labels).toEqual(expect.arrayContaining(['Opus', 'Sonnet', 'Haiku']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
-        expect(JSON.stringify(tree.toJSON())).toContain('1 Gold = 100 tokens')
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('1 Gold = 100 tokens')
+        expect(rendered).toContain('1 Gold = 250 tokens')
+        expect(rendered).toContain('1 Gold = 500 tokens')
         expect(setDefaultVmAgent).toHaveBeenCalledWith('claude')
     })
 

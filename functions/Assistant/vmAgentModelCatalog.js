@@ -575,9 +575,9 @@ function isFresh(catalog, now) {
 
 /**
  * Attach the exact token-Gold rate the VM billing resolver would use to every client-selectable
- * model. The Settings picker must never maintain a parallel price table: OpenAI families resolve
- * through the same researched prices as a run, Claude deliberately keeps the current Sol baseline,
- * and OpenRouter uses the live catalog price for both featured and searched models.
+ * model. The Settings picker must never maintain a parallel price table: OpenAI and Anthropic
+ * families resolve through the same researched prices as a run, and OpenRouter uses the live
+ * catalog price for both featured and searched models.
  *
  * The server-only raw `pricing` array is still stripped before the catalog reaches the client. A
  * single derived integer per model is all the UI needs and reveals no provider credentials or

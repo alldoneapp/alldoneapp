@@ -10,6 +10,7 @@ import { translate } from '../../../../../i18n/TranslationService'
 import { PLAN_STATUS_PREMIUM } from '../../../../Premium/PremiumHelper'
 import { NEW_TOPIC_MODAL_THEME } from '../../../../Feeds/CommentsTextInput/textInputHelper'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../../functions/Assistant/selectableAssistantModels'
+import AssistantModelGoldRate from '../../../../UIComponents/AssistantModelGoldRate'
 import {
     getGmailLabelingConfig,
     runGmailLabelingSync,
@@ -290,6 +291,7 @@ function ModelSelector({ value, disabled, onChange }) {
                             {option.name}
                         </Text>
                         <Text style={localStyles.modelOptionDescription}>{translate(option.descriptionKey)}</Text>
+                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                     </TouchableOpacity>
                 )
             })}
