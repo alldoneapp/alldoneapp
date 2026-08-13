@@ -4398,6 +4398,12 @@
         },
         {
             "collectionGroup": "entries",
+            "fieldPath": "*",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
             "fieldPath": "changedProperty",
             "ttl": false,
             "indexes": []
