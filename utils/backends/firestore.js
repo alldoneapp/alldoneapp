@@ -606,6 +606,31 @@ export function initGoogleTagManager(userId) {
     setAnalyticsUser(userId)
 }
 
+/**
+ * FCM token acquisition fails for reasons the app cannot fix: the browser's push service
+ * rejecting the registration (ad/tracker blockers such as Brave shields or uBlock, corporate
+ * policies, networks blocking fcm.googleapis.com) or the user denying the permission. Those are
+ * expected environments, not defects — log them as a calm warning with the actual reason, and
+ * keep console.error for genuinely unexpected failures.
+ */
+const logFcmTokenError = err => {
+    const message = (err && err.message) || String(err)
+    if ((err && err.name === 'AbortError') || message.includes('push service')) {
+        console.warn(
+            'Push notifications unavailable: the browser push service rejected the registration ' +
+                '(common with ad/tracker blockers, privacy browsers, or networks blocking fcm.googleapis.com). ' +
+                'The app continues without push.',
+            message
+        )
+        return
+    }
+    if (message.toLowerCase().includes('permission')) {
+        console.warn('Push notifications disabled: notification permission was not granted.', message)
+        return
+    }
+    console.error('Failed to get FCM token:', err)
+}
+
 export function initFCM(userId) {
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
@@ -635,7 +660,7 @@ export function initFCM(userId) {
                 })
             })
             .catch(err => {
-                console.error('Failed to get FCM token:', err)
+                logFcmTokenError(err)
             })
         // firebase 9+ removed messaging.onTokenRefresh (even in compat); token
         // freshness is covered by calling getToken() on every app load above.
@@ -673,7 +698,7 @@ export async function requestNotificationPermission() {
             return { success: false, reason: 'Permission denied by user' }
         }
     } catch (err) {
-        console.error('Failed to request notification permission:', err)
+        logFcmTokenError(err)
         return { success: false, reason: err.message }
     }
 }
@@ -700,7 +725,7 @@ export function initFCMonLoad() {
                     }
                 })
                 .catch(err => {
-                    console.error('Failed to get FCM token:', err)
+                    logFcmTokenError(err)
                 })
         } else {
             // Permission not granted yet - wait for user gesture
@@ -5585,7 +5610,20 @@ export async function addFollowerWithoutFeeds(
         { usersFollowing: firebase.firestore.FieldValue.arrayUnion(userFollowingId) },
         { merge: true }
     )
-    !externalBatch && batch.commit()
+    // Fire-and-forget writes: label failures instead of leaving them as uncaught
+    // promise rejections (the "too many index entries" failures on the
+    // usersFollowing reverse-index doc surfaced exactly here, anonymously).
+    !externalBatch &&
+        batch.commit().catch(error => {
+            console.error('[followers] Failed to persist follow state', {
+                projectId,
+                followObjectsType,
+                followObjectId,
+                userFollowingId,
+                code: error?.code,
+                message: error?.message,
+            })
+        })
 
     if (followObjectsType === 'notes' && actionType !== 'delete') {
         const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
@@ -5594,7 +5632,17 @@ export async function addFollowerWithoutFeeds(
             if (note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || note.isPublicFor.includes(userFollowingId)) {
                 updateData.isVisibleInFollowedFor = firebase.firestore.FieldValue.arrayUnion(userFollowingId)
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
+            db.doc(`noteItems/${projectId}/notes/${followObjectId}`)
+                .set(updateData, { merge: true })
+                .catch(error => {
+                    console.error('[followers] Failed to update note follower state', {
+                        projectId,
+                        followObjectId,
+                        userFollowingId,
+                        code: error?.code,
+                        message: error?.message,
+                    })
+                })
         }
     }
 }
