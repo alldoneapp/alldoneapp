@@ -68,6 +68,24 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         expect(output).not.toContain(rawKey)
     })
 
+    test('places web credential fields in forms and disables browser autofill', () => {
+        const tree = renderer.create(
+            <ProviderAuthCard
+                provider="claude"
+                connection={{ activeMode: 'api', apiKey: { connected: false } }}
+                onChanged={onChanged}
+            />
+        )
+
+        const forms = tree.root.findAllByType('form')
+        const inputs = tree.root.findAllByType(TextInput)
+        expect(forms).toHaveLength(2)
+        expect(forms.every(form => form.props.autoComplete === 'off')).toBe(true)
+        expect(inputs).toHaveLength(2)
+        expect(inputs.every(input => input.props.autoComplete === 'off')).toBe(true)
+        expect(inputs.every(input => input.props.secureTextEntry)).toBe(true)
+    })
+
     test('validates and saves a replacement, then clears it from component state', async () => {
         const tree = renderer.create(
             <ProviderAuthCard

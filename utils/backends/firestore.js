@@ -612,22 +612,25 @@ export function initGoogleTagManager(userId) {
  * FCM token acquisition fails for reasons the app cannot fix: the browser's push service
  * rejecting the registration (ad/tracker blockers such as Brave shields or uBlock, corporate
  * policies, networks blocking fcm.googleapis.com) or the user denying the permission. Those are
- * expected environments, not defects — log them as a calm warning with the actual reason, and
- * keep console.error for genuinely unexpected failures.
+ * expected environments, not defects. Keep them out of the production warning stream (where
+ * they look like app failures) while retaining development diagnostics. console.error remains
+ * reserved for genuinely unexpected failures.
  */
 const logFcmTokenError = err => {
     const message = (err && err.message) || String(err)
     if ((err && err.name === 'AbortError') || message.includes('push service')) {
-        console.warn(
-            'Push notifications unavailable: the browser push service rejected the registration ' +
-                '(common with ad/tracker blockers, privacy browsers, or networks blocking fcm.googleapis.com). ' +
-                'The app continues without push.',
-            message
-        )
+        if (__DEV__) {
+            console.info(
+                'Push notifications unavailable: the browser push service rejected the registration ' +
+                    '(common with ad/tracker blockers, privacy browsers, or networks blocking fcm.googleapis.com). ' +
+                    'The app continues without push.',
+                message
+            )
+        }
         return
     }
     if (message.toLowerCase().includes('permission')) {
-        console.warn('Push notifications disabled: notification permission was not granted.', message)
+        if (__DEV__) console.info('Push notifications disabled: notification permission was not granted.', message)
         return
     }
     console.error('Failed to get FCM token:', err)
