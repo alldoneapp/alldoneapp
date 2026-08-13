@@ -1,5 +1,4 @@
 import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
-import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 
 export function getLinkedEmailFromMessage(message = {}, context = {}) {
     const gmailData = message?.gmailData
@@ -96,6 +95,7 @@ export function groupLinkedEmailsByConnection(linkedEmails = []) {
 
 export async function archiveLinkedEmailsInMailbox(linkedEmails = []) {
     const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
+    const { performEmailLineAction } = require('../../../utils/backends/EmailLine/emailLineBackend')
     await Promise.all(
         Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
             performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
