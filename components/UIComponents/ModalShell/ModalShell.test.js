@@ -67,6 +67,17 @@ const dispatchPointer = (node, type, clientY, pointerId = 1) => {
     return event
 }
 
+const dispatchTouch = (node, type, clientY, identifier = 1) => {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    const touch = { clientY, identifier }
+    Object.defineProperties(event, {
+        changedTouches: { value: [touch] },
+        touches: { value: type === 'touchend' || type === 'touchcancel' ? [] : [touch] },
+    })
+    act(() => node.dispatchEvent(event))
+    return event
+}
+
 describe('ModalShell', () => {
     let container
     let root
@@ -226,6 +237,30 @@ describe('ModalShell', () => {
             expect(onClickOutside).toHaveBeenCalledTimes(1)
         })
 
+        it('handles a native touch-only drag without any pointer events', async () => {
+            const onClickOutside = jest.fn()
+            renderShell({ onClickOutside })
+            await settle()
+
+            const touchStart = dispatchTouch(handleNode(), 'touchstart', 100)
+            const touchMove = dispatchTouch(window, 'touchmove', 220)
+            dispatchTouch(window, 'touchend', 220)
+            await settle()
+
+            expect(touchStart.defaultPrevented).toBe(true)
+            expect(touchMove.defaultPrevented).toBe(true)
+            expect(onClickOutside).toHaveBeenCalledTimes(1)
+        })
+
+        it('gives the visible handle a thumb-sized non-shrinking hit target', async () => {
+            renderShell()
+            await settle()
+
+            const style = window.getComputedStyle(handleNode())
+            expect(style.height).toBe('36px')
+            expect(style.flexShrink).toBe('0')
+        })
+
         it('keeps the sheet open after a tiny or upward handle drag', async () => {
             const onClickOutside = jest.fn()
             renderShell({ onClickOutside })
@@ -254,10 +289,14 @@ describe('ModalShell', () => {
             dispatchPointer(content, 'pointerdown', 100)
             const moveEvent = dispatchPointer(window, 'pointermove', 240)
             dispatchPointer(window, 'pointerup', 240)
+            dispatchTouch(content, 'touchstart', 100)
+            const touchMoveEvent = dispatchTouch(window, 'touchmove', 240)
+            dispatchTouch(window, 'touchend', 240)
             await settle()
 
             expect(onClickOutside).not.toHaveBeenCalled()
             expect(moveEvent.defaultPrevented).toBe(false)
+            expect(touchMoveEvent.defaultPrevented).toBe(false)
         })
     })
 

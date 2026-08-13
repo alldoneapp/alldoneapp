@@ -106,6 +106,7 @@ async function runMobile(server, chromium) {
     const browser = await chromium.launch()
     const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true })
     const page = await context.newPage()
+    const cdp = await context.newCDPSession(page)
     const pageErrors = []
     page.on('pageerror', error => pageErrors.push(error.message))
     await page.goto(`http://127.0.0.1:${server.address().port}/`)
@@ -157,14 +158,20 @@ async function runMobile(server, chromium) {
         const box = await page.locator('[data-testid="bottom-sheet-handle"]').boundingBox()
         const startX = box.x + box.width / 2
         const startY = box.y + box.height / 2
-        await page.mouse.move(startX, startY)
-        await page.mouse.down()
+        const touchPoint = y => ({ x: startX, y, id: 1, radiusX: 8, radiusY: 8, force: 1 })
+        await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [touchPoint(startY)],
+        })
         for (let step = 1; step <= 6; step++) {
-            await page.mouse.move(startX, startY + (distance * step) / 6)
+            await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [touchPoint(startY + (distance * step) / 6)],
+            })
             await page.waitForTimeout(16)
         }
         const whileDragging = await state(page)
-        await page.mouse.up()
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
         return whileDragging
     }
     const beforeDrag = await state(page)
