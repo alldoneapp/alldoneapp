@@ -2258,7 +2258,7 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     const batch = new BatchWrapper(getDb())
     updateTaskData(currentProject.id, task.id, {}, batch)
     batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    batch.commit()
+    await batch.commit()
 
     setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
 }

@@ -417,8 +417,7 @@ export default function TaskMoreButton({
     const handleGoalSelection = (goal, goalProjectId) => {
         // If updateActiveGoal prop was provided, use it
         if (updateActiveGoal) {
-            updateActiveGoal(goal, goalProjectId)
-            return
+            return updateActiveGoal(goal, goalProjectId)
         }
 
         // Otherwise handle internally: update local state and save to backend
@@ -433,11 +432,12 @@ export default function TaskMoreButton({
             const currentProject = ProjectHelper.getProjectById(projectId)
             const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
             if (currentProject && newProject) {
-                setTaskProjectWithGoal(currentProject, newProject, task, goal)
+                return setTaskProjectWithGoal(currentProject, newProject, task, goal)
             }
+            return false
         } else {
             // Same project, just update the parent goal
-            setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+            return setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
         }
     }
 

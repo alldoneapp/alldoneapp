@@ -2084,7 +2084,7 @@ export async function setTaskParentGoalMultiple(tasks, goal) {
     }
     await Promise.all(promises)
     store.dispatch(updateAllSelectedTasks(tasks))
-    batch.commit()
+    await batch.commit()
 }
 
 export const setTaskParentGoalFeedsChain = async (projectId, taskId, newParentGoalId, oldParentGoalId, task) => {
