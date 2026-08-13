@@ -99,7 +99,7 @@ export default function DueDateSinglePopup() {
     }
 
     const handleSaveTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
         if (moveObservedDateAndDueDate) {
@@ -111,7 +111,7 @@ export default function DueDateSinglePopup() {
     }
 
     const handleSetTaskToBacklog = async (taskToUpdate, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
         if (moveObservedDateAndDueDate) {

@@ -21,6 +21,10 @@ const DAY_RATE_BACKFILL_VERSION_FIELD = 'backfillVersionByUser'
 const DAY_RATE_LOG_PREFIX = '[day-rate-time-log]'
 
 function logDayRateTimeLog(event, data = {}) {
+    // Tracing only, and it serializes the whole day's task list — keep it out of production
+    // consoles. `__DEV__` is a DefinePlugin constant, so the body is dropped from the bundle.
+    if (!__DEV__) return
+
     const safeData = JSON.stringify(data, (key, value) => {
         if (value instanceof Error) {
             return {

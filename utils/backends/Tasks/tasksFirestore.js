@@ -315,14 +315,16 @@ const removeUndefinedForFirestore = value => {
 }
 
 export async function updateTaskData(projectId, taskId, data, batch) {
-    console.log(`[HumanReadableID] updateTaskData called for task ${taskId}`)
-    console.log(
-        `[HumanReadableID] Update data contains humanReadableId: ${data.hasOwnProperty('humanReadableId')}, value: ${
-            data.humanReadableId
-        }`
-    )
-    console.log(`[HumanReadableID] Update keys: ${Object.keys(data).join(', ')}`)
-    console.log(`[HumanReadableID] Using batch: ${!!batch}`)
+    if (__DEV__) {
+        console.log(`[HumanReadableID] updateTaskData called for task ${taskId}`)
+        console.log(
+            `[HumanReadableID] Update data contains humanReadableId: ${data.hasOwnProperty('humanReadableId')}, value: ${
+                data.humanReadableId
+            }`
+        )
+        console.log(`[HumanReadableID] Update keys: ${Object.keys(data).join(', ')}`)
+        console.log(`[HumanReadableID] Using batch: ${!!batch}`)
+    }
 
     updateEditionData(data)
     const safeData = removeUndefinedForFirestore(data)
@@ -340,27 +342,31 @@ export async function updateTaskData(projectId, taskId, data, batch) {
             safeData.humanReadableId === null ||
             safeData.humanReadableId === undefined)
     ) {
-        console.log(`[HumanReadableID] Using transaction to preserve humanReadableId for task ${taskId}`)
+        if (__DEV__) console.log(`[HumanReadableID] Using transaction to preserve humanReadableId for task ${taskId}`)
         try {
             await getDb().runTransaction(async transaction => {
                 const taskDoc = await transaction.get(ref)
                 if (taskDoc.exists) {
                     const currentTask = taskDoc.data()
-                    console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                    if (__DEV__) {
+                        console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                    }
                     // Preserve existing humanReadableId if the update doesn't explicitly set one
                     if (currentTask.humanReadableId && !safeData.humanReadableId) {
-                        console.log(
-                            `[HumanReadableID] Preserving existing humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
-                        )
+                        if (__DEV__) {
+                            console.log(
+                                `[HumanReadableID] Preserving existing humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
+                            )
+                        }
                         safeData.humanReadableId = currentTask.humanReadableId
                     }
-                } else {
+                } else if (__DEV__) {
                     console.warn(`[HumanReadableID] Task document ${taskId} does not exist during transaction`)
                 }
-                console.log(`[HumanReadableID] Performing transaction update for task ${taskId}`)
+                if (__DEV__) console.log(`[HumanReadableID] Performing transaction update for task ${taskId}`)
                 transaction.update(ref, safeData)
             })
-            console.log(`[HumanReadableID] Transaction update completed for task ${taskId}`)
+            if (__DEV__) console.log(`[HumanReadableID] Transaction update completed for task ${taskId}`)
             return
         } catch (error) {
             console.error(
@@ -372,9 +378,9 @@ export async function updateTaskData(projectId, taskId, data, batch) {
     }
 
     // Regular update (either in batch or fallback)
-    console.log(`[HumanReadableID] Performing ${batch ? 'batch' : 'regular'} update for task ${taskId}`)
+    if (__DEV__) console.log(`[HumanReadableID] Performing ${batch ? 'batch' : 'regular'} update for task ${taskId}`)
     batch ? batch.update(ref, safeData) : await ref.update(safeData)
-    console.log(`[HumanReadableID] Update completed for task ${taskId}`)
+    if (__DEV__) console.log(`[HumanReadableID] Update completed for task ${taskId}`)
 }
 
 async function updateTaskDataDirectly(projectId, taskId, data, batch) {
@@ -520,7 +526,7 @@ export async function uploadNewTask(
         taskCopy.autoFollowUpStatusId = taskCopy.autoFollowUpStatusId || null
 
         // Debug log for webhook tasks
-        if (taskCopy.taskMetadata) {
+        if (__DEV__ && taskCopy.taskMetadata) {
             console.log('🔍 UPLOAD TASK: Task has taskMetadata:', {
                 taskId,
                 taskMetadata: taskCopy.taskMetadata,
@@ -533,7 +539,7 @@ export async function uploadNewTask(
         // Human readable ID will be generated asynchronously in onCreate trigger
         // This improves task creation performance by removing the blocking transaction
         taskCopy.humanReadableId = null
-        console.log(`[HumanReadableID] Task ${taskId} created with humanReadableId: null`)
+        if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} created with humanReadableId: null`)
 
         const { loggedUser } = store.getState()
 
@@ -572,10 +578,11 @@ export async function uploadNewTask(
             )
         }
 
-        console.log(
-            `[HumanReadableID] About to commit task ${taskId} to database with humanReadableId: ${taskCopy.humanReadableId}`
-        )
-        console.log(`🚨 FIRESTORE PATH: items/${projectId}/tasks/${taskId} 🚨`)
+        if (__DEV__) {
+            console.log(
+                `[HumanReadableID] About to commit task ${taskId} to items/${projectId}/tasks/${taskId} with humanReadableId: ${taskCopy.humanReadableId}`
+            )
+        }
         const safeTaskCopy = removeUndefinedForFirestore(taskCopy)
 
         awaitForTaskCreation
@@ -587,7 +594,7 @@ export async function uploadNewTask(
                           label: `Created task “${taskCopy.name}”`,
                           operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
                       })
-                      console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
+                      if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
             : getDb()
@@ -598,7 +605,7 @@ export async function uploadNewTask(
                           label: `Created task “${taskCopy.name}”`,
                           operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
                       })
-                      console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
+                      if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
 
@@ -790,8 +797,10 @@ export async function createRecurrentTask(projectId, taskId) {
 
 export async function uploadTaskByQuill(projectId, task, externalBatch) {
     const taskId = task.id
-    console.log(`[HumanReadableID] uploadTaskByQuill called for task ${taskId}`)
-    console.log(`[HumanReadableID] Task humanReadableId before processing: ${task.humanReadableId}`)
+    if (__DEV__) {
+        console.log(`[HumanReadableID] uploadTaskByQuill called for task ${taskId}`)
+        console.log(`[HumanReadableID] Task humanReadableId before processing: ${task.humanReadableId}`)
+    }
 
     updateEditionData(task)
     task.sortIndex = generateSortIndex()
@@ -800,19 +809,25 @@ export async function uploadTaskByQuill(projectId, task, externalBatch) {
     // Preserve humanReadableId when using set operation
     // This is critical since .set() replaces the entire document
     if (!task.humanReadableId) {
-        console.log(`[HumanReadableID] Task ${taskId} has no humanReadableId, attempting to preserve existing one`)
+        if (__DEV__) {
+            console.log(`[HumanReadableID] Task ${taskId} has no humanReadableId, attempting to preserve existing one`)
+        }
         try {
             const currentTaskDoc = await getDb().doc(`items/${projectId}/tasks/${taskId}`).get()
             if (currentTaskDoc.exists) {
                 const currentTask = currentTaskDoc.data()
-                console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                if (__DEV__) {
+                    console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                }
                 if (currentTask.humanReadableId) {
                     task.humanReadableId = currentTask.humanReadableId
-                    console.log(
-                        `[HumanReadableID] Preserved humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
-                    )
+                    if (__DEV__) {
+                        console.log(
+                            `[HumanReadableID] Preserved humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
+                        )
+                    }
                 }
-            } else {
+            } else if (__DEV__) {
                 console.warn(
                     `[HumanReadableID] Task document ${taskId} does not exist, cannot preserve humanReadableId`
                 )
@@ -820,11 +835,11 @@ export async function uploadTaskByQuill(projectId, task, externalBatch) {
         } catch (error) {
             console.error(`[HumanReadableID] Failed to preserve humanReadableId for task ${taskId}:`, error.message)
         }
-    } else {
+    } else if (__DEV__) {
         console.log(`[HumanReadableID] Task ${taskId} already has humanReadableId: ${task.humanReadableId}`)
     }
 
-    console.log(`[HumanReadableID] Setting task ${taskId} with humanReadableId: ${task.humanReadableId}`)
+    if (__DEV__) console.log(`[HumanReadableID] Setting task ${taskId} with humanReadableId: ${task.humanReadableId}`)
     externalBatch.set(getDb().doc(`items/${projectId}/tasks/${taskId}`), task)
 }
 
@@ -1026,9 +1041,11 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
     task = preserveAutoAssignedGoal(task, oldTask)
 
     const taskId = task.id
-    console.log(`[HumanReadableID] updateTask called for task ${taskId}`)
-    console.log(`[HumanReadableID] Old task humanReadableId: ${oldTask.humanReadableId}`)
-    console.log(`[HumanReadableID] New task humanReadableId: ${task.humanReadableId}`)
+    if (__DEV__) {
+        console.log(`[HumanReadableID] updateTask called for task ${taskId}`)
+        console.log(`[HumanReadableID] Old task humanReadableId: ${oldTask.humanReadableId}`)
+        console.log(`[HumanReadableID] New task humanReadableId: ${task.humanReadableId}`)
+    }
 
     const newAssignee = TasksHelper.getTaskOwner(task.userId, projectId)
 
@@ -2564,15 +2581,17 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
         updateData.alertTriggered = false
     }
 
-    console.log('[setTaskAlert] Updating task due to alert change:', {
-        projectId,
-        taskId,
-        alertEnabled,
-        alertTime: alertTime && alertTime.format ? alertTime.format('HH:mm Z') : null,
-        alertTimeOffset: alertTime && alertTime.utcOffset ? alertTime.utcOffset() : null,
-        resultingDueDate: updateData.dueDate || null,
-        resultingDueDateISO: updateData.dueDate ? new Date(updateData.dueDate).toISOString() : null,
-    })
+    if (__DEV__) {
+        console.log('[setTaskAlert] Updating task due to alert change:', {
+            projectId,
+            taskId,
+            alertEnabled,
+            alertTime: alertTime && alertTime.format ? alertTime.format('HH:mm Z') : null,
+            alertTimeOffset: alertTime && alertTime.utcOffset ? alertTime.utcOffset() : null,
+            resultingDueDate: updateData.dueDate || null,
+            resultingDueDateISO: updateData.dueDate ? new Date(updateData.dueDate).toISOString() : null,
+        })
+    }
 
     updateTaskData(projectId, taskId, updateData, batch)
 
@@ -3341,28 +3360,30 @@ export async function setTaskStatus(
     const assignee = TasksHelper.getUserInProject(projectId, taskOwnerUid)
 
     // Debug logging for focus task selection
-    console.log(`[setTaskStatus] Focus task debug:`, {
-        taskId,
-        taskOwnerUid,
-        isDone,
-        assignee: assignee
-            ? {
-                  uid: assignee.uid,
-                  inFocusTaskId: assignee.inFocusTaskId,
-              }
-            : null,
-        taskUserIds: task.userIds,
-        isWorkflow: task.userIds.length > 1,
-        focusTaskMatches: assignee?.inFocusTaskId === taskId,
-    })
+    if (__DEV__) {
+        console.log(`[setTaskStatus] Focus task debug:`, {
+            taskId,
+            taskOwnerUid,
+            isDone,
+            assignee: assignee
+                ? {
+                      uid: assignee.uid,
+                      inFocusTaskId: assignee.inFocusTaskId,
+                  }
+                : null,
+            taskUserIds: task.userIds,
+            isWorkflow: task.userIds.length > 1,
+            focusTaskMatches: assignee?.inFocusTaskId === taskId,
+        })
+    }
 
     // AT-2191: completing the focus task opens a handoff like a postpone does, so a postpone racing
     // with it cannot resurrect the completed task as the new focus.
     if (isDone && isFocusTaskForUser(projectId, taskId, taskOwnerUid)) {
-        console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
+        if (__DEV__) console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
         await runFocusHandoff(startFocusHandoff(taskId), projectId, taskOwnerUid, task.parentGoalId, taskId)
     } else if (isDone) {
-        console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
+        if (__DEV__) console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
     }
 
     const feedBatch = new BatchWrapper(getDb())
@@ -3718,12 +3739,14 @@ const pickNextFocusTaskByDisplayOrder = async ({ projectId, userId, tasks }) => 
 
     if (orderedWorkflow.length === 0) return null
 
-    console.log('[pickNextFocusTaskByDisplayOrder] Fallback to workflow task ordering', {
-        projectId,
-        userId,
-        goalsOrderingSource: source,
-        workflowCount: workflowTasks.length,
-    })
+    if (__DEV__) {
+        console.log('[pickNextFocusTaskByDisplayOrder] Fallback to workflow task ordering', {
+            projectId,
+            userId,
+            goalsOrderingSource: source,
+            workflowCount: workflowTasks.length,
+        })
+    }
 
     return orderedWorkflow[0]
 }
@@ -3892,11 +3915,13 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
     // AT-2251: an imminent meeting outranks everything, exactly as in both authoritative pickers.
     const imminentCalendarTask = pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserId })
     if (imminentCalendarTask) {
-        console.log(`[getOptimisticNextFocusTask] Selected imminent calendar task:`, {
-            id: imminentCalendarTask.task.id,
-            name: imminentCalendarTask.task.name,
-            projectId: imminentCalendarTask.projectId,
-        })
+        if (__DEV__) {
+            console.log(`[getOptimisticNextFocusTask] Selected imminent calendar task:`, {
+                id: imminentCalendarTask.task.id,
+                name: imminentCalendarTask.task.name,
+                projectId: imminentCalendarTask.projectId,
+            })
+        }
         return imminentCalendarTask
     }
 
@@ -3906,14 +3931,16 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
     const doneMilestones = doneMilestonesByProjectInTasks[projectId] || []
     const endOfToday = moment().endOf('day').valueOf()
 
-    console.log(`[getOptimisticNextFocusTask] Starting:`, {
-        projectId,
-        completedTaskId: completedTask.id,
-        completedTaskGoalId: completedTask.parentGoalId,
-        totalTasksInMap: Object.keys(projectTasks).length,
-        goalsCount: goalsById ? Object.keys(goalsById).length : 0,
-        milestonesCount: openMilestones.length,
-    })
+    if (__DEV__) {
+        console.log(`[getOptimisticNextFocusTask] Starting:`, {
+            projectId,
+            completedTaskId: completedTask.id,
+            completedTaskGoalId: completedTask.parentGoalId,
+            totalTasksInMap: Object.keys(projectTasks).length,
+            goalsCount: goalsById ? Object.keys(goalsById).length : 0,
+            milestonesCount: openMilestones.length,
+        })
+    }
 
     // Get all candidate tasks due today; selection logic below still prefers non-workflow first.
     // AT-2191: isFocusTaskReleased skips tasks postponed earlier in the same burst — Redux still
@@ -3932,12 +3959,14 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
             isTaskOnUserPlate(t, focusUserId)
     )
 
-    console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
-        count: candidateTasks.length,
-        tasks: candidateTasks
-            .slice(0, 5)
-            .map(t => ({ id: t.id, name: t.name, goalId: t.parentGoalId, userIds: t.userIds?.length })),
-    })
+    if (__DEV__) {
+        console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
+            count: candidateTasks.length,
+            tasks: candidateTasks
+                .slice(0, 5)
+                .map(t => ({ id: t.id, name: t.name, goalId: t.parentGoalId, userIds: t.userIds?.length })),
+        })
+    }
 
     if (candidateTasks.length === 0) return null
 
@@ -3954,11 +3983,13 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
         })
 
         if (nextGeneralTask) {
-            console.log(`[getOptimisticNextFocusTask] Selected general-task candidate:`, {
-                id: nextGeneralTask.id,
-                name: nextGeneralTask.name,
-                goalId: nextGeneralTask.parentGoalId,
-            })
+            if (__DEV__) {
+                console.log(`[getOptimisticNextFocusTask] Selected general-task candidate:`, {
+                    id: nextGeneralTask.id,
+                    name: nextGeneralTask.name,
+                    goalId: nextGeneralTask.parentGoalId,
+                })
+            }
             return { task: nextGeneralTask, projectId }
         }
     }
@@ -3974,11 +4005,13 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
     })
 
     if (sameGoalTask) {
-        console.log(`[getOptimisticNextFocusTask] Selected same-goal candidate:`, {
-            id: sameGoalTask.id,
-            name: sameGoalTask.name,
-            goalId: sameGoalTask.parentGoalId,
-        })
+        if (__DEV__) {
+            console.log(`[getOptimisticNextFocusTask] Selected same-goal candidate:`, {
+                id: sameGoalTask.id,
+                name: sameGoalTask.name,
+                goalId: sameGoalTask.parentGoalId,
+            })
+        }
         return { task: sameGoalTask, projectId }
     }
 
@@ -3995,11 +4028,13 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
     })
 
     const result = orderedTasks[0] || null
-    console.log(`[getOptimisticNextFocusTask] Selected by display order:`, {
-        id: result?.id,
-        name: result?.name,
-        goalId: result?.parentGoalId,
-    })
+    if (__DEV__) {
+        console.log(`[getOptimisticNextFocusTask] Selected by display order:`, {
+            id: result?.id,
+            name: result?.name,
+            goalId: result?.parentGoalId,
+        })
+    }
     return result ? { task: result, projectId } : null
 }
 
@@ -4129,19 +4164,23 @@ async function findAndSetNewFocusedTask(
      */
     const isSuperseded = () => {
         if (!isFocusHandoffSuperseded(focusHandoffId)) return false
-        console.log(`[findAndSetNewFocusedTask] Superseded by a newer focus handoff, skipping write`, {
-            focusHandoffId,
-            currentProjectId,
-            excludeTaskId,
-        })
+        if (__DEV__) {
+            console.log(`[findAndSetNewFocusedTask] Superseded by a newer focus handoff, skipping write`, {
+                focusHandoffId,
+                currentProjectId,
+                excludeTaskId,
+            })
+        }
         return true
     }
 
-    console.log(
-        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}, excludeTaskId: ${excludeTaskId}, excludedTaskIds: ${[
-            ...excludedTaskIds,
-        ].join(',')}`
-    )
+    if (__DEV__) {
+        console.log(
+            `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}, excludeTaskId: ${excludeTaskId}, excludedTaskIds: ${[
+                ...excludedTaskIds,
+            ].join(',')}`
+        )
+    }
 
     const currentTime = moment()
     const fifteenMinutesFromNow = moment().add(15, 'minutes')
@@ -4199,11 +4238,13 @@ async function findAndSetNewFocusedTask(
     if (isSuperseded()) return false
 
     if (earliestUpcomingCalendarTask) {
-        console.log(`[findAndSetNewFocusedTask] Found upcoming calendar task:`, {
-            projectId: earliestUpcomingCalendarTaskProject,
-            taskId: earliestUpcomingCalendarTask.id,
-            taskName: earliestUpcomingCalendarTask.name,
-        })
+        if (__DEV__) {
+            console.log(`[findAndSetNewFocusedTask] Found upcoming calendar task:`, {
+                projectId: earliestUpcomingCalendarTaskProject,
+                taskId: earliestUpcomingCalendarTask.id,
+                taskName: earliestUpcomingCalendarTask.name,
+            })
+        }
         return await setNewFocusedTaskBatch(
             earliestUpcomingCalendarTaskProject,
             userId,
@@ -4250,29 +4291,31 @@ async function findAndSetNewFocusedTask(
                     !isTaskOnUserPlate(task, userId)
             )
 
-            console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId} task analysis:`, {
-                totalFetched: allTasksBeforeFilter.length,
-                validTasksCount: allFetchedTasksInCurrentProject.length,
-                filteredOutCount: filteredOutTasks.length,
-                filteredOutReasons:
-                    filteredOutTasks.length <= 10
-                        ? filteredOutTasks.map(t => ({
-                              id: t.id,
-                              name: t.name,
-                              dueDateFuture: t.dueDate > endOfToday,
-                              dueDate: (() => {
-                                  try {
-                                      return new Date(t.dueDate).toISOString()
-                                  } catch {
-                                      return `invalid: ${t.dueDate}`
-                                  }
-                              })(),
-                              isCalendarTask: !!t.calendarData,
-                              isExcludedTask: excludedTaskIds.has(t.id),
-                              parkedInOtherReviewersStep: !isTaskOnUserPlate(t, userId),
-                          }))
-                        : `${filteredOutTasks.length} tasks filtered (too many to log)`,
-            })
+            if (__DEV__) {
+                console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId} task analysis:`, {
+                    totalFetched: allTasksBeforeFilter.length,
+                    validTasksCount: allFetchedTasksInCurrentProject.length,
+                    filteredOutCount: filteredOutTasks.length,
+                    filteredOutReasons:
+                        filteredOutTasks.length <= 10
+                            ? filteredOutTasks.map(t => ({
+                                  id: t.id,
+                                  name: t.name,
+                                  dueDateFuture: t.dueDate > endOfToday,
+                                  dueDate: (() => {
+                                      try {
+                                          return new Date(t.dueDate).toISOString()
+                                      } catch {
+                                          return `invalid: ${t.dueDate}`
+                                      }
+                                  })(),
+                                  isCalendarTask: !!t.calendarData,
+                                  isExcludedTask: excludedTaskIds.has(t.id),
+                                  parkedInOtherReviewersStep: !isTaskOnUserPlate(t, userId),
+                              }))
+                            : `${filteredOutTasks.length} tasks filtered (too many to log)`,
+                })
+            }
 
             const { openMilestones, doneMilestones, goalsById, source } = await getGoalsOrderingDataForProject(
                 currentProjectId,
@@ -4295,12 +4338,14 @@ async function findAndSetNewFocusedTask(
                 })
 
                 if (newFocusedTask) {
-                    console.log(`[findAndSetNewFocusedTask] Found general focus task in current project:`, {
-                        taskId: newFocusedTask.id,
-                        taskName: newFocusedTask.name,
-                        parentGoalId: newFocusedTask.parentGoalId,
-                        goalsOrderingSource: source,
-                    })
+                    if (__DEV__) {
+                        console.log(`[findAndSetNewFocusedTask] Found general focus task in current project:`, {
+                            taskId: newFocusedTask.id,
+                            taskName: newFocusedTask.name,
+                            parentGoalId: newFocusedTask.parentGoalId,
+                            goalsOrderingSource: source,
+                        })
+                    }
                 }
             }
 
@@ -4317,12 +4362,14 @@ async function findAndSetNewFocusedTask(
             }
 
             if (newFocusedTask && !wasGeneralTask) {
-                console.log(`[findAndSetNewFocusedTask] Found same-goal focus task in current project:`, {
-                    taskId: newFocusedTask.id,
-                    taskName: newFocusedTask.name,
-                    parentGoalId: newFocusedTask.parentGoalId,
-                    goalsOrderingSource: source,
-                })
+                if (__DEV__) {
+                    console.log(`[findAndSetNewFocusedTask] Found same-goal focus task in current project:`, {
+                        taskId: newFocusedTask.id,
+                        taskName: newFocusedTask.name,
+                        parentGoalId: newFocusedTask.parentGoalId,
+                        goalsOrderingSource: source,
+                    })
+                }
             }
 
             if (!newFocusedTask) {
@@ -4333,7 +4380,11 @@ async function findAndSetNewFocusedTask(
                 })
             }
         } else {
-            console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`)
+            if (__DEV__) {
+                console.log(
+                    `[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`
+                )
+            }
         }
     } catch (error) {
         console.error(`[findAndSetNewFocusedTask] Error querying current project ${currentProjectId}:`, error)
@@ -4342,12 +4393,14 @@ async function findAndSetNewFocusedTask(
     if (isSuperseded()) return false
 
     if (newFocusedTask) {
-        console.log(`[findAndSetNewFocusedTask] Found new focus task in current project:`, {
-            taskId: newFocusedTask.id,
-            taskName: newFocusedTask.name,
-            isWorkflowTask: newFocusedTask.userIds?.length > 1,
-            parentGoalId: newFocusedTask.parentGoalId,
-        })
+        if (__DEV__) {
+            console.log(`[findAndSetNewFocusedTask] Found new focus task in current project:`, {
+                taskId: newFocusedTask.id,
+                taskName: newFocusedTask.name,
+                isWorkflowTask: newFocusedTask.userIds?.length > 1,
+                parentGoalId: newFocusedTask.parentGoalId,
+            })
+        }
         return await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask, focusHandoffId)
     }
 
@@ -4380,12 +4433,14 @@ async function findAndSetNewFocusedTask(
         })
         .map(p => p.id)
 
-    console.log(`[findAndSetNewFocusedTask] Phase 4: Searching other projects`, {
-        currentProjectId,
-        totalOtherProjects: sortedProjects.length,
-        sortedProjectIds: sortedProjects,
-        endOfToday: new Date(endOfToday).toISOString(),
-    })
+    if (__DEV__) {
+        console.log(`[findAndSetNewFocusedTask] Phase 4: Searching other projects`, {
+            currentProjectId,
+            totalOtherProjects: sortedProjects.length,
+            sortedProjectIds: sortedProjects,
+            endOfToday: new Date(endOfToday).toISOString(),
+        })
+    }
 
     // Search through each project in order of sortIndexByUser
     for (const pid of sortedProjects) {
@@ -4421,25 +4476,27 @@ async function findAndSetNewFocusedTask(
                         !isTaskOnUserPlate(task, userId)
                 )
 
-                console.log(`[findAndSetNewFocusedTask] Project ${pid} task analysis:`, {
-                    totalFetched: allTasksFromProject.length,
-                    validTasksCount: validTasks.length,
-                    filteredOutCount: filteredOutTasks.length,
-                    filteredOutReasons: filteredOutTasks.map(t => ({
-                        id: t.id,
-                        name: t.name,
-                        dueDateFuture: t.dueDate > endOfToday,
-                        dueDate: (() => {
-                            try {
-                                return new Date(t.dueDate).toISOString()
-                            } catch {
-                                return `invalid: ${t.dueDate}`
-                            }
-                        })(),
-                        isCalendarTask: !!t.calendarData,
-                        isExcludedTask: excludedTaskIds.has(t.id),
-                    })),
-                })
+                if (__DEV__) {
+                    console.log(`[findAndSetNewFocusedTask] Project ${pid} task analysis:`, {
+                        totalFetched: allTasksFromProject.length,
+                        validTasksCount: validTasks.length,
+                        filteredOutCount: filteredOutTasks.length,
+                        filteredOutReasons: filteredOutTasks.map(t => ({
+                            id: t.id,
+                            name: t.name,
+                            dueDateFuture: t.dueDate > endOfToday,
+                            dueDate: (() => {
+                                try {
+                                    return new Date(t.dueDate).toISOString()
+                                } catch {
+                                    return `invalid: ${t.dueDate}`
+                                }
+                            })(),
+                            isCalendarTask: !!t.calendarData,
+                            isExcludedTask: excludedTaskIds.has(t.id),
+                        })),
+                    })
+                }
 
                 if (validTasks.length > 0) {
                     const newFocusedTaskFromOtherProject = await pickNextFocusTaskByDisplayOrder({
@@ -4450,17 +4507,19 @@ async function findAndSetNewFocusedTask(
 
                     if (newFocusedTaskFromOtherProject) {
                         if (isSuperseded()) return false
-                        console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
-                            projectId: pid,
-                            taskId: newFocusedTaskFromOtherProject.id,
-                            taskName: newFocusedTaskFromOtherProject.name,
-                            isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
-                        })
+                        if (__DEV__) {
+                            console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
+                                projectId: pid,
+                                taskId: newFocusedTaskFromOtherProject.id,
+                                taskName: newFocusedTaskFromOtherProject.name,
+                                isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                            })
+                        }
                         return await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject, focusHandoffId)
                     }
                 }
             } else {
-                console.log(`[findAndSetNewFocusedTask] Project ${pid}: No open tasks found for user`)
+                if (__DEV__) console.log(`[findAndSetNewFocusedTask] Project ${pid}: No open tasks found for user`)
             }
         } catch (error) {
             console.error(`[findAndSetNewFocusedTask] Error querying project ${pid}:`, error)
@@ -4496,13 +4555,15 @@ async function findAndSetNewFocusedTask(
         inFocusTaskProjectId: '',
     })
     await batch.commit()
-    console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
-        searchedCurrentProject: currentProjectId,
-        searchedOtherProjects: sortedProjects,
-        totalProjectsSearched: 1 + sortedProjects.length,
-        excludeTaskId,
-        previousTaskParentGoalId,
-    })
+    if (__DEV__) {
+        console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
+            searchedCurrentProject: currentProjectId,
+            searchedOtherProjects: sortedProjects,
+            totalProjectsSearched: 1 + sortedProjects.length,
+            excludeTaskId,
+            previousTaskParentGoalId,
+        })
+    }
 
     // AT-2191: the optimistic pick predicted a replacement that the backend then failed to find, so
     // it now points at a task that is not focused and never will be. Neither this branch nor
@@ -4525,22 +4586,26 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     // `now` (the setTaskDueDate call below runs with fromSetTaskFocus=true), un-postponing a task
     // the user just pushed away, so bail out before anything is queued.
     if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Superseded by a newer focus handoff, skipping`, {
-            taskId: task.id,
-            focusHandoffId,
-        })
+        if (__DEV__) {
+            console.log(`[setNewFocusedTaskBatch] Superseded by a newer focus handoff, skipping`, {
+                taskId: task.id,
+                focusHandoffId,
+            })
+        }
         return false
     }
 
     const batch = new BatchWrapper(getDb())
 
-    console.log(`[setNewFocusedTaskBatch] Setting new focus task:`, {
-        taskId: task.id,
-        taskName: task.name,
-        projectId,
-        goalId: task.parentGoalId,
-        isWorkflow: task.userIds?.length > 1,
-    })
+    if (__DEV__) {
+        console.log(`[setNewFocusedTaskBatch] Setting new focus task:`, {
+            taskId: task.id,
+            taskName: task.name,
+            projectId,
+            goalId: task.parentGoalId,
+            isWorkflow: task.userIds?.length > 1,
+        })
+    }
 
     // Optimistically mark this task as the focus task BEFORE committing to Firestore
     // This prevents UI "jumping" by immediately showing the task at the top
@@ -4564,10 +4629,12 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     // AT-2191: re-checked because assembling the batch above awaits. A postpone that arrived in the
     // meantime has already dispatched its own optimistic pick, and this write would overwrite it.
     if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Superseded while preparing the batch, discarding it`, {
-            taskId: task.id,
-            focusHandoffId,
-        })
+        if (__DEV__) {
+            console.log(`[setNewFocusedTaskBatch] Superseded while preparing the batch, discarding it`, {
+                taskId: task.id,
+                focusHandoffId,
+            })
+        }
         return false
     }
 
@@ -4579,9 +4646,11 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     // AT-2191: unless a newer postpone has taken over in the meantime — the optimistic state is
     // then its pick, not ours, and clearing it would drop the user back onto a postponed task.
     if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Committed but superseded, leaving the optimistic state alone`)
+        if (__DEV__) {
+            console.log(`[setNewFocusedTaskBatch] Committed but superseded, leaving the optimistic state alone`)
+        }
     } else {
-        console.log(`[setNewFocusedTaskBatch] Firestore confirmed, clearing optimistic state`)
+        if (__DEV__) console.log(`[setNewFocusedTaskBatch] Firestore confirmed, clearing optimistic state`)
         store.dispatch(clearOptimisticFocusTask())
     }
 
