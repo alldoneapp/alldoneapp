@@ -15,6 +15,7 @@ const {
     isValidFamilyId,
     normalizeOpenRouterPricing,
     buildOpenRouterPricing,
+    decorateCatalogGoldPricing,
     getOpenRouterUpstreamPrice,
     CATALOG_TTL_MS,
 } = require('./vmAgentModelCatalog')
@@ -219,6 +220,45 @@ describe('buildOpenRouterModels', () => {
     })
 })
 
+describe('catalog Gold pricing', () => {
+    it('uses the billing resolver for every Anthropic and OpenAI family', () => {
+        const claude = decorateCatalogGoldPricing('claude', {
+            families: [
+                { id: 'opus', resolvedModel: 'opus' },
+                { id: 'sonnet', resolvedModel: 'sonnet' },
+            ],
+        })
+        const codex = decorateCatalogGoldPricing('codex', {
+            families: [
+                { id: 'sol', resolvedModel: 'gpt-5.6-sol' },
+                { id: 'terra', resolvedModel: 'gpt-5.6-terra' },
+                { id: 'luna', resolvedModel: 'gpt-5.6-luna' },
+            ],
+        })
+
+        expect(claude.families.map(model => model.tokensPerGold)).toEqual([100, 100])
+        expect(codex.families.map(model => model.tokensPerGold)).toEqual([100, 250, 2500])
+    })
+
+    it('uses live OpenRouter prices for both featured choices and the full search index', () => {
+        const grok = {
+            id: 'openrouter:x-ai/grok-4.6',
+            modelId: 'x-ai/grok-4.6',
+            resolvedModel: 'openrouter:x-ai/grok-4.6',
+        }
+        const catalog = decorateCatalogGoldPricing('openrouter', {
+            families: [grok],
+            searchModels: [grok],
+            pricing: [{ id: 'x-ai/grok-4.6', input: 2, cachedInput: 0.5, output: 6 }],
+        })
+
+        expect(catalog.families[0].tokensPerGold).toBe(170)
+        expect(catalog.searchModels[0].tokensPerGold).toBe(170)
+        // The decorator derives a safe display value without consuming the raw server-side source.
+        expect(catalog.pricing).toHaveLength(1)
+    })
+})
+
 describe('fetchProviderModelIds', () => {
     it('calls the Anthropic models endpoint with the versioned key header', async () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(ANTHROPIC_LIST))
@@ -260,7 +300,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('claude', { fetchImpl, now })
 
         expect(catalog.source).toBe('cache')
-        expect(catalog.families).toEqual(cached)
+        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 100 }])
         expect(fetchImpl).not.toHaveBeenCalled()
     })
 
@@ -315,7 +355,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('codex', { fetchImpl, now })
 
         expect(catalog.source).toBe('stale')
-        expect(catalog.families).toEqual(stale)
+        expect(catalog.families).toEqual([{ ...stale[0], tokensPerGold: 250 }])
     })
 
     it('falls back to the static catalog when discovery fails and nothing is cached', async () => {

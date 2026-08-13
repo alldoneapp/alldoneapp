@@ -54,6 +54,11 @@ function searchOpenRouterModels(models, query) {
     })
 }
 
+function formatTokensPerGold(value) {
+    const tokens = Number(value)
+    return Number.isFinite(tokens) && tokens > 0 ? Math.round(tokens).toLocaleString() : ''
+}
+
 // The toggle is only meaningful for Codex, and only when the environment can actually reach
 // OpenRouter — offering a model whose run would fail closed is worse than not offering it.
 function isOpenRouterAvailable(modelCatalogs) {
@@ -336,6 +341,7 @@ export default function DefaultVmAgentSection() {
                             // Provider-supplied names ("Opus", "Sol", "DeepSeek V3.2") are proper
                             // nouns, not translatable UI strings — render them as discovered.
                             label: family.label,
+                            tokensPerGold: family.tokensPerGold,
                         }))
                     )
                     .map(family => {
@@ -347,6 +353,7 @@ export default function DefaultVmAgentSection() {
                                 style={[
                                     localStyles.option,
                                     localStyles.effortOption,
+                                    localStyles.modelOption,
                                     selected && localStyles.selectedOption,
                                 ]}
                                 onPress={() => selectFamily(family.id)}
@@ -354,9 +361,18 @@ export default function DefaultVmAgentSection() {
                                 accessibilityRole="radio"
                                 accessibilityState={{ selected, disabled }}
                             >
-                                <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
-                                    {family.label}
-                                </Text>
+                                <View style={localStyles.modelOptionContent}>
+                                    <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
+                                        {family.label}
+                                    </Text>
+                                    {!!formatTokensPerGold(family.tokensPerGold) && (
+                                        <Text style={localStyles.goldRate}>
+                                            {translate('1 Gold = %{tokens} tokens', {
+                                                tokens: formatTokensPerGold(family.tokensPerGold),
+                                            })}
+                                        </Text>
+                                    )}
+                                </View>
                                 {savingFamily === family.key && (
                                     <ActivityIndicator
                                         size="small"
@@ -522,6 +538,18 @@ const localStyles = StyleSheet.create({
     effortOption: {
         minWidth: 96,
         marginBottom: 8,
+    },
+    modelOption: {
+        minHeight: 58,
+        paddingVertical: 7,
+    },
+    modelOptionContent: {
+        alignItems: 'center',
+    },
+    goldRate: {
+        ...styles.caption1,
+        color: colors.Yellow400,
+        marginTop: 2,
     },
     selectedOption: {
         borderColor: colors.Primary100,

@@ -14,11 +14,15 @@ jest.mock('../../styles/global', () => ({
         Grey300: '#ddd',
         Gray400: '#ccc',
         Primary100: '#00f',
+        Yellow400: '#a60',
         UtilityBlue100: '#eef',
         UtilityRed200: '#f00',
     },
 }))
-jest.mock('../../../i18n/TranslationService', () => ({ translate: value => value }))
+jest.mock('../../../i18n/TranslationService', () => ({
+    translate: (value, interpolations = {}) =>
+        value.replace(/%\{(\w+)\}/g, (_match, key) => String(interpolations[key] ?? '')),
+}))
 jest.mock('../../../utils/backends/firestore', () => ({
     getVmAgentSettings: jest.fn(),
     setDefaultVmAgent: jest.fn(async () => ({})),
@@ -30,17 +34,17 @@ jest.mock('../../../utils/backends/firestore', () => ({
 const CATALOGS = {
     claude: {
         families: [
-            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true },
-            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true },
-            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true },
+            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true, tokensPerGold: 100 },
+            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 100 },
+            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 100 },
         ],
         source: 'live',
     },
     codex: {
         families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
-            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false, tokensPerGold: 100 },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false, tokensPerGold: 250 },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false, tokensPerGold: 2500 },
         ],
         source: 'live',
     },
@@ -96,6 +100,10 @@ describe('DefaultVmAgentSection model family picker', () => {
         // Default agent is codex → Codex tiers are offered, Claude tiers are not.
         expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
         expect(labels).not.toEqual(expect.arrayContaining(['Opus']))
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('1 Gold = 100 tokens')
+        expect(rendered).toContain('1 Gold = 250 tokens')
+        expect(rendered).toContain('1 Gold = 2,500 tokens')
     })
 
     it('swaps the family list when the agent changes', async () => {
@@ -108,6 +116,7 @@ describe('DefaultVmAgentSection model family picker', () => {
         const labels = optionLabels(tree)
         expect(labels).toEqual(expect.arrayContaining(['Opus', 'Sonnet', 'Haiku']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
+        expect(JSON.stringify(tree.toJSON())).toContain('1 Gold = 100 tokens')
         expect(setDefaultVmAgent).toHaveBeenCalledWith('claude')
     })
 
@@ -223,6 +232,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'deepseek',
             modelId: 'deepseek/deepseek-chat',
             resolvedModel: 'openrouter:deepseek/deepseek-chat',
+            tokensPerGold: 490,
         },
         {
             id: 'openrouter:qwen/qwen3-max',
@@ -230,6 +240,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'qwen',
             modelId: 'qwen/qwen3-max',
             resolvedModel: 'openrouter:qwen/qwen3-max',
+            tokensPerGold: 960,
         },
     ],
     searchModels: [
@@ -239,6 +250,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'deepseek',
             modelId: 'deepseek/deepseek-chat',
             resolvedModel: 'openrouter:deepseek/deepseek-chat',
+            tokensPerGold: 490,
         },
         {
             id: 'openrouter:qwen/qwen3-max',
@@ -246,6 +258,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'qwen',
             modelId: 'qwen/qwen3-max',
             resolvedModel: 'openrouter:qwen/qwen3-max',
+            tokensPerGold: 960,
         },
         {
             id: 'openrouter:x-ai/grok-4.6',
@@ -253,6 +266,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'x-ai',
             modelId: 'x-ai/grok-4.6',
             resolvedModel: 'openrouter:x-ai/grok-4.6',
+            tokensPerGold: 170,
         },
         {
             id: 'openrouter:someone/niche-model',
@@ -260,6 +274,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'someone',
             modelId: 'someone/niche-model',
             resolvedModel: 'openrouter:someone/niche-model',
+            tokensPerGold: 320,
         },
     ],
     source: 'live',
@@ -293,6 +308,7 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
         expect(setDefaultVmAgentModel).not.toHaveBeenCalled()
         expect(JSON.stringify(tree.toJSON())).toContain('Featured models')
+        expect(JSON.stringify(tree.toJSON())).toContain('1 Gold = 490 tokens')
     })
 
     it('searches every compatible OpenRouter model, not only the featured set', async () => {
@@ -311,7 +327,9 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
 
         expect(optionLabels(tree)).toContain('SpaceXAI: Grok 4.6')
         expect(optionLabels(tree)).not.toContain('DeepSeek Chat')
-        expect(JSON.stringify(tree.toJSON())).toContain('Search results')
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('Search results')
+        expect(rendered).toContain('1 Gold = 170 tokens')
     })
 
     it('saves a model selected from search', async () => {
