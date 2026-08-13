@@ -17,6 +17,7 @@ const {
     TASKS_COLLECTION,
     isTypesenseConfigured,
     normalizeDocumentForTypesense,
+    adaptTypesenseSearchHit,
     upsertTypesenseDocument,
     deleteTypesenseDocument,
     importTypesenseDocuments,
@@ -109,6 +110,32 @@ describe('document normalization', () => {
         expect('dueDate' in doc).toBe(false)
         expect('lastEditionDate' in doc).toBe(false)
         expect(doc.completed).toBeNull()
+    })
+})
+
+describe('search hit adaptation', () => {
+    it('restores the numeric public sentinel while preserving ids and other audience values', () => {
+        expect(
+            adaptTypesenseSearchHit({
+                document: {
+                    id: 'goal-1project-1',
+                    projectId: 'project-1',
+                    isPublicFor: ['0', 'user-1', 'workstream@default'],
+                },
+            })
+        ).toEqual({
+            id: 'goal-1',
+            objectID: 'goal-1project-1',
+            projectId: 'project-1',
+            isPublicFor: [0, 'user-1', 'workstream@default'],
+        })
+    })
+
+    it('does not add isPublicFor when the indexed document has no audience field', () => {
+        expect(adaptTypesenseSearchHit({ document: { id: 'task-1' } })).toEqual({
+            id: 'task-1',
+            objectID: 'task-1',
+        })
     })
 })
 

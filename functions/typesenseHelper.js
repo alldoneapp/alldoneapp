@@ -343,7 +343,24 @@ const SEARCH_QUERY_CONFIG = {
 // the callers own their fallback behavior, and a silent empty result would read as
 // "nothing matched" when the truth is "the search never ran".
 // Hits come back in the Algolia shape: objectID = composite document id, `id` = the
-// object's own bare id (reconstructed by stripping the projectId suffix).
+// object's own bare id (reconstructed by stripping the projectId suffix). Restore the
+// numeric public sentinel too: Typesense stores isPublicFor as string[] to keep its facet
+// type consistent, while the rest of the app's persisted-data contract uses numeric 0.
+const adaptTypesenseSearchHit = hit => {
+    const document = hit.document || {}
+    const objectID = String(document.id || '')
+    const bareId =
+        document.projectId && objectID.endsWith(document.projectId)
+            ? objectID.slice(0, -String(document.projectId).length)
+            : objectID
+    const isPublicFor = Array.isArray(document.isPublicFor)
+        ? document.isPublicFor.map(value => (value === '0' ? 0 : value))
+        : document.isPublicFor
+    const privacyData = Object.prototype.hasOwnProperty.call(document, 'isPublicFor') ? { isPublicFor } : {}
+
+    return { ...document, ...privacyData, id: bareId, objectID }
+}
+
 const searchTypesenseDocuments = async (collectionName, query, { filterBy, perPage = 20 } = {}) => {
     const client = await ensureCollection(collectionName)
     if (!client) throw new Error('Typesense is not configured (TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY)')
@@ -360,15 +377,7 @@ const searchTypesenseDocuments = async (collectionName, query, { filterBy, perPa
         highlight_fields: 'none',
     })
 
-    const hits = (result.hits || []).map(hit => {
-        const document = hit.document || {}
-        const objectID = String(document.id || '')
-        const bareId =
-            document.projectId && objectID.endsWith(document.projectId)
-                ? objectID.slice(0, -String(document.projectId).length)
-                : objectID
-        return { ...document, id: bareId, objectID }
-    })
+    const hits = (result.hits || []).map(adaptTypesenseSearchHit)
     return { hits }
 }
 
@@ -421,6 +430,7 @@ module.exports = {
     deleteTypesenseDocumentsByFilter,
     deleteTypesenseProjectRecords,
     getTypesenseCollectionStats,
+    adaptTypesenseSearchHit,
     searchTypesenseDocuments,
     formatTypesenseFilterValue,
     __resetTypesenseCachesForTests,
