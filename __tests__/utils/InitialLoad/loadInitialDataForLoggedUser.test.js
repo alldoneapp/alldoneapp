@@ -21,12 +21,14 @@ jest.mock('../../../redux/store', () => ({
 }))
 
 const mockSetCachedGlobalData = jest.fn()
+const mockSetCachedUserData = jest.fn()
+let mockCachedUserData = null
 let mockCachedGlobalData = null
 jest.mock('../../../utils/UserDataCache', () => ({
     __esModule: true,
     default: {
-        getCachedUserData: () => null,
-        setCachedUserData: jest.fn(),
+        getCachedUserData: () => mockCachedUserData,
+        setCachedUserData: (...args) => mockSetCachedUserData(...args),
         getCachedGlobalData: () => mockCachedGlobalData,
         setCachedGlobalData: (...args) => mockSetCachedGlobalData(...args),
     },
@@ -108,7 +110,11 @@ jest.mock('../../../utils/backends/Premium/stripePremiumFirestore', () => ({
 }))
 jest.mock('../../../utils/analytics/analytics', () => ({ trackEvent: jest.fn() }))
 
-const { loadInitialDataForLoggedUser } = require('../../../utils/InitialLoad/loggedUserHelper')
+const {
+    loadGlobalDataAndGetUserResult,
+    loadInitialDataForLoggedUser,
+} = require('../../../utils/InitialLoad/loggedUserHelper')
+const { fetchUserDataResult } = require('../../../utils/backends/Users/usersFirestore')
 
 const project = id => ({ id, name: `Project ${id}` })
 
@@ -119,6 +125,7 @@ const getProjectsInitialDataDispatch = () => {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    mockCachedUserData = null
     mockCachedGlobalData = null
     mockState.loggedUser = { uid: 'user-1', projectIds: ['p1', 'p2'], dateFormat: 'DD/MM/YYYY', language: 'en' }
     jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -128,6 +135,46 @@ beforeEach(() => {
 
 afterEach(() => {
     jest.restoreAllMocks()
+})
+
+describe('loadGlobalDataAndGetUserResult', () => {
+    it('uses a current user document instead of stale cached project membership', async () => {
+        mockCachedUserData = { uid: 'user-1', projectIds: ['p1'] }
+        const freshUser = { uid: 'user-1', projectIds: ['p1', 'p2'] }
+        fetchUserDataResult.mockResolvedValue({ user: freshUser, missing: false, error: null })
+
+        await expect(loadGlobalDataAndGetUserResult('user-1')).resolves.toEqual({
+            user: freshUser,
+            missing: false,
+            error: null,
+        })
+
+        expect(mockSetCachedUserData).toHaveBeenCalledWith(freshUser)
+    })
+
+    it('uses cached user data only as an offline fallback', async () => {
+        const cachedUser = { uid: 'user-1', projectIds: ['p1'] }
+        const offline = new Error('offline')
+        mockCachedUserData = cachedUser
+        fetchUserDataResult.mockResolvedValue({ user: null, missing: false, error: offline })
+
+        await expect(loadGlobalDataAndGetUserResult('user-1')).resolves.toEqual({
+            user: cachedUser,
+            missing: false,
+            error: null,
+        })
+    })
+
+    it('does not let cached data hide a directly confirmed missing user document', async () => {
+        mockCachedUserData = { uid: 'user-1', projectIds: ['p1'] }
+        fetchUserDataResult.mockResolvedValue({ user: null, missing: true, error: null })
+
+        await expect(loadGlobalDataAndGetUserResult('user-1')).resolves.toEqual({
+            user: null,
+            missing: true,
+            error: null,
+        })
+    })
 })
 
 describe('loadInitialDataForLoggedUser', () => {
