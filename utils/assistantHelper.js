@@ -357,16 +357,18 @@ const createTopicForPreConfigTask = async (
 
         const clientSubmissionTime = Date.now()
         const clientSubmissionTimestamp = new Date().toISOString()
-        console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
-            timestamp: clientSubmissionTimestamp,
-            submissionTime: clientSubmissionTime,
-            submissionTimeISO: clientSubmissionTimestamp,
-            userId: loggedUser.uid,
-            projectId,
-            taskId,
-            assistantId,
-            promptLength: prompt?.length,
-        })
+        if (__DEV__) {
+            console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
+                timestamp: clientSubmissionTimestamp,
+                submissionTime: clientSubmissionTime,
+                submissionTimeISO: clientSubmissionTimestamp,
+                userId: loggedUser.uid,
+                projectId,
+                taskId,
+                assistantId,
+                promptLength: prompt?.length,
+            })
+        }
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
 
         try {
@@ -378,16 +380,18 @@ const createTopicForPreConfigTask = async (
             const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
             const networkLatency = functionCallStartTime - clientSubmissionTime
 
-            console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                submissionTimeISO: clientSubmissionTimestamp,
-                completionTime: clientCallCompleteTime,
-                completionTimeISO: new Date().toISOString(),
-                timeSinceSubmission: `${totalClientToServerTime}ms`,
-                networkLatency: `${networkLatency}ms`,
-                backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    submissionTimeISO: clientSubmissionTimestamp,
+                    completionTime: clientCallCompleteTime,
+                    completionTimeISO: new Date().toISOString(),
+                    timeSinceSubmission: `${totalClientToServerTime}ms`,
+                    networkLatency: `${networkLatency}ms`,
+                    backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                })
+            }
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
         } catch (error) {
             console.error('Error in generatePreConfigTaskResultSecondGen:', {

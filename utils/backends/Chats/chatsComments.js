@@ -516,15 +516,17 @@ export async function createObjectMessage(
         const commentId = editingCommentId || getId()
 
         // Debug logging for webhook task detection
-        console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
-            objectType,
-            objectId,
-            hasObject: !!object,
-            hasTaskMetadata: !!object?.taskMetadata,
-            isWebhookTask: object?.taskMetadata?.isWebhookTask,
-            taskMetadata: object?.taskMetadata,
-            editingCommentId,
-        })
+        if (__DEV__) {
+            console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
+                objectType,
+                objectId,
+                hasObject: !!object,
+                hasTaskMetadata: !!object?.taskMetadata,
+                isWebhookTask: object?.taskMetadata?.isWebhookTask,
+                taskMetadata: object?.taskMetadata,
+                editingCommentId,
+            })
+        }
 
         // Check if this is a webhook task and trigger webhook with the user's message
         if (!editingCommentId && objectType === 'tasks' && object?.taskMetadata?.isWebhookTask) {
@@ -667,28 +669,32 @@ export async function createObjectMessage(
                   : assistantEnabled
 
         // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
-        console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
-            editingCommentId,
-            isThreadAssistantEnabled,
-            isWebhookTask,
-            skipAssistantTrigger,
-            objectType,
-            hasTaskMetadata: !!object?.taskMetadata,
-        })
+        if (__DEV__) {
+            console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
+                editingCommentId,
+                isThreadAssistantEnabled,
+                isWebhookTask,
+                skipAssistantTrigger,
+                objectType,
+                hasTaskMetadata: !!object?.taskMetadata,
+            })
+        }
         if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
             const clientSubmissionTime = Date.now()
             const clientSubmissionTimestamp = new Date().toISOString()
-            console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
-                timestamp: clientSubmissionTimestamp,
-                submissionTime: clientSubmissionTime,
-                submissionTimeISO: clientSubmissionTimestamp,
-                userId: creatorId,
-                messageId: commentId,
-                projectId,
-                objectType,
-                objectId,
-                assistantId,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
+                    timestamp: clientSubmissionTimestamp,
+                    submissionTime: clientSubmissionTime,
+                    submissionTimeISO: clientSubmissionTimestamp,
+                    userId: creatorId,
+                    messageId: commentId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                })
+            }
             const functionCallStartTime = Date.now()
             runHttpsCallableFunction(
                 'askToBotSecondGen',
@@ -712,17 +718,19 @@ export async function createObjectMessage(
                     const clientCallCompleteTime = Date.now()
                     const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
                     const networkLatency = functionCallStartTime - clientSubmissionTime
-                    console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
-                        timestamp: new Date().toISOString(),
-                        submissionTime: clientSubmissionTime,
-                        submissionTimeISO: clientSubmissionTimestamp,
-                        completionTime: clientCallCompleteTime,
-                        completionTimeISO: new Date().toISOString(),
-                        timeSinceSubmission: `${totalClientToServerTime}ms`,
-                        networkLatency: `${networkLatency}ms`,
-                        backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
-                        result,
-                    })
+                    if (__DEV__) {
+                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
+                            timestamp: new Date().toISOString(),
+                            submissionTime: clientSubmissionTime,
+                            submissionTimeISO: clientSubmissionTimestamp,
+                            completionTime: clientCallCompleteTime,
+                            completionTimeISO: new Date().toISOString(),
+                            timeSinceSubmission: `${totalClientToServerTime}ms`,
+                            networkLatency: `${networkLatency}ms`,
+                            backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                            result,
+                        })
+                    }
                 })
                 .catch(error => {
                     console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
@@ -907,14 +915,16 @@ const addFollowersToChat = async (projectId, chatName, objectType, chatId, follo
     const usersFollowing = followerIds || (await getChatFollowerIds(projectId, chatName, objectType, chatId))
 
     const batch = new BatchWrapper(getDb())
-    console.log('addFollowersToChat parameters:', {
-        projectId,
-        chatName,
-        objectType,
-        chatId,
-        followerIds,
-        usersFollowing,
-    })
+    if (__DEV__) {
+        console.log('addFollowersToChat parameters:', {
+            projectId,
+            chatName,
+            objectType,
+            chatId,
+            followerIds,
+            usersFollowing,
+        })
+    }
     // maybe we wanted to not have feeds because it's a chat and then we dont want updates
     if (objectType === 'topics') {
         usersFollowing.forEach(userId => {

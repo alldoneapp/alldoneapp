@@ -1777,20 +1777,22 @@ export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext =
     const slimDate = date.format('DDMMYYYY')
     const dayDate = parseInt(date.format('YYYYMMDD'))
 
-    console.log('[gold][client] Prepared task reward call', {
-        projectId,
-        userId,
-        maxGold,
-        computedGold: gold,
-        goldToIncrease,
-        loggedUserId: loggedUser.uid,
-        loggedUserDailyGold: loggedUser.dailyGold,
-        rewardKey: rewardContext.rewardKey || '',
-        objectId: rewardContext.objectId || '',
-        objectType: rewardContext.objectType || '',
-        timestamp,
-        checkBoxId: checkBoxId || '',
-    })
+    if (__DEV__) {
+        console.log('[gold][client] Prepared task reward call', {
+            projectId,
+            userId,
+            maxGold,
+            computedGold: gold,
+            goldToIncrease,
+            loggedUserId: loggedUser.uid,
+            loggedUserDailyGold: loggedUser.dailyGold,
+            rewardKey: rewardContext.rewardKey || '',
+            objectId: rewardContext.objectId || '',
+            objectType: rewardContext.objectType || '',
+            timestamp,
+            checkBoxId: checkBoxId || '',
+        })
+    }
 
     if (goldToIncrease > 0) {
         if (userId === loggedUser.uid && checkBoxId) {
@@ -1809,16 +1811,18 @@ export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext =
             objectType: rewardContext.objectType,
         })
     } else {
-        console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
-            projectId,
-            userId,
-            computedGold: gold,
-            loggedUserDailyGold: loggedUser.dailyGold,
-            rewardKey: rewardContext.rewardKey || '',
-            objectId: rewardContext.objectId || '',
-            objectType: rewardContext.objectType || '',
-            timestamp,
-        })
+        if (__DEV__) {
+            console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
+                projectId,
+                userId,
+                computedGold: gold,
+                loggedUserDailyGold: loggedUser.dailyGold,
+                rewardKey: rewardContext.rewardKey || '',
+                objectId: rewardContext.objectId || '',
+                objectType: rewardContext.objectType || '',
+                timestamp,
+            })
+        }
     }
 }
 

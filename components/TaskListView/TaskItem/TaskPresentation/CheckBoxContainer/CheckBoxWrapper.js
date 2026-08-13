@@ -301,7 +301,7 @@ function CheckBoxWrapper(
     }
 
     const onCheckboxPress = isLongPress => {
-        console.log('onCheckboxPress called - isLongPress:', isLongPress)
+        if (__DEV__) console.log('onCheckboxPress called - isLongPress:', isLongPress)
         if (taskTransitionPendingRef.current || emailCompletionSubmittingRef.current) return
         if (!checkIsLimitedByXp(projectId)) {
             if (hasUnresolvedSuggestion) {

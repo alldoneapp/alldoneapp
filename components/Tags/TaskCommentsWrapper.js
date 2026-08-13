@@ -52,12 +52,12 @@ export default function TaskCommentsWrapper({
 
     const safeSetShowModal = value => {
         if (isUnmountedRef.current) {
-            if (console && console.debug) {
+            if (__DEV__ && console && console.debug) {
                 console.debug('[TaskCommentsWrapper] Ignored setShowModal on unmounted component', { value })
             }
             return
         }
-        if (console && console.debug) {
+        if (__DEV__ && console && console.debug) {
             console.debug('[TaskCommentsWrapper] setShowModal', { value })
         }
         setShowModal(value)
@@ -105,16 +105,18 @@ export default function TaskCommentsWrapper({
             comment
         ) {
             const clientSubmissionTime = Date.now()
-            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                projectId,
-                objectType,
-                objectId,
-                assistantId,
-                commentLength: comment?.length,
-                explicitAssistantEnabled,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                    commentLength: comment?.length,
+                    explicitAssistantEnabled,
+                })
+            }
             await createObjectMessage(
                 projectId,
                 objectId,
@@ -126,9 +128,11 @@ export default function TaskCommentsWrapper({
                 false, // skipAssistantTrigger
                 explicitAssistantEnabled
             )
-            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
-                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
+                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                })
+            }
             if (!assistantEnabled) closeModal()
         }
     }

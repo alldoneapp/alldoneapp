@@ -236,7 +236,9 @@ export default function RichCommentModal({
     }, [])
 
     useEffect(() => {
-        if (messages.loaded && comments.length === 0) {
+        // Diagnostics only — and the Firestore read below exists solely to fill in the log, so the
+        // whole effect stands down in production rather than just the console call.
+        if (__DEV__ && messages.loaded && comments.length === 0) {
             getParentObjectData(projectId, objectId, objectType)
                 .then(data => {
                     const commentsData = data?.object?.commentsData || null
@@ -307,18 +309,20 @@ export default function RichCommentModal({
     const done = ({ comment, mentions, privacy, hasKarma }) => {
         const clientSubmissionTime = Date.now()
         const shouldTriggerAssistant = isThreadAssistantEnabled === true
-        console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
-            timestamp: new Date().toISOString(),
-            submissionTime: clientSubmissionTime,
-            projectId,
-            objectType,
-            objectId,
-            assistantId,
-            assistantEnabled,
-            shouldTriggerAssistant,
-            inTaskModal,
-            commentLength: comment?.length,
-        })
+        if (__DEV__) {
+            console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
+                timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                assistantEnabled,
+                shouldTriggerAssistant,
+                inTaskModal,
+                commentLength: comment?.length,
+            })
+        }
 
         if (shouldTriggerAssistant && gold === 0) {
             setShowRunOutGoalModal(true)
@@ -331,15 +335,19 @@ export default function RichCommentModal({
 
             if (inTaskModal) {
                 processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
-                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                })
+                if (__DEV__) {
+                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
+                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                    })
+                }
             } else {
                 updateNewAttachmentsData(projectId, comment).then(text => {
                     processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
-                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                    })
+                    if (__DEV__) {
+                        console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
+                            timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                        })
+                    }
                 })
             }
 
