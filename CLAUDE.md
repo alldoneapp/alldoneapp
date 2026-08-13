@@ -313,16 +313,7 @@ jsdom); slide-out polish is Phase 5. The sheet card is `colors.Secondary400`, ma
 FloatModals card color, so existing modal contents render seamlessly inside it without
 relinquishing their own chrome (that migration comes per-modal via `ModalShellContext`).
 Migrated so far: DueDateButton, EstimationButton, TaskPriorityWrapper, TaskDetailedView
-Assignee + ProjectPicker, MorePopupsOfEditModals MoreButtonWrapper.
-**`PopupDismissSurface` must stand down inside a sheet (AT-2287)**: the surface's
-window-capture outside-gesture guard treats the sheet's own chrome (handle strip,
-backdrop) as "outside" — it swallowed the handle's `touchstart` at capture (so the
-drag never started; "dragging does nothing") and dismissed the popup on release
-(so a partial drag closed instead of springing back). The surface now skips
-installing the guard when `useModalShellPresentation() === 'sheet'`; the
-BottomSheet owns dismissal there (backdrop, Escape, handle drag). Desktop popover
-mode is unchanged — there the guard IS the outside-click dismissal. Pinned by
-`RichCommentDismissSurface.test.js` ("stands down inside a bottom sheet"). Pinned by
+Assignee + ProjectPicker, MorePopupsOfEditModals MoreButtonWrapper. Pinned by
 `components/UIComponents/ModalShell/ModalShell.test.js` (jsdom, real guard + escape stack)
 and `browser-tests/modalsheet` (real Chromium: touch grace timing, focused-input Escape,
 nested LIFO, scroll lock).

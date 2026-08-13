@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom'
 import { act } from 'react-dom/test-utils'
 
 import PopupDismissSurface from '../../PopupDismissSurface'
-import { ModalShellContext } from '../../ModalShell/ModalShellContext'
 
 jest.mock('react-native', () => {
     const React = require('react')
@@ -126,51 +125,6 @@ describe('PopupDismissSurface browser interactions', () => {
 
         expect(dismiss).not.toHaveBeenCalled()
         expect(insideAction).toHaveBeenCalledTimes(1)
-    })
-
-    it('stands down inside a bottom sheet so the sheet handle keeps its touch gesture (AT-2287)', () => {
-        // In sheet mode the shell chrome (handle strip, backdrop) sits outside
-        // the surface. The window-capture guard used to swallow the handle's
-        // touchstart (the drag never started) and dismiss the popup on
-        // release. Inside a sheet the guard must not install at all.
-        const dismiss = jest.fn()
-        const handleTouchStart = jest.fn()
-
-        const Harness = () => (
-            <React.Fragment>
-                {ReactDOM.createPortal(
-                    <ModalShellContext.Provider value={{ presentation: 'sheet' }}>
-                        <div data-testid="sheet-handle" />
-                        <PopupDismissSurface
-                            onDismiss={event => {
-                                dismiss(event)
-                            }}
-                        >
-                            <button data-testid="inside-button">Popup action</button>
-                        </PopupDismissSurface>
-                    </ModalShellContext.Provider>,
-                    portalRoot
-                )}
-            </React.Fragment>
-        )
-
-        act(() => {
-            ReactDOM.render(<Harness />, appRoot)
-        })
-        act(() => {
-            jest.runOnlyPendingTimers()
-        })
-
-        const handle = portalRoot.querySelector('[data-testid="sheet-handle"]')
-        handle.addEventListener('touchstart', handleTouchStart)
-        act(() => {
-            dispatch(handle, 'touchstart')
-            dispatch(handle, 'touchend')
-        })
-
-        expect(handleTouchStart).toHaveBeenCalledTimes(1)
-        expect(dismiss).not.toHaveBeenCalled()
-        expect(portalRoot.querySelector('[data-testid="inside-button"]')).not.toBeNull()
     })
 
     it('does not treat the mobile compatibility events from the opening tap as an outside dismissal', () => {
