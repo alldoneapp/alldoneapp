@@ -131,6 +131,7 @@ import {
 } from '../../components/ContactsView/Utils/ContactsHelper'
 
 import firebase from 'firebase/compat/app'
+import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
 import { AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
@@ -335,6 +336,7 @@ let functions
 let messaging
 let db
 let firestoreSettingsApplied = false
+let firestoreNetworkRestartPromise = null
 let somePrefix = 'Offline'
 let someId = -1
 let syncToBackend = true
@@ -867,6 +869,41 @@ export function getDb() {
     return db
 }
 
+/**
+ * Re-open the full Firestore client's streams after a direct server read proved that its local
+ * view was wrong. Calls are coalesced because several project reads fail in parallel during boot.
+ */
+export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
+    if (!db) return Promise.reject(new Error('Firebase db is not initialized'))
+    if (firestoreNetworkRestartPromise) return firestoreNetworkRestartPromise
+
+    firestoreNetworkRestartPromise = (async () => {
+        let networkDisabled = false
+        try {
+            await db.disableNetwork()
+            networkDisabled = true
+            await db.enableNetwork()
+            networkDisabled = false
+            console.warn(`[Firestore] Restarted the realtime connection to ${reason}`)
+        } catch (error) {
+            // Never leave the whole app intentionally offline just because the restart failed
+            // halfway through. A second enable is harmless if the first one partially succeeded.
+            if (networkDisabled) {
+                try {
+                    await db.enableNetwork()
+                } catch (enableError) {
+                    console.warn('[Firestore] Failed to re-enable the network after a restart error:', enableError)
+                }
+            }
+            throw error
+        }
+    })().finally(() => {
+        firestoreNetworkRestartPromise = null
+    })
+
+    return firestoreNetworkRestartPromise
+}
+
 export function getIsMessagingSupported() {
     return (
         firebase.messaging &&
@@ -1225,6 +1262,33 @@ export async function getProjectBy(projectId) {
 export async function getProjectDataResult(projectId) {
     const snapshot = await db.doc(`/projects/${projectId}`).get()
     const project = snapshot.data()
+
+    if (!project) {
+        try {
+            const directSnapshot = await readDocumentDirectlyFromServer(`projects/${projectId}`)
+            if (directSnapshot.exists) {
+                console.warn(
+                    `[InitialLoad] The realtime Firestore client reported project ${projectId} as missing, ` +
+                        'but a direct server read found it. Using the server document and reconnecting the streams.'
+                )
+                await restartFirestoreNetwork('recover a project omitted during initial load')
+                return {
+                    project: mapProjectData(projectId, directSnapshot.data),
+                    missingFromCache: false,
+                }
+            }
+            return { project: null, missingFromCache: false }
+        } catch (error) {
+            // A failed independent read cannot confirm absence. Keep this retryable and never let
+            // it become a stale-project cleanup candidate.
+            console.warn(
+                `[InitialLoad] Could not verify missing project ${projectId} with a direct server read:`,
+                error
+            )
+            return { project: null, missingFromCache: true }
+        }
+    }
+
     return {
         project: project ? mapProjectData(projectId, project) : null,
         // "missing" answered by the local cache while the backend is unreachable — the doc may

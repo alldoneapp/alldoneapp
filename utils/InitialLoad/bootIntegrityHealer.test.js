@@ -1,7 +1,7 @@
 import store from '../../redux/store'
-import { getDb } from '../backends/firestore'
+import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
-import { loadGlobalData } from './initialLoadHelper'
+import { loadGlobalData, watchProjectData } from './initialLoadHelper'
 import {
     resetBootIntegrityHealerForTests,
     runBootIntegrityCheck,
@@ -14,6 +14,7 @@ jest.mock('../../redux/store', () => ({
 
 jest.mock('../backends/firestore', () => ({
     getDb: jest.fn(),
+    globalWatcherUnsub: {},
 }))
 
 jest.mock('./projectRecovery', () => ({
@@ -22,6 +23,7 @@ jest.mock('./projectRecovery', () => ({
 
 jest.mock('./initialLoadHelper', () => ({
     loadGlobalData: jest.fn(),
+    watchProjectData: jest.fn(),
 }))
 
 // Mutable state the mocked store serves; repairs mutate it like the real dispatches would.
@@ -57,6 +59,8 @@ describe('runBootIntegrityCheck', () => {
         loadGlobalData.mockImplementation(async () => {
             state.administratorUser = { uid: 'admin-1' }
         })
+        Object.keys(globalWatcherUnsub).forEach(key => delete globalWatcherUnsub[key])
+        watchProjectData.mockReset()
         consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
     })
 
@@ -90,8 +94,18 @@ describe('runBootIntegrityCheck', () => {
 
         expect(recoverDroppedProject).toHaveBeenCalledWith('p2')
         expect(recoverDroppedProject).toHaveBeenCalledTimes(1)
+        expect(watchProjectData).toHaveBeenCalledWith('p2', true, true)
         const db = getDb()
         expect(db.disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('does not replace an existing project watcher after recovery', async () => {
+        delete state.loggedUserProjectsMap.p2
+        globalWatcherUnsub.p2Project = jest.fn()
+
+        await runBootIntegrityCheck({ settleMs: 0 })
+
+        expect(watchProjectData).not.toHaveBeenCalled()
     })
 
     it('reloads global data when the administrator user is empty but the role names one', async () => {
@@ -147,8 +161,14 @@ describe('runBootIntegrityCheck', () => {
 
 describe('scheduleBootIntegrityChecks', () => {
     beforeEach(() => {
-        resetBootIntegrityHealerForTests()
         jest.useFakeTimers()
+        resetBootIntegrityHealerForTests()
+        state = {
+            loggedUser: { uid: 'user1', projectIds: [] },
+            loggedUserProjectsMap: {},
+            administratorUser: { uid: 'admin-1' },
+        }
+        store.getState.mockImplementation(() => state)
     })
 
     afterEach(() => {
@@ -162,5 +182,15 @@ describe('scheduleBootIntegrityChecks', () => {
 
         scheduleBootIntegrityChecks()
         expect(jest.getTimerCount()).toBe(timersAfterFirst)
+    })
+
+    it('replaces scheduled checks when another user signs in', () => {
+        scheduleBootIntegrityChecks()
+        const timersForFirstUser = jest.getTimerCount()
+
+        state.loggedUser = { uid: 'user2', projectIds: [] }
+        scheduleBootIntegrityChecks()
+
+        expect(jest.getTimerCount()).toBe(timersForFirstUser)
     })
 })

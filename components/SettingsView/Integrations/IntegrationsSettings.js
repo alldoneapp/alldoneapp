@@ -341,10 +341,11 @@ function ConnectionsSection({ service, title, connections, projects }) {
                         containerStyle={POPOVER_CONTAINER_STYLE}
                         onClickOutside={() => setConnectPicker(null)}
                         content={
-                            <ProjectPicker
+                            <ProjectListModal
                                 projects={projects}
-                                onSelect={project => connectWith(provider, project)}
-                                closePopover={() => setConnectPicker(null)}
+                                title={translate('Choose a default project')}
+                                onSelectProject={project => connectWith(provider, project)}
+                                closeModal={() => setConnectPicker(null)}
                             />
                         }
                     >
