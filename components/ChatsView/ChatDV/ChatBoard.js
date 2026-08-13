@@ -95,7 +95,7 @@ export default function ChatBoard({
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${chat.id}`, chatNotifications)
-    const linkedEmails = getLinkedEmailsFromMessages(messages)
+    const linkedEmails = getLinkedEmailsFromMessages(messages, { projectId, chatId: chat.id })
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
@@ -151,7 +151,9 @@ export default function ChatBoard({
         setArchivingAllEmails(true)
         try {
             const allLinkedEmailComments = await getChatCommentsWithLinkedEmails(projectId, chat.type, chat.id)
-            await archiveLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
+            await archiveLinkedEmails(
+                getLinkedEmailsFromMessages(allLinkedEmailComments, { projectId, chatId: chat.id })
+            )
         } catch (error) {
             console.error('Failed to load linked emails for archive all', error)
             alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
@@ -337,7 +339,7 @@ export default function ChatBoard({
                 <View>
                     {messages.map((message, index) => {
                         const highlight = index >= amountOfCommentsToNotHighligth
-                        const linkedEmail = getLinkedEmailFromMessage(message)
+                        const linkedEmail = getLinkedEmailFromMessage(message, { projectId, chatId: chat.id })
                         const linkedEmailNew = !!linkedEmail && newEmailCommentIds.has(message.id)
                         return (
                             <MessageItem

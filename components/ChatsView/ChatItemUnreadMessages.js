@@ -90,7 +90,9 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     // not every unread message of the topic - the capped-away ones are not on screen, and a header
     // button that archived emails the user cannot see would be a different, sharper action.
     // Published only for a project member, which is what gates the bulk buttons for everyone else.
-    const previewedLinkedEmails = accessGranted ? getLinkedEmailsFromMessages(visibleMessages) : []
+    const previewedLinkedEmails = accessGranted
+        ? getLinkedEmailsFromMessages(visibleMessages, { projectId: project.id, chatId: chat.id })
+        : []
     useRegisterUnreadLinkedEmails(`${project.id}:${chat.id}`, project.id, previewedLinkedEmails)
 
     if (visibleMessages.length === 0) return null

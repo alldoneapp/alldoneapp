@@ -14,6 +14,7 @@ import {
     performEmailLineSweepInBackground,
     reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import NavigationService from '../../../../utils/NavigationService'
 import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
@@ -29,6 +30,10 @@ jest.mock('../../../../i18n/TranslationService', () => ({
 // HelperFunctions transitively imports the redux store (and react-hot-keys),
 // which jest cannot transform. The modal only needs MODAL_MAX_HEIGHT_GAP.
 jest.mock('../../../../utils/HelperFunctions', () => ({ MODAL_MAX_HEIGHT_GAP: 32 }))
+
+jest.mock('../../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markChatCommentsAsReadByMessageIds: jest.fn(() => Promise.resolve()),
+}))
 
 jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     listEmailLineMessages: jest.fn(),
@@ -392,6 +397,8 @@ describe('EmailLabelModal', () => {
         // The modal stays open; only the owning connection's action fires.
         expect(closePopover).not.toHaveBeenCalled()
         expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1', 'm1b'] })
+        expect(performEmailLineAction).not.toHaveBeenCalledWith('c1', expect.objectContaining({ action: 'markRead' }))
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m1', 'm1b'])
         expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
 
         // Once the archive resolves, the archived row drops out while the rest still renders.
@@ -610,6 +617,7 @@ describe('EmailLabelModal', () => {
 
     it('closes immediately on sweep and runs it in the background for every account', async () => {
         const closePopover = jest.fn()
+        performEmailLineSweepInBackground.mockResolvedValue(2)
         const tree = await renderModal(closePopover)
 
         await act(async () => {
@@ -620,6 +628,8 @@ describe('EmailLabelModal', () => {
         expect(closePopover).toHaveBeenCalled()
         expect(performEmailLineSweepInBackground).toHaveBeenCalledWith('c1', 'INBOX', 'archiveAll')
         expect(performEmailLineSweepInBackground).toHaveBeenCalledWith('c2', 'f_inbox', 'archiveAll')
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m1', 'm1b'])
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m2'])
         expect(performEmailLineAction).not.toHaveBeenCalled()
     })
 })

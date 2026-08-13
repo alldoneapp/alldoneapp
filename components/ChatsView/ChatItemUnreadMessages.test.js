@@ -24,6 +24,10 @@ jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }
 jest.mock('../../utils/SharedHelper', () => ({ accessGranted: () => mockAccessGranted }))
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    markChatCommentsAsReadByMessageIds: jest.fn(),
+}))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markChatMessagesAsRead: jest.fn(),

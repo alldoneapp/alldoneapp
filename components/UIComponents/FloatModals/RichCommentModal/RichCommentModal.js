@@ -146,7 +146,7 @@ export default function RichCommentModal({
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)
-    const linkedEmails = getLinkedEmailsFromMessages(comments)
+    const linkedEmails = getLinkedEmailsFromMessages(comments, { projectId, chatId: objectId })
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const canArchiveLinkedEmails = SharedHelper.accessGranted(loggedUser, projectId)
     const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
@@ -209,7 +209,9 @@ export default function RichCommentModal({
         const chatType = objectType === 'users' ? 'contacts' : objectType
         getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
             .then(allLinkedEmailComments =>
-                archiveAndMarkReadLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
+                archiveAndMarkReadLinkedEmails(
+                    getLinkedEmailsFromMessages(allLinkedEmailComments, { projectId, chatId: objectId })
+                )
             )
             .catch(error => {
                 console.error('Failed to archive linked emails from comment popup', error)

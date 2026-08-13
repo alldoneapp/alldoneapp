@@ -22,9 +22,9 @@ import { getLinkedEmailFromMessage } from './ChatDV/linkedEmailActions'
  * supports for shared-resource viewers.
  *
  * The email actions are the exception, and deliberately so: archiving an email, creating its task
- * or unsubscribing acts on the *mailbox*, not on the thread, which is exactly the work a user wants
- * to do straight from the list without opening every topic. They are still read-only towards the
- * chat itself - none of them marks anything as read.
+ * or unsubscribing can be done straight from the list without opening every topic. Archive still
+ * leaves the mailbox read/unread state alone, but it marks the matching Alldone chat comment as
+ * read (AT-2298).
  */
 export default function ChatItemUnreadMessage({
     projectId,
@@ -46,7 +46,7 @@ export default function ChatItemUnreadMessage({
 
     // Same derivation as the thread: null for every message that did not come in from Gmail, which
     // is what keeps the action row off ordinary chat messages.
-    const linkedEmail = getLinkedEmailFromMessage(message)
+    const linkedEmail = getLinkedEmailFromMessage(message, { projectId, chatId: chat?.id })
 
     return (
         <View style={localStyles.container}>
