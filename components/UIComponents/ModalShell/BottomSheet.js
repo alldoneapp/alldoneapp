@@ -21,6 +21,7 @@ import { getSafeAreaBottomInset } from '../../../utils/safeAreaInsets'
 import { ModalShellContext } from './ModalShellContext'
 import {
     BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS,
+    BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
     clampBottomSheetDrag,
     getBottomSheetReleaseVelocity,
     shouldDismissBottomSheet,
@@ -419,6 +420,13 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                     },
                 ]}
             >
+                {/* An upward overdrag (bounded at BOTTOM_SHEET_UPWARD_DRAG_LIMIT)
+                    lifts the whole card and would reveal the page behind its
+                    bottom edge; this bleed extends the card color below the
+                    viewport so the gap can never show. It lives outside the
+                    card's box, which is why the sheet itself must not clip
+                    (see the `sheet` style note). */}
+                <View style={localStyles.overdragBleed} />
                 <View ref={handleRef} testID={'bottom-sheet-handle'} style={localStyles.handleStrip}>
                     <View style={localStyles.handle} />
                 </View>
@@ -440,6 +448,12 @@ const localStyles = StyleSheet.create({
         backgroundColor: MODAL_BACKDROP_COLOR,
         touchAction: 'none',
     },
+    // No `overflow: hidden` here: the overdrag bleed below sits outside the
+    // card's box and would be clipped. The rounded top corners stay clean
+    // without it — the sheet's own background is what paints them, the handle
+    // strip is transparent, and the content box starts HANDLE_STRIP_HEIGHT
+    // (36) below the top, past the MODAL_SHEET_RADIUS (16) corner zone, and
+    // clips its own children.
     sheet: {
         position: 'fixed',
         left: 0,
@@ -448,8 +462,15 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderTopLeftRadius: MODAL_SHEET_RADIUS,
         borderTopRightRadius: MODAL_SHEET_RADIUS,
-        overflow: 'hidden',
         alignItems: 'center',
+    },
+    overdragBleed: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: -BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
+        height: BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
+        backgroundColor: colors.Secondary400,
     },
     handleStrip: {
         height: HANDLE_STRIP_HEIGHT,
