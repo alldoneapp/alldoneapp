@@ -62,8 +62,8 @@ const readLocalCert = () => {
 
 const localCert = readLocalCert()
 const devAuthDomain = readAuthDomainFromEnv()
-// Opt-in via DEV_HTTPS=1 (npm run web-webpack-https). Off by default so the ordinary
-// http://localhost:19006 workflow — which works in any normal browser — stays untouched.
+// The root `npm run dev` and its web-webpack aliases opt in via DEV_HTTPS=1. Calling the
+// low-level script from this directory directly keeps the plain-http fallback available.
 const useHttpsAuthHandler = process.env.DEV_HTTPS === '1' && !!devAuthDomain
 const appJson = require(path.join(rootDir, 'app.json'))
 
