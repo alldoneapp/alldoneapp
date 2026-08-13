@@ -1,7 +1,7 @@
 import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 
-export function getLinkedEmailFromMessage(message = {}) {
+export function getLinkedEmailFromMessage(message = {}, context = {}) {
     const gmailData = message?.gmailData
     const messageId = typeof gmailData?.messageId === 'string' ? gmailData.messageId.trim() : ''
     const gmailEmail = typeof gmailData?.gmailEmail === 'string' ? gmailData.gmailEmail.trim().toLowerCase() : ''
@@ -18,18 +18,57 @@ export function getLinkedEmailFromMessage(message = {}) {
 
     if (!messageId || !connectionProjectId) return null
 
+    const commentId = typeof message.id === 'string' ? message.id.trim() : ''
+    const projectId = typeof context.projectId === 'string' ? context.projectId.trim() : ''
+    const chatId = typeof context.chatId === 'string' ? context.chatId.trim() : ''
+    const commentRefs =
+        projectId && commentId
+            ? [
+                  {
+                      projectId,
+                      chatId,
+                      commentId,
+                  },
+              ]
+            : []
+
     return {
         key: `${connectionProjectId}:${messageId}`,
         connectionProjectId,
         messageId,
+        ...(commentId ? { commentId } : {}),
+        ...(projectId ? { projectId } : {}),
+        ...(chatId ? { chatId } : {}),
+        ...(commentRefs.length ? { commentRefs } : {}),
     }
 }
 
-export function getLinkedEmailsFromMessages(messages = []) {
+export function getLinkedEmailsFromMessages(messages = [], context = {}) {
     const linkedEmails = new Map()
     messages.forEach(message => {
-        const linkedEmail = getLinkedEmailFromMessage(message)
-        if (linkedEmail) linkedEmails.set(linkedEmail.key, linkedEmail)
+        const linkedEmail = getLinkedEmailFromMessage(message, context)
+        if (!linkedEmail) return
+
+        const existing = linkedEmails.get(linkedEmail.key)
+        if (!existing) {
+            linkedEmails.set(linkedEmail.key, {
+                ...linkedEmail,
+                ...(linkedEmail.commentRefs ? { commentRefs: [...linkedEmail.commentRefs] } : {}),
+            })
+            return
+        }
+
+        if (!(linkedEmail.commentRefs || []).length) return
+        existing.commentRefs = existing.commentRefs || []
+        linkedEmail.commentRefs.forEach(ref => {
+            if (
+                !existing.commentRefs.some(
+                    existingRef => existingRef.projectId === ref.projectId && existingRef.commentId === ref.commentId
+                )
+            ) {
+                existing.commentRefs.push(ref)
+            }
+        })
     })
     return [...linkedEmails.values()]
 }
@@ -55,14 +94,23 @@ export function groupLinkedEmailsByConnection(linkedEmails = []) {
     }, {})
 }
 
-// Chat archive of a linked email is a "I'm done with this" action: take it out of the inbox
-// and clear UNREAD. Email Line archive stays archive-only and still goes through `archive`.
-export async function archiveAndMarkReadLinkedEmails(linkedEmails = []) {
+export async function archiveLinkedEmailsInMailbox(linkedEmails = []) {
     const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
     await Promise.all(
-        Object.entries(groupedEmails).map(async ([connectionProjectId, messageIds]) => {
-            await performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-            await performEmailLineAction(connectionProjectId, { action: 'markRead', messageIds })
-        })
+        Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
+            performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
+        )
     )
+}
+
+// Chat and Email Line archive is "I'm done with this": take the mail out of the inbox and
+// mark the matching Alldone chat comments as read. The mailbox read/unread state is left
+// alone (AT-2298).
+export async function archiveAndMarkReadLinkedEmails(linkedEmails = []) {
+    const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
+    if (Object.keys(groupedEmails).length === 0) return
+
+    await archiveLinkedEmailsInMailbox(linkedEmails)
+    const { markAlldoneChatsReadForLinkedEmails } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
+    await markAlldoneChatsReadForLinkedEmails(linkedEmails)
 }

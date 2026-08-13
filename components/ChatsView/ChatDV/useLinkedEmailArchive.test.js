@@ -8,8 +8,12 @@ import renderer, { act } from 'react-test-renderer'
 
 import useLinkedEmailArchive from './useLinkedEmailArchive'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
+import { markAlldoneChatsReadForLinkedEmails } from '../../../utils/backends/Chats/markChatCommentsAsRead'
 
 jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+}))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 
 const email = (connectionProjectId, messageId) => ({
@@ -37,6 +41,7 @@ describe('useLinkedEmailArchive', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         performEmailLineAction.mockResolvedValue({})
+        markAlldoneChatsReadForLinkedEmails.mockResolvedValue()
     })
 
     it('archives one email through the email backend and remembers it as archived', async () => {
@@ -50,10 +55,11 @@ describe('useLinkedEmailArchive', () => {
             action: 'archive',
             messageIds: ['msg-1'],
         })
-        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
-            action: 'markRead',
-            messageIds: ['msg-1'],
-        })
+        expect(performEmailLineAction).not.toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ action: 'markRead' })
+        )
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([email('connection-1', 'msg-1')])
         expect(hook.isArchivedEmail('connection-1:msg-1')).toBe(true)
         expect(hook.isArchivingEmail('connection-1:msg-1')).toBe(false)
     })
@@ -69,23 +75,16 @@ describe('useLinkedEmailArchive', () => {
             ])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(4)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
         expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
             action: 'archive',
-            messageIds: ['msg-1', 'msg-2'],
-        })
-        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
-            action: 'markRead',
             messageIds: ['msg-1', 'msg-2'],
         })
         expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
             action: 'archive',
             messageIds: ['msg-3'],
         })
-        expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
-            action: 'markRead',
-            messageIds: ['msg-3'],
-        })
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledTimes(1)
     })
 
     it('reports the in-flight state while the call is running', async () => {
@@ -116,7 +115,8 @@ describe('useLinkedEmailArchive', () => {
             await hook.archiveLinkedEmails([email('connection-1', 'msg-1')])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledTimes(1)
     })
 
     it('clears the in-flight state when the call fails, so the button stays usable', async () => {

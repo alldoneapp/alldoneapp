@@ -12,12 +12,17 @@ import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider, useRegisterUnreadLinkedEmails } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { markMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
+import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markMessagesAsRead: jest.fn(),
     markChatMessagesAsRead: jest.fn(),
+}))
+
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
 }))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
@@ -191,10 +196,7 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([
-            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
-            ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
-        ])
+        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }]])
     })
 
     it('archives every project from the All Projects line, and says so', async () => {
@@ -210,12 +212,10 @@ describe('ArchiveUnreadEmailsButton scope', () => {
         expect(archivePayloads()).toEqual(
             expect.arrayContaining([
                 ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
-                ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
                 ['conn-b', { action: 'archive', messageIds: ['m3'] }],
-                ['conn-b', { action: 'markRead', messageIds: ['m3'] }],
             ])
         )
-        expect(archivePayloads()).toHaveLength(4)
+        expect(archivePayloads()).toHaveLength(2)
     })
 
     it('archives an email previewed by two topics exactly once', async () => {
@@ -236,10 +236,7 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([
-            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
-            ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
-        ])
+        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }]])
     })
 
     it('archives an email previewed in two projects exactly once from All Projects', async () => {
@@ -256,19 +253,16 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([
-            ['conn-a', { action: 'archive', messageIds: ['m1'] }],
-            ['conn-a', { action: 'markRead', messageIds: ['m1'] }],
-        ])
+        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1'] }]])
     })
 
-    it('never marks Alldone chats as read - only the mailbox email is marked read', async () => {
+    it('marks Alldone chats as read without changing the mailbox read state', async () => {
         performEmailLineAction.mockResolvedValue(undefined)
+        markAlldoneChatsReadForLinkedEmails.mockResolvedValue()
+        const linked = email('conn-a', 'm1')
         const tree = renderButton({
             projectId: 'project-1',
-            registrations: [
-                { sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [email('conn-a', 'm1')] },
-            ],
+            registrations: [{ sourceKey: 'project-1:chat-1', projectId: 'project-1', linkedEmails: [linked] }],
         })
 
         await act(async () => {
@@ -276,7 +270,9 @@ describe('ArchiveUnreadEmailsButton scope', () => {
         })
 
         expect(markMessagesAsRead).not.toHaveBeenCalled()
-        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
+        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
+        expect(performEmailLineAction).not.toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([linked])
     })
 })
 
@@ -342,7 +338,7 @@ describe('ArchiveUnreadEmailsButton states', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
     })
 
     it('offers a retry when the archive call fails, without an alert on top of it', async () => {

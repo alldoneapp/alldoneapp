@@ -67,6 +67,10 @@ jest.mock('../../../utils/backends/Chats/chatsComments', () => ({
     markChatMessagesAsRead: jest.fn(),
 }))
 jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    markChatCommentsAsReadByMessageIds: jest.fn(),
+}))
 jest.mock('./useNewEmailCommentIds', () => () => new Set())
 jest.mock('./PagesAmountSubscriptionContainer', () => () => null)
 jest.mock('./EditorView/ChatInput', () => () => null)

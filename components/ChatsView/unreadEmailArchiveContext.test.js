@@ -12,8 +12,12 @@ import {
     useUnreadLinkedEmailsScope,
 } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
+import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+}))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 
@@ -50,6 +54,35 @@ describe('collectUnreadLinkedEmails', () => {
         // project sections; archiving it twice is the failure this deduplication prevents.
         const keys = collectUnreadLinkedEmails(sources).map(item => item.key)
         expect(new Set(keys).size).toBe(keys.length)
+    })
+
+    it('keeps every chat comment when the same email is previewed in two topics', () => {
+        const merged = collectUnreadLinkedEmails({
+            'project-1:chat-1': {
+                projectId: 'project-1',
+                linkedEmails: [
+                    {
+                        ...email('conn-a', 'm1'),
+                        commentRefs: [{ projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' }],
+                    },
+                ],
+            },
+            'project-1:chat-2': {
+                projectId: 'project-1',
+                linkedEmails: [
+                    {
+                        ...email('conn-a', 'm1'),
+                        commentRefs: [{ projectId: 'project-1', chatId: 'chat-2', commentId: 'comment-2' }],
+                    },
+                ],
+            },
+        })
+
+        expect(merged).toHaveLength(1)
+        expect(merged[0].commentRefs).toEqual([
+            { projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' },
+            { projectId: 'project-1', chatId: 'chat-2', commentId: 'comment-2' },
+        ])
     })
 
     it('tolerates an empty, missing or half-written registry', () => {
@@ -197,9 +230,9 @@ describe('UnreadEmailArchiveProvider', () => {
             await lastScope().archive.archiveLinkedEmails([email('conn-a', 'm1')])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
         expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
-        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([email('conn-a', 'm1')])
         expect(lastScope().archive.isArchivedEmail('conn-a:m1')).toBe(true)
     })
 
