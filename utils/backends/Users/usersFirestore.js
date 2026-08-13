@@ -968,6 +968,10 @@ export async function setUserAutoPostponeAfterDaysOverdue(userId, autoPostponeAf
     getDb().doc(`users/${userId}`).update({ autoPostponeAfterDaysOverdue })
 }
 
+export async function setUserAutoArchiveProjectsAfterDays(userId, autoArchiveProjectsAfterDays) {
+    getDb().doc(`users/${userId}`).update({ autoArchiveProjectsAfterDays })
+}
+
 export async function setUserSidebarNavigationMode(userId, sidebarNavigationMode) {
     getDb().doc(`users/${userId}`).update({ sidebarNavigationMode })
 }
