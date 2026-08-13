@@ -256,32 +256,20 @@ export async function watchTask(projectId, taskId, watcherKey, callback) {
 }
 
 export const updateTaskEditionData = async (projectId, taskId, editorId) => {
-    const maxAttempts = 3
-    let attempt = 0
-    let delayMs = 100 + Math.floor(Math.random() * 100)
-
-    /* Retry transaction on concurrency errors */
-    while (attempt < maxAttempts) {
-        try {
-            await getDb().runTransaction(async transaction => {
-                const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
-                const doc = await transaction.get(ref)
-                if (doc.exists) transaction.update(ref, { lastEditionDate: Date.now(), lastEditorId: editorId })
-            })
-            return
-        } catch (error) {
-            const code = error && error.code
-            if ((code === 'failed-precondition' || code === 'aborted') && attempt < maxAttempts - 1) {
-                // Exponential backoff with jitter
-                await new Promise(resolve => setTimeout(resolve, delayMs))
-                delayMs = Math.min(1000, delayMs * 2 + Math.floor(Math.random() * 50))
-                attempt++
-                // Optional: keep minimal debug for diagnosis
-                // console.debug(`[updateTaskEditionData] Retry ${attempt} after ${code}`)
-                continue
-            }
-            throw error
-        }
+    // A blind masked update takes no read-time precondition, so the concurrent
+    // writers a hot task attracts (the server-side humanReadableId generator,
+    // follow chains, other clients) cannot race it into failed-precondition
+    // retries — the read-then-update transaction this replaces produced exactly
+    // those storms, one logged 400 Commit per conflicting attempt.
+    try {
+        await getDb()
+            .doc(`items/${projectId}/tasks/${taskId}`)
+            .update({ lastEditionDate: Date.now(), lastEditorId: editorId })
+    } catch (error) {
+        // The transaction's doc.exists guard, preserved: stamping a task that was
+        // deleted in the meantime is a no-op, not an error.
+        if (error?.code === 'not-found') return
+        throw error
     }
 }
 
@@ -332,52 +320,21 @@ export async function updateTaskData(projectId, taskId, data, batch) {
         console.warn(`[HumanReadableID] Skipping empty update payload for task ${taskId}`)
         return
     }
+    // A masked update() can never remove a field it does not name, so a plain
+    // update preserves humanReadableId by definition — no read, no transaction.
+    // The read-modify-write transaction this replaces added humanReadableId to
+    // every non-batch write mask, which raced the server-side id generator and
+    // the follow chains into failed-precondition retry storms on hot tasks.
+    // The one genuine hazard is an explicit null (a stale local task copy racing
+    // the id generator), so never write null/undefined over a generated id —
+    // undefined is already stripped above, and this also protects the batch
+    // path, which the old transaction never covered.
+    if (safeData.humanReadableId === null) {
+        delete safeData.humanReadableId
+        if (__DEV__) console.log(`[HumanReadableID] Stripped null humanReadableId from update for task ${taskId}`)
+    }
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
 
-    // If this update might overwrite humanReadableId and we're not in a batch, use a transaction
-    // to preserve the existing humanReadableId
-    if (
-        !batch &&
-        (!safeData.hasOwnProperty('humanReadableId') ||
-            safeData.humanReadableId === null ||
-            safeData.humanReadableId === undefined)
-    ) {
-        if (__DEV__) console.log(`[HumanReadableID] Using transaction to preserve humanReadableId for task ${taskId}`)
-        try {
-            await getDb().runTransaction(async transaction => {
-                const taskDoc = await transaction.get(ref)
-                if (taskDoc.exists) {
-                    const currentTask = taskDoc.data()
-                    if (__DEV__) {
-                        console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
-                    }
-                    // Preserve existing humanReadableId if the update doesn't explicitly set one
-                    if (currentTask.humanReadableId && !safeData.humanReadableId) {
-                        if (__DEV__) {
-                            console.log(
-                                `[HumanReadableID] Preserving existing humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
-                            )
-                        }
-                        safeData.humanReadableId = currentTask.humanReadableId
-                    }
-                } else if (__DEV__) {
-                    console.warn(`[HumanReadableID] Task document ${taskId} does not exist during transaction`)
-                }
-                if (__DEV__) console.log(`[HumanReadableID] Performing transaction update for task ${taskId}`)
-                transaction.update(ref, safeData)
-            })
-            if (__DEV__) console.log(`[HumanReadableID] Transaction update completed for task ${taskId}`)
-            return
-        } catch (error) {
-            console.error(
-                `[HumanReadableID] Transaction failed for task ${taskId}, falling back to regular update:`,
-                error.message
-            )
-            // Fall through to regular update
-        }
-    }
-
-    // Regular update (either in batch or fallback)
     if (__DEV__) console.log(`[HumanReadableID] Performing ${batch ? 'batch' : 'regular'} update for task ${taskId}`)
     batch ? batch.update(ref, safeData) : await ref.update(safeData)
     if (__DEV__) console.log(`[HumanReadableID] Update completed for task ${taskId}`)
