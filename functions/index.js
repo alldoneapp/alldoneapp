@@ -93,6 +93,26 @@ async function assertProjectAccess(userId, projectId) {
     return userDoc.data() || {}
 }
 
+exports.setDefaultProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { DefaultProjectError, setDefaultProjectForUser } = require('./Users/defaultProject')
+        try {
+            return await setDefaultProjectForUser(admin.firestore(), request.auth.uid, request.data?.projectId)
+        } catch (error) {
+            if (error instanceof DefaultProjectError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 // Access check for account-level connection ids (email_… / calendar_…): the connection
 // must belong to the caller. Returns { userData, connection }.
 async function assertConnectionAccess(userId, connectionId) {

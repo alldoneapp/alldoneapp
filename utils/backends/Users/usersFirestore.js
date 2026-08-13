@@ -72,6 +72,7 @@ import {
 } from '../Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { getWorkflowSortIndexUpdates } from '../../workflowOrder'
+import { validateDefaultProjectSelection } from '../../defaultProjectAuthorization'
 
 //ACCESS FUNCTIONS
 
@@ -534,6 +535,10 @@ export async function setUserDescription(userId, extDescription) {
 
 export async function setDefaultProjectId(userId, projectId) {
     const { loggedUser, loggedUserProjectsMap, projectAssistants } = store.getState()
+    if (loggedUser?.uid !== userId) throw new Error('The default project can only be changed for the logged user')
+
+    await validateDefaultProjectSelection(userId, projectId, getProjectData)
+
     const previousDefaultProjectId = loggedUser?.defaultProjectId
     const hasDefaultProjectChanged = !!previousDefaultProjectId && previousDefaultProjectId !== projectId
 
@@ -588,7 +593,7 @@ export async function setDefaultProjectId(userId, projectId) {
         }
     }
 
-    await getDb().doc(`users/${userId}`).update({ defaultProjectId: projectId })
+    await runHttpsCallableFunction('setDefaultProjectSecondGen', { projectId })
 
     if (hasDefaultProjectChanged) {
         store.dispatch(showConfirmPopup({ trigger: 'CONFIRM POPUP MANDATORY NOTIFICATION', object: {} }))
