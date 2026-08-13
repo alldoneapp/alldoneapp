@@ -12,10 +12,16 @@ import {
     setTaskViewToggleSection,
     storeCurrentShortcutUser,
     storeCurrentUser,
+    setSelectedNavItem,
 } from '../../../redux/actions'
 import { GOALS_OPEN_TAB_INDEX } from '../../GoalsView/GoalsHelper'
 import NavigationService from '../../../utils/NavigationService'
-import { DV_TAB_ROOT_GOALS, DV_TAB_ROOT_TASKS, ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
+import {
+    DV_TAB_ROOT_GOALS,
+    DV_TAB_ROOT_TASKS,
+    DV_TAB_USER_PROFILE,
+    ROOT_ROUTES,
+} from '../../../utils/TabNavigationConstants'
 import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
 import { getUserItemTheme } from '../Themes'
@@ -24,6 +30,7 @@ import useOnHover from '../../../hooks/UseOnHover'
 import UserData from './Common/UserData'
 import Indicator from './Common/Indicator'
 import Amount from './Common/Amount'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function UserItem({
     user,
@@ -64,7 +71,15 @@ export default function UserItem({
         e?.preventDefault()
         const { route, selectedNavItem } = store.getState()
 
-        if (currentUserId === user.uid && (route === DV_TAB_ROOT_TASKS || route === DV_TAB_ROOT_GOALS)) return
+        if (currentUserId === user.uid && (route === DV_TAB_ROOT_TASKS || route === DV_TAB_ROOT_GOALS)) {
+            const project = ProjectHelper.getProjectById(projectId)
+            NavigationService.navigate('UserDetailedView', {
+                contact: user,
+                project,
+            })
+            dispatch(setSelectedNavItem(DV_TAB_USER_PROFILE))
+            return
+        }
 
         if (selectedNavItem !== navItem) {
             dispatch(setSelectedSidebarTab(navItem))

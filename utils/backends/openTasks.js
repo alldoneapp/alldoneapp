@@ -1310,7 +1310,9 @@ function watchEmptyGoals(
                     showLaterTasks,
                     showSomedayTasks
                 )
-                callback(openTasksArray, false)
+                // Empty goals update the combined board, but they are not the
+                // observed-task stream and must not complete its loading flag.
+                callback(openTasksArray)
 
                 querySnapshot.forEach(doc => {
                     const goal = mapGoalData(doc.id, doc.data())
@@ -1318,7 +1320,7 @@ function watchEmptyGoals(
                     if (progress === DYNAMIC_PERCENT && dynamicProgress === 100) return
                 })
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], false)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
             }
             cacheChanges = []
         }
@@ -1514,10 +1516,6 @@ export const updateOpTasks = (
 ) => {
     const openTasks = inSelectedProject ? initialTasks : taskToShowInAllProjects(instanceKey, initialTasks)
 
-    initialLoadingInOpenTasks
-        ? store.dispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
-        : store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
-
     // Check if there are any visible tasks (main, email, calendar) or goals for the first day
     const thereAreNotTasksInFirstDay =
         openTasks.length === 0 ||
@@ -1532,6 +1530,16 @@ export const updateOpTasks = (
     store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
     updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+
+    // The two Firestore streams can finish on different renders. Publish the
+    // corresponding loaded flag only after the merged, filtered list is in the
+    // store so loading placeholders cannot disappear against stale task data.
+    if (initialLoadingInOpenTasks === true) {
+        store.dispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
+    } else if (initialLoadingInOpenTasks === false) {
+        store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+    }
+
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
