@@ -3,18 +3,12 @@ import ReactDOM from 'react-dom'
 import { Platform, View } from 'react-native'
 
 import { installPopupOutsideDismissGuard } from '../../utils/popupDismissGuard'
-import { useModalShellPresentation } from './ModalShell/ModalShellContext'
 
 export default function PopupDismissSurface({ children, disabled, onDismiss }) {
     const surfaceRef = useRef()
-    // Inside a bottom sheet the shell chrome (handle strip, backdrop) sits
-    // OUTSIDE this surface, so the window-capture guard would swallow the
-    // handle's touchstart (the drag never starts) and dismiss on release.
-    // The sheet owns dismissal there — backdrop, Escape and handle drag.
-    const inSheet = useModalShellPresentation() === 'sheet'
 
     useEffect(() => {
-        if (disabled || inSheet || Platform.OS !== 'web') return
+        if (disabled || Platform.OS !== 'web') return
 
         // React Native Web 0.11 exposes a View component instance here, while
         // the capture guard needs the rendered element for contains().
@@ -31,7 +25,7 @@ export default function PopupDismissSurface({ children, disabled, onDismiss }) {
             clearTimeout(installTimeout)
             removeOutsideDismissGuard?.()
         }
-    }, [disabled, inSheet, onDismiss])
+    }, [disabled, onDismiss])
 
     return <View ref={surfaceRef}>{children}</View>
 }
