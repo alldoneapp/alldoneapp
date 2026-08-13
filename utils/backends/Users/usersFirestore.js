@@ -111,10 +111,10 @@ const getCurrentAuthUid = () => {
  * `batch.set` on `users/{uid}` with a fresh-signup document — overwriting projectIds, gold,
  * premium status and settings — and offers to delete the Firebase Auth user if that fails.
  *
- * So an apparent absence is verified through Firestore Lite. Lite has no local cache or snapshot
- * listener state and fetches every document directly from the server, which makes it independent
- * from the full client's bad view. A recovered document is returned normally, and a direct read
- * that cannot reach the server is reported as a failed read so the caller retries instead of
+ * So an apparent absence is verified through Firestore's authenticated REST document endpoint.
+ * That request has no local cache or snapshot-listener state, which makes it independent from the
+ * full client's bad view. A recovered document is returned normally, and a direct read that
+ * cannot reach the server is reported as a failed read so the caller retries instead of
  * recovering.
  */
 export async function fetchUserDataResult(userId, isLoggedUser) {
