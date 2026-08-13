@@ -2527,6 +2527,7 @@
     "Search results": "Resultados de búsqueda",
     "No compatible models match your search.": "Ningún modelo compatible coincide con tu búsqueda.",
     "Showing the first 40 matches. Refine your search to narrow the list.": "Se muestran las primeras 40 coincidencias. Refina la búsqueda para reducir la lista.",
+    "1 Gold = %{tokens} tokens": "1 Gold = %{tokens} tokens",
     "Paused": "En pausa",
     "VM environment": "Entorno de VM",
     "VM environment building": "Creando entorno…",

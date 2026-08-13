@@ -2579,6 +2579,7 @@
     "Search results": "Search results",
     "No compatible models match your search.": "No compatible models match your search.",
     "Showing the first 40 matches. Refine your search to narrow the list.": "Showing the first 40 matches. Refine your search to narrow the list.",
+    "1 Gold = %{tokens} tokens": "1 Gold = %{tokens} tokens",
     "Paused": "Paused",
     "VM environment": "VM environment",
     "VM environment building": "Building environment…",
