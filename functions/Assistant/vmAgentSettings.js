@@ -260,7 +260,10 @@ async function setDefaultVmAgentModel({ userId, agent, family }) {
         } catch (error) {
             console.warn('🖥️ VM MODELS: Could not verify family on save', { agent, family, error: error.message })
         }
-        if (catalog && catalog.source !== 'fallback' && !catalog.families.some(entry => entry.id === family)) {
+        const availableModels = catalog
+            ? [...(catalog.families || []), ...(openRouterSelected ? catalog.searchModels || [] : [])]
+            : []
+        if (catalog && catalog.source !== 'fallback' && !availableModels.some(entry => entry.id === family)) {
             throw new HttpsError('invalid-argument', `"${family}" is not an available ${agent} model family.`)
         }
         if (openRouterSelected && catalog && catalog.available === false) {

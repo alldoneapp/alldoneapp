@@ -8,6 +8,7 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const {
     parseModelId,
     buildFamilies,
+    buildOpenRouterModels,
     fetchProviderModelIds,
     getModelCatalog,
     resolveFamilyToModel,
@@ -54,6 +55,17 @@ const OPENAI_LIST = {
         { id: 'whisper-1' },
         { id: 'dall-e-3' },
     ],
+}
+
+function compatibleOpenRouterEntry(id, { created = 0, agenticIndex = null, name = id } = {}) {
+    return {
+        id,
+        name,
+        created,
+        supported_parameters: ['tools'],
+        architecture: { output_modalities: ['text'] },
+        ...(agenticIndex == null ? {} : { benchmarks: { artificial_analysis: { agentic_index: agenticIndex } } }),
+    }
 }
 
 beforeEach(() => {
@@ -175,6 +187,38 @@ describe('buildFamilies', () => {
     })
 })
 
+describe('buildOpenRouterModels', () => {
+    it('features each major vendor newest and best model without hiding the full searchable catalog', () => {
+        const entries = [
+            compatibleOpenRouterEntry('deepseek/deepseek-v4-pro', { created: 20, agenticIndex: 60 }),
+            compatibleOpenRouterEntry('qwen/qwen-newest', { created: 50 }),
+            compatibleOpenRouterEntry('qwen/qwen-best', { created: 30, agenticIndex: 90 }),
+            compatibleOpenRouterEntry('qwen/qwen-old', { created: 10, agenticIndex: 20 }),
+            // A newer billing variant remains searchable but does not displace the canonical pick.
+            compatibleOpenRouterEntry('qwen/qwen-newest:free', { created: 60, agenticIndex: 95 }),
+            compatibleOpenRouterEntry('x-ai/grok-4.6', {
+                created: 55,
+                agenticIndex: 85,
+                name: 'SpaceXAI: Grok 4.6',
+            }),
+            compatibleOpenRouterEntry('someone/new-vendor-model', { created: 70, agenticIndex: 99 }),
+            { id: 'someone/no-tools', supported_parameters: [], architecture: { output_modalities: ['text'] } },
+        ]
+
+        const catalog = buildOpenRouterModels(entries)
+        const featuredIds = catalog.models.map(model => model.modelId)
+        const searchableIds = catalog.searchModels.map(model => model.modelId)
+
+        expect(featuredIds).toEqual(['deepseek/deepseek-v4-pro', 'qwen/qwen-newest', 'qwen/qwen-best', 'x-ai/grok-4.6'])
+        expect(searchableIds).toEqual(expect.arrayContaining(['qwen/qwen-old', 'qwen/qwen-newest:free']))
+        expect(searchableIds).toContain('someone/new-vendor-model')
+        expect(searchableIds).not.toContain('someone/no-tools')
+        expect(catalog.models.find(model => model.modelId === 'x-ai/grok-4.6').label).toBe('SpaceXAI: Grok 4.6')
+        // Prices stay on the server-only list, not on every client-facing search entry.
+        expect(catalog.searchModels.every(model => model.upstreamPrice === undefined)).toBe(true)
+    })
+})
+
 describe('fetchProviderModelIds', () => {
     it('calls the Anthropic models endpoint with the versioned key header', async () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(ANTHROPIC_LIST))
@@ -237,6 +281,31 @@ describe('getModelCatalog', () => {
         })
     })
 
+    it('refreshes a fresh pre-search OpenRouter cache so search is available immediately after deploy', async () => {
+        const now = 1_000_000
+        const { set } = stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockResolvedValue(
+            jsonResponse({
+                data: [
+                    compatibleOpenRouterEntry('deepseek/deepseek-chat', { created: 10 }),
+                    compatibleOpenRouterEntry('x-ai/grok-4.6', { created: 20, agenticIndex: 80 }),
+                ],
+            })
+        )
+
+        const catalog = await getModelCatalog('openrouter', { fetchImpl, now })
+
+        expect(catalog.source).toBe('live')
+        expect(catalog.searchModels.map(model => model.modelId)).toContain('x-ai/grok-4.6')
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ searchModels: expect.any(Array) }), { merge: true })
+    })
+
     it('serves a STALE cache when discovery fails — real-but-old beats hardcoded', async () => {
         const now = 10 * CATALOG_TTL_MS
         const stale = [{ id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false }]
@@ -288,6 +357,27 @@ describe('resolveFamilyToModel', () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
 
         await expect(resolveFamilyToModel('codex', 'terra', { fetchImpl, now: 5 })).resolves.toBe('gpt-5.6-terra')
+    })
+
+    it('resolves a searched OpenRouter model that is not in the featured list', async () => {
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
+                searchModels: [
+                    {
+                        id: 'openrouter:x-ai/grok-4.6',
+                        modelId: 'x-ai/grok-4.6',
+                        resolvedModel: 'openrouter:x-ai/grok-4.6',
+                    },
+                ],
+                fetchedAt: 1000,
+            },
+        })
+
+        await expect(resolveFamilyToModel('codex', 'openrouter:x-ai/grok-4.6', { now: 1500 })).resolves.toBe(
+            'openrouter:x-ai/grok-4.6'
+        )
     })
 
     it('resolves an alias family to the alias so the CLI picks the newest release', async () => {
@@ -386,9 +476,9 @@ describe('OpenRouter upstream pricing', () => {
         })
     })
 
-    // The picker is capped at OPENROUTER_MAX_MODELS, but an assistant-supplied agentModel can name any
-    // valid id — so pricing must cover every compatible model, not just the listed slice.
-    it('prices every compatible model, not only the ones the picker shows', () => {
+    // Search and assistant-supplied agentModel values can name non-featured ids, so pricing must
+    // cover every compatible model, not just the compact default list.
+    it('prices every compatible model, not only the featured ones', () => {
         const entries = [
             openRouterEntry('deepseek/deepseek-v4-pro', { prompt: '0.000000435', completion: '0.00000087' }),
             openRouterEntry('qwen/qwen3-coder', { prompt: '0.0000003', completion: '0.000001' }),
@@ -467,6 +557,7 @@ describe('OpenRouter upstream pricing', () => {
     it('keeps the pricing list server-side unless a caller asks for it', async () => {
         const data = {
             families: [{ id: 'openrouter:deepseek/deepseek-v4-pro', modelId: 'deepseek/deepseek-v4-pro' }],
+            searchModels: [{ id: 'openrouter:x-ai/grok-4.6', modelId: 'x-ai/grok-4.6', label: 'SpaceXAI: Grok 4.6' }],
             fetchedAt: 1000,
             pricing: [{ id: 'deepseek/deepseek-v4-pro', input: 0.435, output: 0.87, cachedInput: null }],
         }
@@ -474,6 +565,7 @@ describe('OpenRouter upstream pricing', () => {
 
         const clientFacing = await getModelCatalog('openrouter', { now: 1500 })
         expect(clientFacing.pricing).toBeUndefined()
+        expect(clientFacing.searchModels).toHaveLength(1)
 
         stubCatalogDoc({ exists: true, data })
         const serverSide = await getModelCatalog('openrouter', { now: 1500, includePricing: true })

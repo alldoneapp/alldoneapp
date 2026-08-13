@@ -50,14 +50,16 @@ const CATALOG_PROVIDERS = [...VALID_PROVIDERS, OPENROUTER_PROVIDER]
  */
 const OPENROUTER_REQUIRED_PARAMETER = 'tools'
 
-// Vendors surfaced first. Everything discovered still appears; this only orders the picker, so a
-// brand-new vendor needs no code change. DeepSeek leads because it is the headline use case.
+// Vendors surfaced in the featured picker. Search still covers every compatible model from every
+// vendor, so a brand-new vendor needs no code change. DeepSeek leads because it is the headline use
+// case; the rest keep the compact default list broad instead of letting one prolific vendor consume
+// every visible slot.
 const OPENROUTER_VENDOR_ORDER = ['deepseek', 'qwen', 'moonshotai', 'z-ai', 'minimax', 'mistralai', 'x-ai', 'google']
 
-// OpenRouter lists 300+ models. The picker (and the settings payload) needs a bound; entries are
-// sorted best-first, and `truncated` is reported so the UI can say the list was shortened rather
-// than silently implying it is everything.
-const OPENROUTER_MAX_MODELS = 40
+// At most two featured models per major vendor: its newest generally available model, plus the
+// strongest agentic model OpenRouter currently scores when that is a different release. The full
+// compatible catalog is carried separately as a compact, client-safe search index.
+const OPENROUTER_FEATURED_MODELS_PER_VENDOR = 2
 
 /**
  * Claude Code accepts these as *moving aliases* on `--model` and resolves each to the newest
@@ -294,10 +296,10 @@ function normalizeOpenRouterPricing(pricing) {
 }
 
 /**
- * Upstream prices for **every** Codex-compatible model rather than only the picker's top-N slice. The
- * picker is capped at `OPENROUTER_MAX_MODELS`, but an `agentModel` tool argument can name any valid
- * id, and a job priced off a missing entry would silently fall back to the Sol base rate. A few
- * hundred small entries cost nothing against Firestore's 1MB document limit.
+ * Upstream prices for **every** Codex-compatible model rather than only the featured picker. Search
+ * and an `agentModel` tool argument can name any valid id, and a job priced off a missing entry would
+ * silently fall back to the Sol base rate. A few hundred small entries cost nothing against
+ * Firestore's 1MB document limit.
  *
  * An array of `{ id, … }` rather than an id-keyed map on purpose: OpenRouter ids contain `/`, `.` and
  * sometimes `:`, and while Firestore tolerates those in map keys written via `set()`, `.` is a field
@@ -349,8 +351,36 @@ async function getOpenRouterUpstreamPrice(modelId, options = {}) {
  * prefixed model selection here — OpenRouter ids like `deepseek/deepseek-chat` are already moving
  * pointers maintained by the vendor, so there is no family layer left to invent.
  */
+function openRouterAgenticScore(entry) {
+    const rawScore = entry?.benchmarks?.artificial_analysis?.agentic_index
+    if (rawScore == null || rawScore === '') return null
+    const score = Number(rawScore)
+    return Number.isFinite(score) ? score : null
+}
+
+function toOpenRouterModel(entry, vendor = openRouterVendor(entry.id), includePricing = true) {
+    return {
+        id: toOpenRouterSelection(entry.id),
+        // Prefer OpenRouter's own display name; derive one only when it is missing.
+        label:
+            typeof entry.name === 'string' && entry.name.trim()
+                ? entry.name.trim()
+                : formatOpenRouterModelLabel(entry.id),
+        vendor,
+        modelId: entry.id,
+        resolvedModel: toOpenRouterSelection(entry.id),
+        isAlias: false,
+        // Featured entries carry their price as a legacy-cache fallback. Search entries omit it:
+        // the UI never reads prices, and the separate server-only pricing list covers every model.
+        ...(includePricing ? { upstreamPrice: normalizeOpenRouterPricing(entry.pricing) } : {}),
+    }
+}
+
 function buildOpenRouterModels(entries, options = {}) {
-    const limit = Number(options.limit) || OPENROUTER_MAX_MODELS
+    const featuredPerVendor =
+        Number.isInteger(options.featuredPerVendor) && options.featuredPerVendor > 0
+            ? options.featuredPerVendor
+            : OPENROUTER_FEATURED_MODELS_PER_VENDOR
     const usable = (Array.isArray(entries) ? entries : []).filter(isCodexCompatibleOpenRouterModel)
 
     const ranked = usable
@@ -373,25 +403,40 @@ function buildOpenRouterModels(entries, options = {}) {
             return a.entry.id.localeCompare(b.entry.id)
         })
 
+    const featured = []
+    for (const vendor of OPENROUTER_VENDOR_ORDER) {
+        const vendorModels = ranked.filter(model => model.vendor === vendor)
+        if (!vendorModels.length) continue
+
+        // Variants such as :free and :batch remain searchable, but a canonical model is the less
+        // surprising default recommendation whenever the vendor exposes one.
+        const canonical = vendorModels.filter(model => !model.entry.id.includes(':'))
+        const candidates = canonical.length ? canonical : vendorModels
+        const newest = candidates[0]
+        const bestAgentic = candidates
+            .filter(model => openRouterAgenticScore(model.entry) !== null)
+            .sort((a, b) => {
+                const scoreDifference = openRouterAgenticScore(b.entry) - openRouterAgenticScore(a.entry)
+                if (scoreDifference) return scoreDifference
+                if (a.created !== b.created) return b.created - a.created
+                return a.entry.id.localeCompare(b.entry.id)
+            })[0]
+
+        for (const model of [newest, bestAgentic]) {
+            if (!model || featured.some(item => item.entry.id === model.entry.id)) continue
+            featured.push(model)
+            if (featured.filter(item => item.vendor === vendor).length >= featuredPerVendor) break
+        }
+    }
+
+    const effectiveFeatured = featured.length ? featured : ranked.slice(0, OPENROUTER_FEATURED_MODELS_PER_VENDOR)
+    const searchModels = ranked.map(({ entry, vendor }) => toOpenRouterModel(entry, vendor, false))
     return {
-        models: ranked.slice(0, limit).map(({ entry, vendor }) => ({
-            id: toOpenRouterSelection(entry.id),
-            // Prefer OpenRouter's own display name; derive one only when it is missing.
-            label:
-                typeof entry.name === 'string' && entry.name.trim()
-                    ? entry.name.trim()
-                    : formatOpenRouterModelLabel(entry.id),
-            vendor,
-            modelId: entry.id,
-            resolvedModel: toOpenRouterSelection(entry.id),
-            isAlias: false,
-            // Carried on the entry as well as in the `pricing` map so a cached catalog stays
-            // self-sufficient for everything the picker can actually offer.
-            upstreamPrice: normalizeOpenRouterPricing(entry.pricing),
-        })),
+        models: effectiveFeatured.map(({ entry, vendor }) => toOpenRouterModel(entry, vendor)),
+        searchModels,
         pricing: buildOpenRouterPricing(entries),
         total: ranked.length,
-        truncated: ranked.length > limit,
+        truncated: ranked.length > effectiveFeatured.length,
     }
 }
 
@@ -502,6 +547,7 @@ async function readCachedCatalog(provider) {
             source: 'cache',
             ...(typeof data.total === 'number' ? { total: data.total } : {}),
             ...(typeof data.truncated === 'boolean' ? { truncated: data.truncated } : {}),
+            ...(Array.isArray(data.searchModels) ? { searchModels: data.searchModels } : {}),
             // Carried through so a cache hit can still price a run. Without this the projection
             // silently drops the price list and every cached-catalog job falls back to the Sol base
             // rate — i.e. the live pricing path would only ever work on the one request that
@@ -553,15 +599,26 @@ async function getModelCatalog(provider, options = {}) {
 
     const now = typeof options.now === 'number' ? options.now : Date.now()
     const cached = options.forceRefresh ? null : await readCachedCatalog(provider)
-    if (isFresh(cached, now)) return decorate({ ...cached, source: 'cache' })
+    // Refresh the first old-shape OpenRouter cache after this search index shipped instead of
+    // making users wait up to 12 hours for search to appear after deployment.
+    const hasCurrentOpenRouterShape = !isOpenRouter || Array.isArray(cached?.searchModels)
+    if (isFresh(cached, now) && hasCurrentOpenRouterShape) return decorate({ ...cached, source: 'cache' })
 
     try {
         const entries = await fetchProviderModelEntries(provider, options)
         if (isOpenRouter) {
-            const { models, pricing, total, truncated } = buildOpenRouterModels(entries, options)
+            const { models, searchModels, pricing, total, truncated } = buildOpenRouterModels(entries, options)
             if (models.length) {
-                await writeCachedCatalog(provider, models, now, { total, truncated, pricing })
-                return decorate({ families: models, fetchedAt: now, source: 'live', total, truncated, pricing })
+                await writeCachedCatalog(provider, models, now, { total, truncated, searchModels, pricing })
+                return decorate({
+                    families: models,
+                    searchModels,
+                    fetchedAt: now,
+                    source: 'live',
+                    total,
+                    truncated,
+                    pricing,
+                })
             }
             console.warn('🖥️ VM MODELS: OpenRouter discovery returned no compatible models', {
                 provider,
@@ -620,8 +677,9 @@ async function resolveFamilyToModel(provider, familyId, options = {}) {
         const modelId = parseOpenRouterSelection(familyId)
         if (!modelId) return null
         const catalog = await getModelCatalog(OPENROUTER_PROVIDER, options)
-        const match = catalog.families.find(model => model.id === familyId)
-        if (match) return match.resolvedModel
+        const availableModels = [...(catalog.families || []), ...(catalog.searchModels || [])]
+        const match = availableModels.find(model => model.id === familyId)
+        if (match) return match.resolvedModel || toOpenRouterSelection(match.modelId || modelId)
         // Degraded discovery must not silently downgrade the user to a different vendor's model.
         // The id is well-formed and OpenRouter resolves it itself, so pass it through.
         return toOpenRouterSelection(modelId)
@@ -644,7 +702,7 @@ module.exports = {
     VALID_PROVIDERS,
     CATALOG_PROVIDERS,
     OPENROUTER_PROVIDER,
-    OPENROUTER_MAX_MODELS,
+    OPENROUTER_FEATURED_MODELS_PER_VENDOR,
     CLAUDE_CLI_ALIAS_FAMILIES,
     FALLBACK_CATALOGS,
     parseModelId,

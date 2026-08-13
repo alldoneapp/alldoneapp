@@ -10,7 +10,9 @@ jest.mock('../../styles/global', () => ({
     colors: {
         Text01: '#111',
         Text02: '#222',
+        Text03: '#777',
         Grey300: '#ddd',
+        Gray400: '#ccc',
         Primary100: '#00f',
         UtilityBlue100: '#eef',
         UtilityRed200: '#f00',
@@ -230,6 +232,36 @@ const OPENROUTER_CATALOG = {
             resolvedModel: 'openrouter:qwen/qwen3-max',
         },
     ],
+    searchModels: [
+        {
+            id: 'openrouter:deepseek/deepseek-chat',
+            label: 'DeepSeek Chat',
+            vendor: 'deepseek',
+            modelId: 'deepseek/deepseek-chat',
+            resolvedModel: 'openrouter:deepseek/deepseek-chat',
+        },
+        {
+            id: 'openrouter:qwen/qwen3-max',
+            label: 'Qwen3 Max',
+            vendor: 'qwen',
+            modelId: 'qwen/qwen3-max',
+            resolvedModel: 'openrouter:qwen/qwen3-max',
+        },
+        {
+            id: 'openrouter:x-ai/grok-4.6',
+            label: 'SpaceXAI: Grok 4.6',
+            vendor: 'x-ai',
+            modelId: 'x-ai/grok-4.6',
+            resolvedModel: 'openrouter:x-ai/grok-4.6',
+        },
+        {
+            id: 'openrouter:someone/niche-model',
+            label: 'Someone: Niche Model',
+            vendor: 'someone',
+            modelId: 'someone/niche-model',
+            resolvedModel: 'openrouter:someone/niche-model',
+        },
+    ],
     source: 'live',
     available: true,
 }
@@ -260,6 +292,67 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
         expect(labels).toEqual(expect.arrayContaining(['DeepSeek Chat', 'Qwen3 Max']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
         expect(setDefaultVmAgentModel).not.toHaveBeenCalled()
+        expect(JSON.stringify(tree.toJSON())).toContain('Featured models')
+    })
+
+    it('searches every compatible OpenRouter model, not only the featured set', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        expect(optionLabels(tree)).not.toContain('SpaceXAI: Grok 4.6')
+
+        const search = tree.root.findByProps({ testID: 'openrouter-model-search' })
+        await act(async () => {
+            search.props.onChangeText('grok 4.6')
+        })
+
+        expect(optionLabels(tree)).toContain('SpaceXAI: Grok 4.6')
+        expect(optionLabels(tree)).not.toContain('DeepSeek Chat')
+        expect(JSON.stringify(tree.toJSON())).toContain('Search results')
+    })
+
+    it('saves a model selected from search', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'openrouter-model-search' }).props.onChangeText('grok')
+        })
+        await act(async () => {
+            await pressOption(tree, 'SpaceXAI: Grok 4.6')()
+        })
+
+        expect(setDefaultVmAgentModel).toHaveBeenCalledWith('codex', 'openrouter:x-ai/grok-4.6')
+    })
+
+    it('keeps a saved non-featured model visible beside the featured choices', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            withOpenRouter({ defaultModelFamilies: { claude: null, codex: 'openrouter:someone/niche-model' } })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).toContain('Someone: Niche Model')
+        expect(optionLabels(tree)).toContain('DeepSeek Chat')
+    })
+
+    it('shows an empty state when no compatible model matches', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'openrouter-model-search' }).props.onChangeText('not-a-real-model')
+        })
+
+        expect(JSON.stringify(tree.toJSON())).toContain('No compatible models match your search.')
     })
 
     it('saves the prefixed selection so the run knows which upstream to use', async () => {
