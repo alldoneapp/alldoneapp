@@ -91,7 +91,24 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
             const source = docSnapshot.metadata?.fromCache
                 ? 'served from local cache, backend unreachable — may exist on the server'
                 : 'server-confirmed'
-            console.error(`User document not found in Firestore: /users/${userId} (${source})`)
+            // A server-confirmed "missing" was also seen in production for a doc that provably
+            // exists — which is only possible if the requested path or project differed from the
+            // one checked. Log enough context to settle that on the next occurrence: the exact
+            // id (JSON exposes hidden characters), the auth uid, the project, and the caller.
+            let authUid = null
+            try {
+                authUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
+            } catch (error) {
+                // auth not initialized — leave null
+            }
+            console.error(`User document not found in Firestore: /users/${userId} (${source})`, {
+                requestedUserId: JSON.stringify(userId),
+                idLength: typeof userId === 'string' ? userId.length : null,
+                authUid: JSON.stringify(authUid),
+                isOwnDoc: authUid === userId,
+                firebaseProject: getDb()?.app?.options?.projectId || null,
+                calledFrom: new Error().stack,
+            })
             return { user: null, missing: true, error: null }
         }
         const user = docSnapshot.data()
