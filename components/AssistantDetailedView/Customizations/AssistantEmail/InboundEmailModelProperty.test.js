@@ -17,7 +17,7 @@ jest.mock('react-tiny-popover', () => ({ content, children }) => {
 jest.mock('../../../Icon', () => () => null)
 jest.mock('../../../UIControls/Button', () => () => null)
 jest.mock('../../../../i18n/TranslationService', () => ({
-    translate: key => key,
+    translate: (key, values = {}) => key.replace('%{tokens}', values.tokens || ''),
 }))
 jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
     updateAssistantEmailModel: jest.fn(),
@@ -36,6 +36,14 @@ describe('InboundEmailModelProperty', () => {
 
         expect(labels).toEqual(
             expect.arrayContaining(['Inherit assistant model (Sol)', 'Inherit assistant model', 'Sol', 'Terra', 'Luna'])
+        )
+        expect(labels).toEqual(
+            expect.arrayContaining([
+                '1 Gold = 100 tokens',
+                '1 Gold = 200 tokens',
+                '1 Gold = 500 tokens',
+                '1 Gold = 2,000 tokens',
+            ])
         )
     })
 

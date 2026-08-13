@@ -10,11 +10,17 @@ import {
     PRE_CONFIG_TASK_MODEL_OPTIONS,
 } from '../../../../functions/Assistant/preConfigTaskModel'
 import { PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
+import { getAssistantModelGoldRateText } from '../../AssistantModelGoldRate'
 
-const getModelOptions = () => {
+export const getModelOptions = () => {
     return [
         { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
-        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({ ...option, label: translate(option.labelKey) })),
+        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({
+            ...option,
+            label: `${translate(option.labelKey)} · ${getAssistantModelGoldRateText({
+                tokensPerGold: option.tokensPerGold,
+            })}`,
+        })),
     ]
 }
 

@@ -345,6 +345,7 @@ const {
     buildConversationAfterToolExecutions,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
+    getTokensPerGold,
     calculateGoldCostFromTokens,
     normalizeModelKey,
     getMaxTokensForModel,
@@ -399,6 +400,15 @@ describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
         expect(modelSupportsToolSearch(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
         expect(modelSupportsAssistantReasoningEffort(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
         expect(modelSupportsExplicitPromptCaching(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+    })
+})
+
+describe('selectable assistant model Gold pricing', () => {
+    test('the shared picker rate is the exact divisor used by billing', () => {
+        for (const option of SELECTABLE_ASSISTANT_MODELS) {
+            expect(getTokensPerGold(option.model)).toBe(option.tokensPerGold)
+            expect(calculateGoldCostFromTokens(option.tokensPerGold, option.model)).toBe(1)
+        }
     })
 })
 

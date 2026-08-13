@@ -9,12 +9,14 @@ import Button from '../../../UIControls/Button'
 import { updateAssistantEmailModel } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
+import AssistantModelGoldRate from '../../../UIComponents/AssistantModelGoldRate'
 
 export default function InboundEmailModelProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
     const inheritedModel = assistant.model || SELECTABLE_ASSISTANT_MODELS[0].model
     const selectedModel = typeof assistant.emailModel === 'string' ? assistant.emailModel : ''
+    const inheritedOption = SELECTABLE_ASSISTANT_MODELS.find(option => option.model === inheritedModel)
     const effectiveOption = SELECTABLE_ASSISTANT_MODELS.find(
         option => option.model === (selectedModel || inheritedModel)
     )
@@ -32,6 +34,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
             model: '',
             name: translate('Inherit assistant model'),
             descriptionKey: 'Use the normal assistant model for inbound email.',
+            tokensPerGold: inheritedOption?.tokensPerGold,
         },
         ...SELECTABLE_ASSISTANT_MODELS,
     ]
@@ -75,6 +78,7 @@ export default function InboundEmailModelProperty({ disabled, projectId, assista
                                         <Text style={[styles.body2, localStyles.optionDescription]}>
                                             {translate(option.descriptionKey)}
                                         </Text>
+                                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                                     </TouchableOpacity>
                                 )
                             })}

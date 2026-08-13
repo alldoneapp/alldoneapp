@@ -2269,8 +2269,8 @@ function calculateAccruedRuntimeGold(runtimeMs) {
  * Final Gold settlement for a finished run.
  *
  * `tokensPerGold` / `agentModel` are the run's persisted pricing state and only affect the *token*
- * charge: they select the tokens-per-Gold rate, which is Sol's for Sol and Claude and a researched
- * multiple of it for every other model. Runtime minutes are unaffected — they pay for the E2B
+ * charge: they select the researched tokens-per-Gold rate for the concrete model, relative to the
+ * 100-token Sol baseline. Runtime minutes are unaffected — they pay for the E2B
  * sandbox, which costs the same whichever model the agent talks to.
  *
  * The token line is a settlement, not a fresh charge: the proxy has already billed

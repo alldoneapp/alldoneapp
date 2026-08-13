@@ -45,5 +45,8 @@ describe('pre-configured task model selection', () => {
             'Luna',
             'DeepSeek Flash',
         ])
+        expect(PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => option.tokensPerGold)).toEqual(
+            SELECTABLE_ASSISTANT_MODELS.map(option => option.tokensPerGold)
+        )
     })
 })

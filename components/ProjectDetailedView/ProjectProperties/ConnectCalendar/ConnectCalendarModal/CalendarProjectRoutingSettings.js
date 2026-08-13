@@ -20,6 +20,7 @@ import {
     sanitizeCalendarProjectRoutingConfigForSave,
 } from './CalendarProjectRoutingSettings.helpers'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../../functions/Assistant/selectableAssistantModels'
+import AssistantModelGoldRate from '../../../../UIComponents/AssistantModelGoldRate'
 
 function stopEnterPropagation(event) {
     const key = event?.nativeEvent?.key || event?.key
@@ -54,6 +55,7 @@ function ModelSelector({ value, disabled, onChange }) {
                             {option.name}
                         </Text>
                         <Text style={localStyles.modelOptionDescription}>{translate(option.descriptionKey)}</Text>
+                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                     </TouchableOpacity>
                 )
             })}

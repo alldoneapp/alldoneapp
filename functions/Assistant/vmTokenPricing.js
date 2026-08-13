@@ -60,10 +60,11 @@
  *      `/api/v1/models` and cached with the model catalog. This is what makes the long tail correct
  *      and self-updating: a model released today is priced from its real numbers, and a vendor's
  *      price cut reaches Gold within the catalog TTL with nobody editing this file.
- *   2. **Researched static table** — `CODEX_REFERENCE_PRICES` / `OPENROUTER_REFERENCE_PRICES`, from
- *      the providers' official pricing pages. Covers the OpenAI tiers (which have no price
- *      discovery endpoint) and keeps the realistic OpenRouter picks correct through a discovery
- *      outage.
+ *   2. **Researched static table** — `CODEX_REFERENCE_PRICES`, `CLAUDE_REFERENCE_PRICES`,
+ *      `CLAUDE_MODEL_REFERENCE_PRICES` and `OPENROUTER_REFERENCE_PRICES`, from the providers'
+ *      official pricing pages. Covers the native OpenAI and Anthropic models (whose model-list
+ *      endpoints do not publish prices) and keeps the realistic OpenRouter picks correct through a
+ *      discovery outage.
  *   3. **The Sol base rate** — the fail-safe for a model we have no price for at all. Deliberately
  *      *not* "assume it is cheap": an unpriced model must never be cheaper by accident, because
  *      under-billing is a silent revenue hole while over-billing is visible and correctable.
@@ -75,11 +76,6 @@
  *
  * ## What is deliberately NOT repriced
  *
- * - **Claude models** stay at the Sol base rate. Claude is the default agent and its blended cost is
- *   roughly 3x Sol (Opus) — i.e. it is currently *under*-billed — so correcting it is a price
- *   increase on the default path and needs its own product decision, not a silent change smuggled in
- *   here. `CLAUDE_REFERENCE_PRICES` documents the real numbers so that decision is a one-line change
- *   when it is taken.
  * - **The base reserve and the per-minute compute charge.** Those pay for the E2B sandbox, whose
  *   cost is identical whichever model the agent talks to.
  * - **Subscription / BYOK runs**, which are already token-exempt upstream of this module.
@@ -145,14 +141,49 @@ const CODEX_REFERENCE_PRICES = Object.freeze({
 })
 
 /**
- * Anthropic list prices, USD per 1M tokens. Reference only — Claude is intentionally charged the Sol
- * base rate (see the module header). Present so the numbers behind that decision are visible, and so
- * pricing Claude properly later is a one-line change rather than fresh research.
+ * Anthropic list prices, USD per 1M tokens (platform.claude.com/docs/en/about-claude/pricing,
+ * retrieved 2026-08-13). Bare names are Claude Code's moving aliases, so they use the current model
+ * for that family: Opus 5, Sonnet 5 and Haiku 4.5. Fable and Mythos have no CLI aliases but keeping
+ * their family prices here makes the policy obvious and gives callers a safe answer if those names
+ * are ever accepted upstream.
+ *
+ * Anthropic prices cache hits at 0.1x base input. Cache writes are not represented because the VM
+ * meter folds them into input tokens; see the modelling caveat in the module header.
  */
 const CLAUDE_REFERENCE_PRICES = Object.freeze({
-    opus: Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
-    sonnet: Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    fable: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
+    mythos: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
+    opus: Object.freeze({ input: 5, cachedInput: 0.5, output: 25 }),
+    sonnet: Object.freeze({ input: 2, cachedInput: 0.2, output: 10 }),
     haiku: Object.freeze({ input: 1, cachedInput: 0.1, output: 5 }),
+})
+
+/**
+ * Version-specific Anthropic prices. The model API returns concrete ids but no price metadata, and
+ * the price is not always constant within a family: Opus 4.1 costs 3x Opus 4.5+, while Sonnet 5 is
+ * cheaper than Sonnet 4.6. Exact version matching prevents a retired model from silently inheriting
+ * the current alias price. A trailing snapshot date is stripped before lookup.
+ */
+const CLAUDE_MODEL_REFERENCE_PRICES = Object.freeze({
+    'claude-fable-5': CLAUDE_REFERENCE_PRICES.fable,
+    'claude-mythos-5': CLAUDE_REFERENCE_PRICES.mythos,
+    'claude-opus-5': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-4-8': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-4-7': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-4-6': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-4-5': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-4-1': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
+    'claude-opus-4': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
+    'claude-3-opus': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
+    'claude-sonnet-5': CLAUDE_REFERENCE_PRICES.sonnet,
+    'claude-sonnet-4-6': Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    'claude-sonnet-4-5': Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    'claude-sonnet-4': Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    'claude-3-7-sonnet': Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    'claude-3-5-sonnet': Object.freeze({ input: 3, cachedInput: 0.3, output: 15 }),
+    'claude-haiku-4-5': CLAUDE_REFERENCE_PRICES.haiku,
+    'claude-3-5-haiku': Object.freeze({ input: 0.8, cachedInput: 0.08, output: 4 }),
+    'claude-3-haiku': Object.freeze({ input: 0.25, cachedInput: 0.03, output: 1.25 }),
 })
 
 /**
@@ -279,6 +310,21 @@ function lookupOpenRouterReferencePrice(modelId) {
     return bestKey ? OPENROUTER_REFERENCE_PRICES[bestKey] : null
 }
 
+/** The current alias or exact concrete-version price for a native Anthropic selection. */
+function lookupClaudeReferencePrice(agentModel) {
+    if (typeof agentModel !== 'string') return null
+    const normalized = agentModel.trim().toLowerCase()
+    if (!normalized) return null
+
+    const aliasPrice = CLAUDE_REFERENCE_PRICES[normalized]
+    if (aliasPrice) return aliasPrice
+
+    // Before Claude 4.6, concrete snapshots could end in an eight-digit release date. The price is
+    // attached to the model version, not that snapshot suffix.
+    const versionId = normalized.replace(/-\d{8}$/, '')
+    return CLAUDE_MODEL_REFERENCE_PRICES[versionId] || null
+}
+
 /**
  * The upstream price for a model selection, or `null` when we have none.
  *
@@ -293,10 +339,14 @@ function resolveUpstreamPrice(agentModel, options = {}) {
     if (openRouterModel) return lookupOpenRouterReferencePrice(openRouterModel)
 
     if (typeof agentModel !== 'string') return null
-    const codexFamily = CODEX_MODEL_PATTERN.exec(agentModel.trim().toLowerCase())
+    const normalized = agentModel.trim().toLowerCase()
+    const claudePrice = lookupClaudeReferencePrice(normalized)
+    if (claudePrice) return claudePrice
+
+    const codexFamily = CODEX_MODEL_PATTERN.exec(normalized)
     if (codexFamily) return CODEX_REFERENCE_PRICES[codexFamily[1]] || null
 
-    // Claude (and anything else) intentionally has no entry here: no price → the Sol base rate.
+    // Anything else intentionally has no entry here: no price → the Sol base rate.
     return null
 }
 
@@ -398,11 +448,13 @@ module.exports = {
     OBSERVED_TOKEN_MIX,
     CODEX_REFERENCE_PRICES,
     CLAUDE_REFERENCE_PRICES,
+    CLAUDE_MODEL_REFERENCE_PRICES,
     OPENROUTER_REFERENCE_PRICES,
     SOL_BLENDED_USD_PER_MILLION,
     blendedUsdPerMillionTokens,
     quantizeTokensPerGold,
     deriveTokensPerGold,
+    lookupClaudeReferencePrice,
     resolveUpstreamPrice,
     resolveTokensPerGold,
     resolveEffectiveTokensPerGold,
