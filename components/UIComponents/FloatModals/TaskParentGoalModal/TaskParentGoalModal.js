@@ -288,7 +288,7 @@ export default function TaskParentGoalModal({
         }, 50)
     }
 
-    const selectGoal = (goal, tabIndex, goalProjectId, isNewGoal) => {
+    const selectGoal = async (goal, tabIndex, goalProjectId, isNewGoal) => {
         dismissClickThroughEditModes()
 
         // A repeated click is an unselect only if the goal was already selected when the picker
@@ -308,26 +308,27 @@ export default function TaskParentGoalModal({
             const goalData = { projectId: targetProjectId, goal, dateFormated, isNewGoal }
             dispatch(setSelectedGoalDataInTasksListWhenAddTask(goalData))
             closeModal()
-        } else if (notDelayClose) {
-            setActiveGoal(goal, targetProjectId)
-            closeModal()
         } else {
-            // Call setActiveGoal synchronously to ensure it executes before component unmounts
-            setActiveGoal(goal, targetProjectId)
-            setTimeout(() => {
-                closeModal()
-            })
+            // Persist the relationship before dismissing this picker. The detailed-view property
+            // writes asynchronously; closing first made the interaction look successful while the
+            // task was still unlinked (and hid write failures entirely).
+            const saved = await setActiveGoal(goal, targetProjectId)
+            if (saved === false) return
+
+            if (notDelayClose) closeModal()
+            else setTimeout(closeModal)
         }
     }
 
-    const unselectGoal = () => {
+    const unselectGoal = async () => {
         dismissClickThroughEditModes()
         selectionAtLastUserChoiceRef.current = null
 
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))
         } else {
-            setActiveGoal(null)
+            const saved = await setActiveGoal(null)
+            if (saved === false) return
         }
         closeModal()
     }
