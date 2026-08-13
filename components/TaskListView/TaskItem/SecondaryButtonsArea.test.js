@@ -164,5 +164,9 @@ describe('SecondaryButtonsArea', () => {
         expect(result).toBe(saveResult)
         expect(setParentGoalBeforeSave).toHaveBeenCalledWith(goal, goal.projectId)
         expect(dismissEditMode).not.toHaveBeenCalled()
+
+        act(() => modal.props.closeModal())
+
+        expect(dismissEditMode).toHaveBeenCalledWith(true)
     })
 })

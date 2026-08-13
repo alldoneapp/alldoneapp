@@ -154,7 +154,11 @@ export default function SecondaryButtonsArea({
     const hideParentGoalPopup = () => {
         popupLock.release()
         safeSetShowParentGoalModalUI(false)
-        dismissEditMode?.()
+        // TaskParentGoalModal owns its own popup lock until this state change unmounts it. Closing
+        // the editor without forcing it while that lock is still present makes DismissibleItem
+        // reject the close, so the placement hold keeps the task under its previous goal and the
+        // completed write looks like it did nothing.
+        dismissEditMode?.(true)
     }
 
     const handleSetParentGoal = (goal, goalProjectId) => setParentGoalBeforeSave(goal, goalProjectId)
