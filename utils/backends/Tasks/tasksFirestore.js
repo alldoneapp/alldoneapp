@@ -2295,12 +2295,15 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
         await deleteSubTaskFromParent(projectId, taskId, task, batch)
         updateData.parentId = null
         updateData.isSubtask = false
-        updateTaskData(projectId, taskId, updateData, batch)
+        await updateTaskData(projectId, taskId, updateData, batch)
     } else {
-        updateTaskData(projectId, taskId, updateData, batch)
+        await updateTaskData(projectId, taskId, updateData, batch)
     }
 
-    if (!externalBatch) batch.commit()
+    // Callers using the parent-goal property must not report success before the relationship is
+    // actually durable. The previous fire-and-forget commit let the picker close while this write
+    // was still pending and turned any rejection into an unhandled background failure.
+    if (!externalBatch) await batch.commit()
 
     setTaskParentGoalFeedsChain(projectId, taskId, goalId, task.parentGoalId, task)
     return updateData
