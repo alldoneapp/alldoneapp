@@ -27,6 +27,7 @@ const {
     parseOpenRouterSelection,
     formatOpenRouterModelLabel,
 } = require('./vmModelRouting')
+const { resolveTokensPerGold } = require('./vmTokenPricing')
 
 const CATALOG_COLLECTION = 'vmAgentModelCatalog'
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000
@@ -573,6 +574,40 @@ function isFresh(catalog, now) {
 }
 
 /**
+ * Attach the exact token-Gold rate the VM billing resolver would use to every client-selectable
+ * model. The Settings picker must never maintain a parallel price table: OpenAI families resolve
+ * through the same researched prices as a run, Claude deliberately keeps the current Sol baseline,
+ * and OpenRouter uses the live catalog price for both featured and searched models.
+ *
+ * The server-only raw `pricing` array is still stripped before the catalog reaches the client. A
+ * single derived integer per model is all the UI needs and reveals no provider credentials or
+ * internal billing inputs.
+ */
+function decorateCatalogGoldPricing(provider, catalog) {
+    const pricingByModelId = new Map(
+        (Array.isArray(catalog?.pricing) ? catalog.pricing : []).map(price => [String(price.id).toLowerCase(), price])
+    )
+    const decorateModel = model => {
+        const selection =
+            provider === OPENROUTER_PROVIDER ? model.id : model.resolvedModel || model.latestModel || model.id
+        const livePrice =
+            provider === OPENROUTER_PROVIDER
+                ? pricingByModelId.get(String(model.modelId || '').toLowerCase()) || model.upstreamPrice
+                : null
+        return {
+            ...model,
+            tokensPerGold: resolveTokensPerGold(selection, undefined, { upstreamPrice: livePrice }),
+        }
+    }
+
+    return {
+        ...catalog,
+        families: (catalog?.families || []).map(decorateModel),
+        ...(Array.isArray(catalog?.searchModels) ? { searchModels: catalog.searchModels.map(decorateModel) } : {}),
+    }
+}
+
+/**
  * The catalog for one provider, preferring live discovery but never failing.
  *
  * Order: fresh cache → live discovery (then cached) → stale cache → static fallback.
@@ -591,8 +626,9 @@ async function getModelCatalog(provider, options = {}) {
     // `getVmAgentSettings`, and shipping a few tens of KB of prices the UI never reads on every
     // Settings load would be pure waste.
     const decorate = catalog => {
-        if (!isOpenRouter) return catalog
-        const decorated = { ...catalog, available: isOpenRouterConfigured(options) }
+        const pricedCatalog = decorateCatalogGoldPricing(provider, catalog)
+        if (!isOpenRouter) return pricedCatalog
+        const decorated = { ...pricedCatalog, available: isOpenRouterConfigured(options) }
         if (!options.includePricing) delete decorated.pricing
         return decorated
     }
@@ -631,7 +667,7 @@ async function getModelCatalog(provider, options = {}) {
             )
             if (families.length) {
                 await writeCachedCatalog(provider, families, now)
-                return { families, fetchedAt: now, source: 'live' }
+                return decorate({ families, fetchedAt: now, source: 'live' })
             }
             console.warn('🖥️ VM MODELS: Discovery returned no usable families', { provider, count: entries.length })
         }
@@ -709,6 +745,7 @@ module.exports = {
     buildFamilies,
     buildOpenRouterModels,
     buildOpenRouterPricing,
+    decorateCatalogGoldPricing,
     normalizeOpenRouterPricing,
     getOpenRouterUpstreamPrice,
     isCodexCompatibleOpenRouterModel,
