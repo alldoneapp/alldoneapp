@@ -50,6 +50,10 @@ describe('useLinkedEmailArchive', () => {
             action: 'archive',
             messageIds: ['msg-1'],
         })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
+            action: 'markRead',
+            messageIds: ['msg-1'],
+        })
         expect(hook.isArchivedEmail('connection-1:msg-1')).toBe(true)
         expect(hook.isArchivingEmail('connection-1:msg-1')).toBe(false)
     })
@@ -65,10 +69,22 @@ describe('useLinkedEmailArchive', () => {
             ])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(4)
         expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
             action: 'archive',
             messageIds: ['msg-1', 'msg-2'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
+            action: 'markRead',
+            messageIds: ['msg-1', 'msg-2'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
+            action: 'archive',
+            messageIds: ['msg-3'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
+            action: 'markRead',
+            messageIds: ['msg-3'],
         })
     })
 
@@ -100,7 +116,7 @@ describe('useLinkedEmailArchive', () => {
             await hook.archiveLinkedEmails([email('connection-1', 'msg-1')])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
     })
 
     it('clears the in-flight state when the call fails, so the button stays usable', async () => {

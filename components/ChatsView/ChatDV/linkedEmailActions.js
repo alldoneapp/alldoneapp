@@ -1,4 +1,5 @@
 import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
+import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 
 export function getLinkedEmailFromMessage(message = {}) {
     const gmailData = message?.gmailData
@@ -52,4 +53,16 @@ export function groupLinkedEmailsByConnection(linkedEmails = []) {
         groups[linkedEmail.connectionProjectId] = messageIds
         return groups
     }, {})
+}
+
+// Chat archive of a linked email is a "I'm done with this" action: take it out of the inbox
+// and clear UNREAD. Email Line archive stays archive-only and still goes through `archive`.
+export async function archiveAndMarkReadLinkedEmails(linkedEmails = []) {
+    const groupedEmails = groupLinkedEmailsByConnection(linkedEmails)
+    await Promise.all(
+        Object.entries(groupedEmails).map(async ([connectionProjectId, messageIds]) => {
+            await performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
+            await performEmailLineAction(connectionProjectId, { action: 'markRead', messageIds })
+        })
+    )
 }

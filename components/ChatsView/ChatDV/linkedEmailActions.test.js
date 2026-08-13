@@ -1,9 +1,13 @@
 import {
+    archiveAndMarkReadLinkedEmails,
     getLinkedEmailFromMessage,
     getLinkedEmailsFromMessages,
     getNewEmailCommentIds,
     groupLinkedEmailsByConnection,
 } from './linkedEmailActions'
+import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
+
+jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 
 describe('linkedEmailActions', () => {
     test('reads the connection and message ids stored on a Gmail follow-up comment', () => {
@@ -75,5 +79,62 @@ describe('linkedEmailActions', () => {
             })
         ).toEqual(['email-1', 'email-2'])
         expect(getNewEmailCommentIds()).toEqual([])
+    })
+})
+
+describe('archiveAndMarkReadLinkedEmails', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        performEmailLineAction.mockResolvedValue({})
+    })
+
+    test('archives then marks the same messages as read, grouped by account', async () => {
+        await archiveAndMarkReadLinkedEmails([
+            { connectionProjectId: 'connection-1', messageId: 'message-1' },
+            { connectionProjectId: 'connection-1', messageId: 'message-2' },
+            { connectionProjectId: 'connection-2', messageId: 'message-3' },
+        ])
+
+        expect(performEmailLineAction).toHaveBeenCalledTimes(4)
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
+            action: 'archive',
+            messageIds: ['message-1', 'message-2'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
+            action: 'markRead',
+            messageIds: ['message-1', 'message-2'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
+            action: 'archive',
+            messageIds: ['message-3'],
+        })
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-2', {
+            action: 'markRead',
+            messageIds: ['message-3'],
+        })
+        const connection1Calls = performEmailLineAction.mock.calls
+            .filter(([connectionProjectId]) => connectionProjectId === 'connection-1')
+            .map(([, payload]) => payload.action)
+        expect(connection1Calls).toEqual(['archive', 'markRead'])
+    })
+
+    test('does not mark as read when archive fails', async () => {
+        performEmailLineAction.mockRejectedValueOnce(new Error('offline'))
+
+        await expect(
+            archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1', messageId: 'message-1' }])
+        ).rejects.toThrow('offline')
+
+        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
+            action: 'archive',
+            messageIds: ['message-1'],
+        })
+    })
+
+    test('ignores empty or incomplete links', async () => {
+        await archiveAndMarkReadLinkedEmails([])
+        await archiveAndMarkReadLinkedEmails([{ connectionProjectId: 'connection-1' }])
+        expect(performEmailLineAction).not.toHaveBeenCalled()
     })
 })
