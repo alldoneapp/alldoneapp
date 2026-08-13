@@ -2,7 +2,7 @@ import momentTz from 'moment-timezone'
 import moment from 'moment-timezone'
 
 import store from '../../redux/store'
-import { fetchUserDataResult, getUserData, updateUserDataDirectly } from '../backends/Users/usersFirestore'
+import { fetchUserDataResult, updateUserDataDirectly } from '../backends/Users/usersFirestore'
 import {
     initFCMonLoad,
     initGoogleTagManager,
@@ -44,7 +44,6 @@ import {
 import { getMissingProjectEntriesIds, pruneStaleProjectIds } from './staleProjectSelfHeal'
 import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
-import { storeLoggedUser } from '../../redux/actions'
 import { trackEvent } from '../analytics/analytics'
 
 function watchProjectsData(projectIds) {
@@ -348,24 +347,30 @@ export const loadGlobalDataAndGetUserResult = async userId => {
     if (cachedUserData && cachedUserData.uid === userId) {
         if (__DEV__) console.log('Using cached user data for faster startup')
 
-        // Always load global data even when using cached user data
-        loadGlobalData()
+        // Global data is optional for completing login and has its own recovery. Start it now,
+        // but do not let it delay loading the user's projects.
+        loadGlobalData().catch(error => console.warn('Error refreshing global data:', error))
 
-        // Use cached data immediately, but refresh in background
-        setTimeout(async () => {
-            try {
-                const freshUser = await getUserData(userId, true)
-                if (freshUser && !isEqual(freshUser, cachedUserData)) {
-                    if (__DEV__) console.log('Updating cached user data with fresh data')
-                    UserDataCache.setCachedUserData(freshUser)
-                    store.dispatch(storeLoggedUser(freshUser))
-                }
-            } catch (error) {
-                console.warn('Error refreshing user data:', error)
+        // The cache is an offline fallback, not the authority for project membership. Previously
+        // its up-to-24-hour-old projectIds drove the whole initial load; the background refresh
+        // updated redux but never loaded newly listed projects, so only the NEXT reload was
+        // complete. Await one current read before choosing which projects to initialize.
+        const freshResult = await fetchUserDataResult(userId, true)
+        if (freshResult.user) {
+            if (!isEqual(freshResult.user, cachedUserData)) {
+                if (__DEV__) console.log('Updating cached user data before loading projects')
+                UserDataCache.setCachedUserData(freshResult.user)
             }
-        }, 1000)
+            return freshResult
+        }
+        if (freshResult.error) {
+            console.warn('Current user data could not be read; using the cached user for this boot.', freshResult.error)
+            return { user: cachedUserData, missing: false, error: null }
+        }
 
-        return { user: cachedUserData, missing: false, error: null }
+        // Firestore Lite directly confirmed that the document is gone. Do not let stale local
+        // data mask a genuinely inconsistent account.
+        return freshResult
     }
 
     // No cache available, load from Firebase

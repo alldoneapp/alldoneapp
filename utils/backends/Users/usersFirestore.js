@@ -22,6 +22,7 @@ import {
     mapUserData,
     removeInvitedUserFromProject,
     removeWorkflowStepFeedChain,
+    restartFirestoreNetwork,
     runHttpsCallableFunction,
     selectAndSetNewDefaultProject,
     tryAddFollower,
@@ -30,6 +31,7 @@ import {
     updateRemovedWorkflowStepSubtaks,
     updateRemovedWorkflowStepTaks,
 } from '../firestore'
+import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import Backend from '../../BackendBridge'
 import SettingsHelper from '../../../components/SettingsView/SettingsHelper'
@@ -109,50 +111,64 @@ const getCurrentAuthUid = () => {
  * `batch.set` on `users/{uid}` with a fresh-signup document — overwriting projectIds, gold,
  * premium status and settings — and offers to delete the Firebase Auth user if that fails.
  *
- * So an apparent absence is re-read with an explicit `{ source: 'server' }` query, and only a
- * second, server-only confirmation is allowed to mean "this account has no document". A recovered
- * document is returned normally (the caller never learns anything was wrong), and a re-read that
- * cannot reach the server is reported as a failed read so the caller retries instead of recovering.
+ * So an apparent absence is verified through Firestore Lite. Lite has no local cache or snapshot
+ * listener state and fetches every document directly from the server, which makes it independent
+ * from the full client's bad view. A recovered document is returned normally, and a direct read
+ * that cannot reach the server is reported as a failed read so the caller retries instead of
+ * recovering.
  */
 export async function fetchUserDataResult(userId, isLoggedUser) {
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
-            let confirmation
+            let directSnapshot
             try {
-                confirmation = await getDb().doc(`/users/${userId}`).get({ source: 'server' })
+                directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
             } catch (verifyError) {
-                // The server could not be reached, so the absence is unconfirmed. Report a failed
-                // read: the caller retries and never runs the destructive recovery path.
+                // The independent server could not be reached, so the absence is unconfirmed.
+                // Report a failed read: the caller retries and never runs account recovery.
                 console.warn(
-                    `User document /users/${userId} appeared missing and the confirming server read failed; ` +
+                    `User document /users/${userId} appeared missing and the direct server read failed; ` +
                         'treating it as a failed read rather than a missing account.',
                     verifyError
                 )
                 return { user: null, missing: false, error: verifyError }
             }
 
-            if (confirmation.exists) {
-                const confirmedData = confirmation.data()
+            if (directSnapshot.exists) {
+                const confirmedData = directSnapshot.data
                 const recoveredUser = confirmedData ? mapUserData(userId, confirmedData, isLoggedUser) : null
                 console.warn(
-                    `User document /users/${userId} was reported missing by the first read ` +
-                        `(${describeSnapshotSource(docSnapshot)}), but an explicit server read found it. ` +
-                        'Using the document; no account recovery is needed.'
+                    `User document /users/${userId} was reported missing by the realtime client ` +
+                        `(${describeSnapshotSource(docSnapshot)}), but a direct server read found it. ` +
+                        'Using the document and reconnecting the realtime streams; no account recovery is needed.'
                 )
+                try {
+                    await restartFirestoreNetwork('recover a user document omitted during initial load')
+                } catch (restartError) {
+                    // The direct result is still authoritative and safe to use. The post-boot
+                    // integrity checks will make another bounded attempt to reconnect.
+                    console.warn(
+                        '[Firestore] Could not restart the realtime connection after a recovered user read:',
+                        restartError
+                    )
+                }
                 return { user: recoveredUser, missing: !recoveredUser, error: null }
             }
 
             const authUid = getCurrentAuthUid()
-            console.error(`User document not found in Firestore: /users/${userId} (server-confirmed twice)`, {
-                requestedUserId: JSON.stringify(userId),
-                idLength: typeof userId === 'string' ? userId.length : null,
-                authUid: JSON.stringify(authUid),
-                isOwnDoc: authUid === userId,
-                firebaseProject: getDb()?.app?.options?.projectId || null,
-                firstReadSource: describeSnapshotSource(docSnapshot),
-                calledFrom: new Error().stack,
-            })
+            console.error(
+                `User document not found in Firestore: /users/${userId} (confirmed by a direct server read)`,
+                {
+                    requestedUserId: JSON.stringify(userId),
+                    idLength: typeof userId === 'string' ? userId.length : null,
+                    authUid: JSON.stringify(authUid),
+                    isOwnDoc: authUid === userId,
+                    firebaseProject: getDb()?.app?.options?.projectId || null,
+                    firstReadSource: describeSnapshotSource(docSnapshot),
+                    calledFrom: new Error().stack,
+                }
+            )
             return { user: null, missing: true, error: null }
         }
         const user = docSnapshot.data()

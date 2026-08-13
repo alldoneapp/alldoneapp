@@ -1,7 +1,7 @@
 import store from '../../redux/store'
-import { getDb } from '../backends/firestore'
+import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
-import { loadGlobalData } from './initialLoadHelper'
+import { loadGlobalData, watchProjectData } from './initialLoadHelper'
 
 /**
  * Post-boot integrity check for data a degraded initial load left behind.
@@ -24,15 +24,18 @@ import { loadGlobalData } from './initialLoadHelper'
  * itself; and everything here only ever ADDS missing data, so a false anomaly is harmless.
  */
 
-const CHECK_DELAYS_MS = [10000, 45000, 120000]
+const CHECK_DELAYS_MS = [1000, 5000, 15000, 60000]
 const MAX_NETWORK_CYCLES_PER_SESSION = 2
 
-let scheduled = false
+let scheduledUserId = null
+let scheduledTimers = []
 let running = false
 let networkCyclesUsed = 0
 
 export const resetBootIntegrityHealerForTests = () => {
-    scheduled = false
+    scheduledTimers.forEach(timer => clearTimeout(timer))
+    scheduledTimers = []
+    scheduledUserId = null
     running = false
     networkCyclesUsed = 0
 }
@@ -75,6 +78,16 @@ const repairAnomalies = async ({ missingProjectIds, administratorMissing }) => {
         )
     }
     await Promise.all(repairs)
+
+    // A stale cached user can reveal a project id only after the initial watcher list was built.
+    // Recovery inserts that project's data, but without this guard it would never receive live
+    // updates. Projects dropped by a bad document read already have watchers, so do not replace
+    // (and leak) those existing subscriptions.
+    missingProjectIds.forEach(projectId => {
+        if (store.getState().loggedUserProjectsMap[projectId] && !globalWatcherUnsub[`${projectId}Project`]) {
+            watchProjectData(projectId, true, true)
+        }
+    })
 }
 
 const cycleFirestoreNetwork = async () => {
@@ -139,11 +152,19 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
 }
 
 export const scheduleBootIntegrityChecks = () => {
-    if (scheduled) return
-    scheduled = true
-    CHECK_DELAYS_MS.forEach(delay => {
+    const userId = store.getState().loggedUser?.uid
+    if (!userId || scheduledUserId === userId) return
+
+    // The app can sign out and into another account without a page reload. Checks and network
+    // cycle limits belong to the current user, not the lifetime of the JavaScript document.
+    scheduledTimers.forEach(timer => clearTimeout(timer))
+    scheduledTimers = []
+    scheduledUserId = userId
+    networkCyclesUsed = 0
+
+    scheduledTimers = CHECK_DELAYS_MS.map(delay =>
         setTimeout(() => {
             runBootIntegrityCheck().catch(error => console.warn('[BootIntegrity] Check failed:', error))
         }, delay)
-    })
+    )
 }
