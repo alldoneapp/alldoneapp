@@ -45,7 +45,7 @@ export default class Backend {
     }
 
     static setTaskParentGoalMultiple(tasks, goal) {
-        bridge.setTaskParentGoalMultiple(tasks, goal)
+        return bridge.setTaskParentGoalMultiple(tasks, goal)
     }
 
     static async setTaskDueDateMultiple(tasks, newDueDate) {
