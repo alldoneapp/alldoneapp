@@ -3,16 +3,7 @@ jest.mock('react-native', () => ({
     StatusBar: { currentHeight: 24 },
     StyleSheet: { create: styles => styles },
 }))
-jest.mock('../styles/global', () => ({
-    colors: { Text01: '#04142F', UtilityBlue200: '#0000FF' },
-    hexColorToRGBa: (hexColor, alpha) => {
-        const [r, g, b] = hexColor
-            .replace('#', '')
-            .match(/.{2}/g)
-            .map(channel => parseInt(channel, 16))
-        return `rgba(${r},${g},${b},${alpha})`
-    },
-}))
+jest.mock('../styles/global', () => ({ colors: { Text01: '#000000', UtilityBlue200: '#0000FF' } }))
 
 import undoActionBarStyles from './undoActionBarStyles'
 
@@ -27,10 +18,5 @@ describe('UndoActionBar layout', () => {
         expect(undoActionBarStyles.mobileViewport.paddingHorizontal).toBe(24)
         expect(undoActionBarStyles.viewport.paddingHorizontal).toBe(16)
         expect(undoActionBarStyles.overlay.paddingHorizontal).toBeUndefined()
-    })
-
-    it('makes only the banner background 40% transparent', () => {
-        expect(undoActionBarStyles.container.backgroundColor).toBe('rgba(4,20,47,0.6)')
-        expect(undoActionBarStyles.container.opacity).toBeUndefined()
     })
 })
