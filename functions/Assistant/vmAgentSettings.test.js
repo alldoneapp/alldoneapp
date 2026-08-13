@@ -49,6 +49,15 @@ const MOCK_CATALOGS = {
                 resolvedModel: 'openrouter:deepseek/deepseek-chat',
             },
         ],
+        searchModels: [
+            {
+                id: 'openrouter:x-ai/grok-4.6',
+                label: 'SpaceXAI: Grok 4.6',
+                vendor: 'x-ai',
+                modelId: 'x-ai/grok-4.6',
+                resolvedModel: 'openrouter:x-ai/grok-4.6',
+            },
+        ],
         fetchedAt: 1,
         source: 'live',
         available: true,
@@ -306,6 +315,19 @@ describe('VM agent settings', () => {
             expect(getModelCatalog).toHaveBeenLastCalledWith('openrouter')
             expect(mockUpdate).toHaveBeenLastCalledWith(
                 expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:deepseek/deepseek-chat' })
+            )
+        })
+
+        test('saves a searched OpenRouter selection that is not featured', async () => {
+            await expect(
+                setDefaultVmAgentModel({
+                    userId: 'user-1',
+                    agent: 'codex',
+                    family: 'openrouter:x-ai/grok-4.6',
+                })
+            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'openrouter:x-ai/grok-4.6' }))
+            expect(mockUpdate).toHaveBeenLastCalledWith(
+                expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:x-ai/grok-4.6' })
             )
         })
 
