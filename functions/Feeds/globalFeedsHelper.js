@@ -376,7 +376,7 @@ function globalInnerFeedsGenerator(projectId, objectTypes, feedObjectId, feed, f
         feed
     )
 
-    setLastActionDate(projectId, feed.lastChangeDate, batch)
+    if (!disabledLastInteraction) setLastActionDate(projectId, feed.lastChangeDate, batch)
 }
 
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectsType}/{objectId}/feeds, which is
@@ -731,7 +731,15 @@ async function proccessFeed(
         needGenerateNotification,
         contextOverrides
     )
-    globalInnerFeedsGenerator(projectId, objectsType, objectId, feed, feedId, batch)
+    globalInnerFeedsGenerator(
+        projectId,
+        objectsType,
+        objectId,
+        feed,
+        feedId,
+        batch,
+        contextOverrides.disabledLastInteraction === true
+    )
 }
 
 function updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch) {
