@@ -1,6 +1,6 @@
 import { Platform, StatusBar, StyleSheet } from 'react-native'
 
-import { colors, hexColorToRGBa } from '../styles/global'
+import { colors } from '../styles/global'
 
 const undoActionBarStyles = StyleSheet.create({
     overlay: {
@@ -28,7 +28,7 @@ const undoActionBarStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 8,
-        backgroundColor: hexColorToRGBa(colors.Text01, 0.6),
+        backgroundColor: colors.Text01,
         flexDirection: 'row',
         alignItems: 'center',
         boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
