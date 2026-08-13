@@ -33,6 +33,7 @@ import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
 import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
+import TaskListSkeleton from '../TaskListSkeleton'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -61,6 +62,8 @@ export default function OpenTasksByProject({
     const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
     const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
     const filteredOpenTasksDates = filteredOpenTasks.map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
+    const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
+    const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
     const assistantProfileTimelineDates = assistantProfileMode
         ? buildAssistantProfileTimelineDates(filteredOpenTasksDates, assistantScheduleOccurrences)
         : filteredOpenTasksDates.map((dateKey, dateIndex) => ({ dateKey, dateIndex, occurrences: [] }))
@@ -109,6 +112,10 @@ export default function OpenTasksByProject({
         inSelectedProject &&
         !!assistantLineProject &&
         !!assistantLineAssistantId
+    const showInitialSkeleton =
+        inSelectedProject &&
+        filteredOpenTasksDates.length === 0 &&
+        (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
 
     useEffect(() => {
         const watcherKey = v4()
@@ -196,6 +203,7 @@ export default function OpenTasksByProject({
                     {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
                     {!assistantProfileMode && <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />}
                     {!assistantProfileMode && <UpcomingMilestoneRow projectId={projectId} />}
+                    {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
                     {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
                         return timelineDate.dateIndex !== null ? (
                             <OpenTasksByDate

@@ -14,6 +14,7 @@ import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
+import TaskListSkeleton from '../TaskListSkeleton'
 
 export default function TasksList({
     projectId,
@@ -33,6 +34,8 @@ export default function TasksList({
 }) {
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
+    const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
+    const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
 
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
@@ -75,9 +78,20 @@ export default function TasksList({
         heldTaskOrderRef
     )
 
+    const visibleTasks = sortedTaskList.filter(
+        (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
+    )
+    const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
+
     return (
         <View style={[localStyles.container, containerStyle]}>
-            {isActiveOrganizeMode ? (
+            {initialTaskDataIsLoading && visibleTasks.length > 0 ? (
+                <TaskListSkeleton
+                    rowCount={visibleTasks.length}
+                    taskKeys={visibleTasks.map(task => task.id)}
+                    embedded
+                />
+            ) : isActiveOrganizeMode ? (
                 <DroppableTaskList
                     projectId={projectId}
                     taskList={sortedTaskList}
@@ -89,24 +103,20 @@ export default function TasksList({
                     goalIndex={goalIndex}
                 />
             ) : (
-                sortedTaskList.map((task, index) => {
-                    if (amountToRender === undefined || amountToRender === null || amountToRender > index) {
-                        const subtaskList = subtaskByTask[task.id] ? subtaskByTask[task.id] : []
-                        return (
-                            <ParentTaskContainer
-                                key={task.id}
-                                task={task}
-                                projectId={projectId}
-                                subtaskList={subtaskList ? subtaskList : []}
-                                isObservedTask={isObservedTask}
-                                isToReviewTask={isToReviewTask}
-                                isSuggested={isSuggested}
-                                inParentGoal={inParentGoal}
-                            />
-                        )
-                    } else {
-                        return null
-                    }
+                visibleTasks.map(task => {
+                    const subtaskList = subtaskByTask[task.id] ? subtaskByTask[task.id] : []
+                    return (
+                        <ParentTaskContainer
+                            key={task.id}
+                            task={task}
+                            projectId={projectId}
+                            subtaskList={subtaskList ? subtaskList : []}
+                            isObservedTask={isObservedTask}
+                            isToReviewTask={isToReviewTask}
+                            isSuggested={isSuggested}
+                            inParentGoal={inParentGoal}
+                        />
+                    )
                 })
             )}
         </View>
