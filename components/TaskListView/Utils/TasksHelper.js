@@ -1267,8 +1267,8 @@ class TasksHelper {
         filterConstant,
         autoStartTranscription = false
     ) => {
-        console.log('[TasksHelper] processURLNoteDetailsTab called')
-        console.log('[TasksHelper] autoStartTranscription:', autoStartTranscription)
+        if (__DEV__) console.log('[TasksHelper] processURLNoteDetailsTab called')
+        if (__DEV__) console.log('[TasksHelper] autoStartTranscription:', autoStartTranscription)
         const { loggedUser, selectedSidebarTab } = store.getState()
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -1283,16 +1283,18 @@ class TasksHelper {
                 : tab
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
-        console.log(
-            '[TasksHelper] note:',
-            !!note,
-            'inSelectedProject:',
-            inSelectedProject,
-            'user:',
-            !!user,
-            'note.parentObject:',
-            note?.parentObject
-        )
+        if (__DEV__) {
+            console.log(
+                '[TasksHelper] note:',
+                !!note,
+                'inSelectedProject:',
+                inSelectedProject,
+                'user:',
+                !!user,
+                'note.parentObject:',
+                note?.parentObject
+            )
+        }
         if (note && inSelectedProject && user != null && !note.parentObject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             let data = {
@@ -1300,7 +1302,7 @@ class TasksHelper {
                 projectId,
                 autoStartTranscription,
             }
-            console.log('[TasksHelper] Navigating to NotesDetailedView with data:', data)
+            if (__DEV__) console.log('[TasksHelper] Navigating to NotesDetailedView with data:', data)
             store.dispatch([
                 switchProject(projectIndex),
                 storeCurrentUser(user),
@@ -1315,10 +1317,12 @@ class TasksHelper {
             const task = await Backend.getTaskData(projectId, note.parentObject.id)
             if (task) {
                 const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-                console.log(
-                    '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
-                    autoStartTranscription
-                )
+                if (__DEV__) {
+                    console.log(
+                        '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                        autoStartTranscription
+                    )
+                }
                 store.dispatch([
                     switchProject(projectIndex),
                     setSelectedNavItem(DV_TAB_TASK_NOTE),
