@@ -36,9 +36,13 @@ const getModalsManager = () => require('../../ModalsManager/modalsManager')
 const SLIDE_DISTANCE = 240
 // Unmount a hair after the exit animation lands so the last frame paints.
 const EXIT_UNMOUNT_BUFFER_MS = 20
-const HANDLE_STRIP_HEIGHT = 20
+// The visible pill is deliberately small, but the interactive target must be
+// large enough to grab with a thumb. This also keeps sheet content from
+// overlapping the handle's hit area.
+const HANDLE_STRIP_HEIGHT = 36
 const SHEET_BOTTOM_PADDING = 8
 const DRAG_SETTLE_MS = 160
+const COMPATIBILITY_MOUSE_SUPPRESSION_MS = 800
 
 const SHELL_CONTEXT_VALUE = { presentation: 'sheet' }
 
@@ -90,12 +94,11 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     const closingRef = useRef(false)
 
     // Dragging the handle moves the sheet vertically; a deliberate swipe down
-    // dismisses it. Raw pointer events
-    // on the handle's DOM node rather than PanResponder — pointer events unify
-    // mouse and touch, setPointerCapture keeps the stream on the handle for
-    // the whole gesture, and react-native-web's responder layer has already
-    // proven undeliverable in two environments here (jsdom presses, and mouse
-    // drags under Chromium touch emulation in browser-tests/modalsheet).
+    // dismisses it. Raw DOM events on the handle rather than PanResponder —
+    // the RNW responder layer has proven undeliverable here. Do not rely on
+    // Pointer Events alone: some mobile WebViews deliver only Touch Events.
+    // Touch is therefore the primary mobile stream, Pointer covers modern
+    // browsers, and Mouse preserves desktop/device-emulation diagnostics.
     const dragYRef = useRef(null)
     if (dragYRef.current === null) dragYRef.current = new Animated.Value(0)
     const dragY = dragYRef.current
@@ -130,10 +133,11 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     useEffect(() => {
         const node = handleRef.current
         if (!isOpen || !node) return
-        let activePointerId = null
+        let activeGesture = null
         let startY = 0
         let sheetHeight = 0
         let samples = []
+        let suppressMouseUntil = 0
         const settleDragBack = () => {
             Animated.timing(dragYRef.current, {
                 toValue: 0,
@@ -142,22 +146,55 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                 useNativeDriver: false,
             }).start()
         }
-        const pointerIdFor = event => (event.pointerId == null ? 'pointer' : event.pointerId)
         const finishGesture = () => {
-            activePointerId = null
+            activeGesture = null
             samples = []
         }
-        const onPointerDown = event => {
-            if (activePointerId !== null || event.isPrimary === false) return
-            if (event.pointerType === 'mouse' && event.button !== 0) return
+        const startGesture = (kind, id, clientY) => {
+            if (activeGesture !== null) return false
 
             dragYRef.current.stopAnimation()
             dragYRef.current.setValue(0)
-            activePointerId = pointerIdFor(event)
-            startY = event.clientY
+            activeGesture = { kind, id }
+            startY = clientY
             sheetHeight = sheetNodeRef.current?.getBoundingClientRect().height || 0
-            samples = [{ time: highResNow(), y: event.clientY }]
-            if (node.setPointerCapture && event.pointerId != null) {
+            samples = [{ time: highResNow(), y: clientY }]
+            return true
+        }
+        const moveGesture = (kind, id, clientY, event) => {
+            if (activeGesture?.kind !== kind || activeGesture.id !== id) return
+            if (event.cancelable) event.preventDefault()
+            const now = highResNow()
+            samples.push({ time: now, y: clientY })
+            samples = samples.filter(sample => sample.time >= now - BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS)
+            dragYRef.current.setValue(clampBottomSheetDrag(clientY - startY, sheetHeight))
+        }
+        const endGesture = (kind, id, clientY) => {
+            if (activeGesture?.kind !== kind || activeGesture.id !== id) return
+            const distance = clientY - startY
+            const releasedAt = highResNow()
+            const velocity = getBottomSheetReleaseVelocity(samples, releasedAt, clientY)
+            finishGesture()
+            if (shouldDismissBottomSheet(distance, velocity)) {
+                requestCloseRef.current()
+            } else {
+                settleDragBack()
+            }
+        }
+        const cancelGesture = (kind, id) => {
+            if (activeGesture?.kind !== kind || activeGesture.id !== id) return
+            finishGesture()
+            settleDragBack()
+        }
+        const findTouch = (touchList, identifier) =>
+            Array.from(touchList || []).find(touch => identifier == null || touch.identifier === identifier)
+        const onPointerDown = event => {
+            if (event.isPrimary === false) return
+            if (event.pointerType === 'mouse' && event.button !== 0) return
+            if (event.pointerType === 'mouse' && highResNow() < suppressMouseUntil) return
+
+            const id = event.pointerId == null ? 'pointer' : event.pointerId
+            if (startGesture('pointer', id, event.clientY) && node.setPointerCapture && event.pointerId != null) {
                 try {
                     node.setPointerCapture(event.pointerId)
                 } catch (error) {
@@ -167,39 +204,76 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             }
         }
         const onPointerMove = event => {
-            if (pointerIdFor(event) !== activePointerId) return
-            if (event.cancelable) event.preventDefault()
-            const now = highResNow()
-            samples.push({ time: now, y: event.clientY })
-            samples = samples.filter(sample => sample.time >= now - BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS)
-            dragYRef.current.setValue(clampBottomSheetDrag(event.clientY - startY, sheetHeight))
+            moveGesture('pointer', event.pointerId == null ? 'pointer' : event.pointerId, event.clientY, event)
         }
         const onPointerUp = event => {
-            if (pointerIdFor(event) !== activePointerId) return
-            const distance = event.clientY - startY
-            const releasedAt = highResNow()
-            const velocity = getBottomSheetReleaseVelocity(samples, releasedAt, event.clientY)
-            finishGesture()
-            if (shouldDismissBottomSheet(distance, velocity)) {
-                requestCloseRef.current()
-            } else {
-                settleDragBack()
-            }
+            endGesture('pointer', event.pointerId == null ? 'pointer' : event.pointerId, event.clientY)
         }
         const onPointerCancel = event => {
-            if (pointerIdFor(event) !== activePointerId) return
-            finishGesture()
-            settleDragBack()
+            cancelGesture('pointer', event.pointerId == null ? 'pointer' : event.pointerId)
+        }
+        const onTouchStart = event => {
+            const touch = findTouch(event.changedTouches)
+            if (!touch) return
+
+            // Browsers that emit both streams send pointerdown before
+            // touchstart. Prefer the native touch stream so a later missing
+            // pointermove cannot leave a real finger gesture inert.
+            if (activeGesture?.kind === 'pointer') finishGesture()
+            suppressMouseUntil = highResNow() + COMPATIBILITY_MOUSE_SUPPRESSION_MS
+            if (startGesture('touch', touch.identifier, touch.clientY) && event.cancelable) event.preventDefault()
+        }
+        const onTouchMove = event => {
+            if (activeGesture?.kind !== 'touch') return
+            const touch =
+                findTouch(event.touches, activeGesture.id) || findTouch(event.changedTouches, activeGesture.id)
+            if (touch) moveGesture('touch', activeGesture.id, touch.clientY, event)
+        }
+        const onTouchEnd = event => {
+            if (activeGesture?.kind !== 'touch') return
+            const touch = findTouch(event.changedTouches, activeGesture.id)
+            if (!touch) return
+            suppressMouseUntil = highResNow() + COMPATIBILITY_MOUSE_SUPPRESSION_MS
+            endGesture('touch', activeGesture.id, touch.clientY)
+        }
+        const onTouchCancel = event => {
+            if (activeGesture?.kind !== 'touch') return
+            const touch = findTouch(event.changedTouches, activeGesture.id)
+            cancelGesture('touch', touch ? touch.identifier : activeGesture.id)
+        }
+        const onMouseDown = event => {
+            if (event.button !== 0 || highResNow() < suppressMouseUntil) return
+            startGesture('mouse', 'mouse', event.clientY)
+        }
+        const onMouseMove = event => {
+            moveGesture('mouse', 'mouse', event.clientY, event)
+        }
+        const onMouseUp = event => {
+            endGesture('mouse', 'mouse', event.clientY)
         }
         node.addEventListener('pointerdown', onPointerDown)
+        node.addEventListener('touchstart', onTouchStart, { passive: false })
+        node.addEventListener('mousedown', onMouseDown)
         window.addEventListener('pointermove', onPointerMove, { passive: false })
         window.addEventListener('pointerup', onPointerUp)
         window.addEventListener('pointercancel', onPointerCancel)
+        window.addEventListener('touchmove', onTouchMove, { passive: false })
+        window.addEventListener('touchend', onTouchEnd)
+        window.addEventListener('touchcancel', onTouchCancel)
+        window.addEventListener('mousemove', onMouseMove)
+        window.addEventListener('mouseup', onMouseUp)
         return () => {
             node.removeEventListener('pointerdown', onPointerDown)
+            node.removeEventListener('touchstart', onTouchStart)
+            node.removeEventListener('mousedown', onMouseDown)
             window.removeEventListener('pointermove', onPointerMove)
             window.removeEventListener('pointerup', onPointerUp)
             window.removeEventListener('pointercancel', onPointerCancel)
+            window.removeEventListener('touchmove', onTouchMove)
+            window.removeEventListener('touchend', onTouchEnd)
+            window.removeEventListener('touchcancel', onTouchCancel)
+            window.removeEventListener('mousemove', onMouseMove)
+            window.removeEventListener('mouseup', onMouseUp)
         }
         // isMounted matters: on a reopen after a full (deferred) unmount the
         // first isOpen flush runs before the handle node exists — the effect
@@ -379,11 +453,13 @@ const localStyles = StyleSheet.create({
     },
     handleStrip: {
         height: HANDLE_STRIP_HEIGHT,
+        flexShrink: 0,
         alignSelf: 'stretch',
         alignItems: 'center',
         justifyContent: 'center',
         // Without this the browser competes for the vertical drag gesture.
         touchAction: 'none',
+        userSelect: 'none',
     },
     handle: {
         width: 36,
