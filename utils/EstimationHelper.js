@@ -228,7 +228,7 @@ export const getEstimationTypeRealValue = (estimation, estimationType) => {
 export const getEstimationResume = (projectId, estimation) => {
     if (projectId) {
         const project = ProjectHelper.getProjectById(projectId)
-        return getEstimationTypeResume(estimation, project.estimationType)
+        return getEstimationTypeResume(estimation, project?.estimationType || ESTIMATION_TYPE_TIME)
     } else {
         return getEstimationTypeResume(estimation, ESTIMATION_TYPE_TIME)
     }
@@ -415,7 +415,7 @@ export const generateDateHeaderTextInMyDaySection = (dateFormated, projectIds, e
     let points = 0
 
     projectIds.forEach((projectId, index) => {
-        const { estimationType } = ProjectHelper.getProjectById(projectId)
+        const estimationType = getEstimationTypeByProjectId(projectId)
         estimationType === ESTIMATION_TYPE_POINTS ? (points += estimations[index]) : (time += estimations[index])
     })
 

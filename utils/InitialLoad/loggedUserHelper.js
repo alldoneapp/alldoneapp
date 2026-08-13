@@ -26,7 +26,7 @@ import {
     watchProjectData,
     watchProjectsChatNotifications,
 } from './initialLoadHelper'
-import { getProjectData } from '../backends/firestore'
+import { getProjectDataResult } from '../backends/firestore'
 import { getProjectUsers } from '../backends/Users/usersFirestore'
 import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
 import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
@@ -41,6 +41,7 @@ import {
     isCompleteProjectsInitialData,
     sanitizeProjectsInitialData,
 } from './projectsInitialDataHelper'
+import { getMissingProjectEntriesIds, pruneStaleProjectIds } from './staleProjectSelfHeal'
 import { isEqual } from 'lodash'
 import { storeLoggedUser } from '../../redux/actions'
 import { trackEvent } from '../analytics/analytics'
@@ -109,15 +110,28 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     // Create batched promises for all projects to load data in parallel
     const allPromises = projectIds.map(projectId =>
         Promise.all([
-            getProjectData(projectId),
+            getProjectDataResult(projectId),
             getProjectUsers(projectId, false),
             getProjectContacts(projectId),
             getProjectWorkstreams(projectId),
             getProjectAssistants(projectId),
         ])
-            .then(([project, users, contacts, workstreams, assistants]) => {
+            .then(([projectResult, users, contacts, workstreams, assistants]) => {
+                const { project, missingFromCache } = projectResult
                 if (!project) {
-                    // The read succeeded but the document is gone (deleted project, revoked
+                    if (missingFromCache) {
+                        // The "missing" answer came from the local cache because the backend was
+                        // unreachable — the project may well exist on the server (seen in
+                        // production 2026-08-13: three live projects read as missing during one
+                        // degraded load). Treat it exactly like a failed read: a null entry, so
+                        // it is retried when everything failed and recovered by the live project
+                        // watchers otherwise — never labeled deleted, never a self-heal candidate.
+                        console.warn(
+                            `[InitialLoad] Project ${projectId} could not be read (backend unreachable), treating it as a failed read`
+                        )
+                        return null
+                    }
+                    // The server confirmed the document is gone (deleted project, revoked
                     // membership, stale cached projectIds). Keep the entry so the caller can
                     // report it, but never let it reach the redux mapping step.
                     console.warn(
@@ -155,6 +169,13 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
         return loadProjectsDataFromFirebase(projectIds, retryCount + 1)
     }
+
+    // Self-heal: ids whose read succeeded but whose project doc is gone keep re-arming a
+    // boot-time race on every cold load (see staleProjectSelfHeal.js). Fire-and-forget so the
+    // login flow is never delayed or failed by it.
+    pruneStaleProjectIds(getMissingProjectEntriesIds(results)).catch(error =>
+        console.warn('[InitialLoad] Stale project id self-heal failed:', error)
+    )
 
     return results
 }

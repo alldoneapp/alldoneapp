@@ -3,6 +3,7 @@ import {
     getInvalidProjectEntryReason,
     haveSameProjectIds,
     isCompleteProjectsInitialData,
+    isTransientMissingDocSnapshot,
     isValidProjectEntry,
     sanitizeProjectsInitialData,
 } from '../../../utils/InitialLoad/projectsInitialDataHelper'
@@ -158,5 +159,17 @@ describe('haveSameProjectIds', () => {
 
         expect(cachedIds).toEqual(['c', 'a', 'b'])
         expect(loggedUserProjectIds).toEqual(['b', 'c', 'a'])
+    })
+})
+
+describe('isTransientMissingDocSnapshot', () => {
+    it('is true only for a cache-served missing doc', () => {
+        expect(isTransientMissingDocSnapshot({ exists: false, metadata: { fromCache: true } })).toBe(true)
+        // Server-confirmed missing: a real absence, not a transient one.
+        expect(isTransientMissingDocSnapshot({ exists: false, metadata: { fromCache: false } })).toBe(false)
+        // Existing docs are never "missing", wherever they were answered from.
+        expect(isTransientMissingDocSnapshot({ exists: true, metadata: { fromCache: true } })).toBe(false)
+        expect(isTransientMissingDocSnapshot({ exists: false })).toBe(false)
+        expect(isTransientMissingDocSnapshot(null)).toBe(false)
     })
 })

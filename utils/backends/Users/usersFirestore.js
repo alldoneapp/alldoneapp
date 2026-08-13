@@ -86,7 +86,12 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
-            console.error(`User document not found in Firestore: /users/${userId}`)
+            // fromCache means the SDK answered from its local cache because the backend was
+            // unreachable — the doc may well exist on the server (seen in production, 2026-08-13).
+            const source = docSnapshot.metadata?.fromCache
+                ? 'served from local cache, backend unreachable — may exist on the server'
+                : 'server-confirmed'
+            console.error(`User document not found in Firestore: /users/${userId} (${source})`)
             return { user: null, missing: true, error: null }
         }
         const user = docSnapshot.data()
