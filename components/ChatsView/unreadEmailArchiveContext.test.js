@@ -197,7 +197,9 @@ describe('UnreadEmailArchiveProvider', () => {
             await lastScope().archive.archiveLinkedEmails([email('conn-a', 'm1')])
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
+        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
+        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
         expect(lastScope().archive.isArchivedEmail('conn-a:m1')).toBe(true)
     })
 
