@@ -76,37 +76,81 @@ import { validateDefaultProjectSelection } from '../../defaultProjectAuthorizati
 
 //ACCESS FUNCTIONS
 
+const describeSnapshotSource = snapshot => {
+    const metadata = snapshot && snapshot.metadata
+    // No metadata at all means the source is genuinely unknown — do NOT report that as
+    // "server-confirmed", which is what the first version of this diagnostic did.
+    if (!metadata) return 'source unknown: the snapshot carried no metadata'
+    return metadata.fromCache
+        ? 'served from the local cache because the backend was unreachable — it may exist on the server'
+        : 'the read reported no cache fallback'
+}
+
+const getCurrentAuthUid = () => {
+    try {
+        return firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
+    } catch (error) {
+        // auth not initialized yet
+        return null
+    }
+}
+
 /**
  * Reads a user document and reports WHY there is no user: a genuinely missing document
  * (`missing: true`) or a failed read (`error` set, e.g. a transient `permission-denied` while
  * the ID token refreshes). The login flow must not treat the second case as "account is broken"
  * and offer to delete the Firebase Auth user.
+ *
+ * A first "missing" answer is never trusted on its own. Production produced it repeatedly for a
+ * document that provably exists (uid lejVqrT6…, created 2020-08-27, read back fine with an admin
+ * token at the same moment — 2026-08-13), including with no cache fallback reported. The absence
+ * signal is therefore known-unreliable, while the consequence of believing it is severe:
+ * `AppContent.handleMissingUserDocument` runs `processNewUser`, whose `uploadNewUser` does a
+ * `batch.set` on `users/{uid}` with a fresh-signup document — overwriting projectIds, gold,
+ * premium status and settings — and offers to delete the Firebase Auth user if that fails.
+ *
+ * So an apparent absence is re-read with an explicit `{ source: 'server' }` query, and only a
+ * second, server-only confirmation is allowed to mean "this account has no document". A recovered
+ * document is returned normally (the caller never learns anything was wrong), and a re-read that
+ * cannot reach the server is reported as a failed read so the caller retries instead of recovering.
  */
 export async function fetchUserDataResult(userId, isLoggedUser) {
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
-            // fromCache means the SDK answered from its local cache because the backend was
-            // unreachable — the doc may well exist on the server (seen in production, 2026-08-13).
-            const source = docSnapshot.metadata?.fromCache
-                ? 'served from local cache, backend unreachable — may exist on the server'
-                : 'server-confirmed'
-            // A server-confirmed "missing" was also seen in production for a doc that provably
-            // exists — which is only possible if the requested path or project differed from the
-            // one checked. Log enough context to settle that on the next occurrence: the exact
-            // id (JSON exposes hidden characters), the auth uid, the project, and the caller.
-            let authUid = null
+            let confirmation
             try {
-                authUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
-            } catch (error) {
-                // auth not initialized — leave null
+                confirmation = await getDb().doc(`/users/${userId}`).get({ source: 'server' })
+            } catch (verifyError) {
+                // The server could not be reached, so the absence is unconfirmed. Report a failed
+                // read: the caller retries and never runs the destructive recovery path.
+                console.warn(
+                    `User document /users/${userId} appeared missing and the confirming server read failed; ` +
+                        'treating it as a failed read rather than a missing account.',
+                    verifyError
+                )
+                return { user: null, missing: false, error: verifyError }
             }
-            console.error(`User document not found in Firestore: /users/${userId} (${source})`, {
+
+            if (confirmation.exists) {
+                const confirmedData = confirmation.data()
+                const recoveredUser = confirmedData ? mapUserData(userId, confirmedData, isLoggedUser) : null
+                console.warn(
+                    `User document /users/${userId} was reported missing by the first read ` +
+                        `(${describeSnapshotSource(docSnapshot)}), but an explicit server read found it. ` +
+                        'Using the document; no account recovery is needed.'
+                )
+                return { user: recoveredUser, missing: !recoveredUser, error: null }
+            }
+
+            const authUid = getCurrentAuthUid()
+            console.error(`User document not found in Firestore: /users/${userId} (server-confirmed twice)`, {
                 requestedUserId: JSON.stringify(userId),
                 idLength: typeof userId === 'string' ? userId.length : null,
                 authUid: JSON.stringify(authUid),
                 isOwnDoc: authUid === userId,
                 firebaseProject: getDb()?.app?.options?.projectId || null,
+                firstReadSource: describeSnapshotSource(docSnapshot),
                 calledFrom: new Error().stack,
             })
             return { user: null, missing: true, error: null }
