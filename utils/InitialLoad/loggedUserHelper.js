@@ -42,6 +42,7 @@ import {
     sanitizeProjectsInitialData,
 } from './projectsInitialDataHelper'
 import { getMissingProjectEntriesIds, pruneStaleProjectIds } from './staleProjectSelfHeal'
+import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
 import { storeLoggedUser } from '../../redux/actions'
 import { trackEvent } from '../analytics/analytics'
@@ -245,6 +246,11 @@ async function loadInitialData() {
             console.warn('[InitialLoad] Failed to start project watchers:', error)
         }
     }, 200)
+
+    // A degraded boot can leave projects (and the administrator user) out of redux for the whole
+    // session — the wedged streams never deliver, so the watcher-based recovery never triggers.
+    // These checks re-fetch what is missing and, if needed, rebuild the Firestore connection.
+    scheduleBootIntegrityChecks()
 
     store.dispatch(updateLoadingStep(5, getProgressLoadingMessage()))
 }

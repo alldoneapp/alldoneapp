@@ -77,6 +77,26 @@ export async function pruneStaleProjectIds(candidateProjectIds) {
     })
     if (confirmedGoneIds.length === 0) return []
 
+    // Transport canary: the client has been observed reporting EXISTING documents as missing,
+    // even on reads that claimed no cache fallback (production, 2026-08-13). Before deleting
+    // anything based on absence, prove that absence reports are trustworthy right now by reading
+    // a document that must exist — the logged user's own. If even that reads as missing (or the
+    // read fails), every confirmation above is suspect and nothing is pruned this session pass.
+    try {
+        const canary = await getDb().doc(`users/${loggedUser.uid}`).get({ source: 'server' })
+        if (!canary.exists) {
+            confirmedGoneIds.forEach(projectId => handledProjectIdsInSession.delete(projectId))
+            console.warn(
+                '[InitialLoad] Skipping stale project id cleanup: the client cannot even read the own user ' +
+                    'document right now, so absence reports are not trustworthy.'
+            )
+            return []
+        }
+    } catch (error) {
+        confirmedGoneIds.forEach(projectId => handledProjectIdsInSession.delete(projectId))
+        return []
+    }
+
     // Same id-list fields the regular project-deletion flow scrubs per member
     // (see `unlinkDeletedProjectFromMembers` in utils/backends/firestore.js).
     const arrayRemove = firebase.firestore.FieldValue.arrayRemove(...confirmedGoneIds)
