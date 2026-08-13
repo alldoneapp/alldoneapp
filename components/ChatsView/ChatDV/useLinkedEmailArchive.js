@@ -1,17 +1,17 @@
 import { useState } from 'react'
 
-import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { translate } from '../../../i18n/TranslationService'
-import { groupLinkedEmailsByConnection } from './linkedEmailActions'
+import { archiveAndMarkReadLinkedEmails } from './linkedEmailActions'
 
 /**
  * The archive-a-linked-email action plus the optimistic state its button renders from.
  *
  * Lifted out of ChatBoard so the chat list's unread previews (AT-2256) archive through exactly the
  * same call and the same in-flight/archived semantics as the thread, instead of a second copy that
- * would drift. The state is deliberately per-mount, as it always was: it is the *optimistic* echo
- * of an action this view just performed (spinner, then a persistent "Archived"), not a cache of the
- * mailbox. Gmail's own state is the truth, and it is re-read the next time the data loads.
+ * would drift. Archiving from Chats also marks the mailbox email as read (AT-2298). The state is
+ * deliberately per-mount, as it always was: it is the *optimistic* echo of an action this view just
+ * performed (spinner, then a persistent "Archived"), not a cache of the mailbox. Gmail's own state
+ * is the truth, and it is re-read the next time the data loads.
  *
  * Consumers get the raw key arrays too, because ChatBoard drives its "Archive all emails" button
  * and its unarchived-email count off them.
@@ -35,12 +35,7 @@ export default function useLinkedEmailArchive() {
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
         try {
-            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
-            await Promise.all(
-                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-                )
-            )
+            await archiveAndMarkReadLinkedEmails(pendingEmails)
             setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
             return true
         } catch (error) {

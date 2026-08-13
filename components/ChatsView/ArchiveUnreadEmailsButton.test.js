@@ -191,7 +191,10 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }]])
+        expect(archivePayloads()).toEqual([
+            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
+            ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
+        ])
     })
 
     it('archives every project from the All Projects line, and says so', async () => {
@@ -204,10 +207,15 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([
-            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
-            ['conn-b', { action: 'archive', messageIds: ['m3'] }],
-        ])
+        expect(archivePayloads()).toEqual(
+            expect.arrayContaining([
+                ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
+                ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
+                ['conn-b', { action: 'archive', messageIds: ['m3'] }],
+                ['conn-b', { action: 'markRead', messageIds: ['m3'] }],
+            ])
+        )
+        expect(archivePayloads()).toHaveLength(4)
     })
 
     it('archives an email previewed by two topics exactly once', async () => {
@@ -228,7 +236,10 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }]])
+        expect(archivePayloads()).toEqual([
+            ['conn-a', { action: 'archive', messageIds: ['m1', 'm2'] }],
+            ['conn-a', { action: 'markRead', messageIds: ['m1', 'm2'] }],
+        ])
     })
 
     it('archives an email previewed in two projects exactly once from All Projects', async () => {
@@ -245,10 +256,13 @@ describe('ArchiveUnreadEmailsButton scope', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(archivePayloads()).toEqual([['conn-a', { action: 'archive', messageIds: ['m1'] }]])
+        expect(archivePayloads()).toEqual([
+            ['conn-a', { action: 'archive', messageIds: ['m1'] }],
+            ['conn-a', { action: 'markRead', messageIds: ['m1'] }],
+        ])
     })
 
-    it('never marks anything as read - archiving is a mailbox action', async () => {
+    it('never marks Alldone chats as read - only the mailbox email is marked read', async () => {
         performEmailLineAction.mockResolvedValue(undefined)
         const tree = renderButton({
             projectId: 'project-1',
@@ -262,6 +276,7 @@ describe('ArchiveUnreadEmailsButton scope', () => {
         })
 
         expect(markMessagesAsRead).not.toHaveBeenCalled()
+        expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'markRead', messageIds: ['m1'] })
     })
 })
 
@@ -272,7 +287,12 @@ describe('ArchiveUnreadEmailsButton states', () => {
 
     it('shows a spinner and refuses a second press while the archive is in flight', async () => {
         let finishArchive
-        performEmailLineAction.mockImplementation(() => new Promise(resolve => (finishArchive = resolve)))
+        let callCount = 0
+        performEmailLineAction.mockImplementation(() => {
+            callCount += 1
+            if (callCount === 1) return new Promise(resolve => (finishArchive = resolve))
+            return Promise.resolve()
+        })
         const tree = renderButton({ projectId: 'project-1', registrations: oneEmail })
 
         let archivePromise
@@ -322,7 +342,7 @@ describe('ArchiveUnreadEmailsButton states', () => {
             await buttonOf(tree).props.onPress()
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(performEmailLineAction).toHaveBeenCalledTimes(2)
     })
 
     it('offers a retry when the archive call fails, without an alert on top of it', async () => {

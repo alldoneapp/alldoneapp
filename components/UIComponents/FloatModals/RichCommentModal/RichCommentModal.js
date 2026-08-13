@@ -50,11 +50,9 @@ import {
     shouldShowAssistantScrollIndicator,
     snapshotAssistantMessageIds,
 } from '../../../ChatsView/Utils/assistantWaiting'
-import { performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import {
-    getLinkedEmailFromMessage,
+    archiveAndMarkReadLinkedEmails,
     getLinkedEmailsFromMessages,
-    groupLinkedEmailsByConnection,
 } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
@@ -178,15 +176,6 @@ export default function RichCommentModal({
         }
     }
 
-    const performLinkedEmailArchive = async emails => {
-        const groupedEmails = groupLinkedEmailsByConnection(emails)
-        await Promise.all(
-            Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-            )
-        )
-    }
-
     const archiveLinkedEmails = emails => {
         const pendingEmails = emails.filter(
             email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
@@ -195,7 +184,7 @@ export default function RichCommentModal({
 
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        performLinkedEmailArchive(pendingEmails)
+        archiveAndMarkReadLinkedEmails(pendingEmails)
             .then(() => {
                 if (modalMountedRef.current) {
                     setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
@@ -220,7 +209,7 @@ export default function RichCommentModal({
         const chatType = objectType === 'users' ? 'contacts' : objectType
         getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
             .then(allLinkedEmailComments =>
-                performLinkedEmailArchive(getLinkedEmailsFromMessages(allLinkedEmailComments))
+                archiveAndMarkReadLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
             )
             .catch(error => {
                 console.error('Failed to archive linked emails from comment popup', error)

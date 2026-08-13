@@ -14,8 +14,8 @@ import ProjectLineActionButton from './ProjectLineActionButton'
  * The emails are deduplicated by the shared registry, so the same email previewed in two topics (or
  * in two projects, from the All Projects line) is archived once.
  *
- * It never touches unread state: archiving is a mailbox action, the previews stay exactly as they
- * were, and nothing is marked as read.
+ * It never touches Alldone chat unread state: the previews stay exactly as they were. The mailbox
+ * emails themselves are archived and marked as read through the shared hook (AT-2298).
  *
  * Visibility doubles as the permission gate. A preview only publishes its emails when the viewer is
  * a project member (the same `SharedHelper.accessGranted` check the thread applies before showing
