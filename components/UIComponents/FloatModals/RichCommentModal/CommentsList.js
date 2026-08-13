@@ -27,7 +27,7 @@ export default function CommentsList({
     return (
         <View>
             {comments.map((item, index) => {
-                const linkedEmail = getLinkedEmailFromMessage(item)
+                const linkedEmail = getLinkedEmailFromMessage(item, { projectId, chatId: objectId })
                 const showVmInteraction = isAwaitingVmInteraction(item.assistantRun)
                 // Same stale-spinner rule as the full chat view, so the popup cannot
                 // offer a Stop button (or a progress story) for a run that timed out.

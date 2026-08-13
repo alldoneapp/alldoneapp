@@ -28,6 +28,10 @@ jest.mock('../HashtagFilters/HashtagFiltersView', () => () => null)
 jest.mock('../UIComponents/NothingToShowOnChats', () => () => null)
 jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => props => props.customRight || null)
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    markChatCommentsAsReadByMessageIds: jest.fn(),
+}))
 jest.mock('./ArchiveUnreadEmailsButton', () => {
     const React = require('react')
     const { View } = require('react-native')

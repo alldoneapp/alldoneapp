@@ -67,6 +67,10 @@ jest.mock('./ChatDV/EditorView/QuotedText', () => () => null)
 jest.mock('./ChatDV/EditorView/CodeText', () => () => null)
 jest.mock('../../utils/backends/Assistants/assistantRuns', () => ({ cancelAssistantRun: jest.fn() }))
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    markChatCommentsAsReadByMessageIds: jest.fn(),
+}))
 jest.mock('../../utils/Gmail/gmailTaskUtils', () => ({
     getGmailTaskData: gmailData => gmailData || null,
     getGmailTaskWebUrl: gmailData => gmailData?.webUrl || '',
@@ -168,6 +172,10 @@ describe('ChatItemUnreadMessage email actions', () => {
                 key: 'email_google_ada@example.com:msg-1',
                 connectionProjectId: 'email_google_ada@example.com',
                 messageId: 'msg-1',
+                commentId: 'comment-1',
+                projectId: 'project-1',
+                chatId: 'chat-1',
+                commentRefs: [{ projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' }],
             },
         ])
     })

@@ -40,7 +40,29 @@ export const collectUnreadLinkedEmails = (sources, projectId) => {
         if (!source) return
         if (projectId && source.projectId !== projectId) return
         ;(source.linkedEmails || []).forEach(linkedEmail => {
-            if (linkedEmail?.key && !linkedEmails.has(linkedEmail.key)) linkedEmails.set(linkedEmail.key, linkedEmail)
+            if (!linkedEmail?.key) return
+            const existing = linkedEmails.get(linkedEmail.key)
+            if (!existing) {
+                linkedEmails.set(linkedEmail.key, {
+                    ...linkedEmail,
+                    ...((linkedEmail.commentRefs || []).length ? { commentRefs: [...linkedEmail.commentRefs] } : {}),
+                })
+                return
+            }
+            if (!(linkedEmail.commentRefs || []).length) return
+            existing.commentRefs = existing.commentRefs || []
+            linkedEmail.commentRefs.forEach(ref => {
+                if (
+                    ref?.projectId &&
+                    ref?.commentId &&
+                    !existing.commentRefs.some(
+                        existingRef =>
+                            existingRef.projectId === ref.projectId && existingRef.commentId === ref.commentId
+                    )
+                ) {
+                    existing.commentRefs.push(ref)
+                }
+            })
         })
     })
     return [...linkedEmails.values()]
@@ -50,7 +72,14 @@ const sameRegistration = (previous, projectId, linkedEmails) =>
     !!previous &&
     previous.projectId === projectId &&
     previous.linkedEmails.length === linkedEmails.length &&
-    previous.linkedEmails.every((linkedEmail, index) => linkedEmail.key === linkedEmails[index].key)
+    previous.linkedEmails.every((linkedEmail, index) => {
+        const next = linkedEmails[index]
+        return (
+            linkedEmail.key === next.key &&
+            (linkedEmail.commentId || '') === (next.commentId || '') &&
+            (linkedEmail.projectId || '') === (next.projectId || '')
+        )
+    })
 
 export function UnreadEmailArchiveProvider({ children }) {
     const archive = useLinkedEmailArchive()

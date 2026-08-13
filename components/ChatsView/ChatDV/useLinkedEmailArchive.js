@@ -8,10 +8,11 @@ import { archiveAndMarkReadLinkedEmails } from './linkedEmailActions'
  *
  * Lifted out of ChatBoard so the chat list's unread previews (AT-2256) archive through exactly the
  * same call and the same in-flight/archived semantics as the thread, instead of a second copy that
- * would drift. Archiving from Chats also marks the mailbox email as read (AT-2298). The state is
- * deliberately per-mount, as it always was: it is the *optimistic* echo of an action this view just
- * performed (spinner, then a persistent "Archived"), not a cache of the mailbox. Gmail's own state
- * is the truth, and it is re-read the next time the data loads.
+ * would drift. Archiving also marks the matching Alldone chat comments as read (AT-2298) without
+ * changing the mailbox read/unread state. The state is deliberately per-mount, as it always was:
+ * it is the *optimistic* echo of an action this view just performed (spinner, then a persistent
+ * "Archived"), not a cache of the mailbox. Gmail's own state is the truth, and it is re-read the
+ * next time the data loads.
  *
  * Consumers get the raw key arrays too, because ChatBoard drives its "Archive all emails" button
  * and its unarchived-email count off them.

@@ -23,7 +23,16 @@ import {
     reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
+import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import EmailRow from './EmailRow'
+
+const collectRowMessageIds = row => [...new Set((row?.messageIds || [row?.messageId]).filter(Boolean))]
+
+const markAlldoneChatsReadForArchivedEmails = messageIds => {
+    markChatCommentsAsReadByMessageIds(messageIds).catch(error => {
+        if (__DEV__) console.warn('[EmailLine] Failed to mark Alldone chats as read:', error?.message || error)
+    })
+}
 
 const MODAL_MAX_WIDTH = 560
 // A merged label can span many project connections for the same Gmail account. Loading every
@@ -360,6 +369,9 @@ function EmailLabelModal({
                 messageIds: [...messageIdsByConnection[connectionId]],
             })
                 .then(() => {
+                    if (action === 'archive') {
+                        markAlldoneChatsReadForArchivedEmails([...messageIdsByConnection[connectionId]])
+                    }
                     setSections(previous => {
                         const next = previous.map(section => {
                             if (section.connectionId !== connectionId) return section
@@ -408,6 +420,19 @@ function EmailLabelModal({
     // Sweeps close the modal immediately and continue in the background: counts are
     // optimistically zeroed and the chip shows a spinner until the summary refreshes.
     const runSweep = action => {
+        const messageIdsByConnection = {}
+        if (action === 'archiveAll') {
+            sections.forEach(section => {
+                if (!messageIdsByConnection[section.connectionId]) {
+                    messageIdsByConnection[section.connectionId] = new Set()
+                }
+                section.messages.forEach(row => {
+                    collectRowMessageIds(row).forEach(messageId =>
+                        messageIdsByConnection[section.connectionId].add(messageId)
+                    )
+                })
+            })
+        }
         closePopover()
         // Archive-all empties the label, so clear its cached rows now — reopening shows the
         // empty state instantly instead of flashing the about-to-be-archived list.
@@ -415,7 +440,13 @@ function EmailLabelModal({
             cacheSections(sections.map(section => ({ ...section, messages: [] })))
         }
         entries.forEach(entry => {
-            performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)
+            Promise.resolve(performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)).then(
+                processed => {
+                    if (action === 'archiveAll' && processed > 0) {
+                        markAlldoneChatsReadForArchivedEmails([...(messageIdsByConnection[entry.connectionId] || [])])
+                    }
+                }
+            )
         })
     }
 
