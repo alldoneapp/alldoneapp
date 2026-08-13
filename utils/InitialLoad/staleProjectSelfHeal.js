@@ -1,30 +1,12 @@
-import firebase from 'firebase/compat/app'
-
-import store from '../../redux/store'
-import { getDb } from '../backends/firestore'
-
 /**
- * Self-heal for stale project ids on the logged user's document.
+ * Legacy entrypoint for stale project-id cleanup.
  *
- * A user document can keep ids of projects whose docs no longer exist (deleted project whose
- * member-unlink batch never reached this user, revoked membership, interrupted deletion). Those
- * ids re-arm a boot-time race on every cold load: InitialLoad skips the project ("has no data"),
- * but because `isProjectMember` in firestore.rules is based on the USER doc's `projectIds`, the
- * per-project watchers still start, observe the missing doc, and dispatch `removeProjectData`
- * while task stores may still reference the project (the estimationType production crash).
- *
- * The heal removes such ids from the user document — but only under strict conditions, because
- * this is a destructive write driven by an absence signal:
- * - only ids currently in `loggedUser.projectIds` (the list that drives InitialLoad),
- * - never for anonymous users,
- * - never for ids in `copyProjectIds` (a project duplication in flight may not have its doc yet),
- * - each id is re-confirmed with a server-only read (`source: 'server'`) right before the write.
- *   A plain `get()`/listener can report "missing" from the local persistence cache; an offline or
- *   denied server read throws and the id is simply left alone for a future session.
- * - at most once per id per session, so repeated load/refresh cycles cannot loop writes.
- *
- * The user-doc watcher (`watchLoggedUserData`) syncs the shrunken id lists back into redux, so no
- * local state is touched here.
+ * Automatic pruning is intentionally disabled. Production proved that the full Firestore client
+ * can report an existing project as absent even for `{ source: 'server' }` reads while still
+ * reading the logged user's canary document successfully. On 2026-08-13 that combination removed
+ * 14 live project memberships from the administrator's user document. A stale id is harmless;
+ * deleting a live membership is not. Project deletion/member-removal flows already own the
+ * authoritative cleanup and this boot path must remain read-only.
  */
 
 /**
@@ -36,88 +18,8 @@ export const getMissingProjectEntriesIds = loadResults =>
         .filter(entry => entry && entry.projectId && !entry.project)
         .map(entry => entry.projectId)
 
-const handledProjectIdsInSession = new Set()
+export const resetStaleProjectSelfHealForTests = () => {}
 
-export const resetStaleProjectSelfHealForTests = () => handledProjectIdsInSession.clear()
-
-const confirmProjectIsGoneOnServer = async projectId => {
-    try {
-        const snapshot = await getDb().doc(`projects/${projectId}`).get({ source: 'server' })
-        return !snapshot.exists
-    } catch (error) {
-        // Offline or permission-denied: absence is not confirmed, keep the id.
-        return false
-    }
-}
-
-export async function pruneStaleProjectIds(candidateProjectIds) {
-    const { loggedUser } = store.getState()
-    if (!loggedUser || !loggedUser.uid || loggedUser.isAnonymous) return []
-
-    const activeProjectIds = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds : []
-    const copyProjectIdsInFlight = new Set(Array.isArray(loggedUser.copyProjectIds) ? loggedUser.copyProjectIds : [])
-
-    const candidates = [...new Set(Array.isArray(candidateProjectIds) ? candidateProjectIds : [])].filter(
-        projectId =>
-            !!projectId &&
-            !handledProjectIdsInSession.has(projectId) &&
-            activeProjectIds.includes(projectId) &&
-            !copyProjectIdsInFlight.has(projectId)
-    )
-    if (candidates.length === 0) return []
-
-    // Mark before the async confirms so overlapping calls (initial load + background refresh +
-    // project watchers) cannot double-process the same id; a failed confirm/write re-arms below.
-    candidates.forEach(projectId => handledProjectIdsInSession.add(projectId))
-
-    const confirmations = await Promise.all(candidates.map(confirmProjectIsGoneOnServer))
-    const confirmedGoneIds = candidates.filter((projectId, index) => confirmations[index])
-    candidates.forEach(projectId => {
-        if (!confirmedGoneIds.includes(projectId)) handledProjectIdsInSession.delete(projectId)
-    })
-    if (confirmedGoneIds.length === 0) return []
-
-    // Transport canary: the client has been observed reporting EXISTING documents as missing,
-    // even on reads that claimed no cache fallback (production, 2026-08-13). Before deleting
-    // anything based on absence, prove that absence reports are trustworthy right now by reading
-    // a document that must exist — the logged user's own. If even that reads as missing (or the
-    // read fails), every confirmation above is suspect and nothing is pruned this session pass.
-    try {
-        const canary = await getDb().doc(`users/${loggedUser.uid}`).get({ source: 'server' })
-        if (!canary.exists) {
-            confirmedGoneIds.forEach(projectId => handledProjectIdsInSession.delete(projectId))
-            console.warn(
-                '[InitialLoad] Skipping stale project id cleanup: the client cannot even read the own user ' +
-                    'document right now, so absence reports are not trustworthy.'
-            )
-            return []
-        }
-    } catch (error) {
-        confirmedGoneIds.forEach(projectId => handledProjectIdsInSession.delete(projectId))
-        return []
-    }
-
-    // Same id-list fields the regular project-deletion flow scrubs per member
-    // (see `unlinkDeletedProjectFromMembers` in utils/backends/firestore.js).
-    const arrayRemove = firebase.firestore.FieldValue.arrayRemove(...confirmedGoneIds)
-    try {
-        await getDb().doc(`users/${loggedUser.uid}`).update({
-            projectIds: arrayRemove,
-            archivedProjectIds: arrayRemove,
-            templateProjectIds: arrayRemove,
-            guideProjectIds: arrayRemove,
-            copyProjectIds: arrayRemove,
-            invitedProjectIds: arrayRemove,
-        })
-    } catch (error) {
-        confirmedGoneIds.forEach(projectId => handledProjectIdsInSession.delete(projectId))
-        console.warn('[InitialLoad] Failed to remove stale project ids from the user document:', error)
-        return []
-    }
-
-    console.warn(
-        `[InitialLoad] Removed ${confirmedGoneIds.length} stale project id(s) from the user document:`,
-        confirmedGoneIds
-    )
-    return confirmedGoneIds
+export async function pruneStaleProjectIds() {
+    return []
 }
