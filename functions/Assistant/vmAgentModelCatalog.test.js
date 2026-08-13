@@ -226,6 +226,9 @@ describe('catalog Gold pricing', () => {
             families: [
                 { id: 'opus', resolvedModel: 'opus' },
                 { id: 'sonnet', resolvedModel: 'sonnet' },
+                { id: 'haiku', resolvedModel: 'haiku' },
+                { id: 'fable', resolvedModel: 'claude-fable-5' },
+                { id: 'mythos', resolvedModel: 'claude-mythos-5' },
             ],
         })
         const codex = decorateCatalogGoldPricing('codex', {
@@ -236,7 +239,7 @@ describe('catalog Gold pricing', () => {
             ],
         })
 
-        expect(claude.families.map(model => model.tokensPerGold)).toEqual([100, 100])
+        expect(claude.families.map(model => model.tokensPerGold)).toEqual([100, 250, 500, 50, 50])
         expect(codex.families.map(model => model.tokensPerGold)).toEqual([100, 250, 2500])
     })
 

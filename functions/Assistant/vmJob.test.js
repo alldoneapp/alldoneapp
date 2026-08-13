@@ -698,7 +698,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1/2.5 of the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)

@@ -10,9 +10,10 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
 
-const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey }) => ({
+const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey, tokensPerGold }) => ({
     text: labelKey,
     model,
+    tokensPerGold,
     shortcutKey: '',
 }))
 

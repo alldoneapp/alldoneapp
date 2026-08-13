@@ -9,11 +9,13 @@ import Button from '../../../UIControls/Button'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
+import AssistantModelGoldRate from '../../../UIComponents/AssistantModelGoldRate'
 
-const HEARTBEAT_MODELS = SELECTABLE_ASSISTANT_MODELS.map(({ model, name, descriptionKey }) => ({
+const HEARTBEAT_MODELS = SELECTABLE_ASSISTANT_MODELS.map(({ model, name, descriptionKey, tokensPerGold }) => ({
     key: model,
     name,
     description: descriptionKey,
+    tokensPerGold,
 }))
 
 export default function HeartbeatModelProperty({ disabled, projectId, assistant }) {
@@ -66,6 +68,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                                         <Text style={[styles.body2, localStyles.optionDescription]}>
                                             {translate(option.description)}
                                         </Text>
+                                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                                     </TouchableOpacity>
                                 )
                             })}

@@ -2,6 +2,8 @@ const {
     BASE_VM_TOKENS_PER_GOLD,
     OBSERVED_TOKEN_MIX,
     CODEX_REFERENCE_PRICES,
+    CLAUDE_REFERENCE_PRICES,
+    CLAUDE_MODEL_REFERENCE_PRICES,
     OPENROUTER_REFERENCE_PRICES,
     SOL_BLENDED_USD_PER_MILLION,
     blendedUsdPerMillionTokens,
@@ -30,12 +32,31 @@ describe('Sol is the baseline the whole table hangs off', () => {
         expect(resolveSolRelativeGoldFactor(SOL)).toBe(1)
     })
 
-    // Claude is the default agent and is currently under-billed against Sol (Opus blends to ~3x Sol).
-    // Correcting that is a price increase on the default path and needs its own product decision, so
-    // this test exists to make any future change to it deliberate and visible rather than incidental.
-    test('Claude models are deliberately left at the Sol rate', () => {
-        for (const model of ['opus', 'sonnet', 'haiku', 'claude-opus-5', 'claude-haiku-4-5']) {
-            expect(resolveTokensPerGold(model)).toBe(BASE_VM_TOKENS_PER_GOLD)
+    test('current Claude aliases use official prices relative to the 100-token Sol baseline', () => {
+        expect(resolveTokensPerGold('opus')).toBe(100)
+        expect(resolveTokensPerGold('sonnet')).toBe(250)
+        expect(resolveTokensPerGold('haiku')).toBe(500)
+        expect(resolveTokensPerGold('fable')).toBe(50)
+        expect(resolveTokensPerGold('mythos')).toBe(50)
+    })
+
+    test('concrete Claude versions keep their own official price instead of inheriting an alias', () => {
+        expect(resolveTokensPerGold('claude-opus-5')).toBe(100)
+        expect(resolveTokensPerGold('claude-opus-4-8')).toBe(100)
+        expect(resolveTokensPerGold('claude-opus-4-1-20250805')).toBe(33)
+        expect(resolveTokensPerGold('claude-sonnet-5')).toBe(250)
+        expect(resolveTokensPerGold('claude-sonnet-4-6')).toBe(160)
+        expect(resolveTokensPerGold('claude-haiku-4-5-20251001')).toBe(500)
+        expect(resolveTokensPerGold('claude-3-5-haiku-20241022')).toBe(630)
+        expect(resolveTokensPerGold('claude-3-haiku-20240307')).toBe(1900)
+    })
+
+    test('every researched Claude price derives from the same Sol blend', () => {
+        for (const price of [
+            ...Object.values(CLAUDE_REFERENCE_PRICES),
+            ...Object.values(CLAUDE_MODEL_REFERENCE_PRICES),
+        ]) {
+            expect(deriveTokensPerGold(price)).toBeGreaterThan(0)
         }
     })
 })
@@ -338,6 +359,8 @@ describe('the rate is disclosed to the user', () => {
         expect(formatTokenDiscountNote('opus')).toBe('')
         expect(formatTokenDiscountNote(undefined)).toBe('')
 
+        expect(formatTokenDiscountNote('sonnet')).toContain('1/2.5')
+        expect(formatTokenDiscountNote('fable')).toContain('2x the Sol rate')
         expect(formatTokenDiscountNote(LUNA)).toContain('1/25')
         expect(formatTokenDiscountNote(TERRA)).toContain('1/2.5')
         expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/18')

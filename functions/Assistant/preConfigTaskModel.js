@@ -1,9 +1,10 @@
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 const INHERIT_ASSISTANT_MODEL = 'INHERIT_ASSISTANT_MODEL'
-const PRE_CONFIG_TASK_MODEL_OPTIONS = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey }) => ({
+const PRE_CONFIG_TASK_MODEL_OPTIONS = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey, tokensPerGold }) => ({
     labelKey,
     value: model,
+    tokensPerGold,
 }))
 
 function getPreConfigTaskModelOverride(task) {
