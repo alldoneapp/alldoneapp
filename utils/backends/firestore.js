@@ -46,6 +46,7 @@ import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
+import { isProjectOwnedByUser } from '../defaultProjectAuthorization'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
@@ -870,6 +871,7 @@ export async function selectAndSetNewDefaultProject(user) {
         if (
             !newDefaultProjectId &&
             doc.id !== defaultProjectId &&
+            isProjectOwnedByUser(doc.data(), uid) &&
             projectIds.includes(doc.id) &&
             !archivedProjectIds.includes(doc.id)
         ) {
