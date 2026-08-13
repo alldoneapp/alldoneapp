@@ -40,7 +40,7 @@ export const TYPESENSE_QUERY_CONFIG = {
 // Matches the Algolia hitsPerPage the index settings used to pin (AMOUNT_OF_SEARCH_BY_PROJECT).
 const PER_PAGE = 100
 
-const adaptHit = hit => {
+export const adaptTypesenseHit = hit => {
     const document = hit.document || {}
     // Downstream code (ResultLists, mention insertion, parent-goal picking) reads the
     // Algolia hit shape: objectID = the composite `objectId + projectId`, and `id` = the
@@ -52,7 +52,17 @@ const adaptHit = hit => {
         document.projectId && objectID.endsWith(document.projectId)
             ? objectID.slice(0, -String(document.projectId).length)
             : objectID
-    return { ...document, id: bareId, objectID }
+
+    // Typesense stores this mixed legacy field as string[]. The public sentinel is numeric `0`
+    // everywhere else in the app, and privacy checks intentionally use strict equality. Leaving
+    // the search hit as `"0"` makes a public goal look private after the parent-goal picker saves
+    // it to a task, so the relationship is persisted but immediately hidden by the task UI.
+    const isPublicFor = Array.isArray(document.isPublicFor)
+        ? document.isPublicFor.map(userId => (userId === '0' ? 0 : userId))
+        : document.isPublicFor
+    const privacyData = Object.prototype.hasOwnProperty.call(document, 'isPublicFor') ? { isPublicFor } : {}
+
+    return { ...document, ...privacyData, id: bareId, objectID }
 }
 
 // searches: [{ collection, query, filterBy }] → resolves [{ hits }] in the same order.
@@ -101,7 +111,7 @@ export const multiSearchTypesense = async searches => {
             console.log('Typesense search error:', result.error)
             return { hits: [], error: result.error }
         }
-        return { hits: (result.hits || []).map(adaptHit) }
+        return { hits: (result.hits || []).map(adaptTypesenseHit) }
     })
 }
 

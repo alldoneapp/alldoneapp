@@ -289,7 +289,8 @@ class ProjectHelper {
 
     static getProjectColorById(projectId, defaultName) {
         const project = ProjectHelper.getProjectById(projectId)
-        return project ? project.color : defaultName ? defaultName : ''
+        const color = project?.color || defaultName
+        return PROJECT_COLORS[color] ? color : PROJECT_COLOR_DEFAULT
     }
 
     static getUserNameById(projectId, userId, defaultName) {
