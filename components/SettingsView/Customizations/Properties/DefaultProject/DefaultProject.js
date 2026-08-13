@@ -12,6 +12,7 @@ import ProjectHelper from '../../../ProjectsSettings/ProjectHelper'
 import ProjectListModal from '../../../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
 import { unwatch, watchActiveAndArchivedProjects, watchProject } from '../../../../../utils/backends/firestore'
 import { setDefaultProjectId } from '../../../../../utils/backends/Users/usersFirestore'
+import { getProjectsOwnedByUser, isProjectOwnedByUser } from '../../../../../utils/defaultProjectAuthorization'
 
 export default function DefaultProject({ user }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -22,7 +23,10 @@ export default function DefaultProject({ user }) {
     const { defaultProjectId, uid: userId } = user
 
     const onSelectProject = projectId => {
-        if (defaultProjectId !== projectId) setDefaultProjectId(userId, projectId)
+        const project = activeProjects.find(activeProject => activeProject.id === projectId)
+        if (defaultProjectId !== projectId && isProjectOwnedByUser(project, userId)) {
+            setDefaultProjectId(userId, projectId)
+        }
     }
 
     const closeModal = () => {
@@ -35,7 +39,7 @@ export default function DefaultProject({ user }) {
 
     const filterActiveProjects = projects => {
         const activeProjects = ProjectHelper.getActiveProjects2(projects, user)
-        setActiveProjects(activeProjects)
+        setActiveProjects(getProjectsOwnedByUser(activeProjects, userId))
     }
 
     useEffect(() => {
