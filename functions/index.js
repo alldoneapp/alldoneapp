@@ -4347,20 +4347,6 @@ exports.autoPostponeOverdueTasksSecondGen = onSchedule(
     }
 )
 
-exports.autoArchiveInactiveProjectsSecondGen = onSchedule(
-    {
-        schedule: '30 2 * * *',
-        timeZone: 'UTC',
-        timeoutSeconds: 900,
-        memory: '512MiB',
-        region: 'europe-west1',
-    },
-    async () => {
-        const { checkAndAutoArchiveProjects } = require('./Projects/autoArchiveProjectsCloud')
-        return await checkAndAutoArchiveProjects()
-    }
-)
-
 exports.renewExpiredOKRsSecondGen = onSchedule(
     {
         schedule: '0 * * * *',

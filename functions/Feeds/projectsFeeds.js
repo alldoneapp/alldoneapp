@@ -2,7 +2,7 @@
 
 const { generateCurrentDateObject, generateFeedModel, proccessFeed, loadFeedObject } = require('./globalFeedsHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
-const { FEED_PROJECT_ARCHIVED_UNARCHIVED, FEED_PROJECT_DESCRIPTION_CHANGED } = require('./FeedsConstants')
+const { FEED_PROJECT_DESCRIPTION_CHANGED } = require('./FeedsConstants')
 const { shrinkTagText } = require('../Utils/parseTextUtils')
 
 function generateProjectObjectModel(currentMilliseconds, project = {}, projectId = '') {
@@ -67,46 +67,7 @@ async function createProjectDescriptionChangedFeed(
     )
 }
 
-async function createProjectAutoArchivedFeed(projectId, project, inactiveDays, batch, feedUser) {
-    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
-
-    let projectFeedObject = await loadFeedObject(projectId, projectId, 'projects', currentMilliseconds, batch)
-    if (!projectFeedObject) {
-        projectFeedObject = generateProjectObjectModel(currentMilliseconds, project, projectId)
-        batch.feedObjects = { ...batch.feedObjects, [projectId]: projectFeedObject }
-    }
-
-    projectFeedObject.lastChangeDate = currentMilliseconds
-    projectFeedObject.name = project?.name || projectFeedObject.name
-    projectFeedObject.color = project?.color || projectFeedObject.color || ''
-
-    const { feed, feedId } = generateFeedModel({
-        feedType: FEED_PROJECT_ARCHIVED_UNARCHIVED,
-        lastChangeDate: currentMilliseconds,
-        entryText: `automatically archived project after ${inactiveDays} days without activity`,
-        feedUser,
-        objectId: projectId,
-        isPublicFor: projectFeedObject.isPublicFor,
-    })
-
-    await proccessFeed(
-        projectId,
-        currentDateFormated,
-        [],
-        projectId,
-        'projects',
-        projectFeedObject,
-        feedId,
-        feed,
-        feedUser,
-        batch,
-        false,
-        { project, disabledLastInteraction: true }
-    )
-}
-
 module.exports = {
-    createProjectAutoArchivedFeed,
     createProjectDescriptionChangedFeed,
     generateProjectObjectModel,
 }

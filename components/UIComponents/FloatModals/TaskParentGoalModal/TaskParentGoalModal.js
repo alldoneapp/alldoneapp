@@ -34,6 +34,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../Feeds/Utils/FeedsConstants'
 import { DYNAMIC_PERCENT, getOwnerId } from '../../../GoalsView/GoalsHelper'
 import { ALL_GOALS_ID } from '../../../AllSections/allSectionHelper'
 import store from '../../../../redux/store'
+import { goalSelectionId, shouldUnselectGoal } from './goalSelectionToggle'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -55,6 +56,11 @@ export default function TaskParentGoalModal({
 
     // When in fromAddTaskSection mode, use Redux state for activeGoal
     const effectiveActiveGoal = fromAddTaskSection ? selectedGoalFromRedux : activeGoal
+
+    // Keep the meaning of a click stable for the lifetime of this picker. A goal assigned by the
+    // router after the picker opened must not turn the user's pending "select" click into
+    // "unselect". The reference advances only after a choice made through this picker.
+    const selectionAtLastUserChoiceRef = useRef(goalSelectionId(effectiveActiveGoal))
     const [flag, setFlag] = useState(false)
     const [activeMilestoneDate, setActiveMilestoneDate] = useState(null)
     const [currentMilestoneGoals, setCurrentMilestoneGoals] = useState([])
@@ -285,14 +291,15 @@ export default function TaskParentGoalModal({
     const selectGoal = (goal, tabIndex, goalProjectId, isNewGoal) => {
         dismissClickThroughEditModes()
 
-        // Check if we're clicking on the same goal that's already selected
-        // We need to check both the effective active goal and the prop active goal
-        // to handle all different modal contexts
+        // A repeated click is an unselect only if the goal was already selected when the picker
+        // opened (or when the user last chose through it). Live background updates may change what
+        // is rendered, but must not invert the interaction already in flight.
         const currentlySelectedGoal = effectiveActiveGoal || activeGoal
-        if (currentlySelectedGoal && goal && currentlySelectedGoal.id === goal.id) {
+        if (shouldUnselectGoal(goal, currentlySelectedGoal, selectionAtLastUserChoiceRef.current)) {
             unselectGoal()
             return
         }
+        selectionAtLastUserChoiceRef.current = goalSelectionId(goal)
 
         // Use the goal's projectId if available, otherwise fall back to the passed goalProjectId
         const targetProjectId = goal?.projectId || goalProjectId
@@ -315,6 +322,7 @@ export default function TaskParentGoalModal({
 
     const unselectGoal = () => {
         dismissClickThroughEditModes()
+        selectionAtLastUserChoiceRef.current = null
 
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))

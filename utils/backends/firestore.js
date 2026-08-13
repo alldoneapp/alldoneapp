@@ -131,7 +131,6 @@ import {
 import firebase from 'firebase/compat/app'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
-import { AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
 import { COLOR_KEY_4 } from '../../components/NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import { processRestoredNote } from '../../components/NotesView/NotesDV/EditorView/notesHelper'
 import { CURRENT_DAY_VERSION_ID } from '../../components/UIComponents/FloatModals/RevisionHistoryModal/RevisionHistoryModal'
@@ -3671,10 +3670,6 @@ export function mapUserData(userId, user) {
             user.autoPostponeAfterDaysOverdue != null
                 ? user.autoPostponeAfterDaysOverdue
                 : AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT,
-        autoArchiveProjectsAfterDays:
-            user.autoArchiveProjectsAfterDays != null
-                ? user.autoArchiveProjectsAfterDays
-                : AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT,
         sidebarNavigationMode: user.sidebarNavigationMode || SIDEBAR_NAVIGATION_SIMPLE,
         sidebarExpanded: user.sidebarExpanded ? user.sidebarExpanded : SIDEBAR_COLLAPSED,
         gold: user.gold ? user.gold : 0,
