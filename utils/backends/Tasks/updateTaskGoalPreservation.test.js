@@ -84,6 +84,7 @@ jest.mock('../../../functions/BatchWrapper/batchWrapper', () => ({
             this.writes.push({ path: ref && ref.path, deleted: true })
         }
         async commit() {
+            if (global.__AT2277_COMMIT_BARRIER__) await global.__AT2277_COMMIT_BARRIER__
             global.__AT2277_WRITES__.push(...this.writes)
         }
     },
@@ -98,7 +99,7 @@ jest.mock('../../undo/undoActions', () => ({
     queueUndoAction: jest.fn(),
 }))
 
-import { updateTask } from './tasksFirestore'
+import { setTaskParentGoal, updateTask } from './tasksFirestore'
 
 const baseTask = () => ({
     id: TASK_ID,
@@ -151,6 +152,7 @@ beforeEach(() => {
     committedWrites = []
     global.__AT2277_DB__ = db
     global.__AT2277_WRITES__ = committedWrites
+    global.__AT2277_COMMIT_BARRIER__ = null
 })
 
 describe('updateTask + AT-2277 goal preservation', () => {
@@ -200,5 +202,36 @@ describe('updateTask + AT-2277 goal preservation', () => {
         await runUpdate({ ...live, extendedName: 'edited' }, live)
 
         expect(taskWrite().parentGoalId).toBeNull()
+    })
+})
+
+describe('setTaskParentGoal persistence', () => {
+    it('resolves only after the parent-goal batch has committed', async () => {
+        let releaseCommit
+        global.__AT2277_COMMIT_BARRIER__ = new Promise(resolve => {
+            releaseCommit = resolve
+        })
+
+        let resolved = false
+        const goal = { id: GOAL_ID, isPublicFor: [0], lockKey: 'lock-1' }
+        const saving = setTaskParentGoal(PROJECT_ID, TASK_ID, baseTask(), goal).then(() => {
+            resolved = true
+        })
+
+        await Promise.resolve()
+        expect(resolved).toBe(false)
+        expect(taskWrite()).toBeNull()
+
+        releaseCommit()
+        await saving
+
+        expect(resolved).toBe(true)
+        expect(taskWrite()).toEqual(
+            expect.objectContaining({
+                parentGoalId: GOAL_ID,
+                parentGoalIsPublicFor: [0],
+                lockKey: 'lock-1',
+            })
+        )
     })
 })
