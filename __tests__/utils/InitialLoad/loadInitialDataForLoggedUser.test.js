@@ -41,7 +41,14 @@ jest.mock('../../../utils/backends/firestore', () => ({
     unwatch: jest.fn(),
     updateLastLoggedUserDate: jest.fn(),
     watchForceReload: jest.fn(),
-    getProjectData: (...args) => mockGetProjectData(...args),
+    // The loader consumes the result shape; mockGetProjectData keeps returning a plain
+    // project-or-null (or a { project, missingFromCache } object for the transient-miss tests).
+    getProjectDataResult: (...args) =>
+        mockGetProjectData(...args).then(result =>
+            result && typeof result === 'object' && 'missingFromCache' in result
+                ? result
+                : { project: result, missingFromCache: false }
+        ),
 }))
 
 jest.mock('../../../utils/backends/Users/usersFirestore', () => ({
@@ -186,6 +193,22 @@ describe('loadInitialDataForLoggedUser', () => {
 
         expect(mockState.loggedUser.projectIds).toEqual(['p2', 'p1'])
         expect(mockGetProjectData).not.toHaveBeenCalled()
+    })
+
+    it('treats a cache-served "missing" as a failed read, not a deleted project', async () => {
+        // p2's "missing" comes from the local cache (backend unreachable) — the project may well
+        // exist on the server, so the entry must be dropped as a failed read (retryable/recovered
+        // by the live watchers) and the payload must not be cached.
+        mockGetProjectData.mockImplementation(id =>
+            Promise.resolve(id === 'p1' ? project('p1') : { project: null, missingFromCache: true })
+        )
+
+        await expect(loadInitialDataForLoggedUser(mockState.loggedUser)).resolves.toBeUndefined()
+
+        const { projects, projectsMap } = getProjectsInitialDataDispatch()
+        expect(projects.map(p => p.id)).toEqual(['p1'])
+        expect(projectsMap.p2).toBeUndefined()
+        expect(mockSetCachedGlobalData).not.toHaveBeenCalled()
     })
 
     it('still logs the user in when none of the project documents exist any more', async () => {
