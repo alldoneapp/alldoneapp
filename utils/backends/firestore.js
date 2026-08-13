@@ -43,6 +43,7 @@ import {
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
+import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -1196,9 +1197,20 @@ export async function getProjectBy(projectId) {
     return (await db.doc(`/projects/${projectId}`).get()).data()
 }
 
+export async function getProjectDataResult(projectId) {
+    const snapshot = await db.doc(`/projects/${projectId}`).get()
+    const project = snapshot.data()
+    return {
+        project: project ? mapProjectData(projectId, project) : null,
+        // "missing" answered by the local cache while the backend is unreachable — the doc may
+        // exist on the server, so callers must treat it as a failed read, not a deleted doc.
+        missingFromCache: isTransientMissingDocSnapshot(snapshot),
+    }
+}
+
 export async function getProjectData(projectId) {
-    const project = (await db.doc(`/projects/${projectId}`).get()).data()
-    return project ? mapProjectData(projectId, project) : null
+    const { project } = await getProjectDataResult(projectId)
+    return project
 }
 
 export function watchBacklinksCount(projectId, linkedParentObject, callback, watcherKey) {
@@ -1270,6 +1282,9 @@ export function unwatchLinkedTasks() {
 
 export function watchProject(projectId, callback, watcherKey) {
     globalWatcherUnsub[watcherKey] = db.doc(`projects/${projectId}`).onSnapshot(doc => {
+        // A cache-served "missing" only means the backend is unreachable — the project may exist
+        // on the server, so never report it as gone (a real deletion arrives server-confirmed).
+        if (isTransientMissingDocSnapshot(doc)) return
         const data = doc.data()
         const project = data ? mapProjectData(projectId, doc.data()) : null
         callback(project)

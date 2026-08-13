@@ -2645,6 +2645,20 @@ export const navigateToNewProject = (project, users, workstreams, contacts, assi
     return action
 }
 
+// Data-only sibling of 'Navigate to new project': inserts a project (plus its sub-stores) that
+// was dropped from the initial load by a transient read failure, WITHOUT navigating to it.
+export const addProjectData = (project, users, workstreams, contacts, assistants) => {
+    const action = {
+        type: 'Add project data',
+        project,
+        users,
+        workstreams,
+        contacts,
+        assistants,
+    }
+    return action
+}
+
 export const navigateToAllProjectsTasks = options => {
     const action = {
         type: 'Navigate to all projects tasks',

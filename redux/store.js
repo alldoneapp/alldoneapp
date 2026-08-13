@@ -2647,6 +2647,30 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
+        case 'Add project data': {
+            const { project, users, workstreams, contacts, assistants } = action
+
+            // Idempotent under races: the recovery path and a competing writer may both land here.
+            if (state.loggedUserProjectsMap[project.id]) return state
+
+            const addedProject = { ...project, index: state.loggedUserProjects.length }
+
+            return {
+                ...state,
+                loggedUserProjects: [...state.loggedUserProjects, addedProject],
+                loggedUserProjectsMap: { ...state.loggedUserProjectsMap, [addedProject.id]: addedProject },
+                projectUsers: { ...state.projectUsers, [addedProject.id]: users },
+                projectWorkstreams: { ...state.projectWorkstreams, [addedProject.id]: workstreams },
+                projectContacts: { ...state.projectContacts, [addedProject.id]: contacts },
+                projectAssistants: { ...state.projectAssistants, [addedProject.id]: assistants },
+                projectInvitations: { ...state.projectInvitations, [addedProject.id]: [] },
+                projectChatNotifications: {
+                    ...state.projectChatNotifications,
+                    [addedProject.id]: { totalUnfollowed: 0, totalFollowed: 0 },
+                },
+            }
+        }
+
         case 'Navigate to all projects tasks': {
             const { options } = action
             return {
