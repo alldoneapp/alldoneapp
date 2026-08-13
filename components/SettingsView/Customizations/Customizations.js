@@ -25,6 +25,7 @@ import SidebarNavigation from './Properties/SidebarNavigation'
 import PublicBookingSettings from './Properties/PublicBookingSettings'
 import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 import AnalyticsConsent from './Properties/AnalyticsConsent'
+import AutoArchiveProjectsAfterDays from './Properties/AutoArchiveProjectsAfterDays'
 
 const Customizations = () => {
     useTranslator()
@@ -65,6 +66,10 @@ const Customizations = () => {
                     <AutoPostponeAfterDaysOverdue
                         userId={loggedUser.uid}
                         autoPostponeAfterDaysOverdue={loggedUser.autoPostponeAfterDaysOverdue}
+                    />
+                    <AutoArchiveProjectsAfterDays
+                        userId={loggedUser.uid}
+                        autoArchiveProjectsAfterDays={loggedUser.autoArchiveProjectsAfterDays}
                     />
                     <SidebarNavigation
                         userId={loggedUser.uid}
