@@ -4440,6 +4440,12 @@
         },
         {
             "collectionGroup": "entries",
+            "fieldPath": "tasks",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
             "fieldPath": "newValue",
             "ttl": false,
             "indexes": []

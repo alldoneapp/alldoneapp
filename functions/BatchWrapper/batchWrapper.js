@@ -114,84 +114,20 @@ class BatchWrapper {
     }
 
     async _persistFeedObjects() {
-        // Persist feed objects to Firestore if any exist
-        console.log(
-            'BatchWrapper: _persistFeedObjects called with',
-            Object.keys(this.feedObjects).length,
-            'feed objects'
-        )
-        if (Object.keys(this.feedObjects).length > 0) {
-            for (const [objectId, feedData] of Object.entries(this.feedObjects)) {
-                try {
-                    // Handle both old and new formats for backward compatibility
-                    let feedObject, projectId, objectType
+        for (const [objectId, feedData] of Object.entries(this.feedObjects)) {
+            // Legacy feed helpers use feedObjects as an in-batch cache and already queue the
+            // canonical last-state write through setFeedObjectLastState. Persisting those direct
+            // objects here duplicates that write and, when no context was set, creates the bogus
+            // feedsObjectsLastStates/unknown path seen in the parent-goal failure.
+            //
+            // TaskService is the only caller that delegates persistence to BatchWrapper. Its
+            // structured envelope makes that ownership explicit and cannot lose the project path.
+            if (!feedData?.feedObject || !feedData.projectId || !feedData.objectType) continue
 
-                    if (feedData.feedObject && feedData.projectId && feedData.objectType) {
-                        // New structured format from TaskService
-                        feedObject = feedData.feedObject
-                        projectId = feedData.projectId
-                        objectType = feedData.objectType
-                    } else if (feedData.type && (feedData.name || feedData.id)) {
-                        // Old direct format - feed object passed directly
-                        feedObject = feedData
-
-                        // Try to determine project and object type from context or feed object
-                        // This is a fallback - the new structured format is preferred
-                        objectType =
-                            feedData.type === 'task'
-                                ? 'tasks'
-                                : feedData.type === 'goal'
-                                  ? 'goals'
-                                  : feedData.type === 'note'
-                                    ? 'notes'
-                                    : feedData.type === 'contact'
-                                      ? 'contacts'
-                                      : feedData.type === 'project'
-                                        ? 'projects'
-                                        : feedData.type === 'user'
-                                          ? 'users'
-                                          : feedData.type === 'skill'
-                                            ? 'skills'
-                                            : feedData.type === 'assistant'
-                                              ? 'assistants'
-                                              : feedData.type
-
-                        // Extract projectId from feed object or use a fallback
-                        projectId = feedData.projectId || feedData.projectIDKey || this.currentProjectId || 'unknown'
-                    } else {
-                        console.warn(
-                            'BatchWrapper: Invalid feed format for objectId:',
-                            objectId,
-                            'Expected either structured format {feedObject, projectId, objectType} or direct feed object with type property'
-                        )
-                        continue
-                    }
-
-                    if (feedObject && projectId && objectType) {
-                        // Write feed object to feedsObjectsLastStates collection
-                        const feedObjectRef = this.#db.doc(
-                            `feedsObjectsLastStates/${projectId}/${objectType}/${objectId}`
-                        )
-
-                        // Use the existing batch system to add the feed object write
-                        this.set(feedObjectRef, feedObject, { merge: true })
-                        console.log(
-                            'BatchWrapper: Successfully queued feed object for persistence:',
-                            objectId,
-                            'to',
-                            feedObjectRef.path
-                        )
-                    } else {
-                        console.warn('BatchWrapper: Could not resolve feed context for objectId:', objectId, {
-                            feedObject: !!feedObject,
-                            projectId,
-                            objectType,
-                        })
-                    }
-                } catch (error) {
-                    console.error('Failed to persist feed object for objectId:', objectId, error)
-                }
-            }
+            const feedObjectRef = this.#db.doc(
+                `feedsObjectsLastStates/${feedData.projectId}/${feedData.objectType}/${objectId}`
+            )
+            this.set(feedObjectRef, feedData.feedObject, { merge: true })
         }
     }
 }

@@ -1,10 +1,14 @@
 let mockArrayUnion
 
-jest.mock('firebase-admin/firestore', () => ({
-    FieldValue: {
-        arrayUnion: (...values) => mockArrayUnion(...values),
-    },
-}))
+jest.mock(
+    'firebase-admin/firestore',
+    () => ({
+        FieldValue: {
+            arrayUnion: (...values) => mockArrayUnion(...values),
+        },
+    }),
+    { virtual: true }
+)
 
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskFollowedFeed: jest.fn().mockResolvedValue(undefined),
@@ -81,6 +85,7 @@ describe('followerHelper', () => {
 
         expect(chatUpdate).not.toHaveBeenCalled()
         expect(createTaskFollowedFeed).toHaveBeenCalled()
+        expect(batch.set).toHaveBeenCalledWith(expect.anything(), { tasks: { 'task-1': true } }, { merge: true })
     })
 
     test('adds the follower when a chat has no usersFollowing array', async () => {
