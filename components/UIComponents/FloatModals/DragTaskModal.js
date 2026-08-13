@@ -352,9 +352,7 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                             <TaskParentGoalModal
                                 key={showParentGoal}
                                 activeGoal={activeGoal}
-                                setActiveGoal={goal => {
-                                    Backend.setTaskParentGoalMultiple(tasks, goal ? goal : null)
-                                }}
+                                setActiveGoal={goal => Backend.setTaskParentGoalMultiple(tasks, goal ? goal : null)}
                                 projectId={tasks[0] ? tasks[0].projectId : null}
                                 closeModal={() => setShowParentGoal(false)}
                             />

@@ -157,10 +157,7 @@ export default function SecondaryButtonsArea({
         dismissEditMode?.()
     }
 
-    const handleSetParentGoal = (goal, goalProjectId) => {
-        setParentGoalBeforeSave(goal, goalProjectId)
-        hideParentGoalPopup()
-    }
+    const handleSetParentGoal = (goal, goalProjectId) => setParentGoalBeforeSave(goal, goalProjectId)
 
     return (
         <View style={localStyles.container}>

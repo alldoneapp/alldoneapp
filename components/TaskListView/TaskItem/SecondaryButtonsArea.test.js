@@ -19,6 +19,16 @@ const mockState = {
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 jest.mock('react-tiny-popover', () => 'Popover')
 jest.mock('react-hot-keys', () => 'Hotkeys')
+jest.mock('../../UIComponents/ModalShell/AppPopover', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return ({ content, children }) => (
+        <View>
+            {children}
+            {content}
+        </View>
+    )
+})
 jest.mock('../../UIComponents/FloatModals/PrivacyModal/PrivacyButton', () => 'PrivacyButton')
 jest.mock('../../UIComponents/FloatModals/HighlightColorModal/HighlightButton', () => 'HighlightButton')
 jest.mock('../../UIComponents/FloatModals/MorePopupsOfEditModals/Tasks/TaskMoreButton', () => 'TaskMoreButton')
@@ -113,5 +123,46 @@ describe('SecondaryButtonsArea', () => {
         expect(getFocusButton().props.accessibilityState).toEqual({ selected: false })
         expect(prepareTaskFocusChange).not.toHaveBeenCalled()
         expect(updateFocusedTask).not.toHaveBeenCalled()
+    })
+
+    test('returns the parent-goal save so the picker waits for persistence before closing', async () => {
+        const saveResult = Promise.resolve({ parentGoalId: 'goal-1' })
+        const setParentGoalBeforeSave = jest.fn(() => saveResult)
+        const dismissEditMode = jest.fn()
+        const tree = renderer.create(
+            <SecondaryButtonsArea
+                tmpTask={{
+                    id: 'task-1',
+                    done: false,
+                    calendarData: null,
+                    parentGoalId: null,
+                    isSubtask: false,
+                    userId: 'user-1',
+                }}
+                hasName={true}
+                adding={false}
+                projectId="project-1"
+                accessGranted={true}
+                loggedUserCanUpdateObject={true}
+                isAssistant={false}
+                setParentGoalBeforeSave={setParentGoalBeforeSave}
+                dismissEditMode={dismissEditMode}
+            />
+        )
+
+        await act(async () => {
+            await tree.root
+                .findAllByType('GhostButton')
+                .find(button => button.props.icon === 'target')
+                .props.onPress()
+        })
+
+        const modal = tree.root.findByType('TaskParentGoalModal')
+        const goal = { id: 'goal-1', projectId: 'project-1' }
+        const result = modal.props.setActiveGoal(goal, goal.projectId)
+
+        expect(result).toBe(saveResult)
+        expect(setParentGoalBeforeSave).toHaveBeenCalledWith(goal, goal.projectId)
+        expect(dismissEditMode).not.toHaveBeenCalled()
     })
 })

@@ -223,12 +223,12 @@ export default function EditTask({
                     const finalTask = { ...tmpTask, ...goalData }
                     // Note: Creating task in different project requires changing projectId context
                     // For now, just create with goal data - the task will be in current project with new goal
-                    createTask(finalTask, false, false)
+                    return createTask(finalTask, false, false)
                 } else {
-                    setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
-                    dismissEditMode(true)
+                    return setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
                 }
             }
+            return false
         } else {
             // Same project or no goal, just update the parent goal
             const goalData = goal
@@ -236,7 +236,7 @@ export default function EditTask({
                 : { parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
 
             const finalTask = { ...tmpTask, ...goalData }
-            adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+            return adding ? createTask(finalTask, false, false) : editTask(finalTask, false, false, null, '', true)
         }
     }
 
@@ -451,7 +451,7 @@ export default function EditTask({
     // open) able to create consecutive distinct tasks.
     const createTask = useSingleFlightSubmit(runCreateTask, RELEASE_AFTER_SUBMISSION)
 
-    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment) => {
+    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment, deferDismiss = false) => {
         updatedTask.name = updatedTask.name.trim()
         updatedTask.extendedName = updatedTask.extendedName.trim()
 
@@ -491,13 +491,13 @@ export default function EditTask({
         }
 
         const mentions = TasksHelper.getMentionUsersFromTitle(projectId, comment)
-        updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(() =>
-            trySetLinkedObjects(taskToUpdate.id)
+        const saving = updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(
+            () => trySetLinkedObjects(taskToUpdate.id)
         )
 
         if (validDirectAction) dispatch(hideFloatPopup())
 
-        dismissEditMode(true)
+        if (!deferDismiss) dismissEditMode(true)
 
         if (
             (currentUserId !== loggedUserId || loggedUserId !== updatedTask.userId) &&
@@ -508,6 +508,8 @@ export default function EditTask({
                 dispatch(updateTaskSuggestedCommentModalData(true, projectId, updatedTask, updatedTask.extendedName))
             })
         }
+
+        return saving
     }
 
     const setTask = (event, actionBeforeSave, validDirectAction, showSuggested) => {
