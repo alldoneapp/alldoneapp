@@ -28,8 +28,13 @@ nvm use 22
 npm ci
 npm run build          # production build → ../web-build
 npm run build:analyze  # same + webpack-bundle-analyzer report
-npm run dev            # dev server on http://localhost:19006 (needs ../.env)
+npm run dev            # low-level HTTP dev server on http://localhost:19006 (needs ../.env)
 ```
+
+For normal local app development, run `npm run dev` from the repository root. It starts
+this server with the trusted HTTPS/Firebase Auth proxy at `https://localhost:19006`, which
+is required for Google sign-in in embedded browsers. Use the low-level command above only
+when plain HTTP is explicitly needed.
 
 ## Module semantics (production parity)
 
