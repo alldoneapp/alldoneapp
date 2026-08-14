@@ -8,6 +8,7 @@ import QuotedText from './QuotedText'
 import { divideCodeText } from './codeParserFunctions'
 import CodeText from './CodeText'
 import { getMarkdownTableColumnWidths, parseMarkdownLines, parseInlineFormatting } from './markdownParserFunctions'
+import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from './markdownLayout'
 import Icon from '../../../Icon'
 import {
     parseFeedComment,
@@ -259,10 +260,11 @@ export default function MessageItemBody({
         )
     }
 
-    const renderTextContent = (text, lastItem) => {
+    const renderTextContent = (text, firstItem, lastItem) => {
         const textData = divideCodeText(text)
 
         return textData.map((data, subIndex) => {
+            const firstItemInsideItem = firstItem && subIndex === 0
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
                 return <CodeText key={`text-${subIndex}`} lastItem={lastItemInsideItem} text={data.text} />
@@ -283,10 +285,20 @@ export default function MessageItemBody({
                         )
                     } else if (/^h[1-6]$/.test(line.type)) {
                         const headingStyle = localStyles[`header${line.type.substring(1)}`]
+                        const hasPrecedingContent = hasContentBeforeLine(
+                            processedLines,
+                            lineIndex,
+                            !firstItemInsideItem
+                        )
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
+                                testID="markdown-heading"
+                                style={[
+                                    headingStyle,
+                                    hasPrecedingContent && { marginTop: MARKDOWN_HEADING_TOP_MARGIN },
+                                    !isLastLine && { marginBottom: 16 },
+                                ]}
                             >
                                 {renderFormattedText(line.segments, headingStyle)}
                             </Text>
@@ -408,6 +420,7 @@ export default function MessageItemBody({
             ) : (
                 <>
                     {processedContent.map((contentPart, index) => {
+                        const firstItem = index === 0
                         const lastItem = index === processedContent.length - 1
                         const { type, text } = contentPart
 
@@ -416,7 +429,7 @@ export default function MessageItemBody({
                                 <QuotedText key={index} projectId={projectId} lastItem={lastItem} quotedText={text} />
                             )
                         } else {
-                            return renderTextContent(text, lastItem)
+                            return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
                     {canArchiveLinkedEmail && linkedEmail && (
