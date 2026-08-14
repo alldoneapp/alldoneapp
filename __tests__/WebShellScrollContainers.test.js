@@ -13,6 +13,7 @@ const TEMPLATES = [
     ['web-bundler/index.html', 'deployed webpack pipeline template'],
     ['web/index.html', 'legacy expo template'],
 ]
+const MANIFESTS = ['web-bundler/static/manifest.json', 'web/manifest.json']
 
 const readShellRule = relativePath => {
     const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
@@ -60,6 +61,14 @@ describe('Web app shell scroll containers', () => {
         expect(descendantRule[1]).toMatch(/min-height:\s*0\s*;/)
     })
 
+    test.each(TEMPLATES)('%s (%s) does not double-count the bottom safe area with the keyboard', relativePath => {
+        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
+        const bodyRule = html.match(/html\.app-keyboard-open body\s*\{([^}]*)\}/)
+
+        expect(bodyRule).not.toBeNull()
+        expect(bodyRule[1]).toMatch(/padding-bottom:\s*0\s*!important\s*;/)
+    })
+
     // The declarative half of the same fix: Android Chrome resizes the layout
     // viewport itself when asked to, which the JS side detects and stays out of.
     test.each(TEMPLATES)('%s (%s) asks Android to resize the content for the keyboard', relativePath => {
@@ -76,5 +85,34 @@ describe('Web app shell scroll containers', () => {
 
         expect(bodyRule).not.toBeNull()
         expect(bodyRule[1]).toMatch(/overflow-y:\s*auto\s*;/)
+    })
+
+    test.each(TEMPLATES)('%s (%s) reserves every iOS safe-area edge in the app shell', relativePath => {
+        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
+        const bodyRule = html.match(/\n\s*body\s*\{([^}]*)\}/)
+
+        expect(bodyRule).not.toBeNull()
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+            expect(bodyRule[1]).toMatch(new RegExp(`padding-${side}:\\s*env\\(safe-area-inset-${side}\\)`))
+        }
+    })
+
+    test.each(TEMPLATES)('%s (%s) configures a light standalone iOS status area', relativePath => {
+        const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
+
+        expect(html).toMatch(/name="viewport"[^>]+viewport-fit=cover/)
+        expect(html).toMatch(/name="theme-color"\s+content="#FFFFFF"/)
+        expect(html).toMatch(/name="apple-mobile-web-app-capable"\s+content="yes"/)
+        expect(html).toMatch(/name="apple-mobile-web-app-status-bar-style"\s+content="default"/)
+        expect(html).not.toMatch(/navigator\.maxTouchPoints[\s\S]+background-color/)
+    })
+})
+
+describe('PWA display configuration', () => {
+    test.each(MANIFESTS)('%s uses standalone display and the app-shell color', relativePath => {
+        const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8'))
+
+        expect(manifest.display).toBe('standalone')
+        expect(manifest.theme_color).toBe('#FFFFFF')
     })
 })

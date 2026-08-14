@@ -24,7 +24,7 @@ import { highResNow } from '../../../utils/popupDismissGuard'
 import { installEscapeStack, resetEscapeStack } from '../../../utils/escapeStack'
 import { consumePopstateForSheetLayers, resetSheetHistoryLayers } from '../../../utils/sheetHistoryLayers'
 import { isBodyScrollLocked } from '../../../utils/bodyScrollLock'
-import { MODAL_SHEET_BREAKPOINT } from '../../styles/modals'
+import { MODAL_EDGE_GAP, MODAL_SHEET_BREAKPOINT } from '../../styles/modals'
 
 const pressWith = (node, timeStamp) => {
     const events = ['mousedown', 'mouseup', 'click'].map(type => {
@@ -51,6 +51,7 @@ const settle = () =>
     })
 
 const sheetNode = () => document.querySelector('[data-testid="bottom-sheet"]')
+const sheetContentNode = () => document.querySelector('[data-testid="bottom-sheet-content"]')
 const backdropNode = () => document.querySelector('[data-testid="bottom-sheet-backdrop"]')
 const handleNode = () => document.querySelector('[data-testid="bottom-sheet-handle"]')
 
@@ -116,6 +117,7 @@ describe('ModalShell', () => {
         if (uninstallEscape) uninstallEscape()
         delete window.ontouchstart
         delete window.matchMedia
+        jest.restoreAllMocks()
     })
 
     describe('presentation switch', () => {
@@ -401,6 +403,34 @@ describe('ModalShell', () => {
             await settle()
             expect(isBodyScrollLocked()).toBe(false)
             expect(document.body.style.overflowY).not.toBe('hidden')
+        })
+    })
+
+    describe('iOS safe area', () => {
+        it('paints through the home-indicator area while keeping the sheet below the status area', async () => {
+            window.innerWidth = 500
+            window.innerHeight = 844
+            const nativeGetComputedStyle = window.getComputedStyle.bind(window)
+            jest.spyOn(window, 'getComputedStyle').mockImplementation(element => {
+                if (element.hasAttribute('data-safe-area-inset-probe')) {
+                    return {
+                        paddingTop: '47px',
+                        paddingRight: '7px',
+                        paddingBottom: '34px',
+                        paddingLeft: '11px',
+                    }
+                }
+                return nativeGetComputedStyle(element)
+            })
+
+            renderShell()
+            await settle()
+
+            expect(sheetNode().style.bottom).toBe('0px')
+            expect(sheetNode().style.paddingBottom).toBe('42px')
+            expect(sheetNode().style.maxHeight).toBe(`${844 - 47 - MODAL_EDGE_GAP}px`)
+            expect(sheetContentNode().style.paddingLeft).toBe(`${MODAL_EDGE_GAP / 2 + 11}px`)
+            expect(sheetContentNode().style.paddingRight).toBe(`${MODAL_EDGE_GAP / 2 + 7}px`)
         })
     })
 })

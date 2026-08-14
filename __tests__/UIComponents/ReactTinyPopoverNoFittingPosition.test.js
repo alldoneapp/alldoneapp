@@ -157,4 +157,24 @@ describe('react-tiny-popover with no fitting position', () => {
         expect(container.style.opacity).toBe('1')
         expect(positionsTried[0]).toBe('top')
     })
+
+    it('nudges a fixed portal inside the iOS safe area', () => {
+        const nativeGetComputedStyle = window.getComputedStyle.bind(window)
+        jest.spyOn(window, 'getComputedStyle').mockImplementation(element => {
+            if (element.hasAttribute('data-safe-area-inset-probe')) {
+                return { paddingTop: '47px', paddingRight: '7px', paddingBottom: '34px', paddingLeft: '11px' }
+            }
+            return nativeGetComputedStyle(element)
+        })
+        mockLayout({ width: 200, height: 100 }, CENTRED_TARGET)
+
+        const { container } = render({
+            contentLocation: () => ({ top: 0, left: 0 }),
+        })
+
+        // react-tiny-popover's default 6px windowBorderPadding remains in
+        // addition to the physical iOS inset.
+        expect(container.style.top).toBe('53px')
+        expect(container.style.left).toBe('17px')
+    })
 })

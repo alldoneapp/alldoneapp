@@ -35,8 +35,24 @@ describe('useModalSizing', () => {
         window.innerWidth = originalInnerWidth
         window.innerHeight = originalInnerHeight
         delete window.visualViewport
+        jest.restoreAllMocks()
         latest = undefined
     })
+
+    const mockSafeAreaInsets = ({ top, right, bottom, left }) => {
+        const nativeGetComputedStyle = window.getComputedStyle.bind(window)
+        jest.spyOn(window, 'getComputedStyle').mockImplementation(element => {
+            if (element.hasAttribute('data-safe-area-inset-probe')) {
+                return {
+                    paddingTop: `${top}px`,
+                    paddingRight: `${right}px`,
+                    paddingBottom: `${bottom}px`,
+                    paddingLeft: `${left}px`,
+                }
+            }
+            return nativeGetComputedStyle(element)
+        })
+    }
 
     it('uses the width scale on desktop and is not a sheet', () => {
         window.innerWidth = 1024
@@ -71,6 +87,19 @@ describe('useModalSizing', () => {
         const tree = renderProbe({ size: 'XL' })
         expect(latest.isSheet).toBe(false)
         expect(latest.width).toBe(700 - MODAL_EDGE_GAP * 2)
+        tree.unmount()
+    })
+
+    it('subtracts iOS safe areas from popup width and height', () => {
+        window.innerWidth = 500
+        window.innerHeight = 800
+        mockSafeAreaInsets({ top: 47, right: 7, bottom: 34, left: 11 })
+
+        const tree = renderProbe()
+
+        expect(latest.safeAreaInsets).toEqual({ top: 47, right: 7, bottom: 34, left: 11 })
+        expect(latest.width).toBe(500 - 11 - 7 - MODAL_EDGE_GAP * 2)
+        expect(latest.maxHeight).toBe(800 - 47 - 34 - MODAL_EDGE_GAP * 2)
         tree.unmount()
     })
 

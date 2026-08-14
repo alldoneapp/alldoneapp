@@ -276,6 +276,20 @@ navigation and the top bar off-screen (AT-2177), and popovers need scroll-offset
 `box-sizing: border-box` so the safe-area padding cannot push the shell past 100%.
 `__tests__/WebShellScrollContainers.test.js` guards the rule in both templates.
 
+**iOS standalone PWA safe areas (AT-2314)**: both HTML templates keep
+`viewport-fit=cover`, the Apple standalone metadata and a light/default status bar, and
+pad all four body edges with `env(safe-area-inset-*)`. Never reintroduce the old iOS-only
+black `body` background: it was exactly what painted the top and bottom PWA bars black.
+Fixed portal content does not inherit body padding. `hooks/useModalSizing.js` therefore
+subtracts the measured safe-area rectangle as well as the keyboard, the bottom sheet
+paints through the home-indicator region while padding its content above it, and the
+vendored `react-tiny-popover` clamps anchored/fixed portals inside the safe rectangle.
+Browsers without safe-area insets resolve every value to zero, preserving desktop,
+Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` and legacy
+`web/` templates/manifests aligned; `__tests__/WebShellScrollContainers.test.js`,
+`utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
+pin the contract.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
