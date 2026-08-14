@@ -56,51 +56,7 @@ export function isInboxSummaryGmailTask(taskOrGmailData) {
     return !!gmailData && !isGmailLabelFollowUpTask(gmailData)
 }
 
-function getBrowserRuntime() {
-    if (typeof navigator === 'undefined') return {}
-    return {
-        userAgent: navigator.userAgent || '',
-        maxTouchPoints: navigator.maxTouchPoints || 0,
-    }
-}
-
-export function shouldUseDirectGmailUrl(runtime = {}) {
-    const browserRuntime = getBrowserRuntime()
-    const platform = runtime.platform || 'web'
-    const userAgent = runtime.userAgent ?? browserRuntime.userAgent ?? ''
-    const maxTouchPoints = runtime.maxTouchPoints ?? browserRuntime.maxTouchPoints ?? 0
-
-    if (platform === 'android' || platform === 'ios') return true
-    if (platform !== 'web') return false
-
-    return /Android|iPhone|iPad|iPod/i.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1)
-}
-
-function getDirectGmailUrl(url, gmailEmail) {
-    let directUrl = url
-
-    try {
-        const parsedUrl = new URL(directUrl)
-        if (parsedUrl.hostname === 'accounts.google.com' && parsedUrl.pathname === '/AccountChooser') {
-            directUrl = parsedUrl.searchParams.get('continue') || directUrl
-        }
-    } catch (error) {
-        return directUrl
-    }
-
-    if (!gmailEmail) return directUrl
-
-    try {
-        const parsedUrl = new URL(directUrl)
-        if (parsedUrl.hostname !== 'mail.google.com') return directUrl
-        parsedUrl.searchParams.set('authuser', gmailEmail)
-        return parsedUrl.toString()
-    } catch (error) {
-        return directUrl
-    }
-}
-
-export function getGmailTaskWebUrl(taskOrGmailData, runtime = {}) {
+export function getGmailTaskWebUrl(taskOrGmailData) {
     const gmailData = getGmailTaskData(taskOrGmailData)
     if (gmailData?.provider === 'microsoft') {
         return gmailData.webUrl || 'https://outlook.office.com/mail/'
@@ -121,7 +77,6 @@ export function getGmailTaskWebUrl(taskOrGmailData, runtime = {}) {
 
     if (!continueUrl) return null
     if (!gmailEmail) return continueUrl
-    if (shouldUseDirectGmailUrl(runtime)) return getDirectGmailUrl(continueUrl, gmailEmail)
 
     return `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(
         gmailEmail

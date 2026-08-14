@@ -23,10 +23,10 @@ import { translate } from '../../i18n/TranslationService'
  * supports for shared-resource viewers.
  *
  * The email actions are the exception, and deliberately so: archiving an email, creating its task
- * or unsubscribing can be done straight from the list without opening every topic. Archive still
- * leaves the mailbox read/unread state alone, but it marks the matching Alldone chat comment as
- * read (AT-2298). Those nested controls keep handling their own presses; pressing the preview
- * itself opens the thread (AT-2303).
+ * or unsubscribing can be done straight from the list without opening every topic. Archive and
+ * successful task creation leave the mailbox read/unread state alone, but mark the matching
+ * Alldone chat comment as read (AT-2298, AT-2310). Those nested controls keep handling their own
+ * presses; pressing the preview itself opens the thread (AT-2303).
  */
 export default function ChatItemUnreadMessage({
     projectId,
