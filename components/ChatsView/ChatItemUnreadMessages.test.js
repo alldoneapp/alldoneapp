@@ -117,6 +117,14 @@ describe('ChatItemUnreadMessages', () => {
         expect(renderedTexts(tree)).toEqual(['c1:message 1', 'c2:message 2', 'c3:message 3'])
     })
 
+    it('opens the corresponding topic when a message preview is pressed', () => {
+        renderPreview(makeMessages(2), ['c1', 'c2'])
+
+        act(() => mockRowProps[1].onPress())
+
+        expect(onOpenChat).toHaveBeenCalledWith('project-1', chat)
+    })
+
     it('subscribes to the chat with the unread comment ids it was given', () => {
         renderPreview(makeMessages(2), ['c1', 'c2'])
 

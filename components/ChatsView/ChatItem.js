@@ -75,9 +75,9 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
             <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
                 <ChatHeaderItem members={chat.members} membersNumber={chat.members.length} />
             </TouchableOpacity>
-            {/* The unread preview is a sibling of the open-the-chat touchable, not a child of it:
-                nested inside, every tap on a previewed message would navigate away, and the links,
-                mentions and text selection inside a message would stop working. */}
+            {/* The unread preview is a sibling of the title touchable because each previewed
+                message owns its open-the-chat action while its nested links and email controls
+                keep their existing actions. */}
             <View style={{ flex: 1 }}>
                 <TouchableOpacity
                     onPress={inCommentPopup ? onPress : () => onOpenChat(project.id, chat)}
