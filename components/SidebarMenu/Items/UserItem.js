@@ -64,6 +64,8 @@ export default function UserItem({
         e?.preventDefault()
         const { route, selectedNavItem } = store.getState()
 
+        if (currentUserId === user.uid && (route === DV_TAB_ROOT_TASKS || route === DV_TAB_ROOT_GOALS)) return
+
         if (selectedNavItem !== navItem) {
             dispatch(setSelectedSidebarTab(navItem))
         }

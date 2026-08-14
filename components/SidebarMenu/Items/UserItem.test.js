@@ -74,68 +74,40 @@ describe('sidebar user item', () => {
         })
     })
 
-    const createItem = (user, navItem = DV_TAB_ROOT_TASKS) => (
-        <UserItem
-            user={user}
-            projectType={'active'}
-            projectId={'project-1'}
-            projectColor={'blue'}
-            projectIndex={0}
-            isShared={false}
-            navItem={navItem}
-        />
-    )
-
-    const renderItem = (user, navItem = DV_TAB_ROOT_TASKS) => renderer.create(createItem(user, navItem))
-
-    const pressItem = component => {
-        act(() =>
-            component.root.findByProps({ accessibilityLabel: 'sidebar-user-item' }).props.onPress({
-                preventDefault: jest.fn(),
-            })
+    const renderItem = (user, navItem = DV_TAB_ROOT_TASKS) =>
+        renderer.create(
+            <UserItem
+                user={user}
+                projectType={'active'}
+                projectId={'project-1'}
+                projectColor={'blue'}
+                projectIndex={0}
+                isShared={false}
+                navItem={navItem}
+            />
         )
-    }
 
-    it.each([
-        [
-            DV_TAB_ROOT_TASKS,
-            'lastVisitBoard',
-            [
-                { type: 'set task view index', index: 0 },
-                { type: 'set task view section', section: 'Open' },
-            ],
-        ],
-        [DV_TAB_ROOT_GOALS, 'lastVisitBoardInGoals', [{ type: 'set goals tab', tab: 0 }]],
-    ])(
-        'closes the sidebar without opening the profile on initial and repeated %s clicks',
-        (route, lastVisitedProperty, expectedViewActions) => {
+    it.each([DV_TAB_ROOT_TASKS, DV_TAB_ROOT_GOALS])(
+        'does nothing when the current user is clicked again on the %s board',
+        route => {
             mockGetState.mockReturnValue({
                 route,
                 selectedNavItem: route,
-                smallScreenNavigation: true,
+                smallScreenNavigation: false,
             })
-            const component = renderItem(otherUser, route)
+            const preventDefault = jest.fn()
+            const component = renderItem(currentUser, route)
 
-            pressItem(component)
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'hide sidebar' })
-            expect(mockDispatch).toHaveBeenCalledWith(
-                expect.arrayContaining([
-                    { type: 'store current user', user: otherUser },
-                    { type: 'set project type', projectType: 'active' },
-                    ...expectedViewActions,
-                ])
+            act(() =>
+                component.root
+                    .findByProps({ accessibilityLabel: 'sidebar-user-item' })
+                    .props.onPress({ preventDefault })
             )
-            expect(mockSetUserLastVisitedBoardDate).toHaveBeenCalledWith('project-1', otherUser, lastVisitedProperty)
 
-            mockState = { ...mockState, currentUser: otherUser }
-            act(() => component.update(createItem(otherUser, route)))
-            pressItem(component)
-
+            expect(preventDefault).toHaveBeenCalled()
             expect(mockNavigate).not.toHaveBeenCalled()
-            expect(mockDispatch.mock.calls.filter(([action]) => action?.type === 'hide sidebar')).toHaveLength(2)
-            expect(mockDispatch.mock.calls.filter(([action]) => Array.isArray(action))).toHaveLength(2)
-            expect(mockSetUserLastVisitedBoardDate).toHaveBeenCalledTimes(2)
+            expect(mockDispatch).not.toHaveBeenCalled()
+            expect(mockSetUserLastVisitedBoardDate).not.toHaveBeenCalled()
         }
     )
 
@@ -147,11 +119,35 @@ describe('sidebar user item', () => {
         })
         const component = renderItem(currentUser)
 
-        pressItem(component)
+        act(() =>
+            component.root.findByProps({ accessibilityLabel: 'sidebar-user-item' }).props.onPress({
+                preventDefault: jest.fn(),
+            })
+        )
 
         expect(mockNavigate).toHaveBeenCalledWith('Root')
         expect(mockDispatch).toHaveBeenCalledWith(
             expect.arrayContaining([{ type: 'store current user', user: currentUser }])
+        )
+    })
+
+    it('keeps selecting a different user normally', () => {
+        const component = renderItem(otherUser)
+
+        act(() =>
+            component.root.findByProps({ accessibilityLabel: 'sidebar-user-item' }).props.onPress({
+                preventDefault: jest.fn(),
+            })
+        )
+
+        expect(mockSetUserLastVisitedBoardDate).toHaveBeenCalledWith('project-1', otherUser, 'lastVisitBoard')
+        expect(mockDispatch).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                { type: 'store current user', user: otherUser },
+                { type: 'set project type', projectType: 'active' },
+                { type: 'set task view index', index: 0 },
+                { type: 'set task view section', section: 'Open' },
+            ])
         )
     })
 })
