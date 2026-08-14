@@ -2,6 +2,7 @@
     "background_color": "#0A44A5",
     "description": "Alldone.app - team up with AI agents to get it all done",
     "display": "standalone",
+    "theme_color": "#FFFFFF",
     "lang": "en",
     "name": "Alldone.app",
     "short_name": "Alldone.app",

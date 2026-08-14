@@ -17,7 +17,6 @@ import useEscapeKey from '../../../hooks/useEscapeKey'
 import { highResNow, registerPopupDismiss, shouldIgnorePressFromBeforeOpen } from '../../../utils/popupDismissGuard'
 import { lockBodyScroll, unlockBodyScroll } from '../../../utils/bodyScrollLock'
 import { pushSheetHistoryLayer, releaseSheetHistoryLayer } from '../../../utils/sheetHistoryLayers'
-import { getSafeAreaBottomInset } from '../../../utils/safeAreaInsets'
 import { ModalShellContext } from './ModalShellContext'
 import {
     BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS,
@@ -84,7 +83,7 @@ const prefersReducedMotion = () =>
  * pre-Phase-5 behavior; nothing waits on the animation.
  */
 export default function BottomSheet({ isOpen, onRequestClose, modalId, children }) {
-    const { maxHeight, keyboardInset } = useModalSizing()
+    const { keyboardInset, safeAreaInsets, windowHeight } = useModalSizing()
     // Kept true for MODAL_EXIT_MS after isOpen flips false so the slide-out
     // can play; the render gate below is this, not isOpen.
     const [isMounted, setIsMounted] = useState(!!isOpen)
@@ -377,10 +376,15 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
     // nor deliver one to its own rows — pointer events fall through to
     // nothing (the dismiss-replay guard already covers the row underneath).
     const isExiting = !isOpen
-    // The keyboard covers the safe area, so only one of the two applies.
-    const bottomInset = keyboardInset > 0 ? keyboardInset : getSafeAreaBottomInset()
-    const bottomPadding = SHEET_BOTTOM_PADDING
-    const contentMaxHeight = Math.max(maxHeight - HANDLE_STRIP_HEIGHT - bottomPadding, 0)
+    const keyboardOpen = keyboardInset > 0
+    // With no keyboard the card paints through the home-indicator area and
+    // pads its content above it. That avoids exposing a detached strip of the
+    // page/backdrop below the sheet. When the keyboard is open it already
+    // covers that safe area, so the whole sheet rides above the keyboard.
+    const bottom = keyboardOpen ? keyboardInset : 0
+    const bottomPadding = SHEET_BOTTOM_PADDING + (keyboardOpen ? 0 : safeAreaInsets.bottom)
+    const sheetMaxHeight = Math.max(windowHeight - keyboardInset - safeAreaInsets.top - MODAL_EDGE_GAP, 0)
+    const contentMaxHeight = Math.max(sheetMaxHeight - HANDLE_STRIP_HEIGHT - bottomPadding, 0)
 
     return createPortal(
         <ModalShellContext.Provider value={SHELL_CONTEXT_VALUE}>
@@ -402,8 +406,8 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                     localStyles.sheet,
                     isExiting && NO_POINTER_EVENTS_STYLE,
                     {
-                        bottom: bottomInset,
-                        maxHeight: maxHeight,
+                        bottom,
+                        maxHeight: sheetMaxHeight,
                         paddingBottom: bottomPadding,
                         opacity: progress,
                         transform: [
@@ -430,7 +434,19 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
                 <View ref={handleRef} testID={'bottom-sheet-handle'} style={localStyles.handleStrip}>
                     <View style={localStyles.handle} />
                 </View>
-                <View style={[localStyles.content, { maxHeight: contentMaxHeight }]}>{children}</View>
+                <View
+                    testID={'bottom-sheet-content'}
+                    style={[
+                        localStyles.content,
+                        {
+                            maxHeight: contentMaxHeight,
+                            paddingLeft: MODAL_EDGE_GAP / 2 + safeAreaInsets.left,
+                            paddingRight: MODAL_EDGE_GAP / 2 + safeAreaInsets.right,
+                        },
+                    ]}
+                >
+                    {children}
+                </View>
             </Animated.View>
         </ModalShellContext.Provider>,
         document.body
