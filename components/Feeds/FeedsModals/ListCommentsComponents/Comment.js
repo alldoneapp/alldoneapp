@@ -14,6 +14,7 @@ import {
     parseMarkdownLines,
     parseInlineFormatting,
 } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
+import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from '../../../ChatsView/ChatDV/EditorView/markdownLayout'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
@@ -243,10 +244,11 @@ export default function Comment({
         return linkCounter
     }
 
-    const renderTextContent = (text, lastItem) => {
+    const renderTextContent = (text, firstItem, lastItem) => {
         const textData = divideCodeText(text)
 
         return textData.map((data, subIndex) => {
+            const firstItemInsideItem = firstItem && subIndex === 0
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
                 return (
@@ -275,10 +277,20 @@ export default function Comment({
                         )
                     } else if (/^h[1-6]$/.test(line.type)) {
                         const headingStyle = localStyles[`header${line.type.substring(1)}`]
+                        const hasPrecedingContent = hasContentBeforeLine(
+                            processedLines,
+                            lineIndex,
+                            !firstItemInsideItem
+                        )
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
+                                testID="markdown-heading"
+                                style={[
+                                    headingStyle,
+                                    hasPrecedingContent && { marginTop: MARKDOWN_HEADING_TOP_MARGIN },
+                                    !isLastLine && { marginBottom: 16 },
+                                ]}
                             >
                                 {renderFormattedText(line.segments, headingStyle, projectId, getLinkCounter)}
                             </Text>
@@ -399,6 +411,7 @@ export default function Comment({
                 {contentOverride ||
                     textsFiltered.map((commentData, index) => {
                         const { type, text } = commentData
+                        const firstItem = index === 0
                         const lastItem = index === textsFiltered.length - 1
                         if (type === 'quote') {
                             return (
@@ -412,7 +425,7 @@ export default function Comment({
                                 />
                             )
                         } else {
-                            return renderTextContent(text, lastItem)
+                            return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
                 {linkedEmail && (
