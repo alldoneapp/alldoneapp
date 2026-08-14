@@ -29,8 +29,8 @@ describe('UndoActionBar layout', () => {
         expect(undoActionBarStyles.overlay.paddingHorizontal).toBeUndefined()
     })
 
-    it('makes only the banner background 20% transparent', () => {
-        expect(undoActionBarStyles.container.backgroundColor).toBe('rgba(4,20,47,0.8)')
+    it('makes only the banner background 30% transparent', () => {
+        expect(undoActionBarStyles.container.backgroundColor).toBe('rgba(4,20,47,0.7)')
         expect(undoActionBarStyles.container.opacity).toBeUndefined()
     })
 })

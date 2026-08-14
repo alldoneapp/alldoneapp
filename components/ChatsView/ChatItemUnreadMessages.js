@@ -112,6 +112,7 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
                     isArchivingEmail={isArchivingEmail}
                     isArchivedEmail={isArchivedEmail}
                     onArchiveLinkedEmail={archiveLinkedEmails}
+                    onPress={() => onOpenChat(project.id, chat)}
                 />
             ))}
             {hiddenCount > 0 && (
