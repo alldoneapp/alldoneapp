@@ -612,7 +612,7 @@ export const ANONYMOUS_USER_DATA = {
     isAnonymous: true,
     // Never expose the resource owner's gold balance to an anonymous viewer. Without this the
     // anonymous loggedUser inherits the creator's gold (via the spread in addAnonymousData), which
-    // both leaks it into the UI and can incorrectly enable assistant controls on shared links.
+    // both leaks it into the UI and auto-enables the assistant/fullscreen bar on shared links.
     gold: 0,
     themeName: COLORS_THEME_MODERN,
     sidebarNavigationMode: SIDEBAR_NAVIGATION_SIMPLE,

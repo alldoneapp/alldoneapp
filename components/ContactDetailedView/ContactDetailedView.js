@@ -54,6 +54,7 @@ const ContactDetailedView = ({ navigation }) => {
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [isFullscreen, setFullscreen] = useState(false)
     const project = navigation.getParam('project', undefined)
     const contactParam = navigation.getParam('contact', undefined)
@@ -90,6 +91,10 @@ const ContactDetailedView = ({ navigation }) => {
         navigationTabs.splice(indexBL, 1)
         TasksHelper.changeSharedMode(accessGranted)
     }
+
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
 
     useEffect(() => {
         dispatch(setNavigationRoute('ContactDetailedView'))

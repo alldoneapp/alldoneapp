@@ -36,6 +36,7 @@ import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ChatDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const loggedUser = useSelector(state => state.loggedUser)
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -102,6 +103,10 @@ const ChatDetailedView = ({ navigation }) => {
     useEffect(() => {
         dispatch(setNavigationRoute('ChatDetailedView'))
     }, [])
+
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
 
     useEffect(() => {
         if (chat) {

@@ -60,6 +60,7 @@ export default function GoalDetailedView({ navigation }) {
 
     const dispatch = useDispatch()
     const showSwipeDueDatePopup = useSelector(state => state.showSwipeDueDatePopup.visible)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -136,6 +137,10 @@ export default function GoalDetailedView({ navigation }) {
             dispatch(storeCurrentUser(loggedUser))
         }
     }, [])
+
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
 
     useEffect(() => {
         if (goal) {

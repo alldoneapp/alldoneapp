@@ -31,9 +31,8 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/codeParserFunctions', () => ({
     divideCodeText: text => [{ type: 'text', text }],
 }))
 jest.mock('../../../ChatsView/ChatDV/EditorView/markdownParserFunctions', () => ({
+    ...jest.requireActual('../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'),
     getMarkdownTableColumnWidths: jest.fn(),
-    parseMarkdownLines: text => [{ type: 'text', text }],
-    parseInlineFormatting: text => [{ text }],
 }))
 jest.mock('../../../ChatsView/Utils/ChatHelper', () => ({
     getTimestampInMilliseconds: value => value,
@@ -160,6 +159,24 @@ describe('feed Comment', () => {
 
         expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
         expect(tree.root.findAllByType('CommentElementsParser')).toHaveLength(1)
+    })
+
+    test('adds top spacing only to headings that follow rendered content', () => {
+        const tree = renderer.create(
+            <Comment
+                {...defaultProps}
+                comment={{
+                    ...defaultProps.comment,
+                    commentText: '# Opening heading\nParagraph\n## After paragraph\n- List item\n### After list',
+                }}
+            />
+        )
+        const headings = tree.root.findAllByProps({ testID: 'markdown-heading' })
+
+        expect(headings).toHaveLength(3)
+        expect(StyleSheet.flatten(headings[0].props.style).marginTop).toBeUndefined()
+        expect(StyleSheet.flatten(headings[1].props.style).marginTop).toBe(16)
+        expect(StyleSheet.flatten(headings[2].props.style).marginTop).toBe(16)
     })
 
     test('can replace a live technical status with a custom progress presentation', () => {

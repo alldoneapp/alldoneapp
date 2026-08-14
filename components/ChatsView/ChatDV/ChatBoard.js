@@ -239,10 +239,10 @@ export default function ChatBoard({
     }, [triggerBotSpinner, projectId, chat.id])
 
     // A scoped assistant-enabled flag belongs to exactly one chat. Clearing a foreign one here,
-    // in the component that owns the chat currently on screen, protects readers such as the
-    // "keep the comment popover open" checks without each of them having to know about scopes
-    // (AT-2084). An unscoped flag is left alone: that is what the in-chat writers produce and it
-    // always refers to the open chat.
+    // in the component that owns the chat currently on screen, protects every reader of the raw
+    // `state.assistantEnabled` (DV fullscreen, the "keep the comment popover open" checks) without
+    // each of them having to know about scopes (AT-2084). An unscoped flag is left alone: that is
+    // what the in-chat writers produce and it always refers to the open chat.
     useEffect(() => {
         if (!assistantEnabled) return
         if (isAssistantEnabledScopeMatch(assistantEnabledScope, projectId, chat.id)) return

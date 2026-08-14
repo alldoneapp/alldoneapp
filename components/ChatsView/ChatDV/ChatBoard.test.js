@@ -251,8 +251,8 @@ describe('ChatBoard mobile loading scrollbar', () => {
 
 // AT-2084 (follow-up): ChatBoard is the component that owns the chat currently on screen, so it
 // clears an assistant-enabled flag armed for a different chat. That protects every reader of the
-// raw `state.assistantEnabled`, such as the "keep the comment popover open" checks, without each
-// of them having to understand scopes.
+// raw `state.assistantEnabled` — DV fullscreen, the "keep the comment popover open" checks —
+// without each of them having to understand scopes.
 describe('ChatBoard assistant-enabled scope guard', () => {
     const disableCalls = () =>
         mockDispatch.mock.calls.filter(

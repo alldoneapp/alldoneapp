@@ -56,6 +56,7 @@ export default function AssistantDetailedView({ navigation }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUser = useSelector(state => state.loggedUser)
     const administratorUserId = useSelector(state => state.administratorUser.uid)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [assistant, setAssistant] = useState(null)
     const [projectOriginId, setProjectOriginId] = useState('')
     const [isFullscreen, setFullscreen] = useState(false)
@@ -139,6 +140,10 @@ export default function AssistantDetailedView({ navigation }) {
             dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
         }
     }, [accessGranted])
+
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
 
     const linkedParentObject = {
         type: LINKED_OBJECT_TYPE_ASSISTANT,
