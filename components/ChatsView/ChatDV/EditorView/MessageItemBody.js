@@ -27,6 +27,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
+import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
 import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
@@ -444,6 +445,9 @@ export default function MessageItemBody({
                                 messageIds={[linkedEmail.messageId]}
                                 initialTask={linkedEmailGmailData?.taskCreated}
                                 checkExisting
+                                // Creating a task means this email has been handled. Clear only
+                                // its Alldone chat notification; Gmail's read state stays intact.
+                                onTaskCreated={() => markAlldoneChatsReadForLinkedEmails([linkedEmail])}
                                 style={localStyles.linkedEmailTaskButton}
                             />
                             <TouchableOpacity

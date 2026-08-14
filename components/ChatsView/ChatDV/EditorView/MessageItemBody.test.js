@@ -47,6 +47,9 @@ jest.mock('../../../TaskListView/EmailLine/emailLineHelper', () => ({
     resolveUnsubscribeUrl: jest.fn(),
 }))
 jest.mock('../../../TaskListView/EmailLine/EmailTaskAction', () => 'EmailTaskAction')
+jest.mock('../../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+}))
 jest.mock('./VmInteractionCard', () => 'VmInteractionCard')
 jest.mock('./messageLoadingState', () => ({
     isAwaitingVmInteraction: jest.fn(() => false),
