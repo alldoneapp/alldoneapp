@@ -60,7 +60,6 @@ const UserDetailedView = ({ navigation }) => {
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUser = useSelector(state => state.loggedUser)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const dispatch = useDispatch()
     const projectParam = navigation.getParam('project', undefined)
     const userParam = navigation.getParam('contact', undefined)
@@ -146,10 +145,6 @@ const UserDetailedView = ({ navigation }) => {
         id: userParam.uid,
         idsField: 'linkedParentContactsIds',
     }
-
-    useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
 
     useEffect(() => {
         dispatch(setNavigationRoute('UserDetailedView'))

@@ -62,7 +62,6 @@ const TaskDetailedView = ({ navigation }) => {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const loggedUser = useSelector(state => state.loggedUser)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -124,10 +123,6 @@ const TaskDetailedView = ({ navigation }) => {
             dispatch(storeCurrentUser(loggedUser))
         }
     }, [])
-
-    useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
 
     useEffect(() => {
         setAssistantId(task?.assistantId || '')
