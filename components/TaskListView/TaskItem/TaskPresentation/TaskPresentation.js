@@ -37,6 +37,8 @@ import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 import { shouldShowAiStepControl } from './taskAiStepControl'
 import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
+import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
+import { taskPresentationLayout } from './TaskPresentationLayout'
 
 function TaskPresentation(
     {
@@ -146,8 +148,14 @@ function TaskPresentation(
         },
     }))
 
+    // Swipeable calls renderLeftActions during its own render, so adopting its dragX node here
+    // synchronously would set state on this component while another one renders (React warns and
+    // the update is not batched with the current pass). dragX is stable per Swipeable instance,
+    // so deferring the swap by a microtask adopts it just as reliably, one render later.
     const renderLeftSwipe = (progress, dragX) => {
-        if (panColor != dragX) setPanColor(dragX)
+        if (panColor !== dragX) {
+            Promise.resolve().then(() => setPanColor(dragX))
+        }
         return <View style={{ width: 150 }} />
     }
 
@@ -223,10 +231,10 @@ function TaskPresentation(
     const highlightColor = inCommentPopup
         ? backColor
         : lastTaskAddedId === task.id
-        ? lastAddedTaskBackgroundColor
-        : hasStar.toLowerCase() !== '#ffffff'
-        ? backColorHighlight
-        : backColor
+          ? lastAddedTaskBackgroundColor
+          : hasStar.toLowerCase() !== '#ffffff'
+            ? backColorHighlight
+            : backColor
 
     const showVerticalEllipsis = inMyDayAndNotSubtask
         ? TasksHelper.showWrappedTaskEllipsisInByTime(
@@ -257,7 +265,12 @@ function TaskPresentation(
             style={{ marginRight: 8 }}
         />
     )
-    const leadingVmStatusTag = <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
+    const leadingVmStatusTag = (
+        <>
+            <AssistantWorkflowRunTag projectId={projectId} task={task} />
+            <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
+        </>
+    )
 
     return (
         <View style={isLocked && !inParentGoal && localStyles.blurry}>
@@ -267,6 +280,7 @@ function TaskPresentation(
                 isActiveOrganizeMode={isActiveOrganizeMode}
             />
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}
@@ -287,13 +301,13 @@ function TaskPresentation(
                     setBlockOpen(false)
                 }}
             >
-                <View style={localStyles.container}>
+                <View style={taskPresentationLayout.container}>
                     <View style={{ borderRadius: 4 }}>
                         <Animated.View
                             style={[
                                 !isActiveOrganizeMode &&
                                     inFocusTaskId === task.id && { borderColor: colors.Primary100, borderWidth: 2 },
-                                localStyles.taskRow,
+                                taskPresentationLayout.taskRow,
                                 task.isSubtask ? subTaskStyles.taskRow : undefined,
                                 task.isSubtask ? { paddingLeft: 2 } : undefined,
                                 isActiveOrganizeMode &&
@@ -306,7 +320,7 @@ function TaskPresentation(
                             <View
                                 pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
                                 style={[
-                                    localStyles.checkBoxLabel,
+                                    taskPresentationLayout.leadingContent,
                                     !inMyDayAndNotSubtask && { paddingBottom: tagsExpandedHeight },
                                 ]}
                             >
@@ -447,24 +461,6 @@ function TaskPresentation(
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        justifyContent: 'center',
-        marginLeft: -16,
-        marginRight: -16,
-    },
-    taskRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        paddingHorizontal: 8,
-        marginHorizontal: 8,
-        borderRadius: 4,
-    },
-    checkBoxLabel: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        flex: 1,
-    },
     dragModeContainer: {
         marginRight: 44,
     },

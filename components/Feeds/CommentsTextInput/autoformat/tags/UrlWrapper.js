@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
@@ -34,7 +34,7 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../../../ModalsManager/modalsManager'
 import { REGEX_URL } from '../../../Utils/HelperFunctions'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -204,16 +204,17 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                                 // No variables - execute directly
                                 console.log('[UrlWrapper] Executing prompt task directly (no variables)')
                                 const aiSettings =
-                                    task.aiModel || task.aiTemperature || task.aiSystemMessage
+                                    task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                                         ? {
                                               model: task.aiModel,
-                                              temperature: task.aiTemperature,
+                                              reasoningEffort: task.aiReasoningEffort,
                                               systemMessage: task.aiSystemMessage,
                                           }
                                         : null
                                 const taskMetadata = {
                                     ...(task.taskMetadata || {}),
                                     sendWhatsApp: !!task.sendWhatsApp,
+                                    executionMode: task.executionMode,
                                 }
                                 generateTaskFromPreConfig(
                                     targetProjectId,
@@ -398,7 +399,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 showEditObjectPopup ? (
                     <EditObjectsInLinks
@@ -442,6 +443,6 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                 setIsPrivate={setIsPrivate}
                 setUserIsMember={setUserIsMember}
             />
-        </Popover>
+        </AppPopover>
     )
 }

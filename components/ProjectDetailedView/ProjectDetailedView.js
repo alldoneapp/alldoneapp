@@ -35,6 +35,7 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import ProjectHappinessView from './Happiness/ProjectHappinessView'
 import ProjectOKRsView from './OKRs/ProjectOKRsView'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ProjectDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -51,6 +52,7 @@ const ProjectDetailedView = ({ navigation }) => {
     const { overlay } = useCollapsibleSidebar()
 
     const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedTab, scrollRef)
 
     const linkedParentObject = {
         type: LINKED_OBJECT_TYPE_PROJECT,
@@ -95,12 +97,6 @@ const ProjectDetailedView = ({ navigation }) => {
 
     useEffect(() => {
         dispatch(switchProject(project.index))
-    }, [selectedTab])
-
-    useEffect(() => {
-        if (selectedTab === DV_TAB_PROJECT_PROPERTIES) {
-            setTimeout(() => scrollRef?.current?.scrollTo?.({ y: 0, animated: false }))
-        }
     }, [selectedTab])
 
     return (

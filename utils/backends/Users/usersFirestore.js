@@ -1,4 +1,4 @@
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { cloneDeep, uniq } from 'lodash'
 import moment from 'moment'
 
@@ -22,6 +22,7 @@ import {
     mapUserData,
     removeInvitedUserFromProject,
     removeWorkflowStepFeedChain,
+    restartFirestoreNetwork,
     runHttpsCallableFunction,
     selectAndSetNewDefaultProject,
     tryAddFollower,
@@ -30,6 +31,7 @@ import {
     updateRemovedWorkflowStepSubtaks,
     updateRemovedWorkflowStepTaks,
 } from '../firestore'
+import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import Backend from '../../BackendBridge'
 import SettingsHelper from '../../../components/SettingsView/SettingsHelper'
@@ -72,22 +74,115 @@ import {
 } from '../Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { getWorkflowSortIndexUpdates } from '../../workflowOrder'
+import { validateDefaultProjectSelection } from '../../defaultProjectAuthorization'
 
 //ACCESS FUNCTIONS
 
-export async function getUserData(userId, isLoggedUser) {
+const describeSnapshotSource = snapshot => {
+    const metadata = snapshot && snapshot.metadata
+    // No metadata at all means the source is genuinely unknown — do NOT report that as
+    // "server-confirmed", which is what the first version of this diagnostic did.
+    if (!metadata) return 'source unknown: the snapshot carried no metadata'
+    return metadata.fromCache
+        ? 'served from the local cache because the backend was unreachable — it may exist on the server'
+        : 'the read reported no cache fallback'
+}
+
+const getCurrentAuthUid = () => {
+    try {
+        return firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
+    } catch (error) {
+        // auth not initialized yet
+        return null
+    }
+}
+
+/**
+ * Reads a user document and reports WHY there is no user: a genuinely missing document
+ * (`missing: true`) or a failed read (`error` set, e.g. a transient `permission-denied` while
+ * the ID token refreshes). The login flow must not treat the second case as "account is broken"
+ * and offer to delete the Firebase Auth user.
+ *
+ * A first "missing" answer is never trusted on its own. Production produced it repeatedly for a
+ * document that provably exists (uid lejVqrT6…, created 2020-08-27, read back fine with an admin
+ * token at the same moment — 2026-08-13), including with no cache fallback reported. The absence
+ * signal is therefore known-unreliable, while the consequence of believing it is severe:
+ * `AppContent.handleMissingUserDocument` runs `processNewUser`, whose `uploadNewUser` does a
+ * `batch.set` on `users/{uid}` with a fresh-signup document — overwriting projectIds, gold,
+ * premium status and settings — and offers to delete the Firebase Auth user if that fails.
+ *
+ * So an apparent absence is verified through Firestore's authenticated REST document endpoint.
+ * That request has no local cache or snapshot-listener state, which makes it independent from the
+ * full client's bad view. A recovered document is returned normally, and a direct read that
+ * cannot reach the server is reported as a failed read so the caller retries instead of
+ * recovering.
+ */
+export async function fetchUserDataResult(userId, isLoggedUser) {
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
-            console.error(`User document not found in Firestore: /users/${userId}`)
-            return null
+            let directSnapshot
+            try {
+                directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
+            } catch (verifyError) {
+                // The independent server could not be reached, so the absence is unconfirmed.
+                // Report a failed read: the caller retries and never runs account recovery.
+                console.warn(
+                    `User document /users/${userId} appeared missing and the direct server read failed; ` +
+                        'treating it as a failed read rather than a missing account.',
+                    verifyError
+                )
+                return { user: null, missing: false, error: verifyError }
+            }
+
+            if (directSnapshot.exists) {
+                const confirmedData = directSnapshot.data
+                const recoveredUser = confirmedData ? mapUserData(userId, confirmedData, isLoggedUser) : null
+                console.warn(
+                    `User document /users/${userId} was reported missing by the realtime client ` +
+                        `(${describeSnapshotSource(docSnapshot)}), but a direct server read found it. ` +
+                        'Using the document and reconnecting the realtime streams; no account recovery is needed.'
+                )
+                try {
+                    await restartFirestoreNetwork('recover a user document omitted during initial load')
+                } catch (restartError) {
+                    // The direct result is still authoritative and safe to use. The post-boot
+                    // integrity checks will make another bounded attempt to reconnect.
+                    console.warn(
+                        '[Firestore] Could not restart the realtime connection after a recovered user read:',
+                        restartError
+                    )
+                }
+                return { user: recoveredUser, missing: !recoveredUser, error: null }
+            }
+
+            const authUid = getCurrentAuthUid()
+            console.error(
+                `User document not found in Firestore: /users/${userId} (confirmed by a direct server read)`,
+                {
+                    requestedUserId: JSON.stringify(userId),
+                    idLength: typeof userId === 'string' ? userId.length : null,
+                    authUid: JSON.stringify(authUid),
+                    isOwnDoc: authUid === userId,
+                    firebaseProject: getDb()?.app?.options?.projectId || null,
+                    firstReadSource: describeSnapshotSource(docSnapshot),
+                    calledFrom: new Error().stack,
+                }
+            )
+            return { user: null, missing: true, error: null }
         }
         const user = docSnapshot.data()
-        return user ? mapUserData(userId, user, isLoggedUser) : null
+        const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
+        return { user: mappedUser, missing: !mappedUser, error: null }
     } catch (error) {
         console.error(`Error fetching user data for ${userId}:`, error)
-        return null
+        return { user: null, missing: false, error }
     }
+}
+
+export async function getUserData(userId, isLoggedUser) {
+    const { user } = await fetchUserDataResult(userId, isLoggedUser)
+    return user
 }
 
 const convertUserDocsInUsers = docs => {
@@ -488,13 +583,13 @@ async function tryAddUserToProject(uid, projectId, project, removeInvitation) {
                   templateProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
               }
             : isGuide
-            ? {
-                  projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                  guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              }
-            : {
-                  projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              },
+              ? {
+                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                    guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                }
+              : {
+                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                },
         batch
     )
 
@@ -522,6 +617,10 @@ export async function setUserDescription(userId, extDescription) {
 
 export async function setDefaultProjectId(userId, projectId) {
     const { loggedUser, loggedUserProjectsMap, projectAssistants } = store.getState()
+    if (loggedUser?.uid !== userId) throw new Error('The default project can only be changed for the logged user')
+
+    await validateDefaultProjectSelection(userId, projectId, getProjectData)
+
     const previousDefaultProjectId = loggedUser?.defaultProjectId
     const hasDefaultProjectChanged = !!previousDefaultProjectId && previousDefaultProjectId !== projectId
 
@@ -576,7 +675,7 @@ export async function setDefaultProjectId(userId, projectId) {
         }
     }
 
-    await getDb().doc(`users/${userId}`).update({ defaultProjectId: projectId })
+    await runHttpsCallableFunction('setDefaultProjectSecondGen', { projectId })
 
     if (hasDefaultProjectChanged) {
         store.dispatch(showConfirmPopup({ trigger: 'CONFIRM POPUP MANDATORY NOTIFICATION', object: {} }))
@@ -956,6 +1055,10 @@ export async function setUserAutoPostponeAfterDaysOverdue(userId, autoPostponeAf
     getDb().doc(`users/${userId}`).update({ autoPostponeAfterDaysOverdue })
 }
 
+export async function setUserAutoArchiveProjectsAfterDays(userId, autoArchiveProjectsAfterDays) {
+    getDb().doc(`users/${userId}`).update({ autoArchiveProjectsAfterDays })
+}
+
 export async function setUserSidebarNavigationMode(userId, sidebarNavigationMode) {
     getDb().doc(`users/${userId}`).update({ sidebarNavigationMode })
 }
@@ -978,7 +1081,8 @@ export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, ok
     updateUserData(
         userId,
         {
-            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: firebase.firestore.FieldValue.delete(),
+            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
+                firebase.firestore.FieldValue.delete(),
         },
         null
     )
@@ -987,9 +1091,8 @@ export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, ok
 export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, okrIds) {
     if (!userId || !projectId || !okrIds?.length) return
     const updates = okrIds.reduce((updates, okrId) => {
-        updates[
-            `okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`
-        ] = firebase.firestore.FieldValue.delete()
+        updates[`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`] =
+            firebase.firestore.FieldValue.delete()
         return updates
     }, {})
     updateUserData(userId, updates, null)

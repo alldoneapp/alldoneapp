@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import RecurrenceModal from '../UIComponents/FloatModals/RecurrenceModal'
 import { useSelector } from 'react-redux'
 import { translate } from '../../i18n/TranslationService'
@@ -56,7 +56,7 @@ const TaskRecurrence = ({
     const recurrenceData = getRecurrenceInfo(recurrenceValue)
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <RecurrenceModal task={task} projectId={projectId} closePopover={() => setVisiblePopover(false)} />
             }
@@ -87,7 +87,7 @@ const TaskRecurrence = ({
                     </Text>
                 </View>
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 

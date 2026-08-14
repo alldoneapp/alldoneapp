@@ -52,10 +52,10 @@ export default function PreConfigTaskGeneratorModal({
             store.dispatch(setPreConfigTaskExecuting(name))
             // Build aiSettings from task configuration
             const aiSettings =
-                task.aiModel || task.aiTemperature || task.aiSystemMessage
+                task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                     ? {
                           model: task.aiModel,
-                          temperature: task.aiTemperature,
+                          reasoningEffort: task.aiReasoningEffort,
                           systemMessage: task.aiSystemMessage,
                       }
                     : null
@@ -63,6 +63,7 @@ export default function PreConfigTaskGeneratorModal({
             const taskMetadata = {
                 ...(task.taskMetadata || {}),
                 sendWhatsApp: !!task.sendWhatsApp,
+                executionMode: task.executionMode,
             }
             generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt, aiSettings, taskMetadata)
         }
@@ -241,10 +242,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         width: 305,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     scroll: {

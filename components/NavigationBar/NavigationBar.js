@@ -237,15 +237,8 @@ export default class NavigationBar extends Component {
     }
 
     render() {
-        const {
-            tabs,
-            isSecondary,
-            showFollowedNotifications,
-            feedAmount,
-            showSearchBadges,
-            invitationsAmount,
-            style,
-        } = this.props
+        const { tabs, isSecondary, showFollowedNotifications, feedAmount, showSearchBadges, invitationsAmount, style } =
+            this.props
 
         const { height, forceTabletMargins, expanded, selectedNavItem, smallScreenNavigation } = this.state
         if (!smallScreenNavigation || isSecondary) {
@@ -356,6 +349,8 @@ export default class NavigationBar extends Component {
                 {
                     toValue: 0, // Animate to final value
                     duration: 200,
+                    // height is a layout prop, so the native driver cannot drive it.
+                    useNativeDriver: false,
                 }
             ).start(this.toggleNavPickerOff) // Start the animation
         } else {
@@ -365,6 +360,8 @@ export default class NavigationBar extends Component {
                 {
                     toValue: finalHeight, // Animate to final value
                     duration: 200,
+                    // height is a layout prop, so the native driver cannot drive it.
+                    useNativeDriver: false,
                 }
             ).start(this.toggleNavPickerOn) // Start the animation
         }

@@ -1,9 +1,15 @@
 const admin = require('firebase-admin')
 const { HttpsError } = require('firebase-functions/v2/https')
+const { FieldValue } = require('firebase-admin/firestore')
+
+const { providerSupportsSubscription } = require('./vmModelRouting')
 
 const VM_API_KEYS_DOC = 'vmAgentApiKeys'
 const VM_SUBSCRIPTION_DOC = 'vmAgentSubscriptions'
-const VALID_PROVIDERS = ['claude', 'codex']
+// 'openrouter' is a credential provider, not an agent: OpenRouter runs use the Codex harness but a
+// different upstream, so they need their own key slot (AT-2230). It is BYOK-or-Gold only — there is
+// no OpenRouter consumer subscription to connect.
+const VALID_PROVIDERS = ['claude', 'codex', 'openrouter']
 const VALID_CREDENTIAL_MODES = ['byok', 'subscription', 'api']
 const VALIDATION_TIMEOUT_MS = 10000
 
@@ -19,6 +25,15 @@ const PROVIDER_CONFIG = {
     codex: {
         label: 'OpenAI',
         url: 'https://api.openai.com/v1/models',
+        headers: apiKey => ({ Authorization: `Bearer ${apiKey}` }),
+    },
+    openrouter: {
+        label: 'OpenRouter',
+        // /api/v1/key, NOT /api/v1/models. The models endpoint is PUBLIC — it answers 200 for any
+        // string, including no key at all, so validating against it would "accept" every typo and
+        // only fail later, mid-run, inside the sandbox. /api/v1/key requires the credential and
+        // answers 401 for a bad one.
+        url: 'https://openrouter.ai/api/v1/key',
         headers: apiKey => ({ Authorization: `Bearer ${apiKey}` }),
     },
 }
@@ -39,7 +54,7 @@ function assertUser(userId) {
 
 function assertProvider(provider) {
     if (!VALID_PROVIDERS.includes(provider)) {
-        throw new HttpsError('invalid-argument', 'provider must be "claude" or "codex".')
+        throw new HttpsError('invalid-argument', 'provider must be "claude", "codex", or "openrouter".')
     }
 }
 
@@ -90,6 +105,7 @@ async function validateProviderApiKey(provider, rawApiKey, options = {}) {
 }
 
 function providerHasSubscription(provider, subscriptionData = {}) {
+    if (!providerSupportsSubscription(provider)) return false
     return provider === 'claude' ? !!subscriptionData.claude?.oauthToken : !!subscriptionData.codex?.authJson
 }
 
@@ -210,11 +226,7 @@ async function removeVmApiKey({ userId, provider }) {
     const fallbackMode = providerHasSubscription(provider, subscriptionData) ? 'subscription' : 'api'
     const now = Date.now()
     const batch = admin.firestore().batch()
-    batch.set(
-        getApiKeysRef(userId),
-        { [provider]: admin.firestore.FieldValue.delete(), updatedAt: now },
-        { merge: true }
-    )
+    batch.set(getApiKeysRef(userId), { [provider]: FieldValue.delete(), updatedAt: now }, { merge: true })
     batch.set(
         getSubscriptionRef(userId),
         { credentialModes: { [provider]: fallbackMode }, updatedAt: now },
@@ -239,6 +251,9 @@ async function setVmCredentialMode({ userId, provider, mode }) {
     const apiKeyData = apiKeySnap.exists ? apiKeySnap.data() || {} : {}
     if (mode === 'byok' && !providerHasApiKey(provider, apiKeyData)) {
         throw new HttpsError('failed-precondition', 'Save and validate an API key before selecting BYOK.')
+    }
+    if (mode === 'subscription' && !providerSupportsSubscription(provider)) {
+        throw new HttpsError('invalid-argument', 'OpenRouter has no subscription option. Choose "byok" or "api".')
     }
     if (mode === 'subscription' && !providerHasSubscription(provider, subscriptionData)) {
         throw new HttpsError('failed-precondition', 'Connect a subscription before selecting subscription billing.')
@@ -270,10 +285,9 @@ async function loadVmApiKey(userId, provider) {
     const snap = await ref.get()
     const providerData = snap.exists ? (snap.data() || {})[provider] || {} : {}
     if (!providerData.apiKey) return null
-    ref.set(
-        { [provider]: { ...providerData, lastUsedAt: Date.now() }, updatedAt: Date.now() },
-        { merge: true }
-    ).catch(() => {})
+    ref.set({ [provider]: { ...providerData, lastUsedAt: Date.now() }, updatedAt: Date.now() }, { merge: true }).catch(
+        () => {}
+    )
     return providerData.apiKey
 }
 
@@ -307,6 +321,8 @@ module.exports = {
     normalizeApiKey,
     resolveModeFromData,
     sanitizeApiKeyStatus,
+    providerHasApiKey,
     VM_API_KEYS_DOC,
+    VALID_PROVIDERS,
     VALID_CREDENTIAL_MODES,
 }

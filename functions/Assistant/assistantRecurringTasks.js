@@ -2,6 +2,12 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { getAssistantTasks } = require('../Firestore/templatesFirestore')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { getAssistantForChat } = require('./assistantHelper')
+const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const {
+    getPreConfigTaskReasoningEffortOverride,
+    resolvePreConfigTaskReasoningEffort,
+} = require('./preConfigTaskReasoningEffort')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
@@ -11,9 +17,17 @@ const {
     buildOriginalScheduledMoment,
     normalizeTimezoneOffset,
 } = require('./timezoneResolver')
+const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
+const {
+    TASK_EXECUTION_MODE_DIRECT,
+    TASK_EXECUTION_MODE_WORKFLOW,
+    getTaskExecutionMode,
+} = require('../shared/taskExecutionMode')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
 const RECURRENCE_NEVER = 'never'
+const RECURRENCE_ONCE = 'once'
 const RECURRENCE_DAILY = 'daily'
 const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
 const RECURRENCE_WEEKLY = 'weekly'
@@ -24,6 +38,20 @@ const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 const RECURRENCE_CUSTOM = 'custom'
+const ASSISTANT_WORKFLOW_FIRST_STEP_ID = 'assistant-start'
+
+function buildRecurringTaskAiSettings(task, assistant, assistantId) {
+    const taskModelOverride = getPreConfigTaskModelOverride(task)
+    return {
+        model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
+        temperature: assistant?.temperature || 'TEMPERATURE_NORMAL',
+        reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant?.reasoningEffort),
+        systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',
+        assistantDisplayName: assistant?.displayName || 'Assistant',
+        assistantUid: assistant?.uid || assistantId,
+        allowedTools: Array.isArray(assistant?.allowedTools) ? assistant.allowedTools : [],
+    }
+}
 
 // Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
 function getCustomRecurrenceDays(recurrence) {
@@ -33,18 +61,29 @@ function getCustomRecurrenceDays(recurrence) {
 }
 
 function getActivatedUserIdsForTask(task) {
+    const completedOneOffUserIds = new Set(task?.completedOneOffUserIds || [])
     const recurrenceByUser = task?.recurrenceByUser || {}
     const recurrenceUserIds = Object.entries(recurrenceByUser)
-        .filter(([, recurrence]) => recurrence && recurrence !== RECURRENCE_NEVER)
+        .filter(
+            ([userId, recurrence]) =>
+                recurrence &&
+                recurrence !== RECURRENCE_NEVER &&
+                !(recurrence === RECURRENCE_ONCE && completedOneOffUserIds.has(userId))
+        )
         .map(([userId]) => userId)
 
-    const explicitIds = Array.isArray(task?.activatedUserIds) ? task.activatedUserIds.filter(Boolean) : []
+    const explicitIds = Array.isArray(task?.activatedUserIds)
+        ? task.activatedUserIds.filter(userId => userId && !completedOneOffUserIds.has(userId))
+        : []
     const mergedExplicit = [...new Set([...recurrenceUserIds, ...explicitIds])]
-    if (mergedExplicit.length > 0) return mergedExplicit
+    const hasExplicitActivationState = Array.isArray(task?.activatedUserIds) || task?.recurrenceByUser !== undefined
+    if (hasExplicitActivationState) return mergedExplicit
 
     if (!task?.recurrence || task.recurrence === RECURRENCE_NEVER) return []
 
-    const fallbackIds = [task?.activatorUserId, task?.creatorUserId, task?.userId].filter(Boolean)
+    const fallbackIds = [task?.activatorUserId, task?.creatorUserId, task?.userId].filter(
+        userId => userId && !completedOneOffUserIds.has(userId)
+    )
     return [...new Set(fallbackIds)]
 }
 
@@ -60,6 +99,14 @@ async function shouldExecuteTask(task, projectId, userDataCache = null, options 
     if (!userId) return false
 
     const userLastExecuted = task?.lastExecutedByUser?.[userId] ?? task.lastExecuted
+    const executionStatus = task?.executionByUser?.[userId]?.status
+    if (executionStatus === 'in_progress') return false
+    if (
+        recurrenceForUser === RECURRENCE_ONCE &&
+        (executionStatus === 'succeeded' || (executionStatus === undefined && userLastExecuted))
+    ) {
+        return false
+    }
     const taskForEvaluation = {
         ...task,
         activatorUserId: userId,
@@ -225,6 +272,8 @@ function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted, o
     while (next.isSameOrBefore(lastExecutedMoment) && iterations < maxIterations) {
         iterations++
         switch (recurrence) {
+            case RECURRENCE_ONCE:
+                return originalScheduledTime.clone().add(100, 'years')
             case RECURRENCE_DAILY:
                 next.add(1, 'days')
                 break
@@ -296,8 +345,16 @@ function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted, o
  * @param {string} prompt - The task prompt
  * @returns {Promise<boolean>} - Whether a new chat was created
  */
-async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
+async function ensureTaskChatExists(
+    projectId,
+    taskId,
+    assistantId,
+    prompt,
+    activatorUserId,
+    executionProjectId = projectId
+) {
     try {
+        const assistantTasksProjectId = projectId
         console.log('KW Special Always creating new chat for task:', { taskId, assistantId })
 
         // Get the task data to set proper metadata
@@ -308,12 +365,13 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             console.error('Task not found when creating chat:', { taskId, projectId })
             return { uniqueId: null }
         }
+        const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
         // Determine the follower(s) for the task - prioritize activator, then creator, then first user
         const followerIds = []
-        if (task.creatorUserId) {
-            followerIds.push(task.creatorUserId)
-            console.log('Adding creator user ID as follower IDs:', { creatorUserId: task.creatorUserId })
+        if (activatorUserId) {
+            followerIds.push(activatorUserId)
+            console.log('Adding activator user ID as follower:', { activatorUserId })
         }
 
         // If still no followers, use a fallback 'system' follower
@@ -326,13 +384,13 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             followerIds,
         })
 
-        // If this is a global project task, use the activated project ID
-        if (projectId === GLOBAL_PROJECT_ID && task.activatedInProjectId) {
-            projectId = task.activatedInProjectId
+        // Global templates are stored once but each member can activate them in a different project.
+        if (executionProjectId && executionProjectId !== projectId) {
+            projectId = executionProjectId
             console.log('Using activated project ID:', {
                 originalProjectId: GLOBAL_PROJECT_ID,
                 newProjectId: projectId,
-                activatedInProjectId: task.activatedInProjectId,
+                activatedInProjectId: executionProjectId,
             })
         }
 
@@ -342,20 +400,21 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             id: uniqueId,
             title: task.extendedName || task.name,
             type: 'tasks',
-            members: [task.creatorUserId || task.userId, assistantId], // Include creator first, then assistant
+            members: [activatorUserId || task.creatorUserId || task.userId, assistantId],
             lastEditionDate: Date.now(),
             lastEditorId: assistantId,
             commentsData: null,
             hasStar: '#FFFFFF',
-            creatorId: task.creatorUserId || task.userId,
+            creatorId: activatorUserId || task.creatorUserId || task.userId,
             isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
             created: Date.now(),
-            usersFollowing: [task.creatorUserId || task.userId], // Only include the creator/user
+            usersFollowing: [activatorUserId || task.creatorUserId || task.userId],
             quickDateId: '',
             assistantId: assistantId,
             isAssistantEnabled: true,
             stickyData: { days: 0, stickyEndDate: 0 },
-            taskId: taskId, // Add reference to the task
+            taskId: uniqueId,
+            assistantTaskId: taskId,
         }
 
         console.log('KW SPECIAL Creating chat object with data:', {
@@ -390,39 +449,51 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             throw error // Re-throw to be caught by the outer try-catch
         }
 
-        // Check if a regular task with the same ID already exists, if not create one
-        try {
-            const existingTaskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).get()
+        const createLegacyTaskRecord = true
+        if (createLegacyTaskRecord) {
+            // Check if a regular task with the same ID already exists, if not create one
+            try {
+                const existingTaskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).get()
 
-            if (!existingTaskDoc.exists) {
-                console.log('Creating regular task with same ID as ChatObject:', { uniqueId, projectId })
+                if (!existingTaskDoc.exists) {
+                    console.log('Creating regular task with same ID as ChatObject:', { uniqueId, projectId })
 
-                // Create regular task using unified TaskService
-                const { TaskService } = require('../shared/TaskService')
-                const taskService = new TaskService({
-                    database: admin.firestore(),
-                    idGenerator: () => uniqueId, // Use the specific uniqueId for this context
-                    enableFeeds: true,
-                    enableValidation: true,
-                    isCloudFunction: true,
-                })
-                await taskService.initialize()
+                    // Create regular task using unified TaskService
+                    const { TaskService } = require('../shared/TaskService')
+                    const taskService = new TaskService({
+                        database: admin.firestore(),
+                        idGenerator: () => uniqueId, // Use the specific uniqueId for this context
+                        enableFeeds: true,
+                        enableValidation: true,
+                        isCloudFunction: true,
+                    })
+                    await taskService.initialize()
 
-                // Create feedUser object for the task creator - get actual user data
-                const creatorUserId = task.creatorUserId || task.userId
-                let feedUser
-                try {
-                    const userDoc = await admin.firestore().collection('users').doc(creatorUserId).get()
-                    if (userDoc.exists) {
-                        const userData = userDoc.data()
-                        feedUser = {
-                            uid: creatorUserId,
-                            id: creatorUserId,
-                            creatorId: creatorUserId,
-                            name: userData.name || userData.displayName || 'User',
-                            email: userData.email || '',
+                    // Create feedUser object for the task creator - get actual user data
+                    const creatorUserId = activatorUserId || task.creatorUserId || task.userId
+                    let feedUser
+                    try {
+                        const userDoc = await admin.firestore().collection('users').doc(creatorUserId).get()
+                        if (userDoc.exists) {
+                            const userData = userDoc.data()
+                            feedUser = {
+                                uid: creatorUserId,
+                                id: creatorUserId,
+                                creatorId: creatorUserId,
+                                name: userData.name || userData.displayName || 'User',
+                                email: userData.email || '',
+                            }
+                        } else {
+                            feedUser = {
+                                uid: creatorUserId,
+                                id: creatorUserId,
+                                creatorId: creatorUserId,
+                                name: 'Unknown User',
+                                email: '',
+                            }
                         }
-                    } else {
+                    } catch (error) {
+                        console.warn('Could not get user data for recurring task feed, using defaults:', error)
                         feedUser = {
                             uid: creatorUserId,
                             id: creatorUserId,
@@ -431,87 +502,116 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                             email: '',
                         }
                     }
-                } catch (error) {
-                    console.warn('Could not get user data for recurring task feed, using defaults:', error)
-                    feedUser = {
-                        uid: creatorUserId,
-                        id: creatorUserId,
-                        creatorId: creatorUserId,
-                        name: 'Unknown User',
-                        email: '',
-                    }
-                }
 
-                try {
-                    const result = await taskService.createAndPersistTask(
-                        {
-                            name: task.name,
-                            description: prompt || '',
-                            userId: assistantId,
-                            projectId: projectId,
-                            taskId: uniqueId, // Use the specific ID
-                            dueDate: Date.now(),
-                            isPrivate: false,
-                            // Additional assistant-specific fields
-                            assigneeType: 'assistant',
-                            assistantId: assistantId,
-                            observersIds: followerIds.filter(id => id !== 'system'),
-                            recurrence: task.recurrence || 'never',
-                            startDate: task.startDate || Date.now(),
-                            startTime: task.startTime || '00:00',
-                            creatorId: task.creatorUserId || task.userId,
-                            isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
-                            // Task-level AI settings that override assistant settings
-                            genericData: {
-                                aiModel: task.aiModel || null,
-                                aiTemperature: task.aiTemperature || null,
-                                aiSystemMessage: task.aiSystemMessage || null,
+                    try {
+                        const result = await taskService.createAndPersistTask(
+                            {
+                                name: task.name,
+                                description: prompt || '',
+                                userId: assistantId,
+                                projectId: projectId,
+                                taskId: uniqueId, // Use the specific ID
+                                dueDate: Date.now(),
+                                isPrivate: false,
+                                // Additional assistant-specific fields
+                                assigneeType: 'assistant',
+                                assistantId: assistantId,
+                                observersIds: followerIds.filter(id => id !== 'system'),
+                                recurrence: RECURRENCE_NEVER,
+                                startDate: task.startDate || Date.now(),
+                                startTime: task.startTime || '00:00',
+                                creatorId: creatorUserId,
+                                isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
+                                executionMode,
+                                isAssistantEnabled: executionMode === TASK_EXECUTION_MODE_DIRECT,
+                                workflowTask: executionMode === TASK_EXECUTION_MODE_WORKFLOW,
+                                workflowPayerUserId: creatorUserId,
+                                ...(executionMode === TASK_EXECUTION_MODE_WORKFLOW
+                                    ? {
+                                          stepHistory: [ASSISTANT_WORKFLOW_FIRST_STEP_ID],
+                                          currentReviewerId: assistantId,
+                                          completed: Date.now(),
+                                          estimations: {
+                                              Open: 0,
+                                              [ASSISTANT_WORKFLOW_FIRST_STEP_ID]: 0,
+                                          },
+                                          workflowAiPromptOverride: {
+                                              stepId: ASSISTANT_WORKFLOW_FIRST_STEP_ID,
+                                              prompt: prompt || task.name,
+                                          },
+                                      }
+                                    : {}),
+                                assistantScheduleSource: {
+                                    projectId: assistantTasksProjectId,
+                                    assistantId,
+                                    taskId,
+                                    activatorUserId: creatorUserId,
+                                    recurrence:
+                                        task?.recurrenceByUser?.[creatorUserId] || task.recurrence || RECURRENCE_NEVER,
+                                },
+                                // Task-level AI settings that override assistant settings
+                                genericData: {
+                                    aiModel: getPreConfigTaskModelOverride(task),
+                                    aiTemperature: null,
+                                    ...(getPreConfigTaskReasoningEffortOverride(task) !== undefined
+                                        ? {
+                                              aiReasoningEffort: getPreConfigTaskReasoningEffortOverride(task),
+                                          }
+                                        : {}),
+                                    aiSystemMessage: task.aiSystemMessage || null,
+                                },
+                                feedUser,
                             },
-                            feedUser,
-                        },
-                        {
-                            userId: assistantId,
-                            projectId: projectId,
-                        }
-                    )
+                            {
+                                userId: assistantId,
+                                projectId: projectId,
+                            }
+                        )
 
-                    console.log('Successfully created regular task using TaskService:', {
-                        uniqueId: result.taskId,
-                        projectId,
-                        success: result.success,
-                    })
+                        console.log('Successfully created regular task using TaskService:', {
+                            uniqueId: result.taskId,
+                            projectId,
+                            success: result.success,
+                        })
 
-                    // Keep behavior aligned with manual pre-config task execution threads.
-                    await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).update({
-                        isAssistantEnabled: true,
-                    })
-                } catch (taskError) {
-                    console.error('Error creating task via TaskService:', {
-                        error: taskError,
-                        uniqueId,
-                        projectId,
-                        assistantTaskId: taskId,
-                        errorMessage: taskError.message,
-                    })
-                    throw taskError // Re-throw to be handled by outer try-catch
+                        // Keep behavior aligned with manual pre-config task execution threads.
+                        await admin
+                            .firestore()
+                            .doc(`items/${projectId}/tasks/${uniqueId}`)
+                            .update({
+                                isAssistantEnabled: executionMode === TASK_EXECUTION_MODE_DIRECT,
+                            })
+                    } catch (taskError) {
+                        console.error('Error creating task via TaskService:', {
+                            error: taskError,
+                            uniqueId,
+                            projectId,
+                            assistantTaskId: taskId,
+                            errorMessage: taskError.message,
+                        })
+                        throw taskError // Re-throw to be handled by outer try-catch
+                    }
+                    // --- End Feed Entry ---
+                } else {
+                    console.log('Regular task already exists with ID:', { uniqueId, projectId })
+
+                    await admin
+                        .firestore()
+                        .doc(`items/${projectId}/tasks/${uniqueId}`)
+                        .update({
+                            isAssistantEnabled: executionMode === TASK_EXECUTION_MODE_DIRECT,
+                        })
                 }
-                // --- End Feed Entry ---
-            } else {
-                console.log('Regular task already exists with ID:', { uniqueId, projectId })
-
-                await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).update({
-                    isAssistantEnabled: true,
+            } catch (error) {
+                console.error('Error creating regular task with same ID as ChatObject:', {
+                    error,
+                    uniqueId,
+                    projectId,
+                    errorMessage: error.message,
+                    errorCode: error.code,
                 })
+                // Continue execution even if task creation fails
             }
-        } catch (error) {
-            console.error('Error creating regular task with same ID as ChatObject:', {
-                error,
-                uniqueId,
-                projectId,
-                errorMessage: error.message,
-                errorCode: error.code,
-            })
-            // Continue execution even if task creation fails
         }
 
         // Create follower entries in the chatFollowers collection using uniqueId
@@ -533,10 +633,10 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
 
             const comment = {
-                creatorId: task.userId || task.creatorUserId,
+                creatorId: activatorUserId || task.creatorUserId || task.userId,
                 commentText: prompt,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: Date.now(),
                 originalContent: prompt,
             }
@@ -552,7 +652,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 .doc(`chatObjects/${projectId}/chats/${uniqueId}`)
                 .update({
                     commentsData: {
-                        lastCommentOwnerId: task.creatorUserId || task.userId,
+                        lastCommentOwnerId: activatorUserId || task.creatorUserId || task.userId,
                         lastComment: prompt.substring(0, 100), // Truncate for preview
                         lastCommentType: STAYWARD_COMMENT,
                         amount: 1,
@@ -595,6 +695,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         recurrence: recurrenceForUser,
         lastExecuted: previousLastExecutedByUser ?? task.lastExecuted ?? null,
     }
+    const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
     // Get activator data from cache or fetch from DB
     let activatorData
@@ -633,7 +734,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
     // Use the activatedInProjectId if available, otherwise use the provided projectId
     // This ensures we target the project where the task was activated by the user
-    const executionProjectId = task.activatedInProjectId || projectId
+    const executionProjectId =
+        task?.activatedInProjectIdByUser?.[activatorUserId] || task.activatedInProjectId || projectId
 
     if (executionProjectId !== projectId) {
         console.log('Using different project ID for execution:', {
@@ -666,14 +768,18 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     })
 
     try {
-        const startTimestamp = admin.firestore.Timestamp.now()
+        const startTimestamp = Timestamp.now()
         await taskDocRef.update({
-            lastExecuted: startTimestamp,
-            [`lastExecutedByUser.${activatorUserId}`]: startTimestamp.toMillis(),
             lastExecutionStarted: startTimestamp,
             lastExecutionCompleted: null,
             executionStatus: 'in_progress',
             lastExecutionError: null,
+            [`executionByUser.${activatorUserId}`]: {
+                status: 'in_progress',
+                startedAt: startTimestamp.toMillis(),
+                completedAt: null,
+                error: null,
+            },
         })
 
         console.log('Marked recurring assistant task as in-progress:', {
@@ -684,13 +790,41 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
 
         // Ensure a chat object exists for this task before trying to generate content
-        const { uniqueId } = await ensureTaskChatExists(projectId, task.id, assistantId, task.prompt)
+        const { uniqueId } = await ensureTaskChatExists(
+            projectId,
+            task.id,
+            assistantId,
+            task.prompt,
+            activatorUserId,
+            executionProjectId
+        )
+        if (!uniqueId) throw new Error('Could not create the scheduled assistant task')
+
+        if (executionMode === TASK_EXECUTION_MODE_WORKFLOW) {
+            await taskDocRef.update({
+                lastGeneratedTaskId: uniqueId,
+                [`executionByUser.${activatorUserId}.taskId`]: uniqueId,
+            })
+            console.log('Scheduled assistant task entered its workflow:', {
+                projectId,
+                assistantId,
+                assistantTaskId: task.id,
+                generatedTaskId: uniqueId,
+                activatorUserId,
+            })
+            return
+        }
 
         // Get the proper isPublicFor setting
         const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
 
         // Get follower IDs for proper notifications
-        const followerIds = await getTaskFollowerIds(executionProjectId, task.id, taskWithActivator)
+        const [followerIds, assistant] = await Promise.all([
+            getTaskFollowerIds(executionProjectId, uniqueId, taskWithActivator),
+            getAssistantForChat(executionProjectId, assistantId, activatorUserId, { forceRefresh: true }),
+        ])
+        const taskModelOverride = getPreConfigTaskModelOverride(task)
+        const resolvedAiSettings = buildRecurringTaskAiSettings(task, assistant, assistantId)
 
         // Log parameters for debugging
         console.log('Calling generatePreConfigTaskResult with parameters:', {
@@ -701,8 +835,9 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             isPublicFor,
             assistantId,
             promptLength: task.prompt?.length,
-            aiModel: task.aiModel,
-            aiTemperature: task.aiTemperature,
+            aiModel: resolvedAiSettings.model,
+            aiModelSource: taskModelOverride ? 'task_override' : 'assistant',
+            aiReasoningEffort: resolvedAiSettings.reasoningEffort,
         })
 
         // Execute the task using the activator's user ID for gold deduction and notifications
@@ -716,19 +851,25 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             task.prompt,
             'en', // Default to English
-            {
-                model: task.aiModel,
-                temperature: task.aiTemperature,
-                instructions: task.aiSystemMessage,
-            },
+            resolvedAiSettings,
             {
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
                 recurrence: taskWithActivator.recurrence,
-            }
+                // These runs execute inline inside checkRecurringAssistantTasks, an onSchedule
+                // function whose Cloud Scheduler attempt deadline caps at 30 minutes, so they get
+                // the scheduled wall clock rather than the interactive 55 minutes.
+                maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+            },
+            null,
+            'tasks'
         )
 
         // WhatsApp notification is now handled inside generatePreConfigTaskResult
+
+        if (!taskResult || taskResult.success !== true) {
+            throw new Error('Scheduled assistant prompt did not return a successful execution result')
+        }
 
         await finalizeGeneratedAssistantTask({
             taskResult,
@@ -739,19 +880,35 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
 
         // Update the lastExecuted timestamp
-        await taskDocRef.update({
+        const completedAt = Date.now()
+        const successPayload = {
             lastExecuted: Date.now(),
-            [`lastExecutedByUser.${activatorUserId}`]: Date.now(),
-            lastExecutionCompleted: Date.now(),
+            [`lastExecutedByUser.${activatorUserId}`]: completedAt,
+            lastExecutionCompleted: completedAt,
             executionStatus: 'succeeded',
             lastExecutionError: null,
             lastGeneratedTaskId: uniqueId,
             lastGeneratedTaskCompletionStatus: 'succeeded',
             lastGeneratedTaskCompletionError: null,
-        })
+            [`executionByUser.${activatorUserId}`]: {
+                status: 'succeeded',
+                startedAt: startTimestamp.toMillis(),
+                completedAt,
+                error: null,
+                taskId: uniqueId,
+            },
+        }
+        if (taskWithActivator.recurrence === RECURRENCE_ONCE) {
+            successPayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
+            successPayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
+            successPayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
+        }
+        await taskDocRef.update(successPayload)
 
         const nextExecutionAfterRun =
-            task.recurrence === RECURRENCE_NEVER || !originalScheduledForLogs
+            taskWithActivator.recurrence === RECURRENCE_NEVER ||
+            taskWithActivator.recurrence === RECURRENCE_ONCE ||
+            !originalScheduledForLogs
                 ? null
                 : getNextExecutionTime(
                       originalScheduledForLogs.clone(),
@@ -781,18 +938,24 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             executionStatus: 'failed',
             lastExecutionCompleted: null,
             lastExecutionError: error.message,
+            [`executionByUser.${activatorUserId}`]: {
+                status: 'failed',
+                startedAt: Date.now(),
+                completedAt: null,
+                error: error.message,
+            },
         }
 
         if (previousLastExecuted) {
             revertPayload.lastExecuted = previousLastExecuted
         } else {
-            revertPayload.lastExecuted = admin.firestore.FieldValue.delete()
+            revertPayload.lastExecuted = FieldValue.delete()
         }
 
         if (typeof previousLastExecutedByUser === 'number') {
             revertPayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
         } else {
-            revertPayload[`lastExecutedByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
         }
 
         try {
@@ -1112,6 +1275,7 @@ async function checkAndExecuteRecurringTasks() {
         let tasksSkippedNotMember = 0
 
         const recurringTypes = [
+            RECURRENCE_ONCE,
             RECURRENCE_DAILY,
             RECURRENCE_EVERY_WORKDAY,
             RECURRENCE_WEEKLY,
@@ -1192,6 +1356,21 @@ async function checkAndExecuteRecurringTasks() {
             }
         }
 
+        try {
+            const globalAssistantsSnapshot = await admin
+                .firestore()
+                .collection(`assistants/${GLOBAL_PROJECT_ID}/items`)
+                .get()
+            if (globalAssistantsSnapshot.docs.length > 0) {
+                projectAssistants.set(
+                    GLOBAL_PROJECT_ID,
+                    globalAssistantsSnapshot.docs.map(doc => doc.id)
+                )
+            }
+        } catch (error) {
+            console.warn('Error fetching global assistants for scheduled tasks:', { error: error.message })
+        }
+
         console.log('Found assistants in active user projects:', {
             projectsWithAssistants: projectAssistants.size,
             totalAssistants: Array.from(projectAssistants.values()).reduce((sum, arr) => sum + arr.length, 0),
@@ -1225,10 +1404,15 @@ async function checkAndExecuteRecurringTasks() {
                                 continue
                             }
 
-                            const projectMembers = projectMembersMap.get(projectId) || new Set()
+                            const membershipProjectId =
+                                task?.activatedInProjectIdByUser?.[activatedUserId] ||
+                                task.activatedInProjectId ||
+                                projectId
+                            const projectMembers = projectMembersMap.get(membershipProjectId) || new Set()
                             if (!projectMembers.has(activatedUserId)) {
                                 console.log('Skipping recurring task because activated user is not in project:', {
                                     projectId,
+                                    membershipProjectId,
                                     assistantId,
                                     taskId: task.id,
                                     taskName: task.name,
@@ -1396,6 +1580,8 @@ module.exports = {
     __private__: {
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
+        getActivatedUserIdsForTask,
+        buildRecurringTaskAiSettings,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>
             resolveTimezoneContext(task, userData, options, getNextExecutionTime),
         buildOriginalScheduledMoment,

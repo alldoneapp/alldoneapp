@@ -2,6 +2,7 @@ import moment from 'moment'
 import { findIndex, uniq } from 'lodash'
 
 import store from '../../../redux/store'
+import { TASK_EXECUTION_MODE_WORKFLOW } from '../../../utils/taskExecutionMode'
 import { shouldBlockPressAfterPopupDismiss } from '../../../utils/popupDismissGuard'
 import {
     setBacklinkSection,
@@ -159,6 +160,7 @@ export const GENERIC_CHAT_TYPE = 5
 export const GENERIC_SKILL_TYPE = 6
 
 export const RECURRENCE_NEVER = 'never'
+export const RECURRENCE_ONCE = 'once'
 export const RECURRENCE_DAILY = 'daily'
 export const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
 export const RECURRENCE_WEEKLY = 'weekly'
@@ -180,6 +182,7 @@ export const RECURRENCE_CUSTOM_MAX_DAYS = 3650
 
 export const RECURRENCE_MAP = {
     [RECURRENCE_NEVER]: { short: '', large: 'Never', shortcut: '0' },
+    [RECURRENCE_ONCE]: { short: '1×', large: 'Once', shortcut: '' },
     [RECURRENCE_DAILY]: { short: 'D', large: 'Daily', shortcut: '1' },
     [RECURRENCE_EVERY_WORKDAY]: { short: 'Mo-Fr', large: 'Every workday (Mo-Fr)', shortcut: '2' },
     [RECURRENCE_WEEKLY]: { short: 'W', large: 'Weekly', shortcut: '3' },
@@ -441,6 +444,7 @@ class TasksHelper {
             suggestedBy: null,
             parentGoalId: null,
             parentGoalIsPublicFor: null,
+            goalSuggestion: null,
             noteId: null,
             containerNotesIds: [],
             calendarData: null,
@@ -452,6 +456,7 @@ class TasksHelper {
             isPremium: false,
             lockKey: '',
             assigneeType: TASK_ASSIGNEE_USER_TYPE,
+            executionMode: TASK_EXECUTION_MODE_WORKFLOW,
             assistantId: '',
             commentsData: null,
             autoEstimation: null,
@@ -546,7 +551,7 @@ class TasksHelper {
 
             return {
                 steps: steps,
-                selected: task.stepHistory.length === 1 ? OPEN_STEP : selected,
+                selected: task.workflowTask ? selected : task.stepHistory.length === 1 ? OPEN_STEP : selected,
                 nextStepNum: nextStepNum === stepsEntries.length - 1 ? OPEN_STEP : nextStepNum,
             }
         }
@@ -559,7 +564,9 @@ class TasksHelper {
             case isAllProjects ? URL_ALL_PROJECTS_TASKS_WORKFLOW : URL_PROJECT_USER_TASKS_WORKFLOW:
                 return { index: TOGGLE_INDEX_PENDING, name: 'Workflow' }
             case URL_PROJECT_USER_TASKS_IN_PROGRESS:
-                return { index: TOGGLE_INDEX_IN_PROGRESS, name: 'In progress' }
+                return store.getState().currentUser?.temperature
+                    ? { index: TOGGLE_INDEX_PENDING, name: 'Workflow' }
+                    : { index: TOGGLE_INDEX_IN_PROGRESS, name: 'In progress' }
             case isAllProjects ? URL_ALL_PROJECTS_TASKS_DONE : URL_PROJECT_USER_TASKS_DONE:
                 return { index: TOGGLE_INDEX_DONE, name: 'Done' }
 
@@ -578,11 +585,7 @@ class TasksHelper {
             case TOGGLE_INDEX_OPEN:
                 return isAllProjects ? URL_ALL_PROJECTS_TASKS_OPEN : URL_PROJECT_USER_TASKS_OPEN
             case TOGGLE_INDEX_PENDING || TOGGLE_INDEX_IN_PROGRESS:
-                return userIsAssistant
-                    ? URL_PROJECT_USER_TASKS_IN_PROGRESS
-                    : isAllProjects
-                    ? URL_ALL_PROJECTS_TASKS_WORKFLOW
-                    : URL_PROJECT_USER_TASKS_WORKFLOW
+                return isAllProjects ? URL_ALL_PROJECTS_TASKS_WORKFLOW : URL_PROJECT_USER_TASKS_WORKFLOW
             case TOGGLE_INDEX_DONE:
                 return isAllProjects ? URL_ALL_PROJECTS_TASKS_DONE : URL_PROJECT_USER_TASKS_DONE
             default:
@@ -697,11 +700,11 @@ class TasksHelper {
                     assistantIndex >= 0
                         ? currentProjectAssistants[assistantIndex]
                         : userIndex >= 0
-                        ? currentProjectUsers[userIndex]
-                        : contactIndex >= 0
-                        ? currentProjectContacts[contactIndex]
-                        : getWorkstreamById(projectId, userId) ||
-                          Backend.mapWorkstreamData(userId, getWorkstreamById(projectId, userId))
+                          ? currentProjectUsers[userIndex]
+                          : contactIndex >= 0
+                            ? currentProjectContacts[contactIndex]
+                            : getWorkstreamById(projectId, userId) ||
+                              Backend.mapWorkstreamData(userId, getWorkstreamById(projectId, userId))
 
                 // Store current workstrem data when it gets fetched from DB
                 if (userId?.startsWith(WORKSTREAM_ID_PREFIX) && userId !== DEFAULT_WORKSTREAM_ID) {
@@ -1158,14 +1161,14 @@ class TasksHelper {
                 filterConstant === URL_GOAL_DETAILS_TASKS_OPEN
                     ? TOGGLE_INDEX_OPEN
                     : filterConstant === URL_GOAL_DETAILS_TASKS_WORKFLOW
-                    ? TOGGLE_INDEX_PENDING
-                    : TOGGLE_INDEX_DONE,
+                      ? TOGGLE_INDEX_PENDING
+                      : TOGGLE_INDEX_DONE,
             name:
                 filterConstant === URL_GOAL_DETAILS_TASKS_OPEN
                     ? 'Open'
                     : filterConstant === URL_GOAL_DETAILS_TASKS_WORKFLOW
-                    ? 'Workflow'
-                    : 'Done',
+                      ? 'Workflow'
+                      : 'Done',
         }
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
@@ -1264,8 +1267,8 @@ class TasksHelper {
         filterConstant,
         autoStartTranscription = false
     ) => {
-        console.log('[TasksHelper] processURLNoteDetailsTab called')
-        console.log('[TasksHelper] autoStartTranscription:', autoStartTranscription)
+        if (__DEV__) console.log('[TasksHelper] processURLNoteDetailsTab called')
+        if (__DEV__) console.log('[TasksHelper] autoStartTranscription:', autoStartTranscription)
         const { loggedUser, selectedSidebarTab } = store.getState()
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -1280,16 +1283,18 @@ class TasksHelper {
                 : tab
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
-        console.log(
-            '[TasksHelper] note:',
-            !!note,
-            'inSelectedProject:',
-            inSelectedProject,
-            'user:',
-            !!user,
-            'note.parentObject:',
-            note?.parentObject
-        )
+        if (__DEV__) {
+            console.log(
+                '[TasksHelper] note:',
+                !!note,
+                'inSelectedProject:',
+                inSelectedProject,
+                'user:',
+                !!user,
+                'note.parentObject:',
+                note?.parentObject
+            )
+        }
         if (note && inSelectedProject && user != null && !note.parentObject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             let data = {
@@ -1297,7 +1302,7 @@ class TasksHelper {
                 projectId,
                 autoStartTranscription,
             }
-            console.log('[TasksHelper] Navigating to NotesDetailedView with data:', data)
+            if (__DEV__) console.log('[TasksHelper] Navigating to NotesDetailedView with data:', data)
             store.dispatch([
                 switchProject(projectIndex),
                 storeCurrentUser(user),
@@ -1312,10 +1317,12 @@ class TasksHelper {
             const task = await Backend.getTaskData(projectId, note.parentObject.id)
             if (task) {
                 const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-                console.log(
-                    '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
-                    autoStartTranscription
-                )
+                if (__DEV__) {
+                    console.log(
+                        '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                        autoStartTranscription
+                    )
+                }
                 store.dispatch([
                     switchProject(projectIndex),
                     setSelectedNavItem(DV_TAB_TASK_NOTE),
@@ -1351,8 +1358,8 @@ class TasksHelper {
             ? TasksHelper.getUserInProject(projectId, userId)
                 ? 'users'
                 : TasksHelper.getContactInProject(projectId, userId)
-                ? 'contacts'
-                : ''
+                  ? 'contacts'
+                  : ''
             : ''
     }
 
@@ -1510,8 +1517,8 @@ class TasksHelper {
         const projectIndicator = isAllProjects
             ? ALL_PROJECTS_INDEX
             : loggedUserProjects[selectedProjectIndex]
-            ? loggedUserProjects[selectedProjectIndex].id
-            : ALL_PROJECTS_INDEX
+              ? loggedUserProjects[selectedProjectIndex].id
+              : ALL_PROJECTS_INDEX
 
         store.dispatch([setTaskViewToggleIndex(index), setTaskViewToggleSection(optionText)])
 

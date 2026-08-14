@@ -89,8 +89,8 @@ const NavigationBarItem = (
                     isMobile
                         ? localStyles.containerMobile
                         : isMiddleScreen || forceTabletMargins
-                        ? localStyles.containerTablet
-                        : localStyles.container,
+                          ? localStyles.containerTablet
+                          : localStyles.container,
                 ]}
             >
                 <Text

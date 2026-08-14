@@ -38,9 +38,10 @@ export default function UpcomingMilestoneRow({ projectId }) {
         return idx > 0 ? openMilestones[idx - 1].date : 0
     }, [openMilestones, nextUpcoming])
 
-    const firstMilestoneId = useMemo(() => (openMilestones && openMilestones[0] ? openMilestones[0].id : null), [
-        openMilestones,
-    ])
+    const firstMilestoneId = useMemo(
+        () => (openMilestones && openMilestones[0] ? openMilestones[0].id : null),
+        [openMilestones]
+    )
 
     const loggedUserIsBoardOwner = loggedUserId === currentUserId
     const loggedUserCanUpdateObject =

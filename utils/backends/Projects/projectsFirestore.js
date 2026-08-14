@@ -21,6 +21,7 @@ import {
     getLinearMilestoneTitle,
     normalizeGoalMilestonesConfig,
 } from '../../GoalMilestonesHelper'
+import { normalizeTaskGoalRoutingMode } from '../../TaskGoalSuggestion'
 
 async function getLinearMilestoneByPeriodKey(projectId, ownerId, periodKey) {
     const doc = (
@@ -134,6 +135,14 @@ export function setProjectAutoEstimation(projectId, autoEstimation) {
     getDb().doc(`/projects/${projectId}`).update({
         autoEstimation,
     })
+}
+
+export function setProjectTaskGoalRoutingMode(projectId, taskGoalRoutingMode) {
+    return getDb()
+        .doc(`/projects/${projectId}`)
+        .update({
+            taskGoalRoutingMode: normalizeTaskGoalRoutingMode(taskGoalRoutingMode),
+        })
 }
 
 export async function setProjectGoalMilestonesConfig(projectId, config) {

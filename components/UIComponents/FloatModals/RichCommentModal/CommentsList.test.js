@@ -1,13 +1,20 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import CommentsList from './CommentsList'
-import { respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
+import { cancelAssistantRun, respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
+import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
+import { resetStopRequests } from '../../../ChatsView/ChatDV/EditorView/stopAssistantRunRequests'
+import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAssistantRunButton'
 
+jest.mock('react-redux', () => ({
+    useSelector: selector => selector({ loggedUser: { uid: 'user-1' } }),
+}))
 jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => 'Comment')
 jest.mock('../../../../utils/backends/Assistants/assistantRuns', () => ({
     respondToVmInteraction: jest.fn(() => Promise.resolve()),
+    cancelAssistantRun: jest.fn(() => Promise.resolve()),
 }))
 
 const baseRun = interaction => ({
@@ -17,13 +24,13 @@ const baseRun = interaction => ({
     interaction: { requestId: 'request-1', ...interaction },
 })
 
-const renderPopupComments = assistantRun =>
+const renderPopupComments = (assistantRun, commentOverrides = {}) =>
     renderer.create(
         <CommentsList
             projectId="project-1"
             objectType="tasks"
             objectId="task-1"
-            comments={[{ id: 'comment-1', commentText: 'VM status', assistantRun }]}
+            comments={[{ id: 'comment-1', commentText: 'VM status', assistantRun, ...commentOverrides }]}
             archivingEmailKeys={[]}
             archivedEmailKeys={[]}
         />
@@ -157,5 +164,125 @@ describe('RichCommentModal CommentsList VM interactions', () => {
             1
         )
         expect(findButton(resumedTree, 'Execute plan')).toBeUndefined()
+    })
+
+    test('replaces technical chat status text with the shared friendly progress story', () => {
+        const tree = renderPopupComments(
+            {
+                kind: 'chat',
+                status: 'running',
+                runId: 'run-1',
+                activity: { phase: 'tool', toolName: 'web_search', startedAt: 123 },
+            },
+            {
+                isLoading: true,
+                commentText: 'Under the hood: web_search (step 1/200)',
+            }
+        )
+        const comment = tree.root.findByType('Comment')
+
+        expect(comment.props.contentOverride.type).toBe(AssistantProgress)
+        expect(comment.props.contentOverride.props.activity).toEqual({
+            phase: 'tool',
+            toolName: 'web_search',
+            startedAt: 123,
+        })
+        expect(comment.props.contentOverride.props.appearance).toBe('dark')
+    })
+})
+
+describe('RichCommentModal CommentsList stop control', () => {
+    beforeEach(() => {
+        resetStopRequests()
+        cancelAssistantRun.mockClear()
+        cancelAssistantRun.mockImplementation(() => Promise.resolve())
+    })
+
+    const runningRun = overrides => ({ kind: 'chat', status: 'running', runId: 'run-1', ...overrides })
+
+    test('stops a running chat run straight from the popup, without opening the full chat view', async () => {
+        const tree = renderPopupComments(runningRun(), { isLoading: true })
+
+        const stop = findButton(tree, 'Stop')
+        expect(stop).toBeTruthy()
+
+        await act(async () => {
+            await stop.props.onPress()
+        })
+
+        expect(cancelAssistantRun).toHaveBeenCalledWith({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            commentId: 'comment-1',
+            runKind: 'chat',
+            runId: 'run-1',
+        })
+        expect(findButton(tree, 'Stopping…')).toBeTruthy()
+    })
+
+    test('offers Stop for a running VM job too, which the popup shows no progress card for', () => {
+        const tree = renderPopupComments(runningRun({ kind: 'vm_job' }), { isLoading: true })
+
+        expect(tree.root.findAllByType(AssistantProgress)).toHaveLength(0)
+        expect(findButton(tree, 'Stop')).toBeTruthy()
+    })
+
+    test('hides Stop whenever the run is not stoppable', () => {
+        const cases = [
+            ['settled run', runningRun({ status: 'completed' }), { isLoading: true }],
+            ['already stopping', runningRun({ status: 'cancel_requested' }), { isLoading: true }],
+            ['awaiting the user', baseRun({ kind: 'plan_review', plan: 'p' }), { isLoading: true }],
+            ['another user’s run', runningRun({ requestUserId: 'user-2' }), { isLoading: true }],
+            ['not loading', runningRun(), {}],
+            ['stale spinner', runningRun(), { isLoading: true, lastChangeDate: Date.now() - 6 * 60 * 1000 }],
+        ]
+
+        cases.forEach(([label, assistantRun, overrides]) => {
+            const tree = renderPopupComments(assistantRun, overrides)
+            expect([label, !!findButton(tree, 'Stop')]).toEqual([label, false])
+        })
+    })
+
+    test('leaves a little room under the popup Stop button, without touching the shared component', () => {
+        const tree = renderPopupComments(runningRun(), { isLoading: true })
+        const stopStyle = StyleSheet.flatten(findButton(tree, 'Stop').props.style)
+
+        expect(stopStyle.marginBottom).toBe(8)
+
+        // The spacing is the popup's own decision: the shared button — rendered the way the
+        // full chat view renders it, with no style override — must not carry it.
+        const chatViewTree = renderer.create(
+            <StopAssistantRunButton
+                projectId="project-1"
+                objectType="tasks"
+                objectId="task-1"
+                commentId="comment-1"
+                assistantRun={runningRun()}
+                isLoading={true}
+            />
+        )
+        const chatViewStyle = StyleSheet.flatten(findButton(chatViewTree, 'Stop').props.style)
+
+        expect(chatViewStyle.marginBottom).toBeUndefined()
+    })
+
+    test('a stop already requested from the full chat view mounts the popup button disabled', async () => {
+        const firstTree = renderPopupComments(runningRun(), { isLoading: true })
+        await act(async () => {
+            await findButton(firstTree, 'Stop').props.onPress()
+        })
+
+        const reopenedPopup = renderPopupComments(runningRun(), { isLoading: true })
+        const pendingButton = findButton(reopenedPopup, 'Stopping…')
+
+        expect(pendingButton).toBeTruthy()
+        expect(pendingButton.props.disabled).toBe(true)
+
+        await act(async () => {
+            await pendingButton.props.onPress()
+        })
+
+        expect(cancelAssistantRun).toHaveBeenCalledTimes(1)
     })
 })

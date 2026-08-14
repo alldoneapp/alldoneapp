@@ -81,9 +81,9 @@ export default function TasksBoards({
                             ? index === currentUserIndex - 1 || (index === users.length - 1 && currentUserIndex === 0)
                                 ? '>'
                                 : index === currentUserIndex + 1 ||
-                                  (index === 0 && currentUserIndex === users.length - 1)
-                                ? '<'
-                                : null
+                                    (index === 0 && currentUserIndex === users.length - 1)
+                                  ? '<'
+                                  : null
                             : null
 
                     return (

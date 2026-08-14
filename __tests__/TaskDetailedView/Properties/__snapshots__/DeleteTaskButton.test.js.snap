@@ -1,69 +1,57 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`DeleteTaskButton component DeleteTaskButton snapshot test should render correctly 1`] = `
-<View
-  accessible={false}
-  focusable={true}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-paddingLeft-f727ji r-paddingRight-i023vh r-backgroundColor-1niwhzg r-borderStyle-1phboty"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
-    Object {
-      "alignItems": "center",
-      "borderColor": "#E00000",
-      "borderRadius": 4,
-      "borderWidth": 2,
-      "flexDirection": "row",
-      "opacity": 1,
-      "paddingHorizontal": 16,
-      "paddingVertical": 8,
+    {
+      "borderBottomColor": "rgba(224,0,0,1.00)",
+      "borderBottomWidth": "2px",
+      "borderLeftColor": "rgba(224,0,0,1.00)",
+      "borderLeftWidth": "2px",
+      "borderRightColor": "rgba(224,0,0,1.00)",
+      "borderRightWidth": "2px",
+      "borderTopColor": "rgba(224,0,0,1.00)",
+      "borderTopWidth": "2px",
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
+      style={
+        {
+          "color": "rgba(224,0,0,1.00)",
+          "fontFamily": "alldone",
+          "fontSize": "24px",
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </div>
+  </div>
+  <div
+    className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi"
+    dir="auto"
     style={
-      Object {
-        "marginRight": 14,
+      {
+        "color": "rgba(224,0,0,1.00)",
+        "marginLeft": "12px",
       }
     }
   >
-    <View>
-      <Text
-        style={
-          Object {
-            "color": "#E00000",
-            "fontFamily": "alldone",
-            "fontSize": 20,
-            "opacity": 1,
-          }
-        }
-      >
-        
-      </Text>
-    </View>
-  </View>
-  <Text
-    style={
-      Array [
-        Object {
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 14,
-          "fontStyle": "normal",
-          "letterSpacing": 0.8,
-          "lineHeight": 14,
-        },
-        Object {
-          "color": "#E00000",
-        },
-      ]
-    }
-  >
     Delete Task
-  </Text>
-</View>
+  </div>
+</div>
 `;

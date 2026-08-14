@@ -12,6 +12,7 @@ import { GOAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { colors } from '../../styles/global'
 import { getNewDefaultAssistant, openAssistantDv } from './assistantsHelper'
 import { uploadNewAssistant } from '../../../utils/backends/Assistants/assistantsFirestore'
+import useSingleFlightSubmit from '../../../hooks/useSingleFlightSubmit'
 
 export default function EditAssistant({ projectId, adding, assistant, onCancelAction }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -40,13 +41,16 @@ export default function EditAssistant({ projectId, adding, assistant, onCancelAc
             : onCancelAction()
     }
 
-    const createAssistant = async newAssistant => {
+    // Enter reaches this editor through a document listener, Quill's newline
+    // callback and the done button at once, and every run mints a new id, so
+    // the creation is guarded against duplicated in flight submissions.
+    const createAssistant = useSingleFlightSubmit(async newAssistant => {
         const assistant = uploadNewAssistant(projectId, newAssistant, openDvWhenCreateAssistant)
         setTimeout(() => {
             onCancelAction()
         })
         return assistant
-    }
+    })
 
     const updateAssistant = updatedAssistant => {
         setTimeout(() => {
@@ -122,10 +126,7 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
         elevation: 3,
         marginLeft: -6,
         marginRight: -6,

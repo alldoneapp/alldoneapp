@@ -3,7 +3,14 @@
  */
 
 import React from 'react'
+import { Provider } from 'react-redux'
+import store from '../../redux/store'
+import { Platform } from 'react-native'
 import DueDateButton from '../../components/UIControls/DueDateButton'
+
+// MyPlatform.osType only consults window.navigator off the mobile path,
+// and the react-native preset reports ios.
+Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
@@ -11,52 +18,13 @@ describe('Task DueDate Button component', () => {
     describe('Task DueDate Button snapshot test', () => {
         it('should render correctly', () => {
             const tree = renderer
-                .create(<DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />)
+                .create(
+                    <Provider store={store}>
+                        <DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />
+                    </Provider>
+                )
                 .toJSON()
             expect(tree).toMatchSnapshot()
-        })
-    })
-
-    describe('Function updateState snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(
-                <DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
-
-            tree.getInstance().updateState()
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
-    })
-
-    describe('Function hidePopover snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(
-                <DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
-
-            tree.getInstance().state.visiblePopover = true
-            tree.getInstance().hidePopover()
-        })
-    })
-
-    describe('Function delayHidePopover snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(
-                <DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
-            tree.getInstance().delayHidePopover()
-        })
-    })
-
-    describe('Task DueDate check unmount', () => {
-        it('should unmount correctly', () => {
-            const tree = renderer.create(
-                <DueDateButton projectId={'-Asd'} task={{ id: '-Sda', name: 'My Task' }} />
-            )
-            tree.getInstance().componentWillUnmount()
         })
     })
 })

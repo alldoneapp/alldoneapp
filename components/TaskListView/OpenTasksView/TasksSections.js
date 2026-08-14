@@ -1,5 +1,5 @@
 import React from 'react'
-import { DragDropContext } from 'react-beautiful-dnd'
+import { DragDropContext } from '@hello-pangea/dnd'
 import { useSelector } from 'react-redux'
 
 import MentionSection from './MentionSection'
@@ -7,7 +7,6 @@ import MainSection from './MainSection'
 import { onBeforeCapture, onDragEnd } from '../../DragSystem/DragHelper'
 import store from '../../../redux/store'
 import {
-    CALENDAR_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
@@ -18,7 +17,6 @@ import SuggestedSectionList from './SuggestedSectionList'
 import OriginallyFromSectionList from './OriginallyFromSectionList'
 import ObservedFromSectionList from './ObservedFromSectionList'
 import StreamAndUserTasksSectionList from './StreamAndUserTasksSectionList'
-import CalendarSectionContainer from './CalendarSectionContainer'
 
 export default function TasksSections({
     projectId,
@@ -28,6 +26,7 @@ export default function TasksSections({
     isActiveOrganizeMode,
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
+    assistantProfileMode = false,
 }) {
     const mentionTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][MENTION_TASK_INDEX].length
@@ -44,10 +43,6 @@ export default function TasksSections({
     const observedTasksSectionsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][OBSERVED_TASKS_INDEX].length
     )
-    const calendarTasksAmount = useSelector(
-        state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length
-    )
-
     const beforeCapture = dragData => {
         const { subtaskByTaskStore } = store.getState()
         const subtaskByTask = subtaskByTaskStore[instanceKey] ? subtaskByTaskStore[instanceKey] : {}
@@ -73,7 +68,7 @@ export default function TasksSections({
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
             />
 
-            {mentionTasksAmount > 0 && (
+            {!assistantProfileMode && mentionTasksAmount > 0 && (
                 <MentionSection
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -82,7 +77,7 @@ export default function TasksSections({
                 />
             )}
 
-            {suggestedTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && suggestedTasksSectionsAmount > 0 && (
                 <SuggestedSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -100,16 +95,7 @@ export default function TasksSections({
                 />
             )}
 
-            {calendarTasksAmount > 0 && (
-                <CalendarSectionContainer
-                    projectId={projectId}
-                    dateIndex={dateIndex}
-                    instanceKey={instanceKey}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                />
-            )}
-
-            {observedTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && observedTasksSectionsAmount > 0 && (
                 <ObservedFromSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -119,7 +105,7 @@ export default function TasksSections({
                 />
             )}
 
-            {streamAndUserTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && streamAndUserTasksSectionsAmount > 0 && (
                 <StreamAndUserTasksSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}

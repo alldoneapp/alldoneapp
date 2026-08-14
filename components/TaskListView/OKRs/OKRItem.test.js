@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import OKRItem from './OKRItem'
@@ -13,7 +13,12 @@ jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
 }))
 
-jest.mock('react-tiny-popover', () => ({ children }) => children)
+jest.mock(
+    'react-tiny-popover',
+    () =>
+        ({ children }) =>
+            children
+)
 
 jest.mock('../../../i18n/TranslationService', () => ({
     translate: jest.fn(textKey => textKey),
@@ -68,12 +73,12 @@ const createState = () => ({
     },
 })
 
+// react-native-web spreads the accessibility/press props across the
+// touchable's inner views too, so constrain the match to the touchable itself.
 const findDoneForTodayButtons = tree =>
-    tree.root.findAll(
-        node =>
-            node.props.accessibilityLabel === 'Hide OKR in All Projects for today' &&
-            typeof node.props.onPress === 'function'
-    )
+    tree.root
+        .findAllByType(TouchableOpacity)
+        .filter(node => node.props.accessibilityLabel === 'Hide OKR in All Projects for today')
 
 describe('OKRItem', () => {
     beforeEach(() => {

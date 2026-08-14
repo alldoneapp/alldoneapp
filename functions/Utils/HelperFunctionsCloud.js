@@ -4,7 +4,6 @@ const { defineString } = require('firebase-functions/params')
 
 const { getUserData } = require('../Users/usersFirestore')
 const { orderBy } = require('lodash')
-const { getEnvFunctions } = require('../envFunctionsHelper')
 
 const TASK_ASSIGNEE_USER_TYPE = 'USER'
 
@@ -21,7 +20,8 @@ const DEFAULT_WORKSTREAM_ID = 'ws@default'
 const CAPACITY_NONE = 'CAPACITY_NONE'
 const BACKLOG_DATE_NUMERIC = Number.MAX_SAFE_INTEGER
 const CURRENT_DAY_VERSION_ID = '-1'
-const REGEX_URL = /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
+const REGEX_URL =
+    /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
 const REGEX_MENTION = /^(@[\S]+)$/i
 const BACKLOG_MILESTONE_ID = 'BACKLOG'
 const WORKSTREAM_ID_PREFIX = 'ws@'
@@ -75,6 +75,7 @@ const ESTIMATION_POINTS_VALUES = {
 }
 
 const RECURRENCE_NEVER = 'never'
+const RECURRENCE_ONCE = 'once'
 const RECURRENCE_DAILY = 'daily'
 const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
 const RECURRENCE_WEEKLY = 'weekly'
@@ -87,6 +88,7 @@ const RECURRENCE_ANNUALLY = 'annually'
 
 const RECURRENCE_MAP = {
     [RECURRENCE_NEVER]: { short: '', large: 'Never', shortcut: '0' },
+    [RECURRENCE_ONCE]: { short: '1×', large: 'Once', shortcut: '' },
     [RECURRENCE_DAILY]: { short: 'D', large: 'Daily', shortcut: '1' },
     [RECURRENCE_EVERY_WORKDAY]: { short: 'Mo-Fr', large: 'Every workday (Mo-Fr)', shortcut: '2' },
     [RECURRENCE_WEEKLY]: { short: 'W', large: 'Weekly', shortcut: '3' },
@@ -153,16 +155,11 @@ const getTaskNameWithoutMeta = (taskName, removeLineBreaks) => {
     return words.join(' ')
 }
 
-const recursiveDeleteHelper = async (firebase_tools, projectEnv, path) => {
-    const { GOOGLE_FIREBASE_DEPLOY_TOKEN } = getEnvFunctions()
-
-    await firebase_tools.firestore.delete(path, {
-        project: projectEnv,
-        recursive: true,
-        yes: true,
-        token: GOOGLE_FIREBASE_DEPLOY_TOKEN,
-        force: true,
-    })
+const recursiveDeleteHelper = async path => {
+    const firestore = admin.firestore()
+    // An even number of segments is a document path, an odd number a collection path
+    const isDocumentPath = path.split('/').filter(Boolean).length % 2 === 0
+    await firestore.recursiveDelete(isDocumentPath ? firestore.doc(path) : firestore.collection(path))
 }
 
 const getFirstName = fullName => {
@@ -289,6 +286,7 @@ module.exports = {
     ALL_USERS,
     CURRENT_DAY_VERSION_ID,
     RECURRENCE_NEVER,
+    RECURRENCE_ONCE,
     REGEX_URL,
     REGEX_MENTION,
     BACKLOG_MILESTONE_ID,

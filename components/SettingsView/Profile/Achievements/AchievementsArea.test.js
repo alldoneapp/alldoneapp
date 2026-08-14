@@ -1,4 +1,5 @@
 import React from 'react'
+import { Text } from 'react-native'
 import renderer from 'react-test-renderer'
 import moment from 'moment'
 
@@ -20,7 +21,7 @@ describe('AchievementsArea', () => {
                 }}
             />
         )
-        const textValues = tree.root.findAllByType('Text').map(item => item.props.children)
+        const textValues = tree.root.findAllByType(Text).map(item => item.props.children)
 
         expect(textValues).toContain('Achievements')
         expect(textValues).toContain('Empty inbox')

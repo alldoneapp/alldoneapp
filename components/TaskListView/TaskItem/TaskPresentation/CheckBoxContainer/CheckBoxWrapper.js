@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -17,6 +17,7 @@ import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
 import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { taskBypassesWorkflow } from '../../../../../utils/taskExecutionMode'
 import { getEmailTaskArchiveData, isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import RecurringTaskDateBasisModal, {
@@ -32,7 +33,6 @@ function CheckBoxWrapper(
         projectId,
         isObservedTask,
         isToReviewTask,
-        isSuggested,
         isActiveOrganizeMode,
         checkOnDrag,
         loggedUserCanUpdateObject,
@@ -124,6 +124,7 @@ function CheckBoxWrapper(
     const ownerIsWorkstream = userId?.startsWith(WORKSTREAM_ID_PREFIX)
     const isLockedGmailTask = isInboxSummaryGmailTask(task)
     const emailArchiveData = !done && !isSubtask ? getEmailTaskArchiveData(task) : null
+    const hasUnresolvedSuggestion = !!task.suggestedBy
 
     const scheduleSetTaskStatus = recurrenceBaseDateOverride => {
         if (taskTransitionPendingRef.current) return
@@ -264,13 +265,29 @@ function CheckBoxWrapper(
                 ).catch(rollbackOptimisticCheck)
             }
         } else if (done) {
-            moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
-        } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
+            if (task.workflowTask) {
+                const workflow = getUserWorkflow(projectId, userId, task)
+                const firstWorkflowStepId = getWorkflowStepsIdsSorted(workflow)[0]
+                if (firstWorkflowStepId) {
+                    moveTasksFromDone(projectId, task, firstWorkflowStepId).catch(rollbackOptimisticCheck)
+                } else {
+                    safeSetChecked(true)
+                }
+            } else {
+                moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
+            }
+        } else if (
+            taskBypassesWorkflow(task) ||
+            genericData ||
+            (isPrivate && !isLongPress) ||
+            calendarData ||
+            isLockedGmailTask
+        ) {
             shouldAskForRecurrenceDateBasis(DONE_STEP)
                 ? setRecurrenceDateBasisModalIsOpen(true)
                 : scheduleMoveTasksFromOpen(DONE_STEP)
-        } else if (userIds.length === 1 && !isLongPress) {
-            const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId)
+        } else if (!task.workflowTask && userIds.length === 1 && !isLongPress) {
+            const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId, task)
             const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
             const stepToMoveId = workflowStepsIds[0] ? workflowStepsIds[0] : DONE_STEP
             shouldAskForRecurrenceDateBasis(stepToMoveId)
@@ -284,9 +301,14 @@ function CheckBoxWrapper(
     }
 
     const onCheckboxPress = isLongPress => {
-        console.log('onCheckboxPress called - isLongPress:', isLongPress)
+        if (__DEV__) console.log('onCheckboxPress called - isLongPress:', isLongPress)
         if (taskTransitionPendingRef.current || emailCompletionSubmittingRef.current) return
         if (!checkIsLimitedByXp(projectId)) {
+            if (hasUnresolvedSuggestion) {
+                setChecked(true)
+                openModal()
+                return
+            }
             if (emailArchiveData && !done) {
                 setEmailCompletionModalIsOpen(true)
                 return
@@ -328,7 +350,7 @@ function CheckBoxWrapper(
     return (
         <>
             {recurrenceDateBasisModalIsOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <RecurringTaskDateBasisModal
                             task={task}
@@ -349,7 +371,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -364,9 +386,9 @@ function CheckBoxWrapper(
                         checked={checked}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                     />
-                </Popover>
+                </AppPopover>
             ) : emailCompletionModalIsOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <EmailTaskCompletionModal
                             closePopover={closeEmailCompletionModal}
@@ -386,7 +408,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -403,16 +425,16 @@ function CheckBoxWrapper(
                             loggedUserCanUpdateObject && !emailCompletionSubmitting && !taskTransitionPending
                         }
                     />
-                </Popover>
+                </AppPopover>
             ) : isOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         <TaskFlowModal
                             task={task}
                             projectId={projectId}
                             isObservedTask={isObservedTask}
                             isToReviewTask={isToReviewTask}
-                            isSuggested={isSuggested}
+                            isSuggested={hasUnresolvedSuggestion}
                             pending={pending}
                             cancelPopover={closeModal}
                             checkBoxIdRef={checkBoxIdRef}
@@ -431,7 +453,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -446,13 +468,13 @@ function CheckBoxWrapper(
                         checked={checked}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                     />
-                </Popover>
+                </AppPopover>
             ) : (
                 <CheckBoxContainer
                     isSubtask={isSubtask}
                     isObservedTask={isObservedTask}
                     isToReviewTask={isToReviewTask}
-                    isSuggested={isSuggested}
+                    isSuggested={hasUnresolvedSuggestion}
                     isActiveOrganizeMode={isActiveOrganizeMode}
                     checkOnDrag={checkOnDrag}
                     highlightColor={highlightColor}

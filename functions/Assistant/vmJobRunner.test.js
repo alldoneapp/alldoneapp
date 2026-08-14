@@ -10,6 +10,7 @@ const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
 const mockGetObjectFollowersIds = jest.fn()
 const mockCreateInitialStatusMessage = jest.fn()
+const mockResolveWorkflowRunsForSettledVmJob = jest.fn(async () => 1)
 const mockFirestore = jest.fn(() => ({
     doc: jest.fn(),
 }))
@@ -18,6 +19,11 @@ mockFirestore.FieldValue = { increment: jest.fn(value => ({ __op: 'increment', v
 
 jest.mock('firebase-admin', () => ({
     firestore: mockFirestore,
+}))
+
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: mockFirestore.FieldValue,
+    Timestamp: mockFirestore.Timestamp,
 }))
 
 jest.mock('../Feeds/globalFeedsHelper', () => ({
@@ -43,14 +49,25 @@ jest.mock('./vmJob', () => ({
     getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
     formatAgentRunSuffix: (model, effort) => {
         const parts = []
-        if (model) parts.push(model)
+        if (model) {
+            const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?/.exec(model)
+            parts.push(
+                model === 'opus'
+                    ? 'Opus latest; resolving version…'
+                    : opusVersion
+                      ? `Opus ${opusVersion[1]}.${opusVersion[2] || '0'}`
+                      : model
+            )
+        }
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
-    formatVmBillingStatus: (agentLabel, credentialMode) => {
+    // Mirrors the real signature, including the credentialLabel override the OpenRouter BYOK route
+    // depends on (AT-2230) — a stub that silently drops it would make this file's header tests lie.
+    formatVmBillingStatus: (agentLabel, credentialMode, _agentModel = '', _tokensPerGold = 0, credentialLabel = '') => {
         const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
         if (mode === 'subscription') return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-        if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
+        if (mode === 'byok') return `🔐 Using your personal ${credentialLabel || agentLabel} API key.`
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
@@ -74,11 +91,60 @@ jest.mock('./assistantStatusHelper', () => ({
     createInitialStatusMessage: mockCreateInitialStatusMessage,
 }))
 
+jest.mock('../Tasks/workflowAiStep', () => ({
+    resolveWorkflowRunsForSettledVmJob: mockResolveWorkflowRunsForSettledVmJob,
+}))
+
 const { __private__ } = require('./vmJobRunner')
 
 afterAll(() => {
     if (originalCloudRunJob === undefined) delete process.env.CLOUD_RUN_JOB
     else process.env.CLOUD_RUN_JOB = originalCloudRunJob
+})
+
+describe('VM workflow completion handoff', () => {
+    beforeEach(() => {
+        mockResolveWorkflowRunsForSettledVmJob.mockClear()
+    })
+
+    test('re-reads the terminal job and immediately resolves its parked workflow', async () => {
+        const pendingRef = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    kind: 'vm_job',
+                    projectId: 'mutable-project',
+                    objectType: 'tasks',
+                    objectId: 'mutable-task',
+                    status: 'completed',
+                }),
+            })),
+        }
+        const immutableContext = {
+            correlationId: 'vm-1',
+            kind: 'vm_job',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            callbackContext: {
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+            },
+        }
+
+        await expect(__private__.resolveWorkflowAfterVmJobSettlement(pendingRef, immutableContext)).resolves.toBe(1)
+        expect(mockResolveWorkflowRunsForSettledVmJob).toHaveBeenCalledWith(
+            expect.objectContaining({
+                correlationId: 'vm-1',
+                projectId: 'project-1',
+                objectId: 'task-1',
+                status: 'completed',
+            })
+        )
+    })
 })
 
 describe('VM runner prompt', () => {
@@ -96,6 +162,17 @@ describe('VM runner prompt', () => {
 
         expect(prompt).toContain('Do not create an output file just to return a normal text/chat answer')
         expect(prompt).toContain('Put the answer directly in your final message unless the user asked for a file')
+    })
+
+    test('keeps task-thread delivery owned by the invoking assistant host', () => {
+        const prompt = __private__.buildAgentPrompt(baseVmJob)
+
+        expect(prompt).toContain('The VM host owns all task-thread delivery')
+        expect(prompt).toContain(
+            'Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result'
+        )
+        expect(prompt).toContain('Return normal output in your final message')
+        expect(prompt).toContain('ask through the native interaction mechanism')
     })
 
     test('only asks for a GitHub pull request when repository files changed', () => {
@@ -148,6 +225,33 @@ describe('VM runner prompt', () => {
         )
     })
 
+    // AT-2230 BYOK: the live header names the KEY SLOT, not the harness. An OpenRouter run is driven
+    // by the Codex agent, so "your personal Codex API key" would point the user at the wrong
+    // Settings card the moment the key stops working.
+    test('the live header names the OpenRouter key slot for an OpenRouter run', () => {
+        expect(
+            __private__.renderVmWorkingHeader('Codex', { model: 'openrouter:deepseek/deepseek-chat' }, 'byok')
+        ).toContain('your personal Codex API key')
+        expect(
+            __private__.renderVmWorkingHeader(
+                'Codex',
+                { model: 'openrouter:deepseek/deepseek-chat' },
+                'byok',
+                'OpenRouter'
+            )
+        ).toContain('your personal OpenRouter API key')
+        expect(
+            __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: '' }, 'byok', 'OpenRouter')
+        ).toContain('your personal OpenRouter API key')
+    })
+
+    test('an Alldone Gold header is unchanged and quotes no rate (the launch comment owns that)', () => {
+        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-5.6-sol' }, 'api')
+        expect(header).toContain('Using Alldone API billing')
+        // Re-deriving a rate here could print a number different from the one frozen on the job.
+        expect(header).not.toContain('Sol rate')
+    })
+
     test('preserves complete multiline Claude progress updates', () => {
         const progressText = `First line\n\n${'Complete Claude update. '.repeat(20).trim()}`
         const state = { activity: [], finalResult: '', assistantText: '', usage: null }
@@ -184,9 +288,13 @@ describe('VM runner prompt', () => {
     })
 
     test('header includes the model and effort the agent is running with', () => {
-        expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
-            '🖥️ Working with Claude (opus · high effort) in a VM…'
-        )
+        expect(
+            __private__.renderVmWorkingHeader('Claude', {
+                model: 'opus',
+                resolvedModel: 'claude-opus-5',
+                effort: 'high',
+            })
+        ).toBe('🖥️ Working with Claude (Opus 5.0 · high effort) in a VM…')
         expect(
             __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: 'gpt-5.5', effort: 'medium' })
         ).toBe('🖥️ Working with Codex (gpt-5.5 · medium effort) in a VM…\n\n💻 npm run lint')
@@ -199,7 +307,7 @@ describe('VM runner prompt', () => {
     })
 
     test('header identifies personal API-key routing without exposing a key', () => {
-        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
+        const header = __private__.renderVmWorkingHeader('Claude', { model: 'claude-opus-5', effort: 'high' }, 'byok')
         expect(header).toContain('Using your personal Claude API key')
         expect(header).not.toContain('sk-')
     })
@@ -216,6 +324,82 @@ describe('VM runner prompt', () => {
         expect(
             __private__.resolveAgentRunDetails({ agent: 'codex', agentModel: 'gpt-5.4', agentReasoningEffort: 'low' })
         ).toEqual({ model: 'gpt-5.4', effort: 'low' })
+    })
+
+    test('resolveAgentRunDetails preserves the moving Opus alias before execution', () => {
+        expect(
+            __private__.resolveAgentRunDetails({
+                agent: 'claude',
+                agentModel: 'opus',
+                agentReasoningEffort: 'high',
+            })
+        ).toEqual({ model: 'opus', effort: 'high' })
+    })
+
+    test('passes the moving Opus alias unchanged to automatic Claude runs', () => {
+        const command = __private__.buildClaudeRunCommand(false, 'opus', 'high')
+        expect(command).toContain('--model opus')
+        expect(command).not.toContain('claude-opus-5')
+    })
+
+    test('resolveAgentRunDetails restores a previously observed concrete model', () => {
+        expect(
+            __private__.resolveAgentRunDetails({
+                agent: 'claude',
+                agentModel: 'opus',
+                resolvedAgentModel: 'claude-opus-4-8',
+            })
+        ).toEqual({ model: 'opus', effort: 'high', resolvedModel: 'claude-opus-4-8' })
+    })
+
+    test.each([
+        [
+            {
+                type: 'system',
+                subtype: 'init',
+                model: 'claude-opus-4-8',
+            },
+            'claude-opus-4-8',
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: { model: 'claude-opus-5' },
+            },
+            'claude-opus-5',
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: 'tool-1',
+                message: { model: 'claude-sonnet-5' },
+            },
+            null,
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: { model: '<synthetic>' },
+            },
+            null,
+        ],
+    ])('extracts a safe concrete model from Claude runtime event %#', (event, expected) => {
+        expect(__private__.resolveRuntimeAgentModel(event, 'claude')).toBe(expected)
+        expect(__private__.resolveRuntimeAgentModel(event, 'codex')).toBeNull()
+    })
+
+    test('updates the live header after Claude resolves the moving alias', () => {
+        const runDetails = { model: 'opus', effort: 'high' }
+        const event = { type: 'system', subtype: 'init', model: 'claude-opus-4-8' }
+
+        expect(__private__.applyRuntimeAgentModel(event, 'claude', runDetails)).toBe('claude-opus-4-8')
+        expect(runDetails).toEqual({ model: 'opus', effort: 'high', resolvedModel: 'claude-opus-4-8' })
+        expect(__private__.renderVmWorkingHeader('Claude', runDetails)).toBe(
+            '🖥️ Working with Claude (Opus 4.8 · high effort) in a VM…'
+        )
+        expect(__private__.applyRuntimeAgentModel(event, 'claude', runDetails)).toBeNull()
     })
 })
 
@@ -276,6 +460,8 @@ describe('VM interactive agent bridge', () => {
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
         expect(planning).toMatchObject({
+            model: 'opus',
+            effort: 'high',
             phase: 'planning',
             permissionMode: 'plan',
             additionalDirectories: ['/home/user/git-metadata'],
@@ -322,6 +508,7 @@ describe('VM interactive agent bridge', () => {
         })
         expect(input.codexArgs).toEqual(
             expect.arrayContaining([
+                'features.apps=false',
                 'sandbox_mode="workspace-write"',
                 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
                 'sandbox_workspace_write.network_access=true',
@@ -359,6 +546,7 @@ describe('VM interactive agent bridge', () => {
         } else {
             expect(input.codexArgs).toEqual(
                 expect.arrayContaining([
+                    'features.apps=false',
                     'sandbox_mode="workspace-write"',
                     'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
                     'sandbox_workspace_write.network_access=true',
@@ -536,7 +724,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.0.0 (Claude Code)\n')
     })
 
-    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
+    test('reports a fresh VM check before a separate installation stage', async () => {
         const onActivity = jest.fn()
         const sandbox = {
             commands: {
@@ -561,6 +749,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         ).rejects.toThrow(
             'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
         )
+        expect(onActivity).toHaveBeenNthCalledWith(1, 'Working\n\n🆕 Starting a fresh VM and checking Claude…')
         expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
         expect(sandbox.commands.run).toHaveBeenCalledWith(
             expect.any(String),
@@ -571,6 +760,56 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 },
             })
         )
+    })
+
+    test('reports an update, rather than an install, when a resumed VM has an older CLI', async () => {
+        const onActivity = jest.fn()
+        const sandbox = {
+            commands: {
+                run: jest.fn(async (_command, options) => {
+                    // Exercise markers split across command-stream chunks too.
+                    options.onStdout('AGENT_CLI_INSTALLING from=1.9')
+                    options.onStdout('.0 to=2.1.0\nAGENT_CLI_READY installed 2.1.0\n')
+                }),
+            },
+        }
+
+        await __private__.ensureAgentCliAvailable(
+            sandbox,
+            { installGuard: 'check-agent-cli' },
+            'Codex',
+            onActivity,
+            'Working',
+            { isResume: true }
+        )
+
+        expect(onActivity.mock.calls).toEqual([
+            ['Working\n\n🔄 Resuming VM and checking Codex for updates…'],
+            ['Working\n\n⬆️ Updating Codex from 1.9.0 to 2.1.0…'],
+        ])
+    })
+
+    test('only reports the update check when a resumed VM already has the latest CLI', async () => {
+        const onActivity = jest.fn()
+        const sandbox = {
+            commands: {
+                run: jest.fn(async (_command, options) => {
+                    options.onStdout('AGENT_CLI_READY existing 2.1.0\n')
+                }),
+            },
+        }
+
+        await __private__.ensureAgentCliAvailable(
+            sandbox,
+            { installGuard: 'check-agent-cli' },
+            'Claude',
+            onActivity,
+            'Working',
+            { isResume: true }
+        )
+
+        expect(onActivity).toHaveBeenCalledTimes(1)
+        expect(onActivity).toHaveBeenCalledWith('Working\n\n🔄 Resuming VM and checking Claude for updates…')
     })
 
     test('reports Node ENOSPC exit status 228 as exhausted VM temporary storage', () => {
@@ -630,14 +869,56 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             'codex',
             { activity: ['Failed to refresh token: refresh token was already used'] }
         )
+        const warningOnlyError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('401 Unauthorized: {"code":"refresh_token_reused"}'),
+            'codex',
+            {
+                activity: ['⚠️ Unexpected status 401 Unauthorized'],
+                usage: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cacheTokens: 0,
+                    totalTokens: 0,
+                    costUsd: null,
+                },
+            }
+        )
         const afterWorkError = __private__.markSafeVmSubscriptionAuthRetry(
             new Error('OAuth token has expired'),
             'claude',
             { activity: ['💻 Created a pull request'] }
         )
+        const afterUsageError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('refresh token was already used'),
+            'codex',
+            { activity: [], usage: { totalTokens: 1 } }
+        )
 
         expect(preWorkError.vmAuthRetrySafe).toBe(true)
+        expect(warningOnlyError.vmAuthRetrySafe).toBe(true)
         expect(afterWorkError.vmAuthRetrySafe).toBe(false)
+        expect(afterUsageError.vmAuthRetrySafe).toBe(false)
+    })
+
+    test('marks a zero-exit no-output subscription auth failure as safe to retry', () => {
+        const state = {
+            activity: ['Failed to refresh token: refresh token was already used'],
+            finalResult: '',
+            assistantText: '',
+            usage: null,
+        }
+        const error = __private__.buildAgentExitErrorWithAuthRetry(
+            'Codex',
+            { exitCode: 0 },
+            state,
+            '401 Unauthorized: {"code":"refresh_token_reused"}',
+            'codex',
+            new Error('Agent produced no output.')
+        )
+
+        expect(error.message).toContain('Codex exited with exit status 0.')
+        expect(error.message).toContain('refresh_token_reused')
+        expect(error.vmAuthRetrySafe).toBe(true)
     })
 
     test('waits for a newer subscription credential before retrying', async () => {
@@ -711,6 +992,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 `-c 'model_providers.alldone_vm_proxy.base_url="https://vm-proxy.example/vmLlmProxy/openai/v1"'`
             )
             expect(command).toContain(`-c 'model_providers.alldone_vm_proxy.supports_websockets=false'`)
+            expect(command).toContain(`-c 'features.apps=false'`)
             expect(command).toContain(`-c 'sandbox_mode="workspace-write"'`)
             expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]'`)
             expect(command).not.toContain('--sandbox')
@@ -732,8 +1014,10 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
     test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
         const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', undefined, true)
 
-        expect(command).toContain('--model gpt-5.6-sol')
+        // Shell-quoted since AT-2230: an OpenRouter id carries `/` and may carry `:`.
+        expect(command).toContain(`--model 'gpt-5.6-sol'`)
         expect(command).toContain('-c model_reasoning_effort=medium')
+        expect(command).toContain(`-c 'features.apps=false'`)
         expect(command).not.toContain('alldone_vm_proxy')
     })
 
@@ -981,6 +1265,99 @@ describe('VM runner runtime Gold monitor', () => {
         )
     })
 
+    // AT-2230 pricing: the settlement half of per-model Gold rates. Runtime Gold pays for the E2B
+    // sandbox and must NOT move with the model — only the token line does.
+    test('each model settles token Gold at its own researched rate, with runtime Gold unchanged', () => {
+        const args = { runtimeMs: 61000, usage: { totalTokens: 250_000 } }
+        const sol = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-sol' })
+        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-luna' })
+        const deepSeekPro = __private__.calculateCompletionGoldCharges({
+            ...args,
+            agentModel: 'openrouter:deepseek/deepseek-v4-pro',
+        })
+
+        expect(sol.tokensPerGold).toBe(100)
+        expect(luna.tokensPerGold).toBe(2500)
+        expect(deepSeekPro.tokensPerGold).toBe(1800)
+
+        expect(sol.tokenGoldTotal).toBe(2500)
+        expect(luna.tokenGoldTotal).toBe(100)
+        expect(deepSeekPro.tokenGoldTotal).toBe(139)
+
+        // Same sandbox, same compute cost, whichever model the agent talked to.
+        for (const charges of [luna, deepSeekPro]) {
+            expect(charges.runtimeGoldTotal).toBe(sol.runtimeGoldTotal)
+            expect(charges.minutes).toBe(sol.minutes)
+        }
+    })
+
+    // The rate is frozen onto the job at launch precisely so a catalog refresh mid-run cannot move
+    // what the user pays. Settlement must honour that stored rate over re-deriving one.
+    test('a rate persisted on the job wins over re-deriving it from the model id', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:deepseek/deepseek-v4-pro',
+            tokensPerGold: 5000,
+        })
+
+        expect(charges.tokensPerGold).toBe(5000)
+        expect(charges.tokenGoldTotal).toBe(50)
+    })
+
+    // The two charge sites must resolve the SAME rate from the same persisted state. If settlement
+    // used a different rate than the proxy had charged at, this subtraction would quietly bill the
+    // difference a second time (or clamp to zero and hide an overcharge entirely).
+    test('settlement nets off proxy charges made at the same rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:deepseek/deepseek-v4-pro',
+            tokensPerGold: 1800,
+            proxyTokenGoldCharged: 139,
+        })
+
+        expect(charges.tokenGoldTotal).toBe(139)
+        expect(charges.tokenGold).toBe(0) // fully paid live; nothing owed at the end
+        expect(charges.topup).toBe(charges.runtimeGoldRemaining)
+    })
+
+    // Every OpenRouter model is priced from its own upstream cost now, not parked at one shared level.
+    test('a non-DeepSeek OpenRouter model settles at its own researched rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:qwen/qwen3-coder',
+        })
+
+        expect(charges.tokensPerGold).toBe(960)
+        expect(charges.tokenGoldTotal).toBe(260)
+    })
+
+    // Existing jobs carry no agentModel on their doc; they must settle exactly as before.
+    test('a job with no recorded model settles at the standard rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+        })
+
+        expect(charges.tokensPerGold).toBe(100)
+        expect(charges.tokenGoldTotal).toBe(2500)
+    })
+
+    test('a DeepSeek subscription-exempt run still charges no token Gold', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:deepseek/deepseek-v4-pro',
+            tokensPerGold: 1800,
+            subscriptionUsed: true,
+        })
+
+        expect(charges.tokenGoldTotal).toBe(0)
+        expect(charges.tokenGold).toBe(0)
+    })
+
     test('subscription completion charges VM runtime but no token Gold', () => {
         const charges = __private__.calculateCompletionGoldCharges({
             runtimeMs: 61000,
@@ -1220,6 +1597,42 @@ describe('VM session isolation', () => {
         expect(__private__.isReusableVmSession({ status: 'running' })).toBe(false)
     })
 
+    test('resumes only paused sessions and connects directly to warm idle sessions', () => {
+        expect(__private__.shouldResumeVmSession({ status: 'paused' })).toBe(true)
+        expect(__private__.shouldResumeVmSession({})).toBe(true)
+        expect(__private__.shouldResumeVmSession({ status: 'idle_running' })).toBe(false)
+    })
+
+    test('treats E2B already-running resume conflicts as safe to connect', async () => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 409,
+            text: async () => '{"code":409,"message":"Sandbox sandbox-1 is already running"}',
+        }))
+
+        try {
+            await expect(__private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600)).resolves.toBe(false)
+        } finally {
+            global.fetch = originalFetch
+        }
+    })
+
+    test('does not swallow unrelated E2B resume conflicts', async () => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 409,
+            text: async () => '{"code":409,"message":"Sandbox transition is already in progress"}',
+        }))
+
+        try {
+            await expect(__private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600)).rejects.toThrow('E2B resume 409')
+        } finally {
+            global.fetch = originalFetch
+        }
+    })
+
     test('treats command-channel timeouts and forced agent termination as unhealthy', () => {
         expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)
@@ -1381,7 +1794,11 @@ describe('VM runner artifact presentation', () => {
 })
 
 describe('VM completion chat metadata', () => {
-    const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
+    const createFirestoreMock = ({
+        commentData = {},
+        chatData = {},
+        taskData = { commentsData: { amount: 1 } },
+    } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
             if (!refs.has(path)) {
@@ -1398,7 +1815,7 @@ describe('VM completion chat metadata', () => {
                     return { exists: true, data: () => ({ title: 'Important task', members: ['user-2'], ...chatData }) }
                 }
                 if (ref.path === 'items/project-1/tasks/task-1') {
-                    return { exists: true, data: () => ({ commentsData: { amount: 1 } }) }
+                    return { exists: true, data: () => taskData }
                 }
                 if (ref.path === 'projects/project-1') {
                     return { exists: true, data: () => ({ name: 'Product' }) }
@@ -1518,6 +1935,14 @@ describe('VM completion chat metadata', () => {
             { isFinal: true, output: 'Finished VM result' }
         )
 
+        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+                commentText: 'Finished VM result',
+            }),
+            { merge: true }
+        )
         expect(transaction.update).toHaveBeenCalledWith(
             refs.get('items/project-1/tasks/task-1'),
             expect.objectContaining({
@@ -1594,9 +2019,10 @@ describe('VM completion chat metadata', () => {
             { isFinal: true, output: 'Finished legacy VM result' }
         )
 
-        expect(
-            refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set
-        ).toHaveBeenCalledWith(expect.not.objectContaining({ creatorId: expect.anything() }), { merge: true })
+        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.not.objectContaining({ creatorId: expect.anything() }),
+            { merge: true }
+        )
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
     })
@@ -1705,6 +2131,156 @@ describe('VM completion chat metadata', () => {
         )
     })
 
+    // AT-2196: a run that ends without doing the work must land back on a human. The workflow step
+    // is deliberately untouched — only the reviewer moves, exactly like an agent question.
+    describe('failure hands the task to the requesting user (AT-2196)', () => {
+        const workflowTask = {
+            commentsData: { amount: 1 },
+            currentReviewerId: 'assistant-1',
+            stepHistory: [-1, 'ai-step'],
+            userIds: ['user-1', 'assistant-1'],
+        }
+        const pendingWebhook = {
+            correlationId: 'correlation-1',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            userIdsToNotify: ['user-1'],
+            isPublicFor: [0],
+            statusCommentId: 'comment-1',
+        }
+        const taskUpdate = (transaction, refs) =>
+            transaction.update.mock.calls.find(call => call[0] === refs.get('items/project-1/tasks/task-1'))?.[1]
+
+        test('assigns the failed task to the user while preserving its workflow step', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+                failureReason: 'runtime_timeout',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({
+                    reason: 'failure',
+                    failureReason: 'runtime_timeout',
+                    reviewerId: 'user-1',
+                    previousReviewerId: 'assistant-1',
+                    workflowStepId: 'ai-step',
+                }),
+            })
+            // The step itself never moves: no stepHistory rewrite, no done/completed flags.
+            expect(update).toEqual(expect.not.objectContaining({ stepHistory: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ done: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ inDone: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ completed: expect.anything() }))
+        })
+
+        test('also assigns a cancelled run back to the user', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, 'Stopped.', { assistantRunStatus: 'cancelled' })
+
+            expect(taskUpdate(transaction, refs)).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({ reason: 'failure', failureReason: 'cancelled' }),
+            })
+        })
+
+        test('leaves the reviewer alone when the run succeeds', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, 'All done.', { isFinal: true, output: 'All done.' })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toMatchObject({ isAssistantEnabled: true })
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ vmInteractionWorkflowStep: expect.anything() }))
+        })
+
+        test('leaves the reviewer alone while a run is still in progress', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '⏳ Working…', { assistantRunStatus: 'running' })
+
+            expect(taskUpdate(transaction, refs)).toBeUndefined()
+        })
+
+        test('does not touch the reviewer of a non-task thread', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(
+                { ...pendingWebhook, objectType: 'topics' },
+                '❌ The VM task could not be completed: boom',
+                { assistantRunStatus: 'failed' }
+            )
+
+            expect(
+                transaction.update.mock.calls.every(call => !call[1] || call[1].currentReviewerId === undefined)
+            ).toBe(true)
+            expect(refs.has('items/project-1/tasks/task-1')).toBe(false)
+        })
+
+        test('leaves a task alone when a human took it over while the VM was running', async () => {
+            const { transaction, refs } = createFirestoreMock({
+                taskData: { ...workflowTask, currentReviewerId: 'bob' },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+        })
+
+        test('still hands the task over when the comment metadata was already applied', async () => {
+            // A run can post its final answer and then throw while billing. It settles as failed, and
+            // that failure has to reach a human even though the one-shot metadata guard has fired.
+            const { transaction, refs } = createFirestoreMock({
+                taskData: workflowTask,
+                commentData: { vmCompletionMetadataAppliedAt: 123 },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            expect(taskUpdate(transaction, refs)).toEqual({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({ reason: 'failure' }),
+            })
+        })
+
+        test('does not steal a task another VM job is holding', async () => {
+            const { transaction, refs } = createFirestoreMock({
+                taskData: {
+                    ...workflowTask,
+                    currentReviewerId: 'user-2',
+                    vmInteractionWorkflowStep: {
+                        correlationId: 'other-run',
+                        requestId: 'request-9',
+                        reviewerId: 'user-2',
+                        previousReviewerId: 'assistant-1',
+                        reason: 'interaction',
+                    },
+                },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ vmInteractionWorkflowStep: expect.anything() }))
+        })
+    })
+
     test('does not change assistant activation for a successful topic VM run', async () => {
         const { transaction, refs } = createFirestoreMock()
 
@@ -1773,9 +2349,21 @@ describe('VM completion chat metadata', () => {
         expect(transaction.update).not.toHaveBeenCalled()
     })
 
-    test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {
-        const { refs, transaction } = createFirestoreMock()
-        const progressText = '⏳ Reading the task-list listeners'
+    // The live thinking/working log is rewritten into the same comment many times per run. None of
+    // those rewrites may create an unread marker: the red badge has to mean "there is something to
+    // read", not "the VM is still typing". Settled runs — including the unsuccessful ones — and
+    // questions the VM asks (written by vmInteraction, not here) are the only red-worthy events.
+    const chatNotificationWrites = transaction =>
+        transaction.set.mock.calls
+            .map(([ref]) => (ref && ref.path) || '')
+            .filter(path => path.startsWith('chatNotifications/'))
+
+    test.each([
+        ['a live progress update', {}],
+        ['a run waiting for the user to answer', { assistantRunStatus: 'awaiting_user' }],
+        ['a run whose cancellation was requested', { assistantRunStatus: 'cancel_requested' }],
+    ])('writes no unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
 
         await __private__.writeStatusComment(
             {
@@ -1785,31 +2373,47 @@ describe('VM completion chat metadata', () => {
                 objectId: 'task-1',
                 assistantId: 'assistant-1',
                 userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
                 statusCommentId: 'comment-1',
             },
-            progressText
+            '🖥️ Working with Claude in a VM…\n\n💻 npm test',
+            options
         )
 
-        expect(refs.get('chatObjects/project-1/chats/task-1').update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                lastEditorId: 'assistant-1',
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': progressText,
-                'commentsData.lastCommentType': 2,
-            })
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update).toHaveBeenCalledWith({
-            'commentsData.lastComment': expect.stringContaining('Reading the task-list'),
-            'commentsData.lastCommentType': 2,
-        })
-        expect(refs.get('chatObjects/project-1/chats/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
+        expect(chatNotificationWrites(transaction)).toEqual([])
         expect(transaction.set).not.toHaveBeenCalled()
-        expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['the final result', { isFinal: true, output: 'Finished VM result' }],
+        ['a failed run', { assistantRunStatus: 'failed' }],
+        ['a cancelled run', { assistantRunStatus: 'cancelled' }],
+    ])('writes the unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'Settled VM run',
+            options
+        )
+
+        expect(chatNotificationWrites(transaction)).toEqual(['chatNotifications/project-1/user-1/comment-1'])
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatNotifications/project-1/user-1/comment-1' }),
+            // followed: true is what makes the badge red rather than grey.
+            expect.objectContaining({ followed: true, creatorType: 'assistant' })
+        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
@@ -2035,16 +2639,8 @@ describe('VM runner origin-conversation completion note', () => {
 
         expect(result).toBe(true)
         expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-        const [
-            projectId,
-            objectType,
-            objectId,
-            assistantId,
-            note,
-            userIdsToNotify,
-            ,
-            followerIds,
-        ] = mockCreateInitialStatusMessage.mock.calls[0]
+        const [projectId, objectType, objectId, assistantId, note, userIdsToNotify, , followerIds] =
+            mockCreateInitialStatusMessage.mock.calls[0]
         expect(projectId).toBe('project-anna')
         expect(objectType).toBe('topics')
         expect(objectId).toBe('whatsapp-topic-1')
@@ -2127,5 +2723,75 @@ describe('VM runner origin-conversation completion note', () => {
 
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledTimes(1)
         expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// OpenRouter routing for the Codex harness (AT-2230)
+// ---------------------------------------------------------------------------
+
+describe('Codex OpenRouter routing', () => {
+    const PROXY = 'https://proxy.example/vmLlmProxy'
+
+    test('points Codex at the OpenRouter proxy route with the Responses wire API', () => {
+        const overrides = __private__.buildCodexProxyConfigOverrides(PROXY, { openRouter: true })
+
+        expect(overrides).toContain(
+            `model_providers.alldone_vm_proxy.base_url="https://proxy.example/vmLlmProxy/openrouter/v1"`
+        )
+        // The Codex CLI removed `wire_api = "chat"` in Feb 2026 (a current CLI exits 13 on it at
+        // config load), and OpenRouter's Responses API is GA — so this route speaks `responses`
+        // like the OpenAI one. See buildCodexProxyConfigOverrides.
+        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
+        expect(overrides).not.toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
+        expect(overrides).toContain('model_providers.alldone_vm_proxy.supports_websockets=false')
+    })
+
+    test('leaves the OpenAI route exactly as it was', () => {
+        const overrides = __private__.buildCodexProxyConfigOverrides(PROXY)
+
+        expect(overrides).toContain(
+            `model_providers.alldone_vm_proxy.base_url="https://proxy.example/vmLlmProxy/openai/v1"`
+        )
+        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
+    })
+
+    // The `openrouter:` prefix is Alldone's routing marker. Handing it to the CLI would make Codex
+    // ask OpenRouter for a model called "openrouter:deepseek/deepseek-chat", which does not exist.
+    test('strips the routing marker before the model reaches the CLI, and quotes the id', () => {
+        const command = __private__.buildCodexRunCommand(false, 'openrouter:deepseek/deepseek-chat', 'medium', PROXY)
+
+        expect(command).toContain(`--model 'deepseek/deepseek-chat'`)
+        expect(command).not.toContain('openrouter:deepseek')
+        expect(command).toContain('/openrouter/v1')
+        expect(command).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
+    })
+
+    test('an OpenAI model still routes to the OpenAI upstream', () => {
+        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', PROXY)
+
+        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain('/openai/v1')
+        expect(command).not.toContain('/openrouter/v1')
+    })
+
+    test('the sandbox env base URL follows the same route as the provider config', () => {
+        const openRouterEnv = __private__.AGENT_CONFIGS.codex.sandboxEnv({
+            apiKey: 'vmpx_token',
+            baseUrl: PROXY,
+            mode: 'proxy',
+            agentModel: 'openrouter:deepseek/deepseek-chat',
+        })
+        const openAiEnv = __private__.AGENT_CONFIGS.codex.sandboxEnv({
+            apiKey: 'vmpx_token',
+            baseUrl: PROXY,
+            mode: 'proxy',
+            agentModel: 'gpt-5.6-sol',
+        })
+
+        expect(openRouterEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openrouter/v1')
+        expect(openAiEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openai/v1')
+        // The real OpenRouter key never reaches the sandbox — only the per-job proxy token.
+        expect(openRouterEnv.OPENAI_API_KEY).toBe('vmpx_token')
     })
 })

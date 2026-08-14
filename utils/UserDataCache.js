@@ -61,7 +61,7 @@ class UserDataCache {
             localStorage.setItem(CACHE_KEYS.USER_DATA, JSON.stringify(userData))
             localStorage.setItem(CACHE_KEYS.CACHE_TIMESTAMP, Date.now().toString())
             localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION)
-            console.log('User data cached successfully')
+            if (__DEV__) console.log('User data cached successfully')
         } catch (error) {
             console.warn('Error caching user data:', error)
         }
@@ -92,7 +92,7 @@ class UserDataCache {
             localStorage.setItem(CACHE_KEYS.GLOBAL_DATA, JSON.stringify(globalData))
             localStorage.setItem(CACHE_KEYS.CACHE_TIMESTAMP, Date.now().toString())
             localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION)
-            console.log('Global data cached successfully')
+            if (__DEV__) console.log('Global data cached successfully')
         } catch (error) {
             console.warn('Error caching global data:', error)
         }
@@ -106,7 +106,7 @@ class UserDataCache {
             Object.values(CACHE_KEYS).forEach(key => {
                 localStorage.removeItem(key)
             })
-            console.log('Cache cleared successfully')
+            if (__DEV__) console.log('Cache cleared successfully')
         } catch (error) {
             console.warn('Error clearing cache:', error)
         }

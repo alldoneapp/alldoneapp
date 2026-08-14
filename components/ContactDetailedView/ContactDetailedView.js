@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
@@ -46,6 +46,7 @@ import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSe
 import { unwatch } from '../../utils/backends/firestore'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ContactDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -62,6 +63,8 @@ const ContactDetailedView = ({ navigation }) => {
     const projectIndex = project.index
     const CustomView =
         selectedTab === DV_TAB_CONTACT_CHAT || selectedTab === DV_TAB_CONTACT_NOTE ? View : CustomScrollView
+    const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedTab, scrollRef)
 
     const dispatch = useDispatch()
     usePrivateProject(projectId)
@@ -157,6 +160,7 @@ const ContactDetailedView = ({ navigation }) => {
                     )}
 
                     <CustomView
+                        ref={scrollRef}
                         style={[
                             localStyles.scrollPanel,
                             mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,

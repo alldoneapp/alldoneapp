@@ -49,9 +49,9 @@ http://localhost:5000/googleOAuthCallback
 
 Make sure these APIs are enabled in your Google Cloud Project:
 
--   Google Calendar API
--   Gmail API
--   Google OAuth2 API
+- Google Calendar API
+- Gmail API
+- Google OAuth2 API
 
 ## Step 2: Configure Environment Variables
 
@@ -141,11 +141,11 @@ firebase deploy --only functions --project alldonealeph
 
 Check that these functions are deployed:
 
--   `googleOAuthInitiate` (callable)
--   `googleOAuthCallback` (HTTP)
--   `googleOAuthGetToken` (callable)
--   `googleOAuthRevoke` (callable)
--   `googleOAuthCheckCredentials` (callable)
+- `googleOAuthInitiate` (callable)
+- `googleOAuthCallback` (HTTP)
+- `googleOAuthGetToken` (callable)
+- `googleOAuthRevoke` (callable)
+- `googleOAuthCheckCredentials` (callable)
 
 ## Step 5: Test the Implementation
 
@@ -174,31 +174,31 @@ Check that these functions are deployed:
 
 ### Issue: "Invalid client secret"
 
--   Verify `GOOGLE_OAUTH_CLIENT_SECRET` is correct in .env or env_functions.json
--   Ensure the client secret matches the OAuth client ID
+- Verify `GOOGLE_OAUTH_CLIENT_SECRET` is correct in .env or env_functions.json
+- Ensure the client secret matches the OAuth client ID
 
 ### Issue: "Redirect URI mismatch"
 
--   Check that all redirect URIs are added to Google Cloud Console
--   Verify the baseUrl in `getBaseUrl()` matches your environment
+- Check that all redirect URIs are added to Google Cloud Console
+- Verify the baseUrl in `getBaseUrl()` matches your environment
 
 ### Issue: "User not authenticated with Google"
 
--   Check Firestore to see if tokens were stored:
+- Check Firestore to see if tokens were stored:
     ```
     /users/{userId}/private/googleAuth
     ```
--   Verify Firebase Functions have permission to write to Firestore
+- Verify Firebase Functions have permission to write to Firestore
 
 ### Issue: "Permission denied" when reading tokens
 
--   Check Firestore security rules are deployed
--   Ensure user is authenticated with Firebase Auth
+- Check Firestore security rules are deployed
+- Ensure user is authenticated with Firebase Auth
 
 ### Issue: OAuth popup blocked
 
--   Check browser popup blocker settings
--   Ensure the popup is triggered by user interaction (not async)
+- Check browser popup blocker settings
+- Ensure the popup is triggered by user interaction (not async)
 
 ## Architecture Diagram
 
@@ -267,17 +267,17 @@ If you need to rotate the OAuth client secret:
 
 Monitor these metrics:
 
--   OAuth callback success rate
--   Token refresh failures
--   Firestore read/write volumes for `googleOAuthStates` and `users/{uid}/private`
+- OAuth callback success rate
+- Token refresh failures
+- Firestore read/write volumes for `googleOAuthStates` and `users/{uid}/private`
 
 ### Cleanup
 
 The implementation automatically cleans up:
 
--   OAuth states expire after 10 minutes
--   Failed OAuth attempts are deleted immediately
--   Revoked tokens are removed from Firestore
+- OAuth states expire after 10 minutes
+- Failed OAuth attempts are deleted immediately
+- Revoked tokens are removed from Firestore
 
 ## Migration from Client-Side OAuth
 

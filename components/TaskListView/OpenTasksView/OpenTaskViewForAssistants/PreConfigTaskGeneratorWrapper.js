@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -15,7 +15,14 @@ import {
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 
-export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
+export default function PreConfigTaskGeneratorWrapper({
+    projectId,
+    task,
+    assistant,
+    children,
+    disabled = false,
+    skipNavigation = false,
+}) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
@@ -28,7 +35,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         type,
         link,
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         taskMetadata,
         sendWhatsApp,
@@ -49,7 +56,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     const addTask = async () => {
         const aiSettings = {
             model: aiModel,
-            temperature: aiTemperature,
+            reasoningEffort: aiReasoningEffort,
             systemMessage: aiSystemMessage,
         }
         console.log('PreConfigTaskGeneratorWrapper generating task:', {
@@ -60,18 +67,29 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             sendWhatsAppType: typeof sendWhatsApp,
             sendWhatsAppRawValue: sendWhatsApp,
         })
-        const mergedTaskMetadata = { ...(taskMetadata || {}), sendWhatsApp: !!sendWhatsApp }
+        const mergedTaskMetadata = {
+            ...(taskMetadata || {}),
+            sendWhatsApp: !!sendWhatsApp,
+            executionMode: task.executionMode,
+        }
         console.log('PreConfigTaskGeneratorWrapper merged taskMetadata:', {
             mergedTaskMetadata,
             originalSendWhatsApp: sendWhatsApp,
             convertedSendWhatsApp: !!sendWhatsApp,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata, {
+            skipNavigation,
+        })
     }
 
-    const pressButton = () => {
+    const running = isExecuting === name
+    const executionDisabled = disabled || running
+
+    const pressButton = event => {
+        event?.stopPropagation?.()
+
         // Prevent execution if this task is already running
-        if (isExecuting === name) {
+        if (executionDisabled) {
             return
         }
 
@@ -79,7 +97,11 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             openModal()
         } else {
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
-                variables.length > 0 ? openModal() : addTask()
+                if ((variables || []).length > 0) {
+                    openModal()
+                } else {
+                    addTask()
+                }
             } else if (type === TASK_TYPE_IFRAME) {
                 dispatch({
                     type: 'Set iframe modal data',
@@ -94,7 +116,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 gold > 0 ? (
@@ -114,12 +136,16 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             isOpen={isOpen}
             contentLocation={null}
         >
-            <PreConfigTaskButton
-                projectId={projectId}
-                task={task}
-                onPress={pressButton}
-                disabled={isExecuting === name}
-            />
-        </Popover>
+            {typeof children === 'function' ? (
+                children({ onPress: pressButton, running, disabled: executionDisabled })
+            ) : (
+                <PreConfigTaskButton
+                    projectId={projectId}
+                    task={task}
+                    onPress={pressButton}
+                    disabled={executionDisabled}
+                />
+            )}
+        </AppPopover>
     )
 }

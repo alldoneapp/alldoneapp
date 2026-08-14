@@ -12,7 +12,9 @@ import {
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
+    reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import NavigationService from '../../../../utils/NavigationService'
 import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
@@ -29,6 +31,10 @@ jest.mock('../../../../i18n/TranslationService', () => ({
 // which jest cannot transform. The modal only needs MODAL_MAX_HEIGHT_GAP.
 jest.mock('../../../../utils/HelperFunctions', () => ({ MODAL_MAX_HEIGHT_GAP: 32 }))
 
+jest.mock('../../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markChatCommentsAsReadByMessageIds: jest.fn(() => Promise.resolve()),
+}))
+
 jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     listEmailLineMessages: jest.fn(),
     performEmailLineAction: jest.fn(),
@@ -37,12 +43,17 @@ jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     invalidateEmailLineSummaryCooldown: jest.fn(),
     getCachedEmailLineSections: jest.fn(() => null),
     cacheEmailLineSections: jest.fn(),
+    reconcileEmailLineLabelCount: jest.fn(),
 }))
 
 jest.mock('../emailLineHelper', () => ({
     getEmailAccountWebUrl: jest.fn((provider, emailAddress) => `https://account/${provider}/${emailAddress}`),
     getLabelWebUrl: jest.fn(() => 'https://mail'),
     openUrlInNewTab: jest.fn(),
+    // EmailRow resolves an unsubscribe destination and stamps the picker
+    // interaction that stops the parent popover dismissing on the trailing click.
+    resolveUnsubscribeUrl: jest.fn(() => null),
+    markEmailLabelPickerInteraction: jest.fn(),
 }))
 
 // EmailRow's task link imports transitively pull in the redux store.
@@ -145,6 +156,85 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('Two')
         expect(texts).toContain('Google · a@gmail.com')
         expect(texts).toContain('Microsoft · b@outlook.com')
+    })
+
+    it('reconciles the opened chip and each account summary from provider totals', async () => {
+        const onThreadCountReconciled = jest.fn()
+        listEmailLineMessages.mockImplementation(connectionId =>
+            Promise.resolve({
+                messages: messagesByConnection[connectionId] || [],
+                nextPageToken: null,
+                totalCount: connectionId === 'c1' ? 4 : 3,
+            })
+        )
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <EmailLabelModal
+                    group={group}
+                    closePopover={() => {}}
+                    onThreadCountReconciled={onThreadCountReconciled}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c1', 'INBOX', 4)
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c2', 'f_inbox', 3)
+        expect(onThreadCountReconciled).toHaveBeenCalledWith(7)
+        expect(tree.root).toBeTruthy()
+    })
+
+    it('shows a loaded zero immediately but defers its Redux commit until close', async () => {
+        const onThreadCountReconciled = jest.fn()
+        listEmailLineMessages.mockResolvedValue({ messages: [], nextPageToken: null, totalCount: 0 })
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <EmailLabelModal
+                    group={workGroup}
+                    closePopover={() => {}}
+                    onThreadCountReconciled={onThreadCountReconciled}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(onThreadCountReconciled).toHaveBeenCalledWith(0)
+        expect(reconcileEmailLineLabelCount).not.toHaveBeenCalled()
+
+        await act(async () => tree.unmount())
+        expect(reconcileEmailLineLabelCount).toHaveBeenCalledWith('c1', 'Label_work', 0)
+    })
+
+    it('shows working account headers immediately while the initial email content is loading', async () => {
+        const { getEmailAccountWebUrl, openUrlInNewTab } = require('../emailLineHelper')
+        listEmailLineMessages.mockReturnValue(new Promise(() => {}))
+
+        const tree = await renderModal()
+
+        const texts = tree.root
+            .findAll(node => typeof node.props.children === 'string')
+            .map(node => node.props.children)
+        expect(texts).toContain('Google · a@gmail.com')
+        expect(texts).toContain('Microsoft · b@outlook.com')
+        expect(texts).toContain('Open account')
+        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1)
+
+        const openAccountButtons = tree.root
+            .findAllByType(TouchableOpacity)
+            .filter(node => node.props.accessibilityLabel === 'Open email account')
+        expect(openAccountButtons).toHaveLength(2)
+
+        await act(async () => {
+            openAccountButtons[0].props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(getEmailAccountWebUrl).toHaveBeenCalledWith('google', 'a@gmail.com')
+        expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
     })
 
     it('shows every label, preselects the opened label, and switches without closing', async () => {
@@ -307,6 +397,8 @@ describe('EmailLabelModal', () => {
         // The modal stays open; only the owning connection's action fires.
         expect(closePopover).not.toHaveBeenCalled()
         expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1', 'm1b'] })
+        expect(performEmailLineAction).not.toHaveBeenCalledWith('c1', expect.objectContaining({ action: 'markRead' }))
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m1', 'm1b'])
         expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
 
         // Once the archive resolves, the archived row drops out while the rest still renders.
@@ -525,6 +617,7 @@ describe('EmailLabelModal', () => {
 
     it('closes immediately on sweep and runs it in the background for every account', async () => {
         const closePopover = jest.fn()
+        performEmailLineSweepInBackground.mockResolvedValue(2)
         const tree = await renderModal(closePopover)
 
         await act(async () => {
@@ -535,6 +628,8 @@ describe('EmailLabelModal', () => {
         expect(closePopover).toHaveBeenCalled()
         expect(performEmailLineSweepInBackground).toHaveBeenCalledWith('c1', 'INBOX', 'archiveAll')
         expect(performEmailLineSweepInBackground).toHaveBeenCalledWith('c2', 'f_inbox', 'archiveAll')
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m1', 'm1b'])
+        expect(markChatCommentsAsReadByMessageIds).toHaveBeenCalledWith(['m2'])
         expect(performEmailLineAction).not.toHaveBeenCalled()
     })
 })

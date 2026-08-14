@@ -8,6 +8,7 @@ const {
     mergeTemplateState,
     buildBackfillConflicts,
 } = require('./templateMerge')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 const SYNC_FEED_TYPE = 'FEED_ASSISTANT_TEMPLATE_SYNCED'
@@ -50,7 +51,7 @@ async function getDerivedAssistants(templateAssistantId) {
 
 function withDeletedFields(patch, fields) {
     fields.forEach(field => {
-        patch[field] = admin.firestore.FieldValue.delete()
+        patch[field] = FieldValue.delete()
     })
     return patch
 }
@@ -363,7 +364,7 @@ async function acceptTemplateConflicts({ userId, projectId, assistantId, accepte
             } else if (accepted.has(conflict.field) && conflict.templateValueExists) {
                 patch[conflict.field] = conflict.templateValue
             } else if (accepted.has(conflict.field)) {
-                patch[conflict.field] = admin.firestore.FieldValue.delete()
+                patch[conflict.field] = FieldValue.delete()
             }
         })
         Object.assign(patch, {

@@ -11,7 +11,7 @@ import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
 import { getDb, notesStorage } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 export default function ExportTab() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -618,10 +618,10 @@ export default function ExportTab() {
                         {currentExportType === 'projects' && isExporting
                             ? exportStatus
                             : lastProjectsExportInfo
-                            ? `${translate('Last export')} — ${translate('Projects')}: ${
-                                  lastProjectsExportInfo.projects
-                              }`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Projects')}: ${
+                                    lastProjectsExportInfo.projects
+                                }`
+                              : ''}
                     </Text>
                 </View>
 
@@ -632,7 +632,7 @@ export default function ExportTab() {
                         onPress={exportAllTasks}
                         loading={isExporting && currentExportType === 'tasks'}
                     />
-                    <Popover
+                    <AppPopover
                         isOpen={tasksTfPopoverOpen}
                         onClickOutside={() => setTasksTfPopoverOpen(false)}
                         position={['bottom', 'left', 'right', 'top']}
@@ -668,15 +668,15 @@ export default function ExportTab() {
                             title={translate(tasksTimeframeLabel)}
                             buttonStyle={{ marginLeft: 12 }}
                         />
-                    </Popover>
+                    </AppPopover>
                     <Text style={localStyles.infoText}>
                         {currentExportType === 'tasks' && isExporting
                             ? exportStatus
                             : lastTasksExportInfo
-                            ? `${translate('Last export')} — ${translate('Open tasks')}: ${
-                                  lastTasksExportInfo.open
-                              } • ${translate('Done tasks')}: ${lastTasksExportInfo.done}`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Open tasks')}: ${
+                                    lastTasksExportInfo.open
+                                } • ${translate('Done tasks')}: ${lastTasksExportInfo.done}`
+                              : ''}
                     </Text>
                 </View>
 
@@ -691,8 +691,8 @@ export default function ExportTab() {
                         {currentExportType === 'goals' && isExporting
                             ? exportStatus
                             : lastGoalsExportInfo
-                            ? `${translate('Last export')} — ${translate('Goals')}: ${lastGoalsExportInfo.goals}`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Goals')}: ${lastGoalsExportInfo.goals}`
+                              : ''}
                     </Text>
                 </View>
 
@@ -707,10 +707,10 @@ export default function ExportTab() {
                         {currentExportType === 'notes' && isExporting
                             ? exportStatus
                             : lastNotesExportInfo
-                            ? `${translate('Last export')} — ${translate('Notes')}: ${
-                                  lastNotesExportInfo.notes
-                              } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Notes')}: ${
+                                    lastNotesExportInfo.notes
+                                } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
+                              : ''}
                     </Text>
                 </View>
 
@@ -725,10 +725,10 @@ export default function ExportTab() {
                         {currentExportType === 'contacts' && isExporting
                             ? exportStatus
                             : lastContactsExportInfo
-                            ? `${translate('Last export')} — ${translate('Contacts')}: ${
-                                  lastContactsExportInfo.contacts
-                              }`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Contacts')}: ${
+                                    lastContactsExportInfo.contacts
+                                }`
+                              : ''}
                     </Text>
                 </View>
 
@@ -743,10 +743,10 @@ export default function ExportTab() {
                         {currentExportType === 'chats' && isExporting
                             ? exportStatus
                             : lastChatsExportInfo
-                            ? `${translate('Last export')} — ${translate('Chats')}: ${
-                                  lastChatsExportInfo.chats
-                              } • ${translate('Comments')}: ${lastChatsExportInfo.comments}`
-                            : ''}
+                              ? `${translate('Last export')} — ${translate('Chats')}: ${
+                                    lastChatsExportInfo.chats
+                                } • ${translate('Comments')}: ${lastChatsExportInfo.comments}`
+                              : ''}
                     </Text>
                 </View>
             </View>

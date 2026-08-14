@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { Linking } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
 import EmailTag from './EmailTag'
@@ -14,7 +14,7 @@ import { getQuillEditorRef } from '../../textInputHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
 
-export default EmailWrapper = ({ data }) => {
+const EmailWrapper = ({ data }) => {
     console.log('EmailWrapper received data:', data)
     const { text = '', id: tagId = '', editorId = '', userIdAllowedToEditTags = '' } = data
 
@@ -85,7 +85,7 @@ export default EmailWrapper = ({ data }) => {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <TagsInteractionPopup
                     ico="mail"
@@ -103,6 +103,8 @@ export default EmailWrapper = ({ data }) => {
             isOpen={isOpen}
         >
             <EmailTag value={cleanedText} onPress={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }
+
+export default EmailWrapper

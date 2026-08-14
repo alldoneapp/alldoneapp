@@ -45,7 +45,7 @@ export default class Backend {
     }
 
     static setTaskParentGoalMultiple(tasks, goal) {
-        bridge.setTaskParentGoalMultiple(tasks, goal)
+        return bridge.setTaskParentGoalMultiple(tasks, goal)
     }
 
     static async setTaskDueDateMultiple(tasks, newDueDate) {
@@ -210,6 +210,10 @@ export default class Backend {
 
     static isMobileDevice() {
         return bridge.isMobileDevice()
+    }
+
+    static isLocalDevHost() {
+        return bridge.isLocalDevHost()
     }
 
     static signInWithGoogleRedirect() {
@@ -556,8 +560,8 @@ export default class Backend {
         return bridge.unsubStoreFeedsTab(projectId)
     }
 
-    static watchNewFeedsAllTabsRedux(projectId, userId) {
-        return bridge.watchNewFeedsAllTabsRedux(projectId, userId)
+    static watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
+        return bridge.watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount)
     }
 
     static async getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
@@ -598,22 +602,6 @@ export default class Backend {
 
     static async getFeedObjectsLastStateList(projectId, objectType) {
         return await bridge.getFeedObjectsLastStateList(projectId, objectType)
-    }
-
-    static getMeetings(projectId, setMeetings, setZero) {
-        return bridge.getMeetings(projectId, setMeetings, setZero)
-    }
-
-    static acceptJoinEvent(projectId, roomId, userEmail) {
-        return bridge.acceptJoinEvent(projectId, roomId, userEmail)
-    }
-
-    static rejectJoinEvent(projectId, roomId, userEmail, reasons, callback) {
-        return bridge.rejectJoinEvent(projectId, roomId, userEmail, reasons, callback)
-    }
-
-    static deleteEvent(projectId, roomId) {
-        return bridge.deleteEvent(projectId, roomId)
     }
 
     static getObjectFromUrl(objectType, url, callback) {
@@ -869,8 +857,8 @@ export default class Backend {
         return bridge.unwatchHastagsColors(hashtagId)
     }
 
-    static getAlgoliaSearchOnlyKeys() {
-        return bridge.getAlgoliaSearchOnlyKeys()
+    static getTypesenseSearchKeys() {
+        return bridge.getTypesenseSearchKeys()
     }
 
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {

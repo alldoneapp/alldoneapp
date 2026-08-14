@@ -1,4 +1,5 @@
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const FOLLOW_TYPE_TASKS = 'tasks'
 const FOLLOW_TYPE_GOALS = 'goals'
@@ -10,7 +11,7 @@ const FOLLOW_TYPE_USERS = 'users'
 const addFollower = async (firebase, newProjectId, userFollowingId, followObjectsType, followObjectId) => {
     const db = firebase.firestore()
     const batch = new BatchWrapper(db)
-    const arrayUnion = firebase.firestore.FieldValue.arrayUnion
+    const arrayUnion = FieldValue.arrayUnion
 
     const entry = { [followObjectsType]: {} }
 

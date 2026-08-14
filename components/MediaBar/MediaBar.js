@@ -3,9 +3,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { colors } from '../styles/global'
 import Icon from '../Icon'
-import GoogleMeet from '../GoogleCalendar/GoogleMeet'
-import CurrentMeet from '../GoogleCalendar/CurrentMeet'
-import UseCurrentMeet from '../GoogleCalendar/useCurrentMeet'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideWebSideBar, updateRecordVideoModalData, updateScreenRecordingModalData } from '../../redux/actions'
 import MyPlatform from '../MyPlatform'
@@ -22,7 +19,6 @@ export default function MediaBar({ projectId, projectColor }) {
     const showScreenRecordingModalData = useSelector(state => state.screenRecordingModalData.visible)
 
     const { expanded } = useCollapsibleSidebar()
-    const meetings = UseCurrentMeet(projectId)
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.ProjectList.ProjectItem.ProjectSectionList.MediaBar')
 
@@ -69,15 +65,11 @@ export default function MediaBar({ projectId, projectColor }) {
                             <Icon name={'screen-recording'} size={18} color={theme.icon} />
                         </TouchableOpacity>
                         {false && <Text style={[localStyles.vLine, theme.vLine]}> </Text>}
-                        {false && <GoogleMeet projectId={projectId} />}
                     </View>
                 ) : (
                     <Icon size={18} name={'more-horizontal'} color={theme.icon} />
                 )}
             </View>
-            {expanded &&
-                meetings &&
-                meetings.map(item => <CurrentMeet key={item.objectId} meeting={item} projectId={projectId} />)}
         </>
     )
 }

@@ -28,7 +28,6 @@ import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants
 import { BACKLOG_DATE_NUMERIC, BACKLOG_DATE_STRING } from '../../components/TaskListView/Utils/TasksHelper'
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../components/Workstreams/WorkstreamHelper'
 import { BACKLOG_MILESTONE_ID, DYNAMIC_PERCENT, getOwnerId } from '../../components/GoalsView/GoalsHelper'
-import { isInboxSummaryGmailTask } from '../Gmail/gmailTaskUtils'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 import { filterOpenTasks } from '../../components/HashtagFilters/FilterHelpers/FilterTasks'
 import {
@@ -50,15 +49,19 @@ export const WORKFLOW_TASK_INDEX = 6
 export const OBSERVED_TASKS_INDEX = 7
 export const STREAM_AND_USER_TASKS_INDEX = 8
 export const ACTIVE_GOALS_INDEX = 9
-export const CALENDAR_TASK_INDEX = 10
-export const EMAIL_TASK_INDEX = 11
-export const EMPTY_SECTION_INDEX = 12
+// AT-2252: calendar-derived and email-derived tasks used to own buckets 10 and 11 here, which is
+// what gave them their own sections in the task list. They now land in MAIN_TASK_INDEX like any
+// other task, so the buckets are gone and the day tuple is two slots shorter.
+export const EMPTY_SECTION_INDEX = 10
 
 export const NOT_PARENT_GOAL_INDEX = '0'
 
 let userOpenTasks = {}
 let userObservedTasks = {}
 let streamAndUserOpenTasks = {}
+
+export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
+    observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
 
 const activeMilestoneEmptyGoals = {}
 
@@ -89,7 +92,15 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 }
 
-export const watchOpenTasks = (projectId, callback, showLaterTasks, showSomedayTasks, keepMainDayData, instanceKey) => {
+export const watchOpenTasks = (
+    projectId,
+    callback,
+    showLaterTasks,
+    showSomedayTasks,
+    keepMainDayData,
+    instanceKey,
+    assistantProfileMode = false
+) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
     let storedTasks = {}
@@ -191,7 +202,8 @@ export const watchOpenTasks = (projectId, callback, showLaterTasks, showSomedayT
         showLaterTasks,
         showSomedayTasks,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        assistantProfileMode
     )
     watchUserOpenTasks(
         projectId,
@@ -300,7 +312,8 @@ const watchUserOpenTasks = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    assistantProfileMode = false
 ) => {
     if (!areObservedTasks)
         setTimeout(() => {
@@ -308,6 +321,7 @@ const watchUserOpenTasks = (
         })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
+    const assistantOwner = !!currentUser.temperature
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
@@ -327,7 +341,11 @@ const watchUserOpenTasks = (
 
     let cacheChanges = []
     const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-        const changes = querySnapshot.docChanges()
+        const changes = querySnapshot
+            .docChanges()
+            .filter(change =>
+                taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
+            )
         if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
@@ -352,13 +370,14 @@ const watchUserOpenTasks = (
                     showLaterTasks,
                     showSomedayTasks,
                     subtasksByParentId,
-                    subtasksMap
+                    subtasksMap,
+                    assistantProfileMode
                 )
                 subtasks = subtasksByTasks
                 callback(openTasksArray, !areObservedTasks)
                 store.dispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]], !areObservedTasks)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
                 store.dispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
                 store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
@@ -385,15 +404,20 @@ const watchUserOpenTasks = (
         : (userOpenTasks[projectId] = { [currentUserId]: [unsub] })
 }
 
-export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks) => {
-    const { genericData, suggestedBy, userIds, calendarData, gmailData } = task
+export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
+    const { genericData, suggestedBy, userIds } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
+    // The assistant page intentionally has one timeline. A workflow task that is currently being
+    // handled by this assistant must therefore render like a regular task even when its workflow
+    // history already contains multiple reviewers.
+    if (assistantProfileMode && task.workflowTask === true) return MAIN_TASK_INDEX
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    if (calendarData) return CALENDAR_TASK_INDEX
-    if (isInboxSummaryGmailTask(gmailData)) return EMAIL_TASK_INDEX
+    // AT-2252: calendar events and inbox-summary emails are ordinary tasks. They deliberately fall
+    // through to MAIN_TASK_INDEX so they are grouped by goal, priority-sorted, draggable and
+    // filterable exactly like everything else instead of being pushed into their own section.
     return MAIN_TASK_INDEX
 }
 
@@ -413,7 +437,8 @@ const processTaskChange = (
     showSomedayTasks,
     listsToSort,
     changeType,
-    task
+    task,
+    assistantProfileMode = false
 ) => {
     const { uid: loggedUserId } = loggedUser
 
@@ -456,9 +481,9 @@ const processTaskChange = (
     const date = taskIsTodayOrOverdue
         ? dayDateFormated
         : taskInBacklog
-        ? BACKLOG_DATE_STRING
-        : moment(taskDueDate).format('YYYYMMDD')
-    const taskTypeIndex = getTaskTypeIndex(task, areObservedTasks, areStreamAndUserTasks)
+          ? BACKLOG_DATE_STRING
+          : moment(taskDueDate).format('YYYYMMDD')
+    const taskTypeIndex = getTaskTypeIndex(task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode)
     const currentStepId = stepHistory[stepHistory.length - 1]
 
     const estimation = areObservedTasks
@@ -466,8 +491,8 @@ const processTaskChange = (
             ? estimationsByObserverIds[currentUserId]
             : 0
         : estimations[currentStepId]
-        ? estimations[currentStepId]
-        : 0
+          ? estimations[currentStepId]
+          : 0
 
     let innerGroupKey = ''
     if (taskTypeIndex === WORKFLOW_TASK_INDEX) {
@@ -597,8 +622,8 @@ const processTaskChange = (
         const oldTask = areObservedTasks
             ? tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
-            ? tasksMap.streamAndUserTasksById[task.id]
-            : tasksMap.userTasksById[task.id]
+              ? tasksMap.streamAndUserTasksById[task.id]
+              : tasksMap.userTasksById[task.id]
 
         const wasNeedToProcessTheTask = !!oldTask
         if (wasNeedToProcessTheTask) {
@@ -611,10 +636,15 @@ const processTaskChange = (
             const oldDate = oldTaskIsTodayOrOverdue
                 ? dayDateFormated
                 : oldTaskInBacklog
-                ? BACKLOG_DATE_STRING
-                : moment(oldTaskDueDate).format('YYYYMMDD')
+                  ? BACKLOG_DATE_STRING
+                  : moment(oldTaskDueDate).format('YYYYMMDD')
 
-            const oldTaskTypeIndex = getTaskTypeIndex(oldTask, areObservedTasks, areStreamAndUserTasks)
+            const oldTaskTypeIndex = getTaskTypeIndex(
+                oldTask,
+                areObservedTasks,
+                areStreamAndUserTasks,
+                assistantProfileMode
+            )
             const oldStepHistory = oldTask.stepHistory
             const oldCurrentStepId = oldStepHistory[oldStepHistory.length - 1]
             const oldSuggestedBy = oldTask.suggestedBy
@@ -623,8 +653,8 @@ const processTaskChange = (
                     ? oldTask.estimationsByObserverIds[currentUserId]
                     : 0
                 : oldTask.estimations[oldCurrentStepId]
-                ? oldTask.estimations[oldCurrentStepId]
-                : 0
+                  ? oldTask.estimations[oldCurrentStepId]
+                  : 0
             const oldUserId = oldTask.userId
             if (oldTask.parentGoalId && !Array.isArray(oldTask.parentGoalIsPublicFor)) {
                 console.warn('[OpenTasks] oldTask.parentGoalIsPublicFor missing/invalid', {
@@ -670,8 +700,8 @@ const processTaskChange = (
         const notExistTask = areObservedTasks
             ? !tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
-            ? !tasksMap.streamAndUserTasksById[task.id]
-            : !tasksMap.userTasksById[task.id]
+              ? !tasksMap.streamAndUserTasksById[task.id]
+              : !tasksMap.userTasksById[task.id]
         if (notExistTask) addTask()
     } else {
         if (needToProcessTheTask) deleteTask(date, taskTypeIndex, innerGroupKey, taskParentGoalId, estimation, false)
@@ -696,17 +726,14 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
                 taskTypeIndex === WORKFLOW_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         } else {
             const taskList = orderBy(storedTasks[date][taskTypeIndex][taskParentGoalId], 'sortIndex', 'desc')
-            storedTasks[date][taskTypeIndex][taskParentGoalId] =
-                taskTypeIndex === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
+            storedTasks[date][taskTypeIndex][taskParentGoalId] = sortTasksByPriority(taskList)
         }
     }
 }
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
-    const openTasksArray = storedTasks[dayDateFormated]
-        ? []
-        : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]]
+    const openTasksArray = storedTasks[dayDateFormated] ? [] : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]]
 
     for (let i = 0; i < tasksByDateAndStep.length; i++) {
         const dateElement = tasksByDateAndStep[i]
@@ -717,8 +744,6 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? Object.entries(taskByType[MAIN_TASK_INDEX]) : []
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? Object.entries(taskByType[MENTION_TASK_INDEX]) : []
         const activeGoals = taskByType[ACTIVE_GOALS_INDEX] ? taskByType[ACTIVE_GOALS_INDEX] : []
-        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
-        const emailTasks = taskByType[EMAIL_TASK_INDEX] ? Object.entries(taskByType[EMAIL_TASK_INDEX]) : []
 
         const suggestedTasks = []
         if (taskByType[SUGGESTED_TASK_INDEX]) {
@@ -771,8 +796,6 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             observedTasks,
             streamAndUserTasks,
             activeGoals,
-            calendarTasks,
-            emailTasks,
             emptyGoals,
         ])
     }
@@ -829,8 +852,8 @@ const processSubtaskChange = (
             areObservedTasks
                 ? (subtasksMap.observedSubtasksById[subtask.id] = subtask)
                 : areStreamAndUserTasks
-                ? (subtasksMap.streamAndUserSubtasksById[subtask.id] = subtask)
-                : (subtasksMap.userSubtasksById[subtask.id] = subtask)
+                  ? (subtasksMap.streamAndUserSubtasksById[subtask.id] = subtask)
+                  : (subtasksMap.userSubtasksById[subtask.id] = subtask)
         }
     }
 
@@ -845,8 +868,8 @@ const processSubtaskChange = (
         areObservedTasks
             ? delete subtasksMap.observedSubtasksById[subtask.id]
             : areStreamAndUserTasks
-            ? delete subtasksMap.streamAndUserSubtasksById[subtask.id]
-            : delete subtasksMap.userSubtasksById[subtask.id]
+              ? delete subtasksMap.streamAndUserSubtasksById[subtask.id]
+              : delete subtasksMap.userSubtasksById[subtask.id]
     }
 
     if (changeType === 'added') {
@@ -855,8 +878,8 @@ const processSubtaskChange = (
         const oldSubtask = areObservedTasks
             ? subtasksMap.observedSubtasksById[subtask.id]
             : areStreamAndUserTasks
-            ? subtasksMap.streamAndUserSubtasksById[subtask.id]
-            : subtasksMap.userSubtasksById[subtask.id]
+              ? subtasksMap.streamAndUserSubtasksById[subtask.id]
+              : subtasksMap.userSubtasksById[subtask.id]
 
         const wasNeedToProcessTheTask = !!oldSubtask
 
@@ -875,8 +898,8 @@ const getSubtaskInMap = (subtasksMap, areObservedTasks, areStreamAndUserTasks, t
     const subtask = areObservedTasks
         ? observedSubtasksById[taskId]
         : areStreamAndUserTasks
-        ? streamAndUserSubtasksById[taskId]
-        : userSubtasksById[taskId]
+          ? streamAndUserSubtasksById[taskId]
+          : userSubtasksById[taskId]
     return subtask
 }
 
@@ -896,7 +919,8 @@ const processTaskChanges = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    assistantProfileMode = false
 ) => {
     const listsToSort = {}
     const subtasksListToSortParentsId = new Set()
@@ -924,7 +948,8 @@ const processTaskChanges = (
                         showSomedayTasks,
                         listsToSort,
                         'removed',
-                        task
+                        task,
+                        assistantProfileMode
                     )
                 }
             }
@@ -979,7 +1004,8 @@ const processTaskChanges = (
                 showSomedayTasks,
                 listsToSort,
                 changeType,
-                task
+                task,
+                assistantProfileMode
             )
         }
     }
@@ -1162,7 +1188,7 @@ const watchStreamAndUserOpenTasks = (
                     })
                 )
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]])
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
                 store.dispatch(setOpenTasksMap(projectId, {}))
             }
 
@@ -1284,7 +1310,9 @@ function watchEmptyGoals(
                     showLaterTasks,
                     showSomedayTasks
                 )
-                callback(openTasksArray, false)
+                // Empty goals update the combined board, but they are not the
+                // observed-task stream and must not complete its loading flag.
+                callback(openTasksArray)
 
                 querySnapshot.forEach(doc => {
                     const goal = mapGoalData(doc.id, doc.data())
@@ -1292,7 +1320,7 @@ function watchEmptyGoals(
                     if (progress === DYNAMIC_PERCENT && dynamicProgress === 100) return
                 })
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], [], []]], false)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
             }
             cacheChanges = []
         }
@@ -1329,8 +1357,8 @@ const processEmptyGoalChanges = (
         const date = goalIsTodayOrOverdue
             ? dayDateFormated
             : goalInBacklog
-            ? BACKLOG_DATE_STRING
-            : moment(userReminderDate).format('YYYYMMDD')
+              ? BACKLOG_DATE_STRING
+              : moment(userReminderDate).format('YYYYMMDD')
 
         if (!Array.isArray(isPublicFor)) {
             console.warn('[OpenTasks] isPublicFor missing/invalid on goal', {
@@ -1401,8 +1429,8 @@ const processEmptyGoalChanges = (
                 const oldDate = oldGoalIsTodayOrOverdue
                     ? dayDateFormated
                     : oldGoalInBacklog
-                    ? BACKLOG_DATE_STRING
-                    : moment(oldUserReminderDate).format('YYYYMMDD')
+                      ? BACKLOG_DATE_STRING
+                      : moment(oldUserReminderDate).format('YYYYMMDD')
 
                 deleteTask(oldDate)
             }
@@ -1488,10 +1516,6 @@ export const updateOpTasks = (
 ) => {
     const openTasks = inSelectedProject ? initialTasks : taskToShowInAllProjects(instanceKey, initialTasks)
 
-    initialLoadingInOpenTasks
-        ? store.dispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
-        : store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
-
     // Check if there are any visible tasks (main, email, calendar) or goals for the first day
     const thereAreNotTasksInFirstDay =
         openTasks.length === 0 ||
@@ -1506,6 +1530,16 @@ export const updateOpTasks = (
     store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
     updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+
+    // The two Firestore streams can finish on different renders. Publish the
+    // corresponding loaded flag only after the merged, filtered list is in the
+    // store so loading placeholders cannot disappear against stale task data.
+    if (initialLoadingInOpenTasks === true) {
+        store.dispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
+    } else if (initialLoadingInOpenTasks === false) {
+        store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+    }
+
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
@@ -1522,14 +1556,13 @@ export const updateOpTasks = (
         })
 }
 
-const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
+export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
     let hiddenTaskTypesExist = false
 
     // Determine if any tasks of the specifically "hidden" types exist
     for (const tasksByDate of filteredOpenTasks) {
         const typesToSumForHiddenCheck = [
             tasksByDate[MENTION_TASK_INDEX],
-            tasksByDate[SUGGESTED_TASK_INDEX],
             tasksByDate[OBSERVED_TASKS_INDEX],
             tasksByDate[STREAM_AND_USER_TASKS_INDEX],
         ]
@@ -1559,8 +1592,6 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
         if (hiddenTaskTypesExist) break // Found in this date, no need to check other dates
     }
 
-    // Use nonCalendarTasksCount (main+email) in areHiddenNotMainTasks check
-    // This means the arrow appears only if we're hiding tasks that aren't calendar tasks
     store.dispatch(updateThereAreHiddenNotMainTasks(instanceKey, hiddenTaskTypesExist))
 
     // Build taskToShow for display
@@ -1573,20 +1604,12 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             })
         }
 
-        let currentEmailTasksCount = 0
-        if (originalTasksByDate[EMAIL_TASK_INDEX]) {
-            originalTasksByDate[EMAIL_TASK_INDEX].forEach(tasksByGoal => {
-                currentEmailTasksCount += tasksByGoal[1].length
-            })
-        }
-
-        // Calculate calendar tasks count
-        let currentCalendarTasksCount = 0
-        if (originalTasksByDate[CALENDAR_TASK_INDEX]) {
-            originalTasksByDate[CALENDAR_TASK_INDEX].forEach(tasksByGoal => {
-                if (tasksByGoal && tasksByGoal[1] && Array.isArray(tasksByGoal[1])) {
-                    currentCalendarTasksCount += tasksByGoal[1].length
-                }
+        let currentSuggestedTasksCount = 0
+        if (originalTasksByDate[SUGGESTED_TASK_INDEX]) {
+            originalTasksByDate[SUGGESTED_TASK_INDEX].forEach(tasksBySuggester => {
+                tasksBySuggester[1].forEach(tasksByGoal => {
+                    currentSuggestedTasksCount += tasksByGoal[1].length
+                })
             })
         }
 
@@ -1608,32 +1631,23 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
         // Check if this date should be included in the output
         const shouldInclude =
             currentMainTasksCount > 0 ||
-            currentEmailTasksCount > 0 ||
-            currentCalendarTasksCount > 0 ||
+            currentSuggestedTasksCount > 0 ||
             currentWorkflowTasksCount > 0 ||
             currentEmptyGoalsCount > 0
 
-        // Modified condition to include days with any visible task type (main, email, calendar, or workflow)
+        // Include days with any task type that is visible in All Projects.
         if (shouldInclude) {
             const newTasksByDateEntry = [...originalTasksByDate] // Start with a shallow copy
 
-            // Set AMOUNT_TASKS_INDEX to include calendar and workflow tasks so the project is visible
-            // This ensures projects with only calendar or workflow tasks are displayed in the All Projects view
+            // Count every visible task type so projects containing only one of these sections remain visible.
+            // AT-2252: calendar and email tasks are part of MAIN_TASK_INDEX now, so they are already
+            // included in currentMainTasksCount and need no separate count or flag.
             newTasksByDateEntry[AMOUNT_TASKS_INDEX] =
-                currentMainTasksCount + currentEmailTasksCount + currentCalendarTasksCount + currentWorkflowTasksCount
-
-            // Add a flag indicating whether this date has calendar tasks - will help with arrow logic
-            newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount > 0
-
-            // Store the non-calendar count separately in a custom property that can be used for the arrow logic
-            // Normal UI components won't use this, but our arrow logic can
-            newTasksByDateEntry.nonCalendarTasksCount =
-                currentMainTasksCount + currentEmailTasksCount + currentWorkflowTasksCount
+                currentMainTasksCount + currentSuggestedTasksCount + currentWorkflowTasksCount
 
             // Preserve task types that should be VISIBLE in "All Projects" view
             newTasksByDateEntry[MAIN_TASK_INDEX] = originalTasksByDate[MAIN_TASK_INDEX] || []
-            newTasksByDateEntry[CALENDAR_TASK_INDEX] = originalTasksByDate[CALENDAR_TASK_INDEX] || [] // Display calendar tasks
-            newTasksByDateEntry[EMAIL_TASK_INDEX] = originalTasksByDate[EMAIL_TASK_INDEX] || [] // Display email tasks
+            newTasksByDateEntry[SUGGESTED_TASK_INDEX] = originalTasksByDate[SUGGESTED_TASK_INDEX] || [] // Display suggested tasks
             newTasksByDateEntry[WORKFLOW_TASK_INDEX] = originalTasksByDate[WORKFLOW_TASK_INDEX] || [] // Display workflow tasks
 
             // Preserve Active Goals and Empty Goals as they are handled by projectAmount or UI separately
@@ -1642,7 +1656,6 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
 
             // Clear task types that are HIDDEN in "All Projects" summary view
             newTasksByDateEntry[MENTION_TASK_INDEX] = []
-            newTasksByDateEntry[SUGGESTED_TASK_INDEX] = []
             newTasksByDateEntry[OBSERVED_TASKS_INDEX] = []
             newTasksByDateEntry[STREAM_AND_USER_TASKS_INDEX] = []
 

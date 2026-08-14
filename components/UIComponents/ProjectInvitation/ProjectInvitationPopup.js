@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../../styles/global'
@@ -24,10 +24,10 @@ import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/Col
 import store from '../../../redux/store'
 import { tryAddUserToProjectByUidOrEmail } from '../../../utils/backends/firestore'
 import { unwatchProjectData } from '../../../utils/InitialLoad/initialLoadHelper'
+import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 export default function ProjectInvitationPopup() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const newUserNeedToJoinToProject = useSelector(state => state.newUserNeedToJoinToProject)
     const data = useSelector(state => state.showProjectInvitationPopup.data)
     const [processing, setProcessing] = useState(false)
@@ -86,11 +86,9 @@ export default function ProjectInvitationPopup() {
         unmountProjectWhenDeclineInvitation()
     }
 
-    let sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
         <View style={localStyles.container}>
-            <View style={[localStyles.popup, applyPopoverWidth(), sidebarOpenStyle]}>
+            <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <ModalHeader
                     closeModal={closeModalWithoutAcceptInvitation}
                     title={translate(
@@ -147,13 +145,11 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     popup: {
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         padding: 16,
     },

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -8,34 +8,20 @@ import Icon from '../../../Icon'
 import Button from '../../../UIControls/Button'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
-import {
-    MODEL_GPT5_6_LUNA,
-    MODEL_GPT5_6_SOL,
-    MODEL_GPT5_6_TERRA,
-} from '../../../AdminPanel/Assistants/assistantsHelper'
+import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
+import AssistantModelGoldRate from '../../../UIComponents/AssistantModelGoldRate'
 
-const HEARTBEAT_MODELS = [
-    {
-        key: MODEL_GPT5_6_SOL,
-        name: 'Sol',
-        description: 'Most capable',
-    },
-    {
-        key: MODEL_GPT5_6_TERRA,
-        name: 'Terra',
-        description: 'Balanced cost and capability',
-    },
-    {
-        key: MODEL_GPT5_6_LUNA,
-        name: 'Luna',
-        description: 'Efficient for high-volume work',
-    },
-]
+const HEARTBEAT_MODELS = SELECTABLE_ASSISTANT_MODELS.map(({ model, name, descriptionKey, tokensPerGold }) => ({
+    key: model,
+    name,
+    description: descriptionKey,
+    tokensPerGold,
+}))
 
 export default function HeartbeatModelProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
-    const currentModel = assistant.heartbeatModel || assistant.model || MODEL_GPT5_6_SOL
+    const currentModel = assistant.heartbeatModel || assistant.model || SELECTABLE_ASSISTANT_MODELS[0].model
     const currentOption = HEARTBEAT_MODELS.find(option => option.key === currentModel)
 
     const onSelectModel = model => {
@@ -55,7 +41,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {currentOption?.name || currentModel}
                 </Text>
-                <Popover
+                <AppPopover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>{translate('Heartbeat model')}</Text>
@@ -82,6 +68,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                                         <Text style={[styles.body2, localStyles.optionDescription]}>
                                             {translate(option.description)}
                                         </Text>
+                                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
                                     </TouchableOpacity>
                                 )
                             })}
@@ -95,7 +82,7 @@ export default function HeartbeatModelProperty({ disabled, projectId, assistant 
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
@@ -124,10 +111,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 16,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     title: {

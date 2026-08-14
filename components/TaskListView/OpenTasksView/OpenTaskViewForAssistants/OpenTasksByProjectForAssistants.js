@@ -4,9 +4,8 @@ import { useSelector } from 'react-redux'
 
 import ProjectHeader from '../../Header/ProjectHeader'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import OpenTasksDateHeaderForAssistants from './OpenTasksDateHeaderForAssistants'
-import OpenTasksAssistantData from './OpenTasksAssistantData'
 import OpenTasksAssistantPreConfigTasks from './OpenTasksAssistantPreConfigTasks'
+import OpenTasksByProject from '../OpenTasksByProject'
 
 export default function OpenTasksByProjectForAssistants({ projectIndex }) {
     const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
@@ -21,10 +20,10 @@ export default function OpenTasksByProjectForAssistants({ projectIndex }) {
                 projectId={projectId}
                 showRootSectionNavigation={inSelectedProject}
             />
-            <OpenTasksDateHeaderForAssistants />
             <View style={{ marginLeft: 11, marginTop: 12 }}>
-                <OpenTasksAssistantData projectId={projectId} />
-                <OpenTasksAssistantPreConfigTasks projectId={projectId} />
+                <OpenTasksAssistantPreConfigTasks projectId={projectId}>
+                    <OpenTasksByProject projectId={projectId} firstProject={true} assistantProfileMode />
+                </OpenTasksAssistantPreConfigTasks>
             </View>
         </View>
     )

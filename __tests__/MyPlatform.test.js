@@ -57,11 +57,19 @@ describe('MyPlatform utility', () => {
     })
 
     describe('getElementWidth method', () => {
-        it('should return the correct width', () => {
-            const tree = renderer.create(<Text>My new text</Text>)
-            MyPlatform.getElementWidth(tree.getInstance().current).then(width => {
-                expect(width).toEqual(10)
+        it('should return the correct width', async () => {
+            // react-native-web's Text is a function component, so getInstance()
+            // is null under React 18 - grab the host node via a ref instead,
+            // with a node mock that measures 10 wide.
+            const ref = React.createRef()
+            renderer.create(<Text ref={ref}>My new text</Text>, {
+                createNodeMock: () => ({
+                    nodeType: 1,
+                    getBoundingClientRect: () => ({ x: 0, y: 0, top: 0, left: 0, width: 10, height: 0 }),
+                }),
             })
+            const width = await MyPlatform.getElementWidth(ref.current)
+            expect(width).toEqual(10)
         })
     })
 })

@@ -40,10 +40,7 @@ const localStyles = StyleSheet.create({
     },
     dragging: {
         borderColor: colors.Primary100,
-        shadowColor: 'rgba(0,0,0,0.15)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.15)',
         elevation: 4,
     },
     colorDot: {

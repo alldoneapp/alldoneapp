@@ -76,8 +76,8 @@ export default class Header extends Component {
                     mobile
                         ? localStyles.containerMobile
                         : isMiddleScreen
-                        ? localStyles.containerTablet
-                        : localStyles.container,
+                          ? localStyles.containerTablet
+                          : localStyles.container,
                     isFullscreen && localStyles.containerFS,
                 ]}
             >

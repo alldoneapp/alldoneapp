@@ -4,9 +4,7 @@ import store from '../../../redux/store'
 import {
     ACTIVE_GOALS_INDEX,
     AMOUNT_TASKS_INDEX,
-    CALENDAR_TASK_INDEX,
     DATE_TASK_INDEX,
-    EMAIL_TASK_INDEX,
     EMPTY_SECTION_INDEX,
     ESTIMATION_TASKS_INDEX,
     MAIN_TASK_INDEX,
@@ -26,7 +24,7 @@ import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/Proj
 // (for filterOpTasks), so during the circular module init these constants are
 // still undefined — capturing them eagerly would freeze [undefined, ...] and
 // silently break the filter and the counts.
-const getTasksByGoalIndexes = () => [MAIN_TASK_INDEX, MENTION_TASK_INDEX, CALENDAR_TASK_INDEX, EMAIL_TASK_INDEX]
+const getTasksByGoalIndexes = () => [MAIN_TASK_INDEX, MENTION_TASK_INDEX]
 const getTasksByUserIndexes = () => [
     SUGGESTED_TASK_INDEX,
     WORKFLOW_TASK_INDEX,

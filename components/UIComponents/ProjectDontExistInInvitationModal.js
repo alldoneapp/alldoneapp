@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
@@ -7,20 +7,18 @@ import Button from '../UIControls/Button'
 import { setShowProjectDontExistInInvitationModal } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function ProjectDontExistInInvitationModal() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const closeModal = () => {
         dispatch(setShowProjectDontExistInInvitationModal(false))
     }
 
-    const sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
         <View style={localStyles.container}>
-            <View style={[localStyles.popup, applyPopoverWidth(), sidebarOpenStyle]}>
+            <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.header}>
                     <Text style={localStyles.title}>{translate('Invitation to project')}</Text>
                     <Text style={localStyles.description}>{translate('Looks like this project does not exist')}</Text>
@@ -44,14 +42,12 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     popup: {
         backgroundColor: colors.Secondary400,
         padding: 16,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
     },

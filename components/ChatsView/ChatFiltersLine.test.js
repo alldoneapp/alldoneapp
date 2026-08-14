@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
@@ -52,13 +53,37 @@ describe('ChatFiltersLine', () => {
             setUnreadOnly,
         })
 
-        expect(
-            component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType('Text')[1].props.children
-        ).toBe(2)
+        // react-native-web renders host DOM tags, so 'Text' no longer matches
+        // a node type - find the Text component itself instead.
+        expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
+            2
+        )
         act(() => component.root.findByProps({ testID: 'chat-filter-unread' }).props.onPress())
         expect(setUnreadOnly).toHaveBeenCalledWith(true)
         act(() => component.root.findByProps({ testID: 'chat-filter-all' }).props.onPress())
         expect(setUnreadOnly).toHaveBeenCalledWith(false)
+    })
+
+    // AT-2264: the header used to carry a badge with the number of selected filters -- here a
+    // hardcoded "1", since Unread is the only filter. It read like an unread count next to the
+    // chip's own count, so it is gone; the highlighted chip already says what is selected.
+    it('does not show how many filters are selected', () => {
+        const { component } = renderFilter({
+            notifications: {
+                'project-1': {
+                    totalFollowed: 2,
+                    totalUnfollowed: 1,
+                    chat1: { totalFollowed: 2, totalUnfollowed: 0 },
+                    chat2: { totalFollowed: 0, totalUnfollowed: 1 },
+                },
+            },
+            unreadOnly: true,
+        })
+
+        expect(component.root.findAllByProps({ testID: 'chat-filter-active-count' })).toHaveLength(0)
+        expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
+            2
+        )
     })
 
     it('hides unfollowed unread threads in the Followed tab', () => {

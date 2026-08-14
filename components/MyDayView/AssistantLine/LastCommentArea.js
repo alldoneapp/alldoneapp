@@ -16,6 +16,8 @@ export default function LastCommentArea({
     compact = false,
     projectOverride = null,
     assistantIdOverride = null,
+    preferAssistantIdOverride = false,
+    scopeToAssistant = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -26,28 +28,38 @@ export default function LastCommentArea({
     const { assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
         assistantId,
-        defaultProjectId
+        defaultProjectId,
+        preferAssistantIdOverride
     )
     const project = useAssistantProjectContext ? assistantProject || selectedProject : selectedProject
     const projectKey = useGlobalLatestComment
         ? ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
         : useAssistantProjectContext
-        ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
-        : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
-    const lastAssistantCommentData = useSelector(state => state.loggedUser.lastAssistantCommentData[projectKey])
-    const projectChatLastNotification = useSelector(state => state.projectChatLastNotification[projectKey])
+          ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+          : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+    const lastAssistantCommentData = useSelector(state =>
+        scopeToAssistant
+            ? state.loggedUser.lastAssistantCommentDataByAssistant?.[assistantId]?.[projectKey]
+            : state.loggedUser.lastAssistantCommentData?.[projectKey]
+    )
+    const projectChatLastNotification = useSelector(state =>
+        scopeToAssistant ? null : state.projectChatLastNotification[projectKey]
+    )
+    const followedProjectChatLastNotification = projectChatLastNotification?.followed
+        ? projectChatLastNotification
+        : null
     const [aModalIsOpen, setAModalIsOpen] = useState(false)
     const [currentProjectChatLastNotification, setCurrentProjectChatLastNotification] = useState(
-        projectChatLastNotification
+        followedProjectChatLastNotification
     )
     const [currentLastAssistantCommentData, setCurrentLastAssistantCommentData] = useState(lastAssistantCommentData)
 
     useEffect(() => {
         if (!aModalIsOpen) {
-            setCurrentProjectChatLastNotification(projectChatLastNotification)
+            setCurrentProjectChatLastNotification(followedProjectChatLastNotification)
             setCurrentLastAssistantCommentData(lastAssistantCommentData)
         }
-    }, [aModalIsOpen, projectChatLastNotification, lastAssistantCommentData])
+    }, [aModalIsOpen, followedProjectChatLastNotification, lastAssistantCommentData])
 
     const { commentCreator, commentProject } = getCommentData(
         project,
@@ -56,6 +68,10 @@ export default function LastCommentArea({
         assistantId,
         defaultProjectId
     )
+
+    if (scopeToAssistant && !currentLastAssistantCommentData) {
+        return null
+    }
 
     if (!commentProject || !commentCreator) {
         return null

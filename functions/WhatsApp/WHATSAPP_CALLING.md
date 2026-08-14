@@ -3,16 +3,16 @@
 Assistant voice calling is disabled by default. Configure these Firebase Functions runtime environment variables or
 secrets before enabling each channel:
 
--   `WHATSAPP_CALLS_ENABLED=false`
--   `PHONE_CALLS_ENABLED=false`
--   `BROWSER_CALLS_ENABLED=false`
--   `OPENAI_PROJECT_ID`
--   `OPENAI_WEBHOOK_SECRET`
--   `WHATSAPP_CALL_ROUTING_SECRET`
--   `OPENAI_REALTIME_MODEL=gpt-realtime-2`
--   `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
--   `OPENAI_REALTIME_REASONING_EFFORT=medium`
--   `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`
+- `WHATSAPP_CALLS_ENABLED=false`
+- `PHONE_CALLS_ENABLED=false`
+- `BROWSER_CALLS_ENABLED=false`
+- `OPENAI_PROJECT_ID`
+- `OPENAI_WEBHOOK_SECRET`
+- `WHATSAPP_CALL_ROUTING_SECRET`
+- `OPENAI_REALTIME_MODEL=gpt-realtime-2`
+- `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
+- `OPENAI_REALTIME_REASONING_EFFORT=medium`
+- `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`
 
 For this repository's GitLab production deployment, add the call settings to the existing protected
 `GOOGLE_FUNCTIONS_ENV_PROD` JSON variable. Keep the existing `OPEN_AI_KEY`, `TWILIO_ACCOUNT_SID`,

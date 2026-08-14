@@ -11,28 +11,21 @@
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
-let algoliasearch, moment, getAlgoliaClient, getNoteContent, parseTextForSearch
+let moment, getNoteContent, parseTextForSearch
+let searchTypesenseDocuments, formatTypesenseFilterValue
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
-    if (!algoliasearch) {
+    if (!moment) {
         try {
-            // Try CommonJS first (Node.js/Cloud Functions)
-            if (typeof require !== 'undefined') {
-                algoliasearch = require('algoliasearch')
-                moment = require('moment')
-                const searchHelper = require('../searchHelper')
-                const parsingHelper = require('../ParsingTextHelper')
-                getAlgoliaClient = searchHelper.getAlgoliaClient
-                getNoteContent = searchHelper.getNoteContent
-                parseTextForSearch = parsingHelper.parseTextForSearch
-            } else {
-                // Fall back to ES6 imports (React Native/Web)
-                const [algolia, momentLib] = await Promise.all([import('algoliasearch'), import('moment')])
-                algoliasearch = algolia.default || algolia
-                moment = momentLib.default || momentLib
-                // Note: For React Native/Web, search functionality would use different backends
-            }
+            moment = require('moment')
+            const searchHelper = require('../searchHelper')
+            const parsingHelper = require('../ParsingTextHelper')
+            const typesenseHelper = require('../typesenseHelper')
+            getNoteContent = searchHelper.getNoteContent
+            parseTextForSearch = parsingHelper.parseTextForSearch
+            searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
+            formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
         } catch (error) {
             console.error('Failed to load SearchService dependencies:', error)
             throw new Error('SearchService initialization failed')
@@ -86,7 +79,6 @@ class SearchService {
             isWeb: typeof window !== 'undefined',
 
             // Feature flags
-            enableAlgolia: true,
             enableNoteContent: true,
             enableDateParsing: true,
 
@@ -95,7 +87,6 @@ class SearchService {
         }
 
         this.initialized = false
-        this.algoliaClient = null
     }
 
     /**
@@ -105,10 +96,6 @@ class SearchService {
         if (this.initialized) return
 
         await loadDependencies()
-
-        if (this.options.enableAlgolia && getAlgoliaClient) {
-            this.algoliaClient = getAlgoliaClient()
-        }
 
         this.initialized = true
     }
@@ -928,10 +915,6 @@ class SearchService {
      * @returns {Array} Search results for this entity type
      */
     async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId, status) {
-        if (!this.algoliaClient || !this.options.enableAlgolia) {
-            return []
-        }
-
         const indexName = SEARCH_INDICES[entityType.toUpperCase()]
         if (!indexName) {
             console.warn(`No search index configured for entity type: ${entityType}`)
@@ -939,8 +922,6 @@ class SearchService {
         }
 
         try {
-            const index = this.algoliaClient.initIndex(indexName)
-
             // Build search parameters - ensure keywords are valid
             const keywords = parsedQuery.keywords || []
             if (keywords.length === 0) {
@@ -960,19 +941,21 @@ class SearchService {
                 return []
             }
 
-            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status)
+            const filterBy = this.buildTypesenseFilters(
+                userProjects,
+                projectId,
+                parsedQuery,
+                entityType,
+                userId,
+                status
+            )
+            const response = await searchTypesenseDocuments(indexName, searchQuery, {
+                filterBy,
+                perPage: Math.min(limit, 250),
+            })
+            const hits = response.hits
 
-            const searchOptions = {
-                filters,
-                hitsPerPage: limit,
-                attributesToRetrieve: this.getAttributesToRetrieve(entityType),
-                attributesToHighlight: this.getAttributesToHighlight(entityType),
-                timeout: 5000, // 5 second timeout per search
-            }
-
-            const searchResponse = await index.search(searchQuery, searchOptions)
-
-            return searchResponse.hits.map(hit => {
+            return hits.map(hit => {
                 let cleanId = hit.objectID || hit.id
                 // Remove project ID suffix from Algolia objectID (format: noteId + projectId)
                 if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
@@ -1015,61 +998,52 @@ class SearchService {
     }
 
     /**
-     * Build Algolia filters based on search parameters
-     * @param {Array} userProjects - User's accessible projects
-     * @param {string} projectId - Optional project filter
-     * @param {Object} parsedQuery - Parsed query components
-     * @param {string} entityType - Entity type being searched
-     * @param {string} userId - Current user ID for visibility filtering
-     * @returns {string} Algolia filter string
+     * Search filters (Typesense). Same access model the Algolia era enforced, one
+     * deliberate scope rule: with everything indexed, the eligibility gate that used to be
+     * implicit (inactive/template projects simply had no records) is an explicit project
+     * scope — assistant search covers active, non-template projects only.
      */
-    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
+    buildTypesenseFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
         const filters = []
 
         // Project access filter
         if (projectId) {
-            filters.push(`projectId:"${projectId}"`)
+            filters.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
         } else {
-            const projectFilters = userProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
-            if (projectFilters) {
-                filters.push(`(${projectFilters})`)
+            const searchableProjects = userProjects.filter(
+                project => project && project.active !== false && !project.parentTemplateId
+            )
+            const projectIdsList = searchableProjects.map(project => formatTypesenseFilterValue(project.id)).join(',')
+            if (projectIdsList) {
+                filters.push(`projectId:=[${projectIdsList}]`)
             }
         }
 
-        // Visibility filters (critical for security) - following main app patterns
+        // Visibility filters (critical for security) — isPublicFor is string[] in
+        // Typesense, so the numeric public sentinel is compared as a string.
+        const publicScope = `isPublicFor:=[${formatTypesenseFilterValue(
+            FEED_PUBLIC_FOR_ALL
+        )},${formatTypesenseFilterValue(userId)}]`
         switch (entityType) {
-            case ENTITY_TYPES.GOALS:
-            case ENTITY_TYPES.CHATS:
-                // Goals and chats use isPublicFor field
-                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
-                break
-            case ENTITY_TYPES.CONTACTS:
-            case ENTITY_TYPES.USERS:
-                // Enforce visibility via access list, not isPrivate flag
-                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
-                if (entityType === ENTITY_TYPES.USERS) {
-                    filters.push('isAssistant:false')
-                }
-                break
             case ENTITY_TYPES.ASSISTANTS:
-                // Assistants are public but marked as isAssistant:true
-                filters.push('isAssistant:true')
-                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
+                filters.push('isAssistant:=true')
+                filters.push(publicScope)
                 break
-            case ENTITY_TYPES.TASKS:
-            case ENTITY_TYPES.NOTES:
+            case ENTITY_TYPES.USERS:
+                filters.push(publicScope)
+                filters.push('isAssistant:=false')
+                break
             default:
-                // Enforce visibility via access list, not isPrivate flag
-                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
+                filters.push(publicScope)
                 break
         }
 
         // Task status filter (only applies to tasks)
         if (entityType === ENTITY_TYPES.TASKS && status) {
             if (status === 'done') {
-                filters.push('done:true')
+                filters.push('done:=true')
             } else if (status === 'open') {
-                filters.push('done:false')
+                filters.push('done:=false')
             }
             // status === 'all' means no status filtering
         }
@@ -1077,10 +1051,10 @@ class SearchService {
         // Date range filter - use lastEditionDate (updated when tasks are completed)
         if (parsedQuery.dateFilter) {
             const { startDate, endDate } = parsedQuery.dateFilter
-            filters.push(`lastEditionDate >= ${startDate} AND lastEditionDate <= ${endDate}`)
+            filters.push(`lastEditionDate:>=${startDate} && lastEditionDate:<=${endDate}`)
         }
 
-        return filters.join(' AND ')
+        return filters.join(' && ')
     }
 
     /**
@@ -1614,11 +1588,13 @@ class SearchService {
         // Build search query
         let query = noteTitle || ''
 
-        // Add project filter if specified
-        let filters = [`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`]
+        // Add project filter if specified (Typesense syntax; isPublicFor is string[])
+        let filters = [
+            `isPublicFor:=[${formatTypesenseFilterValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseFilterValue(userId)}]`,
+        ]
 
         if (projectId) {
-            filters.push(`projectId:${projectId}`)
+            filters.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
         } else if (projectName) {
             // Search for projects matching the name first
             const matchingProjectIds = userProjects
@@ -1626,16 +1602,14 @@ class SearchService {
                 .map(p => p.id)
 
             if (matchingProjectIds.length > 0) {
-                filters.push(`(${matchingProjectIds.map(id => `projectId:${id}`).join(' OR ')})`)
+                filters.push(`projectId:=[${matchingProjectIds.map(formatTypesenseFilterValue).join(',')}]`)
             }
         }
 
         try {
-            const index = this.algoliaClient.initIndex(SEARCH_INDICES.NOTES)
-            const searchResults = await index.search(query, {
-                filters: filters.join(' AND '),
-                hitsPerPage: 20,
-                attributesToRetrieve: ['objectID', 'title', 'content', 'projectId', 'userId', 'lastEditionDate'],
+            const searchResults = await searchTypesenseDocuments(SEARCH_INDICES.NOTES, query, {
+                filterBy: filters.join(' && '),
+                perPage: 20,
             })
 
             const matches = []
@@ -1722,7 +1696,6 @@ class SearchService {
             return {
                 status: 'healthy',
                 initialized: this.initialized,
-                algoliaClient: !!this.algoliaClient,
                 dependencies: {
                     algoliasearch: !!algoliasearch,
                     moment: !!moment,
@@ -1730,16 +1703,15 @@ class SearchService {
                     getNoteContent: !!getNoteContent,
                 },
                 config: {
-                    enableAlgolia: this.options.enableAlgolia,
                     enableNoteContent: this.options.enableNoteContent,
                     enableDateParsing: this.options.enableDateParsing,
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                        ? 'react-native'
-                        : this.options.isWeb
-                        ? 'web'
-                        : 'unknown',
+                          ? 'react-native'
+                          : this.options.isWeb
+                            ? 'web'
+                            : 'unknown',
                 },
             }
         } catch (error) {

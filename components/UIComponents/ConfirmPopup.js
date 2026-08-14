@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
@@ -29,6 +29,7 @@ import { translate } from '../../i18n/TranslationService'
 import {
     deleteAssistant,
     deletePreConfigTask,
+    removeAssistantWorkflowStep,
     removeGlobalAssistantFromProject,
 } from '../../utils/backends/Assistants/assistantsFirestore'
 import { DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_PROJECT_ASSISTANTS } from '../../utils/TabNavigationConstants'
@@ -38,6 +39,8 @@ import { deleteProjectContact } from '../../utils/backends/Contacts/contactsFire
 import { deleteNote } from '../../utils/backends/Notes/notesFirestore'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { rejectAllSuggestedTasks } from '../../utils/suggestedTaskBulkActions'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -57,13 +60,13 @@ export const CONFIRM_POPUP_TRIGGER_DELETE_SKILL = 'CONFIRM POPUP TRIGGER DELETE 
 export const CONFIRM_POPUP_TRIGGER_RESET_SKILLS = 'CONFIRM_POPUP_TRIGGER_RESET_SKILLS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ALL_GOALS = 'CONFIRM POPUP TRIGGER DELETE ALL GOALS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_WORKSTREAM = 'CONFIRM POPUP TRIGGER DELETE WORKSTREAM'
+export const CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS = 'CONFIRM POPUP TRIGGER REJECT ALL SUGGESTED TASKS'
 export const CONFIRM_POPUP_TIMEOUT = 'CONFIRM POPUP TIMEOUT'
 export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION HISTORY'
 export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
     const [processing, setProcessing] = useState(false)
 
@@ -207,9 +210,11 @@ export default function ConfirmPopup() {
             }
 
             case CONFIRM_POPUP_TRIGGER_DELETE_WORKFLOW_STEP: {
-                const { projectIndex, userUid, stepId, steps, reviewerUid } = object
+                const { projectIndex, userUid, stepId, steps, reviewerUid, ownerType } = object
                 const project = loggedUserProjects[projectIndex]
-                await removeUserWorkflowStep(project, userUid, stepId, steps, reviewerUid)
+                await (ownerType === 'assistant'
+                    ? removeAssistantWorkflowStep(project, userUid, stepId, steps, reviewerUid)
+                    : removeUserWorkflowStep(project, userUid, stepId, steps, reviewerUid))
                 hidePopup()
                 break
             }
@@ -233,6 +238,19 @@ export default function ConfirmPopup() {
                 const { projectId, stream } = object
                 await deleteWorkstream(projectId, stream)
                 hidePopup()
+                break
+            }
+
+            case CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS: {
+                const { projectId, tasks, workflow } = object
+                setProcessing(true)
+                try {
+                    // Rejecting is sequential, so a mid-list failure must still close the popup:
+                    // the suggestions already rejected are gone, the rest stay in the section.
+                    await rejectAllSuggestedTasks({ projectId, tasks, workflow })
+                } finally {
+                    hidePopup()
+                }
                 break
             }
 
@@ -306,7 +324,7 @@ export default function ConfirmPopup() {
             ) : trigger === CONFIRM_POPUP_TRIGGER_PUSH_NOTIFICATIONS ? (
                 <PushNotificationsModalMandatory />
             ) : trigger === CONFIRM_POPUP_TRIGGER_INFO ? (
-                <View style={[localStyles.infoPopup, smallScreenNavigation && { marginLeft: 300 }]}>
+                <View style={localStyles.infoPopup}>
                     <View style={{ marginBottom: 16 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -320,7 +338,7 @@ export default function ConfirmPopup() {
                     </View>
                 </View>
             ) : (
-                <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }, customStyles.popup]}>
+                <View style={[localStyles.popup, customStyles.popup]}>
                     <View style={[{ marginBottom: 20 }, customStyles.popupTexts]}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -357,6 +375,12 @@ export default function ConfirmPopup() {
 }
 
 const localStyles = StyleSheet.create({
+    // The overlay covers the whole viewport and centers its child, so the dialog needs no extra
+    // horizontal offset. It used to carry `smallScreenNavigation && { marginLeft: 300 }`, which was
+    // inverted: `smallScreenNavigation` is the *narrow* layout, where the 300px sidebar is hidden —
+    // so the offset only ever applied on mobile and pushed the dialog off-center there (AT-2210).
+    // Dialogs that do want to be centered next to an expanded sidebar (KickUserConfirmPopup,
+    // ProjectInvitationPopup) apply that offset themselves, on desktop only.
     container: {
         position: 'absolute',
         zIndex: 10000,
@@ -367,14 +391,12 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     infoPopup: {
         backgroundColor: colors.Secondary400,
         padding: 16,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
         maxWidth: 432,
@@ -383,12 +405,14 @@ const localStyles = StyleSheet.create({
     popup: {
         backgroundColor: colors.Secondary400,
         padding: 16,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
+        // The card used to have no width constraint at all: a long translated
+        // headerQuestion grew it arbitrarily wide (the 432 cap existed only on
+        // the INFO variant). 16px keeps a gutter on narrow screens.
+        maxWidth: 432,
+        marginHorizontal: 16,
     },
     title: {
         color: '#ffffff',

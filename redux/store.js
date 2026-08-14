@@ -10,6 +10,7 @@ import ProjectHelper, {
     checkIfSelectedProject,
 } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FOLLOWED_TAB } from '../components/Feeds/Utils/FeedsConstants'
+import { getOptimisticGoalPostponeKey } from '../utils/backends/Goals/optimisticGoalPostpone'
 import {
     DV_TAB_ADMIN_PANEL_USER,
     DV_TAB_ROOT_CHATS,
@@ -59,7 +60,6 @@ export const initialState = {
     projectContacts: {},
     projectAssistants: {},
     projectWorkstreams: {},
-    projectsMeetings: {},
     projectInvitations: {},
     projectChatNotifications: {},
     projectChatLastNotification: {},
@@ -249,6 +249,7 @@ export const initialState = {
     taskPriorityFilters: [],
     taskVmStateFilters: [],
     taskVmStatesByTask: {},
+    noteOwnerFilters: [],
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -317,8 +318,11 @@ export const initialState = {
     ],
     showNotificationAboutTheBotBehavior: false,
     assistantEnabled: false,
+    // `null` = the flag applies to whichever chat is currently open. `{ projectId, objectId }` =
+    // it was armed for that one chat only, and other Chat DVs must ignore it (AT-2084).
+    assistantEnabledScope: null,
     notEnabledAssistantWhenLoadComments: false,
-    triggerBotSpinner: false,
+    triggerBotSpinner: null,
     preConfigTaskExecuting: null,
     disableAutoFocusInChat: false,
     mainChatEditor: null,
@@ -333,9 +337,6 @@ export const initialState = {
     goalDoneTasksExpandedAmount: 0,
     recordVideoModalData: { visible: false, projectId: '' },
     screenRecordingModalData: { visible: false, projectId: '' },
-    chatGoogleMeetModalData: { visible: false, projectId: '', userId: '', userIds: [], title: '' },
-    googleMeetModalData: { visible: false, projectId: '', userId: '' },
-    googleMeetNotificationModalData: { visible: false, projectId: '', email: '', meeting: null },
     taskSuggestedCommentModalData: { visible: false, projectId: '', task: null, taskName: '' },
     activeChatData: { projectId: '', chatId: '', chatType: '' },
     quillTextInputProjectIdsByEditorId: {},
@@ -343,7 +344,10 @@ export const initialState = {
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
     optimisticFocusGoalId: null,
+    optimisticFocusUserId: null,
     optimisticFocusActive: false,
+    // AT-2160: `${projectId}_${goalId}` -> { date, startedAt } while a goal postpone is in flight
+    optimisticGoalPostpones: {},
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
     myDaySortingSelectedTasks: [],
@@ -469,19 +473,21 @@ const getDefaultAssistant = state => {
         defaultAssistant = projectAssistants[0]
     }
 
-    console.log('Selected default assistant from project:', {
-        projectId: defaultProjectId,
-        projectAssistantId: defaultProject?.assistantId,
-        selectedAssistantId: defaultAssistant?.uid,
-        selectedAssistantName: defaultAssistant?.displayName,
-        isDefault: defaultAssistant?.isDefault,
-        isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
-        allProjectAssistants: projectAssistants.map(a => ({
-            uid: a.uid,
-            name: a.displayName,
-            isDefault: a.isDefault,
-        })),
-    })
+    if (__DEV__) {
+        console.log('Selected default assistant from project:', {
+            projectId: defaultProjectId,
+            projectAssistantId: defaultProject?.assistantId,
+            selectedAssistantId: defaultAssistant?.uid,
+            selectedAssistantName: defaultAssistant?.displayName,
+            isDefault: defaultAssistant?.isDefault,
+            isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
+            allProjectAssistants: projectAssistants.map(a => ({
+                uid: a.uid,
+                name: a.displayName,
+                isDefault: a.isDefault,
+            })),
+        })
+    }
 
     return defaultAssistant || {}
 }
@@ -848,11 +854,6 @@ export const theReducer = (state = initialState, action) => {
 
             return { ...state, projectWorkstreams, currentUser }
         }
-        case 'Set meetings in project': {
-            const { projectId, meetings } = action
-            const projectsMeetings = { ...state.projectsMeetings, [projectId]: meetings }
-            return { ...state, projectsMeetings }
-        }
         case 'Set invitations in projects': {
             const { projectId, invitations } = action
             const projectInvitations = { ...state.projectInvitations, [projectId]: invitations }
@@ -1213,6 +1214,7 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
                 optimisticFocusGoalId: action.optimisticFocusGoalId,
+                optimisticFocusUserId: action.optimisticFocusUserId || null,
                 optimisticFocusActive: true,
             }
         }
@@ -1222,8 +1224,27 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
                 optimisticFocusGoalId: null,
+                optimisticFocusUserId: null,
                 optimisticFocusActive: false,
             }
+        }
+        case 'Set optimistic goal postpone': {
+            // AT-2160: the goal leaves today's list right away; the server write follows.
+            const { projectId, goalId, date, startedAt } = action
+            return {
+                ...state,
+                optimisticGoalPostpones: {
+                    ...state.optimisticGoalPostpones,
+                    [getOptimisticGoalPostponeKey(projectId, goalId)]: { date, startedAt },
+                },
+            }
+        }
+        case 'Clear optimistic goal postpone': {
+            const key = getOptimisticGoalPostponeKey(action.projectId, action.goalId)
+            if (state.optimisticGoalPostpones[key] === undefined) return state
+            const optimisticGoalPostpones = { ...state.optimisticGoalPostpones }
+            delete optimisticGoalPostpones[key]
+            return { ...state, optimisticGoalPostpones }
         }
         case 'Set shared mode': {
             return { ...state, inSharedMode: true }
@@ -1553,6 +1574,21 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
+        case 'Clear note owner filters': {
+            if (state.noteOwnerFilters.length === 0) return state
+            return {
+                ...state,
+                noteOwnerFilters: [],
+            }
+        }
+
+        case 'Set note owner filters': {
+            return {
+                ...state,
+                noteOwnerFilters: action.ownerIds,
+            }
+        }
+
         case 'Update task VM state': {
             const currentVmState = (state.taskVmStatesByTask || {})[action.taskKey]
             if (currentVmState === action.vmState || (!currentVmState && !action.vmState)) return state
@@ -1764,27 +1800,6 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 screenRecordingModalData: action.screenRecordingModalData,
-            }
-        }
-
-        case 'Update chat google meet modal data': {
-            return {
-                ...state,
-                chatGoogleMeetModalData: action.chatGoogleMeetModalData,
-            }
-        }
-
-        case 'Update google meet modal data': {
-            return {
-                ...state,
-                googleMeetModalData: action.googleMeetModalData,
-            }
-        }
-
-        case 'Update google meet notification modal data': {
-            return {
-                ...state,
-                googleMeetNotificationModalData: action.googleMeetNotificationModalData,
             }
         }
 
@@ -2186,7 +2201,11 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set assistant enabled': {
-            return { ...state, assistantEnabled: action.assistantEnabled }
+            return {
+                ...state,
+                assistantEnabled: action.assistantEnabled,
+                assistantEnabledScope: action.assistantEnabledScope ?? null,
+            }
         }
 
         case 'Set not enabled assistant when load comments': {
@@ -2275,7 +2294,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { [project.id]: workstreams },
                 projectContacts: { [project.id]: contacts },
                 projectAssistants: { [project.id]: assistants },
-                projectsMeetings: { [project.id]: [] },
                 projectInvitations: { [project.id]: [] },
                 projectChatNotifications: { [project.id]: { totalUnfollowed: 0, totalFollowed: 0 } },
                 globalAssistants,
@@ -2296,13 +2314,11 @@ export const theReducer = (state = initialState, action) => {
                 projectAssistants,
             } = action
 
-            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projects.forEach(project => {
-                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2335,7 +2351,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 loggedIn: true,
@@ -2378,22 +2393,14 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set projects initial data': {
-            const {
-                projectsArray,
-                projectsMap,
-                projectUsers,
-                projectWorkstreams,
-                projectContacts,
-                projectAssistants,
-            } = action
+            const { projectsArray, projectsMap, projectUsers, projectWorkstreams, projectContacts, projectAssistants } =
+                action
 
-            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projectsArray.forEach(project => {
-                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2414,7 +2421,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 processedInitialURL: true,
@@ -2442,7 +2448,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2479,7 +2484,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2505,7 +2509,6 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
-            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2516,7 +2519,6 @@ export const theReducer = (state = initialState, action) => {
                 delete projectWorkstreams[projectId]
                 delete projectContacts[projectId]
                 delete projectAssistants[projectId]
-                delete projectsMeetings[projectId]
                 delete projectInvitations[projectId]
                 delete projectChatNotifications[projectId]
                 delete projectChatLastNotification[projectId]
@@ -2539,7 +2541,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
-                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 projectChatLastNotification,
@@ -2556,7 +2557,6 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
-            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2566,7 +2566,6 @@ export const theReducer = (state = initialState, action) => {
             delete projectWorkstreams[projectId]
             delete projectContacts[projectId]
             delete projectAssistants[projectId]
-            delete projectsMeetings[projectId]
             delete projectInvitations[projectId]
             delete projectChatNotifications[projectId]
             delete projectChatLastNotification[projectId]
@@ -2592,7 +2591,6 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
-                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2614,7 +2612,6 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
-                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2636,7 +2633,6 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
-                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2648,6 +2644,30 @@ export const theReducer = (state = initialState, action) => {
                 selectedSidebarTab: DV_TAB_ROOT_TASKS,
                 taskViewToggleSection: 'Open',
                 taskViewToggleIndex: 0,
+            }
+        }
+
+        case 'Add project data': {
+            const { project, users, workstreams, contacts, assistants } = action
+
+            // Idempotent under races: the recovery path and a competing writer may both land here.
+            if (state.loggedUserProjectsMap[project.id]) return state
+
+            const addedProject = { ...project, index: state.loggedUserProjects.length }
+
+            return {
+                ...state,
+                loggedUserProjects: [...state.loggedUserProjects, addedProject],
+                loggedUserProjectsMap: { ...state.loggedUserProjectsMap, [addedProject.id]: addedProject },
+                projectUsers: { ...state.projectUsers, [addedProject.id]: users },
+                projectWorkstreams: { ...state.projectWorkstreams, [addedProject.id]: workstreams },
+                projectContacts: { ...state.projectContacts, [addedProject.id]: contacts },
+                projectAssistants: { ...state.projectAssistants, [addedProject.id]: assistants },
+                projectInvitations: { ...state.projectInvitations, [addedProject.id]: [] },
+                projectChatNotifications: {
+                    ...state.projectChatNotifications,
+                    [addedProject.id]: { totalUnfollowed: 0, totalFollowed: 0 },
+                },
             }
         }
 

@@ -23,7 +23,9 @@ export default function ProjectFilter({ setShowSelectProjectModal, selectedProje
                     <Icon name="icon-circle" size={24} color="#ffffff" />
                     <Text style={localStyles.text}>{translate(currentText)}</Text>
                 </View>
-                <ScopeTag selectedProject={selectedProject} />
+                <View style={[localStyles.rowContainer, { flexWrap: 'wrap' }]}>
+                    <ScopeTag selectedProject={selectedProject} />
+                </View>
             </View>
             <Hotkeys keyName={'alt+1'} onKeyDown={setShowSelectProjectModal} filter={e => true} />
         </TouchableOpacity>

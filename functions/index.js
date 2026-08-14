@@ -1,4 +1,14 @@
 'use strict'
+// Runtime: Node 22, pinned by `runtime` in firebase.json and mirrored by
+// engines.node in package.json. firebase-tools skips a function whose source
+// hash is unchanged, and the runtime is not part of that hash, so moving the
+// runtime alone deploys nothing - it needs a source change to land.
+// CI gotcha: deploy:cloud:functions:production only runs when the pushed
+// commits diff under functions/** (or firebase.json). If that pipeline fails
+// before deploy, a follow-up fix that touches only root files goes green
+// WITHOUT redeploying functions - the next functions/** push carries both.
+// This also applies when the deploy jobs were created but skipped because an
+// earlier stage failed: the fix push needs its own functions/** diff.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onTaskDispatched } = require('firebase-functions/v2/tasks')
@@ -15,7 +25,9 @@ const { VM_JOB_QUEUE_RATE_LIMITS, VM_JOB_WORKER_TIMEOUT_SECONDS } = require('./A
 const {
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+    SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -80,6 +92,26 @@ async function assertProjectAccess(userId, projectId) {
 
     return userDoc.data() || {}
 }
+
+exports.setDefaultProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { DefaultProjectError, setDefaultProjectForUser } = require('./Users/defaultProject')
+        try {
+            return await setDefaultProjectForUser(admin.firestore(), request.auth.uid, request.data?.projectId)
+        } catch (error) {
+            if (error instanceof DefaultProjectError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
 
 // Access check for account-level connection ids (email_… / calendar_…): the connection
 // must belong to the caller. Returns { userData, connection }.
@@ -541,16 +573,8 @@ exports.createCompanySubscriptionSecondGen = onCall(
         const { auth, data } = request
         if (auth) {
             const { createCompanySubscription } = require('./Payment/SubscriptionsActions')
-            const {
-                customerId,
-                userId,
-                userName,
-                userEmail,
-                selectedUserIds,
-                companyData,
-                paymentMethod,
-                urlOrigin,
-            } = data
+            const { customerId, userId, userName, userEmail, selectedUserIds, companyData, paymentMethod, urlOrigin } =
+                data
 
             return await createCompanySubscription(
                 customerId,
@@ -1054,6 +1078,58 @@ exports.setDefaultVmAgentReasoningEffort = onCall(
     }
 )
 
+exports.setDefaultVmApprovalPolicy = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setDefaultVmApprovalPolicy } = require('./Assistant/vmAgentSettings')
+        return await setDefaultVmApprovalPolicy({ userId: auth.uid, policy: data && data.policy })
+    }
+)
+
+// AT-2221: per-agent default model family. `family: null` clears the default.
+exports.setDefaultVmAgentModel = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setDefaultVmAgentModel } = require('./Assistant/vmAgentSettings')
+        return await setDefaultVmAgentModel({
+            userId: auth.uid,
+            agent: data && data.agent,
+            family: data && data.family !== undefined ? data.family : null,
+        })
+    }
+)
+
+// Live model families for the Settings picker. Separate from getVmAgentSettings so the UI can
+// refresh the list (forceRefresh) without re-reading the user's saved preferences.
+exports.getVmAgentModelOptions = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getAllModelCatalogs } = require('./Assistant/vmAgentModelCatalog')
+        return await getAllModelCatalogs({ forceRefresh: !!(data && data.forceRefresh) })
+    }
+)
+
 exports.connectVmSubscription = onCall(
     {
         timeoutSeconds: 30,
@@ -1429,7 +1505,8 @@ exports.updateMollieSubscription = onCall(
 exports.sendMonthlyInvoiceSecondGen = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '256MB',
+        // Invoice PDFs render with headless Chromium, which needs more than 256MB
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -1442,7 +1519,8 @@ exports.sendMonthlyInvoiceSecondGen = onRequest(
 exports.sendMonthlyInvoice = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '256MB',
+        // Invoice PDFs render with headless Chromium, which needs more than 256MB
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -1488,25 +1566,6 @@ exports.autoCancelSubscriptionsSecondGen = onSchedule(
 
 //ALGOLIA
 
-exports.indexProjectsRecordsInAlgoliaSecondGen = onCall(
-    {
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { indexProjectsRecordsInAlgolia } = require('./AlgoliaGlobalSearchHelper')
-            const { userId } = data
-            await indexProjectsRecordsInAlgolia(userId)
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
-    }
-)
-
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     {
         timeoutSeconds: 540,
@@ -1527,23 +1586,10 @@ exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     }
 )
 
-// "Every Day at 00:00."
-exports.checkAndRemoveInactiveObjectsFromAlgoliaSecondGen = onSchedule(
-    {
-        schedule: '0 0 * * *',
-        timeZone: 'Europe/Berlin',
-        region: 'europe-west1',
-        timeoutSeconds: 540,
-        memory: '2GiB',
-    },
-    async event => {
-        const { checkAndRemoveInactiveObjectsFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
-        await checkAndRemoveInactiveObjectsFromAlgolia()
-        return null
-    }
-)
-
-// "Every Day at 00:00."
+// "Every Day at 00:00." — deactivates projects nobody opened in 30 days. Since the
+// Typesense migration (Phase 4) it only flips projects.active; search records are kept
+// in both stores (Typesense keeps everything by design, and Algolia is only a rollback
+// target until Phase 5 removes it).
 exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
     {
         schedule: '0 0 * * *',
@@ -1555,126 +1601,6 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
     async event => {
         const { checkAndRemoveProjectsWithoutActivityFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
         await checkAndRemoveProjectsWithoutActivityFromAlgolia()
-    }
-)
-
-exports.onStartIndexingAlgoliaTasksSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/tasks`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startTasksIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startTasksIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaGoalsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/goals`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startGoalsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startGoalsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaNotesSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/notes`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startNotesIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startNotesIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaContactsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/contacts`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startContactsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startContactsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaAssistantsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/assistants`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startAssistantsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startAssistantsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaChatsSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/chats`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startChatsIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startChatsIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onStartIndexingAlgoliaUsersSecondGen = onDocumentCreated(
-    {
-        document: `algoliaIndexation/{projectId}/objectTypes/users`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { startUsersIndextion } = require('./searchHelper')
-        const { projectId } = event.params
-        const { activeFullSearchDate } = event.data.data()
-        await startUsersIndextion(projectId, activeFullSearchDate)
-    }
-)
-
-exports.onEndIndexingAlgoliaFullSearchSecondGen = onDocumentUpdated(
-    {
-        document: `algoliaFullSearchIndexation/{projectId}`,
-        timeoutSeconds: 540,
-        memory: '2GiB',
-        region: 'europe-west1',
-    },
-    async event => {
-        const { checkAlgoliaFullSearchIndeaxtion } = require('./searchHelper')
-        const { projectId } = event.params
-        const fullSearchIndeaxtion = event.data.after.data()
-        await checkAlgoliaFullSearchIndeaxtion(projectId, fullSearchIndeaxtion)
     }
 )
 
@@ -2040,6 +1966,24 @@ exports.menubarProjects = onRequest(
     async (req, res) => {
         const { handleMenubarProjects } = require('./MenubarApp/menubarApp')
         return await handleMenubarProjects(req, res)
+    }
+)
+
+// 1GiB, not the 256MiB the other read-only menubar endpoints use: this one pulls
+// in assistantCalendarTools, and with it the full googleapis client, on top of
+// the tiktoken encoder index.js preloads at module load. At 256MiB it died with
+// "Memory limit of 256 MiB exceeded with 279 MiB used" on nearly every call —
+// and because the client retries 500s, that surfaced as a silently dead
+// reminder rather than an error anyone could see.
+exports.menubarUpcoming = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarUpcoming } = require('./MenubarApp/menubarApp')
+        return await handleMenubarUpcoming(req, res)
     }
 )
 
@@ -2670,7 +2614,7 @@ exports.respondToVmInteractionSecondGen = onCall(
                     interaction: null,
                     interactionAnsweredAt: Date.now(),
                 },
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
             },
             { merge: true }
         )
@@ -2823,7 +2767,9 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
                 messageId,
+                objectType: requestedObjectType,
             } = data
+            const objectType = requestedObjectType === 'topics' ? 'topics' : 'tasks'
             const userId = auth.uid
             if (requestedUserId && requestedUserId !== userId) {
                 console.warn('generatePreConfigTaskResultSecondGen: ignoring mismatched userId from payload', {
@@ -2833,7 +2779,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
             }
             try {
                 if (projectId && taskId) {
-                    await assertObjectAccess(admin.firestore(), userId, projectId, 'tasks', taskId)
+                    await assertObjectAccess(admin.firestore(), userId, projectId, objectType, taskId)
                 } else if (projectId) {
                     await assertProjectAccess(userId, projectId)
                 }
@@ -2858,7 +2804,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
                 functionEntryTime, // Pass entry time for time-to-first-token tracking
-                'tasks',
+                objectType,
                 { triggerMessageId: messageId }
             )
 
@@ -3353,23 +3299,62 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
 // Runs the assistant for tasks that landed on an AI workflow step, then moves each task on.
 // Queued by enqueueWorkflowAiRunIfNeeded from onUpdateTask into workflowAiRuns.
 //
-// A poller rather than an onDocumentCreated trigger on that collection: an assistant run is given a
-// 55-minute wall clock, and event-triggered functions are capped at 540s, so a trigger cannot host
-// one — a 3600s trigger is rejected outright at deploy time while the rest of the deploy succeeds,
-// which is exactly how these runs silently stopped executing in production. Scheduled execution is
-// how checkRecurringAssistantTasks already runs assistant work on the same budget. Every minute, so
-// a task waits at most ~60s for its step to start.
+// A poller rather than an onDocumentCreated trigger on that collection: event-triggered functions are
+// capped at 540s, so a trigger cannot host an assistant run at all — a longer one is rejected outright
+// at deploy time while the rest of the deploy succeeds, which is exactly how these runs silently
+// stopped executing in production. Scheduled execution is how checkRecurringAssistantTasks already
+// runs assistant work. Every minute, so a task waits at most ~60s for its step to start.
+//
+// The run here is sized to SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS (25 min), not the full interactive
+// 55: Cloud Scheduler's attempt deadline caps at 1800s and then retries, so a longer run would be
+// invoked a second time concurrently rather than simply finishing.
+exports.retryWorkflowAiRunSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+
+        const { projectId, taskId } = data || {}
+        if (!projectId || !taskId) throw new HttpsError('invalid-argument', 'projectId and taskId are required')
+
+        await assertObjectAccess(admin.firestore(), auth.uid, projectId, 'tasks', taskId)
+        const { retryFailedWorkflowAiRun } = require('./Tasks/workflowAiStep')
+        const runId = await retryFailedWorkflowAiRun(projectId, taskId)
+        return { success: true, runId }
+    }
+)
+
 exports.runWorkflowAiStepsSecondGen = onSchedule(
     {
         schedule: '* * * * *',
         timeZone: 'UTC',
-        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
         region: 'europe-west1',
     },
     async () => {
         const { dispatchPendingWorkflowAiRuns } = require('./Tasks/workflowAiStep')
         await dispatchPendingWorkflowAiRuns()
+    }
+)
+
+// Close the short pre-VM ordering window too: a workflow may first park on the chat assistant lock,
+// then switch to the VM job that assistant dispatched. Whichever one settles last triggers a re-check.
+exports.onUpdateWorkflowAssistantRunSecondGen = onDocumentUpdated(
+    {
+        document: 'assistantRunLocks/{runId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { resolveWorkflowRunsForAssistantRunUpdate } = require('./Tasks/workflowAiStep')
+        await resolveWorkflowRunsForAssistantRunUpdate(event.data.before.data() || {}, event.data.after.data() || {})
     }
 )
 
@@ -4191,10 +4176,12 @@ exports.getLinkPreviewDataSecondGen = onRequest(
 )
 
 // RECURRING ASSISTANT TASKS
+// Executes recurring assistant prompts inline (executeBatch awaits each run), so it is an assistant
+// run host and its runs are sized to the scheduled ceiling — see runWorkflowAiStepsSecondGen above.
 exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
-        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4205,10 +4192,12 @@ exports.checkRecurringAssistantTasks = onSchedule(
 )
 
 // ASSISTANT HEARTBEAT
+// Only enqueues due heartbeats onto Cloud Tasks; the run itself lives in runAssistantHeartbeat. The
+// scheduled ceiling applies all the same — Cloud Scheduler would retry a dispatch that ran past it.
 exports.checkAssistantHeartbeats = onSchedule(
     {
         schedule: '*/5 * * * *',
-        timeoutSeconds: 3600,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4236,7 +4225,7 @@ exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     {
         schedule: '17 2 * * *',
         timeZone: 'UTC',
-        timeoutSeconds: 3600,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4375,6 +4364,20 @@ exports.autoPostponeOverdueTasksSecondGen = onSchedule(
     async () => {
         const { checkAndAutoPostponeTasks } = require('./Tasks/autoPostponeTasksCloud')
         return await checkAndAutoPostponeTasks()
+    }
+)
+
+exports.autoArchiveInactiveProjectsSecondGen = onSchedule(
+    {
+        schedule: '30 2 * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { checkAndAutoArchiveProjects } = require('./Projects/autoArchiveProjectsCloud')
+        return await checkAndAutoArchiveProjects()
     }
 )
 
@@ -4635,9 +4638,13 @@ exports.reconcileVmCloudRunLaunches = onSchedule(
     },
     async () => {
         const { reconcileUnknownVmCloudRunLaunches } = require('./Assistant/vmJob')
-        const result = await reconcileUnknownVmCloudRunLaunches()
-        if (result.checked || result.errors) {
-            console.log('🖥️ VM JOB: Cloud Run launch reconciliation complete', result)
+        const { reconcileVmWorkerTerminations } = require('./Assistant/vmJobReconciliation')
+        const [launches, workers] = await Promise.all([
+            reconcileUnknownVmCloudRunLaunches(),
+            reconcileVmWorkerTerminations(),
+        ])
+        if (launches.checked || launches.errors || workers.checked || workers.reconciled || workers.errors) {
+            console.log('🖥️ VM JOB: Cloud Run reconciliation complete', { launches, workers })
         }
     }
 )

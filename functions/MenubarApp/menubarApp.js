@@ -5,6 +5,7 @@ const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 const { resolveMenubarRichTextLinks } = require('./menubarRichText')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -83,7 +84,7 @@ async function mintMenubarAppToken(userId) {
             appId: 'anna-menubar',
             tokenSuffix: token.slice(-4),
             revoked: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
             lastUsedAt: null,
         })
 
@@ -104,10 +105,7 @@ async function mintMenubarAppToken(userId) {
             const excess = sorted.slice(0, activeTokens.size - MAX_ACTIVE_TOKENS_PER_USER)
             await Promise.all(
                 excess.map(doc =>
-                    doc.ref.set(
-                        { revoked: true, revokedAt: admin.firestore.FieldValue.serverTimestamp() },
-                        { merge: true }
-                    )
+                    doc.ref.set({ revoked: true, revokedAt: FieldValue.serverTimestamp() }, { merge: true })
                 )
             )
         }
@@ -154,7 +152,7 @@ async function revokeMenubarAppToken(userId, tokenId) {
     if (!tokenDoc.exists || tokenDoc.data()?.userId !== userId) {
         return { success: false, error: 'Token not found' }
     }
-    await tokenRef.set({ revoked: true, revokedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    await tokenRef.set({ revoked: true, revokedAt: FieldValue.serverTimestamp() }, { merge: true })
     return { success: true }
 }
 
@@ -178,7 +176,7 @@ async function resolveTokenUser(token) {
     const lastUsedMs = tokenData.lastUsedAt?.toMillis?.() || 0
     if (Date.now() - lastUsedMs > LAST_USED_UPDATE_THROTTLE_MS) {
         tokenRef
-            .set({ lastUsedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+            .set({ lastUsedAt: FieldValue.serverTimestamp() }, { merge: true })
             .catch(error => console.warn('menubarSession: lastUsedAt update failed', error))
     }
 
@@ -559,8 +557,8 @@ async function getNoteService() {
             projectId === 'alldonealeph'
                 ? 'notescontentprod'
                 : projectId === 'alldonestaging'
-                ? 'notescontentstaging'
-                : null
+                  ? 'notescontentstaging'
+                  : null
         cachedNoteService = new NoteService({
             database: db,
             moment,
@@ -628,6 +626,214 @@ async function handleMenubarProjects(req, res) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Upcoming meetings (Anna's "meeting starts in a minute" reminder)
+// ---------------------------------------------------------------------------
+
+const UPCOMING_DEFAULT_WINDOW_MINUTES = 180
+const UPCOMING_MAX_WINDOW_MINUTES = 720
+const UPCOMING_MAX_EVENTS = 20
+const UPCOMING_MAX_ATTENDEES = 50
+// Anna polls every ~10 minutes and re-polls shortly before a known meeting; a
+// short cache only collapses retries and multiple Macs on one account, so it
+// never makes the reminder itself stale.
+const UPCOMING_CACHE_TTL_MS = 60 * 1000
+// Events that started very recently are still worth showing — the user may have
+// woken the Mac mid-meeting. Anna decides on its own whether to pop for them.
+const UPCOMING_STARTED_GRACE_MS = 5 * 60 * 1000
+
+const upcomingCache = new Map()
+
+function readUpcomingCache(cacheKey, now) {
+    const entry = upcomingCache.get(cacheKey)
+    if (!entry || entry.expiresAt <= now) return null
+    return entry.payload
+}
+
+function writeUpcomingCache(cacheKey, payload, now) {
+    if (upcomingCache.size > 5000) {
+        for (const [key, entry] of upcomingCache.entries()) {
+            if (entry.expiresAt <= now) upcomingCache.delete(key)
+        }
+    }
+    upcomingCache.set(cacheKey, { expiresAt: now + UPCOMING_CACHE_TTL_MS, payload })
+}
+
+// Normalized events carry Google's shape: { dateTime, timeZone } for timed
+// events, { date } for all-day ones. Only timed events can have a "starts in a
+// minute" moment, so an unparseable or all-day value returns null and the event
+// is dropped.
+function parseEventInstant(value) {
+    if (!value?.dateTime) return null
+    const parsed = Date.parse(value.dateTime)
+    return Number.isFinite(parsed) ? parsed : null
+}
+
+function findSelfAttendee(event, accountEmails) {
+    const attendees = Array.isArray(event?.attendees) ? event.attendees : []
+    return attendees.find(attendee => accountEmails.has(normalizeEmail(attendee?.email))) || null
+}
+
+function collectAttendeeEmails(event) {
+    const attendees = Array.isArray(event?.attendees) ? event.attendees : []
+    const emails = []
+    const seen = new Set()
+    attendees.forEach(attendee => {
+        // Meeting rooms and equipment are attendees too; they would only pollute
+        // the backend's attendee-email project match.
+        if (attendee?.resource) return
+        const email = normalizeEmail(attendee?.email)
+        if (!email || seen.has(email)) return
+        seen.add(email)
+        emails.push(email)
+    })
+    return emails.slice(0, UPCOMING_MAX_ATTENDEES)
+}
+
+function toUpcomingMeeting(event, accountEmails) {
+    if (event?.status === 'cancelled') return null
+
+    const startsAt = parseEventInstant(event?.start)
+    if (startsAt === null) return null
+    const endsAt = parseEventInstant(event?.end)
+
+    // The user already said no — reminding them would be worse than silence.
+    const self = findSelfAttendee(event, accountEmails)
+    if (self && self.responseStatus === 'declined') return null
+
+    const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
+    const joinLink = extractMeetingJoinUrl(event)
+    if (!joinLink) return null
+
+    return {
+        id: event.eventId || '',
+        recurringKey: event.recurringEventId || null,
+        title: event.summary || 'Meeting',
+        startsAt,
+        endsAt: endsAt === null ? null : endsAt,
+        joinUrl: joinLink.joinUrl,
+        joinProvider: joinLink.joinProvider,
+        calendarUrl: event.htmlLink || null,
+        calendarEmail: normalizeEmail(event.calendarEmail) || null,
+        attendeeEmails: collectAttendeeEmails(event),
+    }
+}
+
+// The same meeting shows up once per connected calendar that was invited. Keep
+// the first instance of each (joinUrl, startsAt) pair so Anna prompts once.
+function dedupeUpcomingMeetings(meetings) {
+    const seen = new Set()
+    return meetings.filter(meeting => {
+        const key = `${meeting.joinUrl}__${meeting.startsAt}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+    })
+}
+
+async function loadUpcomingMeetings(userId, userData, windowMinutes, now) {
+    const { listCalendarConnections } = require('../Integrations/providerConnections')
+    const connections = listCalendarConnections(userData).filter(connection => !connection.authInvalid)
+    if (connections.length === 0) {
+        return { calendarConnected: false, meetings: [] }
+    }
+
+    const { searchCalendarEventsForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+    const result = await searchCalendarEventsForAssistantRequest({
+        userId,
+        timeMin: new Date(now - UPCOMING_STARTED_GRACE_MS).toISOString(),
+        timeMax: new Date(now + windowMinutes * 60 * 1000).toISOString(),
+        limit: UPCOMING_MAX_EVENTS,
+        // The description is where a pasted Zoom/Teams link usually lives.
+        includeDescription: true,
+    })
+
+    const accountEmails = new Set(
+        [normalizeEmail(userData.email), ...connections.map(connection => connection.emailAddress)].filter(Boolean)
+    )
+
+    const meetings = dedupeUpcomingMeetings(
+        (Array.isArray(result?.results) ? result.results : [])
+            .map(event => toUpcomingMeeting(event, accountEmails))
+            .filter(Boolean)
+    ).sort((a, b) => a.startsAt - b.startsAt)
+
+    return {
+        calendarConnected: true,
+        meetings,
+        // True when at least one calendar answered but another failed — Anna
+        // keeps its previously scheduled reminders rather than treating a short
+        // list as "the meeting was cancelled".
+        partialFailure: result?.partialFailure === true,
+    }
+}
+
+// POST /api/menubar/upcoming  { token, windowMinutes? } ->
+//   200 { success: true, calendarConnected, partialFailure, meetings: [
+//           { id, recurringKey, title, startsAt, endsAt, joinUrl, joinProvider,
+//             calendarUrl, calendarEmail, attendeeEmails } ] }
+//
+// Read live from the connected providers rather than from the synced calendar
+// tasks: that sync only covers the current day, only runs when the web client
+// asks for it, and drops conferenceData — none of which a menubar-only user can
+// rely on.
+async function handleMenubarUpcoming(req, res) {
+    res.set('Cache-Control', 'no-store')
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ success: false, error: 'Method not allowed' })
+        return
+    }
+
+    const token = req.body?.token
+    const ip = getRequestIp(req)
+    const tokenKey = typeof token === 'string' ? hashToken(token).slice(0, 16) : 'invalid'
+    if (isRateLimited(`mbu:ip:${ip}`, 120, 60 * 1000) || isRateLimited(`mbu:token:${tokenKey}`, 60, 60 * 1000)) {
+        res.status(429).json({ success: false, error: 'Rate limit exceeded' })
+        return
+    }
+
+    try {
+        const tokenUser = await resolveTokenUser(token)
+        if (!tokenUser) {
+            res.status(401).json({ success: false, error: 'Invalid token' })
+            return
+        }
+
+        const requestedWindow = parseInt(req.body?.windowMinutes, 10)
+        const windowMinutes = Number.isFinite(requestedWindow)
+            ? Math.min(Math.max(requestedWindow, 5), UPCOMING_MAX_WINDOW_MINUTES)
+            : UPCOMING_DEFAULT_WINDOW_MINUTES
+
+        const now = Date.now()
+        const cacheKey = `${tokenUser.userId}__${windowMinutes}`
+        const cached = readUpcomingCache(cacheKey, now)
+        if (cached) {
+            res.status(200).json({ ...cached, cached: true })
+            return
+        }
+
+        const { calendarConnected, meetings, partialFailure } = await loadUpcomingMeetings(
+            tokenUser.userId,
+            tokenUser.userData,
+            windowMinutes,
+            now
+        )
+
+        const payload = {
+            success: true,
+            calendarConnected,
+            partialFailure: partialFailure === true,
+            meetings,
+        }
+        writeUpcomingCache(cacheKey, payload, now)
+        res.status(200).json(payload)
+    } catch (error) {
+        console.error('menubarUpcoming: error', error)
+        res.status(500).json({ success: false, error: 'Internal error' })
+    }
+}
+
 function buildNotePushDocId(userId, externalId, projectId) {
     return hashToken(`${userId}__${externalId}__${projectId}`)
 }
@@ -655,9 +861,113 @@ function isActivePush(pushData) {
     return pushData.status === 'pending' && pendingAge < NOTE_PUSH_PENDING_TIMEOUT_MS
 }
 
+// updateIfExists: replace the note a previous push created for this
+// externalId — title, content and attachments — keeping its identity, project
+// and chat. Used by the Mac app's live call coach: every mid-call press
+// refreshes the in-progress note, and the final post-call sync overwrites it
+// with the fully diarized transcript. Returns the response payload, or null
+// when the note no longer exists (deleted on alldone.app) so the caller falls
+// through to the normal create path.
+async function updateExistingMenubarNote(
+    db,
+    { pushData, userData, title, content, attachments, enableAssistantChat },
+    deps = {}
+) {
+    const projectId = pushData.projectId
+    const noteId = pushData.noteId
+    if (!projectId || !noteId) return null
+
+    const noteRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+    const noteDoc = await noteRef.get()
+    if (!noteDoc.exists) return null
+
+    const assistantActor = deps.assistantActor || (await getMenubarAssistantActor(db, userData))
+    const feedUser = assistantActor.feedUser
+
+    let uploadedAttachments = []
+    let noteContent
+    try {
+        uploadedAttachments = await uploadNoteAttachments(attachments)
+        noteContent = rewriteMarkdownAttachmentUrls(content, uploadedAttachments)
+    } catch (uploadError) {
+        await cleanupUploadedNoteAttachments(uploadedAttachments)
+        throw uploadError
+    }
+
+    const noteService = deps.noteService || (await getNoteService())
+    const replaceResult = await noteService.replaceContentInStorage(projectId, noteId, noteContent, feedUser, {
+        editorId: feedUser.uid,
+    })
+    if (!replaceResult || !replaceResult.success) {
+        await cleanupUploadedNoteAttachments(uploadedAttachments)
+        throw new Error(replaceResult?.message || 'Replacing note content failed')
+    }
+
+    const currentTitle = (noteDoc.data() || {}).title || ''
+    const chatRef = db.doc(`chatObjects/${projectId}/chats/${noteId}`)
+    const chatDoc = await chatRef.get()
+
+    if (title && title !== currentTitle) {
+        await noteRef.set({ title, extendedTitle: title, lastEditionDate: Date.now() }, { merge: true })
+        // Keep an existing chat header in sync; never create a stub chat here.
+        if (chatDoc.exists) {
+            await chatRef
+                .set({ title }, { merge: true })
+                .catch(error => console.warn('menubarPushNote: chat title sync failed', error.message))
+        }
+    }
+
+    // The chat is created at most once per note — re-running the full enable
+    // would reset the existing chat's comment counters.
+    if (enableAssistantChat && !chatDoc.exists) {
+        try {
+            await enableNoteAssistantChat(db, {
+                projectId,
+                noteId,
+                title: title || currentTitle,
+                userId: pushData.userId,
+                assistantId: assistantActor.assistantId,
+                // The chat inherits the note's current visibility (private
+                // notes keep a private chat).
+                isPublicFor: (noteDoc.data() || {}).isPublicFor || null,
+            })
+        } catch (chatError) {
+            console.warn('menubarPushNote: enabling the note assistant chat on update failed', chatError)
+        }
+    }
+
+    return {
+        success: true,
+        deduplicated: true,
+        updated: true,
+        noteId,
+        projectId,
+        projectName: pushData.projectName || null,
+        url: `${getAppBaseUrl()}/projects/${projectId}/notes/${noteId}/editor`,
+        resolution: pushData.resolution || null,
+    }
+}
+
+// Assistants are stored per project (`assistants/{projectId}/items`) plus one shared
+// `assistants/globalProject/items` pool.
+const GLOBAL_ASSISTANTS_PROJECT_ID = 'globalProject'
+
+/**
+ * Resolve the assistant the menubar acts as (feed author, note owner, note chat assistant).
+ *
+ * This is deliberately the assistant from the user's DEFAULT project, matching the in-app
+ * default, and NOT the assistant configured on the project the note happens to land in: it is
+ * the assistant that actually transcribes and summarises the meeting (the Mac app stamps
+ * "Transcribed by <name>" into the note body), so it is the one that owns what it produced.
+ *
+ * The resulting id is resolvable by clients rendering any of the user's projects — assistants
+ * are looked up across projects, not just inside the rendered one (see `getAssistant` /
+ * `getUserPresentationDataInProject`). An earlier AT-2194 follow-up scoped this to the target
+ * project to dodge an "Unknown" owner chip in the notes list; that fixed the symptom in the
+ * wrong layer (it handed authorship to a project assistant that did none of the work) and the
+ * real gap — a missing cross-project fallback in `findNoteOwnerInProject` — is fixed instead.
+ */
 async function getMenubarAssistantActor(db, userData) {
-    // Always act as (and assign) the default assistant from the user's default project — matching
-    // the in-app default — instead of the assistant configured on the project the note lands in.
     const defaultProjectId = typeof userData?.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
     const userDefaultAssistantId =
         typeof userData?.defaultAssistantId === 'string' ? userData.defaultAssistantId.trim() : ''
@@ -665,22 +975,37 @@ async function getMenubarAssistantActor(db, userData) {
     const fetchAssistant = async candidateId => {
         if (!candidateId) return null
         const refs = []
-        if (defaultProjectId) refs.push(db.doc(`assistants/${defaultProjectId}/items/${candidateId}`))
-        refs.push(db.doc(`assistants/globalProject/items/${candidateId}`))
+        const refProjectIds = []
+        if (defaultProjectId) {
+            refs.push(db.doc(`assistants/${defaultProjectId}/items/${candidateId}`))
+            refProjectIds.push(defaultProjectId)
+        }
+        refs.push(db.doc(`assistants/${GLOBAL_ASSISTANTS_PROJECT_ID}/items/${candidateId}`))
+        refProjectIds.push(GLOBAL_ASSISTANTS_PROJECT_ID)
         const docs = await db.getAll(...refs)
-        const found = docs.find(doc => doc && doc.exists)
-        return found ? { assistantId: found.id || candidateId, assistant: found.data() || {} } : null
+        const foundIndex = docs.findIndex(doc => doc && doc.exists)
+        if (foundIndex < 0) return null
+        const found = docs[foundIndex]
+        return {
+            assistantId: found.id || candidateId,
+            assistant: found.data() || {},
+            // Fall back to the global pool for the index the caller's mock does not cover.
+            assistantProjectId: refProjectIds[foundIndex] || GLOBAL_ASSISTANTS_PROJECT_ID,
+        }
+    }
+
+    const readProjectAssistantId = async projectId => {
+        if (!projectId) return ''
+        const projectDoc = await db.doc(`projects/${projectId}`).get()
+        const project = projectDoc.exists ? projectDoc.data() || {} : {}
+        return typeof project.assistantId === 'string' ? project.assistantId.trim() : ''
     }
 
     let resolved = null
 
     // 1) The default project's configured assistant.
     if (defaultProjectId) {
-        const defaultProjectDoc = await db.doc(`projects/${defaultProjectId}`).get()
-        const defaultProject = defaultProjectDoc.exists ? defaultProjectDoc.data() || {} : {}
-        const projectAssistantId =
-            typeof defaultProject.assistantId === 'string' ? defaultProject.assistantId.trim() : ''
-        resolved = await fetchAssistant(projectAssistantId)
+        resolved = await fetchAssistant(await readProjectAssistantId(defaultProjectId))
     }
 
     // 2) The user's stored default assistant.
@@ -691,19 +1016,24 @@ async function getMenubarAssistantActor(db, userData) {
     // 3) The global default assistant.
     if (!resolved) {
         const defaultAssistantSnapshot = await db
-            .collection('assistants/globalProject/items')
+            .collection(`assistants/${GLOBAL_ASSISTANTS_PROJECT_ID}/items`)
             .where('isDefault', '==', true)
             .limit(1)
             .get()
         const defaultAssistantDoc = defaultAssistantSnapshot.docs[0]
         if (defaultAssistantDoc) {
-            resolved = { assistantId: defaultAssistantDoc.id, assistant: defaultAssistantDoc.data() || {} }
+            resolved = {
+                assistantId: defaultAssistantDoc.id,
+                assistant: defaultAssistantDoc.data() || {},
+                assistantProjectId: GLOBAL_ASSISTANTS_PROJECT_ID,
+            }
         }
     }
 
     if (!resolved || !resolved.assistantId) {
         return {
             assistantId: null,
+            assistantProjectId: null,
             assistantData: null,
             feedUser: {
                 uid: 'anna-menubar',
@@ -721,6 +1051,7 @@ async function getMenubarAssistantActor(db, userData) {
     const displayName = assistant.displayName || assistant.name || 'Anna Alldone'
     return {
         assistantId,
+        assistantProjectId: resolved.assistantProjectId || null,
         assistantData: assistant,
         feedUser: {
             uid: assistantId,
@@ -733,6 +1064,24 @@ async function getMenubarAssistantActor(db, userData) {
             noteCreatedEntryText: 'has created the note',
         },
     }
+}
+
+// AT-2194 follow-up: the menubar meeting-notes flow already *acts* as an assistant — the
+// feed entry reads "… has created the note" — so the note it produces should belong to that
+// assistant as well. The signed-in user stays the creator, a follower and the visible user,
+// exactly like the `create_note` tool.
+//
+// Falls back to the acting user whenever no assistant could be resolved at all. The actor's
+// `anna-menubar` placeholder uid must never be written as an owner: it is not an assistant
+// document, so it would render an unresolvable avatar and a phantom owner-filter entry.
+//
+// A resolved assistant owns the note even when the note is filed into a project that assistant
+// does not belong to. That is the point of the feature — the assistant that produced the note
+// owns it — and it is resolvable on the client, which looks assistants up across the user's
+// projects rather than only inside the rendered one (AT-2194).
+function resolveMenubarNoteOwnerId(assistantActor, actingUserId) {
+    const assistantId = typeof assistantActor?.assistantId === 'string' ? assistantActor.assistantId.trim() : ''
+    return assistantId || actingUserId
 }
 
 function normalizeNoteMove(rawMove) {
@@ -759,8 +1108,13 @@ function resolveMenubarNotePrivacy(userId, rawIsPrivate) {
 
 // POST /api/menubar/notes  ->
 //   { token, title, content, attachments?, projectId?, projectName?, move?, isPrivate?,
-//     meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
-//   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated }
+//     updateIfExists?, meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
+//   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated, updated? }
+//   updateIfExists: when meeting.externalId already maps to a note, replace its
+//   title/content/attachments in place (updated: true) instead of returning it
+//   untouched — the Mac app's live call coach refreshes its in-progress note
+//   this way, and the final post-call sync overwrites it with the full
+//   transcript.
 async function handleMenubarPushNote(req, res) {
     res.set('Cache-Control', 'no-store')
 
@@ -820,6 +1174,9 @@ async function handleMenubarPushNote(req, res) {
 
         const meeting = req.body?.meeting && typeof req.body.meeting === 'object' ? req.body.meeting : {}
         const externalId = typeof meeting.externalId === 'string' ? meeting.externalId.trim() : ''
+        // updateIfExists turns an externalId match into an in-place note
+        // update (live call coach) instead of the dedup short-circuit.
+        const updateIfExists = req.body?.updateIfExists === true
 
         const db = admin.firestore()
 
@@ -990,8 +1347,31 @@ async function handleMenubarPushNote(req, res) {
             return
         }
 
-        // Repeated saves return the single existing note. Project changes use
+        // Repeated saves return the single existing note (or, with
+        // updateIfExists, replace its content in place). Project changes use
         // the explicit move path above and keep that note's identity.
+        // Returns true when the request was fully answered; false falls
+        // through to the create path (note deleted on alldone.app).
+        const respondForCompletedPush = async pushData => {
+            if (!updateIfExists) {
+                res.status(200).json(completedPushResponse(pushData))
+                return true
+            }
+            const updatedResponse = await updateExistingMenubarNote(db, {
+                pushData,
+                userData,
+                title,
+                content,
+                attachments,
+                enableAssistantChat: req.body?.enableAssistantChat === true,
+            })
+            if (updatedResponse) {
+                res.status(200).json(updatedResponse)
+                return true
+            }
+            return false
+        }
+
         let pushRef = null
         if (externalId) {
             pushRef = db
@@ -1001,8 +1381,7 @@ async function handleMenubarPushNote(req, res) {
             if (existingPush.exists) {
                 const pushData = existingPush.data() || {}
                 if (pushData.status === 'completed' && pushData.noteId) {
-                    res.status(200).json(completedPushResponse(pushData))
-                    return
+                    if (await respondForCompletedPush(pushData)) return
                 }
                 if (isActivePush(pushData)) {
                     res.status(409).json({ success: false, error: 'A push for this meeting is already in progress' })
@@ -1018,8 +1397,7 @@ async function handleMenubarPushNote(req, res) {
                 if (legacyPush.exists) {
                     const pushData = legacyPush.data() || {}
                     if (pushData.status === 'completed' && pushData.noteId) {
-                        res.status(200).json(completedPushResponse(pushData))
-                        return
+                        if (await respondForCompletedPush(pushData)) return
                     }
                     const sameProject = !pushData.projectId || pushData.projectId === resolution.projectId
                     if (sameProject && isActivePush(pushData)) {
@@ -1053,6 +1431,9 @@ async function handleMenubarPushNote(req, res) {
         const enableAssistantChat = req.body?.enableAssistantChat === true
         const privacy = resolveMenubarNotePrivacy(userId, req.body?.isPrivate)
 
+        // The actor is the note's feed author, its owner and its chat assistant: the assistant
+        // that actually transcribed and summarised the meeting, regardless of which project
+        // the note is filed into.
         const assistantActor = await getMenubarAssistantActor(db, userData)
         const feedUser = assistantActor.feedUser
 
@@ -1068,7 +1449,12 @@ async function handleMenubarPushNote(req, res) {
                     noteId,
                     title,
                     content: noteContent,
+                    // `userId` is the acting user: creator, follower and the person the
+                    // note stays visible for. `ownerId` is what the notes list avatar and
+                    // the owner filter read (AT-2194).
                     userId,
+                    ownerId: resolveMenubarNoteOwnerId(assistantActor, userId),
+                    creatorId: userId,
                     projectId: resolution.projectId,
                     assistantId: assistantActor.assistantId,
                     isPrivate: privacy.isPrivate,
@@ -1335,7 +1721,7 @@ async function getOrCreateMacAppDailyTopic(db, userId, projectId, assistantId, u
         db.doc(`usersFollowing/${projectId}/entries/${userId}`).set({ topics: { [chatId]: true } }, { merge: true }),
         db
             .doc(`followers/${projectId}/topics/${chatId}`)
-            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+            .set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 
     return { chatId, isNew: true }
@@ -1385,7 +1771,7 @@ async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, a
         db.doc(`usersFollowing/${projectId}/entries/${userId}`).set({ notes: { [noteId]: true } }, { merge: true }),
         db
             .doc(`followers/${projectId}/notes/${noteId}`)
-            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+            .set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 }
 
@@ -1556,7 +1942,7 @@ async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, n
         const userIds = Array.isArray(emailDoc.data()?.userIds) ? emailDoc.data().userIds : []
         if (userIds.includes(userId)) {
             if (userIds.length > 1) {
-                batch.set(emailDoc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+                batch.set(emailDoc.ref, { userIds: FieldValue.arrayRemove(userId) }, { merge: true })
             } else {
                 batch.delete(emailDoc.ref)
             }
@@ -1565,7 +1951,7 @@ async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, n
     pushSnapshot.docs.forEach(doc => {
         const userIds = Array.isArray(doc.data()?.userIds) ? doc.data().userIds : []
         if (userIds.length > 1) {
-            batch.set(doc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+            batch.set(doc.ref, { userIds: FieldValue.arrayRemove(userId) }, { merge: true })
         } else {
             batch.delete(doc.ref)
         }
@@ -1669,10 +2055,10 @@ async function handleMenubarAssistantThread(req, res) {
                 ? actor.feedUser.displayName || 'Anna'
                 : 'Anna'
             : assistantReplyEnabled
-            ? actor.assistantId === assistantId
-                ? actor.feedUser.displayName || 'Assistant'
-                : 'Assistant'
-            : 'Comments'
+              ? actor.assistantId === assistantId
+                  ? actor.feedUser.displayName || 'Assistant'
+                  : 'Assistant'
+              : 'Comments'
         const requestedLimit = Number(req.body?.limit)
         const limit = Number.isFinite(requestedLimit)
             ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_ASSISTANT_THREAD_PAGE_SIZE))
@@ -1912,8 +2298,8 @@ async function handleMenubarAssistantMessage(req, res) {
                 const token = media.mimeType.startsWith('image/')
                     ? buildImageToken(uploaded.url, uploaded.url, media.fileName)
                     : media.mimeType.startsWith('video/')
-                    ? buildVideoToken(uploaded.url, media.fileName)
-                    : buildAttachmentToken(uploaded.url, media.fileName)
+                      ? buildVideoToken(uploaded.url, media.fileName)
+                      : buildAttachmentToken(uploaded.url, media.fileName)
                 commentText = `${comment}\n\n${token}`
             }
         } catch (uploadError) {
@@ -1958,7 +2344,7 @@ async function handleMenubarAssistantMessage(req, res) {
                 batch.set(db.doc(`chatComments/${projectId}/${objectType}/${chatId}/comments/${commentId}`), {
                     commentText,
                     mediaContext,
-                    lastChangeDate: admin.firestore.Timestamp.now(),
+                    lastChangeDate: Timestamp.now(),
                     created: now,
                     creatorId: userId,
                     fromAssistant: false,
@@ -1966,14 +2352,14 @@ async function handleMenubarAssistantMessage(req, res) {
                     ...(objectType === 'tasks' ? { commentType: STAYWARD_COMMENT } : {}),
                 })
                 batch.update(db.doc(`chatObjects/${projectId}/chats/${chatId}`), {
-                    members: admin.firestore.FieldValue.arrayUnion(userId),
-                    usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                    members: FieldValue.arrayUnion(userId),
+                    usersFollowing: FieldValue.arrayUnion(userId),
                     lastEditionDate: now,
                     lastEditorId: userId,
                     'commentsData.lastComment': preview || 'Comment',
                     'commentsData.lastCommentOwnerId': userId,
                     'commentsData.lastCommentType': STAYWARD_COMMENT,
-                    'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                    'commentsData.amount': FieldValue.increment(1),
                 })
                 visibleUserIds.forEach(candidateId => {
                     batch.set(db.doc(`chatNotifications/${projectId}/${candidateId}/${commentId}`), {
@@ -2065,7 +2451,7 @@ async function handleMenubarAssistantMessage(req, res) {
             await db.doc(`chatComments/${defaultProjectId}/topics/${chatId}/comments/${commentId}`).set({
                 commentText,
                 mediaContext,
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: now,
                 creatorId: userId,
                 fromAssistant: false,
@@ -2074,13 +2460,13 @@ async function handleMenubarAssistantMessage(req, res) {
 
             await chatRef
                 .update({
-                    members: admin.firestore.FieldValue.arrayUnion(userId),
+                    members: FieldValue.arrayUnion(userId),
                     lastEditionDate: now,
                     lastEditorId: userId,
                     'commentsData.lastComment': preview,
                     'commentsData.lastCommentOwnerId': userId,
                     'commentsData.lastCommentType': STAYWARD_COMMENT,
-                    'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                    'commentsData.amount': FieldValue.increment(1),
                 })
                 .catch(error => console.warn('menubarAssistantMessage: chat metadata update failed', error))
 
@@ -2231,15 +2617,21 @@ module.exports = {
     handleMenubarSession,
     handleMenubarGoldWebhook,
     handleMenubarProjects,
+    handleMenubarUpcoming,
     handleMenubarPushNote,
     handleMenubarAssistantMessage,
     handleMenubarAssistantThread,
     processMenubarAssistantRun,
     __private__: {
+        collectAttendeeEmails,
+        dedupeUpcomingMeetings,
+        parseEventInstant,
+        toUpcomingMeeting,
         buildNotePushDocId,
         buildLegacyNotePushDocId,
         normalizeNoteMove,
         resolveMenubarNotePrivacy,
+        resolveMenubarNoteOwnerId,
         getMenubarAssistantActor,
         decodeNoteAttachments,
         rewriteMarkdownAttachmentUrls,
@@ -2251,6 +2643,7 @@ module.exports = {
         normalizeAssistantThreadMessage,
         resolveMenubarConversationTarget,
         enableNoteAssistantChat,
+        updateExistingMenubarNote,
         resolveMenubarAssistantThread,
         toMillis,
     },

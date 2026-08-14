@@ -6,8 +6,6 @@ import { Platform } from 'react-native'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('PrivacyButton component', () => {
     beforeEach(() => {
         jest.useFakeTimers()

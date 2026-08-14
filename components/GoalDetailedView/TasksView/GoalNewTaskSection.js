@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import moment from 'moment'
-import { StyleSheet, View } from 'react-native'
+import { View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
@@ -14,6 +14,7 @@ import { DATE_TASK_INDEX, MAIN_TASK_INDEX } from '../../../utils/backends/Tasks/
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { PROJECT_TYPE_TEMPLATE } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
 import EditTask from '../../TaskListView/TaskItem/EditTask'
+import { taskEditorLayout } from '../../TaskListView/TaskItem/TaskEditorLayout'
 
 export default function GoalNewTaskSection({ projectId, goal, dateFormated }) {
     const dispatch = useDispatch()
@@ -80,7 +81,7 @@ export default function GoalNewTaskSection({ projectId, goal, dateFormated }) {
     })
 
     return (
-        <View style={localStyles.container}>
+        <View style={taskEditorLayout.addTaskSection}>
             <DismissibleItem
                 ref={newItemRef}
                 defaultComponent={
@@ -114,9 +115,3 @@ export default function GoalNewTaskSection({ projectId, goal, dateFormated }) {
         </View>
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        paddingHorizontal: 8,
-    },
-})

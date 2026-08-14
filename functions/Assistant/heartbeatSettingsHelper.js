@@ -1,3 +1,6 @@
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+const { normalizeAssistantReasoningEffort } = require('./selectableAssistantReasoningEfforts')
+
 const HEARTBEAT_INTERVAL_STEP_MS = 5 * 60 * 1000
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000
 const MIN_HEARTBEAT_INTERVAL_MS = HEARTBEAT_INTERVAL_STEP_MS
@@ -11,7 +14,7 @@ const DEFAULT_PROMPT =
 const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
 const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
 const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
-const HEARTBEAT_MODEL_OPTIONS = [MODEL_GPT5_6_SOL, MODEL_GPT5_6_TERRA, MODEL_GPT5_6_LUNA]
+const HEARTBEAT_MODEL_OPTIONS = SELECTABLE_ASSISTANT_MODELS.map(option => option.model)
 
 const HEARTBEAT_OK_MARKER = 'HEARTBEAT_OK'
 
@@ -132,6 +135,14 @@ function getEffectiveHeartbeatModel(assistant = {}) {
     return assistant.model || MODEL_GPT5_6_SOL
 }
 
+function getEffectiveHeartbeatReasoningEffort(assistant = {}) {
+    if (Object.prototype.hasOwnProperty.call(assistant, 'heartbeatReasoningEffort')) {
+        return normalizeAssistantReasoningEffort(assistant.heartbeatReasoningEffort)
+    }
+
+    return normalizeAssistantReasoningEffort(assistant.reasoningEffort)
+}
+
 function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, userData = null } = {}) {
     const intervalMs = normalizeHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
     const awakeStartMs = normalizeHeartbeatTimeMs(assistant.heartbeatAwakeStart, DEFAULT_AWAKE_START)
@@ -148,6 +159,7 @@ function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, user
         awakeEndTime: formatHeartbeatTimeMs(awakeEndMs),
         sendWhatsApp: getEffectiveHeartbeatSendWhatsApp(assistant, userData),
         model: getEffectiveHeartbeatModel(assistant),
+        reasoningEffort: getEffectiveHeartbeatReasoningEffort(assistant),
         prompt: getEffectiveHeartbeatPrompt(assistant),
     }
 }
@@ -166,6 +178,7 @@ function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null
         `- Execution chance when the user did not reply that day: ${settings.chanceNoReplyPercent}%`,
         `- WhatsApp notification: ${settings.sendWhatsApp ? 'enabled' : 'disabled'}`,
         `- Heartbeat model: ${settings.model}`,
+        `- Heartbeat reasoning effort: ${settings.reasoningEffort || 'model default'}`,
         `- heartbeatPromptHistory: ${heartbeatPromptHistoryLength} previous version(s) saved, up to 10 retained (rollback by passing the older prompt text back through update_heartbeat_settings).`,
         '- Current heartbeat prompt:',
         settings.prompt,
@@ -198,6 +211,7 @@ module.exports = {
     getEffectiveHeartbeatSendWhatsApp,
     getEffectiveHeartbeatPrompt,
     getEffectiveHeartbeatModel,
+    getEffectiveHeartbeatReasoningEffort,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 }

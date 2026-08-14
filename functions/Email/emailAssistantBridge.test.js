@@ -10,6 +10,8 @@ const mockExecuteToolNatively = jest.fn()
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: mockAddBaseInstructions,
+    buildConversationSafeToolArgs: jest.requireActual('../Assistant/attachmentToolHandoff')
+        .buildConversationSafeToolArgs,
     buildConversationSafeToolResult: jest.fn((toolName, result) => result),
     buildPendingAttachmentPayload: jest.fn(() => null),
     executeToolNatively: mockExecuteToolNatively,
@@ -22,6 +24,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
     })),
     interactWithChatStream: mockInteractWithChatStream,
     isToolAllowedForExecution: jest.fn().mockResolvedValue(true),
+    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_6_SOL'),
     reduceGoldWhenChatWithAI: mockReduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT: 20,
 }))
@@ -176,6 +179,183 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(systemText).not.toContain('Do not use or mention any other earlier messages')
         expect(getLatestSafeEmailActionContext).not.toHaveBeenCalled()
         expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 20, 120)
+    })
+
+    test('keeps all safe email tool schemas directly visible instead of using deferred tool search', async () => {
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please process the attached invoice',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                skipCurrentMessageAppend: true,
+            }
+        )
+
+        expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+            expect.objectContaining({
+                channel: 'email',
+                disableToolSearch: true,
+            })
+        )
+    })
+
+    test('uses the optional inbound email model for requests and cost attribution', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: [],
+            instructions: '',
+            model: 'MODEL_GPT5_6_SOL',
+            emailModel: 'MODEL_GPT5_6_LUNA',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Done.' }])
+
+        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Create a task', 'assistant-1')
+
+        expect(mockInteractWithChatStream).toHaveBeenCalledWith(
+            expect.any(Array),
+            'MODEL_GPT5_6_LUNA',
+            'TEMPERATURE_NORMAL',
+            expect.any(Array),
+            expect.any(Object)
+        )
+        expect(mockReduceGoldWhenChatWithAI).toHaveBeenCalledWith(
+            'user-1',
+            100,
+            'MODEL_GPT5_6_LUNA',
+            'Done.',
+            expect.any(Array),
+            expect.any(Object),
+            expect.any(Object)
+        )
+    })
+
+    test('inherits the normal assistant model when no inbound email override is set', () => {
+        expect(__private__.resolveInboundEmailModel({ model: 'MODEL_GPT5_6_TERRA' })).toBe('MODEL_GPT5_6_TERRA')
+    })
+
+    test('keeps an explicitly emailed task request as a direct user_request', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['create_task'],
+            instructions: '',
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        getConversationHistory.mockResolvedValue([['user', 'Please create a task to pay invoice 42']])
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            taskId: 'task-42',
+            projectId: 'project-1',
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'tool-1',
+                                function: {
+                                    name: 'create_task',
+                                    arguments: JSON.stringify({
+                                        name: 'Pay invoice 42',
+                                        taskOrigin: 'user_request',
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Task created.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please create a task to pay invoice 42',
+            'assistant-1'
+        )
+
+        const systemText = mockInteractWithChatStream.mock.calls[0][0]
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemText).toContain(
+            'use taskOrigin=user_request only when the sender explicitly asks to create that specific task'
+        )
+        expect(systemText).toContain('use taskOrigin=assistant_suggestion')
+        expect(systemText).toContain('concise visible comment with the concrete reason')
+
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'create_task',
+            expect.objectContaining({
+                name: 'Pay invoice 42',
+                taskOrigin: 'user_request',
+                projectId: 'project-1',
+            }),
+            'project-1',
+            'assistant-1',
+            'user-1',
+            expect.any(Object),
+            expect.objectContaining({ channel: 'email' })
+        )
+    })
+
+    test('does not resend an invoice binary in the follow-up model request', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['external_tool_bookkeeping_attach_invoice'],
+            instructions: '',
+            model: 'MODEL_GPT5_6_SOL',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        const fileBase64 = Buffer.alloc(4096, 23).toString('base64')
+        mockExecuteToolNatively.mockResolvedValue({ success: true, status: 'matched' })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'tool-invoice',
+                                function: {
+                                    name: 'external_tool_bookkeeping_attach_invoice',
+                                    arguments: JSON.stringify({
+                                        fileName: 'invoice.pdf',
+                                        fileBase64,
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Invoice attached.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please attach this invoice',
+            'assistant-1'
+        )
+
+        const followUpMessages = mockInteractWithChatStream.mock.calls[1][0]
+        const completedToolCall = followUpMessages.find(message => message.role === 'assistant').tool_calls[0]
+        const safeArgs = JSON.parse(completedToolCall.function.arguments)
+        expect(safeArgs.fileBase64).toBe('[omitted from conversation; preserved for the next external tool call]')
+        expect(safeArgs.fileBase64Length).toBe(fileBase64.length)
+        expect(completedToolCall.function.arguments).not.toContain(fileBase64)
     })
 
     test('attributes calendar availability to the account owner instead of Anna', async () => {

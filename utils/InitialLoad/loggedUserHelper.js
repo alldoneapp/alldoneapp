@@ -2,7 +2,7 @@ import momentTz from 'moment-timezone'
 import moment from 'moment-timezone'
 
 import store from '../../redux/store'
-import { getUserData, updateUserDataDirectly } from '../backends/Users/usersFirestore'
+import { fetchUserDataResult, updateUserDataDirectly } from '../backends/Users/usersFirestore'
 import {
     initFCMonLoad,
     initGoogleTagManager,
@@ -26,7 +26,7 @@ import {
     watchProjectData,
     watchProjectsChatNotifications,
 } from './initialLoadHelper'
-import { getProjectData } from '../backends/firestore'
+import { getProjectDataResult } from '../backends/firestore'
 import { getProjectUsers } from '../backends/Users/usersFirestore'
 import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
 import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
@@ -35,15 +35,21 @@ import { storeVersion } from '../Observers'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
-import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
 import UserDataCache from '../UserDataCache'
+import {
+    haveSameProjectIds,
+    isCompleteProjectsInitialData,
+    sanitizeProjectsInitialData,
+} from './projectsInitialDataHelper'
+import { getMissingProjectEntriesIds, pruneStaleProjectIds } from './staleProjectSelfHeal'
+import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
-import { storeLoggedUser } from '../../redux/actions'
 import { trackEvent } from '../analytics/analytics'
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
-    projectIds.forEach((projectId, index) => {
+    const ids = Array.isArray(projectIds) ? projectIds : []
+    ids.forEach((projectId, index) => {
         setTimeout(() => {
             watchProjectData(projectId, true, false)
         }, index * 50) // 50ms delay between each watcher
@@ -51,33 +57,48 @@ function watchProjectsData(projectIds) {
 }
 
 async function getInitialProjectsData(projectIds) {
-    // Check if we have cached project data first
+    // Check if we have cached project data first.
+    // NOTE: never sort the caller's arrays in place here - `projectIds` is the live
+    // `loggedUser.projectIds` array from the redux state.
     const cachedData = UserDataCache.getCachedGlobalData()
-    if (
-        cachedData &&
-        cachedData.projectIds &&
-        JSON.stringify(cachedData.projectIds.sort()) === JSON.stringify(projectIds.sort())
-    ) {
-        console.log('Using cached project data for faster startup')
+    if (cachedData && cachedData.projectIds && haveSameProjectIds(cachedData.projectIds, projectIds)) {
+        if (isCompleteProjectsInitialData(cachedData.projectsInitialData, cachedData.projectIds.length)) {
+            if (__DEV__) console.log('Using cached project data for faster startup')
 
-        // Refresh cache in background
-        setTimeout(async () => {
-            try {
-                const freshData = await loadProjectsDataFromFirebase(projectIds)
-                if (!isEqual(freshData, cachedData.projectsInitialData)) {
-                    UserDataCache.setCachedGlobalData({ projectsInitialData: freshData, projectIds })
+            // Refresh cache in background
+            setTimeout(async () => {
+                try {
+                    const freshData = await loadProjectsDataFromFirebase(projectIds)
+                    if (!isCompleteProjectsInitialData(freshData, projectIds.length)) {
+                        // A partially failed load must never overwrite a good cache: the bad
+                        // payload would be replayed on every startup for the next 24h.
+                        console.warn('[InitialLoad] Background project refresh incomplete, keeping previous cache')
+                        return
+                    }
+                    if (!isEqual(freshData, cachedData.projectsInitialData)) {
+                        UserDataCache.setCachedGlobalData({ projectsInitialData: freshData, projectIds })
+                    }
+                } catch (error) {
+                    console.warn('Error refreshing project data:', error)
                 }
-            } catch (error) {
-                console.warn('Error refreshing project data:', error)
-            }
-        }, 2000)
+            }, 2000)
 
-        return cachedData.projectsInitialData
+            return cachedData.projectsInitialData
+        }
+
+        console.warn(
+            '[InitialLoad] Cached project data is malformed or incomplete, reloading from Firebase',
+            sanitizeProjectsInitialData(cachedData.projectsInitialData, cachedData.projectIds, null).invalidEntries
+        )
     }
 
-    // Load from Firebase and cache
+    // Load from Firebase and only cache a payload that is actually complete.
     const projectsInitialData = await loadProjectsDataFromFirebase(projectIds)
-    UserDataCache.setCachedGlobalData({ projectsInitialData, projectIds })
+    if (isCompleteProjectsInitialData(projectsInitialData, projectIds.length)) {
+        UserDataCache.setCachedGlobalData({ projectsInitialData, projectIds })
+    } else {
+        console.warn('[InitialLoad] Project data incomplete, not caching it for the next startup')
+    }
 
     return projectsInitialData
 }
@@ -89,19 +110,43 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     // Create batched promises for all projects to load data in parallel
     const allPromises = projectIds.map(projectId =>
         Promise.all([
-            getProjectData(projectId),
+            getProjectDataResult(projectId),
             getProjectUsers(projectId, false),
             getProjectContacts(projectId),
             getProjectWorkstreams(projectId),
             getProjectAssistants(projectId),
         ])
-            .then(([project, users, contacts, workstreams, assistants]) => ({
-                project,
-                users,
-                contacts,
-                workstreams,
-                assistants,
-            }))
+            .then(([projectResult, users, contacts, workstreams, assistants]) => {
+                const { project, missingFromCache } = projectResult
+                if (!project) {
+                    if (missingFromCache) {
+                        // The "missing" answer came from the local cache because the backend was
+                        // unreachable — the project may well exist on the server (seen in
+                        // production 2026-08-13: three live projects read as missing during one
+                        // degraded load). Treat it exactly like a failed read: a null entry, so
+                        // it is retried when everything failed and recovered by the live project
+                        // watchers otherwise — never labeled deleted, never a self-heal candidate.
+                        console.warn(
+                            `[InitialLoad] Project ${projectId} could not be read (backend unreachable), treating it as a failed read`
+                        )
+                        return null
+                    }
+                    // The server confirmed the document is gone (deleted project, revoked
+                    // membership, stale cached projectIds). Keep the entry so the caller can
+                    // report it, but never let it reach the redux mapping step.
+                    console.warn(
+                        `[InitialLoad] Project ${projectId} has no data (deleted or not accessible), skipping it`
+                    )
+                }
+                return {
+                    projectId,
+                    project,
+                    users,
+                    contacts,
+                    workstreams,
+                    assistants,
+                }
+            })
             .catch(error => {
                 console.error(`Failed to load project ${projectId}:`, error)
                 return null
@@ -109,7 +154,9 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     )
 
     const results = await Promise.all(allPromises)
-    const loadedCount = results.filter(r => r !== null).length
+    // Only a failed READ (null entry) is worth retrying. A project whose document is simply gone
+    // resolves to `{ project: null }` and would never come back, so it must not trigger retries.
+    const loadedCount = results.filter(result => result !== null).length
 
     // If all projects failed and we have retries left, wait and try again
     if (loadedCount === 0 && projectIds.length > 0 && retryCount < MAX_RETRIES) {
@@ -123,17 +170,30 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
         return loadProjectsDataFromFirebase(projectIds, retryCount + 1)
     }
 
+    // Self-heal: ids whose read succeeded but whose project doc is gone keep re-arming a
+    // boot-time race on every cold load (see staleProjectSelfHeal.js). Fire-and-forget so the
+    // login flow is never delayed or failed by it.
+    pruneStaleProjectIds(getMissingProjectEntriesIds(results)).catch(error =>
+        console.warn('[InitialLoad] Stale project id self-heal failed:', error)
+    )
+
     return results
 }
 
 async function loadInitialData() {
     const { loggedUser } = store.getState()
+    const projectIds = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds : []
     store.dispatch(updateLoadingStep(3, getProgressLoadingMessage()))
-    const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
+    const projectsInitialData = await getInitialProjectsData(projectIds)
 
-    // Process the raw project data into organized structures
-    // Filter out null entries from projects that failed to load
-    const validProjectsData = projectsInitialData.filter(data => data !== null)
+    // Process the raw project data into organized structures.
+    // Drop everything that is not a fully loaded project (failed reads, deleted projects,
+    // malformed cache entries): a single bad entry must never abort the whole login.
+    const { validEntries, invalidEntries } = sanitizeProjectsInitialData(projectsInitialData, projectIds)
+
+    if (invalidEntries.length > 0 && validEntries.length === 0 && projectIds.length > 0) {
+        console.error('[InitialLoad] No project could be loaded, continuing login with an empty project list')
+    }
 
     const projects = []
     const projectsMap = {}
@@ -142,8 +202,7 @@ async function loadInitialData() {
     const projectWorkstreams = {}
     const projectAssistants = {}
 
-    validProjectsData.forEach(({ project, users, contacts, workstreams, assistants }, index) => {
-        project.index = index
+    validEntries.forEach(({ project, users, contacts, workstreams, assistants }) => {
         projects.push(project)
         projectsMap[project.id] = project
         projectUsers[project.id] = users
@@ -161,7 +220,7 @@ async function loadInitialData() {
         projectAssistants
     )
 
-    unwatchProjectsData(loggedUser.projectIds)
+    unwatchProjectsData(projectIds)
 
     store.dispatch(updateLoadingStep(4, getProgressLoadingMessage()))
     store.dispatch(
@@ -179,9 +238,18 @@ async function loadInitialData() {
 
     // Defer non-critical watchers to improve initial load time
     setTimeout(() => {
-        watchProjectsData(loggedUser.projectIds)
-        watchProjectsChatNotifications()
+        try {
+            watchProjectsData(projectIds)
+            watchProjectsChatNotifications()
+        } catch (error) {
+            console.warn('[InitialLoad] Failed to start project watchers:', error)
+        }
     }, 200)
+
+    // A degraded boot can leave projects (and the administrator user) out of redux for the whole
+    // session — the wedged streams never deliver, so the watcher-based recovery never triggers.
+    // These checks re-fetch what is missing and, if needed, rebuild the Firestore connection.
+    scheduleBootIntegrityChecks()
 
     store.dispatch(updateLoadingStep(5, getProgressLoadingMessage()))
 }
@@ -228,14 +296,11 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     const userData = await getDataForUpdateUser(loggedUser)
 
-    // Check premium status with Stripe in background (non-blocking)
-    checkUserPremiumStatusStripe()
-        .then(() => {
-            console.log('Premium status check completed (background)')
-        })
-        .catch(error => {
-            console.warn('Premium status check failed during login:', error)
-        })
+    // No premium check on login. It discarded its result — premium.status is read from the user
+    // document, written by the Stripe webhook and reconciled by dailyPremiumStatusCheck — so this
+    // only cost a callable per login and surfaced its failures in the console. The signup flow
+    // still calls it directly, where the result is actually used (tracking-ID linking and the
+    // premium initial-gold grant).
 
     store.dispatch(initLogInForLoggedUser({ ...loggedUser, ...userData }))
 
@@ -269,44 +334,60 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
     URLTrigger.processUrl(NavigationService, url)
 }
 
-export const loadGlobalDataAndGetUser = async userId => {
+/**
+ * Loads the global data and the logged user, reporting WHY there is no user:
+ * `{ user, missing, error }`. `missing` is only true when the user document genuinely does not
+ * exist - a failed read (offline, transient `permission-denied`) returns `missing: false` plus
+ * the error, so the caller can retry instead of treating the account as broken.
+ */
+export const loadGlobalDataAndGetUserResult = async userId => {
     // Try to load from cache first for faster startup
     const cachedUserData = UserDataCache.getCachedUserData()
-    const cachedGlobalData = UserDataCache.getCachedGlobalData()
 
     if (cachedUserData && cachedUserData.uid === userId) {
-        console.log('Using cached user data for faster startup')
+        if (__DEV__) console.log('Using cached user data for faster startup')
 
-        // Always load global data even when using cached user data
-        loadGlobalData()
+        // Global data is optional for completing login and has its own recovery. Start it now,
+        // but do not let it delay loading the user's projects.
+        loadGlobalData().catch(error => console.warn('Error refreshing global data:', error))
 
-        // Use cached data immediately, but refresh in background
-        setTimeout(async () => {
-            try {
-                const freshUser = await getUserData(userId, true)
-                if (freshUser && !isEqual(freshUser, cachedUserData)) {
-                    console.log('Updating cached user data with fresh data')
-                    UserDataCache.setCachedUserData(freshUser)
-                    store.dispatch(storeLoggedUser(freshUser))
-                }
-            } catch (error) {
-                console.warn('Error refreshing user data:', error)
+        // The cache is an offline fallback, not the authority for project membership. Previously
+        // its up-to-24-hour-old projectIds drove the whole initial load; the background refresh
+        // updated redux but never loaded newly listed projects, so only the NEXT reload was
+        // complete. Await one current read before choosing which projects to initialize.
+        const freshResult = await fetchUserDataResult(userId, true)
+        if (freshResult.user) {
+            if (!isEqual(freshResult.user, cachedUserData)) {
+                if (__DEV__) console.log('Updating cached user data before loading projects')
+                UserDataCache.setCachedUserData(freshResult.user)
             }
-        }, 1000)
+            return freshResult
+        }
+        if (freshResult.error) {
+            console.warn('Current user data could not be read; using the cached user for this boot.', freshResult.error)
+            return { user: cachedUserData, missing: false, error: null }
+        }
 
-        return cachedUserData
+        // Firestore Lite directly confirmed that the document is gone. Do not let stale local
+        // data mask a genuinely inconsistent account.
+        return freshResult
     }
 
     // No cache available, load from Firebase
     const promises = []
-    promises.push(getUserData(userId, true))
+    promises.push(fetchUserDataResult(userId, true))
     promises.push(loadGlobalData())
-    const [user] = await Promise.all(promises)
+    const [{ user, missing, error }] = await Promise.all(promises)
 
     // Cache the fresh data
     if (user) {
         UserDataCache.setCachedUserData(user)
     }
 
+    return { user, missing, error }
+}
+
+export const loadGlobalDataAndGetUser = async userId => {
+    const { user } = await loadGlobalDataAndGetUserResult(userId)
     return user
 }

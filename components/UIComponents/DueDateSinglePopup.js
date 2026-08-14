@@ -1,13 +1,32 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import Popover from 'react-tiny-popover'
+import AppPopover from './ModalShell/AppPopover'
+import useModalSizing from '../../hooks/useModalSizing'
 import { hideFloatPopup, hideSwipeDueDatePopup, setSwipeDueDatePopupData } from '../../redux/actions'
 import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
+import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+
+// This popup is mounted from inside a swipe RELEASE handler (Swipeable's
+// onSwipeableRightWillOpen, see TaskPresentation/GoalItemPresentation/
+// SwipeableGeneralTasksHeader). On touch devices the browser then replays that
+// same gesture as compatibility mouse events (mousedown/mouseup/click) at the
+// release point — by which time the popup is already mounted and
+// react-tiny-popover is listening on `window` for a click outside its portal.
+// The replayed click lands on this component's own transparent full-screen
+// overlay, i.e. "outside", so the popup was dismissed in the very frame it
+// appeared and never became visible on mobile (AT-2189).
+//
+// Swallow at most ONE outside dismiss, and only in the short window right after
+// opening. Consume-once (rather than a plain time window) does not depend on how
+// far apart the touch release and the replayed click land, and the window keeps
+// it from ever eating a genuine outside tap on platforms that never replay one
+// — desktop mouse dismissal is unchanged.
+export const OPENING_GESTURE_REPLAY_WINDOW_MS = 400
 
 export default function DueDateSinglePopup() {
     const dispatch = useDispatch()
@@ -19,7 +38,10 @@ export default function DueDateSinglePopup() {
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const data = useSelector(state => state.showSwipeDueDatePopup.data)
+    const { isSheet } = useModalSizing()
     const [visibleCalendar, setVisibleCalendar] = useState(false)
+    const openedAtRef = useRef(Date.now())
+    const openingDismissConsumedRef = useRef(false)
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -45,6 +67,22 @@ export default function DueDateSinglePopup() {
         })
     }
 
+    // See OPENING_GESTURE_REPLAY_WINDOW_MS above. Only guards the outside-click
+    // path; picking a date still closes the popup immediately.
+    const isOpeningGestureReplay = () => {
+        if (openingDismissConsumedRef.current) return false
+        openingDismissConsumedRef.current = true
+        return Date.now() - openedAtRef.current < OPENING_GESTURE_REPLAY_WINDOW_MS
+    }
+
+    const onClickOutside = () => {
+        // In sheet mode the BottomSheet's own AT-2236 mount grace already
+        // blocks the replayed compatibility click; running this guard on top
+        // would swallow the first GENUINE backdrop tap within the window.
+        if (!isSheet && isOpeningGestureReplay()) return
+        delayHidePopover()
+    }
+
     const hideCalendar = () => {
         setVisibleCalendar(false)
     }
@@ -54,11 +92,14 @@ export default function DueDateSinglePopup() {
     }
 
     const updateParentGoalReminderDate = date => {
-        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date)
+        // AT-2160: hand over the goal we already hold. Without it the backend does a full
+        // getGoalData() read before it can write, so every goal postpone from this popup paid for
+        // a round trip before the row could move.
+        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const handleSaveTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
         if (moveObservedDateAndDueDate) {
@@ -70,7 +111,7 @@ export default function DueDateSinglePopup() {
     }
 
     const handleSetTaskToBacklog = async (taskToUpdate, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
         if (moveObservedDateAndDueDate) {
@@ -81,12 +122,14 @@ export default function DueDateSinglePopup() {
         }
     }
 
-    let sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
-        <View style={localStyles.container}>
-            <View style={[localStyles.popup, sidebarOpenStyle]}>
-                <Popover
+        // In sheet mode the transparent centering overlay must not intercept
+        // pointer events: it sits ABOVE the sheet's backdrop (10000 vs 9990)
+        // and would eat every backdrop tap. It only exists to center the
+        // zero-size desktop anchor.
+        <View style={[localStyles.container, isSheet && NO_POINTER_EVENTS_STYLE]}>
+            <View style={localStyles.popup}>
+                <AppPopover
                     content={
                         <>
                             <DueDateModal
@@ -113,17 +156,20 @@ export default function DueDateSinglePopup() {
                             />
                         </>
                     }
-                    onClickOutside={delayHidePopover}
+                    onClickOutside={onClickOutside}
                     isOpen={true}
                     padding={4}
-                    contentLocation={smallScreenNavigation ? null : undefined}
+                    contentLocation={popoverData => popoverToCenter(popoverData, smallScreenNavigation)}
+                    containerStyle={popoverToTopContainerStyle}
                 >
                     <Text />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
 }
+
+const NO_POINTER_EVENTS_STYLE = { pointerEvents: 'none' }
 
 const localStyles = StyleSheet.create({
     container: {

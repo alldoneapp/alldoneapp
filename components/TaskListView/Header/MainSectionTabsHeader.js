@@ -21,7 +21,11 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 
-export default function MainSectionTabsHeader({ showSectionToggle, renderSectionToggle, renderRightAccessory }) {
+export default function MainSectionTabsHeader({
+    showSectionToggle = false,
+    renderSectionToggle = null,
+    renderRightAccessory = null,
+}) {
     const dispatch = useDispatch()
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -188,12 +192,6 @@ MainSectionTabsHeader.propTypes = {
     renderRightAccessory: PropTypes.func,
 }
 
-MainSectionTabsHeader.defaultProps = {
-    showSectionToggle: false,
-    renderSectionToggle: null,
-    renderRightAccessory: null,
-}
-
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
@@ -210,10 +208,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.UtilityBlue125,
         paddingHorizontal: 10,
         paddingVertical: 8,
-        shadowColor: '#04142F',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
+        boxShadow: '0px 4px 10px rgba(4,20,47,0.08)',
         elevation: 2,
     },
     controlsRowWithRight: {
@@ -231,10 +226,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.UtilityBlue125,
         paddingHorizontal: 10,
         paddingVertical: 8,
-        shadowColor: '#04142F',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
+        boxShadow: '0px 4px 10px rgba(4,20,47,0.08)',
         elevation: 2,
     },
     tabsRow: {

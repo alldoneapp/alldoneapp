@@ -66,7 +66,12 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 
 const admin = require('firebase-admin')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
-const { addProjectRoutingReasonComment, buildProjectRoutingReasonComment } = require('./projectRoutingCommentHelper')
+const {
+    addGoalRoutingReasonComment,
+    addProjectRoutingReasonComment,
+    buildGoalRoutingReasonComment,
+    buildProjectRoutingReasonComment,
+} = require('./projectRoutingCommentHelper')
 
 describe('projectRoutingCommentHelper', () => {
     beforeEach(() => {
@@ -82,6 +87,18 @@ describe('projectRoutingCommentHelper', () => {
                 confidence: 0.824,
             })
         ).toBe('I chose Product because the event mentions the roadmap. Confidence: 82%.')
+    })
+
+    test('builds an automatic goal-routing comment with confidence', () => {
+        expect(
+            buildGoalRoutingReasonComment({
+                goalName: 'Improve onboarding',
+                reasoning: 'the task directly advances the onboarding release',
+                confidence: 0.95,
+            })
+        ).toBe(
+            'I automatically assigned this task to the goal “Improve onboarding” because the task directly advances the onboarding release. Confidence: 95%.'
+        )
     })
 
     test('normalizes assistant-provided reason clauses and percent confidence', () => {
@@ -229,6 +246,69 @@ describe('projectRoutingCommentHelper', () => {
         expect(admin.__mock.refs.get('chatObjects/target-project/chats/task-1').update).toHaveBeenCalledWith(
             expect.objectContaining({
                 commentsData: expect.objectContaining({ amount: 4 }),
+            })
+        )
+    })
+
+    test('writes goal-routing metadata without using the project-routing field', async () => {
+        admin.__mock.doc.mockImplementation(path => {
+            const ref = {
+                path,
+                get: jest.fn(() => Promise.resolve({ exists: false, data: () => ({}) })),
+                set: jest.fn(() => Promise.resolve()),
+                update: jest.fn(() => Promise.resolve()),
+            }
+
+            if (path === 'projects/default-project') {
+                ref.get = jest.fn(() => Promise.resolve({ exists: true, data: () => ({ assistantId: 'assistant-1' }) }))
+            }
+
+            admin.__mock.refs.set(path, ref)
+            return ref
+        })
+
+        const result = await addGoalRoutingReasonComment({
+            userData: { defaultProjectId: 'default-project' },
+            projectId: 'target-project',
+            taskId: 'task-1',
+            task: {
+                id: 'task-1',
+                name: 'Ship onboarding',
+                userId: 'user-1',
+                creatorId: 'user-1',
+                isPublicFor: [0, 'user-1'],
+                commentsData: null,
+                goalSuggestion: { status: 'auto_assigned', claimId: 'claim-1' },
+            },
+            goalId: 'goal-1',
+            goalName: 'Improve onboarding',
+            reasoning: 'the task directly advances onboarding',
+            confidence: 0.95,
+            routingKey: 'claim-1',
+            commentId: 'goal-routing-claim-1',
+        })
+
+        expect(result.goalRoutingData).toEqual(
+            expect.objectContaining({
+                chosenGoalId: 'goal-1',
+                goalName: 'Improve onboarding',
+                commentId: 'goal-routing-claim-1',
+            })
+        )
+        expect(
+            admin.__mock.refs.get('chatComments/target-project/tasks/task-1/comments/goal-routing-claim-1').set
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({
+                goalRoutingData: expect.objectContaining({
+                    chosenGoalId: 'goal-1',
+                }),
+            })
+        )
+        expect(admin.__mock.refs.get('items/target-project/tasks/task-1').update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                'goalSuggestion.goalRouting': expect.objectContaining({
+                    commentId: 'goal-routing-claim-1',
+                }),
             })
         )
     })

@@ -28,10 +28,13 @@ export default function AactiveIndicator({ options, optionsRefs, currentIndex })
                 Animated.timing(position, {
                     toValue: posValue,
                     duration: 300,
+                    // left/width are layout props, so the native driver cannot drive them.
+                    useNativeDriver: false,
                 }),
                 Animated.timing(width, {
                     toValue: widths[currentIndex],
                     duration: 200,
+                    useNativeDriver: false,
                 }),
             ],
             { stopTogether: false }
@@ -79,10 +82,7 @@ const localStyles = StyleSheet.create({
         width: 50,
         backgroundColor: colors.Grey100,
         borderRadius: 12,
-        shadowColor: colors.Text03,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 0px 8px rgba(138,148,166,1.00)',
         elevation: 3,
     },
 })

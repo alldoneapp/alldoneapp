@@ -31,6 +31,11 @@ import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
+import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
+import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
+import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
+import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from './assistantWorkflow'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -205,10 +210,15 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             loggedUser.uid
         )
 
-        // Enable assistant BEFORE creating the message so the trigger condition is met
+        // Enable assistant BEFORE creating the message so the trigger condition is met.
+        // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
+        // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
+        // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
+        // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
+        // into the next Chat DV they open (AT-2084).
         if (enableAssistant) {
             await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).update({ isAssistantEnabled: true })
-            store.dispatch(setAssistantEnabled(true))
+            store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
             console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
         }
 
@@ -218,8 +228,11 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         }
 
         const postCreateActions = [stopLoadingData()]
-        if (enableAssistant && trimmedMessage) {
-            postCreateActions.push(setTriggerBotSpinner(true))
+        // Only arm the spinner when we actually take the user to this thread. With
+        // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
+        // picked up by whatever Chat DV the user opens next (AT-2084).
+        if (enableAssistant && trimmedMessage && !skipNavigation) {
+            postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
         }
         store.dispatch(postCreateActions)
 
@@ -344,16 +357,18 @@ const createTopicForPreConfigTask = async (
 
         const clientSubmissionTime = Date.now()
         const clientSubmissionTimestamp = new Date().toISOString()
-        console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
-            timestamp: clientSubmissionTimestamp,
-            submissionTime: clientSubmissionTime,
-            submissionTimeISO: clientSubmissionTimestamp,
-            userId: loggedUser.uid,
-            projectId,
-            taskId,
-            assistantId,
-            promptLength: prompt?.length,
-        })
+        if (__DEV__) {
+            console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
+                timestamp: clientSubmissionTimestamp,
+                submissionTime: clientSubmissionTime,
+                submissionTimeISO: clientSubmissionTimestamp,
+                userId: loggedUser.uid,
+                projectId,
+                taskId,
+                assistantId,
+                promptLength: prompt?.length,
+            })
+        }
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
 
         try {
@@ -365,16 +380,18 @@ const createTopicForPreConfigTask = async (
             const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
             const networkLatency = functionCallStartTime - clientSubmissionTime
 
-            console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                submissionTimeISO: clientSubmissionTimestamp,
-                completionTime: clientCallCompleteTime,
-                completionTimeISO: new Date().toISOString(),
-                timeSinceSubmission: `${totalClientToServerTime}ms`,
-                networkLatency: `${networkLatency}ms`,
-                backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    submissionTimeISO: clientSubmissionTimestamp,
+                    completionTime: clientCallCompleteTime,
+                    completionTimeISO: new Date().toISOString(),
+                    timeSinceSubmission: `${totalClientToServerTime}ms`,
+                    networkLatency: `${networkLatency}ms`,
+                    backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                })
+            }
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
         } catch (error) {
             console.error('Error in generatePreConfigTaskResultSecondGen:', {
@@ -403,19 +420,27 @@ const createTopicForPreConfigTask = async (
 const activePreConfigPromptTaskExecutions = new Set()
 
 const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
-    if (!aiSettings) return null
-
     const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
+    if (!aiSettings && !assistantDetails) return null
+
+    const overrides = aiSettings || {}
     return {
-        ...aiSettings,
-        assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
+        ...overrides,
+        model: overrides.model || assistantDetails?.model,
+        temperature: overrides.temperature || assistantDetails?.temperature,
+        reasoningEffort: resolvePreConfigTaskReasoningEffort(
+            { aiReasoningEffort: overrides.reasoningEffort },
+            assistantDetails?.reasoningEffort
+        ),
+        systemMessage: overrides.systemMessage || assistantDetails?.instructions,
+        assistantUid: overrides.assistantUid || assistantDetails?.uid || assistantId,
         assistantDisplayName:
-            aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
-        allowedTools: Array.isArray(aiSettings.allowedTools)
-            ? aiSettings.allowedTools
+            overrides.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
+        allowedTools: Array.isArray(overrides.allowedTools)
+            ? overrides.allowedTools
             : Array.isArray(assistantDetails?.allowedTools)
-            ? assistantDetails.allowedTools
-            : [],
+              ? assistantDetails.allowedTools
+              : [],
     }
 }
 
@@ -482,8 +507,11 @@ export const generateTaskFromPreConfig = async (
     taskMetadata = null,
     options = {}
 ) => {
-    const { skipNavigation = false } = options
+    const { skipNavigation = false, waitForDirectRun = true } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
+    // Preconfigured prompts created before execution modes existed always ran directly.
+    const executionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const { loggedUser } = store.getState()
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,
@@ -503,12 +531,32 @@ export const generateTaskFromPreConfig = async (
     generatedTask.assigneeType = TASK_ASSIGNEE_ASSISTANT_TYPE
     generatedTask.assistantId = assistantId
     generatedTask.isPublicFor = [FEED_PUBLIC_FOR_ALL]
-    generatedTask.isAssistantEnabled = true
+    generatedTask.executionMode = executionMode
+    generatedTask.isAssistantEnabled = executionMode === TASK_EXECUTION_MODE_DIRECT
+
+    if (executionMode === TASK_EXECUTION_MODE_WORKFLOW) {
+        const now = Date.now()
+        generatedTask.workflowTask = true
+        generatedTask.workflowPayerUserId = loggedUser.uid
+        generatedTask.stepHistory = [ASSISTANT_WORKFLOW_FIRST_STEP_ID]
+        generatedTask.currentReviewerId = assistantId
+        generatedTask.completed = now
+        generatedTask.dueDate = now
+        generatedTask.estimations = {
+            ...generatedTask.estimations,
+            [ASSISTANT_WORKFLOW_FIRST_STEP_ID]: 0,
+        }
+        generatedTask.workflowAiPromptOverride = {
+            stepId: ASSISTANT_WORKFLOW_FIRST_STEP_ID,
+            prompt: generatedPrompt,
+        }
+    }
 
     // Add AI settings to the task if provided
     if (resolvedAiSettings) {
         generatedTask.aiModel = resolvedAiSettings.model
         generatedTask.aiTemperature = resolvedAiSettings.temperature
+        generatedTask.aiReasoningEffort = resolvedAiSettings.reasoningEffort
         generatedTask.aiSystemMessage = resolvedAiSettings.systemMessage
     }
 
@@ -522,20 +570,28 @@ export const generateTaskFromPreConfig = async (
         aiSettings: {
             model: generatedTask.aiModel,
             temperature: generatedTask.aiTemperature,
+            reasoningEffort: generatedTask.aiReasoningEffort,
             systemMessage: generatedTask.aiSystemMessage,
         },
         taskMetadata,
     })
 
-    uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
-        store.dispatch(setAssistantEnabled(true))
+    const task = await uploadNewTask(projectId, generatedTask, null, true, false, false, false)
+    const taskWithPublicFor = {
+        ...task,
+        isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
+        isAssistantEnabled: executionMode === TASK_EXECUTION_MODE_DIRECT,
+    }
 
-        // Ensure task has isPublicFor set
-        const taskWithPublicFor = {
-            ...task,
-            isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
-            isAssistantEnabled: true,
-        }
+    if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
+        // Purely UI state for the task chat we are about to open: the assistant run itself is
+        // triggered from the task's persisted `isAssistantEnabled: true` (and
+        // `createTopicForPreConfigTask` calls `createObjectMessage` with skipAssistantTrigger,
+        // dispatching `generatePreConfigTaskResultSecondGen` explicitly). Scoping it to this task
+        // keeps the navigating case identical while stopping a `skipNavigation: true` run — the
+        // My Day assistant line and the pre-config task search modal — from switching the
+        // assistant on in whatever unrelated chat the user opens next (AT-2084).
+        store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, task.id)))
 
         console.log('Creating topic for task:', {
             taskId: taskWithPublicFor.id,
@@ -563,28 +619,13 @@ export const generateTaskFromPreConfig = async (
             taskTaskMetadataSendWhatsApp: taskWithPublicFor.taskMetadata?.sendWhatsApp,
         })
 
-        // Add a small delay for webhook tasks to avoid race condition with frontend updates
-        const isWebhookTask = taskMetadata?.isWebhookTask
-        const delay = isWebhookTask ? 1000 : 0
-
-        setTimeout(() => {
-            createTopicForPreConfigTask(
-                projectId,
-                taskWithPublicFor.id,
-                taskWithPublicFor.isPublicFor,
-                taskWithPublicFor.assistantId,
-                generatedPrompt,
-                resolvedAiSettings,
-                mergedMetadata
-            ).catch(error => {
-                console.error('Failed to create topic for pre-config task:', error)
-            })
-        }, delay)
-
-        // Trigger the bot spinner to show assistant is working (without toggling assistantEnabled)
-        store.dispatch(setTriggerBotSpinner(true))
-
         if (!skipNavigation) {
+            // Trigger the bot spinner to show assistant is working (without toggling
+            // assistantEnabled), scoped to the task chat we are about to open. When we do not
+            // navigate there is no chat to show it in, and an unscoped trigger would surface
+            // in an unrelated Chat DV instead (AT-2084).
+            store.dispatch(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, taskWithPublicFor.id)))
+
             NavigationService.navigate('TaskDetailedView', {
                 task: taskWithPublicFor,
                 projectId: projectId,
@@ -593,6 +634,49 @@ export const generateTaskFromPreConfig = async (
             store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
         }
 
-        moveTasksFromOpen(projectId, taskWithPublicFor, DONE_STEP, null, null, taskWithPublicFor.estimations, null)
-    })
+        if (taskMetadata?.isWebhookTask) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+
+        const runAndCompleteDirectTask = async () => {
+            const succeeded = await executePreConfigPromptForTask({
+                projectId,
+                taskId: taskWithPublicFor.id,
+                task: taskWithPublicFor,
+                assistantId: taskWithPublicFor.assistantId,
+                prompt: generatedPrompt,
+                name,
+                aiSettings: resolvedAiSettings,
+                taskMetadata: mergedMetadata,
+            })
+
+            if (succeeded) {
+                await moveTasksFromOpen(
+                    projectId,
+                    taskWithPublicFor,
+                    DONE_STEP,
+                    null,
+                    null,
+                    taskWithPublicFor.estimations,
+                    null
+                )
+            }
+        }
+
+        if (waitForDirectRun) {
+            await runAndCompleteDirectTask()
+        } else {
+            runAndCompleteDirectTask().catch(error => {
+                console.error('Could not finish direct assistant task in the background:', error)
+            })
+        }
+    } else if (!skipNavigation) {
+        NavigationService.navigate('TaskDetailedView', {
+            task: taskWithPublicFor,
+            projectId,
+        })
+        store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
+    }
+
+    return taskWithPublicFor
 }

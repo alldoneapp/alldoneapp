@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import RichCommentModal from '../../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { STAYWARD_COMMENT } from '../../../Feeds/Utils/HelperFunctions'
-import { popoverToTop } from '../../../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import {
     BOT_OPTION_MODAL_ID,
@@ -102,7 +102,7 @@ export default function LastAssistantCommentWrapper({
     const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
     return showModal ? (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -113,6 +113,7 @@ export default function LastAssistantCommentWrapper({
                     showBotButton={true}
                     objectName={objectName}
                     externalAssistantId={assistantId}
+                    openedFromUnreadComment={isNew}
                 />
             }
             onClickOutside={closeModal}
@@ -122,6 +123,7 @@ export default function LastAssistantCommentWrapper({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
+            containerStyle={popoverToTopContainerStyle}
         >
             <LastAssistantComment
                 isNew={isNew}
@@ -133,7 +135,7 @@ export default function LastAssistantCommentWrapper({
                 projectId={projectId}
                 compact={compact}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <LastAssistantComment
             isNew={isNew}

@@ -12,11 +12,17 @@ import { TouchableOpacity } from 'react-native-gesture-handler'
 import URLsPeople, { URL_PEOPLE_DETAILS_WORKFLOW } from '../../URLSystem/People/URLsPeople'
 import { getWorkflowStepsIdsSorted } from '../../utils/HelperFunctions'
 import { useSelector, useStore } from 'react-redux'
-import { DV_TAB_USER_WORKFLOW } from '../../utils/TabNavigationConstants'
+import { DV_TAB_ASSISTANT_WORKFLOW, DV_TAB_USER_WORKFLOW } from '../../utils/TabNavigationConstants'
 import { translate } from '../../i18n/TranslationService'
 import { reorderUserWorkflowSteps } from '../../utils/backends/Users/usersFirestore'
+import {
+    ensureAssistantWorkflowFirstStep,
+    reorderAssistantWorkflowSteps,
+} from '../../utils/backends/Assistants/assistantsFirestore'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from '../../utils/assistantWorkflow'
+import URLsAssistants, { URL_ASSISTANT_DETAILS_WORKFLOW } from '../../URLSystem/Assistants/URLsAssistants'
 
-const WorkflowView = ({ user, projectIndex }) => {
+const WorkflowView = ({ user, projectIndex, ownerType = 'user', projectId: explicitProjectId }) => {
     const [steps, setSteps] = useState([])
     const selectedTab = useSelector(state => state.selectedNavItem)
     const [updatingStep, setUpdatingStep] = useState(-1)
@@ -24,9 +30,12 @@ const WorkflowView = ({ user, projectIndex }) => {
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef([])
     const store = useStore()
+    const isAssistantWorkflow = ownerType === 'assistant'
+
+    const getProjectId = () => explicitProjectId || store.getState().loggedUserProjects[projectIndex].id
 
     const onNewStep = steps => {
-        const projectId = store.getState().loggedUserProjects[projectIndex].id
+        const projectId = getProjectId()
         const projectSteps = steps ? { ...steps[projectId] } : {}
         const stepIds = getWorkflowStepsIdsSorted(projectSteps)
         const newSteps = []
@@ -52,8 +61,11 @@ const WorkflowView = ({ user, projectIndex }) => {
     }
 
     const writeBrowserURL = () => {
-        if (selectedTab === DV_TAB_USER_WORKFLOW) {
-            const projectId = store.getState().loggedUserProjects[projectIndex].id
+        const projectId = getProjectId()
+        if (isAssistantWorkflow && selectedTab === DV_TAB_ASSISTANT_WORKFLOW) {
+            const data = { projectId, assistantId: user.uid }
+            URLsAssistants.push(URL_ASSISTANT_DETAILS_WORKFLOW, data, projectId, user.uid)
+        } else if (!isAssistantWorkflow && selectedTab === DV_TAB_USER_WORKFLOW) {
             const data = { projectId: projectId, userId: user.uid }
             URLsPeople.push(URL_PEOPLE_DETAILS_WORKFLOW, data, projectId, user.uid)
         }
@@ -70,12 +82,11 @@ const WorkflowView = ({ user, projectIndex }) => {
         setSteps(reorderedSteps)
         setReordering(true)
         try {
-            const projectId = store.getState().loggedUserProjects[projectIndex].id
-            await reorderUserWorkflowSteps(
-                projectId,
-                user.uid,
-                reorderedSteps.map(step => step.id)
-            )
+            const projectId = getProjectId()
+            const orderedStepIds = reorderedSteps.map(step => step.id)
+            await (isAssistantWorkflow
+                ? reorderAssistantWorkflowSteps(projectId, user.uid, orderedStepIds)
+                : reorderUserWorkflowSteps(projectId, user.uid, orderedStepIds))
         } catch (error) {
             setSteps(previousSteps)
             console.error('Could not reorder workflow steps', error)
@@ -85,13 +96,24 @@ const WorkflowView = ({ user, projectIndex }) => {
     }
 
     useEffect(() => {
-        Backend.onUserWorkflowChange(user.uid, onNewStep)
+        if (isAssistantWorkflow) {
+            ensureAssistantWorkflowFirstStep(getProjectId(), user).catch(error =>
+                console.error('Could not initialize assistant workflow', error)
+            )
+            onNewStep(user.workflow)
+        } else {
+            Backend.onUserWorkflowChange(user.uid, onNewStep)
+        }
         writeBrowserURL()
 
         return () => {
-            Backend.offOnUserWorkflowChange()
+            if (!isAssistantWorkflow) Backend.offOnUserWorkflowChange()
         }
     }, [])
+
+    useEffect(() => {
+        if (isAssistantWorkflow) onNewStep(user.workflow)
+    }, [isAssistantWorkflow, explicitProjectId, user.workflow])
 
     return (
         <View style={localStyles.container}>
@@ -100,22 +122,27 @@ const WorkflowView = ({ user, projectIndex }) => {
                 <Icon name="info" size={16} color={colors.Text03} style={{ alignSelf: 'center' }} />
                 <View style={{ marginLeft: 8 }}>
                     <Text style={[styles.caption2, { color: colors.Text03 }]}>
-                        {translate('Customize the steps User will go through when marked as completed', {
-                            user: getFormattedName(user.displayName),
-                        })}
+                        {isAssistantWorkflow
+                            ? translate('Customize the steps assistant workflow tasks execute')
+                            : translate('Customize the steps User will go through when marked as completed', {
+                                  user: getFormattedName(user.displayName),
+                              })}
                     </Text>
                 </View>
             </View>
 
-            <View style={localStyles.openTaskContainer}>
-                <Icon name="square" size={24} color={colors.Gray400} />
-                <View style={{ marginLeft: 8 }}>
-                    <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Open task')}</Text>
+            {!isAssistantWorkflow && (
+                <View style={localStyles.openTaskContainer}>
+                    <Icon name="square" size={24} color={colors.Gray400} />
+                    <View style={{ marginLeft: 8 }}>
+                        <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Open task')}</Text>
+                    </View>
                 </View>
-            </View>
+            )}
 
             <View style={localStyles.stepsContainer}>
                 {steps.map((step, index) => {
+                    const lockedFirstStep = isAssistantWorkflow && step.id === ASSISTANT_WORKFLOW_FIRST_STEP_ID
                     return (
                         <DismissibleItem
                             key={step.id}
@@ -136,8 +163,8 @@ const WorkflowView = ({ user, projectIndex }) => {
                                         stepNumber={index + 1}
                                         step={step}
                                         updatingStep={updatingStep === index}
-                                        canMoveUp={!reordering && index > 0}
-                                        canMoveDown={!reordering && index < steps.length - 1}
+                                        canMoveUp={!reordering && index > (isAssistantWorkflow ? 1 : 0)}
+                                        canMoveDown={!lockedFirstStep && !reordering && index < steps.length - 1}
                                         onMoveUp={() => moveStep(index, -1)}
                                         onMoveDown={() => moveStep(index, 1)}
                                     />
@@ -151,6 +178,9 @@ const WorkflowView = ({ user, projectIndex }) => {
                                     user={user}
                                     formType={'edit'}
                                     projectIndex={projectIndex}
+                                    ownerType={ownerType}
+                                    lockedReviewer={lockedFirstStep}
+                                    lockedStep={lockedFirstStep}
                                     onCancelAction={() => {
                                         dismissibleRefs?.current[index]?.toggleModal()
                                     }}
@@ -182,6 +212,7 @@ const WorkflowView = ({ user, projectIndex }) => {
                             user={user}
                             formType={'new'}
                             projectIndex={projectIndex}
+                            ownerType={ownerType}
                             onCancelAction={() => {
                                 newItemRef?.current?.toggleModal()
                             }}

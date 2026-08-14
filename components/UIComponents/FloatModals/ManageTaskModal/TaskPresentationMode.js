@@ -23,8 +23,8 @@ export default function TaskPresentationMode({
         assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
             ? getAssistant(userId)
             : isWorkstream(userId)
-            ? getWorkstreamById(projectId, userId)
-            : TasksHelper.getUserInProject(projectId, userId) || TasksHelper.getContactInProject(projectId, userId)
+              ? getWorkstreamById(projectId, userId)
+              : TasksHelper.getUserInProject(projectId, userId) || TasksHelper.getContactInProject(projectId, userId)
 
     const photoURL = assignee ? assignee.photoURL : ''
 

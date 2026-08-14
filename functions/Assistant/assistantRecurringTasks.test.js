@@ -20,6 +20,10 @@ jest.mock('./assistantPreConfigTaskTopic', () => ({
     generatePreConfigTaskResult: jest.fn(),
 }))
 
+jest.mock('./assistantHelper', () => ({
+    getAssistantForChat: jest.fn(),
+}))
+
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 0,
     STAYWARD_COMMENT: 'STAYWARD_COMMENT',
@@ -38,6 +42,29 @@ jest.mock('../shared/TaskService', () => ({
 }))
 
 const { __private__ } = require('./assistantRecurringTasks')
+
+describe('recurring assistant activations', () => {
+    test('treats an explicitly empty activation list as paused', () => {
+        expect(
+            __private__.getActivatedUserIdsForTask({
+                recurrence: 'daily',
+                activatedUserIds: [],
+                recurrenceByUser: {},
+                activatorUserId: 'user-1',
+                creatorUserId: 'user-1',
+            })
+        ).toEqual([])
+    })
+
+    test('keeps legacy schedules readable when no activation fields exist', () => {
+        expect(
+            __private__.getActivatedUserIdsForTask({
+                recurrence: 'daily',
+                activatorUserId: 'user-1',
+            })
+        ).toEqual(['user-1'])
+    })
+})
 
 describe('recurring assistant generated task completion', () => {
     beforeEach(() => {
@@ -152,5 +179,62 @@ describe('recurring assistant generated task completion', () => {
             )
         ).rejects.toThrow('did not return a successful execution result')
         expect(completeTask).not.toHaveBeenCalled()
+    })
+
+    test('inherits the current assistant model instead of a legacy copied task model', () => {
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                {
+                    aiModel: 'MODEL_GPT5_5',
+                    aiTemperature: 'TEMPERATURE_LOW',
+                },
+                {
+                    uid: 'assistant-1',
+                    model: 'MODEL_GPT5_6_SOL',
+                    temperature: 'TEMPERATURE_NORMAL',
+                    reasoningEffort: 'max',
+                    instructions: 'Assistant instructions',
+                    displayName: 'Anna',
+                    allowedTools: ['get_tasks'],
+                },
+                'assistant-1'
+            )
+        ).toEqual({
+            model: 'MODEL_GPT5_6_SOL',
+            temperature: 'TEMPERATURE_NORMAL',
+            reasoningEffort: 'max',
+            systemMessage: 'Assistant instructions',
+            assistantDisplayName: 'Anna',
+            assistantUid: 'assistant-1',
+            allowedTools: ['get_tasks'],
+        })
+    })
+
+    test('uses a deliberately saved recurring-task model override', () => {
+        const settings = __private__.buildRecurringTaskAiSettings(
+            { aiModelOverride: 'MODEL_GPT5_6_LUNA' },
+            { model: 'MODEL_GPT5_6_SOL' },
+            'assistant-1'
+        )
+
+        expect(settings.model).toBe('MODEL_GPT5_6_LUNA')
+    })
+
+    test('uses a deliberately saved recurring-task reasoning effort override', () => {
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                { aiReasoningEffort: 'low' },
+                { reasoningEffort: 'max' },
+                'assistant-1'
+            ).reasoningEffort
+        ).toBe('low')
+
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                { aiReasoningEffort: null },
+                { reasoningEffort: 'max' },
+                'assistant-1'
+            ).reasoningEffort
+        ).toBeNull()
     })
 })

@@ -4,7 +4,13 @@ import PropTypes from 'prop-types'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
 
-const Spinner = ({ containerSize, spinnerSize, containerColor, spinnerColor, containerStyle }) => {
+const Spinner = ({
+    containerSize = 24,
+    spinnerSize = 16,
+    containerColor = colors.Grey300,
+    spinnerColor = colors.Primary100,
+    containerStyle,
+}) => {
     const animateValue = useState(new Animated.Value(0))[0]
 
     useEffect(() => {
@@ -49,13 +55,6 @@ Spinner.propTypes = {
     containerColor: PropTypes.string,
     spinnerColor: PropTypes.string,
     containerStyle: PropTypes.oneOfType([PropTypes.object, PropTypes.array, PropTypes.number]),
-}
-
-Spinner.defaultProps = {
-    containerSize: 24,
-    spinnerSize: 16,
-    containerColor: colors.Grey300,
-    spinnerColor: colors.Primary100,
 }
 
 const localStyles = StyleSheet.create({

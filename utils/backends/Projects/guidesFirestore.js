@@ -1,5 +1,5 @@
 import { uniq } from 'lodash'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import store from '../../../redux/store'

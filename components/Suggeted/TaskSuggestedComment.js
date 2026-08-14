@@ -1,17 +1,18 @@
 import React from 'react'
-import { Image, StyleSheet, Text, View } from 'react-native'
+import { Image, Platform, StyleSheet, Text, View } from 'react-native'
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { useDispatch, useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { updateTaskSuggestedCommentModalData } from '../../redux/actions'
 import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Icon from '../Icon'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { getWorkstreamById, WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function TaskSuggestedComment({ task, projectId }) {
     const dispatch = useDispatch()
@@ -58,7 +59,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
 
     return (
         <View style={[localStyles.container]}>
-            <Popover isOpen={true} content={null} onClickOutside={closeModal}>
+            <AppPopover isOpen={true} content={null} onClickOutside={closeModal}>
                 <RichCommentModal
                     projectId={projectId}
                     objectType={'tasks'}
@@ -84,7 +85,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
                         </View>
                     }
                 />
-            </Popover>
+            </AppPopover>
         </View>
     )
 }
@@ -101,6 +102,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         alignSelf: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     logo: {
         width: 20,

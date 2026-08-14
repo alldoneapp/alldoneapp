@@ -11,6 +11,17 @@ import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 
 const mockInputBlur = jest.fn()
+const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
+    optionsLikeButtons: expanded
+        ? [
+              { id: 'task-1', task: { name: 'Quick task' } },
+              { id: 'task-2', task: { name: 'Overflow task' } },
+          ]
+        : [{ id: 'task-1', task: { name: 'Quick task' } }],
+    optionsInModal: expanded ? [] : [{ id: 'task-2', task: { name: 'Overflow task' } }],
+    showSubmenu: !expanded,
+    hasAdditionalOptions: true,
+}))
 
 const mockState = {
     selectedProjectIndex: 0,
@@ -69,11 +80,7 @@ jest.mock('./helper', () => ({
         assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
         assistantProjectId: 'default-project',
     }),
-    getOptionsPresentationData: () => ({
-        optionsLikeButtons: [{ id: 'task-1', task: { name: 'Quick task' } }],
-        optionsInModal: [],
-        showSubmenu: false,
-    }),
+    getOptionsPresentationData: (...args) => mockGetOptionsPresentationData(...args),
 }))
 
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
@@ -85,13 +92,7 @@ jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
 jest.mock('./OptionButtons/OptionButtons', () => {
     const React = require('react')
     const { Text } = require('react-native')
-    return () => <Text>OptionButtons</Text>
-})
-
-jest.mock('./MoreOptions/MoreOptionsWrapper', () => {
-    const React = require('react')
-    const { Text } = require('react-native')
-    return () => <Text>MoreOptions</Text>
+    return ({ options }) => <Text>{`OptionButtons: ${options.map(option => option.task.name).join(', ')}`}</Text>
 })
 
 jest.mock('./AssistantAvatarButton', () => {
@@ -158,6 +159,29 @@ describe('AssistantOptions search button', () => {
         expect(output.indexOf('SearchButton')).toBeLessThan(output.indexOf('OptionButtons'))
     })
 
+    it('expands overflow tasks inline and collapses them again', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
+
+        await act(async () => {
+            tree.root.findByProps({ accessibilityLabel: 'Show all' }).props.onPress()
+        })
+
+        expect(JSON.stringify(tree.toJSON())).toContain('Overflow task')
+        expect(tree.root.findByProps({ accessibilityLabel: 'Show less' })).toBeTruthy()
+
+        await act(async () => {
+            tree.root.findByProps({ accessibilityLabel: 'Show less' }).props.onPress()
+        })
+
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
+        expect(tree.root.findByProps({ accessibilityLabel: 'Show all' })).toBeTruthy()
+    })
+
     it('stacks the voice and send controls when the assistant input expands', async () => {
         let tree
         await act(async () => {
@@ -176,7 +200,7 @@ describe('AssistantOptions search button', () => {
         expect(getControlsStyle().flexDirection).toBe('column')
     })
 
-    it('pins the control cluster width so expanding cannot re-wrap the input and wiggle', async () => {
+    it('lines the stacked controls up on one axis and lets the input reclaim the freed width', async () => {
         let tree
         await act(async () => {
             tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
@@ -185,27 +209,84 @@ describe('AssistantOptions search button', () => {
         const getControls = () => tree.root.findByProps({ testID: 'assistant-message-controls' })
         const getInput = () => tree.root.findByType(TextInput)
 
-        // The cluster lays out as a row while collapsed and reports its width.
         await act(async () => {
-            getControls().props.onLayout({ nativeEvent: { layout: { width: 120, height: 40 } } })
+            getInput().props.onChangeText('A message long enough to wrap')
         })
-        expect(StyleSheet.flatten(getControls().props.style).width).toBe(120)
-
-        // The input expands: the cluster re-stacks into a column (design intent)
-        // and a fresh layout pass now reports the narrower column width.
         await act(async () => {
             getInput().props.onContentSizeChange(100, 80)
         })
-        await act(async () => {
-            getControls().props.onLayout({ nativeEvent: { layout: { width: 72, height: 88 } } })
-        })
 
         const expandedStyle = StyleSheet.flatten(getControls().props.style)
-        // Stacking is preserved...
         expect(expandedStyle.flexDirection).toBe('column')
-        // ...but the reserved width stays the row width, so the flex:1 input keeps
-        // the exact same width it had when collapsed — no re-wrap, no oscillation.
-        expect(expandedStyle.width).toBe(120)
+        // Both controls sit on the same centre axis — "directly below each other".
+        expect(expandedStyle.alignItems).toBe('center')
+        // No pinned width: the cluster shrinks to the send button and the flex:1
+        // input expands into the ~48px the second button no longer needs.
+        expect(expandedStyle.width).toBeUndefined()
+        // The field grows to the stacked cluster height so nothing overhangs it.
+        expect(getInput().props.fixedHeight).toBe(88)
+    })
+
+    it('keeps the same stacked alignment on small screens', async () => {
+        mockState.smallScreenNavigation = true
+        try {
+            let tree
+            await act(async () => {
+                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            })
+
+            const getInput = () => tree.root.findByType(TextInput)
+            await act(async () => {
+                getInput().props.onChangeText('Mobile message that wraps')
+            })
+            await act(async () => {
+                getInput().props.onContentSizeChange(100, 62)
+            })
+
+            const controls = StyleSheet.flatten(
+                tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style
+            )
+            expect(controls.flexDirection).toBe('column')
+            expect(controls.alignItems).toBe('center')
+            expect(controls.width).toBeUndefined()
+            expect(getInput().props.fixedHeight).toBe(88)
+        } finally {
+            mockState.smallScreenNavigation = false
+        }
+    })
+
+    it('does not un-stack when the widened input re-wraps back to a single line', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        const getControls = () => tree.root.findByProps({ testID: 'assistant-message-controls' })
+        const getInput = () => tree.root.findByType(TextInput)
+        const getDirection = () => StyleSheet.flatten(getControls().props.style).flexDirection
+
+        await act(async () => {
+            getInput().props.onChangeText('A message long enough to wrap')
+        })
+        await act(async () => {
+            getInput().props.onContentSizeChange(100, 80)
+        })
+        expect(getDirection()).toBe('column')
+
+        // Stacking made the input wider, so the browser now reports a single
+        // line again. Un-stacking here would re-narrow the input and oscillate.
+        await act(async () => {
+            getInput().props.onContentSizeChange(148, 40)
+        })
+        expect(getDirection()).toBe('column')
+
+        // Clearing the field is the one release condition — and it cannot feed
+        // back into the wrapping, because an empty field is one line at any width.
+        await act(async () => {
+            getInput().props.onChangeText('')
+        })
+        expect(getDirection()).toBe('row')
+        expect(getInput().props.fixedHeight).toBe(40)
     })
 
     it('keeps the input stable when content measurements oscillate at the scroll boundary', async () => {

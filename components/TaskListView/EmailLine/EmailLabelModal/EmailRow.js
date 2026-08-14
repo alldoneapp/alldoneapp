@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
@@ -210,7 +210,7 @@ export default function EmailRow({
                                 </TouchableOpacity>
                             ) : (
                                 <View style={localStyles.feedbackForm}>
-                                    <Popover
+                                    <AppPopover
                                         isOpen={feedbackDropdownOpen}
                                         position={['bottom', 'top']}
                                         align="start"
@@ -289,7 +289,7 @@ export default function EmailRow({
                                                 color={colors.Text03}
                                             />
                                         </TouchableOpacity>
-                                    </Popover>
+                                    </AppPopover>
                                     {feedbackLabelOptions.length === 0 && (
                                         <View style={localStyles.feedbackOnlyInboxHint}>
                                             <Icon name="info" size={12} color={colors.Text03} />
@@ -387,7 +387,7 @@ export default function EmailRow({
                 labelName={currentLabelName || null}
                 compact
             />
-            <Popover
+            <AppPopover
                 isOpen={draftOpen}
                 position={['left', 'bottom', 'top', 'right']}
                 align="start"
@@ -410,7 +410,7 @@ export default function EmailRow({
                 >
                     <Icon name="corner-up-left" size={16} color={colors.Text03} />
                 </TouchableOpacity>
-            </Popover>
+            </AppPopover>
             <TouchableOpacity
                 style={localStyles.actionButton}
                 onPress={() => onOpen && onOpen(row)}
@@ -603,10 +603,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Secondary200,
         backgroundColor: colors.Secondary400,
         paddingVertical: 4,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOpacity: 1,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 4 },
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
     },
     feedbackDropdownItem: {
         minHeight: 34,

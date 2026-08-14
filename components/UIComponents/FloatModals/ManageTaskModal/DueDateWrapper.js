@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 
 import { colors } from '../../../styles/global'
@@ -30,7 +30,7 @@ export default function DueDateWrapper({ task, projectId, setDueDate, setToBackl
 
     const cleanedName = task.extendedName.trim()
     return (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     task={task}
@@ -63,6 +63,6 @@ export default function DueDateWrapper({ task, projectId, setDueDate, setToBackl
                     disabled={disabled || !cleanedName}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

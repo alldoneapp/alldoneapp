@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { StyleSheet } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -36,7 +36,7 @@ export default function InvoiceInfoWrapper({ filterData, projectId, timestamp1, 
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <InvoiceInfoModal
                     filterData={filterData}
@@ -63,7 +63,7 @@ export default function InvoiceInfoWrapper({ filterData, projectId, timestamp1, 
                 buttonStyle={localStyles.buttonStyle}
                 onPress={showPopover}
             />
-        </Popover>
+        </AppPopover>
     )
 }
 

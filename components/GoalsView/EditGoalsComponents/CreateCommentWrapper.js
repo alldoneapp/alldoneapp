@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -16,7 +16,7 @@ import {
 import RichCommentModal from '../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import {} from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
-import { popoverToTop } from '../../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
 
 export default function CreateCommentWrapper({
@@ -74,7 +74,7 @@ export default function CreateCommentWrapper({
 
     return (
         <View>
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         projectId={projectId}
@@ -95,6 +95,7 @@ export default function CreateCommentWrapper({
                 align={'start'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     keyName={'alt+C'}
@@ -114,7 +115,7 @@ export default function CreateCommentWrapper({
                         disabled={disabled}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

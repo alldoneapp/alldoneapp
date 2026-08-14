@@ -13,7 +13,12 @@ jest.mock('react-tiny-popover', () => {
     const React = require('react')
     return ({ children }) => <React.Fragment>{children}</React.Fragment>
 })
-jest.mock('react-hot-keys', () => ({ children }) => children)
+jest.mock(
+    'react-hot-keys',
+    () =>
+        ({ children }) =>
+            children
+)
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({
     getAssistantInProjectObject: jest.fn(),
     resolveAssistantForProjectObject: jest.fn(() => mockResolvedAssistant),
@@ -68,7 +73,7 @@ describe('DvBotButton assistant loading', () => {
         resolveAssistantForProjectObject.mockClear()
     })
 
-    test('replaces the fallback as soon as independently loaded assistant data reaches Redux', () => {
+    test('replaces the fallback as soon as independently loaded assistant data reaches Redux', async () => {
         const store = createStore(reducer)
         const tree = renderer.create(
             <Provider store={store}>
@@ -91,7 +96,10 @@ describe('DvBotButton assistant loading', () => {
             displayName: 'Project Anna',
             photoURL50: 'anna.jpg',
         }
-        act(() => {
+        // react-redux 8 delivers the store notification through
+        // useSyncExternalStore, whose re-render lands a tick after a
+        // synchronous act - the async form flushes it.
+        await act(async () => {
             store.dispatch({ type: 'assistant-data-loaded' })
         })
 

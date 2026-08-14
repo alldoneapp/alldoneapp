@@ -22,6 +22,9 @@ export const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 export const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
 export const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 export const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
+// Served through OpenRouter rather than OpenAI. The client never needs to know that — provider
+// routing is resolved server-side in `functions/Assistant/assistantModelRouting.js`.
+export const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
 
 export const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 export const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
@@ -51,6 +54,7 @@ export function getNewDefaultAssistant() {
         instructions: '',
         model: MODEL_GPT5_6_SOL,
         heartbeatModel: MODEL_GPT5_6_SOL,
+        reasoningEffort: null,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
         emailSignature: DEFAULT_EMAIL_SIGNATURE,
@@ -129,6 +133,10 @@ const getNormalAssistantInProject = (projectId, assistantId) => {
 
     return null
 }
+
+// Re-exported from a dependency-free module so store-only helpers (and their unit tests) can
+// resolve an assistant without pulling in this file's transitive firestore/dotenv imports.
+export { getAssistantFromState } from './assistantStateLookup'
 
 export const getAssistant = assistantId => {
     const globalAssistant = getGlobalAssistant(assistantId)

@@ -1,16 +1,16 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Button from '../UIControls/Button'
 import { setShowAccessDeniedPopup, hideFloatPopup } from '../../redux/actions'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function AccessDeniedPopup() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     useEffect(() => {
         document.addEventListener('keydown', onKeyDown)
@@ -32,9 +32,12 @@ export default function AccessDeniedPopup() {
     }
 
     return (
-        <View style={localStyles.container} onTouchStart={closeModal}>
+        // Dismissal lives on the backdrop element only: an onTouchStart on the
+        // container bubbled up from the card, so tapping the text inside
+        // dismissed the popup on touch devices.
+        <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.backdrop} onPress={closeModal} />
-            <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }]}>
+            <View style={localStyles.popup}>
                 <View style={localStyles.body}>
                     <View style={{ marginBottom: 20 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
@@ -74,6 +77,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     backdrop: {
         position: 'absolute',
@@ -94,10 +98,7 @@ const localStyles = StyleSheet.create({
     popup: {
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
-        shadowColor: 'rgba(0,0,0,0.04)',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 1,
-        shadowRadius: 24,
+        boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
         maxWidth: 305,

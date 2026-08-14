@@ -28,6 +28,7 @@ const {
     generateUsersStatusList,
 } = require('./SubscriptionsHelper')
 const { cancelSubscription } = require('./CancelSubscriptions')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const createCompanySubscription = async (
     currentCustomerId,
@@ -106,14 +107,8 @@ const updateCreditCardNumber = async (userPayingId, urlOrigin) => {
 
 const addedUsersToSubscription = async (userPayingId, newAddedUserIds, urlOrigin, newSelectedUserIds) => {
     const subscription = await getUserSubscription(userPayingId)
-    const {
-        nextPaymentDate,
-        companyData,
-        subscriptionIdInMollie,
-        customerId,
-        activePaidUsersIds,
-        paidUsersIds,
-    } = subscription
+    const { nextPaymentDate, companyData, subscriptionIdInMollie, customerId, activePaidUsersIds, paidUsersIds } =
+        subscription
     const paymentInitialDate = moment().format('YYYY-MM-DD')
     const paymentExpiredDate = moment().add(15, 'm').format('YYYY-MM-DD')
     if (paymentInitialDate === nextPaymentDate || paymentExpiredDate === nextPaymentDate) {
@@ -124,9 +119,9 @@ const addedUsersToSubscription = async (userPayingId, newAddedUserIds, urlOrigin
                 .doc(`subscriptions/${userPayingId}`)
                 .set(
                     {
-                        selectedUserIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
-                        paidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
-                        activePaidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
+                        selectedUserIds: FieldValue.arrayUnion(...newAddedUserIds),
+                        paidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
+                        activePaidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
                     },
                     { merge: true }
                 )
@@ -203,7 +198,7 @@ const addedUsersWhenActivateSubscription = async (userPayingId, newAddedUserIds,
                     {
                         status: SUBSCRIPTION_STATUS_ACTIVE,
                         selectedUserIds: newSelectedUserIds,
-                        paidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
+                        paidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
                         activePaidUsersIds: newSelectedUserIds,
                         subscriptionIdInMollie: mollieSubscription.id,
                     },
@@ -215,8 +210,8 @@ const addedUsersWhenActivateSubscription = async (userPayingId, newAddedUserIds,
             if (userId !== userPayingId)
                 promises.push(
                     admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).update({
-                        canceled: admin.firestore.FieldValue.delete(),
-                        subscriptionEndDate: admin.firestore.FieldValue.delete(),
+                        canceled: FieldValue.delete(),
+                        subscriptionEndDate: FieldValue.delete(),
                     })
                 )
         })
@@ -308,8 +303,8 @@ async function removePaidUsersFromSubscription(userPayingId, removedUserIds) {
                 .firestore()
                 .doc(`subscriptions/${userPayingId}`)
                 .update({
-                    selectedUserIds: admin.firestore.FieldValue.arrayRemove(...removedUserIds),
-                    activePaidUsersIds: admin.firestore.FieldValue.arrayRemove(...removedUserIds),
+                    selectedUserIds: FieldValue.arrayRemove(...removedUserIds),
+                    activePaidUsersIds: FieldValue.arrayRemove(...removedUserIds),
                 })
         )
         removedUserIds.forEach(userId => {
@@ -336,16 +331,16 @@ async function addedPaidUsersToSubscription(userPayingId, paidAddedUserIds) {
             .firestore()
             .doc(`subscriptions/${userPayingId}`)
             .update({
-                activePaidUsersIds: admin.firestore.FieldValue.arrayUnion(...paidAddedUserIds),
-                selectedUserIds: admin.firestore.FieldValue.arrayUnion(...paidAddedUserIds),
+                activePaidUsersIds: FieldValue.arrayUnion(...paidAddedUserIds),
+                selectedUserIds: FieldValue.arrayUnion(...paidAddedUserIds),
             })
     )
     paidAddedUserIds.forEach(userId => {
         if (userId !== userPayingId)
             promises.push(
                 admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).update({
-                    canceled: admin.firestore.FieldValue.delete(),
-                    subscriptionEndDate: admin.firestore.FieldValue.delete(),
+                    canceled: FieldValue.delete(),
+                    subscriptionEndDate: FieldValue.delete(),
                 })
             )
     })
@@ -380,8 +375,8 @@ const addedPaidUsersWhenActivateSubscription = async (userPayingId, paidAddedUse
             .doc(`subscriptions/${userPayingId}`)
             .update({
                 status: SUBSCRIPTION_STATUS_ACTIVE,
-                activePaidUsersIds: admin.firestore.FieldValue.arrayUnion(...paidAddedUserIds),
-                selectedUserIds: admin.firestore.FieldValue.arrayUnion(...paidAddedUserIds),
+                activePaidUsersIds: FieldValue.arrayUnion(...paidAddedUserIds),
+                selectedUserIds: FieldValue.arrayUnion(...paidAddedUserIds),
                 subscriptionIdInMollie: mollieSubscription.id,
             })
     )
@@ -389,8 +384,8 @@ const addedPaidUsersWhenActivateSubscription = async (userPayingId, paidAddedUse
         if (userId !== userPayingId)
             promises.push(
                 admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).update({
-                    canceled: admin.firestore.FieldValue.delete(),
-                    subscriptionEndDate: admin.firestore.FieldValue.delete(),
+                    canceled: FieldValue.delete(),
+                    subscriptionEndDate: FieldValue.delete(),
                 })
             )
     })

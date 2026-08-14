@@ -9,16 +9,16 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAccessToken: jest.fn(),
-    getOAuth2Client: jest.fn(),
+    getAuthorizedOAuth2Client: jest.fn(),
 }))
 
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 
 const firestoreState = {
     users: {},
+    bookingSettings: {},
 }
 
 const calendarClients = {}
@@ -41,16 +41,21 @@ function buildFirestore() {
                 })),
             }
         }),
+        // AT-2278: the meeting settings doc that carries minFreeHoursPerDay.
+        doc: jest.fn(path => {
+            const match = /^users\/([^/]+)\/bookingSettings\/default$/.exec(path)
+            if (!match) throw new Error(`Unexpected doc path: ${path}`)
+            const data = firestoreState.bookingSettings[match[1]]
+            return {
+                get: jest.fn().mockResolvedValue({ exists: !!data, data: () => data }),
+            }
+        }),
     }
 }
 
-function createOAuthClient() {
-    return {
-        __projectId: null,
-        setCredentials(credentials) {
-            this.__projectId = String(credentials.access_token || '').replace(/^token-/, '')
-        },
-    }
+// The handler now returns a ready, fully-credentialed client instead of a bare token.
+function createOAuthClient(projectId) {
+    return { __projectId: projectId, setCredentials: jest.fn(), on: jest.fn() }
 }
 
 describe('assistantCalendarTools', () => {
@@ -58,12 +63,14 @@ describe('assistantCalendarTools', () => {
 
     beforeEach(() => {
         firestoreState.users = {}
+        firestoreState.bookingSettings = {}
         Object.keys(calendarClients).forEach(key => delete calendarClients[key])
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAccessToken.mockImplementation((userId, projectId) => Promise.resolve(`token-${projectId}`))
-        getOAuth2Client.mockImplementation(() => createOAuthClient())
+        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) =>
+            Promise.resolve(createOAuthClient(projectId))
+        )
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
@@ -75,6 +82,10 @@ describe('assistantCalendarTools', () => {
 
     function setUser(userId, data) {
         firestoreState.users[userId] = data
+    }
+
+    function setBookingSettings(userId, data) {
+        firestoreState.bookingSettings[userId] = data
     }
 
     function setCalendarClient(projectId, overrides = {}) {
@@ -291,6 +302,132 @@ describe('assistantCalendarTools', () => {
         ])
     })
 
+    describe('minimum free calendar time per day (AT-2278)', () => {
+        const CALENDAR_USER = {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        }
+
+        function busyEvent(startIso, endIso) {
+            return { status: 'confirmed', start: { dateTime: startIso }, end: { dateTime: endIso } }
+        }
+
+        test('skips a day that would drop below the default 4 free hours and keeps the next one', async () => {
+            setUser('user-1', CALENDAR_USER)
+            const client = setCalendarClient('p1')
+            // 5h booked inside a 09:00-17:00 window leaves 3h free — a 30min meeting would
+            // leave 2.5h, below the 4h default. The following day is empty.
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-11T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 2,
+            })
+
+            expect(result.success).toBe(true)
+            expect(result.minFreeHours).toEqual({
+                perDay: 4,
+                source: 'settings',
+                applied: true,
+                skippedDays: ['2026-03-10'],
+            })
+            expect(result.options).toEqual([
+                { start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' },
+                { start: '2026-03-11T09:30:00+01:00', end: '2026-03-11T10:00:00+01:00' },
+            ])
+            expect(result.message).toContain('1 day was skipped')
+        })
+
+        test('counts meetings outside the searched window but inside the same working day', async () => {
+            setUser('user-1', CALENDAR_USER)
+            const client = setCalendarClient('p1')
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                // The morning load sits entirely outside this window; the day is still full.
+                timeMin: '2026-03-10T15:00:00+01:00',
+                timeMax: '2026-03-10T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 2,
+            })
+
+            expect(client.events.list).toHaveBeenCalledWith(
+                expect.objectContaining({ timeMin: '2026-03-09T23:00:00.000Z' })
+            )
+            // Soft fallback: no day in the range qualifies, so the options are offered anyway
+            // and flagged as cutting into the protected free time.
+            expect(result.minFreeHours).toMatchObject({ perDay: 4, applied: false, skippedDays: ['2026-03-10'] })
+            expect(result.options).toEqual([
+                { start: '2026-03-10T15:00:00+01:00', end: '2026-03-10T15:30:00+01:00' },
+                { start: '2026-03-10T15:30:00+01:00', end: '2026-03-10T16:00:00+01:00' },
+            ])
+            expect(result.message).toContain('cut into that protected time')
+        })
+
+        test('uses the saved per-user setting instead of the default', async () => {
+            setUser('user-1', CALENDAR_USER)
+            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
+            const client = setCalendarClient('p1')
+            // 2h booked leaves 6h free: fine under the 4h default, too little under 6h.
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T11:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-11T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 1,
+            })
+
+            expect(result.minFreeHours).toMatchObject({
+                perDay: 6,
+                source: 'settings',
+                applied: true,
+                skippedDays: ['2026-03-10'],
+            })
+            expect(result.options).toEqual([{ start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' }])
+        })
+
+        test('an explicit request value overrides the setting, and 0 disables the rule', async () => {
+            setUser('user-1', CALENDAR_USER)
+            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
+            const client = setCalendarClient('p1')
+            client.events.list.mockResolvedValue({
+                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
+            })
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-03-10T09:00:00+01:00',
+                timeMax: '2026-03-10T17:00:00+01:00',
+                durationMinutes: 30,
+                maxOptions: 1,
+                minFreeHoursPerDay: 0,
+            })
+
+            expect(result.minFreeHours).toEqual({
+                perDay: 0,
+                source: 'request',
+                applied: true,
+                skippedDays: [],
+            })
+            expect(result.options).toEqual([{ start: '2026-03-10T14:00:00+01:00', end: '2026-03-10T14:30:00+01:00' }])
+        })
+    })
+
     test('fails closed when any connected calendar cannot be checked', async () => {
         setUser('user-1', {
             timezone: 'Europe/Berlin',
@@ -451,7 +588,14 @@ describe('assistantCalendarTools', () => {
                 summary: 'Local Time Event',
                 start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
                 end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
+                conferenceData: {
+                    createRequest: {
+                        requestId: expect.any(String),
+                        conferenceSolutionKey: { type: 'hangoutsMeet' },
+                    },
+                },
             },
+            conferenceDataVersion: 1,
         })
     })
 
@@ -594,6 +738,172 @@ describe('assistantCalendarTools', () => {
         expect(result.projectId).toBe('p2')
         expect(defaultClient.events.insert).toHaveBeenCalled()
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
+    })
+
+    // AT-2198: every meeting Anna books must come with a join link already attached.
+    describe('automatic Google Meet conferencing', () => {
+        function connectSingleAccount() {
+            setUser('user-1', {
+                projectIds: ['p1'],
+                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
+            })
+            return setCalendarClient('p1')
+        }
+
+        const TIMED_EVENT = {
+            userId: 'user-1',
+            summary: 'Meeting with Karsten',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+        }
+
+        function meetEventResponse(overrides = {}) {
+            return {
+                data: {
+                    id: 'evt-meet',
+                    summary: 'Meeting with Karsten',
+                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
+                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
+                    hangoutLink: 'https://meet.google.com/abc-defg-hij',
+                    conferenceData: {
+                        createRequest: { status: { statusCode: 'success' } },
+                        entryPoints: [{ entryPointType: 'video', uri: 'https://meet.google.com/abc-defg-hij' }],
+                    },
+                    ...overrides,
+                },
+            }
+        }
+
+        test('requests a Meet conference and returns the join URL', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue(meetEventResponse())
+
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+
+            expect(result.success).toBe(true)
+            expect(result.joinUrl).toBe('https://meet.google.com/abc-defg-hij')
+            expect(result.joinProvider).toBe('google_meet')
+            expect(result.provider).toBe('google')
+
+            const insertArgs = client.events.insert.mock.calls[0][0]
+            // Without conferenceDataVersion:1 Google silently ignores conferenceData.
+            expect(insertArgs.conferenceDataVersion).toBe(1)
+            expect(insertArgs.requestBody.conferenceData.createRequest.conferenceSolutionKey).toEqual({
+                type: 'hangoutsMeet',
+            })
+            expect(insertArgs.requestBody.conferenceData.createRequest.requestId).toEqual(expect.any(String))
+        })
+
+        test('uses a unique conference requestId per event', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue(meetEventResponse())
+
+            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+
+            const [first, second] = client.events.insert.mock.calls.map(
+                call => call[0].requestBody.conferenceData.createRequest.requestId
+            )
+            expect(first).not.toBe(second)
+        })
+
+        test('exposes the Meet link on the normalized event so downstream readers see it', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue(meetEventResponse())
+
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+
+            expect(result.event.hangoutLink).toBe('https://meet.google.com/abc-defg-hij')
+            expect(result.event.conferenceData).toBeTruthy()
+        })
+
+        // A Workspace policy can disable Meet. The booking must still succeed.
+        test('falls back to a plain event when Google rejects conferencing', async () => {
+            const client = connectSingleAccount()
+            const rejection = Object.assign(new Error('Invalid conference type value.'), { code: 403 })
+            client.events.insert.mockRejectedValueOnce(rejection).mockResolvedValueOnce({
+                data: {
+                    id: 'evt-plain',
+                    summary: 'Meeting with Karsten',
+                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
+                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
+                },
+            })
+
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+
+            expect(result.success).toBe(true)
+            expect(result.joinUrl).toBe('')
+            expect(result.event.eventId).toBe('evt-plain')
+            expect(client.events.insert).toHaveBeenCalledTimes(2)
+            // The retry must not carry conferencing fields.
+            const retryArgs = client.events.insert.mock.calls[1][0]
+            expect(retryArgs.requestBody.conferenceData).toBeUndefined()
+            expect(retryArgs.conferenceDataVersion).toBeUndefined()
+        })
+
+        // A 5xx may have created the event server-side; retrying could double-book.
+        test('does not retry a transient failure', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockRejectedValue(Object.assign(new Error('Backend Error'), { code: 500 }))
+
+            await expect(assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)).rejects.toThrow(
+                'Backend Error'
+            )
+            expect(client.events.insert).toHaveBeenCalledTimes(1)
+        })
+
+        test('succeeds without a link when Google reports a failed conference', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue(
+                meetEventResponse({
+                    hangoutLink: undefined,
+                    conferenceData: { createRequest: { status: { statusCode: 'failure' } } },
+                })
+            )
+
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
+
+            expect(result.success).toBe(true)
+            expect(result.joinUrl).toBe('')
+            expect(client.events.insert).toHaveBeenCalledTimes(1)
+        })
+
+        // Holidays and vacations are not meetings.
+        test('does not add conferencing to all-day events', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue({
+                data: {
+                    id: 'evt-allday',
+                    summary: 'Vacation',
+                    start: { date: '2026-03-12' },
+                    end: { date: '2026-03-13' },
+                },
+            })
+
+            await assistantCalendarTools.createCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                summary: 'Vacation',
+                start: { date: '2026-03-12' },
+                end: { date: '2026-03-13' },
+            })
+
+            const insertArgs = client.events.insert.mock.calls[0][0]
+            expect(insertArgs.requestBody.conferenceData).toBeUndefined()
+            expect(insertArgs.conferenceDataVersion).toBeUndefined()
+        })
+
+        test('honours the internal addConferencing opt-out', async () => {
+            const client = connectSingleAccount()
+            client.events.insert.mockResolvedValue(meetEventResponse())
+
+            await assistantCalendarTools.createCalendarEventForAssistantRequest({
+                ...TIMED_EVENT,
+                addConferencing: false,
+            })
+
+            expect(client.events.insert.mock.calls[0][0].requestBody.conferenceData).toBeUndefined()
+        })
     })
 
     test('returns reconnect guidance when no calendar account is connected', async () => {

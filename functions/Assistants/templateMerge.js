@@ -41,7 +41,12 @@ const TASK_LOCAL_FIELDS = new Set([
 
 // These settings did not exist on older derived assistants. Their absence is
 // therefore a legacy state, not a deliberate local override.
-const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set(['heartbeatModel'])
+const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set([
+    'emailModel',
+    'heartbeatModel',
+    'reasoningEffort',
+    'heartbeatReasoningEffort',
+])
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 
@@ -58,6 +63,10 @@ function getAssistantTemplateState(assistant) {
 
 function getTaskTemplateState(task) {
     const state = copyTemplateFields(task, TASK_LOCAL_FIELDS)
+    // aiModel was historically copied from the assistant into every task, so it
+    // cannot represent an intentional override. New explicit choices use
+    // aiModelOverride instead.
+    delete state.aiModel
     if (task?.recurrence && task.recurrence !== 'never') {
         delete state.startDate
         delete state.startTime

@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const moment = require('moment-timezone')
 const { google } = require('googleapis')
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
     CONNECTION_SERVICE_EMAIL,
     findConnectionsForProject,
@@ -30,6 +30,7 @@ const {
     GMAIL_DIRECTION_SCOPE_OUTGOING,
     DEFAULT_SYNC_INTERVAL_MINUTES,
     DEFAULT_GMAIL_LABELING_MODEL,
+    GMAIL_LABELING_MODEL_KEYS,
     buildConfigWriteData,
     buildDefaultState,
     getDefaultGmailLabelingConfig,
@@ -48,8 +49,10 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
@@ -74,7 +77,8 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
+    GMAIL_ACTIONABILITY_GUIDANCE
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
 const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_LUNA'
 const CUSTOM_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_TERRA'
@@ -161,25 +165,15 @@ function createPostLabelPromptHash(ruleKey = '', prompt = '') {
 }
 
 async function getGmailClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'gmail')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.gmail({ version: 'v1', auth: oauth2Client })
+    // Full refreshable credentials, not a bare access token: a stored token of unknown or
+    // past expiry is refreshed before use, and the client can refresh again mid-run (AT-2195).
+    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'gmail')
+    return google.gmail({ version: 'v1', auth })
 }
 
 function buildBootstrapQuery(config) {
     return `newer_than:${config.lookbackDays || 7}d`
 }
-
-const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
-    'MODEL_GPT5',
-    'MODEL_GPT5_1',
-    'MODEL_GPT5_2',
-    'MODEL_GPT5_4',
-    'MODEL_GPT5_5',
-    'MODEL_GPT5_4_MINI',
-    'MODEL_GPT5_6_LUNA',
-])
 
 function applyGmailLabelingModelMigration(config = {}) {
     if (!config || typeof config !== 'object') return config
@@ -188,7 +182,7 @@ function applyGmailLabelingModelMigration(config = {}) {
         promptMode: normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM),
     }
 
-    if (migratedConfig.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(migratedConfig.model)) {
+    if (GMAIL_LABELING_MODEL_KEYS.has(migratedConfig.model)) {
         return migratedConfig
     }
 
@@ -250,7 +244,7 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason.`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} ${DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER}" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
@@ -399,8 +393,8 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         typeof config.projectId === 'string' && config.projectId.trim()
             ? config.projectId.trim()
             : typeof userData.defaultProjectId === 'string'
-            ? userData.defaultProjectId.trim()
-            : ''
+              ? userData.defaultProjectId.trim()
+              : ''
     const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData, defaultProjectId)
     if (config.enabled && defaultConfig.labelDefinitions.length === 0) {
         throw new Error('Default Gmail labeling requires at least one active project.')
@@ -563,7 +557,7 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
 
 async function acquireSyncLock(userId, projectId, gmailEmail = '') {
     const stateRef = getGmailLabelingStateRef(userId, projectId)
-    const now = admin.firestore.Timestamp.now()
+    const now = Timestamp.now()
 
     await admin.firestore().runTransaction(async transaction => {
         const stateDoc = await transaction.get(stateRef)
@@ -802,7 +796,7 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
                 from: normalizedMessage.from,
                 subject: normalizedMessage.subject,
                 snippet: normalizedMessage.snippet,
-                processedAt: admin.firestore.Timestamp.now(),
+                processedAt: Timestamp.now(),
                 ...auditData,
             },
             { merge: true }
@@ -945,7 +939,7 @@ function buildPostLabelActionSkipped({
         goldSpent: Number.isFinite(goldSpent) ? goldSpent : 0,
         estimatedNormalGoldCost: Number.isFinite(estimatedNormalGoldCost) ? estimatedNormalGoldCost : 0,
         tokenUsage,
-        executedAt: admin.firestore.Timestamp.now(),
+        executedAt: Timestamp.now(),
     }
 }
 
@@ -1021,7 +1015,7 @@ function buildPostLabelAssistantMessages({
     return [
         [
             'system',
-            'You are executing a follow-up action after a Gmail labeling rule matched. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
+            'You are executing an automated follow-up action after a Gmail labeling rule matched. The follow-up instruction and email content are automation context, not an explicit end-user request to create a task. If you create a task from this run, you MUST set taskOrigin to assistant_suggestion, never user_request, and include a concise visible comment with the concrete email-based reason the task is worth doing. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
         ],
         [
             'user',
@@ -1065,6 +1059,7 @@ function buildPostLabelGmailContext({
     targetContactName = '',
     topicChatTitle = '',
     followUpType = 'informational',
+    taskSuggestionComment = '',
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1093,8 +1088,18 @@ function buildPostLabelGmailContext({
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
         topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
+        taskSuggestionComment: typeof taskSuggestionComment === 'string' ? taskSuggestionComment.trim() : '',
         ...(unsubscribe ? { unsubscribe } : {}),
     }
+}
+
+function buildPostLabelTaskSuggestionComment(normalizedMessage = {}) {
+    const subject = typeof normalizedMessage.subject === 'string' ? normalizedMessage.subject.trim() : ''
+    const conciseSubject = subject.length > 120 ? `${subject.slice(0, 117).trimEnd()}...` : subject
+
+    return conciseSubject
+        ? `I suggest this task because the automatically processed email “${conciseSubject}” appears to require follow-up.`
+        : 'I suggest this task because an automatically processed email appears to require follow-up.'
 }
 
 async function addRoutingCommentsToCreatedGmailTasks({
@@ -1266,6 +1271,7 @@ async function executePostLabelPrompt({
             targetContactName,
             topicChatTitle,
             followUpType,
+            taskSuggestionComment: buildPostLabelTaskSuggestionComment(normalizedMessage),
         })
         const toolRuntimeContext = {
             projectId: assistantProjectId,
@@ -1350,7 +1356,7 @@ async function executePostLabelPrompt({
             tokenUsage: {
                 totalTokens,
             },
-            executedAt: admin.firestore.Timestamp.now(),
+            executedAt: Timestamp.now(),
         }
     } catch (error) {
         const isBlocked = error.message?.includes('Tool not permitted')
@@ -1368,7 +1374,7 @@ async function executePostLabelPrompt({
             goldSpent: 0,
             estimatedNormalGoldCost: 0,
             tokenUsage: null,
-            executedAt: admin.firestore.Timestamp.now(),
+            executedAt: Timestamp.now(),
         }
     }
 }
@@ -1501,7 +1507,7 @@ async function processSingleMessage({
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const direction = getGmailMessageDirection(rawMessage)
     const eligibleLabelDefinitions = getEligibleLabelDefinitions(config.labelDefinitions, direction)
-    const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
+    const promptVersion = config.updatedAt || Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
     // Check the user has at least the minimum balance to run the classifier.
@@ -2068,7 +2074,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     applied: false,
                     archived: false,
                     skippedReason: 'processing_error',
-                    promptVersion: effectiveConfig.updatedAt || admin.firestore.Timestamp.now(),
+                    promptVersion: effectiveConfig.updatedAt || Timestamp.now(),
                     postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
                 skipped += 1
@@ -2076,7 +2082,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         }
 
         const latestHistoryId = await getCurrentProfileHistoryId(gmail)
-        const now = admin.firestore.Timestamp.now()
+        const now = Timestamp.now()
         const resolvedHistoryId = syncStartHistoryId || latestHistoryId || state.lastHistoryId || null
 
         await finalizeSyncState(
@@ -2134,7 +2140,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             syncMode,
         }
     } catch (error) {
-        const now = admin.firestore.Timestamp.now()
+        const now = Timestamp.now()
         await finalizeSyncState(
             userId,
             projectId,
@@ -2239,6 +2245,7 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
+    applyGmailLabelingModelMigration,
     applyGmailThreadLabelCorrection,
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,

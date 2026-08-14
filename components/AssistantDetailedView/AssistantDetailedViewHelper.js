@@ -10,6 +10,7 @@ import {
 import store from '../../redux/store'
 import URLsAssistants, {
     URL_ASSISTANT_DETAILS_CUSTOMIZATIONS,
+    URL_ASSISTANT_DETAILS_WORKFLOW,
     URL_ASSISTANT_DETAILS_BACKLINKS_NOTES,
     URL_ASSISTANT_DETAILS_BACKLINKS_TASKS,
     URL_ASSISTANT_DETAILS_NOTE,
@@ -20,6 +21,7 @@ import {
     DV_TAB_ASSISTANT_BACKLINKS,
     DV_TAB_ASSISTANT_CHAT,
     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
+    DV_TAB_ASSISTANT_WORKFLOW,
     DV_TAB_ASSISTANT_NOTE,
     DV_TAB_ASSISTANT_UPDATES,
     DV_TAB_ROOT_TASKS,
@@ -50,6 +52,16 @@ export const AssistantDetailedViewHelper = (navigation, tab, assistantId, projec
             case DV_TAB_ASSISTANT_CUSTOMIZATIONS:
                 URLsAssistants.replace(
                     URL_ASSISTANT_DETAILS_CUSTOMIZATIONS,
+                    { assistantId, projectId },
+                    projectId,
+                    assistantId
+                )
+                break
+        }
+        switch (tab) {
+            case DV_TAB_ASSISTANT_WORKFLOW:
+                URLsAssistants.replace(
+                    URL_ASSISTANT_DETAILS_WORKFLOW,
                     { assistantId, projectId },
                     projectId,
                     assistantId

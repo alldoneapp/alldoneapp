@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Dimensions } from 'react-native'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -53,6 +53,7 @@ import {
     VIDEO_TRIGGER,
 } from '../Utils/HelperFunctions'
 import './styles.css'
+import './quill2Setup'
 import {
     formatUrl,
     getUrlObject,
@@ -156,10 +157,37 @@ function CustomTextInput3(
         userIdAllowedToEditTags ? userIdAllowedToEditTags : loggedUserId
     )
     const [editorId, setEditorId] = useState(externalEditorId ? externalEditorId : v4())
+    // Marks this input's own scroll view: Quill may scroll inside it to follow
+    // the caret, but never anything above it. See quill2Setup.js (AT-2220).
+    const scrollBoundaryId = `ql-scroll-boundary-${editorId}`
     const [editorElement, setEditorElement] = useState(null)
     const [containerElement, setContainerElement] = useState(null)
     const [selectionBounds, setSelectionBounds] = useState({ top: 0, left: 0 })
-    const [html, setHtml] = useState('')
+    const [html, setHtmlState] = useState('')
+    /**
+     * `html` is what ReactQuill is given as its controlled `value`, and
+     * react-quill overwrites the editor whenever that value disagrees with the
+     * editor's own contents (`shouldComponentUpdate` -> `setEditorContents`).
+     *
+     * React state alone is too slow for that contract: this component also
+     * writes into the editor imperatively (`setContents(initialDeltaOps)` at
+     * mount, `updateContents` in processInitialText/clearAndSetContent), and a
+     * re-render triggered from anywhere else - a redux dispatch, or the
+     * synchronous relayout CustomScrollView performs after measuring - can be
+     * flushed BEFORE the queued `setHtml` is applied. react-quill then sees the
+     * stale value, decides the editor is out of sync and wipes it. That is
+     * AT-2178: the create-task popup was pre-filled correctly and then emptied
+     * again a tick later.
+     *
+     * The ref is updated synchronously, so every render - including one that
+     * interleaves with a pending state update - passes the value the editor
+     * actually holds. The state is kept because other effects depend on it.
+     */
+    const htmlRef = useRef('')
+    const setHtml = value => {
+        htmlRef.current = value
+        setHtmlState(value)
+    }
     const [mentionModalHeight, setMentionModalHeight] = useState(0)
     const [flag, setFlag] = useState(false)
 
@@ -167,8 +195,8 @@ function CustomTextInput3(
         projectId === GLOBAL_PROJECT_ID
             ? ALL_PROJECTS_INDEX
             : projectIndex
-            ? projectIndex
-            : projectId && ProjectHelper.getProjectIndexById(projectId)
+              ? projectIndex
+              : projectId && ProjectHelper.getProjectIndexById(projectId)
     const innerProjectId = projectId ? projectId : projectIndex ? loggedUserProjects[projectIndex].id : undefined
 
     const textRef = useRef('')
@@ -656,7 +684,7 @@ function CustomTextInput3(
                 delta.insert(initialTextExtended)
             } else {
                 if (isCalendarTask) {
-                    delta = reactQuillRef.current.getEditor().clipboard.convert(initialTextExtended)
+                    delta = reactQuillRef.current.getEditor().clipboard.convert({ html: initialTextExtended })
                 } else {
                     delta = processPastedFn(
                         initialTextExtended,
@@ -887,7 +915,7 @@ function CustomTextInput3(
                 formats.push('commentTagFormat')
             }
             if (isCalendarTask) {
-                formats.push('bold', 'italic', 'underline', 'bullet', 'list', 'attachment')
+                formats.push('bold', 'italic', 'underline', 'list', 'attachment')
             }
             return formats
         }
@@ -956,8 +984,8 @@ function CustomTextInput3(
     useEffect(() => {
         if (quillRef.current) {
             showMentionPopupRef.current
-                ? delete quillRef.current.keyboard.bindings[9]
-                : (quillRef.current.keyboard.bindings[9] = quillKeyboardBindingsTabRef.current)
+                ? delete quillRef.current.keyboard.bindings['Tab']
+                : (quillRef.current.keyboard.bindings['Tab'] = quillKeyboardBindingsTabRef.current)
         }
     }, [showMentionPopupRef.current])
 
@@ -1073,10 +1101,10 @@ function CustomTextInput3(
 
         quillRef.current = reactQuillRef.current.getEditor()
         if (autoFocus) quillRef.current.focus()
-        quillKeyboardBindingsTabRef.current = quillRef.current.keyboard.bindings[9]
+        quillKeyboardBindingsTabRef.current = quillRef.current.keyboard.bindings['Tab']
 
         if (disabledTabKey) {
-            delete quillRef.current.keyboard.bindings[9]
+            delete quillRef.current.keyboard.bindings['Tab']
         }
 
         if (setEditor) {
@@ -1085,6 +1113,14 @@ function CustomTextInput3(
 
         const containerElement = document.getElementsByClassName(`ql-container-${editorId}`)[0]
         containerElement.classList.add('ql-textInputContainer')
+
+        // Confine Quill's scroll-into-view to this input's own scroll view.
+        // Without it, `focus()` / `setSelection()` scroll every scroll container
+        // above the editor as well — the task list, a detailed view, the page —
+        // which is what makes the app jump when a task line turns into an input
+        // (AT-2220, see quill2Setup.js). The boundary is the CustomScrollView
+        // wrapper below, so the editor still scrolls itself to follow the caret.
+        quillRef.current.scrollBoundaryElement = document.getElementById(scrollBoundaryId)
 
         const editorElement = document.getElementsByClassName(`ql-editor-${editorId}`)[0]
         editorElement.classList.add('ql-textInputEditor')
@@ -1220,6 +1256,7 @@ function CustomTextInput3(
 
     return (
         <CustomScrollView
+            nativeID={scrollBoundaryId}
             style={[
                 containerStyle,
                 {
@@ -1238,6 +1275,7 @@ function CustomTextInput3(
                     quillTextInputRefs[editorId] = el
                 }}
                 modules={{
+                    editorMeta: true,
                     toolbar: false,
                     autoformat: true,
                     history: {
@@ -1246,7 +1284,7 @@ function CustomTextInput3(
                         beforeUndoRedo,
                     },
                 }}
-                value={html}
+                value={htmlRef.current}
                 onChange={updateText}
                 placeholder={createPlaceholder(
                     placeholder,

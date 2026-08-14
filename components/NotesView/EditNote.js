@@ -45,6 +45,7 @@ import {
     uploadNewNote,
 } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
+import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 
 class EditNote extends Component {
     constructor(props) {
@@ -218,6 +219,8 @@ class EditNote extends Component {
     /**
      * Update task data in Firebase
      */
+    submitOnce = createSingleFlightSubmit(submission => submission())
+
     updateNote = (e, actionBeforeSave) => {
         if (e) e.preventDefault()
 
@@ -234,21 +237,27 @@ class EditNote extends Component {
 
         if (noteChanged && loggedUserCanUpdateObject) {
             if (formType === 'new') {
-                // setting current info
-                const now = Date.now()
-                tmpNote.creatorId = loggedUser.uid
-                tmpNote.userId = tmpNote.userId || loggedUser.uid
-                tmpNote.created = now
+                // Enter reaches this editor through the document listener, Quill's
+                // newline callback and the done button at once, and each run mints
+                // a new note id, so creation is guarded against duplicates.
+                this.submitOnce(() => {
+                    // setting current info
+                    const now = Date.now()
+                    tmpNote.creatorId = loggedUser.uid
+                    tmpNote.userId = tmpNote.userId || loggedUser.uid
+                    tmpNote.created = now
 
-                const noteToUpload = { ...tmpNote }
-                store.dispatch(setTmpInputTextNote(''))
-                uploadNewNote(projectId, noteToUpload, true)
-                    .then(note => {
-                        this.onSuccessUploadNewNote(note, actionBeforeSave, linkedParentObject)
-                    })
-                    .catch(this.dismissEditMode)
+                    const noteToUpload = { ...tmpNote }
+                    store.dispatch(setTmpInputTextNote(''))
+                    const creation = uploadNewNote(projectId, noteToUpload, true)
+                        .then(note => {
+                            this.onSuccessUploadNewNote(note, actionBeforeSave, linkedParentObject)
+                        })
+                        .catch(this.dismissEditMode)
 
-                this.resetEditMode()
+                    this.resetEditMode()
+                    return creation
+                })
             } else {
                 if (tmpNote.title === '') {
                     this.askToDeleteNote()
@@ -706,10 +715,10 @@ class EditNote extends Component {
                                           !noteChanged
                                               ? 'Ok'
                                               : formType === 'new'
-                                              ? `Add`
-                                              : formType === 'edit' && tmpNote.title === ''
-                                              ? `Delete`
-                                              : `Save`
+                                                ? `Add`
+                                                : formType === 'edit' && tmpNote.title === ''
+                                                  ? `Delete`
+                                                  : `Save`
                                       )
                             }
                             type={formType === 'edit' && tmpNote.title === '' ? 'danger' : 'primary'}
@@ -718,10 +727,10 @@ class EditNote extends Component {
                                     ? formType === 'edit' && tmpNote.title === ''
                                         ? 'trash-2'
                                         : !noteChanged
-                                        ? 'x'
-                                        : formType === 'new'
-                                        ? 'plus'
-                                        : 'save'
+                                          ? 'x'
+                                          : formType === 'new'
+                                            ? 'plus'
+                                            : 'save'
                                     : null
                             }
                             onPress={this.updateNote}
@@ -761,10 +770,7 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
         elevation: 3,
         marginLeft: -16,
         marginRight: -16,

@@ -5,13 +5,17 @@ import Button from '../../../UIControls/Button'
 import styles, { colors } from '../../../styles/global'
 import { resolveAssistantTemplateConflicts } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
+import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 
 const FIELD_LABEL_KEYS = {
     displayName: 'Name',
     description: 'Description',
     emailSignature: 'Email signature',
+    emailModel: 'Inbound email model',
     heartbeatModel: 'Heartbeat model',
+    heartbeatReasoningEffort: 'Heartbeat reasoning effort',
     model: 'Assistant model',
+    reasoningEffort: 'Reasoning effort',
     temperature: 'Temperature',
 }
 
@@ -19,6 +23,7 @@ const MODEL_LABELS = {
     MODEL_GPT5_6_SOL: 'GPT 5.6 Sol',
     MODEL_GPT5_6_TERRA: 'GPT 5.6 Terra',
     MODEL_GPT5_6_LUNA: 'GPT 5.6 Luna',
+    MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4 Flash',
 }
 
 export const formatTemplateConflictField = field => {
@@ -34,7 +39,9 @@ export const formatTemplateConflictField = field => {
 
 export const formatTemplateConflictValue = (field, value, exists) => {
     if (!exists) return translate('(removed)')
-    if (field === 'model' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
+    if (field === 'model' || field === 'emailModel' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
+    if (field === 'reasoningEffort' || field === 'heartbeatReasoningEffort')
+        return translate(getAssistantReasoningEffortLabelKey(value))
     if (typeof value === 'string') return value || translate('(empty)')
     try {
         return JSON.stringify(value, null, 2)

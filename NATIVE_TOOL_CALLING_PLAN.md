@@ -24,11 +24,11 @@ We implemented **proper OpenAI native tool calling** that solves the hallucinati
 
 #### Benefits of This Approach
 
--   ✅ **Fixes hallucination**: Original assistant handles everything (no second LLM)
--   ✅ **Maintains context**: Assistant's personality and instructions preserved
--   ✅ **Proper OpenAI flow**: Uses official tool result injection pattern
--   ✅ **Clean architecture**: Tool execution separated into dedicated function
--   ✅ **Backward compatible**: Falls back to manual format if conversation history missing
+- ✅ **Fixes hallucination**: Original assistant handles everything (no second LLM)
+- ✅ **Maintains context**: Assistant's personality and instructions preserved
+- ✅ **Proper OpenAI flow**: Uses official tool result injection pattern
+- ✅ **Clean architecture**: Tool execution separated into dedicated function
+- ✅ **Backward compatible**: Falls back to manual format if conversation history missing
 
 ### Code Changes Summary
 
@@ -84,22 +84,22 @@ User: "Show me my tasks for today"
 
 **File: `assistantHelper.js`**
 
--   Lines 68-73: `modelSupportsNativeTools()` - Returns true only for GPT models
--   Lines 320-327: Tool schemas added to ChatOpenAI config when model supports it
--   Lines 644-899: `executeToolNatively()` - Executes any of the 7 tools and returns raw structured results
--   Lines 930-1066: Native tool call detection, execution, and result injection back to OpenAI
--   Lines 2259-2276: `storeBotAnswerStream` signature updated to accept conversation history and model info
--   Lines 901-920: `storeChunks` signature updated to accept conversation history and model info
+- Lines 68-73: `modelSupportsNativeTools()` - Returns true only for GPT models
+- Lines 320-327: Tool schemas added to ChatOpenAI config when model supports it
+- Lines 644-899: `executeToolNatively()` - Executes any of the 7 tools and returns raw structured results
+- Lines 930-1066: Native tool call detection, execution, and result injection back to OpenAI
+- Lines 2259-2276: `storeBotAnswerStream` signature updated to accept conversation history and model info
+- Lines 901-920: `storeChunks` signature updated to accept conversation history and model info
 
 **File: `toolSchemas.js`**
 
--   Defines OpenAI function schemas for all 7 tools
--   `getToolSchemas(allowedTools)` filters schemas based on permissions
+- Defines OpenAI function schemas for all 7 tools
+- `getToolSchemas(allowedTools)` filters schemas based on permissions
 
 **Files: `assistantNormalTalk.js` & `assistantPreConfigTaskTopic.js`**
 
--   Extract `allowedTools` from assistant/settings
--   Pass `formattedChatPrompt`, `model`, `temperature`, and `allowedTools` to `storeBotAnswerStream`
+- Extract `allowedTools` from assistant/settings
+- Pass `formattedChatPrompt`, `model`, `temperature`, and `allowedTools` to `storeBotAnswerStream`
 
 ---
 
@@ -114,24 +114,24 @@ The sections below were the original plan for implementing native tool calling. 
 
 **Challenge 1: Stream Continuation**
 
--   Native tool calls pause the stream
--   Need to resume with updated context
--   **ACTUAL SOLUTION**: Hybrid approach avoids this - native calls are converted to manual format and processed in same stream
+- Native tool calls pause the stream
+- Need to resume with updated context
+- **ACTUAL SOLUTION**: Hybrid approach avoids this - native calls are converted to manual format and processed in same stream
 
 **Challenge 2: User Context Extraction**
 
--   Tool executors need creatorId, projectId, etc.
--   **ACTUAL SOLUTION**: No changes needed - existing tool execution blocks already have this context
+- Tool executors need creatorId, projectId, etc.
+- **ACTUAL SOLUTION**: No changes needed - existing tool execution blocks already have this context
 
 **Challenge 3: Backward Compatibility**
 
--   Don't break existing Perplexity model users
--   **ACTUAL SOLUTION**: Tools only enabled for GPT models via `modelSupportsNativeTools()` check
+- Don't break existing Perplexity model users
+- **ACTUAL SOLUTION**: Tools only enabled for GPT models via `modelSupportsNativeTools()` check
 
 **Challenge 4: Recursive Stream Processing**
 
--   Risk of infinite loops if assistant keeps calling tools
--   **ACTUAL SOLUTION**: Not needed with hybrid approach - tool execution happens inline
+- Risk of infinite loops if assistant keeps calling tools
+- **ACTUAL SOLUTION**: Not needed with hybrid approach - tool execution happens inline
 
 ### Original Phases (Not Followed)
 

@@ -48,8 +48,6 @@ const getEnvFunctions = () => {
             TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
             TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
             TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-            ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-            ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
             IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -66,6 +64,7 @@ const getEnvFunctions = () => {
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
             APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
@@ -92,8 +91,6 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: envJson.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: envJson.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: envJson.TWILIO_WHATSAPP_FROM || '',
-                    ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
-                    ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: envJson.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: envJson.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: envJson.IP_REGISTRY_API_KEY || '',
@@ -114,6 +111,11 @@ const getEnvFunctions = () => {
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
                     APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
+                    // AT-2230. This map is an explicit allowlist, NOT a passthrough of the JSON: a
+                    // key added to GOOGLE_FUNCTIONS_ENV_DEV/_PROD but missing here is silently
+                    // invisible to every caller of getEnvFunctions(). That is exactly how the
+                    // platform OpenRouter key was configured in CI and still read as unconfigured.
+                    OPENROUTER_API_KEY: envJson.OPENROUTER_API_KEY || '',
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
@@ -130,6 +132,8 @@ const getEnvFunctions = () => {
                     BROWSER_CALLS_ENABLED: envJson.BROWSER_CALLS_ENABLED || '',
                     WHATSAPP_CALL_MAX_DURATION_SECONDS: envJson.WHATSAPP_CALL_MAX_DURATION_SECONDS || '',
                     GOOGLE_MAPS_API_KEY: envJson.GOOGLE_MAPS_API_KEY || '',
+                    TYPESENSE_HOST: envJson.TYPESENSE_HOST || '',
+                    TYPESENSE_ADMIN_API_KEY: envJson.TYPESENSE_ADMIN_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -151,8 +155,6 @@ const getEnvFunctions = () => {
                         TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                         TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                         TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                        ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                        ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         SIB_API_KEY: process.env.SIB_API_KEY || '',
                         SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                         IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -194,8 +196,6 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                    ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                    ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: process.env.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -236,8 +236,6 @@ const getEnvFunctions = () => {
                 TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                 TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                 TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
-                ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
-                ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                 SIB_API_KEY: process.env.SIB_API_KEY || '',
                 SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                 IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -258,6 +256,7 @@ const getEnvFunctions = () => {
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                 APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+                OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
@@ -266,7 +265,10 @@ const getEnvFunctions = () => {
     }
 
     // Runtime environment variables/secrets can override missing realtime calling values.
+    // Listed here rather than only in the maps above so the JSON-missing / JSON-error / no-JSON
+    // fallback branches resolve them too.
     ;[
+        'OPENROUTER_API_KEY',
         'MENUBAR_APP_WEBHOOK_SECRET',
         'EXTERNAL_TOOLS_SIGNING_SECRET',
         'OPENAI_PROJECT_ID',
@@ -280,6 +282,8 @@ const getEnvFunctions = () => {
         'BROWSER_CALLS_ENABLED',
         'WHATSAPP_CALL_MAX_DURATION_SECONDS',
         'GOOGLE_MAPS_API_KEY',
+        'TYPESENSE_HOST',
+        'TYPESENSE_ADMIN_API_KEY',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })
@@ -297,12 +301,6 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.OPEN_AI_KEY || isPlaceholderValue(envFunctions.OPEN_AI_KEY)) {
         console.warn('Warning: OPENAI_API_KEY is not set or is a placeholder')
-    }
-    if (!envFunctions.ALGOLIA_APP_ID || isPlaceholderValue(envFunctions.ALGOLIA_APP_ID)) {
-        console.warn('Warning: ALGOLIA_APP_ID is not set or is a placeholder')
-    }
-    if (!envFunctions.ALGOLIA_ADMIN_API_KEY || isPlaceholderValue(envFunctions.ALGOLIA_ADMIN_API_KEY)) {
-        console.warn('Warning: ALGOLIA_ADMIN_API_KEY is not set or is a placeholder')
     }
     if (!envFunctions.SIB_API_KEY || isPlaceholderValue(envFunctions.SIB_API_KEY)) {
         console.warn('Warning: SIB_API_KEY is not set or is a placeholder')

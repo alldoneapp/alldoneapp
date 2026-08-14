@@ -106,10 +106,10 @@ export default function DelegationTargetsAccessProperty({ disabled, projectId, a
     const summaryText = !availableTargets.length
         ? translate('No assistants available for delegation')
         : !hasSelection
-        ? translate('All assistants enabled for delegation')
-        : !selectedTargets.length
-        ? translate('No assistants enabled for delegation')
-        : selectedTargets.map(target => `${target.displayName} (${target.projectName})`).join(', ')
+          ? translate('All assistants enabled for delegation')
+          : !selectedTargets.length
+            ? translate('No assistants enabled for delegation')
+            : selectedTargets.map(target => `${target.displayName} (${target.projectName})`).join(', ')
 
     const selectionCount = hasSelection ? selectedTargets.length : availableTargets.length
 

@@ -9,35 +9,21 @@ import {
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
+import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskIcon'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const isRecurringAssistantTask = task => {
-    const recurrenceByUser = task?.recurrenceByUser || {}
-    const hasRecurringUser = Object.values(recurrenceByUser).some(
-        recurrence => recurrence && recurrence !== RECURRENCE_NEVER
-    )
+const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
+    const quickLinkTasks = tasks.filter(task => !isScheduledAssistantTask(task))
 
-    return hasRecurringUser || (!!task?.recurrence && task.recurrence !== RECURRENCE_NEVER)
-}
-
-const sortAssistantTasksForQuickLinks = tasks => {
-    const oneTimeTasks = tasks.filter(task => !isRecurringAssistantTask(task))
-    const recurringTasks = tasks.filter(task => isRecurringAssistantTask(task))
-
-    return [...oneTimeTasks, ...recurringTasks]
-}
-
-const getOptions = (project, assistantId, tasks) => {
-    return sortAssistantTasksForQuickLinks(tasks).map(task => {
+    return quickLinkTasks.map(task => {
         return {
             id: task.id,
             type: TASK_OPTION,
-            text: shrinkTagText(task.name, 16),
-            icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
+            text: showFullLabels ? task.name : shrinkTagText(task.name, 16),
+            icon: getAssistantTaskIcon(task),
             task,
             action: () => {
                 if (task.type === TASK_TYPE_IFRAME) {
@@ -53,10 +39,10 @@ const getOptions = (project, assistantId, tasks) => {
                     store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration
                     const aiSettings =
-                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                        task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                             ? {
                                   model: task.aiModel,
-                                  temperature: task.aiTemperature,
+                                  reasoningEffort: task.aiReasoningEffort,
                                   systemMessage: task.aiSystemMessage,
                               }
                             : null
@@ -64,6 +50,7 @@ const getOptions = (project, assistantId, tasks) => {
                     const taskMetadata = {
                         ...(task.taskMetadata || {}),
                         sendWhatsApp: !!task.sendWhatsApp,
+                        executionMode: task.executionMode,
                     }
                     const targetProjectId = project?.id
                     if (!targetProjectId) return
@@ -98,13 +85,24 @@ export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, i
     return calculatedAmount
 }
 
-export const getOptionsPresentationData = (project, defaultAssistantId, tasks, amountOfButtonOptions) => {
-    const options = getOptions(project, defaultAssistantId, tasks)
+export const getOptionsPresentationData = (
+    project,
+    defaultAssistantId,
+    tasks,
+    amountOfButtonOptions,
+    showAllOptions = false
+) => {
+    const options = getOptions(project, defaultAssistantId, tasks, showAllOptions)
+    const hasAdditionalOptions = options.length > amountOfButtonOptions
+
+    if (showAllOptions) {
+        return { optionsLikeButtons: options, optionsInModal: [], showSubmenu: false, hasAdditionalOptions }
+    }
     const optionsLikeButtons = options.slice(0, amountOfButtonOptions)
     const optionsInModal = options.slice(amountOfButtonOptions)
     const showSubmenu = optionsInModal.length > 0
 
-    return { optionsLikeButtons, optionsInModal, showSubmenu }
+    return { optionsLikeButtons, optionsInModal, showSubmenu, hasAdditionalOptions }
 }
 
 export const getCommentData = (
@@ -161,9 +159,18 @@ export const getCommentData = (
     }
 }
 
-export const getAssistantLineData = (selectedProject, defaultAssistantId, defaultProjectId) => {
+export const getAssistantLineData = (
+    selectedProject,
+    defaultAssistantId,
+    defaultProjectId,
+    preferAssistantId = false
+) => {
     const assistantId =
-        selectedProject && selectedProject.assistantId ? selectedProject.assistantId : defaultAssistantId
+        preferAssistantId && defaultAssistantId
+            ? defaultAssistantId
+            : selectedProject && selectedProject.assistantId
+              ? selectedProject.assistantId
+              : defaultAssistantId
     const assistant = getAssistant(assistantId)
 
     // Determine the actual project where the assistant lives

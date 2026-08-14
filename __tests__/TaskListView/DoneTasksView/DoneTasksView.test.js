@@ -24,7 +24,6 @@ describe('DoneTasksView component', () => {
 
     describe('DoneTasksView snapshot test', () => {
         xit('should render correctly', async () => {
-
             const tree = renderer.create(<DoneTasksView taskList={DoneTasksViewInput} />).toJSON()
             expect(tree).toMatchSnapshot()
         })

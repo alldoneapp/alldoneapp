@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -31,8 +31,10 @@ import {
     startMicrosoftServerSideAuth,
 } from '../../../apis/microsoft/MicrosoftOAuthServerSide'
 import ConnectionSettingsModal from './ConnectionSettingsModal'
+import ProjectListModal from '../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
 import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
+import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -46,41 +48,26 @@ function microsoftServiceFor(service) {
     return service === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'email'
 }
 
-// Simple project list popover — connecting an account REQUIRES choosing its default project.
-function ProjectPicker({ projects, onSelect, closePopover }) {
-    return (
-        <View style={localStyles.pickerContainer}>
-            <Text style={[styles.subtitle2, localStyles.pickerTitle]}>{translate('Choose a default project')}</Text>
-            {projects.map(project => (
-                <TouchableOpacity
-                    key={project.id}
-                    style={localStyles.pickerRow}
-                    onPress={() => {
-                        closePopover()
-                        onSelect(project)
-                    }}
-                >
-                    <View style={[localStyles.projectDot, { backgroundColor: project.color || colors.Primary100 }]} />
-                    <Text style={[styles.body2, localStyles.pickerRowText]} numberOfLines={1}>
-                        {project.name}
-                    </Text>
-                </TouchableOpacity>
-            ))}
-        </View>
-    )
-}
-
+// Connecting an account REQUIRES choosing its default project. The list is
+// the shared ProjectListModal (this was the plan's "hidden ninth picker").
 function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     return (
-        <Popover
+        <AppPopover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
             padding={4}
             containerStyle={POPOVER_CONTAINER_STYLE}
             onClickOutside={() => setIsOpen(false)}
-            content={<ProjectPicker projects={projects} onSelect={onSelect} closePopover={() => setIsOpen(false)} />}
+            content={
+                <ProjectListModal
+                    closeModal={() => setIsOpen(false)}
+                    projects={projects}
+                    title={translate('Choose a default project')}
+                    onSelectProject={onSelect}
+                />
+            }
         >
             <TouchableOpacity
                 style={localStyles.projectButton}
@@ -94,7 +81,7 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
                 </Text>
                 <Icon name="chevron-down" size={13} color={colors.Text03} />
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }
 
@@ -119,10 +106,22 @@ function ConnectionCard({ service, connection, projects }) {
     }
 
     const closeSettings = () => {
+        // Closing is not idempotent: the Gmail labeling header close button
+        // defers its close (see components/FollowUp/CloseButton.js), so the
+        // same click can reach this handler again after the popover already
+        // unmounted. A second hide under a re-opened popup would release
+        // somebody else's lock; only honour the first (AT-2243).
         if (!settingsOpenRef.current) return
+        // A popup that was already closed must never be able to hide the
+        // global float-popup lock twice: a mouse-down on the (still visible)
+        // header close button fires its close, then the button's own click
+        // re-opens the settings and re-acquires the lock. With the ref
+        // cleared before the dispatch, the re-open is what comes last and the
+        // lock stays balanced.
+        const wasOpen = settingsOpenRef.current
         settingsOpenRef.current = false
         setSettingsOpen(false)
-        dispatch(hideFloatPopup())
+        if (wasOpen) dispatch(hideFloatPopup())
     }
 
     useEffect(() => {
@@ -264,7 +263,7 @@ function ConnectionCard({ service, connection, projects }) {
                     </TouchableOpacity>
                 )}
                 {hasSettingsSection && (
-                    <Popover
+                    <AppPopover
                         isOpen={settingsOpen}
                         position={['right', 'bottom', 'left', 'top']}
                         padding={4}
@@ -292,7 +291,7 @@ function ConnectionCard({ service, connection, projects }) {
                             <Icon name="settings" size={13} color={colors.Primary100} />
                             <Text style={[styles.caption1, localStyles.textActionLabel]}>{translate('Settings')}</Text>
                         </TouchableOpacity>
-                    </Popover>
+                    </AppPopover>
                 )}
                 <TouchableOpacity style={localStyles.textAction} onPress={disconnect} disabled={busy}>
                     <Icon name="unlink" size={13} color={colors.UtilityRed200} />
@@ -333,7 +332,7 @@ function ConnectionsSection({ service, title, connections, projects }) {
             ))}
             <View style={localStyles.connectRow}>
                 {[PROVIDER_GOOGLE, PROVIDER_MICROSOFT].map(provider => (
-                    <Popover
+                    <AppPopover
                         key={provider}
                         isOpen={connectPicker === provider}
                         position={['bottom', 'top', 'right', 'left']}
@@ -342,10 +341,11 @@ function ConnectionsSection({ service, title, connections, projects }) {
                         containerStyle={POPOVER_CONTAINER_STYLE}
                         onClickOutside={() => setConnectPicker(null)}
                         content={
-                            <ProjectPicker
+                            <ProjectListModal
                                 projects={projects}
-                                onSelect={project => connectWith(provider, project)}
-                                closePopover={() => setConnectPicker(null)}
+                                title={translate('Choose a default project')}
+                                onSelectProject={project => connectWith(provider, project)}
+                                closeModal={() => setConnectPicker(null)}
                             />
                         }
                     >
@@ -356,7 +356,7 @@ function ConnectionsSection({ service, title, connections, projects }) {
                             buttonStyle={{ marginRight: 12 }}
                             onPress={() => setConnectPicker(provider)}
                         />
-                    </Popover>
+                    </AppPopover>
                 ))}
             </View>
         </View>
@@ -381,8 +381,12 @@ export default function IntegrationsSettings() {
     return (
         <View style={localStyles.container}>
             <Text style={[styles.body1, localStyles.description]}>{translate('IntegrationsSettingsDescription')}</Text>
-            <DefaultVmAgentSection />
-            <AgentSubscriptionsSection />
+            {/* One spinner for both server-fetched sections; the account lists below come from
+                already-loaded Redux state and stay interactive. */}
+            <IntegrationsLoadingRegion>
+                <DefaultVmAgentSection />
+                <AgentSubscriptionsSection />
+            </IntegrationsLoadingRegion>
             <ConnectionsSection
                 service={CONNECTION_SERVICE_EMAIL}
                 title="Email accounts"
@@ -510,40 +514,5 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 4,
-    },
-    pickerContainer: {
-        backgroundColor: colors.Secondary400,
-        borderRadius: 4,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
-        minWidth: 220,
-        maxWidth: 280,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOpacity: 1,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 3,
-    },
-    pickerTitle: {
-        color: '#ffffff',
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-    },
-    pickerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        height: 36,
-        borderRadius: 4,
-    },
-    projectDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        marginRight: 8,
-    },
-    pickerRowText: {
-        color: '#ffffff',
-        flexShrink: 1,
     },
 })

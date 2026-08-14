@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useRef, useState, useCallback, useEffect } from 'react'
 import { StyleSheet, View, TextInput } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -10,7 +10,8 @@ import Spinner from '../../../UIComponents/Spinner'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import {
-    ASSISTANT_INPUT_MAX_HEIGHT,
+    getAssistantControlsStacked,
+    getAssistantInputDisplayHeight,
     getAssistantInputLayout,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../../../MyDayView/AssistantLine/assistantInputLayout'
@@ -20,7 +21,22 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
+    const [controlsStacked, setControlsStacked] = useState(false)
     const isSendingRef = useRef(false)
+
+    // Same rule as the My Day assistant line: once the field grows past one
+    // line the voice and send buttons stack directly below each other, and the
+    // field expands into the width that frees up. Released only when the field
+    // is emptied, so the width change can never feed back into the wrapping.
+    useEffect(() => {
+        setControlsStacked(wasStacked =>
+            getAssistantControlsStacked({
+                inputHeight: inputLayout.height,
+                hasText: message.length > 0,
+                wasStacked,
+            })
+        )
+    }, [inputLayout.height, message])
 
     const updateInputHeight = useCallback(contentHeight => {
         setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
@@ -80,7 +96,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                 <TextInput
                     style={[
                         localStyles.messageInput,
-                        { height: inputLayout.height },
+                        { height: getAssistantInputDisplayHeight(inputLayout.height, controlsStacked) },
                         !inputLayout.scrollEnabled && localStyles.messageInputExpanding,
                     ]}
                     value={message}
@@ -96,19 +112,22 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                         updateInputHeight(e.nativeEvent.contentSize.height)
                     }}
                 />
-                <View style={localStyles.sendButtonWrapper}>
+                <View
+                    testID={'assistant-message-controls'}
+                    style={[localStyles.sendButtonWrapper, controlsStacked && localStyles.sendButtonWrapperExpanded]}
+                >
                     <AssistantVoiceCallButton
                         compact
                         assistant={assistant}
                         projectId={projectId}
-                        buttonStyle={localStyles.voiceButton}
+                        buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
                     />
                     <Button
                         title={isSending ? null : sendButtonTitle}
                         icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                         onPress={handleSendMessage}
                         disabled={!canSend}
-                        buttonStyle={sendButtonStyle}
+                        buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}
                         titleStyle={localStyles.sendButtonTitle}
                         accessibilityLabel={sendLabel}
                         accessible={true}
@@ -163,9 +182,23 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    sendButtonWrapperExpanded: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+    },
     voiceButton: {
         marginLeft: 0,
         marginRight: 8,
+    },
+    voiceButtonExpanded: {
+        marginRight: 0,
+        marginBottom: 8,
+    },
+    sendButtonStacked: {
+        // Overrides Button's own alignSelf: 'flex-start' so the send button
+        // stays on the shared centre axis with the voice button above it.
+        alignSelf: 'center',
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,

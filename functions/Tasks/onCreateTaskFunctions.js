@@ -5,6 +5,8 @@ const { TASKS_OBJECTS_TYPE, createRecord } = require('../AlgoliaGlobalSearchHelp
 const { checkIfObjectIsLocked } = require('../Utils/HelperFunctionsCloud')
 const { updateContactOpenTasksAmount } = require('../Firestore/contactsFirestore')
 const { getNextTaskId } = require('../shared/taskIdGenerator')
+const { routeNewTaskToGoal } = require('./taskGoalRouting')
+const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 
 const proccessAlgoliaRecord = async (task, projectId) => {
     const isLocked = await checkIfObjectIsLocked(projectId, task.lockKey, task.userId)
@@ -102,10 +104,6 @@ const generateHumanReadableIdAsync = async (task, projectId, retryCount = 0) => 
 }
 
 const onCreateTask = async (task, projectId) => {
-    console.log(`🚨🚨🚨 CLOUD FUNCTION TRIGGERED: onCreateTask for task ${task.id} 🚨🚨🚨`)
-    console.log(`[HumanReadableID] onCreateTask triggered for task ${task.id}`)
-    console.log(`[HumanReadableID] Task humanReadableId at creation: ${task.humanReadableId}`)
-
     const promises = []
     if (!task.parentId && task.parentGoalId) {
         promises.push(updateGoalDynamicProgress(projectId, task.parentGoalId))
@@ -117,6 +115,17 @@ const onCreateTask = async (task, projectId) => {
     // Generate human readable ID asynchronously (non-blocking)
     console.log(`[HumanReadableID] Starting generateHumanReadableIdAsync for task ${task.id}`)
     promises.push(generateHumanReadableIdAsync(task, projectId))
+    promises.push(routeNewTaskToGoal({ task, projectId }))
+    if (task.workflowTask === true) {
+        promises.push(
+            enqueueWorkflowAiRunIfNeeded(projectId, task.id, {}, task).catch(error =>
+                console.error('[workflowAiStep] Initial enqueue check failed', {
+                    taskId: task.id,
+                    error: error.message,
+                })
+            )
+        )
+    }
 
     await Promise.all(promises)
     console.log(`[HumanReadableID] onCreateTask completed for task ${task.id}`)

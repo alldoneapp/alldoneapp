@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import Button from '../../../UIControls/Button'
 import { useSelector } from 'react-redux'
 import DateFormatPickerModal, { DATE_FORMAT_EUROPE } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
@@ -22,7 +22,7 @@ export default function DateFormat({ userId, dateFormat }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <Popover
+                <AppPopover
                     content={
                         <DateFormatPickerModal
                             userId={userId}
@@ -47,7 +47,7 @@ export default function DateFormat({ userId, dateFormat }) {
                         }`}
                         onPress={() => setOpen(true)}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

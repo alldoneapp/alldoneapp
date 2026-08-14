@@ -26,6 +26,15 @@
                 ]
             },
             {
+                "source": "/static/**",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "public, max-age=31536000, immutable"
+                    }
+                ]
+            },
+            {
                 "source": "**/*.mp4",
                 "headers": [
                     {
@@ -114,6 +123,13 @@
                 }
             },
             {
+                "source": "/api/menubar/upcoming",
+                "function": {
+                    "functionId": "menubarUpcoming",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/menubar/notes",
                 "function": {
                     "functionId": "menubarPushNote",
@@ -175,7 +191,7 @@
     },
     "functions": {
         "source": "functions",
-        "runtime": "nodejs20",
+        "runtime": "nodejs22",
         "region": "europe-west1",
         "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "e2b-template/**"]
     },

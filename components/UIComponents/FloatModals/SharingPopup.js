@@ -127,12 +127,8 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        width: 305,
         overflow: 'visible',
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     scroll: {

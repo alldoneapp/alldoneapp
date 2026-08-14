@@ -104,8 +104,8 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
             const baseDate = scheduleDefaults.isDynamic
                 ? scheduleDefaults.milestoneDate
                 : activeMilestone
-                ? activeMilestone.date
-                : BACKLOG_DATE_NUMERIC
+                  ? activeMilestone.date
+                  : BACKLOG_DATE_NUMERIC
             const goal = getNewDefaultGoal(baseDate)
             goal.ownerId = ownerId
             goal.scheduleMode = scheduleDefaults.scheduleMode

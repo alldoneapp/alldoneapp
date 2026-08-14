@@ -25,8 +25,8 @@ class ChangeNumberTodayTasks extends Component {
                     ? this.props.currentValue
                     : ''
                 : this.props.currentValue > 0
-                ? this.props.currentValue
-                : '',
+                  ? this.props.currentValue
+                  : '',
         }
 
         this.inputText = React.createRef()
@@ -71,14 +71,8 @@ class ChangeNumberTodayTasks extends Component {
 
     render() {
         const { currentValue } = this.state
-        const {
-            windowSize,
-            customTitle,
-            customSubtitle,
-            hideUnlimitedButton,
-            allowZeroValue,
-            customPropertyName,
-        } = this.props
+        const { windowSize, customTitle, customSubtitle, hideUnlimitedButton, allowZeroValue, customPropertyName } =
+            this.props
         const { mobile } = store.getState()
 
         const title = customTitle || translate('Tasks visible in today group')
@@ -174,11 +168,7 @@ const localStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 16,
         borderRadius: 4,
-        width: 305,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     line: {

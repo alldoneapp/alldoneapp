@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import EstimationModal from '../UIComponents/FloatModals/EstimationModal/EstimationModal'
@@ -39,7 +39,7 @@ export default function TimeTagWrapper({ projectId, task }) {
 
     const estimation = estimations[currentStepId] || 0
     return (
-        <Popover
+        <AppPopover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -60,6 +60,6 @@ export default function TimeTagWrapper({ projectId, task }) {
             contentLocation={smallScreen ? null : undefined}
         >
             <TimeTag time={time} onPress={openModal} containerStyle={{ marginRight: 8 }} />
-        </Popover>
+        </AppPopover>
     )
 }

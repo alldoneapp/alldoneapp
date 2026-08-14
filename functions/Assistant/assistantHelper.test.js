@@ -163,6 +163,12 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
         commentId: 'routing-comment-1',
     }),
 }))
+jest.mock('../shared/assistantTaskCommentHelper', () => ({
+    addAssistantTaskComment: jest.fn().mockResolvedValue({
+        commentId: 'task-comment-1',
+        commentText: 'Suggested because it needs attention',
+    }),
+}))
 jest.mock('./userMemoryHelper', () => {
     const actual = jest.requireActual('./userMemoryHelper')
     return {
@@ -191,6 +197,17 @@ const mockBatchUpdate = jest.fn()
 const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
 const mockResponsesCreate = jest.fn()
+const mockFirestoreTimestamp = { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) }
+const mockFirestoreFieldValue = {
+    increment: jest.fn(value => ({ __op: 'increment', value })),
+    arrayUnion: jest.fn((...values) => ({ __op: 'arrayUnion', values })),
+    delete: jest.fn(() => ({ __op: 'delete' })),
+}
+
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: mockFirestoreFieldValue,
+    Timestamp: mockFirestoreTimestamp,
+}))
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
@@ -218,6 +235,9 @@ jest.mock('firebase-admin', () => ({
                 get: mockCollectionGet,
                 where: jest.fn(() => ({
                     get: mockCollectionGet,
+                    limit: jest.fn(() => ({
+                        get: mockCollectionGet,
+                    })),
                 })),
                 orderBy: jest.fn(() => ({
                     limit: jest.fn(() => ({
@@ -233,12 +253,8 @@ jest.mock('firebase-admin', () => ({
             })),
         })),
         {
-            Timestamp: { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) },
-            FieldValue: {
-                increment: jest.fn(value => ({ __op: 'increment', value })),
-                arrayUnion: jest.fn((...values) => ({ __op: 'arrayUnion', values })),
-                delete: jest.fn(() => ({ __op: 'delete' })),
-            },
+            Timestamp: mockFirestoreTimestamp,
+            FieldValue: mockFirestoreFieldValue,
         }
     ),
 }))
@@ -260,11 +276,12 @@ jest.mock(
         })),
     { virtual: true }
 )
+const mockTiktokenEncode = jest.fn(() => [])
 jest.mock(
     '@dqbd/tiktoken/lite',
     () => ({
         Tiktoken: jest.fn().mockImplementation(() => ({
-            encode: jest.fn(() => []),
+            encode: mockTiktokenEncode,
             free: jest.fn(),
         })),
     }),
@@ -296,6 +313,7 @@ const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { updateUserMemory } = require('./userMemoryHelper')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
@@ -309,6 +327,7 @@ const {
     formatContextMessageTimestamp,
     normalizeRecentHours,
     normalizeAssistantTaskScope,
+    normalizeHumanReadableTaskId,
     filterTasksByRecentHours,
     resolveAssistantTaskProject,
     mapAssistantTaskForToolResponse,
@@ -326,6 +345,7 @@ const {
     buildConversationAfterToolExecutions,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
+    getTokensPerGold,
     calculateGoldCostFromTokens,
     normalizeModelKey,
     getMaxTokensForModel,
@@ -335,11 +355,62 @@ const {
     buildResponsesTools,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
+    enforceOpenAiInputTokenPreflight,
     logOpenAiCacheUsage,
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
+    OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     convertResponsesStream,
     interactWithChatStream,
+    modelSupportsNativeTools,
+    modelSupportsToolSearch,
+    modelSupportsAssistantReasoningEffort,
+    modelSupportsExplicitPromptCaching,
 } = require('./assistantHelper')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+
+describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
+    const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
+
+    test('is offered in the shared model list every picker renders from', () => {
+        // One list feeds the assistant model, heartbeat model, per-task override, Gmail labeling
+        // and calendar routing pickers, so membership here is what makes it selectable everywhere.
+        expect(SELECTABLE_ASSISTANT_MODELS.map(option => option.model)).toContain(MODEL_DEEPSEEK_V4_FLASH)
+    })
+
+    test('bills at its own Gold rate rather than falling through to free', () => {
+        // getTokensPerGold returns undefined for an unlisted key, and calculateGoldCostFromTokens
+        // turns that into 0 — an unlisted model is billed nothing at all, silently. That is the
+        // failure mode this assertion exists to catch.
+        expect(calculateGoldCostFromTokens(2000, MODEL_DEEPSEEK_V4_FLASH)).toBe(1)
+        expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBe(10)
+        expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBeLessThan(
+            calculateGoldCostFromTokens(20000, 'MODEL_GPT5_6_LUNA')
+        )
+    })
+
+    test('advertises the 1M context window it actually has', () => {
+        expect(getMaxTokensForModel(MODEL_DEEPSEEK_V4_FLASH)).toBe(1000000)
+    })
+
+    test('is excluded from the OpenAI-only Responses capabilities', () => {
+        // Tool search, reasoning effort and explicit prompt caching are Responses-API features with
+        // no Chat Completions equivalent; sending them to OpenRouter is at best ignored, at worst a
+        // 400. Tool calling, which OpenRouter does support, stays on.
+        expect(modelSupportsNativeTools(MODEL_DEEPSEEK_V4_FLASH)).toBe(true)
+        expect(modelSupportsToolSearch(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+        expect(modelSupportsAssistantReasoningEffort(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+        expect(modelSupportsExplicitPromptCaching(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+    })
+})
+
+describe('selectable assistant model Gold pricing', () => {
+    test('the shared picker rate is the exact divisor used by billing', () => {
+        for (const option of SELECTABLE_ASSISTANT_MODELS) {
+            expect(getTokensPerGold(option.model)).toBe(option.tokensPerGold)
+            expect(calculateGoldCostFromTokens(option.tokensPerGold, option.model)).toBe(1)
+        }
+    })
+})
 
 describe('Current task context', () => {
     test('includes task identity, project, title, description, and relevant metadata', () => {
@@ -378,6 +449,33 @@ describe('Current task context', () => {
         expect(context).toContain('"parentGoalId":"goal-1"')
         expect(context).toContain('"priority":"must_do"')
         expect(context).toContain('"taskMetadata":{"source":"predefined","execution":"vm"}')
+    })
+
+    test('renders embedded description media as readable text plus downloadable urls', () => {
+        const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+        const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+        const imageUrl = 'https://storage.example/mock.png'
+        const previewUrl = 'https://storage.example/mock-small.png'
+        const description =
+            `${IMAGE_TRIGGER}${imageUrl}${IMAGE_TRIGGER}${previewUrl}${IMAGE_TRIGGER}mock.png${IMAGE_TRIGGER}0\n` +
+            'Build this screen.\n' +
+            `${ATTACHMENT_TRIGGER}https://storage.example/spec.pdf${ATTACHMENT_TRIGGER}spec.pdf${ATTACHMENT_TRIGGER}false`
+
+        const context = buildCurrentObjectContextMessage({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            projectData: { name: 'Alldone Product' },
+            objectData: { id: 'task-1', name: 'build screen', extendedName: 'Build screen', description },
+        })
+
+        // The opaque sentinel tokens must never reach the model.
+        expect(context).not.toContain(IMAGE_TRIGGER)
+        expect(context).not.toContain(ATTACHMENT_TRIGGER)
+        expect(context).toContain('Task description: mock.png\nBuild this screen.\nspec.pdf')
+        expect(context).toContain('Files embedded in the task description (downloadable via the URLs):')
+        expect(context).toContain(`- mock.png (image/png): ${imageUrl}`)
+        expect(context).toContain('- spec.pdf (application/pdf): https://storage.example/spec.pdf')
     })
 
     test('does not change context for a task without a parent goal', () => {
@@ -426,7 +524,84 @@ describe('Responses API compatibility helpers', () => {
             })
         )
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('messages')
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
     })
+
+    test.each(['none', 'low', 'medium', 'high', 'xhigh', 'max'])(
+        'sends the explicitly configured %s assistant reasoning effort',
+        async reasoningEffort => {
+            mockResponsesCreate.mockResolvedValue([
+                { type: 'response.output_text.delta', delta: 'Considered response' },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+
+            const stream = await interactWithChatStream(
+                [['user', 'Consider this carefully']],
+                'MODEL_GPT5_6_SOL',
+                'TEMPERATURE_NORMAL',
+                [],
+                { openAiReasoningEffort: reasoningEffort }
+            )
+            await stream.next()
+
+            expect(mockResponsesCreate).toHaveBeenCalledWith(
+                expect.objectContaining({ reasoning: { effort: reasoningEffort } })
+            )
+        }
+    )
+
+    test.each([null, undefined, 'minimal', 'MAX'])('omits unsupported assistant reasoning effort %p', async effort => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Default response' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream(
+            [['user', 'Use the model default']],
+            'MODEL_GPT5_6_SOL',
+            'TEMPERATURE_NORMAL',
+            [],
+            { openAiReasoningEffort: effort }
+        )
+        await stream.next()
+
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
+    })
+
+    test('does not send GPT-5.6-only effort values to a legacy model', async () => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Legacy response' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream(
+            [['user', 'Use max effort']],
+            'MODEL_GPT5_1',
+            'TEMPERATURE_NORMAL',
+            [],
+            { openAiReasoningEffort: 'max' }
+        )
+        await stream.next()
+
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
+    })
+
+    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])(
+        'sends max effort to compatible %s assistants',
+        async model => {
+            mockResponsesCreate.mockResolvedValue([
+                { type: 'response.output_text.delta', delta: 'Maximum effort response' },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+
+            const stream = await interactWithChatStream([['user', 'Use max effort']], model, 'TEMPERATURE_NORMAL', [], {
+                openAiReasoningEffort: 'max',
+            })
+            await stream.next()
+
+            expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning: { effort: 'max' } }))
+        }
+    )
 
     test('maps chat messages, multimodal content, tool calls, and tool outputs to Responses items', () => {
         expect(
@@ -470,6 +645,41 @@ describe('Responses API compatibility helpers', () => {
             },
             { type: 'function_call_output', call_id: 'call-1', output: '{"title":"Launch"}' },
         ])
+    })
+
+    test('redacts binary arguments from completed tool calls before building Responses input', () => {
+        const fileBase64 = Buffer.alloc(1024, 17).toString('base64')
+        const input = convertMessagesToResponsesInput([
+            {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                    {
+                        id: 'call-file',
+                        type: 'function',
+                        function: {
+                            name: 'external_tool_bookkeeping_attach_invoice',
+                            arguments: JSON.stringify({
+                                fileName: 'invoice.pdf',
+                                fileBase64,
+                                nested: { contentBytes: fileBase64 },
+                            }),
+                        },
+                    },
+                ],
+            },
+        ])
+
+        const safeArgs = JSON.parse(input[0].arguments)
+        expect(safeArgs).toEqual({
+            fileName: 'invoice.pdf',
+            fileBase64: '[omitted from conversation; preserved for the next external tool call]',
+            fileBase64Length: fileBase64.length,
+            nested: {
+                contentBytes: '[omitted from conversation; preserved for the next external tool call]',
+                contentBytesLength: fileBase64.length,
+            },
+        })
     })
 
     test('adds internal prompt cache markers only when explicit caching is enabled', () => {
@@ -567,8 +777,41 @@ describe('Responses API compatibility helpers', () => {
         warnSpy.mockRestore()
     })
 
+    test('blocks an oversized OpenAI request during preflight before dispatch', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
+
+        expect(() =>
+            enforceOpenAiInputTokenPreflight(
+                {
+                    input: [
+                        {
+                            type: 'function_call',
+                            call_id: 'call-file',
+                            name: 'external_tool_bookkeeping_attach_invoice',
+                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(160000) }),
+                        },
+                    ],
+                },
+                { route: 'assistant', model: 'gpt-5.6-sol' }
+            )
+        ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
+
+        expect(warnSpy).toHaveBeenCalledWith(
+            '🚨 OPENAI INPUT TOKEN PREFLIGHT BLOCK: Request not sent',
+            expect.objectContaining({
+                route: 'assistant',
+                hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
+            })
+        )
+        warnSpy.mockRestore()
+    })
+
     test('sends an explicit GPT-5.6 cache breakpoint without changing the source message content', async () => {
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.completed', response: { output: [] } }])
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Ok' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
         const prompt = [
             ['system', 'Stable instructions', { promptCacheBreakpoint: true }],
             ['user', 'Volatile request'],
@@ -592,6 +835,188 @@ describe('Responses API compatibility helpers', () => {
                         ]),
                     }),
                 ]),
+            })
+        )
+    })
+
+    test('retries one empty response with full tool schemas and returns the retry text', async () => {
+        const emptyCompletion = {
+            type: 'response.completed',
+            response: {
+                id: 'resp-empty',
+                model: 'gpt-5.6-terra',
+                output: [{ id: 'search-1', type: 'tool_search_call', status: 'completed' }],
+                usage: { input_tokens: 100, output_tokens: 4, total_tokens: 104 },
+            },
+        }
+        mockResponsesCreate.mockResolvedValueOnce([emptyCompletion]).mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'Marco Rubio has generally aligned with Trump.' },
+            {
+                type: 'response.completed',
+                response: {
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+                },
+            },
+        ])
+        const allowedTools = [
+            'update_task',
+            'get_tasks',
+            'create_task',
+            'create_note',
+            'get_focus_task',
+            'update_note',
+            'get_user_projects',
+            'search',
+            'get_notes',
+            'web_search',
+            'search_gmail',
+            'create_gmail_reply_draft',
+        ]
+
+        const stream = await interactWithChatStream(
+            [['user', 'Is Rubio aligned with Trump?']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            allowedTools
+        )
+        const chunks = []
+        let next = await stream.next()
+        while (!next.done) {
+            chunks.push(next.value)
+            next = await stream.next()
+        }
+
+        expect(chunks).toEqual([{ content: 'Marco Rubio has generally aligned with Trump.', additional_kwargs: {} }])
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+        expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
+        expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    test('retries a rejected deferred-tool request with the full function schemas', async () => {
+        const deferredToolsError = new Error('tool_search and defer_loading are not supported for this request')
+        deferredToolsError.status = 400
+        mockResponsesCreate.mockRejectedValueOnce(deferredToolsError).mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'Recovered after the tool fallback.' },
+            {
+                type: 'response.completed',
+                response: {
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+                },
+            },
+        ])
+        const allowedTools = [
+            'update_task',
+            'get_tasks',
+            'create_task',
+            'create_note',
+            'get_focus_task',
+            'update_note',
+            'get_user_projects',
+            'search',
+            'get_notes',
+            'web_search',
+            'search_gmail',
+            'create_gmail_reply_draft',
+        ]
+
+        const stream = await interactWithChatStream(
+            [['user', 'Please help with this request.']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            allowedTools
+        )
+        const chunks = []
+        let next = await stream.next()
+        while (!next.done) {
+            chunks.push(next.value)
+            next = await stream.next()
+        }
+
+        expect(chunks).toEqual([{ content: 'Recovered after the tool fallback.', additional_kwargs: {} }])
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+        expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
+        expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    test('replaces the loading placeholder with a clear failure after two empty responses', async () => {
+        mockDocSet.mockClear()
+        mockDocUpdate.mockClear()
+        mockResponsesCreate.mockResolvedValue([
+            {
+                type: 'response.completed',
+                response: {
+                    id: 'resp-empty',
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 4, total_tokens: 104 },
+                },
+            },
+        ])
+        const stream = await interactWithChatStream(
+            [['user', 'Please answer this question.']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            []
+        )
+
+        await expect(stream.next()).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+
+        const emptyResponseError = new Error('OpenAI returned a completed response without text or tool calls')
+        emptyResponseError.code = 'EMPTY_OPENAI_RESPONSE'
+        emptyResponseError.responseMetadata = {
+            id: 'resp-empty',
+            model: 'gpt-5.6-terra',
+            outputItemTypes: [],
+            outputTokens: 4,
+        }
+        const failedStream = {
+            *[Symbol.iterator]() {
+                throw emptyResponseError
+            },
+        }
+
+        await expect(
+            storeBotAnswerStream(
+                'project-1',
+                'topics',
+                'chat-1',
+                failedStream,
+                ['user-1'],
+                ['PUBLIC'],
+                null,
+                'assistant-1',
+                ['user-1'],
+                'Anna',
+                'user-1',
+                null,
+                [['user', 'Please answer this question.']],
+                'MODEL_GPT5_6_TERRA',
+                'TEMPERATURE_NORMAL',
+                [],
+                {
+                    project: { name: 'Project A' },
+                    chat: { title: 'Chat A' },
+                    chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+                },
+                null,
+                null,
+                {},
+                null,
+                { runId: 'run-1', kind: 'chat' }
+            )
+        ).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
+
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: '⚠️ No response was generated after retrying. Please try again.',
+                isLoading: false,
+                isThinking: false,
+                assistantRun: expect.objectContaining({ status: 'failed' }),
             })
         )
     })
@@ -650,6 +1075,12 @@ describe('Responses API compatibility helpers', () => {
 
         expect(buildResponsesTools(buildTools(12), 'MODEL_GPT5_2').toolSearchEnabled).toBe(false)
         expect(buildResponsesTools(buildTools(3), 'MODEL_GPT5_6_SOL').toolSearchEnabled).toBe(false)
+
+        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT5_6_SOL', {
+            disableToolSearch: true,
+        })
+        expect(explicitlyDisabled.toolSearchEnabled).toBe(false)
+        expect(explicitlyDisabled.tools.every(tool => tool.type === 'function')).toBe(true)
     })
 
     test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {
@@ -714,6 +1145,28 @@ describe('Responses API compatibility helpers', () => {
                 },
             },
         ])
+    })
+
+    test('recovers completed response text when no delta event was emitted', async () => {
+        const iterator = convertResponsesStream([
+            {
+                type: 'response.completed',
+                response: {
+                    output: [
+                        {
+                            type: 'message',
+                            content: [{ type: 'output_text', text: 'Recovered final answer.' }],
+                        },
+                    ],
+                },
+            },
+        ])
+
+        await expect(iterator.next()).resolves.toEqual({
+            done: false,
+            value: { content: 'Recovered final answer.', additional_kwargs: {} },
+        })
+        await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
     })
 
     test('surfaces Responses stream failures', async () => {
@@ -807,6 +1260,104 @@ describe('assistant attachment handoff helpers', () => {
             if (previousProjectId === undefined) delete process.env.GCLOUD_PROJECT
             else process.env.GCLOUD_PROJECT = previousProjectId
         }
+    })
+
+    test('makes the assistant the owner of a note it creates, keeping the human as creator', async () => {
+        // The assistant has to exist in the note's own project (or in the global pool) before
+        // it may own the note — see the cross-project guard below.
+        mockDocGet.mockResolvedValue({ exists: true, id: 'assistant-1', data: () => ({ displayName: 'Anna' }) })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-1',
+            message: 'Note created',
+            note: { id: 'note-1', projectId: 'project-1', extendedTitle: 'Launch plan' },
+        })
+
+        await executeToolNatively(
+            'create_note',
+            { title: 'Launch plan', content: '# Plan' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({
+                // owner shown in the notes list / used by the owner filter
+                ownerId: 'assistant-1',
+                // the human who asked keeps authorship AND stays the acting user, so the
+                // note remains visible in their "Followed" notes tab
+                creatorId: 'user-1',
+                userId: 'user-1',
+            }),
+            expect.objectContaining({ userId: 'user-1', projectId: 'project-1' })
+        )
+    })
+
+    test('owns the note with the running assistant even when it belongs to another project', async () => {
+        // AT-2194: an assistant from the user's default project legitimately works in another
+        // project, and it owns what it creates there. The client resolves assistant owners
+        // across the user's projects (`findNoteOwnerInProject`), so this is renderable — an
+        // earlier attempt to gate ownership on an in-project assistant document silently
+        // handed these notes back to the human and undid the feature.
+        mockDocGet.mockResolvedValue({ exists: false })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-4',
+            message: 'Note created',
+            note: { id: 'note-4', projectId: 'project-1', extendedTitle: 'Cross project note' },
+        })
+
+        await executeToolNatively(
+            'create_note',
+            { title: 'Cross project note' },
+            'project-1',
+            'assistant-of-other-project',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({
+                ownerId: 'assistant-of-other-project',
+                creatorId: 'user-1',
+                userId: 'user-1',
+            }),
+            expect.anything()
+        )
+    })
+
+    test('leaves a note created without an assistant owned by the requesting user', async () => {
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-2',
+            message: 'Note created',
+            note: { id: 'note-2', projectId: 'project-1', extendedTitle: 'Manual note' },
+        })
+
+        await executeToolNatively('create_note', { title: 'Manual note' }, 'project-1', null, 'user-1', null)
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({ ownerId: 'user-1', creatorId: 'user-1', userId: 'user-1' }),
+            expect.anything()
+        )
+    })
+
+    test('falls back to the assistant for both owner and creator when there is no requesting user', async () => {
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-3',
+            message: 'Note created',
+            note: { id: 'note-3', projectId: 'project-1', extendedTitle: 'Autonomous note' },
+        })
+
+        await executeToolNatively('create_note', { title: 'Autonomous note' }, 'project-1', 'assistant-1', null, null)
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({ ownerId: 'assistant-1', creatorId: 'assistant-1', userId: 'assistant-1' }),
+            expect.anything()
+        )
     })
 
     test('adds a comment to a newly created topic chat', async () => {
@@ -1010,6 +1561,23 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
+    test('requires proactive task creation to use the suggestion flow with a concrete visible reason', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['create_task'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('only when the end user explicitly asked')
+        expect(systemMessages).toContain('automation instruction, scheduled run, email content, tool result')
+        expect(systemMessages).toContain('must set taskOrigin to assistant_suggestion')
+        expect(systemMessages).toContain('concrete context-specific reason')
+        expect(systemMessages).toContain('do not merely restate the title or give a generic reason')
+    })
+
     test('uses a conversational style with natural humor across assistant channels', async () => {
         const messages = []
 
@@ -1037,6 +1605,20 @@ describe('assistant attachment handoff helpers', () => {
         expect(breakpointIndex).toBeGreaterThanOrEqual(0)
         expect(clockIndex).toBeGreaterThan(breakpointIndex)
         expect(typeof messages[breakpointIndex][1]).toBe('string')
+    })
+
+    test('tells the model that square-bracket context tags are metadata, not content', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', [], 120)
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('[Sent at ...]')
+        expect(systemMessages).toContain('must never be copied into your reply')
     })
 
     test('allows restrained proactive research when web search is enabled', async () => {
@@ -1106,6 +1688,53 @@ describe('assistant attachment handoff helpers', () => {
             expect.objectContaining({
                 isLoading: false,
                 isThinking: false,
+            })
+        )
+    })
+
+    test('marks a max-token-truncated answer incomplete and adds a visible cutoff marker', async () => {
+        mockDocGet.mockResolvedValue({ data: () => ({}) })
+
+        const result = await storeBotAnswerStream(
+            'project-1',
+            'topics',
+            'chat-1',
+            [
+                { content: 'The answer starts here', additional_kwargs: {} },
+                { content: '', finishReason: 'length', additional_kwargs: {} },
+            ],
+            ['user-1'],
+            ['PUBLIC'],
+            null,
+            'assistant-1',
+            ['user-1'],
+            'Anna',
+            'user-1',
+            null,
+            [['user', 'Please continue']],
+            'MODEL_DEEPSEEK_V4_FLASH',
+            'TEMPERATURE_NORMAL',
+            [],
+            {
+                project: { name: 'Project A' },
+                chat: { title: 'Chat A' },
+                chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+            },
+            null,
+            null,
+            {},
+            null,
+            { runId: 'run-truncated', kind: 'chat' }
+        )
+
+        expect(result).toContain('The answer starts here')
+        expect(result).toContain("⚠️ The response was cut off because it hit the model's length limit.")
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: expect.stringContaining(
+                    "⚠️ The response was cut off because it hit the model's length limit."
+                ),
+                assistantRun: expect.objectContaining({ status: 'incomplete' }),
             })
         )
     })
@@ -2045,11 +2674,11 @@ describe('resolveCreateTaskTargetProject', () => {
                                   }),
                               }
                             : collectionName === 'projects' && docId === 'p-default'
-                            ? {
-                                  exists: true,
-                                  data: () => ({ name: 'Inbox' }),
-                              }
-                            : { exists: false, data: () => ({}) }
+                              ? {
+                                    exists: true,
+                                    data: () => ({ name: 'Inbox' }),
+                                }
+                              : { exists: false, data: () => ({}) }
                     ),
                 })),
             })),
@@ -2215,11 +2844,11 @@ describe('resolveCreateTaskTargetProject', () => {
                                   }),
                               }
                             : collectionName === 'projects' && docId === 'p-private'
-                            ? {
-                                  exists: true,
-                                  data: () => ({ name: 'Privat' }),
-                              }
-                            : { exists: false, data: () => ({}) }
+                              ? {
+                                    exists: true,
+                                    data: () => ({ name: 'Privat' }),
+                                }
+                              : { exists: false, data: () => ({}) }
                     ),
                 })),
             })),
@@ -2353,6 +2982,7 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Follow up with client',
                 projectName: 'Client Work',
                 recurrence: 'weekly',
+                executionMode: 'direct',
                 projectRoutingReason: 'the task is about the client onboarding discussion',
                 projectRoutingConfidence: 0.84,
             },
@@ -2367,6 +2997,10 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Follow up with client',
                 projectId: 'project-client',
                 recurrence: 'weekly',
+                executionMode: 'direct',
+                creatorId: 'user-1',
+                suggestedBy: null,
+                assistantId: '',
             }),
             expect.objectContaining({
                 userId: 'user-1',
@@ -2393,6 +3027,102 @@ describe('assistant create_task project routing comments', () => {
             confidence: 0.84,
             commentId: 'routing-comment-1',
         })
+        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: null })
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
+    })
+
+    test('creates proactive assistant tasks as suggestions with a visible explanatory comment', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-client',
+                    projectIds: ['project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-client',
+                    projectIds: ['project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-suggested',
+            projectId: 'project-client',
+            message: 'Task created',
+            task: {
+                id: 'task-suggested',
+                name: 'Reply to important client email',
+                userId: 'user-1',
+                commentsData: { amount: 0 },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Reply to important client email',
+                taskOrigin: 'assistant_suggestion',
+                comment: 'This client email asks for a decision before tomorrow.',
+                projectName: 'Client Work',
+                projectRoutingReason: 'the email belongs to the client project',
+            },
+            'project-client',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                creatorId: 'assistant-1',
+                suggestedBy: 'assistant-1',
+                assistantId: '',
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
+            }),
+            expect.objectContaining({ userId: 'user-1', projectId: 'project-client' })
+        )
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-client',
+            taskId: 'task-suggested',
+            assistantId: 'assistant-1',
+            comment: 'This client email asks for a decision before tomorrow.',
+        })
+        expect(updateUserMemory).not.toHaveBeenCalled()
+        expect(result).toMatchObject({
+            taskOrigin: 'assistant_suggestion',
+            suggested: true,
+            commentId: 'task-comment-1',
+        })
+    })
+
+    test('rejects proactive task creation without an explanatory comment before creating anything', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                {
+                    name: 'Reply to important client email',
+                    taskOrigin: 'assistant_suggestion',
+                },
+                'project-client',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('require a comment explaining why')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
     })
 
     test('creates task in corrected project when selected project conflicts with low-confidence reason', async () => {
@@ -2516,6 +3246,7 @@ describe('assistant create_task project routing comments', () => {
             'create_task',
             {
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
+                taskOrigin: 'user_request',
                 projectName: 'Bechtle',
                 projectRoutingReason: 'the task is for Bechtle operations',
             },
@@ -2537,6 +3268,8 @@ describe('assistant create_task project routing comments', () => {
                     threadId: 'thread-1',
                     webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
                     archiveOnComplete: true,
+                    taskSuggestionComment:
+                        'I suggest this task because the invoice email appears to require follow-up.',
                 },
             }
         )
@@ -2545,6 +3278,9 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
                 projectId: 'project-jtl',
+                creatorId: 'assistant-1',
+                suggestedBy: 'assistant-1',
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
                 gmailData: expect.objectContaining({
                     origin: 'gmail_label_follow_up',
                     projectId: 'gmail-connection-project',
@@ -2560,6 +3296,17 @@ describe('assistant create_task project routing comments', () => {
         )
         expect(result.projectId).toBe('project-jtl')
         expect(result.projectName).toBe('JTL Software - Project Juno')
+        expect(result).toMatchObject({
+            taskOrigin: 'assistant_suggestion',
+            suggested: true,
+            commentId: 'task-comment-1',
+        })
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-jtl',
+            taskId: 'task-jtl',
+            assistantId: 'assistant-1',
+            comment: 'I suggest this task because the invoice email appears to require follow-up.',
+        })
         expect(result.projectSelection).toMatchObject({
             source: 'gmailLabelMatchedProject',
             reasoning:
@@ -2567,6 +3314,88 @@ describe('assistant create_task project routing comments', () => {
             assistantProvidedReasoning: false,
         })
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
+})
+
+// Model-authored JSON (assistant tool calls and the MCP server, which delegates to
+// executeToolNatively) can put anything under dueDate; the create funnel must refuse
+// garbage instead of persisting it to Firestore.
+describe('assistant create_task dueDate validation', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockCreateAndPersistTask.mockReset()
+        ProjectService.mockClear()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-default', name: 'Default Project' }]),
+        }))
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                defaultProjectId: 'project-default',
+                projectIds: ['project-default'],
+                timezone: 'UTC+02:00',
+            }),
+        })
+    })
+
+    test('rejects a dueDate holding an object before persisting anything', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                {
+                    name: 'Task with garbage dueDate',
+                    projectName: 'Default Project',
+                    dueDate: { id: 'task-1', name: 'an entire task object' },
+                },
+                'project-default',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Invalid dueDate: received an object')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('rejects an unparseable dueDate string, naming the value for the retry', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                { name: 'Task with bad date string', projectName: 'Default Project', dueDate: 'not-a-real-date' },
+                'project-default',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('could not interpret "not-a-real-date" as a date')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('keeps Number.MAX_SAFE_INTEGER ("Someday") valid and forwards it', async () => {
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-someday',
+            projectId: 'project-default',
+            message: 'Task created',
+            task: { id: 'task-someday', name: 'Someday task', userId: 'user-1', commentsData: { amount: 0 } },
+        })
+
+        await executeToolNatively(
+            'create_task',
+            { name: 'Someday task', projectName: 'Default Project', dueDate: Number.MAX_SAFE_INTEGER },
+            'project-default',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({ dueDate: Number.MAX_SAFE_INTEGER }),
+            expect.anything()
+        )
     })
 })
 
@@ -2816,8 +3645,10 @@ describe('assistant get tasks tool', () => {
                 userId: 'user-1',
                 status: 'done',
                 date: 'last 7 days',
-                limit: 1000,
-                perProjectLimit: 1000,
+                // The requested 1000 is capped to the context-safe ceiling; a larger listing would be
+                // compacted away before the model reads it.
+                limit: 150,
+                perProjectLimit: 150,
                 taskScope: 'mine',
                 timezoneOffset: 120,
             }),
@@ -3183,6 +4014,310 @@ describe('assistant get project happiness tool', () => {
     })
 })
 
+describe('normalizeHumanReadableTaskId', () => {
+    test('normalizes every spelling a user might type to the stored form', () => {
+        expect(normalizeHumanReadableTaskId('FE-1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('FE1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('FE 1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('fe-1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('  fe 1452 ')).toBe('FE-1452')
+    })
+
+    test('rejects values that are not task IDs', () => {
+        expect(normalizeHumanReadableTaskId('')).toBeNull()
+        expect(normalizeHumanReadableTaskId('   ')).toBeNull()
+        expect(normalizeHumanReadableTaskId('1452')).toBeNull()
+        expect(normalizeHumanReadableTaskId('FE')).toBeNull()
+        expect(normalizeHumanReadableTaskId('buy milk')).toBeNull()
+        expect(normalizeHumanReadableTaskId('FE-1452-2')).toBeNull()
+        expect(normalizeHumanReadableTaskId(undefined)).toBeNull()
+        expect(normalizeHumanReadableTaskId(1452)).toBeNull()
+    })
+})
+
+describe('assistant get tasks tool cross-project failures', () => {
+    const projects = [
+        { id: 'project-1', name: 'Familie' },
+        { id: 'project-2', name: 'Marketing' },
+    ]
+
+    const mockProjects = () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue(projects),
+        }))
+    }
+
+    const mockMultiProjectResult = result => {
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks: jest.fn().mockResolvedValue({ tasks: [] }),
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue(result),
+        }))
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+        TaskRetrievalService.mockClear()
+        mockProjects()
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ timezone: 'UTC+02:00' }),
+        })
+    })
+
+    const callGetTasks = () =>
+        executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+    test('throws instead of reporting an empty list when every project query fails', async () => {
+        mockMultiProjectResult({
+            tasks: [],
+            projectSummary: {
+                'project-1': {
+                    projectName: 'Familie',
+                    taskCount: 0,
+                    success: false,
+                    error: '9 FAILED_PRECONDITION: The query requires an index.',
+                },
+                'project-2': {
+                    projectName: 'Marketing',
+                    taskCount: 0,
+                    success: false,
+                    error: '9 FAILED_PRECONDITION: The query requires an index.',
+                },
+            },
+        })
+
+        await expect(callGetTasks()).rejects.toThrow(/failed for all 2 project\(s\)/)
+        await expect(callGetTasks()).rejects.toThrow(/FAILED_PRECONDITION/)
+    })
+
+    test('flags incomplete results when only some projects fail', async () => {
+        mockMultiProjectResult({
+            tasks: [{ id: 'task-1', name: 'Buy milk', projectId: 'project-2' }],
+            projectSummary: {
+                'project-1': {
+                    projectName: 'Familie',
+                    taskCount: 0,
+                    success: false,
+                    error: 'boom',
+                },
+                'project-2': { projectName: 'Marketing', taskCount: 1, success: true },
+            },
+        })
+
+        const result = await callGetTasks()
+
+        expect(result.count).toBe(1)
+        expect(result.retrieval).toEqual(
+            expect.objectContaining({
+                resultsAreIncomplete: true,
+                projectsQueried: 2,
+                projectsFailed: 1,
+            })
+        )
+        expect(result.retrieval.failedProjects).toEqual([
+            { projectId: 'project-1', projectName: 'Familie', error: 'boom' },
+        ])
+    })
+
+    test('resolves an explicit archived projectId without requiring includeArchived', async () => {
+        // Regression: get_user_projects hands the model archived project ids, but get_tasks used to
+        // resolve projectId against a list filtered by this call's own includeArchived flag - which the
+        // schema says only applies to allProjects sweeps - and threw "not found or not accessible".
+        const getTasks = jest.fn().mockResolvedValue({ tasks: [] })
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Familie', projectType: 'regular' },
+                { id: 'project-archived', name: 'Project Bailey', projectType: 'archived' },
+                { id: 'project-guide', name: 'Guide', projectType: 'guide' },
+            ]),
+        }))
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks,
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue({ tasks: [] }),
+        }))
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { projectId: 'project-archived', status: 'all' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(0)
+        expect(getTasks).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-archived' }))
+    })
+
+    test('caps an oversized limit and discloses the truncation', async () => {
+        mockMultiProjectResult({
+            tasks: Array.from({ length: 400 }, (_, index) => ({ id: `task-${index}`, name: `Task ${index}` })),
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 400, success: true },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all', limit: 1000 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(150)
+        expect(result.limitCapped).toEqual(expect.objectContaining({ requestedLimit: 1000, appliedLimit: 150 }))
+        expect(result.limitCapped.note).toMatch(/search tool/)
+    })
+
+    test('omits the limit disclosure when the request already fits', async () => {
+        mockMultiProjectResult({
+            tasks: [{ id: 'task-1', name: 'Buy milk' }],
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 1, success: true },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all', limit: 50 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.limitCapped).toBeUndefined()
+    })
+
+    test('omits the retrieval warning when every project succeeds', async () => {
+        mockMultiProjectResult({
+            tasks: [],
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 0, success: true },
+                'project-2': { projectName: 'Marketing', taskCount: 0, success: true },
+            },
+        })
+
+        const result = await callGetTasks()
+
+        expect(result.count).toBe(0)
+        expect(result.retrieval).toBeUndefined()
+    })
+})
+
+describe('assistant get tasks tool human-readable ID lookup', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+        TaskRetrievalService.mockClear()
+        mockCollectionGet.mockReset()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Familie', projectType: 'regular' },
+                { id: 'project-archived', name: 'Project Bailey', projectType: 'archived' },
+            ]),
+        }))
+        mockDocGet.mockResolvedValue({ exists: true, data: () => ({ timezone: 'UTC+02:00' }) })
+    })
+
+    test('finds a task by its hyphenless ID across archived projects', async () => {
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({
+            docs: [
+                {
+                    id: 'task-abc',
+                    data: () => ({
+                        name: 'Ship the migration',
+                        humanReadableId: 'FE-1452',
+                        isPublicFor: [0],
+                        userId: 'user-1',
+                        done: false,
+                    }),
+                },
+            ],
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { humanReadableId: 'FE1452' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.humanReadableId).toBe('FE-1452')
+        expect(result.projectsSearched).toBe(2)
+        expect(result.count).toBe(1)
+        expect(result.tasks[0]).toEqual(
+            expect.objectContaining({ id: 'task-abc', name: 'Ship the migration', humanReadableId: 'FE-1452' })
+        )
+    })
+
+    test('filters out tasks the requesting user cannot see', async () => {
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'task-private',
+                    data: () => ({
+                        name: 'Someone else private task',
+                        humanReadableId: 'FE-1452',
+                        isPublicFor: ['another-user'],
+                        userId: 'another-user',
+                    }),
+                },
+            ],
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { humanReadableId: 'FE-1452' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(0)
+    })
+
+    test('rejects a query that is not a task ID instead of silently listing tasks', async () => {
+        await expect(
+            executeToolNatively(
+                'get_tasks',
+                { humanReadableId: 'buy milk' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow(/not a valid human-readable task ID/)
+    })
+
+    test('throws when every project lookup fails rather than reporting the ID as unknown', async () => {
+        mockCollectionGet.mockRejectedValue(new Error('permission denied'))
+
+        await expect(
+            executeToolNatively('get_tasks', { humanReadableId: 'FE-1452' }, 'project-1', 'assistant-1', 'user-1', null)
+        ).rejects.toThrow(/lookup failed in all 2 project\(s\)/)
+    })
+})
+
 describe('assistant get goals tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -3451,6 +4586,7 @@ describe('assistant heartbeat settings tool', () => {
             'update_heartbeat_settings',
             {
                 model: 'MODEL_GPT5_6_TERRA',
+                reasoningEffort: 'xhigh',
                 intervalMinutes: 17,
                 chancePercent: 120,
                 awakeStartTime: '09:15',
@@ -3466,6 +4602,7 @@ describe('assistant heartbeat settings tool', () => {
 
         expect(mockTransactionUpdate).toHaveBeenCalledWith(expect.any(Object), {
             heartbeatModel: 'MODEL_GPT5_6_TERRA',
+            heartbeatReasoningEffort: 'xhigh',
             heartbeatIntervalMs: 15 * 60 * 1000,
             heartbeatChancePercent: 100,
             heartbeatAwakeStart: (9 * 60 + 15) * 60 * 1000,
@@ -3490,6 +4627,7 @@ describe('assistant heartbeat settings tool', () => {
             assistantId: 'assistant-1',
             updatedFields: [
                 'model',
+                'reasoningEffort',
                 'intervalMinutes',
                 'chancePercent',
                 'awakeStartTime',
@@ -3507,6 +4645,7 @@ describe('assistant heartbeat settings tool', () => {
             awakeEndTime: '18:45',
             sendWhatsApp: false,
             model: 'MODEL_GPT5_6_TERRA',
+            reasoningEffort: 'xhigh',
             prompt: 'New prompt for heartbeat',
         })
     })
@@ -4111,6 +5250,71 @@ describe('assistant thread compaction tool', () => {
         expect(flattened).not.toContain('Old assistant update')
     })
 
+    test('does not scan unrelated projects for task counts in interactive chat context', async () => {
+        const requestedDocumentPaths = []
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+            requestedDocumentPaths.push(path)
+
+            if (path === 'user-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        projectIds: ['project-1', 'project-other'],
+                        archivedProjectIds: [],
+                        templateProjectIds: [],
+                        guideProjectIds: [],
+                    }),
+                })
+            }
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ name: 'Current project', description: 'Current project context.' }),
+                })
+            }
+
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { path: 'message-1-ref' },
+                    data: () => ({
+                        commentText: 'Help me with this project.',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'message-1',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            ['get_tasks'],
+            null,
+            'user-1',
+            'assistant-1'
+        )
+        const flattened = contextMessages
+            .map(message => (typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])))
+            .join('\n')
+
+        expect(requestedDocumentPaths).not.toContain('project-other')
+        expect(flattened).not.toContain('Open tasks per project')
+        expect(flattened).toContain('Current project context.')
+        expect(flattened).toContain('Help me with this project.')
+    })
+
     test('includes the current note in assistant context for note chats', async () => {
         mockDocGet.mockImplementation(function () {
             const path = this?.path || ''
@@ -4290,6 +5494,105 @@ describe('assistant thread compaction tool', () => {
         expect(vmContext).toContain('Task ID: task-1')
     })
 
+    test('passes description images to the chat as vision blocks and to the VM as urls', async () => {
+        const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+        const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+        const imageUrl = 'https://storage.example/mock.png'
+        const previewUrl = 'https://storage.example/mock-small.png'
+        const description =
+            `${IMAGE_TRIGGER}${imageUrl}${IMAGE_TRIGGER}${previewUrl}${IMAGE_TRIGGER}mock.png${IMAGE_TRIGGER}0\n` +
+            'Build this screen.\n' +
+            `${ATTACHMENT_TRIGGER}https://storage.example/spec.pdf${ATTACHMENT_TRIGGER}spec.pdf${ATTACHMENT_TRIGGER}false`
+
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'project-1',
+                    data: () => ({ name: 'Alldone Product' }),
+                })
+            }
+
+            if (path === 'items/project-1/tasks/task-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'task-1',
+                    data: () => ({ name: 'build screen', extendedName: 'Build screen', description }),
+                })
+            }
+
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { path: 'message-1-ref' },
+                    data: () => ({
+                        commentText: 'Please build it',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'message-1',
+            'project-1',
+            'tasks',
+            'task-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            null,
+            'assistant-1'
+        )
+
+        // The chat assistant can literally see the image embedded in the description.
+        const imageParts = contextMessages
+            .filter(message => Array.isArray(message[1]))
+            .flatMap(message => message[1])
+            .filter(part => part?.type === 'image_url')
+        expect(imageParts).toEqual([expect.objectContaining({ image_url: { url: imageUrl } })])
+
+        const flattened = contextMessages
+            .map(message => (Array.isArray(message[1]) ? JSON.stringify(message[1]) : message[1]))
+            .join('\n')
+        expect(flattened).toContain('Task description: mock.png')
+        expect(flattened).toContain('Build this screen.')
+        expect(flattened).toContain('Files embedded in the task description (downloadable via the URLs):')
+
+        // The VM prompt has no vision channel, so it must at least receive usable URLs.
+        const vmContext = await buildVmThreadContext({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            options: {
+                currentObject: true,
+                userDescription: false,
+                projectDescription: false,
+                userMemory: false,
+                assistantPersona: false,
+                conversationHistory: false,
+                chatAttachments: false,
+                dateTime: false,
+                language: false,
+            },
+        })
+
+        expect(vmContext).not.toContain(IMAGE_TRIGGER)
+        expect(vmContext).not.toContain(ATTACHMENT_TRIGGER)
+        expect(vmContext).toContain('Task description: mock.png\nBuild this screen.\nspec.pdf')
+        expect(vmContext).toContain(`- mock.png (image/png): ${imageUrl}`)
+        expect(vmContext).toContain('- spec.pdf (application/pdf): https://storage.example/spec.pdf')
+    })
+
     test('rebuilds continuation conversation from compacted state after the tool runs', () => {
         const updatedConversation = buildConversationAfterToolExecution({
             currentConversation: [
@@ -4388,6 +5691,76 @@ describe('assistant thread compaction tool', () => {
         await expect(
             getAssistantThreadStateContextMessage('project-1', 'topics', 'chat-1', 'assistant-1')
         ).resolves.toContain('Operations done. Marketing next.')
+    })
+
+    test('keeps [Sent at ...] off assistant turns so the model cannot mimic the tag', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ name: 'Operations', description: 'Project context.' }),
+                })
+            }
+            return Promise.resolve({
+                exists: false,
+                data: () => ({}),
+            })
+        })
+
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'user-turn',
+                    ref: { path: 'user-turn-ref' },
+                    data: () => ({
+                        commentText: 'Follow up please.',
+                        fromAssistant: false,
+                        created: 500,
+                        lastChangeDate: 500,
+                    }),
+                },
+                {
+                    id: 'assistant-turn',
+                    ref: { path: 'assistant-turn-ref' },
+                    data: () => ({
+                        commentText: 'Here is my previous answer.',
+                        fromAssistant: true,
+                        created: 400,
+                        lastChangeDate: 400,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'user-turn',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            null,
+            'assistant-1'
+        )
+
+        const assistantMessages = contextMessages.filter(message => message[0] === 'assistant')
+        const userMessages = contextMessages.filter(message => message[0] === 'user')
+
+        expect(assistantMessages.length).toBeGreaterThan(0)
+        expect(userMessages.length).toBeGreaterThan(0)
+        for (const message of assistantMessages) {
+            const text = typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])
+            expect(text).not.toContain('[Sent at')
+            expect(text).toContain('Here is my previous answer.')
+        }
+        for (const message of userMessages) {
+            const text = typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])
+            expect(text).toContain('[Sent at')
+        }
     })
 })
 
@@ -4776,6 +6149,196 @@ describe('assistant project description tool', () => {
                 null
             )
         ).rejects.toThrow('Tool not permitted: update_project_description')
+    })
+})
+
+describe('execute_task_in_vm existing task routing', () => {
+    let vmJob
+    let vmTargetTask
+    let vmContinuationThread
+    let assistantStatusHelper
+    let countActiveJobsSpy
+    let startVmJobSpy
+    let resolveTargetTaskSpy
+    let resolveContinuationSpy
+    let ensureChatExistsSpy
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+
+        vmJob = require('./vmJob')
+        vmTargetTask = require('./vmTargetTask')
+        vmContinuationThread = require('./vmContinuationThread')
+        assistantStatusHelper = require('./assistantStatusHelper')
+        countActiveJobsSpy = jest.spyOn(vmJob, 'countActiveVmJobsForUser').mockResolvedValue(0)
+        startVmJobSpy = jest.spyOn(vmJob, 'startVmJob').mockResolvedValue({
+            success: true,
+            hostObjectId: 'task-1',
+        })
+        resolveTargetTaskSpy = jest.spyOn(vmTargetTask, 'resolveVmTargetTask').mockResolvedValue({
+            ok: true,
+            objectType: 'tasks',
+            objectId: 'task-1',
+            isPublicFor: [0, 'user-1'],
+        })
+        resolveContinuationSpy = jest
+            .spyOn(vmContinuationThread, 'resolveVmContinuationThread')
+            .mockResolvedValue({ ok: true, objectType: 'tasks', objectId: 'ambient-task' })
+        ensureChatExistsSpy = jest.spyOn(assistantStatusHelper, 'ensureChatExists').mockResolvedValue(undefined)
+    })
+
+    afterEach(() => {
+        countActiveJobsSpy.mockRestore()
+        startVmJobSpy.mockRestore()
+        resolveTargetTaskSpy.mockRestore()
+        resolveContinuationSpy.mockRestore()
+        ensureChatExistsSpy.mockRestore()
+    })
+
+    test('hosts a delegated VM run on target_task_id instead of creating a wrapper task', async () => {
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Fix the Comment button layout.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Please do that task' },
+            {
+                originProjectId: 'origin-project',
+                originObjectType: 'topics',
+                originObjectId: 'menubar-chat',
+                originAssistantId: 'origin-assistant',
+            }
+        )
+
+        expect(result).toMatchObject({ success: true, hostObjectId: 'task-1' })
+        expect(resolveTargetTaskSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                taskId: 'task-1',
+                requestUserId: 'user-1',
+            })
+        )
+        expect(ensureChatExistsSpy).toHaveBeenCalledWith(
+            'project-1',
+            'tasks',
+            'task-1',
+            'assistant-1',
+            ['user-1'],
+            [0, 'user-1']
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                originProjectId: 'origin-project',
+                originObjectId: 'menubar-chat',
+            })
+        )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if
+    // it is given the user's own words. Model-authored arguments must never be part of that text.
+    test('forwards the user-authored request text so per-run overrides can be corroborated', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Model-authored objective mentioning codex should not count as evidence.',
+                task_type: 'prototype',
+                agent: 'codex',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Work on this task in the VM' },
+            { userRequestText: 'Earlier I said: please use claude for the repository work' }
+        )
+
+        const payload = startVmJobSpy.mock.calls[0][0]
+        expect(payload.requestText).toContain('please use claude')
+        expect(payload.requestText).toContain('Work on this task in the VM')
+        expect(payload.requestText).not.toContain('Model-authored objective')
+        expect(payload.agent).toBe('codex')
+    })
+
+    test('sends empty request text when there is no user-authored message', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Do the work.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(startVmJobSpy.mock.calls[0][0].requestText).toBe('')
+    })
+
+    test('rejects ambiguous target and continuation arguments before launching', async () => {
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Continue fixing the Comment button.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+                continue_in_object_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result).toEqual({
+            success: false,
+            message:
+                'Use either target_task_id for a new VM run on an existing task or ' +
+                'continue_in_object_id to resume an earlier VM run, not both.',
+        })
+        expect(resolveTargetTaskSpy).not.toHaveBeenCalled()
+        expect(startVmJobSpy).not.toHaveBeenCalled()
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('passes the ambient thread as the preferred target for latest continuation', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Continue the implementation.',
+                task_type: 'prototype',
+                continue_in_object_id: 'latest',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { projectId: 'project-1', objectType: 'tasks', objectId: 'ambient-task' }
+        )
+
+        expect(resolveContinuationSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                objectId: 'latest',
+                preferredObjectId: 'ambient-task',
+                requestUserId: 'user-1',
+            })
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ objectType: 'tasks', objectId: 'ambient-task' })
+        )
     })
 })
 

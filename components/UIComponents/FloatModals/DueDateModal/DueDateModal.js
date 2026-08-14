@@ -20,6 +20,7 @@ import Backend from '../../../../utils/BackendBridge'
 import { watchGoal } from '../../../../utils/backends/Goals/goalsFirestore'
 import GoalBasedModal from './GoalBasedModal'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
+import { applyPostponeToGoalTaskList } from './applyPostponeToGoalTaskList'
 
 function DueDateModal({
     task,
@@ -85,8 +86,8 @@ function DueDateModal({
     const title = visibleCalendar
         ? translate('Pick date')
         : inParentGoal
-        ? translate('Goal tasks reminder')
-        : translate('Select reminder')
+          ? translate('Goal tasks reminder')
+          : translate('Select reminder')
     const description = inParentGoal
         ? translate('Select a date to postpone this goal and its tasks')
         : `${translate('Select the date to postpone the')} ${translate(updateParentGoalReminderDate ? 'goal' : 'task')}`
@@ -94,20 +95,17 @@ function DueDateModal({
 
     const wrappedSaveDueDate = async (date, isObserved) => {
         if (multipleTasks && tasks && tasks.length > 0) {
-            if (saveDueDateBeforeSaveTask) {
-                for (const t of tasks) {
-                    try {
-                        await saveDueDateBeforeSaveTask(t, date, isObserved)
-                    } catch (error) {
-                        console.error(`[DueDateModal] Error updating task ${t.id}:`, error)
-                    }
-                }
-            } else {
+            if (!saveDueDateBeforeSaveTask) {
                 console.error('[DueDateModal] saveDueDateBeforeSaveTask is undefined for multiple task update.')
             }
-            if (inParentGoal && updateParentGoalReminderDate) {
-                updateParentGoalReminderDate(date)
-            }
+            // AT-2160: goal row first, then all task writes together — see applyPostponeToGoalTaskList.
+            await applyPostponeToGoalTaskList({
+                tasks,
+                updateGoalReminderDate:
+                    inParentGoal && updateParentGoalReminderDate ? () => updateParentGoalReminderDate(date) : null,
+                applyToTask: saveDueDateBeforeSaveTask ? t => saveDueDateBeforeSaveTask(t, date, isObserved) : null,
+                onTaskError: (t, error) => console.error(`[DueDateModal] Error updating task ${t.id}:`, error),
+            })
         } else if (saveDueDateBeforeSaveTask) {
             saveDueDateBeforeSaveTask(task, date, isObserved)
         } else if (updateParentGoalReminderDate) {
@@ -122,20 +120,20 @@ function DueDateModal({
 
     const wrappedSetToBacklog = async isObserved => {
         if (multipleTasks && tasks && tasks.length > 0) {
-            if (setToBacklogBeforeSaveTask) {
-                for (const t of tasks) {
-                    try {
-                        await setToBacklogBeforeSaveTask(t, isObserved)
-                    } catch (error) {
-                        console.error(`[DueDateModal] Error setting task ${t.id} to backlog:`, error)
-                    }
-                }
-            } else {
+            if (!setToBacklogBeforeSaveTask) {
                 console.error('[DueDateModal] setToBacklogBeforeSaveTask is undefined for multiple task update.')
             }
-            if (inParentGoal && updateParentGoalReminderDate) {
-                updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
-            }
+            // AT-2160: same shape as wrappedSaveDueDate above — goal first, tasks together.
+            await applyPostponeToGoalTaskList({
+                tasks,
+                updateGoalReminderDate:
+                    inParentGoal && updateParentGoalReminderDate
+                        ? () => updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
+                        : null,
+                applyToTask: setToBacklogBeforeSaveTask ? t => setToBacklogBeforeSaveTask(t, isObserved) : null,
+                onTaskError: (t, error) =>
+                    console.error(`[DueDateModal] Error setting task ${t.id} to backlog:`, error),
+            })
         } else if (setToBacklogBeforeSaveTask) {
             setToBacklogBeforeSaveTask(task, isObserved)
         } else if (updateParentGoalReminderDate) {
@@ -243,12 +241,8 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingTop: 16,
         borderRadius: 4,
-        width: 305,
         overflow: 'visible',
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     sectionSeparator: {

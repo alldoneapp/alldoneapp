@@ -2,6 +2,7 @@
 
 const {
     addBaseInstructions,
+    buildConversationSafeToolArgs,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     executeToolNatively,
@@ -11,6 +12,7 @@ const {
     interactWithChatStream,
     isToolAllowedForExecution,
     getToolResultFollowUpPrompt,
+    normalizeModelKey,
     reduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
@@ -34,6 +36,7 @@ const MAX_TOOL_ITERATIONS = 50
 async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messageText, assistantId, options = {}) {
     const user = await getUserData(userId)
     const assistant = await getAssistantForChat(projectId, assistantId, userId)
+    const emailModel = resolveInboundEmailModel(assistant)
 
     if (!user || user.gold <= 0) {
         const responseText = 'I could not process this email because the account has no remaining credits.'
@@ -60,7 +63,12 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
+        openAiReasoningEffort: assistant.reasoningEffort || null,
         channel: 'email',
+        // The email channel exposes only a small, security-filtered tool set. Keep every
+        // permitted schema directly visible so invoice attachments are not routed to task
+        // creation merely because the bookkeeping integration was deferred behind tool search.
+        disableToolSearch: true,
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
         currentEmailParticipants,
         latestSafeActionContext: null,
@@ -86,6 +94,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
+            '- For create_task, use taskOrigin=user_request only when the sender explicitly asks to create that specific task. If you infer a useful task from the email without that explicit request, use taskOrigin=assistant_suggestion and include a concise visible comment with the concrete reason.\n' +
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
@@ -121,7 +130,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
 
     const stream = await interactWithChatStream(
         messages,
-        assistant.model,
+        emailModel,
         assistant.temperature,
         allowedTools,
         toolRuntimeContext
@@ -131,7 +140,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         responseText = await collectStreamWithToolCalls(
             stream,
             messages,
-            assistant.model,
+            emailModel,
             assistant.temperature,
             allowedTools,
             projectId,
@@ -161,7 +170,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         const { Tiktoken } = require('@dqbd/tiktoken/lite')
         const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
         const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-        await reduceGoldWhenChatWithAI(userId, user.gold, assistant.model, responseText, messages, encoder, {
+        await reduceGoldWhenChatWithAI(userId, user.gold, emailModel, responseText, messages, encoder, {
             projectId,
             objectId: chatId,
             objectType: 'topics',
@@ -172,6 +181,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     }
 
     return responseText
+}
+
+function resolveInboundEmailModel(assistant = {}) {
+    return normalizeModelKey(assistant.emailModel || assistant.model)
 }
 
 async function collectStreamWithToolCalls(
@@ -278,6 +291,7 @@ async function collectStreamWithToolCalls(
                 }
 
                 const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext)
+                const conversationSafeToolArgs = buildConversationSafeToolArgs(toolName, toolArgs, null)
 
                 currentConversation = [
                     ...currentConversation,
@@ -290,7 +304,7 @@ async function collectStreamWithToolCalls(
                                 type: 'function',
                                 function: {
                                     name: toolName,
-                                    arguments: JSON.stringify(toolArgs),
+                                    arguments: JSON.stringify(conversationSafeToolArgs),
                                 },
                             },
                         ],
@@ -472,5 +486,6 @@ module.exports = {
         buildSafeActionContextFromToolResult,
         enforceCalendarOwnershipResponse,
         getEmailAccountOwnerName,
+        resolveInboundEmailModel,
     },
 }

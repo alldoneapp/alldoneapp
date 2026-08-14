@@ -1,9 +1,8 @@
 import React, { Component } from 'react'
 import HighlightColorModal from './HighlightColorModal'
 import Circle from './Circle'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import store from '../../../../redux/store'
-import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../../../utils/HelperFunctions'
 import GhostButton from '../../../UIControls/GhostButton'
@@ -28,11 +27,13 @@ import { setTaskHighlight } from '../../../../utils/backends/Tasks/tasksFirestor
 import { updateNoteHighlight } from '../../../../utils/backends/Notes/notesFirestore'
 import { setChatTopicHighlight } from '../../../../utils/backends/Chats/chatsFirestore'
 import { setUserHighlightInProject } from '../../../../utils/backends/Users/usersFirestore'
+import { createFloatPopupLock } from '../../../../hooks/useFloatPopupLock'
 
 class HighlightButton extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
+        this.popupLock = createFloatPopupLock(store.dispatch)
 
         this.state = {
             visiblePopover: false,
@@ -42,6 +43,7 @@ class HighlightButton extends Component {
     }
 
     componentWillUnmount() {
+        this.popupLock.release()
         this.state.unsubscribe()
     }
 
@@ -56,7 +58,7 @@ class HighlightButton extends Component {
     hidePopover = () => {
         const { onDismissPopup } = this.props
         this.setState({ visiblePopover: false })
-        store.dispatch(hideFloatPopup())
+        this.popupLock.release()
         if (onDismissPopup) onDismissPopup()
     }
 
@@ -76,7 +78,7 @@ class HighlightButton extends Component {
         /* istanbul ignore next */
         if (!this.state.visiblePopover) {
             this.setState({ visiblePopover: true })
-            store.dispatch(showFloatPopup())
+            this.popupLock.acquire()
         }
     }
 
@@ -139,7 +141,7 @@ class HighlightButton extends Component {
         const buttonTitle = translate(BACKGROUND_COLORS[index >= 0 ? index : 0].name)
 
         return (
-            <Popover
+            <AppPopover
                 content={<HighlightColorModal onPress={this.onPress} selectedColor={object.hasStar} />}
                 onClickOutside={this.delayHidePopover}
                 isOpen={visiblePopover}
@@ -188,7 +190,7 @@ class HighlightButton extends Component {
                         />
                     </Hotkeys>
                 )}
-            </Popover>
+            </AppPopover>
         )
     }
 }

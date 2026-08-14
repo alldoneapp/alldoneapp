@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
@@ -21,8 +21,9 @@ export default class VideoFormat extends Embed {
         node.setAttribute('uri', uri)
         node.setAttribute('contenteditable', false)
         node.setAttribute('isNew', isNew)
-        node.setAttribute('isLoading', isLoading)
-        node.setAttribute('editorId', editorId)
+        // See customImageFormat: never stamp the literal string 'undefined' (AT-2227).
+        if (isLoading != null) node.setAttribute('isLoading', isLoading)
+        if (editorId != null) node.setAttribute('editorId', editorId)
 
         VideoFormat.data = text
         VideoFormat.refs = {
@@ -53,8 +54,8 @@ export default class VideoFormat extends Embed {
         return commentData
     }
 
-    constructor(domNode) {
-        super(domNode)
+    constructor(scroll, domNode) {
+        super(scroll, domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = VideoFormat.data
     }

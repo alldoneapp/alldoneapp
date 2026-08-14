@@ -6,7 +6,7 @@ import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import FileTag from '../../Tags/FileTag'
 import { applyPopoverWidth, getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
-import * as ImagePicker from 'expo-image-picker'
+import * as ImagePicker from '../../../utils/WebShims/ImagePicker'
 import { Platform } from 'react-native-web'
 import Spinner from '../Spinner'
 import store from '../../../redux/store'
@@ -225,10 +225,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         width: 305,
         overflow: 'visible',
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     title: {

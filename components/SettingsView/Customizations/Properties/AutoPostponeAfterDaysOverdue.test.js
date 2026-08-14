@@ -42,8 +42,9 @@ describe('AutoPostponeAfterDaysOverdue', () => {
     })
 
     test('shows Never when the setting is disabled', () => {
-        const tree = renderer.create(<AutoPostponeAfterDaysOverdue userId="user-1" autoPostponeAfterDaysOverdue={0} />)
-            .root
+        const tree = renderer.create(
+            <AutoPostponeAfterDaysOverdue userId="user-1" autoPostponeAfterDaysOverdue={0} />
+        ).root
 
         const textValues = tree.findAllByType(Text).map(node => node.props.children)
         expect(textValues).toContain('Never')

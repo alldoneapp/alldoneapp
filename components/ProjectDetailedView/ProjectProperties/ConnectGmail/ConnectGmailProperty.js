@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import ConnectGmailModal from './ConnectGmailModal/ConnectGmailModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
@@ -81,7 +81,7 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
     }, [dispatch])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <ConnectGmailModal
                     projectId={projectId}
@@ -112,6 +112,6 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
                 onPress={openModal}
                 needsReconnect={isConnected && isSignedIn && authStatus.hasModifyScope === false}
             />
-        </Popover>
+        </AppPopover>
     )
 }

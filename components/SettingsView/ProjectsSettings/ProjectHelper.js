@@ -289,7 +289,8 @@ class ProjectHelper {
 
     static getProjectColorById(projectId, defaultName) {
         const project = ProjectHelper.getProjectById(projectId)
-        return project ? project.color : defaultName ? defaultName : ''
+        const color = project?.color || defaultName
+        return PROJECT_COLORS[color] ? color : PROJECT_COLOR_DEFAULT
     }
 
     static getUserNameById(projectId, userId, defaultName) {
@@ -357,8 +358,8 @@ class ProjectHelper {
         return project?.usersData[userId]?.company
             ? project?.usersData[userId]?.company
             : defaultCompany
-            ? defaultCompany
-            : ''
+              ? defaultCompany
+              : ''
     }
 
     static getUserDescriptionInProject = (
@@ -373,14 +374,14 @@ class ProjectHelper {
             return project?.usersData[userId]?.extendedDescription
                 ? project?.usersData[userId]?.extendedDescription
                 : defaultExtendedDescription
-                ? defaultExtendedDescription
-                : ''
+                  ? defaultExtendedDescription
+                  : ''
         } else {
             return project?.usersData[userId]?.description
                 ? project?.usersData[userId]?.description
                 : defaultDescription
-                ? defaultDescription
-                : ''
+                  ? defaultDescription
+                  : ''
         }
     }
 

@@ -448,6 +448,7 @@ describe('scheduled assistant heartbeat worker', () => {
             heartbeatIntervalMs: 300000,
             heartbeatSendWhatsApp: false,
             model: 'MODEL_GPT5_5',
+            reasoningEffort: 'high',
             temperature: 'TEMPERATURE_NORMAL',
             instructions: 'Be helpful.',
         })
@@ -497,7 +498,7 @@ describe('scheduled assistant heartbeat worker', () => {
         expect(second.outcome).toBe('already_processed')
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][8]).toEqual(
-            expect.objectContaining({ model: 'MODEL_GPT5_6_TERRA' })
+            expect.objectContaining({ model: 'MODEL_GPT5_6_TERRA', reasoningEffort: 'high' })
         )
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual(
             expect.objectContaining({ maxRunWallClockMs: 25 * 60 * 1000 })

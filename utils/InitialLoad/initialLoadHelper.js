@@ -1,3 +1,5 @@
+import { difference } from 'lodash'
+
 import store from '../../redux/store'
 import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
 import { getProjectContacts, watchProjectContacts } from '../backends/Contacts/contactsFirestore'
@@ -9,7 +11,6 @@ import {
     unwatch,
     watchProject,
     watchProjectInvitations,
-    watchProjectMeetings,
     watchUserData,
 } from '../backends/firestore'
 import {
@@ -20,7 +21,6 @@ import {
     setContactsInProject,
     setGlobalAssistants,
     setInvitationsInProject,
-    setMeetingsInProject,
     setUsersInProject,
     setWorkstreamsInProject,
     setShowEndCopyProjectPopup,
@@ -36,6 +36,8 @@ import { forceCloseModals } from '../HelperFunctions'
 import { ROOT_ROUTES } from '../TabNavigationConstants'
 import NavigationService from '../NavigationService'
 import { watchChatNotifications } from '../backends/Chats/chatsComments'
+import { pruneStaleProjectIds } from './staleProjectSelfHeal'
+import { recoverDroppedProject } from './projectRecovery'
 
 export async function getInitialProjectData(projectId) {
     const promises = []
@@ -52,6 +54,15 @@ export async function getInitialProjectData(projectId) {
 export function watchProjectData(projectId, likeProjectMember, watchChatNotifications) {
     const updateProject = project => {
         if (project) {
+            if (!store.getState().loggedUserProjectsMap[projectId]) {
+                // The project was dropped from redux (transient read failure at InitialLoad, or a
+                // wrongful removal). 'Update user project' can only merge into an existing entry,
+                // so re-insert it with its full data bundle instead.
+                recoverDroppedProject(projectId).catch(error =>
+                    console.warn(`[InitialLoad] Failed to recover project ${projectId}:`, error)
+                )
+                return
+            }
             store.dispatch(updateUserProject(project))
         } else {
             const { loggedUser, selectedProjectIndex, loggedUserProjectsMap, route } = store.getState()
@@ -68,6 +79,12 @@ export function watchProjectData(projectId, likeProjectMember, watchChatNotifica
 
             unwatchProjectData(projectId)
             store.dispatch(removeProjectData(projectId))
+
+            // Self-heal: if the project doc is really gone (server-confirmed inside), drop its id
+            // from the logged user's doc so the next cold load does not re-arm this whole path.
+            pruneStaleProjectIds([projectId]).catch(error =>
+                console.warn('[InitialLoad] Stale project id self-heal failed:', error)
+            )
         }
     }
     const updateUsers = users => {
@@ -96,12 +113,8 @@ export const watchProjectDataThatIsOnlyForProjectMembers = (projectId, watchChat
     const updateInvitations = invitations => {
         store.dispatch(setInvitationsInProject(projectId, invitations))
     }
-    const updateMeetings = meetings => {
-        store.dispatch(setMeetingsInProject(projectId, meetings))
-    }
 
     watchProjectInvitations(projectId, updateInvitations, `${projectId}Invitations`)
-    watchProjectMeetings(projectId, updateMeetings, `${projectId}Mettings`)
     if (watchChatNotifications) watchProjectChatNotifications(projectId)
 }
 
@@ -116,7 +129,8 @@ export function watchProjectChatNotifications(projectId) {
 
 export function watchProjectsChatNotifications() {
     const { loggedUser } = store.getState()
-    loggedUser.projectIds.forEach(projectId => {
+    const projectIds = Array.isArray(loggedUser?.projectIds) ? loggedUser.projectIds : []
+    projectIds.forEach(projectId => {
         watchProjectChatNotifications(projectId)
     })
 }
@@ -153,21 +167,33 @@ export function watchLoggedUserData(loggedUser) {
         clearConfirmedOptimisticFocus(user)
     }
 
+    const notifyFinishedProjectCopy = user => {
+        // `difference` was used here without being imported, so this threw a ReferenceError for
+        // every user with a project duplication in flight - before `storeLoggedUser` below ran.
+        // Keep it isolated: a problem in this optional popup must never stop the user update.
+        try {
+            const copyProjectIds = Array.isArray(user.copyProjectIds) ? user.copyProjectIds : []
+            if (copyProjectIds.length === 0) return
+
+            const { loggedUser } = store.getState()
+            const newProjectId = difference(user.projectIds || [], loggedUser?.projectIds || [])[0]
+            if (newProjectId && copyProjectIds.includes(newProjectId)) {
+                // If there is a new project in the User data, then occurs a duplication in the background
+                getProjectData(newProjectId).then(project => {
+                    if (project) {
+                        removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
+                        store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
+                    }
+                })
+            }
+        } catch (error) {
+            console.warn('Failed to check for a finished project copy:', error)
+        }
+    }
+
     const setLoggedUser = user => {
         if (user) {
-            if (user.copyProjectIds.length > 0) {
-                const { loggedUser } = store.getState()
-                const newProjectId = difference(user.projectIds, loggedUser.projectIds)[0]
-                if (newProjectId && user.copyProjectIds.includes(newProjectId)) {
-                    // If there is a new project in the User data, then occurs a duplication in the background
-                    getProjectData(newProjectId).then(project => {
-                        if (project) {
-                            removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
-                            store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
-                        }
-                    })
-                }
-            }
+            notifyFinishedProjectCopy(user)
             store.dispatch(storeLoggedUser(user))
             clearConfirmedOptimisticFocus(user)
         }
@@ -241,7 +267,8 @@ export const unwatchProjectData = projectId => {
 }
 
 export const unwatchProjectsData = projectIds => {
-    projectIds.forEach(projectId => {
+    const ids = Array.isArray(projectIds) ? projectIds : []
+    ids.forEach(projectId => {
         unwatchProjectData(projectId)
     })
 }
@@ -275,7 +302,9 @@ export function convertAnonymousProjectsIntoSharedProjects(
     } = store.getState()
 
     let nextIndex = projects.length
-    anonymousLoggedUserProjects.forEach(project => {
+    const anonymousProjects = Array.isArray(anonymousLoggedUserProjects) ? anonymousLoggedUserProjects : []
+    anonymousProjects.forEach(project => {
+        if (!project || !project.id) return
         const sharedProject = { ...project, index: nextIndex }
         if (!projectsMap[sharedProject.id]) {
             projects.push(sharedProject)

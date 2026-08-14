@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -101,15 +102,32 @@ describe('TaskFiltersLine', () => {
             component = renderer.create(<TaskFiltersLine projectId="project-1" />)
         })
 
-        expect(
-            component.root.findAll(node => node.type === 'View' && node.props.testID === 'task-filters')
-        ).toHaveLength(1)
+        expect(component.root.findAll(node => node.type === View && node.props.testID === 'task-filters')).toHaveLength(
+            1
+        )
         expect(component.root.findByProps({ testID: 'task-filter-priority-group' })).toBeTruthy()
         expect(component.root.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
         expect(component.root.findAll(node => node.props.children === 'Priority')).toHaveLength(0)
         expect(component.root.findAll(node => node.props.children === 'VM States')).toHaveLength(0)
+    })
+
+    // AT-2264: the header used to carry a badge with the number of selected filters. It read
+    // like an item count next to the per-chip counts, so it is gone -- the highlighted chips
+    // already say what is selected. The per-chip counts stay: those are item counts.
+    test('does not show how many filters are selected', () => {
+        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 2, none: 1 }, total: 3, prioritized: 2 })
+        mockCollectTaskVmStateCounts.mockReturnValue({ counts: { paused: 1, failed: 1 }, total: 3, available: 2 })
+        setState({ taskPriorityFilters: ['must_do'], taskVmStateFilters: ['paused'] })
+
+        let component
+        act(() => {
+            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
+        })
+
+        expect(component.root.findAll(node => node.props.testID === 'task-filter-active-count')).toHaveLength(0)
         expect(
-            component.root.findByProps({ testID: 'task-filter-active-count' }).findByType('Text').props.children
+            component.root.findByProps({ testID: 'task-priority-filter-must_do' }).findAllByType(Text).slice(-1)[0]
+                .props.children
         ).toBe(2)
     })
 

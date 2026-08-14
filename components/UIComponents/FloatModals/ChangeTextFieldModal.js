@@ -23,7 +23,9 @@ class ChangeTextFieldModal extends Component {
 
     componentDidMount() {
         document.addEventListener('keydown', this.onPressEnter)
-        setTimeout(() => this.inputText && this.inputText.current.focus(), 1)
+        // The ref object always exists, so guarding it alone still threw once the
+        // modal unmounted before this fired; `current` is the part that goes null.
+        setTimeout(() => this.inputText && this.inputText.current && this.inputText.current.focus(), 1)
     }
 
     componentWillUnmount() {
@@ -52,16 +54,8 @@ class ChangeTextFieldModal extends Component {
 
     render() {
         const { currentValue } = this.state
-        const {
-            header,
-            subheader,
-            label,
-            placeholder,
-            validateFunction,
-            windowSize,
-            multiline,
-            numberOfLines,
-        } = this.props
+        const { header, subheader, label, placeholder, validateFunction, windowSize, multiline, numberOfLines } =
+            this.props
 
         return (
             <View
@@ -117,11 +111,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        width: 305,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     scroll: {

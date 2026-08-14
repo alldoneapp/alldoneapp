@@ -1,6 +1,6 @@
 import React from 'react'
 import { StyleSheet, View, TouchableOpacity, Text, Image } from 'react-native'
-import * as ImagePicker from 'expo-image-picker'
+import * as ImagePicker from '../../../../utils/WebShims/ImagePicker'
 
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'

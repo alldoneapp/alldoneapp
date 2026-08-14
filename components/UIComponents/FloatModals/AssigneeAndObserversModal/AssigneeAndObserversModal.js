@@ -74,15 +74,15 @@ export default function AssigneeAndObserversModal({
         (isSubtask
             ? translate('Choose assignee')
             : isGuide
-            ? translate('Choose observers')
-            : translate('Choose assignee and observers'))
+              ? translate('Choose observers')
+              : translate('Choose assignee and observers'))
     const subheader =
         subheaderText ||
         (isSubtask
             ? translate('Select here the assignee subheader')
             : isGuide
-            ? translate('Select here the observer subheader')
-            : translate('Select here the assignee and observers subheader'))
+              ? translate('Select here the observer subheader')
+              : translate('Select here the assignee and observers subheader'))
 
     const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
@@ -269,10 +269,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
         borderRadius: 4,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     heading: {

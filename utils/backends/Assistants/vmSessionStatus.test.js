@@ -37,16 +37,9 @@ describe('VM session status', () => {
         expect(getVmSessionBadgeState(session)).toBe(VM_BADGE_STATE_FAILED)
     })
 
-    test.each([
-        'stopped',
-        'completed',
-        'cancelled',
-        VM_SESSION_STATUS_RUNNING,
-        'unexpected',
-        null,
-        undefined,
-    ])('hides terminal, unknown, or missing status %s', status =>
-        expect(getVmSessionBadgeState(status && { status })).toBeNull()
+    test.each(['stopped', 'completed', 'cancelled', VM_SESSION_STATUS_RUNNING, 'unexpected', null, undefined])(
+        'hides terminal, unknown, or missing status %s',
+        status => expect(getVmSessionBadgeState(status && { status })).toBeNull()
     )
 
     test('busy takes precedence over stale failure metadata', () => {

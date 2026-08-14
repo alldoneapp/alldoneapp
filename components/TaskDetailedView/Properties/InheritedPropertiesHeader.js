@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 
-export default InheritedPropertiesHeader = () => {
+const InheritedPropertiesHeader = () => {
     return (
         <View>
             <View style={localStyles.container}>
@@ -40,3 +40,5 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
     },
 })
+
+export default InheritedPropertiesHeader

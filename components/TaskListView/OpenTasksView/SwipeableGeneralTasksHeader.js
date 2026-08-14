@@ -97,6 +97,7 @@ export default function SwipeableGeneralTasksHeader({ projectId, taskList, dateI
     return (
         <View style={localStyles.container}>
             <Swipeable
+                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}

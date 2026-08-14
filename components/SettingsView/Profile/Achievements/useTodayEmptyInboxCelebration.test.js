@@ -19,17 +19,17 @@ describe('useTodayEmptyInboxCelebration', () => {
         act(() => {
             tree = renderer.create(<CelebrationHarness days={[yesterdayKey]} />)
         })
-        expect(tree.root.findByType('Text').props.children).toBe(0)
+        expect(tree.root.findByType(Text).props.children).toBe(0)
 
         act(() => {
             tree.update(<CelebrationHarness days={[yesterdayKey, todayKey]} />)
         })
-        expect(tree.root.findByType('Text').props.children).toBe(1)
+        expect(tree.root.findByType(Text).props.children).toBe(1)
 
         act(() => {
             tree.update(<CelebrationHarness days={[todayKey, yesterdayKey]} />)
         })
-        expect(tree.root.findByType('Text').props.children).toBe(1)
+        expect(tree.root.findByType(Text).props.children).toBe(1)
     })
 
     it('does not replay when the view mounts after today was already achieved', () => {
@@ -38,7 +38,7 @@ describe('useTodayEmptyInboxCelebration', () => {
             tree = renderer.create(<CelebrationHarness days={[todayKey]} />)
         })
 
-        expect(tree.root.findByType('Text').props.children).toBe(0)
+        expect(tree.root.findByType(Text).props.children).toBe(0)
     })
 
     it('does not trigger outside the task-list achievement overview', () => {
@@ -50,6 +50,6 @@ describe('useTodayEmptyInboxCelebration', () => {
             tree.update(<CelebrationHarness days={[todayKey]} enabled={false} />)
         })
 
-        expect(tree.root.findByType('Text').props.children).toBe(0)
+        expect(tree.root.findByType(Text).props.children).toBe(0)
     })
 })

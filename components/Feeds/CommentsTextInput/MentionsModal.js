@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import algoliasearch from 'algoliasearch'
+import { searchTypesenseCollection } from '../../../utils/typesenseSearch'
+import { formatTypesenseValue } from '../../GlobalSearchAlgolia/typesenseSearchFilters'
 
 import { colors } from '../../styles/global'
 import {
@@ -90,11 +91,6 @@ export default function MentionsModal({
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
     const tmpHeight = height - (contentLocation?.top || 0) - MODAL_MAX_HEIGHT_GAP
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
-    const [algoliaClient, setAlgoliaClient] = useState(() => {
-        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
-        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
-        return client
-    })
     const loggedUser = useSelector(state => state.loggedUser)
 
     const onKeyDown = event => {
@@ -247,33 +243,48 @@ export default function MentionsModal({
         }
     }
 
+    // Typesense port of the inline Algolia filters below (same scopes, Typesense syntax).
+    // isPublicFor is a string[] in Typesense, so the numeric public sentinel is quoted.
+    const getTypesenseMentionFilter = (indexPrefix, isGuide) => {
+        const publicScope = `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(
+            loggedUser.uid
+        )}]`
+        const projectScope = `projectId:=${formatTypesenseValue(projectId)}`
+
+        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
+            return isGuide
+                ? `${projectScope} && userId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
+                : `${projectScope} && ${publicScope}`
+        }
+        if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+            // Search notes across all projects the user has access to
+            return publicScope
+        }
+        if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
+            return isGuide
+                ? `${projectScope} && ownerId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
+                : `${projectScope} && ${publicScope}`
+        }
+        if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+            // Search contacts across all projects the user has access to
+            return publicScope
+        }
+        if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
+            return `${projectScope} && ${publicScope}`
+        }
+        return ''
+    }
+
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
         const isGuide = !!parentTemplateId
-        const algoliaIndex = algoliaClient.initIndex(indexPrefix)
 
-        let filters = ''
-
-        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
-            filters = isGuide
-                ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-            // Search notes across all projects the user has access to
-            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
-            filters = isGuide
-                ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            // Search contacts across all projects the user has access to
-            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        } else if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
-            filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
-        }
-
-        const results = await algoliaIndex.search(mentionText, { filters: filters })
+        const results = await searchTypesenseCollection(
+            indexPrefix,
+            mentionText,
+            getTypesenseMentionFilter(indexPrefix, isGuide)
+        )
 
         let items = results.hits
 
@@ -490,10 +501,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         paddingHorizontal: 8,
         paddingTop: 8,

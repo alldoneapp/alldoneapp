@@ -37,6 +37,7 @@ const {
 } = require('./FeedsConstants')
 const { getGlobalState } = require('../GlobalState/globalState')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const initialDates = {
     'Initial of Minutes': 'm',
@@ -307,8 +308,8 @@ function increaseFeedCount(
             feed.isPublicFor && !feed.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
                 ? feed.isPublicFor
                 : projectUsersIdsForSpecialFeeds.length > 0
-                ? projectUsersIdsForSpecialFeeds
-                : project.userIds
+                  ? projectUsersIdsForSpecialFeeds
+                  : project.userIds
 
         // Guard against pseudo/public marker values appearing in project user IDs.
         // Notification counters are per real user; pseudo IDs can create oversized feedsCount docs.
@@ -375,7 +376,7 @@ function globalInnerFeedsGenerator(projectId, objectTypes, feedObjectId, feed, f
         feed
     )
 
-    setLastActionDate(projectId, feed.lastChangeDate, batch)
+    if (!disabledLastInteraction) setLastActionDate(projectId, feed.lastChangeDate, batch)
 }
 
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectsType}/{objectId}/feeds, which is
@@ -410,7 +411,7 @@ function deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, tabsT
     const { admin } = getGlobalState()
 
     const entryObjectsCounter = {
-        [objectTypes]: { [objectId]: admin.firestore.FieldValue.delete() },
+        [objectTypes]: { [objectId]: FieldValue.delete() },
     }
 
     if (tabsToRemove === FOLLOWED_TAB || tabsToRemove === BOTH_TABS) {
@@ -730,7 +731,15 @@ async function proccessFeed(
         needGenerateNotification,
         contextOverrides
     )
-    globalInnerFeedsGenerator(projectId, objectsType, objectId, feed, feedId, batch)
+    globalInnerFeedsGenerator(
+        projectId,
+        objectsType,
+        objectId,
+        feed,
+        feedId,
+        batch,
+        contextOverrides.disabledLastInteraction === true
+    )
 }
 
 function updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch) {

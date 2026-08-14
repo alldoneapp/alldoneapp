@@ -1,10 +1,10 @@
 import React, { Component } from 'react'
 import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import { cloneDeep, isEqual } from 'lodash'
 import Hotkeys from 'react-hot-keys'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 
 import { colors } from '../../../styles/global'
 import TasksHelper, { OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
@@ -27,7 +27,8 @@ import Button from '../../../UIControls/Button'
 import NavigationService from '../../../../utils/NavigationService'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import EstimationWrapper from './EstimationWrapper'
-import ConfirmationModal from './ConfirmationModal'
+import ConfirmDialog from '../../ConfirmDialog'
+import { popoverToCenter } from '../../../../utils/HelperFunctions'
 import AssigneeWrapper from './AssigneeWrapper'
 import DueDateWrapper from './DueDateWrapper'
 import CommentWrapper from './CommentWrapper'
@@ -37,6 +38,11 @@ import FollowUpWrapper from './FollowUpWrapper'
 import { execShortcutFn } from '../../ShortcutCheatSheet/HelperFunctions'
 import TaskIcon from './TaskIcon'
 import { getSelection } from '../../../NotesView/NotesDV/EditorView/mentionsHelper'
+import {
+    consumeNoteSelectionSnapshot,
+    EMPTY_SELECTION,
+    resolveActionSelection,
+} from '../../../NotesView/NotesDV/EditorView/noteSelection'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
 import { exportRef } from '../../../NotesView/NotesDV/EditorView/NotesEditorView'
@@ -54,10 +60,16 @@ import {
     uploadNewSubTask,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
+import { createSingleFlightSubmit } from '../../../../hooks/useSingleFlightSubmit'
+import { mergeUserTaskEdits } from './mergeUserTaskEdits'
 
 const Delta = ReactQuill.Quill.import('delta')
 
 export default class TaskEditionMode extends Component {
+    // True once the user has typed in the title. Guards the unsaved title
+    // against remote task updates - see mergeUserTaskEdits.js.
+    userEditedExtendedName = false
+
     constructor(props) {
         super(props)
 
@@ -83,9 +95,9 @@ export default class TaskEditionMode extends Component {
             tempTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
                 ? getAssistant(tempTask.userId)
                 : isWorkstream(tempTask.userId)
-                ? getWorkstreamById(projectId, tempTask.userId)
-                : TasksHelper.getUserInProject(projectId, tempTask.userId) ||
-                  TasksHelper.getContactInProject(projectId, tempTask.userId)
+                  ? getWorkstreamById(projectId, tempTask.userId)
+                  : TasksHelper.getUserInProject(projectId, tempTask.userId) ||
+                    TasksHelper.getContactInProject(projectId, tempTask.userId)
 
         this.state = {
             tempTask: Backend.mapTaskData(tempTask.id, tempTask),
@@ -104,28 +116,27 @@ export default class TaskEditionMode extends Component {
         }
     }
 
-    componentDidUpdate(prevProps, prevState) {
-        if (this.props.task && !isEqual(this.props.task, prevProps.task)) {
-            const newTempTaskState = Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task))
-            const newAssignee =
-                newTempTaskState.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
-                    ? getAssistant(newTempTaskState.userId)
-                    : isWorkstream(newTempTaskState.userId)
-                    ? getWorkstreamById(this.props.projectId, newTempTaskState.userId)
-                    : TasksHelper.getUserInProject(this.props.projectId, newTempTaskState.userId) ||
-                      TasksHelper.getContactInProject(this.props.projectId, newTempTaskState.userId)
+    resolveAssignee = tempTask =>
+        tempTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+            ? getAssistant(tempTask.userId)
+            : isWorkstream(tempTask.userId)
+              ? getWorkstreamById(this.props.projectId, tempTask.userId)
+              : TasksHelper.getUserInProject(this.props.projectId, tempTask.userId) ||
+                TasksHelper.getContactInProject(this.props.projectId, tempTask.userId)
 
-            this.setState({ tempTask: newTempTaskState, assignee: newAssignee })
-        } else if (this.props.task && prevProps.task && this.props.task.dueDate !== prevProps.task.dueDate) {
-            const newTempTaskState = Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task))
-            const newAssignee =
-                newTempTaskState.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
-                    ? getAssistant(newTempTaskState.userId)
-                    : isWorkstream(newTempTaskState.userId)
-                    ? getWorkstreamById(this.props.projectId, newTempTaskState.userId)
-                    : TasksHelper.getUserInProject(this.props.projectId, newTempTaskState.userId) ||
-                      TasksHelper.getContactInProject(this.props.projectId, newTempTaskState.userId)
-            this.setState({ tempTask: newTempTaskState, assignee: newAssignee })
+    componentDidUpdate(prevProps, prevState) {
+        const taskChanged = this.props.task && !isEqual(this.props.task, prevProps.task)
+        const dueDateChanged = this.props.task && prevProps.task && this.props.task.dueDate !== prevProps.task.dueDate
+
+        if (taskChanged || dueDateChanged) {
+            // Keep the unsaved, user-typed title; take everything else from the
+            // incoming document. See mergeUserTaskEdits.js.
+            const newTempTaskState = mergeUserTaskEdits(
+                Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task)),
+                this.state.tempTask,
+                this.userEditedExtendedName
+            )
+            this.setState({ tempTask: newTempTaskState, assignee: this.resolveAssignee(newTempTaskState) })
         }
     }
 
@@ -141,8 +152,23 @@ export default class TaskEditionMode extends Component {
 
     getSelectedContent = editorId => {
         const { editorRef, projectId } = this.props
-        const editor = editorRef.getEditor()
-        const selection = getSelection()
+        // This runs in the constructor, i.e. during render: a throw here takes
+        // the whole tree down rather than just failing the popup.
+        const editor = typeof editorRef?.getEditor === 'function' ? editorRef.getEditor() : null
+        if (!editor) {
+            this.capturedNoteSelection = { ...EMPTY_SELECTION }
+            return new Delta()
+        }
+        // What the user had selected when they pressed the toolbar button is the
+        // authoritative answer, and it is the only one guaranteed to still exist
+        // by the time this modal is built. Reading the editor again here is the
+        // fallback, not the primary source: it can report a collapsed caret (the
+        // popup has taken focus) or Quill's default savedRange of
+        // {index: 0, length: 0}, both indistinguishable from "nothing selected".
+        const selection = resolveActionSelection(editor, consumeNoteSelectionSnapshot(editor), getSelection())
+        // Frozen for insertTag: the task tag has to replace exactly the range
+        // that was copied here, and task creation awaits the backend in between.
+        this.capturedNoteSelection = selection
         const selectionContent = editor.getContents(selection.index, selection.length)
 
         const content = cloneDeep(selectionContent)
@@ -184,9 +210,11 @@ export default class TaskEditionMode extends Component {
 
     onKeyDown = event => {
         const { key } = event
-        if (key === 'Enter') {
-            this.enterKeyAction()
-        }
+        if (key !== 'Enter') return
+        // Holding Return down repeats the keydown event, and an IME commit
+        // reports its own Enter. Neither is a second intended submission.
+        if (event.repeat || event.isComposing || event.keyCode === 229) return
+        this.enterKeyAction()
     }
 
     setName = (
@@ -201,6 +229,9 @@ export default class TaskEditionMode extends Component {
     ) => {
         const { tempTask } = this.state
         const { editing } = this.props
+        // Remember that the title is user-owned from here on, so an incoming
+        // remote update cannot revert it (see mergeUserTaskEdits.js).
+        if (extendedName !== tempTask.extendedName) this.userEditedExtendedName = true
         tempTask.extendedName = extendedName
         if (extendedName !== '') {
             this.setState({
@@ -323,8 +354,12 @@ export default class TaskEditionMode extends Component {
 
     insertTag = taskId => {
         const { editorRef, noteId, objectUrl } = this.props
-        const editor = editorRef.getEditor()
-        const selection = getSelection()
+        const editor = typeof editorRef?.getEditor === 'function' ? editorRef.getEditor() : null
+        if (!editor) return
+        // The range frozen when the popup was built, so the tag replaces exactly
+        // the text that was copied into it even though task creation awaited the
+        // backend in between.
+        const selection = this.capturedNoteSelection || getSelection()
         const taskTagFormat = { id: v4(), taskId, editorId: noteId, objectUrl }
         const delta = new Delta()
         delta.retain(selection.index)
@@ -408,7 +443,10 @@ export default class TaskEditionMode extends Component {
         }
     }
 
-    createTask = async (tempTask, convertSubtask) => {
+    // A single Return can reach this modal through both the document listener
+    // and the done button, and each run mints a new task id, so the creation is
+    // guarded against duplicated in flight submissions.
+    createTask = createSingleFlightSubmit(async (tempTask, convertSubtask) => {
         const { projectId, closeModal, parentTask, toggleEditionMode, noteId } = this.props
         const { showSuggestedComment } = this.state
 
@@ -456,7 +494,7 @@ export default class TaskEditionMode extends Component {
             })
         }
         return storedTask
-    }
+    })
 
     trySetLinkedObjects = task => {
         const {
@@ -718,17 +756,22 @@ export default class TaskEditionMode extends Component {
                         forceShowShortcut={true}
                     />
                 </View>
-                <Popover
+                <AppPopover
                     content={
-                        <ConfirmationModal closeModal={this.closeConfirmationModal} deleteTask={this.deleteTask} />
+                        <ConfirmDialog
+                            closeModal={this.closeConfirmationModal}
+                            onProceed={this.deleteTask}
+                            title={'Be careful with this action'}
+                            description={'Do you really want to perform this action?'}
+                        />
                     }
                     align={'start'}
                     position={['bottom']}
-                    contentLocation={{ top: 0, left: 0 }}
+                    contentLocation={popoverToCenter}
                     isOpen={showConfirmationModal}
                 >
                     <View />
-                </Popover>
+                </AppPopover>
             </View>
         )
     }

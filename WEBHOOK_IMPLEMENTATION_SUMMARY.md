@@ -175,26 +175,26 @@ Each webhook creates a document for state tracking:
 
 ## 🔐 Security
 
--   **Correlation ID Validation**: Prevents unauthorized updates
--   **CORS**: Restricted to POST requests only
--   **Timeout**: 5-minute maximum prevents indefinite pending states
--   **Signature Validation**: Placeholder function ready for HMAC-SHA256 implementation
+- **Correlation ID Validation**: Prevents unauthorized updates
+- **CORS**: Restricted to POST requests only
+- **Timeout**: 5-minute maximum prevents indefinite pending states
+- **Signature Validation**: Placeholder function ready for HMAC-SHA256 implementation
 
 ## ⚙️ Cloud Functions
 
 ### 1. `webhookCallbackForAssistantTasks` (HTTP)
 
--   **Endpoint**: `https://europe-west1-{project}.cloudfunctions.net/webhookCallbackForAssistantTasks`
--   **Method**: POST
--   **Timeout**: 60 seconds
--   **Memory**: 512 MiB
+- **Endpoint**: `https://europe-west1-{project}.cloudfunctions.net/webhookCallbackForAssistantTasks`
+- **Method**: POST
+- **Timeout**: 60 seconds
+- **Memory**: 512 MiB
 
 ### 2. `cleanupExpiredWebhookTasks` (Scheduled)
 
--   **Schedule**: Every 10 minutes (`*/10 * * * *`)
--   **Purpose**: Mark expired webhooks as failed
--   **Timeout**: 300 seconds
--   **Memory**: 512 MiB
+- **Schedule**: Every 10 minutes (`*/10 * * * *`)
+- **Purpose**: Mark expired webhooks as failed
+- **Timeout**: 300 seconds
+- **Memory**: 512 MiB
 
 ## 🎯 Key Features
 
@@ -228,22 +228,22 @@ firebase deploy --only functions
 
 ### Webhook not triggered?
 
--   Check `taskMetadata.isWebhookTask` is `true`
--   Verify `taskMetadata.webhookUrl` is valid HTTPS
--   Check task is actually executing (recurring task logs)
+- Check `taskMetadata.isWebhookTask` is `true`
+- Verify `taskMetadata.webhookUrl` is valid HTTPS
+- Check task is actually executing (recurring task logs)
 
 ### Callback not received?
 
--   Verify `correlationId` matches exactly
--   Check external service is using correct `callbackUrl`
--   Ensure callback URL is accessible from external service
--   Check Cloud Function logs for errors
+- Verify `correlationId` matches exactly
+- Check external service is using correct `callbackUrl`
+- Ensure callback URL is accessible from external service
+- Check Cloud Function logs for errors
 
 ### Webhooks timing out?
 
--   External service must respond within 5 minutes
--   Check external service is calling back
--   Verify network connectivity
+- External service must respond within 5 minutes
+- Check external service is calling back
+- Verify network connectivity
 
 ## 📈 Monitoring
 
@@ -282,10 +282,10 @@ const result = await response.json()
 
 ## 📚 Documentation
 
--   **Full Documentation**: `functions/Assistant/WEBHOOK_TASKS_README.md`
--   **Test Utility**: `functions/Tests/testWebhookCallback.js`
--   **Implementation**: `functions/Assistant/assistantPreConfigTaskTopic.js`
--   **Callback Handler**: `functions/Assistant/webhookCallbackHandler.js`
+- **Full Documentation**: `functions/Assistant/WEBHOOK_TASKS_README.md`
+- **Test Utility**: `functions/Tests/testWebhookCallback.js`
+- **Implementation**: `functions/Assistant/assistantPreConfigTaskTopic.js`
+- **Callback Handler**: `functions/Assistant/webhookCallbackHandler.js`
 
 ## 🎉 Next Steps
 
@@ -300,9 +300,9 @@ const result = await response.json()
 
 Refer to the comprehensive documentation in `functions/Assistant/WEBHOOK_TASKS_README.md` for detailed information about:
 
--   API specifications
--   Security implementation
--   Error handling
--   Best practices
--   Example code
--   Troubleshooting guide
+- API specifications
+- Security implementation
+- Error handling
+- Best practices
+- Example code
+- Troubleshooting guide

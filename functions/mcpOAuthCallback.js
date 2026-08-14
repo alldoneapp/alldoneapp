@@ -1,6 +1,7 @@
 const { onRequest } = require('firebase-functions/v2/https')
 const admin = require('firebase-admin')
 const { CloudOAuthHandler } = require('./MCP/auth/cloudOAuth.js')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // Ensure fetch is available (Node.js 18+ has built-in fetch)
 if (typeof fetch === 'undefined') {
@@ -41,8 +42,8 @@ async function storeUserAuthByEmail(email, userId, sessionId) {
         email,
         userId,
         sessionId,
-        timestamp: admin.firestore.Timestamp.now(),
-        expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
+        timestamp: Timestamp.now(),
+        expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
     }
 
     console.log('📝 Writing user auth data to Firestore:', {
@@ -202,7 +203,7 @@ exports.mcpOAuthCallback = onRequest(
                         status: 'completed',
                         userId: result.userId,
                         mcpSessionId: result.sessionId,
-                        completedAt: admin.firestore.Timestamp.now(),
+                        completedAt: Timestamp.now(),
                     }
                     console.log('📊 Auth session update data:', updateData)
 

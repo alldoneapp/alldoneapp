@@ -66,4 +66,28 @@ describe('MainButtons layout', () => {
             width: '100%',
         })
     })
+
+    it('shows both actions at the first workflow step and names their destinations', () => {
+        const tree = renderer.create(
+            <MainButtons
+                compact
+                currentStep={0}
+                selectedCustomStep={false}
+                onDonePress={jest.fn()}
+                backwardStepName="Open"
+                forwardStepName="Review"
+            />
+        )
+
+        expect(tree.root.findByType('BackwardButton').props.targetStepName).toBe('Open')
+        expect(tree.root.findByType('ForwardButton').props.targetStepName).toBe('Review')
+    })
+    it('shows only the forward action while a workflow task is open', () => {
+        const tree = renderer.create(
+            <MainButtons currentStep={-1} selectedCustomStep={false} onDonePress={jest.fn()} />
+        )
+
+        expect(tree.root.findAllByType('BackwardButton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ForwardButton')).toHaveLength(1)
+    })
 })

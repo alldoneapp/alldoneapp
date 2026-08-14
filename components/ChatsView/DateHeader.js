@@ -6,7 +6,7 @@ import moment from 'moment'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 
-function DateHeader({ dateText, isToday, isOverdue, date }) {
+function DateHeader({ dateText = 'Today', isToday = false, isOverdue = false, date }) {
     const weekdays = [
         translate('Monday'),
         translate('Tuesday'),
@@ -93,12 +93,6 @@ DateHeader.propTypes = {
     dateText: PropTypes.string,
     isToday: PropTypes.bool,
     isOverdue: PropTypes.bool,
-}
-
-DateHeader.defaultProps = {
-    dateText: 'Today',
-    isToday: false,
-    isOverdue: false,
 }
 
 export default DateHeader

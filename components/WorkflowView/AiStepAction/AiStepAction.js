@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -48,7 +48,7 @@ export default function AiStepAction({ projectId, onChangeValue }) {
 
     return (
         <View style={{ marginRight: smallScreen ? 8 : 4 }}>
-            <Popover
+            <AppPopover
                 content={
                     <AiStepActionModal
                         projectId={projectId}
@@ -79,7 +79,7 @@ export default function AiStepAction({ projectId, onChangeValue }) {
                         shortcutText={'P'}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

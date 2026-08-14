@@ -22,11 +22,14 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import RootSectionNavigation from './RootSectionNavigation'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
+export const isMainViewScrollEnabled = state => !(state.smallScreen && state.showFloatPopup > 0)
+
 export default function MainViewsContainer() {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const enableScroll = useSelector(state => !(state.smallScreen && state.showFloatPopup > 0))
-    //enableScroll will only work for touch scrolls events
+    const enableScroll = useSelector(isMainViewScrollEnabled)
+    // smallScreen is the <= 970px content breakpoint, which covers phone, tablet,
+    // and compact desktop layouts. React Native Web blocks touch/wheel events here.
 
     const { overlay } = useCollapsibleSidebar()
     const showGlobalRootSectionNavigation = checkIfSelectedAllProjects(selectedProjectIndex)

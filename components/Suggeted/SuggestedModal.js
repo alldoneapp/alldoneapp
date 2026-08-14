@@ -4,10 +4,10 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import store from '../../redux/store'
 import EstimationModal from '../UIComponents/FloatModals/EstimationModal/EstimationModal'
-import Button from '../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
+import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCommentModal/taskCommentAssistant'
 import FileTag from '../Tags/FileTag'
 import { applyPopoverWidth, getWorkflowStepsIdsSorted } from '../../utils/HelperFunctions'
 import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
@@ -28,6 +28,14 @@ import {
     updateSuggestedTask,
 } from '../../utils/backends/Tasks/tasksFirestore'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
+import { getSuggestedById, isAssistantSuggestedTask, resolveSuggestedByIdentity } from '../../utils/suggestedTaskFlow'
+import SuggestedActions from './SuggestedActions'
+import {
+    canBypassSuggestedTaskWorkflow,
+    getSuggestedTaskBypassLabel,
+    moveSuggestedTaskToDoneBypassingWorkflow,
+} from './suggestedTaskBypass'
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -53,6 +61,8 @@ export default class SuggestedModal extends Component {
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
             loggedUser: storeState.loggedUser,
+            currentUser: storeState.currentUser,
+            processingAction: false,
         }
     }
 
@@ -72,6 +82,7 @@ export default class SuggestedModal extends Component {
 
         this.setState({
             smallScreenNavigation: storeState.smallScreenNavigation,
+            currentUser: storeState.currentUser,
         })
     }
 
@@ -153,8 +164,29 @@ export default class SuggestedModal extends Component {
                 const hasWorkflow = Object.keys(currentUser.workflow?.[projectId] || {}).length > 0
                 const stepId = hasWorkflow ? getWorkflowStepsIdsSorted(currentUser.workflow[projectId])[0] : DONE_STEP
                 const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
-                nextStepSuggestedTask(projectId, stepId, task, estimations, comment, checkBoxId)
+                nextStepSuggestedTask(projectId, stepId, task, estimations, commentWithAttachments, checkBoxId)
             }
+        })
+    }
+
+    // Skips every workflow step of the accepting user and completes the suggested task right away.
+    onBypassWorkflowPress = () => {
+        const { comment, estimation, processingAction } = this.state
+        const { projectId, task, hidePopover, checkBoxId } = this.props
+
+        if (processingAction) return
+        this.setState({ processingAction: true })
+
+        hidePopover()
+        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
+            const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
+            moveSuggestedTaskToDoneBypassingWorkflow({
+                projectId,
+                task,
+                estimations,
+                comment: commentWithAttachments,
+                checkBoxId,
+            })
         })
     }
 
@@ -193,14 +225,12 @@ export default class SuggestedModal extends Component {
         tmpTask.userId = user.uid
         tmpTask.observersIds = observers.map(user => user.uid).filter(uid => tmpTask.userId !== uid)
 
-        const {
-            dueDateByObserversIds,
-            estimationsByObserverIds,
-        } = TasksHelper.mergeDueDateAndEstimationsByObserversIds(
-            task.dueDateByObserversIds,
-            tmpTask.observersIds,
-            task.estimationsByObserverIds
-        )
+        const { dueDateByObserversIds, estimationsByObserverIds } =
+            TasksHelper.mergeDueDateAndEstimationsByObserversIds(
+                task.dueDateByObserversIds,
+                tmpTask.observersIds,
+                task.estimationsByObserverIds
+            )
         tmpTask.dueDateByObserversIds = dueDateByObserversIds
         tmpTask.estimationsByObserverIds = estimationsByObserverIds
 
@@ -241,13 +271,24 @@ export default class SuggestedModal extends Component {
             estimation,
             smallScreenNavigation: mobile,
             tmpTask,
+            currentUser,
         } = this.state
 
-        const { photoURL: photoURLCreator, displayName } = TasksHelper.getUserInProject(projectId, task.creatorId) ||
-            TasksHelper.getContactInProject(projectId, task.creatorId) || {
-                photoURL: `${window.location.origin}/images/generic-user.svg`,
-                displayName: translate('Unknown user'),
-            }
+        const suggestedById = getSuggestedById(task)
+        const suggestedByIdentity = resolveSuggestedByIdentity({
+            task,
+            suggestedById,
+            user: TasksHelper.getUserInProject(projectId, suggestedById),
+            contact: TasksHelper.getContactInProject(projectId, suggestedById),
+            assistant: getAssistant(suggestedById),
+        })
+        const photoURLCreator =
+            suggestedByIdentity.identity?.photoURL ||
+            suggestedByIdentity.identity?.photoURL50 ||
+            `${window.location.origin}/images/generic-user.svg`
+        const displayName =
+            suggestedByIdentity.identity?.displayName ||
+            translate(suggestedByIdentity.isAssistant ? 'Assistant' : 'Unknown user')
 
         const { photoURL: photoURLAssignee } = TasksHelper.getUserInProject(projectId, tmpTask.userId) ||
             TasksHelper.getContactInProject(projectId, tmpTask.userId) ||
@@ -268,7 +309,7 @@ export default class SuggestedModal extends Component {
                 currentKarma={hasKarma}
                 inTaskModal={true}
                 userGettingKarmaId={task.userId}
-                externalAssistantId={task.assistantId}
+                {...getTaskCommentAssistantProps(task)}
                 objectName={task.name}
             />
         ) : inEstimation ? (
@@ -406,17 +447,15 @@ export default class SuggestedModal extends Component {
                         </Hotkeys>
                     </View>
 
-                    <View style={localStyles.doneButtonContainer}>
-                        <Button
-                            disabled={task.userId !== tmpTask.userId}
-                            icon="next-workflow"
-                            title={translate('Go to next step')}
-                            type="secondary"
-                            buttonStyle={{ marginRight: 8 }}
-                            onPress={() => this.onDonePress(false)}
-                        />
-                        <Button title={translate('Accept')} type={'primary'} onPress={() => this.onDonePress(true)} />
-                    </View>
+                    <SuggestedActions
+                        isAssistantSuggestion={isAssistantSuggestedTask(task)}
+                        disabled={task.userId !== tmpTask.userId}
+                        showBypassWorkflow={canBypassSuggestedTaskWorkflow(currentUser, projectId, task)}
+                        bypassWorkflowLabel={getSuggestedTaskBypassLabel(currentUser, projectId)}
+                        onNextStepPress={() => this.onDonePress(false)}
+                        onAcceptPress={() => this.onDonePress(true)}
+                        onBypassWorkflowPress={this.onBypassWorkflowPress}
+                    />
                 </View>
             </View>
         )
@@ -429,10 +468,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     heading: {
@@ -464,13 +500,6 @@ const localStyles = StyleSheet.create({
     uploadText: {
         color: 'white',
         marginLeft: 8,
-    },
-    doneButtonContainer: {
-        height: 72,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 16,
     },
     estimation: {
         height: 40,

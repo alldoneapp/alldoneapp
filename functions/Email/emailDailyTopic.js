@@ -18,6 +18,7 @@ const {
     normalizeEmailAddress,
     normalizeSafeEmailActionContext,
 } = require('./emailChannelHelpers')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 const EMAIL_PARTICIPANT_SCOPE_VERSION = 1
 
@@ -145,7 +146,7 @@ async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageTe
 
     const comment = {
         commentText: finalText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: userId,
         fromAssistant: false,
@@ -156,6 +157,7 @@ async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageTe
             ccEmails: Array.isArray(options.ccEmails) ? options.ccEmails : [],
             subject: options.subject || '',
             messageId: options.messageId || '',
+            sentAt: Number(options.sentAt) > 0 ? Number(options.sentAt) : null,
             replyTo: options.replyTo || '',
             inReplyTo: options.inReplyTo || '',
             references: options.references || '',
@@ -186,7 +188,7 @@ async function storeEmailAssistantMessageInTopic(projectId, chatId, assistantId,
 
     const comment = {
         commentText: String(responseText || '').trim(),
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -211,7 +213,7 @@ async function storeTopicComment(projectId, chatId, commentId, comment, actorId,
             'commentsData.lastComment': String(commentText || '').substring(0, 200),
             'commentsData.lastCommentOwnerId': actorId,
             'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            'commentsData.amount': FieldValue.increment(1),
         }),
     ])
 }
@@ -255,14 +257,16 @@ async function getConversationHistory(
     const messages = []
     snapshot.docs.reverse().forEach(doc => {
         const data = doc.data() || {}
-        const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
+        // Prefer the sender's own "Date:" header over the comment's creation time, which is
+        // when the queue happened to be drained rather than when the mail was sent (AT-2232).
+        const emailSentAt = Number(data.emailMetadata?.sentAt || 0)
+        const messageTimestamp = emailSentAt > 0 ? emailSentAt : Number(data.created || data.lastChangeDate || 0)
         if (!data.commentText) return
 
         if (data.fromAssistant) {
-            messages.push([
-                'assistant',
-                addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset),
-            ])
+            // Assistant turns are the assistant's own prior output; the "[Sent at ...]"
+            // framing belongs to user turns only, otherwise the model mimics the tag (AT-2241).
+            messages.push(['assistant', data.commentText])
             return
         }
 

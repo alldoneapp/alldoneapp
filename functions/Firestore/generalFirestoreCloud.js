@@ -1,5 +1,6 @@
 const { getProjectUsers } = require('../Users/usersFirestore')
 const { mapProjectData } = require('../Utils/MapDataFuncions')
+const { FieldValue } = require('firebase-admin/firestore')
 
 let lastPushTime = 0
 
@@ -19,12 +20,6 @@ async function getUserProjects(userId, appAdmin) {
     })
 
     return projects
-}
-
-async function updateFullSearchInProject(projectId, activeFullSearch, db, batch) {
-    batch
-        ? batch.update(db.doc(`projects/${projectId}`), { activeFullSearch })
-        : await db.doc(`projects/${projectId}`).update({ activeFullSearch })
 }
 
 async function getTemplateGuideIds(templateId, appAdmin) {
@@ -61,7 +56,7 @@ async function getServerCurrentTime(appAdmin) {
 }
 
 async function getFirebaseTimestampDirectly(admin, appAdmin) {
-    await appAdmin.firestore().doc('/info/currentTime/').set({ time: admin.firestore.FieldValue.serverTimestamp() })
+    await appAdmin.firestore().doc('/info/currentTime/').set({ time: FieldValue.serverTimestamp() })
     const currentTime = await getServerCurrentTime(appAdmin)
     return currentTime
 }
@@ -118,6 +113,5 @@ module.exports = {
     getProject,
     mapUsersInProject,
     getTemplateGuideIds,
-    updateFullSearchInProject,
     getUserProjects,
 }

@@ -21,7 +21,9 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
 
     const [hoverStep, setHoverStep] = useState(selected)
     const sortedSteps = Object.entries(steps).sort(chronoEntriesOrder)
-    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length)
+    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length).filter(
+        index => !task.workflowTask || index !== OPEN_STEP
+    )
 
     const getNextStepIndex = () => {
         const index = indexes.indexOf(hoverStep)
@@ -82,21 +84,23 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
                     </Hotkeys>
 
                     <View style={localStyles.contentContainer}>
-                        <StatusPickerStepItem
-                            ref={ref => (itemRefs[OPEN_STEP] = ref)}
-                            open
-                            task={task}
-                            projectId={projectId}
-                            currentStepNum={selected}
-                            workflow={steps}
-                            stepNum={OPEN_STEP}
-                            onPress={() => {
-                                selected = OPEN_STEP
-                            }}
-                            selected={selected === OPEN_STEP}
-                            hidePopover={hidePopover}
-                            active={hoverStep === OPEN_STEP}
-                        />
+                        {!task.workflowTask && (
+                            <StatusPickerStepItem
+                                ref={ref => (itemRefs[OPEN_STEP] = ref)}
+                                open
+                                task={task}
+                                projectId={projectId}
+                                currentStepNum={selected}
+                                workflow={steps}
+                                stepNum={OPEN_STEP}
+                                onPress={() => {
+                                    selected = OPEN_STEP
+                                }}
+                                selected={selected === OPEN_STEP}
+                                hidePopover={hidePopover}
+                                active={hoverStep === OPEN_STEP}
+                            />
+                        )}
                         {sortedSteps.map((step, index) => (
                             <StatusPickerStepItem
                                 ref={ref => (itemRefs[index] = ref)}
@@ -149,10 +153,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     innerContainer: {

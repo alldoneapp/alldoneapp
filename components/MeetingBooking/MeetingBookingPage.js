@@ -3,7 +3,7 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
-import styles, { colors } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { setLanguage, translate } from '../../i18n/TranslationService'
 import { BOOKING_LANGUAGES, getInitialBookingLanguage, persistBookingLanguage } from './bookingLanguage'
 import {
@@ -13,6 +13,16 @@ import {
 } from '../../utils/backends/Booking/bookingFirestore'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
+
+function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends, now = moment() }) {
+    const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
+    return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
+        moment(now)
+            .tz(timeZone)
+            .add(index + firstBookableDayOffset, 'days')
+            .startOf('day')
+    ).filter(day => includeWeekends || (day.day() !== 0 && day.day() !== 6))
+}
 
 function formatZoneLabel(zone) {
     if (!zone) return ''
@@ -59,11 +69,22 @@ export default function MeetingBookingPage({ navigation }) {
     const hostTimeZone = page?.settings?.timeZone || visitorTimeZone
     const activeTimeZone = displayTimeZone || visitorTimeZone
 
+    // Unless the host opted in, today is not offered at all — the server refuses same-day
+    // slots anyway, so showing today would only ever render an empty day. Both sides read a
+    // missing value as false, which keeps booking links created before this setting existed
+    // on the no-same-day rule.
+    const allowSameDayBooking = page?.settings?.allowSameDayBooking === true
+    // The availability engine already treats a missing value as false. Mirror that here so
+    // legacy booking links do not show weekend cards that can never return a slot.
+    const includeWeekends = page?.settings?.includeWeekends === true
+
     const days = useMemo(() => {
-        return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
-            moment().tz(hostTimeZone).add(index, 'days').startOf('day')
-        )
-    }, [hostTimeZone])
+        return buildPublicBookingDays({
+            timeZone: hostTimeZone,
+            allowSameDayBooking,
+            includeWeekends,
+        })
+    }, [hostTimeZone, allowSameDayBooking, includeWeekends])
 
     const changeLanguage = nextLanguage => {
         setLanguage(nextLanguage)
@@ -91,11 +112,12 @@ export default function MeetingBookingPage({ navigation }) {
                 setPage(result.page)
                 const durations = result.page?.settings?.availableDurations || [30]
                 setSelectedDuration(durations.includes(30) ? 30 : durations[0])
-                setSelectedDay(
-                    moment()
-                        .tz(result.page?.settings?.timeZone || moment.tz.guess())
-                        .startOf('day')
-                )
+                const initialDays = buildPublicBookingDays({
+                    timeZone: result.page?.settings?.timeZone || moment.tz.guess() || 'UTC',
+                    allowSameDayBooking: result.page?.settings?.allowSameDayBooking === true,
+                    includeWeekends: result.page?.settings?.includeWeekends === true,
+                })
+                setSelectedDay(initialDays[0] || null)
             } catch (loadError) {
                 setPageUnavailable(true)
                 if (loadError.message) setError(loadError.message)
@@ -702,10 +724,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 16,
         paddingVertical: 40,
         paddingHorizontal: 32,
-        shadowColor: '#000000',
-        shadowOpacity: 0.08,
-        shadowRadius: 28,
-        shadowOffset: { width: 0, height: 12 },
+        boxShadow: '0px 12px 28px rgba(0,0,0,0.08)',
     },
     successBadge: {
         width: 64,
@@ -868,7 +887,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
     },
     pickerCard: {
         width: '100%',
@@ -877,10 +896,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 14,
         padding: 20,
-        shadowColor: '#000000',
-        shadowOpacity: 0.2,
-        shadowRadius: 32,
-        shadowOffset: { width: 0, height: 16 },
+        boxShadow: '0px 16px 32px rgba(0,0,0,0.20)',
     },
     pickerHeader: {
         flexDirection: 'row',

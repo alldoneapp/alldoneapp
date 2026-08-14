@@ -30,9 +30,10 @@ jest.mock('googleapis', () => ({
     },
 }))
 
+// Only the credential lookup is mocked. runWithGoogleAuthRetry is dependency-free, so the
+// suite exercises the REAL one-shot retry rather than a stand-in that could drift from it.
 jest.mock('../../GoogleOAuth/googleOAuthHandler', () => ({
-    getAccessToken: jest.fn().mockResolvedValue('token'),
-    getOAuth2Client: jest.fn(() => ({ setCredentials: jest.fn() })),
+    getAuthorizedOAuth2Client: jest.fn().mockResolvedValue({ setCredentials: jest.fn(), on: jest.fn() }),
 }))
 
 const {
@@ -46,7 +47,7 @@ const {
     invalidateResolvedThreadIds,
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
-const { getAccessToken } = require('../../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
 
 const UNREAD_BY_ID = {
     INBOX: 4,
@@ -72,26 +73,36 @@ const ALL_LABELED_THREAD_IDS = [...new Set(Object.values(LABEL_THREAD_IDS).flat(
 
 const makeThreadRefs = ids => ids.map(id => ({ id }))
 
+const makeAuthClient = () => ({ setCredentials: jest.fn(), on: jest.fn() })
+
+// A Gmail 401, shaped the way googleapis raises it.
+const makeUnauthorizedError = () => {
+    const error = new Error('Request had invalid authentication credentials.')
+    error.code = 401
+    error.response = { status: 401 }
+    return error
+}
+
 describe('Gmail client cache', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        getAccessToken.mockResolvedValue('token')
+        getAuthorizedOAuth2Client.mockResolvedValue(makeAuthClient())
     })
 
     it('reuses and coalesces client setup briefly for the same connection', async () => {
-        let resolveToken
-        getAccessToken.mockReturnValueOnce(new Promise(resolve => (resolveToken = resolve)))
+        let resolveClient
+        getAuthorizedOAuth2Client.mockReturnValueOnce(new Promise(resolve => (resolveClient = resolve)))
 
         const first = getGmailClient('cache-user', 'email_google_12345678')
         const second = getGmailClient('cache-user', 'email_google_12345678')
-        expect(getAccessToken).toHaveBeenCalledTimes(1)
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
 
-        resolveToken('token')
+        resolveClient(makeAuthClient())
         const [firstClient, secondClient] = await Promise.all([first, second])
         expect(firstClient).toBe(secondClient)
 
         await getGmailClient('cache-user', 'email_google_12345678')
-        expect(getAccessToken).toHaveBeenCalledTimes(1)
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
     })
 
     it('does not share clients between connections', async () => {
@@ -100,7 +111,88 @@ describe('Gmail client cache', () => {
             getGmailClient('other-cache-user', 'email_google_87654321'),
         ])
 
-        expect(getAccessToken).toHaveBeenCalledTimes(2)
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(2)
+    })
+
+    it('bypasses the cache when a forced refresh is requested', async () => {
+        await getGmailClient('force-user', 'email_google_12345678')
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
+
+        // The cached client holds the token Gmail just rejected, so the recovery path must
+        // not be served from cache.
+        await getGmailClient('force-user', 'email_google_12345678', { forceRefresh: true })
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(2)
+        expect(getAuthorizedOAuth2Client).toHaveBeenLastCalledWith('force-user', 'email_google_12345678', 'gmail', {
+            forceRefresh: true,
+        })
+    })
+})
+
+// AT-2195: archiving an email failed with EMAIL_AUTH_EXPIRED whenever the stored access
+// token had gone stale. The token layer now refreshes proactively; this is the second line
+// of defence for a token that is rejected anyway (e.g. it expired mid-request).
+describe('Gmail access-token recovery (AT-2195)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        getAuthorizedOAuth2Client.mockResolvedValue(makeAuthClient())
+    })
+
+    it('archives successfully after one forced refresh when Gmail rejects the token', async () => {
+        mockMessagesGet.mockRejectedValueOnce(makeUnauthorizedError())
+        mockMessagesGet.mockResolvedValue({ data: { threadId: 't1' } })
+        mockThreadsModify.mockResolvedValue({})
+
+        const result = await archiveMessages('retry-user', 'email_google_12345678', ['m1'])
+
+        expect(result).toEqual({ processed: 1 })
+        expect(mockThreadsModify).toHaveBeenCalledWith({
+            userId: 'me',
+            id: 't1',
+            requestBody: { removeLabelIds: ['INBOX'] },
+        })
+        // Exactly one rebuild, and it forced a refresh.
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(2)
+        expect(getAuthorizedOAuth2Client).toHaveBeenLastCalledWith('retry-user', 'email_google_12345678', 'gmail', {
+            forceRefresh: true,
+        })
+    })
+
+    it('retries at most once, so a persistently rejected token cannot loop', async () => {
+        mockMessagesGet.mockRejectedValue(makeUnauthorizedError())
+
+        await expect(archiveMessages('loop-user', 'email_google_12345678', ['m1'])).rejects.toMatchObject({ code: 401 })
+
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not retry when the refresh token is dead — the user must reconnect', async () => {
+        const revoked = new Error('Google OAuth token is invalid or revoked. Please reconnect.')
+        revoked.code = 'EMAIL_AUTH_EXPIRED'
+        revoked.reconnectRequired = true
+        getAuthorizedOAuth2Client.mockRejectedValue(revoked)
+
+        await expect(archiveMessages('revoked-user', 'email_google_12345678', ['m1'])).rejects.toMatchObject({
+            code: 'EMAIL_AUTH_EXPIRED',
+        })
+
+        // The very first client build failed; nothing was retried.
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
+        expect(mockMessagesGet).not.toHaveBeenCalled()
+    })
+
+    it('does not retry a non-auth Gmail failure', async () => {
+        const rateLimited = new Error('Rate limit exceeded')
+        rateLimited.code = 429
+        mockMessagesGet.mockRejectedValue(rateLimited)
+
+        await expect(archiveMessages('rate-user', 'email_google_12345678', ['m1'])).rejects.toMatchObject({ code: 429 })
+
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips Gmail entirely when there is nothing to archive', async () => {
+        await expect(archiveMessages('noop-user', 'email_google_12345678', [])).resolves.toEqual({ processed: 0 })
+        expect(getAuthorizedOAuth2Client).not.toHaveBeenCalled()
     })
 })
 
@@ -321,6 +413,7 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsGet).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', format: 'metadata' }))
         expect(mockThreadsGet).not.toHaveBeenCalledWith(expect.objectContaining({ id: 't_archived' }))
         expect(result.messages).toHaveLength(1)
+        expect(result.totalCount).toBe(1)
         expect(result.nextPageToken).toBeNull()
         const row = result.messages[0]
         expect(row.messageId).toBe('m1')
@@ -346,10 +439,12 @@ describe('gmailEmailLine', () => {
 
         const page1 = await listMessagesForLabel('u', 'p', 'Label_ads', {})
         expect(page1.messages).toHaveLength(25) // MESSAGES_PER_PAGE
+        expect(page1.totalCount).toBe(30)
         expect(page1.nextPageToken).toBe('inbox-label:25')
 
         const page2 = await listMessagesForLabel('u', 'p', 'Label_ads', { pageToken: page1.nextPageToken })
         expect(page2.messages).toHaveLength(5)
+        expect(page2.totalCount).toBe(30)
         expect(page2.nextPageToken).toBeNull()
         // Page two reuses the resolved inbox/label intersection instead of rescanning both sets.
         expect(mockThreadsList).toHaveBeenCalledTimes(2)
@@ -408,13 +503,33 @@ describe('gmailEmailLine', () => {
 
         const noLabel = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
         expect(noLabel.messages).toEqual([])
+        expect(noLabel.totalCount).toBe(1)
         expect(noLabel.failedCount).toBe(1)
         expect(noLabel.partialFailure).toBe(true)
 
         const inbox = await listMessagesForLabel('u', 'p', 'INBOX', {})
         expect(inbox.messages).toEqual([])
+        expect(inbox.totalCount).toBe(1)
         expect(inbox.failedCount).toBe(1)
         expect(inbox.partialFailure).toBe(true)
+    })
+
+    test('uses Gmail resultSizeEstimate for a paginated inbox total', async () => {
+        mockThreadsList.mockResolvedValue({
+            data: {
+                threads: makeThreadRefs(['t1']),
+                nextPageToken: 'next',
+                resultSizeEstimate: 42,
+            },
+        })
+        mockThreadsGet.mockResolvedValue({
+            data: { id: 't1', messages: [{ id: 'm1', labelIds: ['INBOX'], payload: { headers: [] } }] },
+        })
+
+        const result = await listMessagesForLabel('u', 'p', 'INBOX', {})
+
+        expect(result.totalCount).toBe(42)
+        expect(result.nextPageToken).toBe('next')
     })
 
     test('getGmailLabelSummary warms the resolved-set cache so the modal open skips the rescans', async () => {

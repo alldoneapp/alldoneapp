@@ -43,16 +43,12 @@ export default function MyDayTasksLoaders() {
     const updateSelectedTasks = () => {
         const { loggedUser, myDaySelectedTasks, myDayOtherTasks, loggedUserProjectsMap } = store.getState()
 
-        const {
-            selectedTasks,
-            otherTasks,
-            selectedTasksForSortingMode,
-            otherTasksForSortingMode,
-        } = selectTasksAndAddTimeIntervale(
-            [...myDaySelectedTasks, ...myDayOtherTasks],
-            loggedUser,
-            loggedUserProjectsMap
-        )
+        const { selectedTasks, otherTasks, selectedTasksForSortingMode, otherTasksForSortingMode } =
+            selectTasksAndAddTimeIntervale(
+                [...myDaySelectedTasks, ...myDayOtherTasks],
+                loggedUser,
+                loggedUserProjectsMap
+            )
 
         dispatch(
             setMyDaySelectedAndOtherTasks(

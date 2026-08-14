@@ -32,8 +32,15 @@ import {
     updateStickyChatData,
 } from '../../utils/backends/Chats/chatsFirestore'
 import { createChat } from '../../utils/backends/Chats/chatsComments'
+import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 
-const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
+const EditChat = ({
+    formType,
+    projectId,
+    onCancelAction,
+    chat = { assistantId: '', title: '', hasStar: '#FFFFFF', stickyData: { days: 0, stickyEndDate: 0 } },
+}) => {
+    const submitOnce = useSingleFlightSubmit(submission => submission())
     let inputRef = useRef()
     const dispatch = useDispatch()
     const openModals = useSelector(state => state.openModals)
@@ -72,28 +79,33 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
         if (chatChanged) {
             if (formType === 'new') {
                 if (e) e.preventDefault()
-                updateNewAttachmentsData(projectId, inputText).then(title => {
-                    const chatId = getId()
-                    createChat(
-                        chatId,
-                        projectId,
-                        loggedUser.uid,
-                        '',
-                        'topics',
-                        title,
-                        isPublicFor,
-                        hasStar,
-                        stickyData,
-                        null,
-                        '',
-                        '',
-                        STAYWARD_COMMENT,
-                        loggedUser.uid
-                    ).then(async () => {
-                        const url = `/projects/${projectId}/chats/${chatId}/chat`
-                        URLTrigger.processUrl(NavigationService, url)
+                // Enter reaches this editor through the window listener, Quill's
+                // newline callback and the done button at once, and each run
+                // mints a new chat id, so creation is guarded.
+                submitOnce(() =>
+                    updateNewAttachmentsData(projectId, inputText).then(title => {
+                        const chatId = getId()
+                        createChat(
+                            chatId,
+                            projectId,
+                            loggedUser.uid,
+                            '',
+                            'topics',
+                            title,
+                            isPublicFor,
+                            hasStar,
+                            stickyData,
+                            null,
+                            '',
+                            '',
+                            STAYWARD_COMMENT,
+                            loggedUser.uid
+                        ).then(async () => {
+                            const url = `/projects/${projectId}/chats/${chatId}/chat`
+                            URLTrigger.processUrl(NavigationService, url)
+                        })
                     })
-                })
+                )
                 inputRef.current.clear()
                 onCancelAction()
             } else if (!!inputText.trim()) {
@@ -281,14 +293,14 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                             smallScreen
                                 ? null
                                 : !chatChanged
-                                ? 'Ok'
-                                : translate(
-                                      formType === 'new'
-                                          ? `Start Chat`
-                                          : formType === 'edit' && inputText === ''
-                                          ? `Delete`
-                                          : `Save`
-                                  )
+                                  ? 'Ok'
+                                  : translate(
+                                        formType === 'new'
+                                            ? `Start Chat`
+                                            : formType === 'edit' && inputText === ''
+                                              ? `Delete`
+                                              : `Save`
+                                    )
                         }
                         type={formType === 'edit' && inputText === '' ? 'danger' : 'primary'}
                         icon={
@@ -296,10 +308,10 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                                 ? formType === 'edit' && inputText === ''
                                     ? 'trash-2'
                                     : !chatChanged
-                                    ? 'x'
-                                    : formType === 'new'
-                                    ? 'plus'
-                                    : 'save'
+                                      ? 'x'
+                                      : formType === 'new'
+                                        ? 'plus'
+                                        : 'save'
                                 : null
                         }
                         onPress={onSubmit}
@@ -320,10 +332,7 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
         elevation: 3,
         marginHorizontal: -4,
     },
@@ -387,9 +396,5 @@ const localStyles = StyleSheet.create({
         marginRight: 32,
     },
 })
-
-EditChat.defaultProps = {
-    chat: { assistantId: '', title: '', hasStar: '#FFFFFF', stickyData: { days: 0, stickyEndDate: 0 } },
-}
 
 export default EditChat

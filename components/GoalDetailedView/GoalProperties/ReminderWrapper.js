@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import moment from 'moment'
@@ -45,7 +45,7 @@ export default function ReminderWrapper({ projectId, updateReminder, reminderDat
 
     const firstTask = { dueDate: reminderDate ? reminderDate : moment().valueOf() }
     return (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     projectId={projectId}
@@ -82,6 +82,6 @@ export default function ReminderWrapper({ projectId, updateReminder, reminderDat
                     shortcutText={'D'}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

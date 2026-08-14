@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Keyboard, StyleSheet, View } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
-import { firebase } from '@firebase/app'
-import ReactQuill from 'react-quill'
+import { shallowEqual, useSelector, useDispatch } from 'react-redux'
+import firebase from 'firebase/compat/app'
+import ReactQuill from 'react-quill-new'
 
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { colors } from '../../../styles/global'
@@ -25,8 +25,9 @@ import {
 import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
-import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
-import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
+import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
+import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -58,7 +59,22 @@ export default function ChatInput({
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const gold = useSelector(state => state.loggedUser.gold)
     const disableAutoFocusInChat = useSelector(state => state.disableAutoFocusInChat)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
+    // Read the global flag through the chat scope: a flag armed for a different chat must not
+    // reactivate the assistant here. `isAssistantActive` ORs this with the persisted state and
+    // feeds `explicitAssistantEnabled`, which OVERRIDES the object's own `isAssistantEnabled`
+    // inside `createObjectMessage` — so an unscoped leak would fire a real (Gold-spending)
+    // assistant run in a chat where the user had switched the assistant off (AT-2084).
+    const assistantEnabled = useSelector(state => selectAssistantEnabledFor(state, projectId, chat?.id))
+    useSelector(
+        state => ({
+            projectAssistants: state.projectAssistants,
+            globalAssistants: state.globalAssistants,
+            defaultAssistant: state.defaultAssistant,
+            loggedUserProjects: state.loggedUserProjects,
+            loggedUserProjectsMap: state.loggedUserProjectsMap,
+        }),
+        shallowEqual
+    )
     const [autoFocusDisabled, setAutoFocusDisabled] = useState(disableAutoFocusInChat)
     const [chatEditor, setChatEditor] = useState(null)
     const [inputText, setInputText] = useState('')
@@ -66,7 +82,7 @@ export default function ChatInput({
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-    const displayedAssistantId = getAssistantInProjectObject(projectId, assistantId)?.uid || assistantId
+    const displayedAssistantId = resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
     const selectedAssistantIdRef = useRef(displayedAssistantId)
 
     const { id: objectId, type: chatType } = chat
@@ -76,8 +92,8 @@ export default function ChatInput({
     const persistedAssistantActive = hasExplicitChatAssistantState
         ? chat.isAssistantEnabled === true
         : hasParentAssistantState
-        ? parentObject.isAssistantEnabled === true
-        : false
+          ? parentObject.isAssistantEnabled === true
+          : false
     const isAssistantActive = persistedAssistantActive || assistantEnabled
     const explicitAssistantEnabled =
         hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
@@ -328,7 +344,7 @@ export default function ChatInput({
         // The content should already be in HTML format from the PerplexityClient
         // We just need to ensure it's properly formatted for Quill
         console.log('Converting content to Quill delta format...')
-        const tempDelta = editor.clipboard.convert(content)
+        const tempDelta = editor.clipboard.convert({ html: content })
         console.log('Converted delta:', tempDelta)
 
         // Process each operation in the delta
@@ -371,7 +387,7 @@ export default function ChatInput({
     }
 
     return (
-        <ChatImageDropZone
+        <AttachmentDropZone
             testID="full-chat-image-drop-zone"
             style={[localStyles.inputContainer, containerStyle]}
             disabled={disabledEdition}
@@ -424,7 +440,7 @@ export default function ChatInput({
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
             />
-        </ChatImageDropZone>
+        </AttachmentDropZone>
     )
 }
 
@@ -438,10 +454,7 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
     },
     textInputContainer: {
         marginTop: 2,

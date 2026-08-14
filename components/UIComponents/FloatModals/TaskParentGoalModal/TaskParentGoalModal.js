@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import algoliasearch from 'algoliasearch'
+import { searchTypesenseCollection } from '../../../../utils/typesenseSearch'
+import { formatTypesenseValue } from '../../../GlobalSearchAlgolia/typesenseSearchFilters'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -33,6 +34,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../Feeds/Utils/FeedsConstants'
 import { DYNAMIC_PERCENT, getOwnerId } from '../../../GoalsView/GoalsHelper'
 import { ALL_GOALS_ID } from '../../../AllSections/allSectionHelper'
 import store from '../../../../redux/store'
+import { goalSelectionId, shouldUnselectGoal } from './goalSelectionToggle'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -54,6 +56,11 @@ export default function TaskParentGoalModal({
 
     // When in fromAddTaskSection mode, use Redux state for activeGoal
     const effectiveActiveGoal = fromAddTaskSection ? selectedGoalFromRedux : activeGoal
+
+    // Keep the meaning of a click stable for the lifetime of this picker. A goal assigned by the
+    // router after the picker opened must not turn the user's pending "select" click into
+    // "unselect". The reference advances only after a choice made through this picker.
+    const selectionAtLastUserChoiceRef = useRef(goalSelectionId(effectiveActiveGoal))
     const [flag, setFlag] = useState(false)
     const [activeMilestoneDate, setActiveMilestoneDate] = useState(null)
     const [currentMilestoneGoals, setCurrentMilestoneGoals] = useState([])
@@ -62,11 +69,6 @@ export default function TaskParentGoalModal({
     const [endedFirstSearch, setEndedFirstSearch] = useState(false)
     const [activeTab, setActiveTab] = useState(CURRENT_MILESTONE)
     const [filterText, setFilterText] = useState('')
-    const [algoliaClient, setAlgoliaClient] = useState(() => {
-        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
-        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
-        return client
-    })
 
     const getIfGoalsAreInCurrentMilestone = goal => {
         const { startingMilestoneDate, completionMilestoneDate, progress, dynamicProgress } = goal
@@ -239,17 +241,20 @@ export default function TaskParentGoalModal({
     }
 
     const updateResults = async () => {
-        const algoliaIndex = algoliaClient.initIndex(GOALS_INDEX_NAME_PREFIX)
         // Search goals across all projects the user has access to (similar to contacts)
-        const filters = activeGoal
-            ? `NOT id:${activeGoal.id} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-            : `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-        const results = await algoliaIndex.search(filterText, { filters })
+        const results = await searchTypesenseCollection(
+            GOALS_INDEX_NAME_PREFIX,
+            filterText,
+            `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(loggedUserId)}]`
+        )
         let hits = results.hits
 
-        // Filter out goals from projects the user doesn't have access to
+        // Filter out goals from projects the user doesn't have access to. The active-goal
+        // exclusion happens here rather than in the engine filter (Algolia's `NOT id:` has
+        // no direct Typesense analogue on the bare goal id), so it holds for both engines.
         const { loggedUserProjectsMap } = store.getState()
         hits = hits.filter(goal => loggedUserProjectsMap[goal.projectId])
+        if (activeGoal) hits = hits.filter(goal => goal.id !== activeGoal.id)
 
         // Sort: current project goals first, then others
         hits.sort((a, b) => {
@@ -283,17 +288,18 @@ export default function TaskParentGoalModal({
         }, 50)
     }
 
-    const selectGoal = (goal, tabIndex, goalProjectId, isNewGoal) => {
+    const selectGoal = async (goal, tabIndex, goalProjectId, isNewGoal) => {
         dismissClickThroughEditModes()
 
-        // Check if we're clicking on the same goal that's already selected
-        // We need to check both the effective active goal and the prop active goal
-        // to handle all different modal contexts
+        // A repeated click is an unselect only if the goal was already selected when the picker
+        // opened (or when the user last chose through it). Live background updates may change what
+        // is rendered, but must not invert the interaction already in flight.
         const currentlySelectedGoal = effectiveActiveGoal || activeGoal
-        if (currentlySelectedGoal && goal && currentlySelectedGoal.id === goal.id) {
+        if (shouldUnselectGoal(goal, currentlySelectedGoal, selectionAtLastUserChoiceRef.current)) {
             unselectGoal()
             return
         }
+        selectionAtLastUserChoiceRef.current = goalSelectionId(goal)
 
         // Use the goal's projectId if available, otherwise fall back to the passed goalProjectId
         const targetProjectId = goal?.projectId || goalProjectId
@@ -302,25 +308,27 @@ export default function TaskParentGoalModal({
             const goalData = { projectId: targetProjectId, goal, dateFormated, isNewGoal }
             dispatch(setSelectedGoalDataInTasksListWhenAddTask(goalData))
             closeModal()
-        } else if (notDelayClose) {
-            setActiveGoal(goal, targetProjectId)
-            closeModal()
         } else {
-            // Call setActiveGoal synchronously to ensure it executes before component unmounts
-            setActiveGoal(goal, targetProjectId)
-            setTimeout(() => {
-                closeModal()
-            })
+            // Persist the relationship before dismissing this picker. The detailed-view property
+            // writes asynchronously; closing first made the interaction look successful while the
+            // task was still unlinked (and hid write failures entirely).
+            const saved = await setActiveGoal(goal, targetProjectId)
+            if (saved === false) return
+
+            if (notDelayClose) closeModal()
+            else setTimeout(closeModal)
         }
     }
 
-    const unselectGoal = () => {
+    const unselectGoal = async () => {
         dismissClickThroughEditModes()
+        selectionAtLastUserChoiceRef.current = null
 
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))
         } else {
-            setActiveGoal(null)
+            const saved = await setActiveGoal(null)
+            if (saved === false) return
         }
         closeModal()
     }
@@ -488,10 +496,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         paddingHorizontal: 8,
         paddingTop: 8,

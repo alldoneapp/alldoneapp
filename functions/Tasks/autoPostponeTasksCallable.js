@@ -194,12 +194,15 @@ async function executeAutoPostponeTasks({ actorUserId, data, now = Date.now() })
     if (postponedFocusTask && targetData) {
         const focusTaskService = new FocusTaskService({ database: db })
         const timezoneOffset = getMomentInTimezone(now, timezoneContext).utcOffset()
+        // AT-2251: exclusion only, and conditional on the focus not having moved on already.
         await focusTaskService.findAndSetNewFocusTask(
             targetUserId,
             postponedFocusTask.projectId,
             postponedFocusTask.parentGoalId,
             postponedFocusTask.taskId,
-            timezoneOffset
+            timezoneOffset,
+            null,
+            { expectedCurrentFocusTaskId: postponedFocusTask.taskId }
         )
     }
 

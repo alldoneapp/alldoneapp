@@ -24,27 +24,13 @@ import {
     TASK_TYPE_WEBHOOK,
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
-
-const getTaskIcon = task => {
-    switch (task.type) {
-        case TASK_TYPE_PROMPT:
-            return 'message-square'
-        case TASK_TYPE_EXTERNAL_LINK:
-            return 'external-link'
-        case TASK_TYPE_WEBHOOK:
-            return 'link-2'
-        case TASK_TYPE_IFRAME:
-            return 'monitor'
-        default:
-            return 'cpu'
-    }
-}
+import { getAssistantTaskIcon } from '../assistantTaskIcon'
 
 const getAiSettings = task => {
-    return task.aiModel || task.aiTemperature || task.aiSystemMessage
+    return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
         ? {
               model: task.aiModel,
-              temperature: task.aiTemperature,
+              reasoningEffort: task.aiReasoningEffort,
               systemMessage: task.aiSystemMessage,
           }
         : null
@@ -53,6 +39,7 @@ const getAiSettings = task => {
 const getTaskMetadata = task => ({
     ...(task.taskMetadata || {}),
     sendWhatsApp: !!task.sendWhatsApp,
+    executionMode: task.executionMode,
 })
 
 export default function AssistantTaskSearchModal({ closeModal }) {
@@ -317,7 +304,7 @@ function TaskRow({ task, active, onPress }) {
             style={[localStyles.taskRow, active && localStyles.activeTaskRow]}
             onPress={() => onPress(task)}
         >
-            <Icon name={getTaskIcon(task)} size={20} color="#ffffff" />
+            <Icon name={getAssistantTaskIcon(task)} size={20} color="#ffffff" />
             <Text style={localStyles.taskName} numberOfLines={2}>
                 {task.name}
             </Text>
@@ -341,10 +328,7 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         paddingTop: 16,
         paddingHorizontal: 16,

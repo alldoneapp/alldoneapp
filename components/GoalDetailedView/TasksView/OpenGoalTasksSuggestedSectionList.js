@@ -6,6 +6,7 @@ import { SUGGESTED_TASK_INDEX } from '../../../utils/backends/Tasks/openGoalTask
 import styles, { colors } from '../../styles/global'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
 import { translate } from '../../../i18n/TranslationService'
+import SuggestedBulkActions from '../../Suggeted/SuggestedBulkActions'
 
 export default function OpenGoalTasksSuggestedSectionList({
     suggestedTasks,
@@ -24,6 +25,7 @@ export default function OpenGoalTasksSuggestedSectionList({
                         <Text style={[styles.caption1, { color: colors.Text03 }]}>{translate('Suggested')}</Text>
                     </View>
                 </View>
+                <SuggestedBulkActions projectId={projectId} tasks={suggestedTasks} />
             </View>
             <GoalTasksList
                 projectId={projectId}

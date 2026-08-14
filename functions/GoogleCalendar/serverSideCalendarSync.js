@@ -1,7 +1,7 @@
 'use strict'
 const { google } = require('googleapis')
 const admin = require('firebase-admin')
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { getMicrosoftGraphClient } = require('../MicrosoftGraph/graphClient')
 const {
     addCalendarEvents,
@@ -146,14 +146,10 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             })
             events = (response?.value || []).map(graphEventToGoogleEvent)
         } else {
-            // Get fresh access token (automatically refreshes if needed)
-            const accessToken = await getAccessToken(userId, projectId, 'calendar')
-
-            // Create authenticated OAuth2 client
-            const oauth2Client = getOAuth2Client()
-            oauth2Client.setCredentials({
-                access_token: accessToken,
-            })
+            // Authenticated client with full refreshable credentials: the stored access
+            // token is refreshed when it is expired or of unknown age, and the client can
+            // refresh again on its own mid-sync (AT-2195).
+            const oauth2Client = await getAuthorizedOAuth2Client(userId, projectId, 'calendar')
 
             // Create calendar API instance
             const calendar = google.calendar({ version: 'v3', auth: oauth2Client })

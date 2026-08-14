@@ -1,5 +1,4 @@
 import * as Y from 'yjs'
-import { WebrtcProvider } from 'y-webrtc'
 import { WebsocketProvider } from 'y-websocket'
 import { QuillBinding } from 'y-quill'
 import Quill from 'quill'
@@ -14,13 +13,6 @@ import { uploadTaskByQuill } from '../../../../utils/backends/Tasks/tasksFiresto
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 
-export const signalingServers = [
-    getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-    'wss://signaling.yjs.dev',
-    'wss://y-webrtc-signaling-eu.herokuapp.com',
-    'wss://y-webrtc-signaling-us.herokuapp.com',
-]
-
 const getQuillCollaborationData = (roomId, noteData) => {
     const ydoc = new Y.Doc()
     const update = new Uint8Array(noteData)
@@ -30,11 +22,6 @@ const getQuillCollaborationData = (roomId, noteData) => {
     }
 
     const provider = new WebsocketProvider(getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER, roomId, ydoc)
-
-    /* const provider = new WebrtcProvider(roomId, ydoc, {
-        peerOpts: { config },
-        signaling: signalingServers,
-    })*/
 
     const tempContainer = document.createElement('div')
     const quill = new Quill(tempContainer)

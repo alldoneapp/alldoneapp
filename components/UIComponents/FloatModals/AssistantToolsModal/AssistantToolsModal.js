@@ -41,8 +41,8 @@ export default function AssistantToolsModal({ allowedTools, onApply, closeModal 
     const selectionSummary = noneSelected
         ? translate('No tools enabled')
         : allSelected
-        ? translate('All tools enabled')
-        : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+          ? translate('All tools enabled')
+          : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
         <View style={localStyles.wrapper}>
@@ -97,10 +97,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         padding: 16,
         width: 320,

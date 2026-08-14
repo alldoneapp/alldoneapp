@@ -15,6 +15,7 @@ const {
     generateSortIndex,
 } = require('../Utils/HelperFunctionsCloud')
 const { mapProjectData, mapTaskData } = require('../Utils/MapDataFuncions')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT = 3
 const AUTO_POSTPONE_AFTER_DAYS_OVERDUE_NEVER = 0
@@ -334,7 +335,7 @@ async function autoPostponeTaskCloud({
     const isPostponingPrimaryDueDate = !isObservedTask && newDueDate > task.dueDate
 
     if (isPostponingPrimaryDueDate) {
-        updateData.timesPostponed = admin.firestore.FieldValue.increment(1)
+        updateData.timesPostponed = FieldValue.increment(1)
         updateData.priority = TASK_PRIORITY_NONE
         if (shouldSaveRecurrenceOriginalDueDate(task, task.dueDate, newDueDate)) {
             updateData.recurrenceOriginalDueDate = task.dueDate
@@ -379,7 +380,7 @@ async function autoPostponeTaskCloud({
             batch.update(admin.firestore().doc(`items/${projectId}/tasks/${subtaskId}`), {
                 dueDate: newDueDate,
                 priority: TASK_PRIORITY_NONE,
-                timesPostponed: admin.firestore.FieldValue.increment(1),
+                timesPostponed: FieldValue.increment(1),
                 lastEditionDate: now,
                 lastEditorId: editorUserId,
             })
@@ -507,12 +508,16 @@ async function processUserAutoPostpone(userId, userData, now = Date.now()) {
 
     if (postponedFocusTask) {
         const timezoneOffset = getMomentInTimezone(now, timezoneContext).utcOffset()
+        // AT-2251: the task id is an exclusion, not a request for a random pick, and the write only
+        // lands while the focus is still that task — so a client that already swapped wins.
         await focusTaskService.findAndSetNewFocusTask(
             userId,
             postponedFocusTask.projectId,
             postponedFocusTask.parentGoalId,
             postponedFocusTask.taskId,
-            timezoneOffset
+            timezoneOffset,
+            null,
+            { expectedCurrentFocusTaskId: postponedFocusTask.taskId }
         )
     }
 

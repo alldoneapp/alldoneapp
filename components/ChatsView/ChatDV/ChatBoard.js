@@ -28,7 +28,7 @@ import {
 import URLsPeople, { URL_PEOPLE_DETAILS_CHAT } from '../../../URLSystem/People/URLsPeople'
 import URLsGoals, { URL_GOAL_DETAILS_CHAT } from '../../../URLSystem/Goals/URLsGoals'
 import URLsNotes, { URL_NOTE_DETAILS_CHAT } from '../../../URLSystem/Notes/URLsNotes'
-import { LIMIT_SHOW_EARLIER } from '../Utils/ChatHelper'
+import { getTimestampInMilliseconds, LIMIT_SHOW_EARLIER } from '../Utils/ChatHelper'
 import ShowMoreButton from '../../UIControls/ShowMoreButton'
 import Backend from '../../../utils/BackendBridge'
 import SharedHelper from '../../../utils/SharedHelper'
@@ -38,13 +38,17 @@ import BotMessagePlaceholder from './EditorView/BotMessagePlaceholder'
 import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
-import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
-import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import {
-    getLinkedEmailFromMessage,
-    getLinkedEmailsFromMessages,
-    groupLinkedEmailsByConnection,
-} from './linkedEmailActions'
+    hasLoadingAssistantMessage,
+    hasNewVisibleAssistantMessage,
+    shouldShowAssistantScrollIndicator,
+    snapshotAssistantMessageIds,
+} from '../Utils/assistantWaiting'
+import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
+import { isAssistantEnabledScopeMatch } from '../Utils/assistantEnabledScope'
+import { ASSISTANT_LOADING_TIMEOUT_MS, resolveEffectiveMessageLoading } from './EditorView/messageLoadingState'
+import { getLinkedEmailFromMessage, getLinkedEmailsFromMessages } from './linkedEmailActions'
+import useLinkedEmailArchive from './useLinkedEmailArchive'
 import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
@@ -63,6 +67,8 @@ export default function ChatBoard({
 }) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
+    const assistantEnabledScope = useSelector(state => state.assistantEnabledScope)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUser = useSelector(state => state.loggedUser)
     // Only members can post. Anonymous viewers and logged-in non-members see this chat read-only.
@@ -78,9 +84,9 @@ export default function ChatBoard({
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
-    const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
-    const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
     const [archivingAllEmails, setArchivingAllEmails] = useState(false)
+    // Shared with the chat list's unread previews (AT-2256) so both archive the same way.
+    const { archivingEmailKeys, archivedEmailKeys, archiveLinkedEmails } = useLinkedEmailArchive()
     const scrollViewRef = useRef()
     const lastScrollPositionRef = useRef(0)
     const contentHeightRef = useRef(0)
@@ -89,7 +95,7 @@ export default function ChatBoard({
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${chat.id}`, chatNotifications)
-    const linkedEmails = getLinkedEmailsFromMessages(messages)
+    const linkedEmails = getLinkedEmailsFromMessages(messages, { projectId, chatId: chat.id })
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
@@ -106,6 +112,15 @@ export default function ChatBoard({
         assistantMessageIdsAtWaitStartRef.current,
         getAssistant
     )
+    const assistantResponseIsLoading =
+        waitingForBotAnswer ||
+        hasLoadingAssistantMessage(
+            messages,
+            creatorId => !!getAssistant(creatorId),
+            message =>
+                message.assistantRun?.kind === 'chat' &&
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+        )
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -131,36 +146,14 @@ export default function ChatBoard({
         setAutoScrollEnabled(true)
     }
 
-    const archiveLinkedEmails = async emails => {
-        const pendingEmails = emails.filter(
-            email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
-        )
-        if (pendingEmails.length === 0) return
-
-        const pendingKeys = pendingEmails.map(email => email.key)
-        setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        try {
-            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
-            await Promise.all(
-                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-                )
-            )
-            setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        } catch (error) {
-            console.error('Failed to archive linked email', error)
-            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
-        } finally {
-            setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
-        }
-    }
-
     const archiveAllLinkedEmails = async () => {
         if (archivingAllEmails) return
         setArchivingAllEmails(true)
         try {
             const allLinkedEmailComments = await getChatCommentsWithLinkedEmails(projectId, chat.type, chat.id)
-            await archiveLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
+            await archiveLinkedEmails(
+                getLinkedEmailsFromMessages(allLinkedEmailComments, { projectId, chatId: chat.id })
+            )
         } catch (error) {
             console.error('Failed to load linked emails for archive all', error)
             alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
@@ -237,15 +230,32 @@ export default function ChatBoard({
         dispatch(setChatPagesAmount(0))
     }, [])
 
+    // Only the chat the trigger was created for may show the placeholder, and it consumes the
+    // trigger immediately so a later Chat DV mount can never replay it (AT-2084).
     useEffect(() => {
-        if (triggerBotSpinner) startWaitingForBotAnswer()
-    }, [triggerBotSpinner])
+        if (!shouldConsumeBotSpinnerTrigger(triggerBotSpinner, projectId, chat.id)) return
+        startWaitingForBotAnswer()
+        dispatch(setTriggerBotSpinner(null))
+    }, [triggerBotSpinner, projectId, chat.id])
 
+    // A scoped assistant-enabled flag belongs to exactly one chat. Clearing a foreign one here,
+    // in the component that owns the chat currently on screen, protects every reader of the raw
+    // `state.assistantEnabled` (DV fullscreen, the "keep the comment popover open" checks) without
+    // each of them having to know about scopes (AT-2084). An unscoped flag is left alone: that is
+    // what the in-chat writers produce and it always refers to the open chat.
     useEffect(() => {
-        return () => {
-            dispatch(setTriggerBotSpinner(false))
-        }
-    }, [dispatch])
+        if (!assistantEnabled) return
+        if (isAssistantEnabledScopeMatch(assistantEnabledScope, projectId, chat.id)) return
+        dispatch(setAssistantEnabled(false))
+    }, [assistantEnabled, assistantEnabledScope, projectId, chat.id])
+
+    // Safety net: never leave the "assistant is working" placeholder up forever when the
+    // answer never arrives (failed run, assistant not actually triggered, lost subscription).
+    useEffect(() => {
+        if (!waitingForBotAnswer) return undefined
+        const timeout = setTimeout(() => setWaitingForBotAnswer(false), ASSISTANT_LOADING_TIMEOUT_MS)
+        return () => clearTimeout(timeout)
+    }, [waitingForBotAnswer])
 
     useEffect(() => {
         if (!isAnonymous) {
@@ -291,6 +301,7 @@ export default function ChatBoard({
             <CustomScrollView
                 ref={scrollViewRef}
                 containerStyle={[localStyles.scrollView]}
+                showIndicator={shouldShowAssistantScrollIndicator(smallScreenNavigation, assistantResponseIsLoading)}
                 onScroll={handleScroll}
                 onContentSizeChange={handleContentSizeChange}
                 scrollEventThrottle={16}
@@ -328,7 +339,7 @@ export default function ChatBoard({
                 <View>
                     {messages.map((message, index) => {
                         const highlight = index >= amountOfCommentsToNotHighligth
-                        const linkedEmail = getLinkedEmailFromMessage(message)
+                        const linkedEmail = getLinkedEmailFromMessage(message, { projectId, chatId: chat.id })
                         const linkedEmailNew = !!linkedEmail && newEmailCommentIds.has(message.id)
                         return (
                             <MessageItem

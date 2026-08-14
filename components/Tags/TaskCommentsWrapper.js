@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import TaskCommentsTag from './TaskCommentsTag'
-import { useDispatch, useSelector } from 'react-redux'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
+import { useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
-import { popoverToTop } from '../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
     BOT_OPTION_MODAL_ID,
@@ -15,6 +14,7 @@ import {
     RUN_OUT_OF_GOLD_MODAL_ID,
 } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function TaskCommentsWrapper({
     commentsData,
@@ -39,31 +39,37 @@ export default function TaskCommentsWrapper({
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
     const isUnmountedRef = useRef(false)
-    const dispatch = useDispatch()
+    const hideTimeoutRef = useRef(null)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         isUnmountedRef.current = false
         return () => {
             isUnmountedRef.current = true
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
         }
     }, [])
 
     const safeSetShowModal = value => {
         if (isUnmountedRef.current) {
-            if (console && console.debug) {
+            if (__DEV__ && console && console.debug) {
                 console.debug('[TaskCommentsWrapper] Ignored setShowModal on unmounted component', { value })
             }
             return
         }
-        if (console && console.debug) {
+        if (__DEV__ && console && console.debug) {
             console.debug('[TaskCommentsWrapper] setShowModal', { value })
         }
         setShowModal(value)
     }
 
     const openModal = () => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current)
+            hideTimeoutRef.current = null
+        }
         safeSetShowModal(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         if (unsubscribeClickObserver) {
             unsubscribeClickObserver()
         }
@@ -79,8 +85,9 @@ export default function TaskCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID]
         ) {
             safeSetShowModal(false)
-            setTimeout(() => {
-                dispatch(hideFloatPopup())
+            hideTimeoutRef.current = setTimeout(() => {
+                hideTimeoutRef.current = null
+                popupLock.release()
             })
             if (subscribeClickObserver) {
                 subscribeClickObserver()
@@ -98,16 +105,18 @@ export default function TaskCommentsWrapper({
             comment
         ) {
             const clientSubmissionTime = Date.now()
-            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                projectId,
-                objectType,
-                objectId,
-                assistantId,
-                commentLength: comment?.length,
-                explicitAssistantEnabled,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                    commentLength: comment?.length,
+                    explicitAssistantEnabled,
+                })
+            }
             await createObjectMessage(
                 projectId,
                 objectId,
@@ -119,15 +128,17 @@ export default function TaskCommentsWrapper({
                 false, // skipAssistantTrigger
                 explicitAssistantEnabled
             )
-            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
-                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
+                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                })
+            }
             if (!assistantEnabled) closeModal()
         }
     }
 
     return showModal && !isUnmountedRef.current ? (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -148,6 +159,7 @@ export default function TaskCommentsWrapper({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
+            containerStyle={popoverToTopContainerStyle}
         >
             <TaskCommentsTag
                 commentsData={commentsData}
@@ -162,7 +174,7 @@ export default function TaskCommentsWrapper({
                 outline={outline}
                 compact={compact}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <TaskCommentsTag
             commentsData={commentsData}

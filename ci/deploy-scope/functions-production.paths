@@ -1,0 +1,6 @@
+# Paths whose change requires a Cloud Functions production deploy.
+#
+# firebase.json carries the functions runtime, region and ignore list, so a change there
+# has to redeploy them too.
+^functions/
+^firebase\.json$

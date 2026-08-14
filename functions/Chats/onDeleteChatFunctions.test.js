@@ -11,7 +11,6 @@ const mockFirestore = {
 }
 
 jest.mock('firebase-admin', () => ({ firestore: () => mockFirestore }))
-jest.mock('firebase-tools', () => ({}))
 jest.mock('../AlgoliaGlobalSearchHelper', () => ({
     CHATS_OBJECTS_TYPE: 'chats',
     deleteRecord: (...args) => mockDeleteRecord(...args),

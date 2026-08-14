@@ -26,16 +26,16 @@ feature flag and no Cloud Tasks fallback path.
 
 `execute_tasks_in_vm` supports three execution modes:
 
--   `automatic` keeps the existing headless Claude/Codex CLI path unchanged.
--   `plan_first` uses the Claude Agent SDK or Codex App Server in native plan mode,
-    pauses the E2B sandbox, and waits for plan approval in the chat before executing.
--   `interactive` uses the same provider adapters and can pause for native
-    clarifying questions or sensitive-operation approvals. Routine approvals are
-    handled automatically: Codex uses App Server's `auto_review`, while Claude
-    auto-approves normal reads, workspace edits, tests, installs, and local Git
-    operations. Destructive commands, secret access, external mutations,
-    publishing/deployment, writes outside the workspace, and unknown tools still
-    require the user.
+- `automatic` keeps the existing headless Claude/Codex CLI path unchanged.
+- `plan_first` uses the Claude Agent SDK or Codex App Server in native plan mode,
+  pauses the E2B sandbox, and waits for plan approval in the chat before executing.
+- `interactive` uses the same provider adapters and can pause for native
+  clarifying questions or sensitive-operation approvals. Routine approvals are
+  handled automatically: Codex uses App Server's `auto_review`, while Claude
+  auto-approves normal reads, workspace edits, tests, installs, and local Git
+  operations. Destructive commands, secret access, external mutations,
+  publishing/deployment, writes outside the workspace, and unknown tools still
+  require the user.
 
 Provider sessions are resumed at explicit turn boundaries rather than keeping a
 Cloud Run execution open while a person responds. The E2B sandbox is paused while
@@ -66,24 +66,40 @@ the same runtime values used by Functions (`E2B_API_KEY`, provider API keys,
 `VM_PROXY_SIGNING_SECRET`, proxy URL and other required `env_functions` values),
 preferably through Secret Manager. The container supports Application Default
 Credentials, so do not bake a service-account JSON file into the image.
+
+**Provider keys are needed here too, not only in Functions.** The runner does not
+send any provider key into the sandbox (that is `vmLlmProxy`'s job), but it does
+check that the run's key is *available* before creating a sandbox and charging
+Gold, and it fails the job with "sandbox credentials are not configured" when it
+is not. That check is keyed on the run's **credential provider**, so an
+OpenRouter model looks up `OPENROUTER_API_KEY` and not `OPEN_AI_KEY`. In CI the
+values arrive through the same `GOOGLE_FUNCTIONS_ENV_DEV` / `_PROD` blob that the
+Functions deploy uses (`deploy:cloud:runner:*` writes it to
+`functions/env_functions.json` before building), so adding a key to that blob is
+enough — but the image must be **rebuilt** for it to take effect. CI does that on
+any `functions/**` change; there is no separate runner-only secret to set.
+
+Every such key must also be listed in `functions/envFunctionsHelper.js`. That
+file is an allowlist, not a passthrough: a key present in the blob but missing
+from the map reads as `undefined` in both runtimes, silently.
 The committed `.gcloudignore`/`.dockerignore` exclude local env JSON and the
 entire `service_accounts/` directory from build contexts.
 
 Required manual setup per environment:
 
--   Grant `roles/run.developer` on `vm-job-runner` to the
-    `firebase-adminsdk-*` service account. The launcher supplies the correlation
-    ID as an execution override, which needs `run.jobs.runWithOverrides`; the
-    script applies this job-scoped binding.
--   Run the job as that same service account, or grant its runtime replacement the
-    existing Firestore, Storage and Secret Manager permissions.
--   Ensure Artifact Registry, Cloud Build and Cloud Run APIs are enabled.
--   Configure the job secrets/env and verify `VM_LLM_PROXY_BASE_URL` points at the
-    environment's deployed proxy.
--   Deploy Functions together with the job image because chat responses use
-    `respondToVmInteractionSecondGen` to resume a paused turn.
--   Review the regional Cloud Run Jobs concurrent-execution quota before rollout.
-    The product still enforces the existing ten-job per-user admission cap; project
-    quota is the global safety limit after removing Cloud Tasks dispatch throttling.
-    Rollback requires reverting the launcher change and redeploying Functions. Do
-    not remove the Cloud Run Job while executions are active.
+- Grant `roles/run.developer` on `vm-job-runner` to the
+  `firebase-adminsdk-*` service account. The launcher supplies the correlation
+  ID as an execution override, which needs `run.jobs.runWithOverrides`; the
+  script applies this job-scoped binding.
+- Run the job as that same service account, or grant its runtime replacement the
+  existing Firestore, Storage and Secret Manager permissions.
+- Ensure Artifact Registry, Cloud Build and Cloud Run APIs are enabled.
+- Configure the job secrets/env and verify `VM_LLM_PROXY_BASE_URL` points at the
+  environment's deployed proxy.
+- Deploy Functions together with the job image because chat responses use
+  `respondToVmInteractionSecondGen` to resume a paused turn.
+- Review the regional Cloud Run Jobs concurrent-execution quota before rollout.
+  The product still enforces the existing ten-job per-user admission cap; project
+  quota is the global safety limit after removing Cloud Tasks dispatch throttling.
+  Rollback requires reverting the launcher change and redeploying Functions. Do
+  not remove the Cloud Run Job while executions are active.

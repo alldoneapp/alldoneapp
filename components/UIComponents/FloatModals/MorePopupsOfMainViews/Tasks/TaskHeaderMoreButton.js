@@ -38,8 +38,8 @@ export default function TaskHeaderMoreButton({
         return checkIfSelectedAllProjects(selectedProjectIndex)
             ? null
             : loggedUserProjects[selectedProjectIndex]
-            ? loggedUserProjects[selectedProjectIndex].id
-            : null
+              ? loggedUserProjects[selectedProjectIndex].id
+              : null
     })
     const projectId = projectIdOverride || selectedProjectId
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
@@ -215,7 +215,7 @@ export default function TaskHeaderMoreButton({
                     <ModalItem
                         key={'gmbtn-okr-history'}
                         icon={'external-link'}
-                        text={'OKR History'}
+                        text={'History'}
                         shortcut={shortcut}
                         onPress={openOKRsTab}
                     />

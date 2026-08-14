@@ -728,20 +728,16 @@ const getMilestonesAndGoalsFiltered = (
     goals,
     assigneesIdsToShow
 ) => {
-    const {
-        boardGoalsByMilestones,
-        boardNeedShowMore,
-        boardMilestones,
-        goalsAmount,
-    } = processMilestonesAndGoalsToCountAndShow(
-        inAllProjects,
-        numberGoalsAllTeams,
-        projectId,
-        milestonesToShow,
-        inDone,
-        goals,
-        assigneesIdsToShow
-    )
+    const { boardGoalsByMilestones, boardNeedShowMore, boardMilestones, goalsAmount } =
+        processMilestonesAndGoalsToCountAndShow(
+            inAllProjects,
+            numberGoalsAllTeams,
+            projectId,
+            milestonesToShow,
+            inDone,
+            goals,
+            assigneesIdsToShow
+        )
 
     processMilestonesAndGoalsToOnlyCount(
         inAllProjects,

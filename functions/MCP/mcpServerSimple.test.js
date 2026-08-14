@@ -116,6 +116,15 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         )
     })
 
+    test('exposes the assistant suggestion origin contract for create_task', async () => {
+        const tool = (await listTools()).find(entry => entry.name === 'create_task')
+
+        expect(tool.description).toContain('only when the end user explicitly asked')
+        expect(tool.description).toContain('automation instruction')
+        expect(tool.inputSchema.properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
+        expect(tool.inputSchema.properties.comment.description).toContain('context-specific reason')
+    })
+
     test('exposes get_local_recommendations with its coordinate schema over MCP', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'get_local_recommendations')

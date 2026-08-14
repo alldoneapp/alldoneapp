@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../UIControls/Button'
 import SelectProjectModal from '../../UIComponents/FloatModals/SelectProjectModal/SelectProjectModal'
@@ -26,7 +26,7 @@ export default function ProjectPicker({ project, item, disabled }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={showPopup && <SelectProjectModal item={item} project={project} closePopover={closePopover} />}
             onClickOutside={closePopover}
             isOpen={showPopup}
@@ -44,6 +44,6 @@ export default function ProjectPicker({ project, item, disabled }) {
                 buttonStyle={{ maxWidth: 240 }}
                 disabled={disabled}
             />
-        </Popover>
+        </AppPopover>
     )
 }

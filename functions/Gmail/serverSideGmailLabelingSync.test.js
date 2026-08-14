@@ -62,8 +62,7 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAccessToken: jest.fn(),
-    getOAuth2Client: jest.fn(),
+    getAuthorizedOAuth2Client: jest.fn(),
 }))
 
 jest.mock('../Assistant/assistantHelper', () => ({
@@ -106,6 +105,7 @@ const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildConnectionId } = require('../Integrations/providerConnections')
 const {
+    applyGmailLabelingModelMigration,
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
@@ -161,6 +161,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
         )
     })
 
+    test('migrates retired Gmail labeling models to Luna and preserves selectable models', () => {
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT5_6_LUNA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_TERRA' }).model).toBe('MODEL_GPT5_6_TERRA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_SOL' }).model).toBe('MODEL_GPT5_6_SOL')
+    })
+
     test('account-wide auto-archive overrides label settings for incoming messages only', () => {
         expect(
             shouldAutoArchiveLabeledMessage({ autoArchiveAllLabeled: true }, { autoArchive: false }, 'incoming')
@@ -203,6 +209,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             archiveOnComplete: true,
             direction: 'incoming',
             followUpType: 'informational',
+            taskSuggestionComment: '',
             targetContactEmail: '',
             targetContactName: '',
             topicChatTitle: '',
@@ -235,6 +242,11 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(labels[0].autoArchive).toBe(false)
         expect(labels[0].postLabelPrompt).toContain('followUpType is "actionable"')
         expect(labels[0].postLabelPrompt).toContain('followUpType is "informational"')
+        expect(labels[0].postLabelPrompt).toContain('automation instruction is not an explicit end-user request')
+        expect(labels[0].postLabelPrompt).toContain(
+            'MUST set taskOrigin to "assistant_suggestion", never "user_request"'
+        )
+        expect(labels[0].postLabelPrompt).toContain('concrete email-based reason')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -340,6 +352,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
         expect(config.prompt).toContain('active Alldone project or the Ads label')
         expect(config.prompt).toContain('Never use Ads for transactional email')
+        expect(config.prompt).toContain('likely something the user genuinely wants to do or should do')
+        expect(config.prompt).toContain('A call to action')
         expect(config.labelDefinitions).toHaveLength(2)
         expect(config.labelDefinitions[0]).toEqual(
             expect.objectContaining({
@@ -559,6 +573,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         archiveOnComplete: true,
                         direction: 'incoming',
                         followUpType: 'informational',
+                        taskSuggestionComment:
+                            'I suggest this task because the automatically processed email “Urgent request” appears to require follow-up.',
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
                         topicChatTitle: '',
@@ -568,6 +584,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
         )
         expect(assistantHelper.interactWithChatStream).toHaveBeenCalledWith(
             expect.arrayContaining([
+                expect.arrayContaining([
+                    'system',
+                    expect.stringContaining(
+                        'The follow-up instruction and email content are automation context, not an explicit end-user request'
+                    ),
+                ]),
                 expect.arrayContaining([
                     'user',
                     expect.stringContaining(
@@ -897,8 +919,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         { name: 'From', value: 'Me <me@example.com>' },
                         {
                             name: 'To',
-                            value:
-                                'Me <me@example.com>, Alice <alice@example.com>, Bob <bob@example.com>, Alice <alice@example.com>',
+                            value: 'Me <me@example.com>, Alice <alice@example.com>, Bob <bob@example.com>, Alice <alice@example.com>',
                         },
                         { name: 'Cc', value: 'Carol <carol@example.com>' },
                         { name: 'Bcc', value: 'Dave <dave@example.com>' },

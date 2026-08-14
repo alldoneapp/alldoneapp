@@ -26,6 +26,7 @@ import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
+import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 
 function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -35,9 +36,11 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const dispatch = useDispatch()
     const [expanded, setExpanded] = useState(false)
     const [totalChats, setTotalChats] = useState(undefined)
-    const [toRender, setToRender] = useState(
-        isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
-    )
+    // The smallest page this list ever shows. `toRender` must never fall below it: Firestore
+    // rejects `limit(n)` for n <= 0 with "limit() requires a positive number", which used to break
+    // the whole chat list when the collapse button was pressed with nothing to collapse (AT-2162).
+    const initialToRender = isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
+    const [toRender, setToRender] = useState(initialToRender)
     const [atEnd, setAtEnd] = useState(false)
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
     const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
@@ -45,15 +48,6 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly, toRender)
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
-
-    console.log(
-        '📊 ChatsByProject: Loading state for project:',
-        project.id,
-        'regularChats:',
-        Object.keys(chats).length,
-        'stickyChats:',
-        Object.keys(stickyChats).length
-    )
 
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
@@ -63,18 +57,20 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
 
     useEffect(() => {
         const watcherKey = v4()
-        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab)
+        // `toRender` is forwarded so the amount query can be capped at `toRender + 1` documents
+        // instead of downloading the project's whole chats collection just to count it (AT-2162).
+        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab, toRender)
         return () => {
             unwatchChatsAmount(watcherKey)
         }
-    }, [project.id, chatsActiveTab])
+    }, [project.id, chatsActiveTab, toRender])
 
     useEffect(() => {
         setChatXProject(current => ({ ...current, [project.id]: isThereChats }))
     }, [isThereChats])
 
     const contractChat = () => {
-        setToRender(toRender - 10)
+        setToRender(current => Math.max(initialToRender, current - 10))
     }
 
     const expandChat = () => {
@@ -110,9 +106,21 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                 projectId={project.id}
                 customRight={
                     isInAllProjects ? (
-                        <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                        <View style={localStyles.headerActions}>
+                            {/* Archives the emails behind this project's previewed unread messages.
+                                Renders nothing when the previews hold no email. */}
+                            <ArchiveUnreadEmailsButton
+                                projectId={project.id}
+                                containerStyle={localStyles.archiveEmailsInline}
+                            />
+                            <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                        </View>
                     ) : (
                         <View style={localStyles.headerActions}>
+                            <ArchiveUnreadEmailsButton
+                                projectId={project.id}
+                                containerStyle={localStyles.archiveEmailsInline}
+                            />
                             <MarkAsRead
                                 projectId={project.id}
                                 userId={loggedUser.uid}
@@ -164,16 +172,20 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                     />
                 )}
 
-                {(unreadOnly || toRender <= totalVisibleChats) && expanded && toRender !== 10 && isThereChats && (
-                    <ShowMoreButton
-                        expanded={true}
-                        contract={contractChat}
-                        style={localStyles.showMore}
-                        check={'toRender'}
-                    />
-                )}
+                {(unreadOnly || toRender <= totalVisibleChats) &&
+                    expanded &&
+                    toRender > initialToRender &&
+                    isThereChats && (
+                        <ShowMoreButton
+                            expanded={true}
+                            contract={contractChat}
+                            style={localStyles.showMore}
+                            check={'toRender'}
+                        />
+                    )}
 
-                {!unreadOnly && atEnd && isThereChats && (
+                {/* Only offer to collapse when the list actually grew past its first page. */}
+                {!unreadOnly && atEnd && isThereChats && toRender > initialToRender && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}
@@ -190,8 +202,14 @@ const localStyles = StyleSheet.create({
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
+        // The actions keep their intrinsic width; the project/user title on the left is the
+        // flexible side, so it truncates instead of the buttons overlapping it (AT-2263).
+        flexShrink: 0,
     },
     markAsReadInline: {
+        marginRight: 8,
+    },
+    archiveEmailsInline: {
         marginRight: 8,
     },
     moreButtonWrapper: {
@@ -217,4 +235,10 @@ const localStyles = StyleSheet.create({
     },
 })
 
-export default ChatsByProject
+// The "All Projects" chats screen mounts one ChatsByProject per project (14 for the largest account
+// measured in production; see the note in ChatsView.js).
+// Without memoization every re-render of ChatsView re-rendered all of those subtrees, even though
+// each one already subscribes to the state it needs. All props are referentially stable: `project`
+// objects keep their identity through the parent's filter/sortBy, and `setChatXProject` is a
+// useState setter.
+export default React.memo(ChatsByProject)

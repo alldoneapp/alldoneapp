@@ -13,8 +13,9 @@ jest.mock('react-redux', () => ({
             loggedUser: { uid: 'user-1' },
         }),
 }))
-jest.mock('@firebase/app', () => ({
-    firebase: {
+jest.mock('firebase/compat/app', () => ({
+    __esModule: true,
+    default: {
         firestore: () => ({
             collection: () => ({
                 orderBy: () => ({
@@ -29,6 +30,7 @@ jest.mock('../styles/global', () => ({
     __esModule: true,
     default: { body2: {}, button: {} },
     colors: { Text01: '#000000', UtilityBlue200: '#0000FF' },
+    hexColorToRGBa: () => 'rgba(0,0,0,0.7)',
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 

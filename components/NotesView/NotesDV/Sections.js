@@ -131,8 +131,8 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                 mobile
                                     ? localStyles.navigationBarMobile
                                     : isMiddleScreen
-                                    ? localStyles.navigationBarTablet
-                                    : localStyles.navigationBar
+                                      ? localStyles.navigationBarTablet
+                                      : localStyles.navigationBar
                             }
                         >
                             <NavigationBar isSecondary tabs={navigationTabs} />

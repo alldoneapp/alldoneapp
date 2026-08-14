@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 import moment from 'moment-timezone'
 
@@ -182,7 +182,7 @@ export default function GoalMilestones({ projectId, disabled, goalMilestonesConf
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Goal milestones')}</Text>
             <View style={localStyles.buttonContainer}>
-                <Popover
+                <AppPopover
                     content={
                         <GoalMilestonesModal
                             projectId={projectId}
@@ -204,7 +204,7 @@ export default function GoalMilestones({ projectId, disabled, goalMilestonesConf
                         onPress={() => setOpen(true)}
                         disabled={disabled}
                     />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
@@ -229,10 +229,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     modalTitle: {

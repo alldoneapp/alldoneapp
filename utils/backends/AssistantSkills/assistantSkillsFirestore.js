@@ -2,10 +2,7 @@ import { getDb, getId, globalWatcherUnsub, runHttpsCallableFunction } from '../f
 import store from '../../../redux/store'
 import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { GLOBAL_PROJECT_ID } from '../../../components/AdminPanel/Assistants/assistantsHelper'
-import {
-    BUILT_IN_ASSISTANT_SKILLS,
-    mergeBuiltInAssistantSkills,
-} from '../../AssistantSkills/builtInAssistantSkills'
+import { BUILT_IN_ASSISTANT_SKILLS, mergeBuiltInAssistantSkills } from '../../AssistantSkills/builtInAssistantSkills'
 
 const updateEditionData = data => {
     const { loggedUser } = store.getState()

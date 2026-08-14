@@ -36,9 +36,19 @@ import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
+import { useIsUserEditing } from '../../../utils/editingGuard'
 
-export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
+export default function OpenTasksByProjectHandler({
+    projectIndex,
+    firstProject,
+    setProjectsHaveTasksInFirstDay,
+    assistantProfileMode = false,
+}) {
     const dispatch = useDispatch()
+    // Contracting the day list re-subscribes the open-task watchers with an
+    // empty cache, which unmounts every OpenTasksByDate block - and with it any
+    // open editor. Defer it while the user is typing. See utils/editingGuard.js.
+    const isUserEditing = useIsUserEditing()
     const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const laterTasksExpanded = useSelector(state => state.laterTasksExpanded)
@@ -89,17 +99,25 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         if (currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
             if (projectApis?.calendar) {
-                console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
+                if (__DEV__)
+                    console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
                 checkIfCalendarConnected(projectId)
             }
             if (projectApis?.email || projectApis?.gmail) {
-                console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
+                if (__DEV__)
+                    console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
                 fetchEmailLineSummary(projectId)
             }
         }
     }, [projectId, currentUserId])
 
     useEffect(() => {
+        // These flags are written straight from onSnapshot, so a task completed
+        // by an assistant can collapse the list under an open editor. Skipping
+        // is safe: `isUserEditing` is in the dependency list, so the contraction
+        // is re-evaluated as soon as the user is done.
+        if (isUserEditing) return
+
         if (inSelectedProject) {
             const {
                 laterTasksExpandedForNavigateFromAllProjects,
@@ -135,14 +153,13 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         thereAreLaterEmptyGoalsInProject,
         thereAreSomedayOpenTasksInProject,
         thereAreSomedayEmptyGoalsInProject,
+        isUserEditing,
     ])
 
     useEffect(() => {
         if (currentUserId) {
-            const {
-                laterTasksExpandedForNavigateFromAllProjects,
-                somedayTasksExpandedForNavigateFromAllProjects,
-            } = store.getState()
+            const { laterTasksExpandedForNavigateFromAllProjects, somedayTasksExpandedForNavigateFromAllProjects } =
+                store.getState()
             clearTasksAndWatchers()
             dispatch([
                 setTaskListWatchersVars(WATCHER_VARS_DEFAULT),
@@ -155,7 +172,8 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
                 false,
-                instanceKey
+                instanceKey,
+                assistantProfileMode
             )
 
             return () => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import TaskTag from '../../../../Tags/TaskTag'
@@ -51,7 +51,7 @@ export default function TaskTagWrapper({ taskId, editorId, tagId, setModalHeight
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     return (
-        <Popover
+        <AppPopover
             content={
                 isDeleted ? (
                     <RemovedTaskModal closeModal={closeModal} />
@@ -93,6 +93,6 @@ export default function TaskTagWrapper({ taskId, editorId, tagId, setModalHeight
             ) : (
                 <View />
             )}
-        </Popover>
+        </AppPopover>
     )
 }

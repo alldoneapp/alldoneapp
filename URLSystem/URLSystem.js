@@ -169,6 +169,7 @@ class URLSystem {
 
     static setLastNavigationScreen = (urlPath, isReplace = false) => {
         let { lastVisitedScreen } = store.getState()
+        lastVisitedScreen = Array.isArray(lastVisitedScreen) ? [...lastVisitedScreen] : []
         const currPath = `/${urlPath}`
         const lastPath = lastVisitedScreen.slice(-1)[0]
         if (currPath !== lastPath) {

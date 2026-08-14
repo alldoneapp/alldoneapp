@@ -7,10 +7,11 @@ import styles from '../../../styles/global'
 import Icon from '../../../Icon'
 import Shortcut, { SHORTCUT_LIGHT } from '../../../UIControls/Shortcut'
 import { translate } from '../../../../i18n/TranslationService'
+import AssistantModelGoldRate from '../../AssistantModelGoldRate'
 
 export default function OptionItem({ modelData, selectedModel, selectModel, disabledShorcut }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    let { text, model, shortcutKey } = modelData
+    let { text, model, shortcutKey, tokensPerGold } = modelData
 
     const selectOption = () => {
         selectModel(model)
@@ -21,6 +22,7 @@ export default function OptionItem({ modelData, selectedModel, selectModel, disa
             <Hotkeys keyName={shortcutKey} onKeyDown={selectOption} filter={e => true} disabled={disabledShorcut}>
                 <View style={localStyles.containerOption}>
                     <Text style={localStyles.text}>{translate(text)}</Text>
+                    <AssistantModelGoldRate tokensPerGold={tokensPerGold} />
                 </View>
                 <View style={{ justifyContent: 'center', flexDirection: 'row' }}>
                     {selectedModel === model && (
@@ -35,13 +37,13 @@ export default function OptionItem({ modelData, selectedModel, selectModel, disa
 
 const localStyles = StyleSheet.create({
     container: {
-        height: 40,
+        minHeight: 52,
         paddingVertical: 8,
         flexDirection: 'row',
         justifyContent: 'space-between',
     },
     containerOption: {
-        flexDirection: 'row',
+        flexDirection: 'column',
     },
 
     text: {

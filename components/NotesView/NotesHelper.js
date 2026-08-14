@@ -31,14 +31,14 @@ export const getScrollTolerance = (toFullScreen = true) => {
         return mobile
             ? TOLERANCE_FULL_SCREEN_MOBILE
             : tablet
-            ? TOLERANCE_FULL_SCREEN_TABLET
-            : TOLERANCE_FULL_SCREEN_DESKTOP
+              ? TOLERANCE_FULL_SCREEN_TABLET
+              : TOLERANCE_FULL_SCREEN_DESKTOP
     } else {
         return mobile
             ? TOLERANCE_NORMAL_SCREEN_MOBILE
             : tablet
-            ? TOLERANCE_NORMAL_SCREEN_TABLET
-            : TOLERANCE_NORMAL_SCREEN_DESKTOP
+              ? TOLERANCE_NORMAL_SCREEN_TABLET
+              : TOLERANCE_NORMAL_SCREEN_DESKTOP
     }
 }
 

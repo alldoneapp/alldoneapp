@@ -584,9 +584,11 @@ export const getIfLoggedUserReachedEmptyInbox = dateTimestamp => {
     return !lastDateMoment.isBefore(date, 'day')
 }
 
-export const getUserWorkflow = (projectId, userId) => {
-    const user = TasksHelper.getUserInProject(projectId, userId)
-    const workflow = user && user.workflow && user.workflow[projectId] ? user.workflow[projectId] : null
+export const getUserWorkflow = (projectId, userId, task) => {
+    const user = task?.workflowTask
+        ? TasksHelper.getTaskOwner(userId, projectId)
+        : TasksHelper.getUserInProject(projectId, userId)
+    const workflow = user?.workflow?.[projectId] || null
     return workflow
 }
 
@@ -770,7 +772,6 @@ export const getNewDefaultUser = (customData = {}) => {
         inFocusTaskId: '',
         inFocusTaskProjectId: '',
         assistantId: '',
-        activeFullSearchDate: null,
         commentsData: {},
         firstLoginDateInDay: dateNow,
         activeTaskStartingDate: dateNow,

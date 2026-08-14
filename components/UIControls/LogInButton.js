@@ -5,14 +5,18 @@ import Backend from '../../utils/BackendBridge'
 import Colors from '../../Themes/Colors'
 
 export default function LogInButton({ btnId = 'google-sign-in-btn', containerStyle }) {
-    const [isMobile, setIsMobile] = useState(false)
+    // Google Identity Services renders its button into a cross-origin iframe and can only
+    // sign in through a popup. Embedded and automated browsers block window.open, so on the
+    // dev server the click silently does nothing. Fall back to the custom button there, which
+    // goes through the redirect flow instead.
+    const [useCustomButton, setUseCustomButton] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
 
     useEffect(() => {
-        const mobile = Backend.isMobileDevice()
-        setIsMobile(mobile)
+        const custom = Backend.isMobileDevice() || Backend.isLocalDevHost()
+        setUseCustomButton(custom)
 
-        if (!mobile) {
+        if (!custom) {
             // Desktop: use GSI popup flow
             const scriptGoogleGSI = document.createElement('script')
             scriptGoogleGSI.src = 'https://accounts.google.com/gsi/client'
@@ -33,12 +37,13 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
         document.cookie = 'g_state=; Max-Age=-99999999;'
     }
 
-    const handleMobileLogin = async () => {
+    const handleCustomButtonLogin = async () => {
         setIsLoading(true)
         try {
             const user = await Backend.signInWithGoogleRedirect()
             // If we get here, popup succeeded and user is signed in
             // The onAuthStateChanged listener will handle the rest
+            // (on the dev server the page has already navigated to Google instead)
             if (user) {
                 console.log('User signed in via popup:', user.email)
             }
@@ -52,11 +57,15 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
         }
     }
 
-    if (isMobile) {
-        // Mobile: use redirect flow with custom button
+    if (useCustomButton) {
+        // Mobile and dev server: use the redirect flow with our own button
         return (
             <View style={containerStyle}>
-                <TouchableOpacity style={localStyles.googleButton} onPress={handleMobileLogin} disabled={isLoading}>
+                <TouchableOpacity
+                    style={localStyles.googleButton}
+                    onPress={handleCustomButtonLogin}
+                    disabled={isLoading}
+                >
                     {isLoading ? (
                         <ActivityIndicator color={Colors.Text01} size="small" />
                     ) : (
@@ -107,10 +116,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 24,
         minWidth: 200,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
+        boxShadow: '0px 1px 1px rgba(0,0,0,0.10)',
         elevation: 1,
     },
     buttonText: {

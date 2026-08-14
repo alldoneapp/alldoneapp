@@ -2,13 +2,12 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 
 import { colors } from '../../../styles/global'
 import AddFeedAttachButton from '../../../Feeds/AddFeed/AddFeedAttachButton'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
-import GoogleMeetButton from './GoogleMeetButton'
 import { insertAttachmentInsideEditor } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { execShortcutFn } from '../../../../utils/HelperFunctions'
 import { setQuotedText } from '../../../../redux/actions'
@@ -102,7 +101,6 @@ export default function ChatInputButtons({
                         projectId={projectId}
                     />
                 )}
-                {false && !editing && <GoogleMeetButton title={chatTitle} members={members} projectId={projectId} />}
                 <Hotkeys
                     keyName={'alt+Q'}
                     disabled={blockShortcuts}

@@ -35,6 +35,8 @@ import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTask
 import AlertTag from '../../Tags/AlertTag'
 import TranscribeTag from '../../Tags/TranscribeTag'
 import MergeStatusTag from '../../Tags/MergeStatusTag'
+import SuggestedGoalTag from '../../Tags/SuggestedGoalTag'
+import { hasPendingGoalSuggestion } from '../../../utils/TaskGoalSuggestion'
 import { getWorkflowStepReviewerPhotoURL } from './workflowReviewerPhoto'
 
 export default function Tags({
@@ -129,13 +131,8 @@ export default function Tags({
         setTaskDescription(projectId, task.id, description, task, task.description)
     }
 
-    const {
-        ownerEstimation,
-        observerEstimation,
-        currentReviewerEstimation,
-        currentStepId,
-        reviwerPhotoURL,
-    } = getEstimationsTagsInfo()
+    const { ownerEstimation, observerEstimation, currentReviewerEstimation, currentStepId, reviwerPhotoURL } =
+        getEstimationsTagsInfo()
 
     const isOverdue = moment(task.dueDate).isBefore(moment(), 'day')
     const isToday = moment(task.dueDateByObserversIds[currentUserId]).isSame(moment(), 'day')
@@ -441,6 +438,14 @@ export default function Tags({
                     projectId={projectId}
                     goalId={task.parentGoalId}
                     disabled={isActiveOrganizeMode}
+                />
+            )}
+            {!isSubtask && hasPendingGoalSuggestion(task) && (
+                <SuggestedGoalTag
+                    containerStyle={[tagAlignment, tagsStyle]}
+                    projectId={projectId}
+                    task={task}
+                    disabled={isActiveOrganizeMode || isLocked || !accessGranted || !loggedUserCanUpdateObject}
                 />
             )}
             {!needSummarize && inMyDayAndNotSubtask && (

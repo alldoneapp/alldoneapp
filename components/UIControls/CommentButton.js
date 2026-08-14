@@ -1,11 +1,10 @@
 import React, { Component } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import GhostButton from './GhostButton'
 import Hotkeys from 'react-hot-keys'
-import { execShortcutFn, popoverToTop } from '../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { RECORD_VIDEO_MODAL_ID, RECORD_SCREEN_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
@@ -17,6 +16,8 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
+import { selectAssistantEnabledFor } from '../ChatsView/Utils/assistantEnabledScope'
 
 class CommentButton extends Component {
     constructor(props) {
@@ -25,6 +26,7 @@ class CommentButton extends Component {
 
         this._isUnmounted = false
         this._timeouts = []
+        this.popupLock = createFloatPopupLock(store.dispatch)
         this.setStateIfMounted = (updater, callback) => {
             if (!this._isUnmounted) {
                 this.setState(updater, callback)
@@ -44,6 +46,7 @@ class CommentButton extends Component {
         // Clear any pending timeouts
         this._timeouts.forEach(t => clearTimeout(t))
         this._timeouts = []
+        this.popupLock.release()
     }
 
     updateState = () => {
@@ -70,7 +73,7 @@ class CommentButton extends Component {
             const t = setTimeout(async () => {
                 const { onDismissPopup } = this.props
                 this.setStateIfMounted({ visiblePopover: false })
-                store.dispatch(hideFloatPopup())
+                this.popupLock.release()
                 if (onDismissPopup) onDismissPopup()
             })
             this._timeouts.push(t)
@@ -80,13 +83,24 @@ class CommentButton extends Component {
     showPopover = () => {
         if (!this.state.visiblePopover) {
             this.setStateIfMounted({ visiblePopover: true })
-            store.dispatch(showFloatPopup())
+            this.popupLock.acquire()
         }
     }
 
     changeValue = (comment, mentions, isPrivate, hasKarma, explicitAssistantEnabled) => {
-        const { isQuillTagEditorOpen, openModals, assistantEnabled } = store.getState()
+        const storeState = store.getState()
+        const { isQuillTagEditorOpen, openModals } = storeState
         const { projectId, task } = this.props
+
+        // AT-2084: read the assistant flag through THIS task's identity instead of the raw global
+        // `state.assistantEnabled`. CommentButton lives in the inline task editor, outside any Chat
+        // DV, so nothing here re-armed the flag; a `true` left over from a chat created elsewhere
+        // (`createBotQuickTopic` / `generateTaskFromPreConfig` with `skipNavigation: true`) made the
+        // comment get posted immediately instead of being deferred until the task edit is saved.
+        // An UNSCOPED flag is still honored — that is what RichCommentModal itself dispatches for
+        // this very object, and what every in-chat writer produces — so the normal path is unchanged.
+        const assistantEnabled = selectAssistantEnabledFor(storeState, projectId, task ? task.id : null)
+
         if (
             !isQuillTagEditorOpen &&
             !openModals[RECORD_VIDEO_MODAL_ID] &&
@@ -119,7 +133,7 @@ class CommentButton extends Component {
         const { disabled, style, inEditTask, projectId, shortcutText, task } = this.props
         const { visiblePopover, smallScreen } = this.state
         return visiblePopover ? (
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         processDone={this.changeValue}
@@ -141,6 +155,7 @@ class CommentButton extends Component {
                 align={'end'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     keyName={`alt+${shortcutText}`}
@@ -160,7 +175,7 @@ class CommentButton extends Component {
                         shortcutText={shortcutText}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         ) : (
             <Hotkeys
                 keyName={`alt+${shortcutText}`}

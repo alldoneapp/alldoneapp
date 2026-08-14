@@ -1306,10 +1306,10 @@ class TaskRetrievalService {
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                        ? 'react-native'
-                        : this.options.isWeb
-                        ? 'web'
-                        : 'unknown',
+                          ? 'react-native'
+                          : this.options.isWeb
+                            ? 'web'
+                            : 'unknown',
                 },
             }
         } catch (error) {

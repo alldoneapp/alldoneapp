@@ -5,6 +5,13 @@ const path = require('path')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
 const {
+    buildVmFailureHoldUpdate,
+    prepareVmFailureHoldForRun,
+    restoreVmFailureWorkflowHold,
+} = require('./vmWorkflowHold')
+const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
+const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
+const {
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
     FEED_PUBLIC_FOR_ALL,
     STAYWARD_COMMENT,
@@ -20,7 +27,6 @@ const {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_GOLD_PER_MINUTE,
-    VM_TOKENS_PER_GOLD,
     getAgentLabel,
     formatAgentRunSuffix,
     formatVmBillingStatus,
@@ -30,6 +36,13 @@ const {
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
 const {
+    resolveModelRoute,
+    isOpenRouterRun,
+    resolveJobCredentialProvider,
+    OPENROUTER_LABEL,
+} = require('./vmModelRouting')
+const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
+const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
     E2B_SANDBOX_TERMINATION_GRACE_MS,
@@ -37,6 +50,7 @@ const {
     E2B_SANDBOX_SLICE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -73,6 +87,7 @@ const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
 const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
 const VM_INTERACTIVE_EXECUTION_MODES = ['plan_first', 'interactive']
+const RUNTIME_MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -108,8 +123,7 @@ const TASK_TYPE_PROFILES = {
         'You are an autonomous agent that produces polished documents. Generate the requested deliverable (document, spreadsheet, or slides) and summarize what you produced.',
     prototype:
         'You are an autonomous coding agent. Write working code / a small prototype to satisfy the objective, then explain what you built and how to run it.',
-    data:
-        'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
+    data: 'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
 }
 
 // --- Git repository integration (optional, per-project; GitLab or GitHub) ---
@@ -229,6 +243,11 @@ function buildVmBridgeTurnPrompt(basePrompt, pendingWebhook = {}, phase = 'execu
         }.`
     }
     if (answered.kind === 'tool_approval') {
+        if (response.action === 'approve_for_run') {
+            return `The user approved the previously requested operation, and approved this kind of operation for the rest of this run - equivalent operations will no longer pause.${
+                response.message ? ` Their note: ${response.message}` : ''
+            } Continue the task.`
+        }
         return response.action === 'approve'
             ? `The user approved the previously requested operation once.${
                   response.message ? ` Their note: ${response.message}` : ''
@@ -450,6 +469,12 @@ function isReusableVmSession(session) {
     return !!session && ['paused', 'idle_running'].includes(session.status || 'paused')
 }
 
+function shouldResumeVmSession(session) {
+    // Missing status is the legacy paused shape. `idle_running` is deliberately still live during
+    // the keep-alive window and must be connected directly; POST /resume returns 409 for it.
+    return !!session && (session.status || 'paused') === 'paused'
+}
+
 function isUnhealthyVmSessionError(error) {
     const message = String(error?.message || error || '')
     return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
@@ -523,7 +548,7 @@ function getVmParentObjectPath(projectId, objectType, objectId) {
 }
 
 function buildVmChatLink(projectId, objectType, objectId) {
-    return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
+    return `${getBaseUrl()}${buildVmChatPath(projectId, objectType, objectId)}`
 }
 
 function getNonEmptyString(...values) {
@@ -601,7 +626,12 @@ async function resolveVmCompletionFollowers(pendingWebhook) {
     )
 }
 
-async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { activateTaskAssistant = false } = {}) {
+async function applyVmCompletionMetadata(
+    pendingWebhook,
+    commentId,
+    text,
+    { activateTaskAssistant = false, failureHoldUserId = null, failureReason = null } = {}
+) {
     const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
     if (!projectId || !objectId || !assistantId || !commentId) return { applied: false, reason: 'missing-context' }
 
@@ -628,7 +658,26 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
             transaction.get(assistantRef),
         ])
 
+        // AT-2196: a run that failed or was cancelled hands the task to the requesting user, the
+        // same way an agent question does — reviewer only, workflow step untouched. Otherwise the
+        // task keeps its assistant reviewer and vanishes from every human's list with only an unread
+        // comment to show for it.
+        const failureHold =
+            failureHoldUserId && objectType === 'tasks' && parentRef && parentSnap && parentSnap.exists
+                ? buildVmFailureHoldUpdate(parentSnap.data() || {}, {
+                      correlationId: pendingWebhook.correlationId,
+                      reviewerId: failureHoldUserId,
+                      triggeredAt: now,
+                      failureReason,
+                      claimableReviewerIds: [pendingWebhook.taskReviewerAtRunStart, assistantId],
+                  })
+                : null
+
         if (commentSnap.exists && commentSnap.data()?.vmCompletionMetadataAppliedAt) {
+            // The comment metadata is one-shot, but the hold is not: a run that already posted a
+            // final answer and then threw during billing settles as failed, and that failure still
+            // has to reach a human.
+            if (failureHold) transaction.update(parentRef, failureHold)
             return { applied: false, reason: 'already-applied' }
         }
 
@@ -662,7 +711,7 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                 [`commentsData.lastCommentOwnerId`]: assistantId,
                 [`commentsData.lastComment`]: lastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                [`commentsData.amount`]: FieldValue.increment(1),
             },
             { merge: true }
         )
@@ -671,13 +720,14 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
             transaction.update(parentRef, {
                 [`commentsData.lastComment`]: parentLastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                [`commentsData.amount`]: FieldValue.increment(1),
                 ...(activateTaskAssistant && objectType === 'tasks'
                     ? {
                           assistantId,
                           isAssistantEnabled: true,
                       }
                     : {}),
+                ...(failureHold || {}),
             })
         }
 
@@ -694,6 +744,11 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                 {
                     [`lastAssistantCommentData.${projectId}`]: updateDate,
                     [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                        ...updateDate,
+                        projectId,
+                    },
+                    [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateDate,
+                    [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
                         ...updateDate,
                         projectId,
                     },
@@ -1023,7 +1078,14 @@ function buildGcpEnv(gcpContext) {
 async function writeStatusComment(
     pendingWebhook,
     text,
-    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null, interaction = null } = {}
+    {
+        isFinal = false,
+        output = null,
+        mediaContext = null,
+        assistantRunStatus = null,
+        interaction = null,
+        failureReason = null,
+    } = {}
 ) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
@@ -1041,7 +1103,7 @@ async function writeStatusComment(
         commentText: text,
         originalContent: text,
         commentType: 'STAYWARD_COMMENT',
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         fromAssistant: true,
         isLoading: runIsActive,
         isThinking: false,
@@ -1071,7 +1133,7 @@ async function writeStatusComment(
         console.warn('🖥️ VM JOB: Cannot create fallback status comment without originating assistant', {
             correlationId: pendingWebhook.correlationId,
         })
-        return
+        return false
     }
 
     try {
@@ -1086,7 +1148,7 @@ async function writeStatusComment(
             correlationId: pendingWebhook.correlationId,
             error: error.message,
         })
-        return
+        return false
     }
 
     // Keep the chat object / parent object comment preview in sync and emit the
@@ -1094,6 +1156,7 @@ async function writeStatusComment(
     // cancelled run is also a settled result that users should see in the task list.
     // The idempotency marker on the comment prevents retries from incrementing twice.
     const isSettled = isFinal || runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
+    const settledUnfinished = runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
     if (isSettled) {
         try {
             await applyVmCompletionMetadata(pendingWebhook, commentId, text, {
@@ -1101,6 +1164,10 @@ async function writeStatusComment(
                 // Failed and cancelled runs still settle the status/comment metadata above,
                 // but must not opt the user back into assistant replies.
                 activateTaskAssistant: objectType === 'tasks' && isFinal && runStatus === 'completed',
+                // ...and they hand the task itself to the user who asked for the run, so the
+                // unfinished work is visible and actionable instead of parked on the assistant.
+                failureHoldUserId: settledUnfinished ? pendingWebhook.userId : null,
+                failureReason: settledUnfinished ? failureReason || runStatus : null,
             })
         } catch (error) {
             console.warn('🖥️ VM JOB: Failed applying completion metadata', {
@@ -1118,6 +1185,7 @@ async function writeStatusComment(
             })
         }
     }
+    return true
 }
 
 /**
@@ -1215,6 +1283,7 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
     parts.push(
         '',
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
+        'The VM host owns all task-thread delivery and attributes it to the invoking assistant. Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result, progress, status, or questions into the originating task/thread yourself; that would create a duplicate user-authored comment. Return normal output in your final message. In interactive mode, ask through the native interaction mechanism so the host can present the question with the correct assistant identity.',
         'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
         'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
     )
@@ -1483,17 +1552,56 @@ function resolveAgentRunDetails(vmJob) {
     const effort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
-    return { model, effort }
+    const persistedResolvedModel = vmJob?.resolvedAgentModel
+    const resolvedModel =
+        typeof persistedResolvedModel === 'string' &&
+        persistedResolvedModel.startsWith('claude-') &&
+        RUNTIME_MODEL_SAFE_PATTERN.test(persistedResolvedModel)
+            ? persistedResolvedModel
+            : null
+    return { model, effort, ...(resolvedModel ? { resolvedModel } : {}) }
 }
 
-function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
-    const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
+// Claude Code and the Agent SDK both emit a system/init event whose model is the
+// concrete ID selected for an alias. A primary assistant response carries the actual
+// API model too, which confirms the init value and covers older streams without init.
+function resolveRuntimeAgentModel(evt, agent) {
+    if (agent !== 'claude' || !evt || typeof evt !== 'object') return null
+
+    let model = null
+    if (evt.type === 'system' && evt.subtype === 'init') {
+        model = evt.model
+    } else if (evt.type === 'assistant' && (evt.parent_tool_use_id === null || evt.parent_tool_use_id === undefined)) {
+        model = evt.message?.model
+    }
+
+    return typeof model === 'string' && RUNTIME_MODEL_SAFE_PATTERN.test(model) && model.startsWith('claude-')
+        ? model
+        : null
+}
+
+function applyRuntimeAgentModel(evt, agent, runDetails) {
+    const resolvedModel = resolveRuntimeAgentModel(evt, agent)
+    if (!resolvedModel || !runDetails || resolvedModel === runDetails.resolvedModel) return null
+    runDetails.resolvedModel = resolvedModel
+    return resolvedModel
+}
+
+// `credentialLabel` names the key slot rather than the harness, so an OpenRouter run driven by the
+// Codex agent says "your personal OpenRouter API key". Deliberately does NOT pass agentModel /
+// tokensPerGold: the Alldone-Gold rate note belongs to the launch comment, which quotes the rate
+// frozen on the job — re-deriving it here could print a number different from the one being billed.
+function renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel = '') {
+    const displayModel = runDetails?.resolvedModel || runDetails?.model
+    const suffix = runDetails ? formatAgentRunSuffix(displayModel, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
-    return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
+    return credentialMode !== undefined
+        ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode, '', 0, credentialLabel)}`
+        : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
-    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n${lines
+function renderActivityLog(lines, agentLabel, runDetails, credentialMode, credentialLabel = '') {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n${lines
         .slice(-MAX_ACTIVITY_LINES)
         .join('\n')}`
 }
@@ -1520,7 +1628,11 @@ function shellQuoteArg(value) {
     return `'${String(value).replace(/'/g, `'\\''`)}'`
 }
 
-function buildCodexProxyConfigOverrides(proxyBaseUrl) {
+/**
+ * Build the proxy base URL for one upstream route. Shared by the config overrides and the
+ * sandbox env so the two can never disagree about where Codex is pointed.
+ */
+function buildCodexProxyRouteUrl(proxyBaseUrl, route) {
     let parsed
     try {
         parsed = new URL(proxyBaseUrl)
@@ -1534,16 +1646,35 @@ function buildCodexProxyConfigOverrides(proxyBaseUrl) {
         throw new Error('Codex VM proxy base URL must not contain a query string or fragment.')
     }
 
-    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/openai/v1`
-    const openAiProxyBaseUrl = parsed.toString().replace(/\/$/, '')
+    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${route}`
+    return parsed.toString().replace(/\/$/, '')
+}
+
+/**
+ * Codex provider config for a run.
+ *
+ * The OpenRouter route (AT-2230) differs from the OpenAI one only in its path: `/openrouter/v1`
+ * instead of `/openai/v1`, so the proxy swaps in the OpenRouter key. Both routes speak
+ * `wire_api = "responses"`. OpenRouter originally forced `chat` here (its Responses API did not
+ * exist yet), but the Codex CLI removed the `chat` wire API entirely in February 2026 — a current
+ * CLI refuses to boot on it ("`wire_api = \"chat\"` is no longer supported", exit 13,
+ * https://github.com/openai/codex/discussions/7782) — and OpenRouter's Responses API
+ * (`POST /api/v1/responses`) is GA since July 2026, so the proxy forwards it unchanged.
+ * Do not reintroduce `chat`: the runner always installs the latest Codex CLI at run start, so
+ * there is no CLI version left that accepts it.
+ */
+function buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter = false } = {}) {
+    const routeUrl = buildCodexProxyRouteUrl(proxyBaseUrl, openRouter ? '/openrouter/v1' : '/openai/v1')
 
     // Codex's built-in OpenAI provider may use the Responses WebSocket transport. Our
     // Cloud Function proxy is HTTP-only, so use an explicit custom provider and disable
     // WebSockets instead of relying on the legacy OPENAI_BASE_URL environment override.
     return [
         `model_provider=${JSON.stringify(CODEX_VM_PROXY_PROVIDER)}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify('Alldone VM LLM proxy')}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(openAiProxyBaseUrl)}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify(
+            openRouter ? 'Alldone VM LLM proxy (OpenRouter)' : 'Alldone VM LLM proxy'
+        )}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(routeUrl)}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.env_key=${JSON.stringify('OPENAI_API_KEY')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify('responses')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.supports_websockets=false`,
@@ -1564,6 +1695,12 @@ function normalizeAdditionalWritableRoots(additionalWritableRoots = []) {
 function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
     return [
+        // A personal ChatGPT subscription can expose the user's connected apps to Codex. Those
+        // app calls are authenticated only as the human user and carry no Alldone VM/assistant
+        // identity, so an agent calling update_task(comment=...) would create a second comment
+        // attributed to that user. VM output and interactions have dedicated host-owned delivery
+        // paths below; keep personal apps out of both automatic exec and app-server bridge runs.
+        'features.apps=false',
         'sandbox_mode="workspace-write"',
         `sandbox_workspace_write.writable_roots=${JSON.stringify(writableRoots)}`,
         'sandbox_workspace_write.network_access=true',
@@ -1579,14 +1716,17 @@ function buildCodexRunCommand(
     additionalWritableRoots = []
 ) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
-    const modelFlag = agentModel ? ` --model ${agentModel}` : ''
+    // `route.model` is the bare provider id — the `openrouter:` prefix is Alldone's routing marker
+    // and must never reach the CLI. Quoted because an OpenRouter id contains `/` and may contain `:`.
+    const route = resolveModelRoute('codex', agentModel)
+    const modelFlag = route.model ? ` --model ${shellQuoteArg(route.model)}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
     const sandboxFlags = buildCodexSandboxConfigOverrides(additionalWritableRoots)
         .map(override => ` -c ${shellQuoteArg(override)}`)
         .join('')
     const providerFlags = subscriptionUsed
         ? ''
-        : buildCodexProxyConfigOverrides(proxyBaseUrl)
+        : buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter: route.source === 'openrouter' })
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
     return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
@@ -1734,16 +1874,39 @@ function isVmSubscriptionAuthError(error, provider) {
 
 function markSafeVmSubscriptionAuthRetry(error, provider, state) {
     if (!isVmSubscriptionAuthError(error, provider)) return error
+    const usage = state?.usage || {}
+    const hasUsage = ['inputTokens', 'outputTokens', 'cacheTokens', 'totalTokens', 'costUsd'].some(
+        key => Number(usage[key]) > 0
+    )
     const hasAgentWork = !!(
         state?.finalResult ||
         state?.assistantText ||
-        state?.usage ||
+        hasUsage ||
         state?.interaction ||
         state?.providerState
     )
-    const hasNonAuthActivity = (state?.activity || []).some(activity => !isVmSubscriptionAuthError(activity, provider))
+    const hasNonAuthActivity = (state?.activity || []).some(activity => {
+        const text = String(activity || '').trim()
+        if (!text || text.startsWith('⚠️')) return false
+        return !isVmSubscriptionAuthError(text, provider)
+    })
     error.vmAuthRetrySafe = !hasAgentWork && !hasNonAuthActivity
     return error
+}
+
+function buildAgentExitErrorWithAuthRetry(
+    agentLabel,
+    result,
+    state,
+    stderr = '',
+    provider = null,
+    fallbackError = null
+) {
+    return markSafeVmSubscriptionAuthRetry(
+        buildAgentExitError(agentLabel, result, state, stderr, fallbackError),
+        provider,
+        state
+    )
 }
 
 function sleep(ms) {
@@ -1782,23 +1945,44 @@ function buildVmSubscriptionAuthFailureText(agentLabel) {
     return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
 }
 
-async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
+function renderAgentCliCheckStatus(agentLabel, isResume) {
+    return isResume
+        ? `🔄 Resuming VM and checking ${agentLabel} for updates…`
+        : `🆕 Starting a fresh VM and checking ${agentLabel}…`
+}
+
+function parseAgentCliInstallingMarker(output) {
+    const match = String(output || '').match(/AGENT_CLI_INSTALLING from=(\S+) to=(\S+)/)
+    return match ? { fromVersion: match[1], toVersion: match[2] } : null
+}
+
+function renderAgentCliChangeStatus(agentLabel, marker) {
+    if (!marker || marker.fromVersion === 'missing-or-invalid') return `📦 Installing ${agentLabel}…`
+    return `⬆️ Updating ${agentLabel} from ${marker.fromVersion} to ${marker.toVersion}…`
+}
+
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header, { isResume = false } = {}) {
     const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
     if (!command) return
 
     let stdout = ''
     let stderr = ''
-    let installationAnnounced = false
+    let cliChange = null
+    if (typeof onActivity === 'function') {
+        onActivity(`${header}\n\n${renderAgentCliCheckStatus(agentLabel, isResume)}`)
+    }
     const appendDiagnostic = (current, data) => `${current}${data}`.slice(-MAX_BOOTSTRAP_DIAGNOSTIC_CHARS)
     const handleStdout = data => {
-        if (!installationAnnounced && String(data).includes('AGENT_CLI_INSTALLING')) {
-            installationAnnounced = true
-            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
-        }
         stdout = appendDiagnostic(stdout, data)
+        if (!cliChange) {
+            cliChange = parseAgentCliInstallingMarker(stdout)
+            if (cliChange && typeof onActivity === 'function') {
+                onActivity(`${header}\n\n${renderAgentCliChangeStatus(agentLabel, cliChange)}`)
+            }
+        }
     }
 
-    console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
+    console.log('🖥️ VM JOB: checking agent CLI for updates', { agent: agentLabel, version: 'latest', isResume })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
             envs: buildSandboxCommandEnv(),
@@ -1809,7 +1993,9 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
             },
         })
     } catch (error) {
-        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
+        const stage = cliChange
+            ? `${agentLabel} ${cliChange.fromVersion === 'missing-or-invalid' ? 'installation' : 'update'}`
+            : `${agentLabel} update check`
         const stageError = buildStageError(stage, error, stdout, stderr)
         console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
             agent: agentLabel,
@@ -1863,6 +2049,7 @@ function buildVmAgentBridgeInput({
     runDetails,
     agentCredentials,
     additionalWritableRoots = [],
+    gitContext = null,
 }) {
     const executionMode = vmJob.executionMode || 'automatic'
     const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
@@ -1870,9 +2057,12 @@ function buildVmAgentBridgeInput({
     const interactionResponse = pendingWebhook?.interactionResponse || null
     const providerState = pendingWebhook?.interactionProviderState || null
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
+    // The bridge drives the provider CLIs directly, so it gets the bare provider model id with the
+    // `openrouter:` routing marker stripped (see resolveModelRoute).
+    const modelRoute = resolveModelRoute(vmJob.agent || DEFAULT_AGENT, runDetails.model)
     const input = {
         cwd: workdir,
-        model: runDetails.model,
+        model: modelRoute.model,
         effort: runDetails.effort,
         phase,
         prompt: buildVmBridgeTurnPrompt(prompt, pendingWebhook, phase),
@@ -1891,6 +2081,14 @@ function buildVmAgentBridgeInput({
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
         input.additionalDirectories = writableRoots
         input.settingSources = ['user', 'project', 'local']
+        // Approval strictness + the context the policy needs to tell a feature-branch push apart
+        // from a push that lands on the protected base branch. The allowlist carries the user's
+        // "Allow for this run" grants and is reset whenever a new job starts.
+        input.approvalPolicy = vmJob.approvalPolicy || DEFAULT_APPROVAL_POLICY_LEVEL
+        input.baseBranch = gitContext?.enabled ? gitContext.baseBranch || '' : ''
+        input.approvalAllowlist = Array.isArray(pendingWebhook?.approvalAllowlist)
+            ? pendingWebhook.approvalAllowlist
+            : []
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
@@ -1898,7 +2096,9 @@ function buildVmAgentBridgeInput({
         const providerArgs =
             agentCredentials.mode === 'subscription'
                 ? []
-                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl).flatMap(override => ['-c', override])
+                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl, {
+                      openRouter: modelRoute.source === 'openrouter',
+                  }).flatMap(override => ['-c', override])
         input.codexArgs = [...sandboxArgs, ...providerArgs]
     }
     return input
@@ -1976,13 +2176,22 @@ const AGENT_CONFIGS = {
             ),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
-        sandboxEnv: ({ apiKey, baseUrl, mode }) =>
+        // The legacy OPENAI_BASE_URL must follow the same route as the explicit provider config
+        // above, or an older Codex CLI that honours the env var would talk to the wrong upstream
+        // with a token minted for this job and get a confusing 404 instead of a model.
+        sandboxEnv: ({ apiKey, baseUrl, mode, agentModel }) =>
             mode === 'subscription'
                 ? { CODEX_HOME: CODEX_AUTH_DIR, CI: 'true' }
                 : {
                       CODEX_API_KEY: apiKey,
                       OPENAI_API_KEY: apiKey,
-                      ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
+                      ...(baseUrl
+                          ? {
+                                OPENAI_BASE_URL: `${baseUrl}/${
+                                    isOpenRouterRun('codex', agentModel) ? 'openrouter' : 'openai'
+                                }/v1`,
+                            }
+                          : {}),
                       CI: 'true',
                   },
         handleEvent: appendCodexActivity,
@@ -2056,22 +2265,40 @@ function calculateAccruedRuntimeGold(runtimeMs) {
     return elapsedMinutes * VM_GOLD_PER_MINUTE
 }
 
+/**
+ * Final Gold settlement for a finished run.
+ *
+ * `tokensPerGold` / `agentModel` are the run's persisted pricing state and only affect the *token*
+ * charge: they select the researched tokens-per-Gold rate for the concrete model, relative to the
+ * 100-token Sol baseline. Runtime minutes are unaffected — they pay for the E2B
+ * sandbox, which costs the same whichever model the agent talks to.
+ *
+ * The token line is a settlement, not a fresh charge: the proxy has already billed
+ * `proxyTokenGoldCharged` incrementally while the run streamed. Both sides resolve the rate through
+ * the same `resolveEffectiveTokensPerGold` from the same persisted state, which is the whole point of
+ * routing it through vmTokenPricing — if the two disagreed, a higher rate here would silently
+ * overcharge and a lower one would clamp to zero and hide the discrepancy entirely.
+ */
 function calculateCompletionGoldCharges({
     runtimeMs,
     usage,
     runtimeGoldCharged = 0,
     proxyTokenGoldCharged = 0,
     subscriptionUsed = false,
+    agentModel = '',
+    tokensPerGold: persistedTokensPerGold = 0,
 }) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
     const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
-    const tokenGoldTotal = subscriptionUsed ? 0 : Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    const tokensPerGold = resolveEffectiveTokensPerGold({ tokensPerGold: persistedTokensPerGold, agentModel })
+    const tokenGoldTotal = subscriptionUsed ? 0 : calculateTokenGold(totalTokens, tokensPerGold)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
         totalTokens,
+        tokensPerGold,
         runtimeGoldTotal,
         runtimeGoldRemaining,
         runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
@@ -2360,8 +2587,12 @@ async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
     })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
+        // Firestore can lag the E2B lifecycle briefly. If E2B says the sandbox is already running,
+        // connecting to it is exactly the desired continuation behavior.
+        if (resp.status === 409 && /already running/i.test(body)) return false
         throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
     }
+    return true
 }
 
 function startVmSliceTimer(runtimeMs) {
@@ -2498,6 +2729,9 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
         lastUsedAt: Date.now(),
         lastRunStatus,
         lastRunAt: Date.now(),
+        // What the last run was about, so an assistant looking for a thread to continue can
+        // recognize it without joining back to vmJobs (which would need a composite index).
+        lastObjective: summarizeVmObjectiveForSession(vmJob.objective),
     }
     try {
         await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused
@@ -2700,13 +2934,17 @@ async function runAgentInSandbox(
     pendingWebhook = null,
     pendingRef = null,
     subscriptionAuth = null,
-    allowAuthRecovery = true
+    allowAuthRecovery = true,
+    sharedRunDetails = null
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
-    const runDetails = resolveAgentRunDetails(vmJob)
+    const runDetails = sharedRunDetails || resolveAgentRunDetails(vmJob)
     const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
+    // The key slot, which for an OpenRouter model is not the agent (AT-2230 BYOK).
+    const credentialProvider = resolveJobCredentialProvider(vmJob)
+    const credentialLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
@@ -2764,7 +3002,8 @@ async function runAgentInSandbox(
             try {
                 // A paused sandbox must be explicitly resumed first (connect alone won't
                 // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
-                if (sess.status !== 'running') {
+                const wasPaused = shouldResumeVmSession(sess)
+                if (wasPaused) {
                     await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
                 }
                 const resumedSandbox = await Sandbox.connect(sess.sandboxId, {
@@ -2785,7 +3024,7 @@ async function runAgentInSandbox(
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
-                    wasPaused: sess.status !== 'running',
+                    wasPaused,
                 })
             } catch (error) {
                 console.warn('🖥️ VM JOB: resume failed, starting fresh', {
@@ -2916,7 +3155,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -2953,7 +3192,8 @@ async function runAgentInSandbox(
             config,
             agentLabel,
             onActivity,
-            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel),
+            { isResume }
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
@@ -2962,7 +3202,7 @@ async function runAgentInSandbox(
                   sandbox,
                   vmJob.agent || DEFAULT_AGENT,
                   onActivity,
-                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel)
               )
             : null
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -2975,6 +3215,7 @@ async function runAgentInSandbox(
             interaction: null,
             providerState: null,
             bridgeError: null,
+            resolvedModelUpdatePromise: null,
         }
         let stdoutBuf = ''
         let stderr = ''
@@ -2990,6 +3231,42 @@ async function runAgentInSandbox(
                 evt = JSON.parse(line)
             } catch (_) {
                 return // non-JSON noise (e.g. stray install output) — ignore
+            }
+            const resolvedModel = applyRuntimeAgentModel(evt, vmJob.agent || DEFAULT_AGENT, runDetails)
+            if (resolvedModel) {
+                vmJob.resolvedAgentModel = resolvedModel
+                const resolvedModelUpdate = {
+                    resolvedAgentModel: resolvedModel,
+                    resolvedAgentModelAt: Date.now(),
+                }
+                const previousUpdate = state.resolvedModelUpdatePromise || Promise.resolve()
+                state.resolvedModelUpdatePromise = previousUpdate
+                    .then(() => {
+                        const persistResolvedModel = Promise.all([
+                            pendingRef?.set(resolvedModelUpdate, { merge: true }),
+                            admin
+                                .firestore()
+                                .doc(`vmJobs/${vmJob.correlationId}`)
+                                .set(resolvedModelUpdate, { merge: true }),
+                        ])
+                        const publishResolvedModel =
+                            publishActivity && typeof onActivity === 'function'
+                                ? onActivity(
+                                      renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel),
+                                      {
+                                          force: true,
+                                      }
+                                  )
+                                : null
+                        return Promise.all([persistResolvedModel, publishResolvedModel])
+                    })
+                    .catch(error => {
+                        console.warn('🖥️ VM JOB: failed publishing runtime-resolved model', {
+                            correlationId: vmJob.correlationId,
+                            resolvedModel,
+                            error: error.message,
+                        })
+                    })
             }
             if (evt.type === 'alldone.interaction') {
                 state.interaction = evt.interaction || null
@@ -3010,7 +3287,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (publishActivity && state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode, credentialLabel))
             }
         }
         const handleStdout = data => {
@@ -3041,13 +3318,16 @@ async function runAgentInSandbox(
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
                   credentialMode,
+                  // Scopes the minted token to this run's key slot, so it can only ever be spent on
+                  // the matching proxy route (see mintProxyToken).
+                  credentialProvider,
                   ttlMs: MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
             correlationId: vmJob.correlationId,
             mode: agentCredentials.mode,
         })
-        const agentEnv = config.sandboxEnv(agentCredentials)
+        const agentEnv = config.sandboxEnv({ ...agentCredentials, agentModel: runDetails.model })
         const additionalWritableRoots = buildVmAdditionalWritableRoots(gitContext)
         const runEnvs = buildSandboxCommandEnv(
             agentEnv,
@@ -3064,6 +3344,7 @@ async function runAgentInSandbox(
                 runDetails,
                 agentCredentials,
                 additionalWritableRoots,
+                gitContext,
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
@@ -3150,7 +3431,8 @@ async function runAgentInSandbox(
                                 `${renderVmWorkingHeader(
                                     agentLabel,
                                     runDetails,
-                                    credentialMode
+                                    credentialMode,
+                                    credentialLabel
                                 )}\n\n⏸️ Extending VM runtime after slice ${completedSliceCount}…`
                             )
                         }
@@ -3173,6 +3455,7 @@ async function runAgentInSandbox(
             }
         } catch (runError) {
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
+            if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
             if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
             // The command was killed (e.g. timeout) before returning — log whatever it
             // produced so we can see where the agent got stuck, then rethrow.
@@ -3226,6 +3509,7 @@ async function runAgentInSandbox(
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
         }
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+        if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -3238,11 +3522,7 @@ async function runAgentInSandbox(
 
         const output = (state.finalResult || state.assistantText || '').trim()
         if (result?.exitCode !== undefined && result.exitCode !== 0) {
-            throw markSafeVmSubscriptionAuthRetry(
-                buildAgentExitError(agentLabel, result, state, stderr),
-                subscriptionAuth?.provider,
-                state
-            )
+            throw buildAgentExitErrorWithAuthRetry(agentLabel, result, state, stderr, subscriptionAuth?.provider)
         }
         if (state.bridgeError) {
             throw new Error(`${agentLabel} interactive bridge failed: ${state.bridgeError}`)
@@ -3286,7 +3566,14 @@ async function runAgentInSandbox(
             }
         }
         if (!output) {
-            throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
+            throw buildAgentExitErrorWithAuthRetry(
+                agentLabel,
+                result,
+                state,
+                stderr,
+                subscriptionAuth?.provider,
+                new Error('Agent produced no output.')
+            )
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
@@ -3367,6 +3654,7 @@ async function refundVmJob(pendingWebhook, reason, extraGold = 0) {
         const { refundGold } = require('../Gold/goldHelper')
         await refundGold(pendingWebhook.userId, amount, {
             source: VM_JOB_GOLD_REFUND_SOURCE,
+            idempotencyKey: `vm_job_refund:${pendingWebhook.correlationId}`,
             channel: 'assistant',
             projectId: pendingWebhook.projectId,
             objectId: pendingWebhook.objectId,
@@ -3454,8 +3742,8 @@ async function chargeVmTopup(
             credentialMode === 'byok'
                 ? 'personal API key, provider-billed, 0 Gold'
                 : subscriptionUsed
-                ? 'personal subscription, 0 Gold'
-                : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
+                  ? 'personal subscription, 0 Gold'
+                  : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
         })` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
@@ -3638,6 +3926,32 @@ async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
     await postVmOriginConversationNote(pendingWebhook, text, { notificationType: opts.notificationType })
 }
 
+// A workflow step parked on this VM can move as soon as all of the job's own finalization has
+// finished. Read the authoritative status back first: a failed status write must leave the workflow
+// parked for the minute poller's recovery path, not advance on an in-memory assumption.
+async function resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook) {
+    try {
+        const snapshot = await pendingRef.get()
+        if (!snapshot.exists) return 0
+
+        // pendingWebhook was already restored from the immutable vmJobs snapshot at runner start;
+        // pass it as the authoritative callback context rather than letting a mutable status record
+        // override routing fields during this final read.
+        const settledJob = {
+            ...pendingWebhook,
+            ...resolveVmCallbackContext(snapshot.data() || {}, pendingWebhook),
+        }
+        const { resolveWorkflowRunsForSettledVmJob } = require('../Tasks/workflowAiStep')
+        return await resolveWorkflowRunsForSettledVmJob(settledJob)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Immediate workflow completion failed; poller will retry', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+        return 0
+    }
+}
+
 /**
  * Worker entry point: run a queued VM job to completion and post the result back
  * into the conversation. Invoked by the runVmJob onTaskDispatched function.
@@ -3679,6 +3993,7 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task stopped before execution')
         // This job held the thread's dispatch lease; hand off to any queued follow-up.
         await drainThreadAfterRun(threadSessionRef)
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
@@ -3689,6 +4004,21 @@ async function runVmJobByCorrelationId(correlationId) {
     }
     const heartbeat = startVmJobHeartbeat(pendingRef, lease.leaseOwner)
 
+    // AT-2196: a previous run on this task may have failed and parked the task with the user so they
+    // could see it. Work is starting again, so give the step back to the reviewer that failure
+    // displaced — if this run fails too, the hold is simply re-applied when it settles. An
+    // interaction hold is never touched here; it releases through its own answer/cancel path.
+    // The reviewer the task ends up with is also the only one this run may claim back on failure:
+    // anything else means a human took the task over while the VM was working, and that wins.
+    const failureHoldState = await prepareVmFailureHoldForRun(db, pendingWebhook).catch(error => {
+        console.warn('🖥️ VM JOB RUNNER: Failed releasing previous failure hold', {
+            correlationId,
+            error: error.message,
+        })
+        return null
+    })
+    pendingWebhook.taskReviewerAtRunStart = failureHoldState ? failureHoldState.reviewerAtRunStart : null
+
     const env = getEnvFunctions()
     const e2bApiKey = env.E2B_API_KEY
     // Resolve the agent the assistant chose (defaults to Claude) and its config.
@@ -3697,6 +4027,11 @@ async function runVmJobByCorrelationId(correlationId) {
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
     const wantsByok = vmJob.credentialMode === 'byok'
+    // The key slot this run authenticates with — 'openrouter' for an OpenRouter model, otherwise the
+    // agent. Read from the job (falling back to a derivation for pre-AT-2230 docs) so the runner and
+    // the proxy answer the credential question identically.
+    const credentialProvider = resolveJobCredentialProvider(vmJob)
+    const credentialProviderLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     let subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
@@ -3708,8 +4043,11 @@ async function runVmJobByCorrelationId(correlationId) {
               .getVmApiKeyStatus(vmJob.requestUserId)
               .catch(() => null)
         : null
-    const byokAvailable = !!byokStatus?.[vmJob.agent || DEFAULT_AGENT]?.connected
-    const apiKey = env[config.apiKeyField]
+    const byokAvailable = !!byokStatus?.[credentialProvider]?.connected
+    // An OpenRouter run is platform-billed against the OpenRouter key, not the OpenAI one the Codex
+    // agent config names. Checking the agent's key here would pass on a missing OpenRouter key and
+    // fail later inside the proxy, mid-run, after Gold had been spent.
+    const apiKey = credentialProvider === 'openrouter' ? env.OPENROUTER_API_KEY : env[config.apiKeyField]
     if (
         (wantsSubscription && !subscriptionAuth) ||
         (wantsByok && !byokAvailable) ||
@@ -3719,8 +4057,10 @@ async function runVmJobByCorrelationId(correlationId) {
         const message = wantsSubscription
             ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
             : wantsByok
-            ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
-            : `VM task could not run: ${config.label} sandbox credentials are not configured.`
+              ? `VM task could not run: your personal ${credentialProviderLabel} API key is missing. Add or replace it in Settings → Integrations.`
+              : credentialProvider === 'openrouter' && !apiKey
+                ? `VM task could not run: OpenRouter is not configured for Alldone Gold on this environment (OPENROUTER_API_KEY is missing). Add your own OpenRouter API key in Settings → Integrations, or choose an OpenAI model.`
+                : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -3732,17 +4072,18 @@ async function runVmJobByCorrelationId(correlationId) {
         heartbeat.stop()
         // This job held the thread's dispatch lease (it never reached runAgentInSandbox); hand off.
         await drainThreadAfterRun(threadSessionRef)
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
     // Throttled live-activity updates to the single status comment. The worker passes
     // a fully-rendered activity log; we just rate-limit the Firestore writes.
     let lastProgressAt = 0
-    const onActivity = text => {
+    const onActivity = (text, { force = false } = {}) => {
         const now = Date.now()
-        if (now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
+        if (!force && now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
         lastProgressAt = now
-        writeStatusComment(pendingWebhook, text).catch(() => {})
+        return writeStatusComment(pendingWebhook, text).catch(() => {})
     }
 
     // For a coding ("prototype") task, surface the project's connected repo (GitHub or GitLab)
@@ -3781,12 +4122,18 @@ async function runVmJobByCorrelationId(correlationId) {
         await pendingRef
             .update({
                 credentialMode,
+                // Re-asserted (not changed) so the doc the proxy reads always carries both halves of
+                // the billing route, including for a job launched before this field existed.
+                credentialProvider,
                 subscriptionUsed: credentialMode === 'subscription',
                 personalApiKeyUsed: credentialMode === 'byok',
                 tokenBillingExempt,
             })
             .catch(() => {})
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
+        await writeStatusComment(
+            pendingWebhook,
+            renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialProviderLabel)
+        )
         const runAgent = (allowAuthRecovery = true) =>
             runAgentInSandbox(
                 vmJob,
@@ -3799,7 +4146,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 pendingWebhook,
                 pendingRef,
                 subscriptionAuth,
-                allowAuthRecovery
+                allowAuthRecovery,
+                runDetails
             )
         let agentResult
         try {
@@ -3869,7 +4217,8 @@ async function runVmJobByCorrelationId(correlationId) {
                     `${renderVmWorkingHeader(
                         agentLabel,
                         runDetails,
-                        credentialMode
+                        credentialMode,
+                        credentialProviderLabel
                     )}\n\n🔄 Subscription login refreshed; retrying automatically…`
                 )
                 retryStarted = true
@@ -3940,20 +4289,19 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const runtimeMs = activeRuntimeMs || (Number(latestPendingData.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
-        const {
-            minutes,
-            totalTokens,
-            runtimeGoldRemaining,
-            tokenGold,
-            tokenGoldTotal,
-            topup,
-        } = calculateCompletionGoldCharges({
-            runtimeMs,
-            usage,
-            runtimeGoldCharged,
-            proxyTokenGoldCharged,
-            subscriptionUsed: tokenBillingExempt,
-        })
+        const { minutes, totalTokens, tokensPerGold, runtimeGoldRemaining, tokenGold, tokenGoldTotal, topup } =
+            calculateCompletionGoldCharges({
+                runtimeMs,
+                usage,
+                runtimeGoldCharged,
+                proxyTokenGoldCharged,
+                subscriptionUsed: tokenBillingExempt,
+                agentModel: vmJob.agentModel,
+                // The rate frozen at launch. Read from the job doc, which is also where the proxy's
+                // mirror of it came from, so settlement and the incremental charges are the same rate
+                // by construction rather than by two matching derivations.
+                tokensPerGold: vmJob.tokensPerGold,
+            })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
             minutes,
@@ -3998,6 +4346,7 @@ async function runVmJobByCorrelationId(correlationId) {
             tokenBillingExempt,
             tokenGoldTotal,
             tokenGold,
+            tokensPerGold,
             topup,
             costUsd: usage?.costUsd ?? null,
         })
@@ -4008,6 +4357,11 @@ async function runVmJobByCorrelationId(correlationId) {
         if (isVmThreadBusyError(error)) {
             console.warn('🖥️ VM JOB RUNNER: thread busy at run start; job re-queued', { correlationId })
             await pendingRef.set({ status: 'queued', requeuedAt: Date.now() }, { merge: true }).catch(() => {})
+            // This deferral produces no failure comment and no settlement, so nothing would re-apply
+            // the earlier failure hold this run released at start. Put it back (AT-2196).
+            if (failureHoldState?.releasedHold) {
+                await restoreVmFailureWorkflowHold(db, pendingWebhook, failureHoldState.releasedHold).catch(() => {})
+            }
             return
         }
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
@@ -4016,7 +4370,10 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
-            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, { assistantRunStatus: 'failed' })
+            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
+                assistantRunStatus: 'failed',
+                failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
+            })
             await notifyVmResultChannels(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4056,7 +4413,10 @@ async function runVmJobByCorrelationId(correlationId) {
 
         if (isVmRuntimeTimeoutError(error)) {
             const timeoutText = buildVmRuntimeTimeoutText(error.runtimeMs || MAX_VM_RUNTIME_MS)
-            await writeStatusComment(pendingWebhook, timeoutText, { assistantRunStatus: 'failed' })
+            await writeStatusComment(pendingWebhook, timeoutText, {
+                assistantRunStatus: 'failed',
+                failureReason: VM_RUNTIME_TIMEOUT_FAILURE_REASON,
+            })
             await notifyVmResultChannels(pendingWebhook, timeoutText, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4086,7 +4446,10 @@ async function runVmJobByCorrelationId(correlationId) {
             ? buildVmSubscriptionAuthFailureText(agentLabel).replace(/^❌\s*/, '')
             : `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
-        await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
+        await writeStatusComment(pendingWebhook, failureText, {
+            assistantRunStatus: 'failed',
+            ...(subscriptionAuthFailure ? { failureReason: VM_SUBSCRIPTION_AUTH_FAILURE_REASON } : {}),
+        })
         await notifyVmResultChannels(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
@@ -4104,6 +4467,7 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged + proxyTokenGoldCharged)
     } finally {
         heartbeat.stop()
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
     }
 }
 
@@ -4122,6 +4486,8 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        AGENT_CONFIGS,
+        buildClaudeRunCommand,
         isInteractiveVmExecutionEnabled,
         resolveVmInteractionPhase,
         formatVmInteractionAnswers,
@@ -4139,15 +4505,21 @@ module.exports = {
         buildAgentExitError,
         isVmSubscriptionAuthError,
         markSafeVmSubscriptionAuthRetry,
+        buildAgentExitErrorWithAuthRetry,
         waitForVmSubscriptionAuthChange,
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
         ensureAgentCliAvailable,
+        renderAgentCliCheckStatus,
+        parseAgentCliInstallingMarker,
+        renderAgentCliChangeStatus,
         appendClaudeActivity,
         appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
+        resolveRuntimeAgentModel,
+        applyRuntimeAgentModel,
         calculateAccruedRuntimeGold,
         calculateCompletionGoldCharges,
         checkAndChargeVmRuntimeGold,
@@ -4175,6 +4547,8 @@ module.exports = {
         startVmSessionHeartbeat,
         keepVmSessionAlive,
         isReusableVmSession,
+        shouldResumeVmSession,
+        resumeE2bSandbox,
         isUnhealthyVmSessionError,
         probeResumedVmSandbox,
         RESUME_HEALTHCHECK_TIMEOUT_MS,
@@ -4185,6 +4559,7 @@ module.exports = {
         sendWhatsAppVmResultNotification,
         postVmOriginConversationNote,
         notifyVmResultChannels,
+        resolveWorkflowAfterVmJobSettlement,
         writeStatusComment,
         buildAttachmentTokens,
         buildVmFinalCommentText,

@@ -37,16 +37,19 @@ import {
     HOSTING_URL,
     CURRENT_ENVIORNMENT,
     NOTES_COLLABORATION_SERVER,
-    ALGOLIA_APP_ID,
-    ALGOLIA_SEARCH_ONLY_API_KEY,
+    TYPESENSE_HOST,
+    TYPESENSE_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
+import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
+import { isProjectOwnedByUser } from '../defaultProjectAuthorization'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
+import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
@@ -93,6 +96,7 @@ import {
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
+import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
 import {
     setAllFeeds,
     setFollowedFeeds,
@@ -126,9 +130,11 @@ import {
     getUserPresentationDataInProject,
 } from '../../components/ContactsView/Utils/ContactsHelper'
 
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
+import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
+import { AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
 import { COLOR_KEY_4 } from '../../components/NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import { processRestoredNote } from '../../components/NotesView/NotesDV/EditorView/notesHelper'
 import { CURRENT_DAY_VERSION_ID } from '../../components/UIComponents/FloatModals/RevisionHistoryModal/RevisionHistoryModal'
@@ -330,6 +336,7 @@ let functions
 let messaging
 let db
 let firestoreSettingsApplied = false
+let firestoreNetworkRestartPromise = null
 let somePrefix = 'Offline'
 let someId = -1
 let syncToBackend = true
@@ -365,9 +372,17 @@ const backlinksCounterUnsub = {}
 const unsubHastagsColors = {}
 let noteRevisionHistoryCopiesUnsub = () => {}
 
+// Firebase's redirect sign-in hands off through a cross-origin helper iframe on the auth domain,
+// and that gapi handshake never completes in embedded browsers — signInWithRedirect then hangs
+// with no navigation and no error. Pointing authDomain at the dev origin makes the handler
+// same-origin (the dev server proxies /__/auth/* to the real auth domain), removing the iframe.
+// Only when the dev server is actually serving https, because Firebase hardcodes that scheme
+// when it builds the handler URL; plain http://localhost keeps the normal auth domain.
+const useLocalAuthHandler = () => isLocalDevHost() && window.location.protocol === 'https:'
+
 const firebaseConfig = {
     apiKey: GOOGLE_FIREBASE_WEB_API_KEY,
-    authDomain: GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+    authDomain: useLocalAuthHandler() ? window.location.host : GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
     databaseURL: GOOGLE_FIREBASE_WEB_DATABASE_URL,
     projectId: GOOGLE_FIREBASE_WEB_PROJECT_ID,
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
@@ -430,6 +445,11 @@ async function clearAllFirebaseIndexedDB() {
     }
 }
 
+// Resolves once getRedirectResult() has settled, i.e. once a sign-in that came back from the
+// Google redirect has been applied to firebase.auth(). Anything that would sign the user in as
+// somebody else must wait for this first — see loginWithGoogleWebAnonymously.
+let redirectResultSettled = Promise.resolve(null)
+
 export async function initFirebase(onComplete) {
     // Determine if we should use Firebase emulators BEFORE initializing
     const useEmulator = shouldUseEmulator()
@@ -441,8 +461,8 @@ export async function initFirebase(onComplete) {
     }
 
     // Load only critical modules first for faster initialization
-    require('firebase/auth')
-    require('firebase/firestore')
+    require('firebase/compat/auth')
+    require('firebase/compat/firestore')
 
     try {
         firebase.initializeApp(firebaseConfig)
@@ -456,7 +476,9 @@ export async function initFirebase(onComplete) {
     db = firebase.firestore()
     if (!firestoreSettingsApplied) {
         try {
-            db.settings({ ignoreUndefinedProperties: true })
+            // firebase 9+ replaces the whole settings object unless merge is set,
+            // which resets host and logs "You are overriding the original host".
+            db.settings({ ignoreUndefinedProperties: true, merge: true })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
@@ -466,15 +488,17 @@ export async function initFirebase(onComplete) {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')
 
-    console.log('🔍 Firebase emulator connection check:', {
-        hostname: window.location.hostname,
-        isLocalhost,
-        __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
-        NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
-        forceEmulator,
-        useEmulator,
-        environment: CURRENT_ENVIORNMENT,
-    })
+    if (__DEV__) {
+        console.log('🔍 Firebase emulator connection check:', {
+            hostname: window.location.hostname,
+            isLocalhost,
+            __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
+            NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
+            forceEmulator,
+            useEmulator,
+            environment: CURRENT_ENVIORNMENT,
+        })
+    }
 
     if (useEmulator) {
         try {
@@ -487,7 +511,7 @@ export async function initFirebase(onComplete) {
         }
         try {
             // Connect to Functions emulator only
-            require('firebase/functions')
+            require('firebase/compat/functions')
             // Initialize functions with the correct region for emulator
             const functionsInstance = firebase.app().functions('europe-west1')
 
@@ -507,25 +531,27 @@ export async function initFirebase(onComplete) {
         } catch (error) {
             console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message, error)
         }
-    } else {
+    } else if (__DEV__) {
         console.log('🌐 Using production Firebase Functions')
     }
 
     // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
-    firebase
+    // Sign-in tracing stays behind __DEV__: it runs on every load and names the user's email.
+    redirectResultSettled = firebase
         .auth()
         .getRedirectResult()
         .then(result => {
-            console.log('🔐 getRedirectResult called:', {
-                hasResult: !!result,
-                hasUser: !!result?.user,
-                email: result?.user?.email,
-                isNewUser: result?.additionalUserInfo?.isNewUser,
-            })
+            if (__DEV__) {
+                console.log('🔐 getRedirectResult called:', {
+                    hasResult: !!result,
+                    hasUser: !!result?.user,
+                    email: result?.user?.email,
+                    isNewUser: result?.additionalUserInfo?.isNewUser,
+                })
+            }
             if (result && result.user) {
-                console.log('✅ User signed in via redirect:', result.user.email)
+                if (__DEV__) console.log('✅ User signed in via redirect:', result.user.email)
                 if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-                    console.log('🆕 New user signed in via redirect')
                     store.dispatch(setRegisteredNewUser(true))
                 }
             }
@@ -535,7 +561,7 @@ export async function initFirebase(onComplete) {
         })
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
-        console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
+        if (__DEV__) console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
         const result = onComplete(firebaseUser)
         if (result && typeof result.catch === 'function') {
             result.catch(error => console.error('Error in auth callback:', error))
@@ -551,28 +577,28 @@ export async function initFirebase(onComplete) {
 function loadDeferredFirebaseModules() {
     try {
         // Load functions (but don't overwrite if emulator is already set)
-        require('firebase/functions')
+        require('firebase/compat/functions')
         if (!functions) {
             functions = firebase.app().functions('europe-west1')
-            console.log('🌐 Using production Firebase Functions (europe-west1)')
-        } else {
+            if (__DEV__) console.log('🌐 Using production Firebase Functions (europe-west1)')
+        } else if (__DEV__) {
             console.log('🔧 Functions already configured (emulator), not overwriting')
         }
 
         // Load storage
-        require('firebase/storage')
+        require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
 
         // Load messaging
-        require('firebase/messaging')
+        require('firebase/compat/messaging')
         if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
             messaging = firebase.messaging()
         }
 
         // Load database
-        require('firebase/database')
+        require('firebase/compat/database')
 
-        console.log('Deferred Firebase modules loaded')
+        if (__DEV__) console.log('Deferred Firebase modules loaded')
     } catch (error) {
         console.warn('Error loading deferred Firebase modules:', error)
     }
@@ -580,6 +606,34 @@ function loadDeferredFirebaseModules() {
 
 export function initGoogleTagManager(userId) {
     setAnalyticsUser(userId)
+}
+
+/**
+ * FCM token acquisition fails for reasons the app cannot fix: the browser's push service
+ * rejecting the registration (ad/tracker blockers such as Brave shields or uBlock, corporate
+ * policies, networks blocking fcm.googleapis.com) or the user denying the permission. Those are
+ * expected environments, not defects. Keep them out of the production warning stream (where
+ * they look like app failures) while retaining development diagnostics. console.error remains
+ * reserved for genuinely unexpected failures.
+ */
+const logFcmTokenError = err => {
+    const message = (err && err.message) || String(err)
+    if ((err && err.name === 'AbortError') || message.includes('push service')) {
+        if (__DEV__) {
+            console.info(
+                'Push notifications unavailable: the browser push service rejected the registration ' +
+                    '(common with ad/tracker blockers, privacy browsers, or networks blocking fcm.googleapis.com). ' +
+                    'The app continues without push.',
+                message
+            )
+        }
+        return
+    }
+    if (message.toLowerCase().includes('permission')) {
+        if (__DEV__) console.info('Push notifications disabled: notification permission was not granted.', message)
+        return
+    }
+    console.error('Failed to get FCM token:', err)
 }
 
 export function initFCM(userId) {
@@ -611,25 +665,10 @@ export function initFCM(userId) {
                 })
             })
             .catch(err => {
-                console.error('Failed to get FCM token:', err)
+                logFcmTokenError(err)
             })
-        messaging.onTokenRefresh(() => {
-            messaging
-                .getToken()
-                .then(refreshedToken => {
-                    userRef.get().then(doc => {
-                        const user = mapUserData(doc.id, doc.data())
-                        if (!user.fcmToken.some(item => item === refreshedToken)) {
-                            doc.ref.update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                })
-                .catch(err => {
-                    console.log('Unable to retrieve refreshed token ', err)
-                })
-        })
+        // firebase 9+ removed messaging.onTokenRefresh (even in compat); token
+        // freshness is covered by calling getToken() on every app load above.
     }
     userRef.update({ pushNotificationsStatus: true })
 }
@@ -659,28 +698,12 @@ export async function requestNotificationPermission() {
                     fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
                 })
             }
-            // Setup token refresh listener
-            messaging.onTokenRefresh(() => {
-                messaging
-                    .getToken()
-                    .then(refreshedToken => {
-                        const { fcmToken, uid } = store.getState().loggedUser
-                        if (!fcmToken.some(item => item === refreshedToken)) {
-                            db.doc(`/users/${uid}`).update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Unable to retrieve refreshed token ', err)
-                    })
-            })
             return { success: true, token }
         } else {
             return { success: false, reason: 'Permission denied by user' }
         }
     } catch (err) {
-        console.error('Failed to request notification permission:', err)
+        logFcmTokenError(err)
         return { success: false, reason: err.message }
     }
 }
@@ -707,24 +730,8 @@ export function initFCMonLoad() {
                     }
                 })
                 .catch(err => {
-                    console.error('Failed to get FCM token:', err)
+                    logFcmTokenError(err)
                 })
-
-            messaging.onTokenRefresh(() => {
-                messaging
-                    .getToken()
-                    .then(refreshedToken => {
-                        const { fcmToken, uid } = store.getState().loggedUser
-                        if (!fcmToken.some(item => item === refreshedToken)) {
-                            db.doc(`/users/${uid}`).update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Unable to retrieve refreshed token ', err)
-                    })
-            })
         } else {
             // Permission not granted yet - wait for user gesture
             console.log(
@@ -791,6 +798,13 @@ export function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
 }
 
+// Helper to detect the local development server.
+export function isLocalDevHost() {
+    if (typeof window === 'undefined') return false
+    const hostname = window.location.hostname
+    return hostname === 'localhost' || hostname === '127.0.0.1'
+}
+
 // Sign in with Google using popup
 // Note: Redirect doesn't work on custom domains (my.alldone.app) because Firebase Auth
 // uses firebaseapp.com for the OAuth handler, and cookies don't transfer back properly.
@@ -800,6 +814,17 @@ export async function signInWithGoogleRedirect() {
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+
+    // The custom-domain problem above does not apply to the dev server: localhost is an
+    // authorized redirect origin for the firebaseapp.com auth domain. Redirect needs no
+    // popup, which is what makes sign-in usable in embedded/automated browsers that block
+    // window.open. getRedirectResult() already runs on boot and completes the sign-in.
+    if (isLocalDevHost()) {
+        console.log('🔐 Local dev host: using Google sign-in with redirect (no popup)...')
+        await firebase.auth().signInWithRedirect(provider)
+        // The page navigates away; nothing after this runs on the outgoing document.
+        return null
+    }
 
     try {
         console.log('🔐 Trying Google sign-in with popup...')
@@ -847,6 +872,41 @@ export function getDb() {
     return db
 }
 
+/**
+ * Re-open the full Firestore client's streams after a direct server read proved that its local
+ * view was wrong. Calls are coalesced because several project reads fail in parallel during boot.
+ */
+export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
+    if (!db) return Promise.reject(new Error('Firebase db is not initialized'))
+    if (firestoreNetworkRestartPromise) return firestoreNetworkRestartPromise
+
+    firestoreNetworkRestartPromise = (async () => {
+        let networkDisabled = false
+        try {
+            await db.disableNetwork()
+            networkDisabled = true
+            await db.enableNetwork()
+            networkDisabled = false
+            console.warn(`[Firestore] Restarted the realtime connection to ${reason}`)
+        } catch (error) {
+            // Never leave the whole app intentionally offline just because the restart failed
+            // halfway through. A second enable is harmless if the first one partially succeeded.
+            if (networkDisabled) {
+                try {
+                    await db.enableNetwork()
+                } catch (enableError) {
+                    console.warn('[Firestore] Failed to re-enable the network after a restart error:', enableError)
+                }
+            }
+            throw error
+        }
+    })().finally(() => {
+        firestoreNetworkRestartPromise = null
+    })
+
+    return firestoreNetworkRestartPromise
+}
+
 export function getIsMessagingSupported() {
     return (
         firebase.messaging &&
@@ -877,6 +937,7 @@ export async function selectAndSetNewDefaultProject(user) {
         if (
             !newDefaultProjectId &&
             doc.id !== defaultProjectId &&
+            isProjectOwnedByUser(doc.data(), uid) &&
             projectIds.includes(doc.id) &&
             !archivedProjectIds.includes(doc.id)
         ) {
@@ -956,7 +1017,8 @@ export async function removeInvitedUserFromProject(user, projectId) {
 export async function getUserDataByUidOrEmail(uidOrEmail) {
     let user = null
 
-    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
+    const emailRegex =
+        /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
     if (emailRegex.test(String(uidOrEmail).toLowerCase())) {
         const userObj = (await getUsersByEmail(uidOrEmail, true))[0]
 
@@ -1130,19 +1192,6 @@ export async function watchProjectInvitations(projectId, callback, watcherKey) {
         })
 }
 
-export async function watchProjectMeetings(projectId, callback, watcherKey) {
-    globalWatcherUnsub[watcherKey] = firebase
-        .firestore()
-        .collection(`events/${projectId}/rooms`)
-        .onSnapshot(docs => {
-            const meetings = []
-            docs.forEach(doc => {
-                meetings.push(doc.data())
-            })
-            callback(meetings)
-        })
-}
-
 export function proccessAssistantDialyTopicIfNeeded() {
     const { loggedUser } = store.getState()
     const { dailyTopicDate, previousDailyTopicDate, defaultProjectId } = loggedUser
@@ -1213,9 +1262,47 @@ export async function getProjectBy(projectId) {
     return (await db.doc(`/projects/${projectId}`).get()).data()
 }
 
+export async function getProjectDataResult(projectId) {
+    const snapshot = await db.doc(`/projects/${projectId}`).get()
+    const project = snapshot.data()
+
+    if (!project) {
+        try {
+            const directSnapshot = await readDocumentDirectlyFromServer(`projects/${projectId}`)
+            if (directSnapshot.exists) {
+                console.warn(
+                    `[InitialLoad] The realtime Firestore client reported project ${projectId} as missing, ` +
+                        'but a direct server read found it. Using the server document and reconnecting the streams.'
+                )
+                await restartFirestoreNetwork('recover a project omitted during initial load')
+                return {
+                    project: mapProjectData(projectId, directSnapshot.data),
+                    missingFromCache: false,
+                }
+            }
+            return { project: null, missingFromCache: false }
+        } catch (error) {
+            // A failed independent read cannot confirm absence. Keep this retryable and never let
+            // it become a stale-project cleanup candidate.
+            console.warn(
+                `[InitialLoad] Could not verify missing project ${projectId} with a direct server read:`,
+                error
+            )
+            return { project: null, missingFromCache: true }
+        }
+    }
+
+    return {
+        project: project ? mapProjectData(projectId, project) : null,
+        // "missing" answered by the local cache while the backend is unreachable — the doc may
+        // exist on the server, so callers must treat it as a failed read, not a deleted doc.
+        missingFromCache: isTransientMissingDocSnapshot(snapshot),
+    }
+}
+
 export async function getProjectData(projectId) {
-    const project = (await db.doc(`/projects/${projectId}`).get()).data()
-    return project ? mapProjectData(projectId, project) : null
+    const { project } = await getProjectDataResult(projectId)
+    return project
 }
 
 export function watchBacklinksCount(projectId, linkedParentObject, callback, watcherKey) {
@@ -1287,6 +1374,9 @@ export function unwatchLinkedTasks() {
 
 export function watchProject(projectId, callback, watcherKey) {
     globalWatcherUnsub[watcherKey] = db.doc(`projects/${projectId}`).onSnapshot(doc => {
+        // A cache-served "missing" only means the backend is unreachable — the project may exist
+        // on the server, so never report it as gone (a real deletion arrives server-confirmed).
+        if (isTransientMissingDocSnapshot(doc)) return
         const data = doc.data()
         const project = data ? mapProjectData(projectId, doc.data()) : null
         callback(project)
@@ -1408,7 +1498,8 @@ export async function unlinkDeletedProjectFromMembers(projectId, batch, userIds)
         if (user?.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.projectId === projectId) {
             updateData = {
                 ...updateData,
-                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: firebase.firestore.FieldValue.delete(),
+                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
+                    firebase.firestore.FieldValue.delete(),
             }
         }
         batch.update(db.doc(`users/${uid}`), updateData)
@@ -1793,20 +1884,22 @@ export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext =
     const slimDate = date.format('DDMMYYYY')
     const dayDate = parseInt(date.format('YYYYMMDD'))
 
-    console.log('[gold][client] Prepared task reward call', {
-        projectId,
-        userId,
-        maxGold,
-        computedGold: gold,
-        goldToIncrease,
-        loggedUserId: loggedUser.uid,
-        loggedUserDailyGold: loggedUser.dailyGold,
-        rewardKey: rewardContext.rewardKey || '',
-        objectId: rewardContext.objectId || '',
-        objectType: rewardContext.objectType || '',
-        timestamp,
-        checkBoxId: checkBoxId || '',
-    })
+    if (__DEV__) {
+        console.log('[gold][client] Prepared task reward call', {
+            projectId,
+            userId,
+            maxGold,
+            computedGold: gold,
+            goldToIncrease,
+            loggedUserId: loggedUser.uid,
+            loggedUserDailyGold: loggedUser.dailyGold,
+            rewardKey: rewardContext.rewardKey || '',
+            objectId: rewardContext.objectId || '',
+            objectType: rewardContext.objectType || '',
+            timestamp,
+            checkBoxId: checkBoxId || '',
+        })
+    }
 
     if (goldToIncrease > 0) {
         if (userId === loggedUser.uid && checkBoxId) {
@@ -1825,16 +1918,18 @@ export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext =
             objectType: rewardContext.objectType,
         })
     } else {
-        console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
-            projectId,
-            userId,
-            computedGold: gold,
-            loggedUserDailyGold: loggedUser.dailyGold,
-            rewardKey: rewardContext.rewardKey || '',
-            objectId: rewardContext.objectId || '',
-            objectType: rewardContext.objectType || '',
-            timestamp,
-        })
+        if (__DEV__) {
+            console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
+                projectId,
+                userId,
+                computedGold: gold,
+                loggedUserDailyGold: loggedUser.dailyGold,
+                rewardKey: rewardContext.rewardKey || '',
+                objectId: rewardContext.objectId || '',
+                objectType: rewardContext.objectType || '',
+                timestamp,
+            })
+        }
     }
 }
 
@@ -1989,7 +2084,7 @@ export async function setTaskParentGoalMultiple(tasks, goal) {
     }
     await Promise.all(promises)
     store.dispatch(updateAllSelectedTasks(tasks))
-    batch.commit()
+    await batch.commit()
 }
 
 export const setTaskParentGoalFeedsChain = async (projectId, taskId, newParentGoalId, oldParentGoalId, task) => {
@@ -2873,8 +2968,25 @@ export const addGuideToTemplateFeedsChain = async (template, guideId) => {
 export const getAdministratorUser = async () => {
     const userId = (await db.doc('roles/administrator').get()).data()?.userId
     if (!userId) return {}
-    const doc = await db.doc(`users/${userId}`).get()
-    return mapUserData(doc.id, doc.data())
+    // The referenced user document can be absent (deleted account, or a roles/administrator
+    // pointer carried into an environment where that user was never created), which the app
+    // treats as optional rather than fatal — dereferencing the missing data used to throw out of
+    // the whole global-data load and send it into its five-attempt retry loop.
+    //
+    // It reads through getUserData so it inherits the server confirmation in
+    // `fetchUserDataResult`: a client read can report an existing user document as missing
+    // (production, 2026-08-13), and here that degrades in complete silence — `administratorUser`
+    // becomes `{}`, so `loggedUserId === administratorUserId` is false and the Admin entry
+    // disappears from the sidebar of the one person who is supposed to see it.
+    const administrator = await getUserData(userId, false)
+    if (!administrator) {
+        console.warn(
+            `[GlobalData] The administrator user document (/users/${userId}) could not be read. ` +
+                'Admin-only UI stays hidden for this session.'
+        )
+        return {}
+    }
+    return administrator
 }
 
 const addProjectArchivedStatus = (projectId, userId, batch) => {
@@ -3078,7 +3190,19 @@ export async function offOnTaskFeedChange(projectId, taskId, callback) {
     onTaskFeedChangeHandlerUnsub()
 }
 
+// The login screen signs in anonymously so it can read project data before the user has an
+// account. signInAnonymously() replaces whoever is currently signed in, so it must never run
+// on top of a real sign-in: with the redirect flow the login screen mounts again on the way
+// back from Google, and an unguarded call here mints a fresh anonymous user that clobbers the
+// credential the redirect just delivered — leaving the user staring at the login page.
 export async function loginWithGoogleWebAnonymously() {
+    await redirectResultSettled.catch(() => null)
+
+    const currentUser = firebase.auth().currentUser
+    if (currentUser && !currentUser.isAnonymous) {
+        return
+    }
+
     await firebase.auth().signInAnonymously()
 }
 
@@ -3485,6 +3609,16 @@ export function mapTaskData(taskId, task) {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
     const hasStar = !task?.hasStar ? '#FFFFFF' : task.hasStar === true ? '#C7E3FF' : task.hasStar
 
+    const created = task.created ? task.created : Date.now()
+
+    // AT-2259 - calendar tasks written before the fix stored the EVENT START in sortIndex, a future
+    // timestamp that outranks every normal task's creation-time index and pinned meetings to the
+    // top of their group. Normalizing here - the one place every task enters the app - keeps the
+    // list, drag & drop, My Day and focus selection consistent without a data migration.
+    const sortIndex = task.sortIndex
+        ? resolveTaskSortIndex(task.sortIndex, task.calendarData, created)
+        : generateNegativeSortIndex()
+
     const mappedTask = {
         id: task.id ? task.id : taskId,
         done: task.done ? task.done : false,
@@ -3501,7 +3635,7 @@ export function mapTaskData(taskId, task) {
         stepHistory: task.stepHistory ? task.stepHistory : [],
         hasStar: hasStar,
         priority: normalizeTaskPriority(task.priority),
-        created: task.created ? task.created : Date.now(),
+        created,
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),
         alertEnabled: task.alertEnabled === true || task.alertEnabled === false ? task.alertEnabled : false,
@@ -3519,7 +3653,7 @@ export function mapTaskData(taskId, task) {
         estimations: task.estimations ? task.estimations : { [OPEN_STEP]: ESTIMATION_0_MIN },
         comments: task.comments ? task.comments : [],
         genericData: task.genericData ? task.genericData : null,
-        sortIndex: task.sortIndex ? task.sortIndex : generateNegativeSortIndex(),
+        sortIndex,
         linkedParentNotesIds: task.linkedParentNotesIds ? task.linkedParentNotesIds : [],
         linkedParentTasksIds: task.linkedParentTasksIds ? task.linkedParentTasksIds : [],
         linkedParentContactsIds: task.linkedParentContactsIds ? task.linkedParentContactsIds : [],
@@ -3531,6 +3665,7 @@ export function mapTaskData(taskId, task) {
         suggestedBy: task.suggestedBy ? task.suggestedBy : null,
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
         parentGoalIsPublicFor: task.parentGoalIsPublicFor ? task.parentGoalIsPublicFor : null,
+        goalSuggestion: task.goalSuggestion ? task.goalSuggestion : null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
@@ -3544,12 +3679,15 @@ export function mapTaskData(taskId, task) {
         assigneeType: task.assigneeType ? task.assigneeType : TASK_ASSIGNEE_USER_TYPE,
         assistantId: task.assistantId ? task.assistantId : '',
         isAssistantEnabled: task.isAssistantEnabled,
+        workflowTask: task.workflowTask === true,
+        workflowPayerUserId: task.workflowPayerUserId || null,
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
         // Task-level AI settings
         aiModel: task.aiModel || null,
         aiTemperature: task.aiTemperature || null,
+        aiReasoningEffort: task.aiReasoningEffort || null,
         aiSystemMessage: task.aiSystemMessage || null,
         // Webhook task metadata
         taskMetadata: task.taskMetadata || null,
@@ -3623,8 +3761,8 @@ export function mapUserData(userId, user) {
         extendedDescription: user.extendedDescription
             ? user.extendedDescription
             : user.description
-            ? user.description
-            : '',
+              ? user.description
+              : '',
         hasStar: user.hasStar ? user.hasStar : '#FFFFFF',
         fcmToken: user.fcmToken ? user.fcmToken : [],
         xp: user.xp ? user.xp : 0,
@@ -3658,6 +3796,10 @@ export function mapUserData(userId, user) {
             user.autoPostponeAfterDaysOverdue != null
                 ? user.autoPostponeAfterDaysOverdue
                 : AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT,
+        autoArchiveProjectsAfterDays:
+            user.autoArchiveProjectsAfterDays != null
+                ? user.autoArchiveProjectsAfterDays
+                : AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT,
         sidebarNavigationMode: user.sidebarNavigationMode || SIDEBAR_NAVIGATION_SIMPLE,
         sidebarExpanded: user.sidebarExpanded ? user.sidebarExpanded : SIDEBAR_COLLAPSED,
         gold: user.gold ? user.gold : 0,
@@ -3689,7 +3831,6 @@ export function mapUserData(userId, user) {
         noteIdsByProject: user.noteIdsByProject ? user.noteIdsByProject : {},
         assistantId: user.assistantId ? user.assistantId : '',
         isAssistantEnabled: user.isAssistantEnabled,
-        activeFullSearchDate: user.activeFullSearchDate ? user.activeFullSearchDate : null,
         commentsData: user.commentsData ? user.commentsData : {},
         firstLoginDateInDay: user.firstLoginDateInDay ? user.firstLoginDateInDay : 0,
         activeTaskStartingDate: user.activeTaskStartingDate ? user.activeTaskStartingDate : 0,
@@ -3698,6 +3839,9 @@ export function mapUserData(userId, user) {
         activeTaskProjectId: user.activeTaskProjectId ? user.activeTaskProjectId : '',
         showAllProjectsByTime: user.showAllProjectsByTime ? user.showAllProjectsByTime : false,
         lastAssistantCommentData: user.lastAssistantCommentData ? user.lastAssistantCommentData : {},
+        lastAssistantCommentDataByAssistant: user.lastAssistantCommentDataByAssistant
+            ? user.lastAssistantCommentDataByAssistant
+            : {},
         okrPrivacyMode: user.okrPrivacyMode ? user.okrPrivacyMode : false,
         okrsHiddenInAllProjectsTodayByProjectAndOkr: user.okrsHiddenInAllProjectsTodayByProjectAndOkr
             ? user.okrsHiddenInAllProjectsTodayByProjectAndOkr
@@ -3725,8 +3869,8 @@ export function mapContactData(contactId, contact) {
         extendedDescription: contact.extendedDescription
             ? contact.extendedDescription
             : contact.description
-            ? contact.description
-            : '',
+              ? contact.description
+              : '',
         hasStar: contact.hasStar ? contact.hasStar : '#FFFFFF',
         isPrivate: contact.isPrivate ? contact.isPrivate : false,
         isPublicFor: contact.isPublicFor ? contact.isPublicFor : [FEED_PUBLIC_FOR_ALL, contact.recorderUserId],
@@ -3793,6 +3937,7 @@ export function mapProjectData(projectId, project, customData) {
         usersData: project.usersData ? project.usersData : {},
         workstreamIds: project.workstreamIds ? project.workstreamIds : [],
         globalAssistantIds: project.globalAssistantIds ? project.globalAssistantIds : [],
+        taskGoalRoutingMode: project.taskGoalRoutingMode ? project.taskGoalRoutingMode : 'automatic',
         lastLoggedUserDate: project.lastLoggedUserDate
             ? project.lastLoggedUserDate
             : moment().subtract(1, 'year').valueOf(),
@@ -4175,14 +4320,8 @@ async function registerFeedEmail(projectId, userId, objectsType, objectId, feed,
 }
 
 async function sendPushNotifications(projectId, userId, objectsType, objectId, feed, feedObject, notificationData) {
-    const {
-        creatorName,
-        kickedUserName,
-        oldAssigneeName,
-        newAssigneeName,
-        assigneeName,
-        ratedFeedOwnerName,
-    } = notificationData
+    const { creatorName, kickedUserName, oldAssigneeName, newAssigneeName, assigneeName, ratedFeedOwnerName } =
+        notificationData
 
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = mapProjectData(projectId, (await db.doc(`projects/${projectId}`).get()).data())
@@ -5550,7 +5689,20 @@ export async function addFollowerWithoutFeeds(
         { usersFollowing: firebase.firestore.FieldValue.arrayUnion(userFollowingId) },
         { merge: true }
     )
-    !externalBatch && batch.commit()
+    // Fire-and-forget writes: label failures instead of leaving them as uncaught
+    // promise rejections (the "too many index entries" failures on the
+    // usersFollowing reverse-index doc surfaced exactly here, anonymously).
+    !externalBatch &&
+        batch.commit().catch(error => {
+            console.error('[followers] Failed to persist follow state', {
+                projectId,
+                followObjectsType,
+                followObjectId,
+                userFollowingId,
+                code: error?.code,
+                message: error?.message,
+            })
+        })
 
     if (followObjectsType === 'notes' && actionType !== 'delete') {
         const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
@@ -5559,7 +5711,17 @@ export async function addFollowerWithoutFeeds(
             if (note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || note.isPublicFor.includes(userFollowingId)) {
                 updateData.isVisibleInFollowedFor = firebase.firestore.FieldValue.arrayUnion(userFollowingId)
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
+            db.doc(`noteItems/${projectId}/notes/${followObjectId}`)
+                .set(updateData, { merge: true })
+                .catch(error => {
+                    console.error('[followers] Failed to update note follower state', {
+                        projectId,
+                        followObjectId,
+                        userFollowingId,
+                        code: error?.code,
+                        message: error?.message,
+                    })
+                })
         }
     }
 }
@@ -5798,12 +5960,17 @@ export async function unsubStoreFeedsTab(projectId) {
     feedsReduxStoreUnsub.all[projectId] ? feedsReduxStoreUnsub.all[projectId]() : null
 }
 
-export function watchNewFeedsAllTabsRedux(projectId, userId) {
+/**
+ * @param visibleAmount how many feeds this project's list can currently display. Forwarded so the
+ *                      query is capped at what is rendered instead of always pulling 200 documents
+ *                      per project per tab (AT-2192).
+ */
+export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
     const followedPath = `/feedsStore/${projectId}/${userId}/feeds/followed`
-    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds)
+    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount)
 
     const allPath = `/feedsStore/${projectId}/all`
-    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds)
+    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount)
 }
 
 function storeFollowedFeeds(projectId, feeds) {
@@ -5814,16 +5981,19 @@ function storeAllFeeds(projectId, feeds) {
     store.dispatch([setAllFeeds(projectId, feeds), stopLoadingData()])
 }
 
-function watchNewFeedsTabRedux(projectId, tab, path, callback) {
+function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
     store.dispatch(startLoadingData())
-    const MAX_NUMBER_OF_FEEDS_TO_SHOW = 99
-    const MAX_NUMBER_OF_FEEDS_TO_REVIEW = 200
     const { loggedUser, currentUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const currentUserId = currentUser.uid
+    // The `where` below already guarantees every document is public-for-all or public for the
+    // logged user, so the `currentUserId` check inside the snapshot handler can only ever drop a
+    // document while another user's feed is being viewed. In every other case the snapshot reaches
+    // the list untouched and the query can be capped at exactly what the list can display.
+    const needsClientSideFilter = currentUserId !== loggedUserId
     feedsReduxStoreUnsub[tab][projectId] = db
         .collection(path)
-        .limit(MAX_NUMBER_OF_FEEDS_TO_REVIEW)
+        .limit(getFeedsQueryLimit(visibleAmount, needsClientSideFilter))
         .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
         .orderBy('lastChangeDate', 'desc')
         .onSnapshot(feedsData => {
@@ -5912,7 +6082,6 @@ export async function getLastObjectFeed(projectId, objectTypes, feedObjectId, nL
 }
 
 export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback, relatedFeedSources = []) {
-    const MAX_NUMBER_OF_FEEDS_TO_SHOW = 99
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const feedSources = [{ objectTypes, feedObjectId }, ...relatedFeedSources].filter(
@@ -6005,12 +6174,12 @@ export async function increaseFeedCount(
         feed.isPublicFor && !feed.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
             ? feed.isPublicFor
             : projectUsersIdsForSpecialFeeds.length > 0
-            ? projectUsersIdsForSpecialFeeds
-            : batch.projectUsersIdsForSpecialFeeds &&
-              batch.projectUsersIdsForSpecialFeeds[objectId] &&
-              batch.projectUsersIdsForSpecialFeeds[objectId].length > 0
-            ? batch.projectUsersIdsForSpecialFeeds[objectId]
-            : getProjectUsersIds(projectId)
+              ? projectUsersIdsForSpecialFeeds
+              : batch.projectUsersIdsForSpecialFeeds &&
+                  batch.projectUsersIdsForSpecialFeeds[objectId] &&
+                  batch.projectUsersIdsForSpecialFeeds[objectId].length > 0
+                ? batch.projectUsersIdsForSpecialFeeds[objectId]
+                : getProjectUsersIds(projectId)
 
     const usersToNotifyIds = usersWithAccessIds.filter(userId => userId !== loggedUserId)
     const entryObjectsCounter = generateFeedCounterEntry(currentDateFormated, objectsType, objectId, feedId, feed)
@@ -6234,52 +6403,6 @@ export function storeOldFeeds(projectId, formatedDate, feedObjectId, feedObject,
         objectType: feedObject.type,
         feedId: feedId,
         feedType: feed.type,
-    })
-}
-
-export function acceptJoinEvent(projectId, roomId, userEmail) {
-    const load = db.collection(`events/${projectId}/rooms`).doc(roomId)
-    load.get().then(function (doc) {
-        if (doc.exists) {
-            const guests = doc.data().guests
-            const foundIndex = doc.data().guests.findIndex(x => x.email === userEmail)
-            guests[foundIndex] = { attend: 1, email: userEmail }
-            db.collection(`events/${projectId}/rooms`).doc(roomId).update({ guests })
-        }
-    })
-}
-
-export function rejectJoinEvent(projectId, roomId, userEmail, reasons, callback) {
-    const load = db.collection(`events/${projectId}/rooms`).doc(roomId)
-    load.get().then(function (doc) {
-        if (doc.exists) {
-            const guests = doc.data().guests
-            const foundIndex = doc.data().guests.findIndex(x => x.email === userEmail)
-            guests[foundIndex] = { attend: -1, email: userEmail, reasons }
-            db.collection(`events/${projectId}/rooms`)
-                .doc(roomId)
-                .update({ guests })
-                .then(() => callback)
-        }
-    })
-}
-
-export function deleteEvent(projectId, roomId) {
-    db.collection(`events/${projectId}/rooms`).doc(roomId).delete()
-}
-
-export function getMeetings(projectId, setMeetings, setZero) {
-    db.collection(`events/${projectId}/rooms`).onSnapshot(function handleSnapshot(snapshot) {
-        const meets = snapshot.docs
-            .filter(item => item)
-            .map(doc => {
-                return {
-                    id: doc.id,
-                    ...doc.data(),
-                }
-            })
-        setMeetings(meets)
-        setZero()
     })
 }
 
@@ -6523,6 +6646,24 @@ export async function setDefaultVmAgent(agent) {
 export async function setDefaultVmAgentReasoningEffort(effort) {
     const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentReasoningEffort')
     const result = await fn({ effort })
+    return result.data
+}
+
+export async function setDefaultVmApprovalPolicy(policy) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmApprovalPolicy')
+    const result = await fn({ policy })
+    return result.data
+}
+
+export async function setDefaultVmAgentModel(agent, family) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentModel')
+    const result = await fn({ agent, family })
+    return result.data
+}
+
+export async function getVmAgentModelOptions(forceRefresh = false) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentModelOptions')
+    const result = await fn({ forceRefresh })
     return result.data
 }
 
@@ -7029,8 +7170,8 @@ export const inStagingEnvironment = () => {
     return CURRENT_ENVIORNMENT === 'Staging'
 }
 
-export function getAlgoliaSearchOnlyKeys() {
-    return { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY }
+export function getTypesenseSearchKeys() {
+    return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
 }
 
 export function getSentryVariables() {
@@ -7342,69 +7483,63 @@ let gmailSyncLock = Promise.resolve()
 const SYNC_COOLDOWN_MS = 1 * 60 * 1000 // 1 minute
 
 export async function checkIfCalendarConnected(projectId) {
-    console.log('═══════════════════════════════════════════════════════════')
-    console.log('[Calendar Sync] 🚀 SYNC REQUESTED')
-    console.log('[Calendar Sync] projectId:', projectId)
-    console.log('[Calendar Sync] Timestamp:', new Date().toISOString())
+    // Kept behind __DEV__ like the Gmail sync tracing below: this runs on every project on
+    // every load, and the apisConnected dump carries the user's connected mail addresses.
+    if (__DEV__) {
+        console.log('[Calendar Sync] 🚀 SYNC REQUESTED, projectId:', projectId)
+    }
 
     // Check if this project was recently synced
     const lastSyncTime = calendarSyncCache.get(projectId)
     const timeSinceLastSync = lastSyncTime ? Date.now() - lastSyncTime : null
     const cooldownRemaining = lastSyncTime ? Math.max(0, SYNC_COOLDOWN_MS - timeSinceLastSync) : 0
 
-    console.log('[Calendar Sync] Last sync time:', lastSyncTime ? new Date(lastSyncTime).toISOString() : 'Never')
-    console.log(
-        '[Calendar Sync] Time since last sync:',
-        timeSinceLastSync ? `${Math.round(timeSinceLastSync / 1000)}s` : 'N/A'
-    )
-    console.log('[Calendar Sync] Cooldown period:', `${SYNC_COOLDOWN_MS / 1000}s (${SYNC_COOLDOWN_MS / 60000} minutes)`)
-
     if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
-        console.log('[Calendar Sync] ⏸️  SKIPPED - Still in cooldown period')
-        console.log(
-            '[Calendar Sync] ⏱️  Time remaining in cooldown:',
-            `${Math.round(cooldownRemaining / 1000)}s (${Math.round((cooldownRemaining / 60000) * 10) / 10} min)`
-        )
-        console.log('[Calendar Sync] 💡 Tip: Wait', Math.round(cooldownRemaining / 1000), 'seconds before next sync')
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log(
+                '[Calendar Sync] ⏸️  SKIPPED - in cooldown,',
+                `${Math.round(cooldownRemaining / 1000)}s remaining`
+            )
+        }
         return
     }
 
     const { apisConnected, uid } = store.getState().loggedUser
-    console.log('[Calendar Sync] User ID:', uid)
-    console.log('[Calendar Sync] APIs connected:', JSON.stringify(apisConnected, null, 2))
+    if (__DEV__) {
+        console.log('[Calendar Sync] User ID:', uid)
+        console.log('[Calendar Sync] APIs connected:', JSON.stringify(apisConnected, null, 2))
+    }
 
     if (!apisConnected) {
-        console.log('[Calendar Sync] ❌ FAILED: No apisConnected')
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) console.log('[Calendar Sync] ❌ FAILED: No apisConnected')
         return
     }
 
     if (!apisConnected[projectId]) {
-        console.log('[Calendar Sync] ❌ FAILED: No config for projectId', projectId)
-        console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log('[Calendar Sync] ❌ FAILED: No config for projectId', projectId)
+            console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        }
         return
     }
 
     if (!apisConnected[projectId]?.calendar) {
-        console.log('[Calendar Sync] ❌ FAILED: Calendar not connected for project', projectId)
-        console.log('[Calendar Sync] Project config:', apisConnected[projectId])
-        console.log('═══════════════════════════════════════════════════════════')
+        if (__DEV__) {
+            console.log('[Calendar Sync] ❌ FAILED: Calendar not connected for project', projectId)
+            console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        }
         return
     }
 
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
-    console.log('[Calendar Sync] ✅ Cooldown cache updated for project:', projectId)
 
     try {
-        console.log('[Calendar Sync] 📡 Calling server-side sync function...')
-        console.log('[Calendar Sync] Function: syncCalendarEventsSecondGen')
-        console.log('[Calendar Sync] Parameters:', { projectId, daysAhead: 30 })
+        if (__DEV__) {
+            console.log('[Calendar Sync] 📡 Calling syncCalendarEventsSecondGen:', { projectId, daysAhead: 30 })
+        }
 
         store.dispatch(startLoadingData())
-        console.log('[Calendar Sync] ⏳ Loading indicator started')
 
         const startTime = Date.now()
 
@@ -7414,21 +7549,19 @@ export async function checkIfCalendarConnected(projectId) {
             daysAhead: 30,
         })
 
-        const duration = Date.now() - startTime
-        console.log('[Calendar Sync] ✅ Server-side sync completed')
-        console.log('[Calendar Sync] Duration:', duration, 'ms')
-        console.log('[Calendar Sync] Result:', JSON.stringify(result, null, 2))
+        if (__DEV__) {
+            console.log(
+                '[Calendar Sync] ✅ Server-side sync completed in',
+                Date.now() - startTime,
+                'ms:',
+                JSON.stringify(result, null, 2)
+            )
+        }
 
         store.dispatch(stopLoadingData())
-        console.log('[Calendar Sync] ⏹️  Loading indicator stopped')
-        console.log('═══════════════════════════════════════════════════════════')
     } catch (error) {
-        console.error('[Calendar Sync] ❌ ERROR syncing calendar events')
-        console.error('[Calendar Sync] Error details:', error)
-        console.error('[Calendar Sync] Error message:', error.message)
-        console.error('[Calendar Sync] Error stack:', error.stack)
+        console.error('[Calendar Sync] Error syncing calendar events:', error?.message || error)
         store.dispatch(stopLoadingData())
-        console.log('═══════════════════════════════════════════════════════════')
     }
 }
 
@@ -7690,7 +7823,7 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)
-        require('firebase/functions')
+        require('firebase/compat/functions')
 
         // Use the same helper function for consistent environment detection
         const useEmulator = shouldUseEmulator()
@@ -7715,17 +7848,18 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     const func = functions.httpsCallable(functionName, callableOptions)
     const result = await func(data)
 
-    // Debug logging for Firebase function calls
-    console.log(`🔧 Firebase function ${functionName} raw result:`, result)
+    // Debug logging for Firebase function calls. Every callable in the app goes through here,
+    // so this is three lines of console noise per call in production without the guard.
+    if (__DEV__) console.log(`🔧 Firebase function ${functionName} raw result:`, result)
 
     // In Firebase v8, callable functions return the data directly
     // But let's check if it's wrapped in a .data property just in case
     if (result && typeof result.data !== 'undefined') {
-        console.log(`🔧 Firebase function ${functionName} has .data property, using result.data`)
+        if (__DEV__) console.log(`🔧 Firebase function ${functionName} has .data property, using result.data`)
         return result.data
     }
 
-    console.log(`🔧 Firebase function ${functionName} returning result directly`)
+    if (__DEV__) console.log(`🔧 Firebase function ${functionName} returning result directly`)
     return result
 }
 

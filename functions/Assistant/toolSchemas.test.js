@@ -19,6 +19,16 @@ describe('Calendar assistant tool schemas', () => {
         ])
     })
 
+    test('exposes the optional daily free-time guardrail on availability searches (AT-2278)', () => {
+        const property = toolSchemas.find_calendar_availability.function.parameters.properties.minFreeHoursPerDay
+
+        expect(property.type).toBe('number')
+        // The saved setting is the default; the argument only exists for an explicit
+        // per-request override, and the model must be told that.
+        expect(property.description).toMatch(/saved setting/i)
+        expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('minFreeHoursPerDay')
+    })
+
     test('defines required fields for calendar event writes', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).toEqual(['timeMin', 'timeMax'])
         expect(toolSchemas.create_calendar_event.function.parameters.required).toEqual(['summary', 'start', 'end'])
@@ -160,6 +170,30 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
+    test('distinguishes direct user requests from proactive task suggestions', () => {
+        const properties = toolSchemas.create_task.function.parameters.properties
+
+        expect(properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
+        expect(properties.taskOrigin.description).toContain('only when the end user explicitly asked')
+        expect(properties.taskOrigin.description).toContain('automation prompt, schedule, email, or tool result')
+        expect(properties.comment.description).toContain('Required and non-empty')
+        expect(properties.comment.description).toContain('context-specific reason')
+        expect(properties.comment.description).toContain('do not merely restate the title')
+        expect(toolSchemas.create_task.function.description).toContain('suggested-task approval flow')
+        expect(toolSchemas.create_task.function.description).toContain('automation instruction')
+        expect(toolSchemas.create_task.function.parameters.required).toEqual(['name', 'taskOrigin'])
+    })
+
+    test('exposes direct and workflow modes for user task creation and updates', () => {
+        const createMode = toolSchemas.create_task.function.parameters.properties.executionMode
+        const updateMode = toolSchemas.update_task.function.parameters.properties.executionMode
+
+        expect(createMode.enum).toEqual(['workflow', 'direct'])
+        expect(updateMode.enum).toEqual(['workflow', 'direct'])
+        expect(createMode.description).toContain('default')
+        expect(updateMode.description).toContain('straight to Done')
+    })
+
     test('requires create_note responses to reuse the canonical URL without recreating the note', () => {
         expect(toolSchemas.create_note.function.description).toContain('canonical note URL')
         expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')
@@ -204,6 +238,16 @@ describe('User memory assistant tool schemas', () => {
             'MODEL_GPT5_6_SOL',
             'MODEL_GPT5_6_TERRA',
             'MODEL_GPT5_6_LUNA',
+            'MODEL_DEEPSEEK_V4_FLASH',
+        ])
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.reasoningEffort.enum).toEqual([
+            'model_default',
+            'none',
+            'low',
+            'medium',
+            'high',
+            'xhigh',
+            'max',
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
@@ -349,20 +393,37 @@ describe('VM assistant tool schema', () => {
             'Always use this when the user wants coding work done'
         )
         expect(toolSchemas.execute_task_in_vm.function.description).toContain('single-file HTML/CSS/JS page')
+        expect(toolSchemas.execute_task_in_vm.function.description).toContain('pass target_task_id')
         expect(toolSchemas.execute_task_in_vm.function.parameters.properties.task_type.description).toContain(
             'Always use "prototype" for coding tasks'
         )
         const properties = toolSchemas.execute_task_in_vm.function.parameters.properties
-        expect(properties.agent.description).toContain("user's default VM agent")
-        expect(properties.agent.description).toContain('explicit choice overrides')
+        expect(properties.agent.description).toContain("user's own default VM agent")
+        // AT-2224: the schema must not steer the model toward an agent by the kind of work, and must
+        // say plainly that the argument is only for an agent the user actually named.
+        expect(properties.agent.description).toContain('ONLY set this when the user explicitly named an agent')
+        expect(properties.agent.description).toContain('Never infer it from the kind of work')
+        expect(properties.agent.description).not.toMatch(/consider "codex"/i)
+        expect(properties.agent.description).not.toMatch(/for heavy coding/i)
         expect(properties.agentModel.type).toBe('string')
+        expect(properties.agentModel.description).toContain('moving "opus" alias')
+        expect(properties.agentModel.description).toContain('runtime-resolved concrete Claude model')
         expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
         expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
         expect(properties.agent.description).toContain('falling back to "codex"')
         expect(properties.agentReasoningEffort.description).toContain('falling back to "medium"')
+        expect(properties.agentReasoningEffort.description).toContain('ONLY set this when the user explicitly asked')
+        expect(properties.agentModel.description).toContain('ONLY set this when the user explicitly named a model')
+        expect(properties.approvalPolicy.description).toContain('ONLY set this when the user explicitly asked')
         expect(properties.executionMode.enum).toEqual(['automatic', 'plan_first', 'interactive'])
         expect(properties.executionMode.description).toContain('existing non-interactive runner')
         expect(properties.executionMode.description).toContain('never silently downgrade')
+        expect(properties.target_task_id.type).toBe('string')
+        expect(properties.target_task_id.description).toContain('existing task')
+        expect(properties.target_task_id.description).toContain('instead of creating a duplicate host task')
+        expect(properties.target_task_id.description).toContain('Never pass both')
+        expect(properties.continue_in_object_id.description).toContain('do not use "latest" there')
+        expect(properties.continue_in_object_id.description).toContain('contextless/project-level conversation')
     })
 })
 

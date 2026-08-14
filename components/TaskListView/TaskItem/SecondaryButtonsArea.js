@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
 import HighlightButton from '../../UIComponents/FloatModals/HighlightColorModal/HighlightButton'
@@ -11,20 +11,21 @@ import FollowUpButton from '../../UIControls/FollowUpButton'
 import TranscribeButton from '../../UIControls/TranscribeButton'
 import { FEED_PUBLIC_FOR_ALL, FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import OpenDvButton from './OpenDvButton'
 import GhostButton from '../../UIControls/GhostButton'
 import { updateFocusedTask } from '../../../utils/backends/Tasks/tasksFirestore'
 import Hotkeys from 'react-hot-keys'
-import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import { colors } from '../../styles/global'
 
 import TaskParentGoalModal from '../../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
-import { showFloatPopup, hideFloatPopup } from '../../../redux/actions'
 import { Keyboard } from 'react-native'
 import Backend from '../../../utils/BackendBridge'
 import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelper'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
+import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
+import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -38,6 +39,8 @@ export default function SecondaryButtonsArea({
     accessGranted,
     loggedUserCanUpdateObject,
     isAssistant,
+    newTaskInFocus,
+    setNewTaskInFocus,
     onOpenDetailedView,
     setDueDateBeforeSave,
     setToBacklogBeforeSave,
@@ -56,7 +59,6 @@ export default function SecondaryButtonsArea({
     parentInTaskOutOfOpen,
     createSubtask,
 }) {
-    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
@@ -64,6 +66,7 @@ export default function SecondaryButtonsArea({
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
+    const taskIsFocused = adding ? newTaskInFocus === true : !!tmpTask.id && inFocusTaskId === tmpTask.id
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const isLockedGmailTask = isInboxSummaryGmailTask(tmpTask)
 
@@ -77,9 +80,14 @@ export default function SecondaryButtonsArea({
         setToBacklogBeforeSave(isObserved)
     }
 
-    const focusTask = () => {
-        updateFocusedTask(loggedUserId, projectId, inFocusTaskId === tmpTask.id ? null : tmpTask, null, null)
-        dismissEditMode?.()
+    const focusTask = event => {
+        if (adding) {
+            setNewTaskInFocus(currentValue => !currentValue)
+            return
+        }
+
+        prepareTaskFocusChange(event, dismissEditMode)
+        updateFocusedTask(loggedUserId, projectId, taskIsFocused ? null : tmpTask, null, null)
     }
 
     const focusButtonRef = React.useRef(null)
@@ -90,6 +98,7 @@ export default function SecondaryButtonsArea({
     const [isLoadingGoal, setIsLoadingGoal] = useState(false)
     const [goalForModalAtOpen, setGoalForModalAtOpen] = useState(null)
     const isUnmountedRef = useRef(false)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -138,20 +147,21 @@ export default function SecondaryButtonsArea({
             safeSetActiveGoalForModal(null)
         }
 
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         safeSetShowParentGoalModalUI(true)
     }
 
     const hideParentGoalPopup = () => {
-        dispatch(hideFloatPopup())
+        popupLock.release()
         safeSetShowParentGoalModalUI(false)
-        dismissEditMode?.()
+        // TaskParentGoalModal owns its own popup lock until this state change unmounts it. Closing
+        // the editor without forcing it while that lock is still present makes DismissibleItem
+        // reject the close, so the placement hold keeps the task under its previous goal and the
+        // completed write looks like it did nothing.
+        dismissEditMode?.(true)
     }
 
-    const handleSetParentGoal = (goal, goalProjectId) => {
-        setParentGoalBeforeSave(goal, goalProjectId)
-        hideParentGoalPopup()
-    }
+    const handleSetParentGoal = (goal, goalProjectId) => setParentGoalBeforeSave(goal, goalProjectId)
 
     return (
         <View style={localStyles.container}>
@@ -229,27 +239,25 @@ export default function SecondaryButtonsArea({
                         ref={focusButtonRef}
                         type={'ghost'}
                         icon={'crosshair'}
-                        title={
-                            !smallScreen
-                                ? translate(inFocusTaskId === tmpTask.id ? 'Set out of focus' : 'Set in focus')
-                                : null
-                        }
+                        title={!smallScreen ? translate(taskIsFocused ? 'Set out of focus' : 'Set in focus') : null}
                         noBorder={smallScreen}
                         buttonStyle={
-                            inFocusTaskId === tmpTask.id
+                            taskIsFocused
                                 ? { ...buttonItemStyle, backgroundColor: colors.Primary050 }
-                                : buttonItemStyle
+                                : { ...buttonItemStyle, backgroundColor: 'transparent' }
                         }
-                        iconColor={inFocusTaskId === tmpTask.id ? colors.Primary100 : colors.Text03}
+                        iconColor={taskIsFocused ? colors.Primary100 : colors.Text03}
                         onPress={focusTask}
                         disabled={!hasName || !accessGranted || isLoadingGoal}
                         shortcutText={'F'}
+                        accessibilityRole={'button'}
+                        accessibilityState={{ selected: taskIsFocused }}
                     />
                 </Hotkeys>
             )}
 
             {loggedUserCanUpdateObject && !isAssistant && !tmpTask.isSubtask && hasName && accessGranted && (
-                <Popover
+                <AppPopover
                     content={
                         showParentGoalModalUI ? (
                             <TaskParentGoalModal
@@ -269,6 +277,7 @@ export default function SecondaryButtonsArea({
                     align={'end'}
                     disableReposition={true}
                     contentLocation={popoverToTop}
+                    containerStyle={popoverToTopContainerStyle}
                 >
                     <Hotkeys
                         keyName={'alt+g'}
@@ -291,7 +300,7 @@ export default function SecondaryButtonsArea({
                             shortcutText={'G'}
                         />
                     </Hotkeys>
-                </Popover>
+                </AppPopover>
             )}
 
             {!adding && tmpTask.done && loggedUserCanUpdateObject && !isAssistant && (

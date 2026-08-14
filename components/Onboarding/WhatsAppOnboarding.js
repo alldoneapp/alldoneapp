@@ -11,9 +11,9 @@ import {
     Animated,
 } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 
-import styles from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Colors from '../../Themes/Colors'
 import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
@@ -750,13 +750,7 @@ const localStyles = StyleSheet.create({
         borderColor: Colors.Grey300,
         borderRadius: 8,
         marginRight: 8,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 1,
-        },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
+        boxShadow: '0px 1px 2px rgba(0,0,0,0.05)',
         elevation: 2,
     },
     dialCode: {
@@ -775,13 +769,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: Colors.White,
         height: 48,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 1,
-        },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
+        boxShadow: '0px 1px 2px rgba(0,0,0,0.05)',
         elevation: 2,
     },
     modalOverlay: {
@@ -790,7 +778,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
@@ -802,10 +790,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: Colors.White,
         borderRadius: 16,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.25)',
         elevation: 5,
     },
     modalHeader: {
@@ -851,13 +836,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         alignItems: 'center',
         marginBottom: 16,
-        shadowColor: Colors.Primary100,
-        shadowOffset: {
-            width: 0,
-            height: 8,
-        },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
+        boxShadow: '0px 8px 16px rgba(0,127,255,0.20)',
         elevation: 8,
     },
     primaryButtonText: {

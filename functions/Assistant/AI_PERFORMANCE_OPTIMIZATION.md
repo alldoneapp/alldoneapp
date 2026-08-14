@@ -2,8 +2,8 @@
 
 ## Problem Summary
 
--   **Current latency**: 15-20 seconds for first response, 5-10 seconds for follow-ups
--   **Target latency**: < 3 seconds for first response, < 1 second for follow-ups
+- **Current latency**: 15-20 seconds for first response, 5-10 seconds for follow-ups
+- **Target latency**: < 3 seconds for first response, < 1 second for follow-ups
 
 ## Root Causes Identified
 
@@ -77,14 +77,14 @@ const [messages, commonData] = await Promise.all([
 
 ### 3. Connection Pooling & Caching
 
--   OpenAI client connection pooling
--   Environment variables cached for 5 minutes
--   Tiktoken encoder cached at module level
+- OpenAI client connection pooling
+- Environment variables cached for 5 minutes
+- Tiktoken encoder cached at module level
 
 ### 4. Optimized Context Loading
 
--   Thread context now loads up to 50 recent messages across assistant channels
--   Pre-initialized tiktoken encoder
+- Thread context now loads up to 50 recent messages across assistant channels
+- Pre-initialized tiktoken encoder
 
 ## Implementation Steps
 
@@ -119,10 +119,10 @@ module.exports = { askToOpenAIBot }
 
 Set up monitoring for:
 
--   Function cold start frequency
--   Average response time
--   Memory usage
--   Error rates
+- Function cold start frequency
+- Average response time
+- Memory usage
+- Error rates
 
 ## Additional Recommendations
 
@@ -187,8 +187,8 @@ With all optimizations implemented:
 
 **Total Expected Improvement**:
 
--   First response: 15-20s → 2-4s (75-80% faster)
--   Follow-up responses: 5-10s → 0.5-1.5s (80-90% faster)
+- First response: 15-20s → 2-4s (75-80% faster)
+- Follow-up responses: 5-10s → 0.5-1.5s (80-90% faster)
 
 ## Monitoring Dashboard
 
@@ -222,9 +222,9 @@ If issues occur:
 
 ## Testing Checklist
 
--   [ ] Test with various message lengths
--   [ ] Test with different assistant configurations
--   [ ] Test with tool-enabled assistants
--   [ ] Test error scenarios
--   [ ] Load test with concurrent users
--   [ ] Monitor memory usage under load
+- [ ] Test with various message lengths
+- [ ] Test with different assistant configurations
+- [ ] Test with tool-enabled assistants
+- [ ] Test error scenarios
+- [ ] Load test with concurrent users
+- [ ] Monitor memory usage under load

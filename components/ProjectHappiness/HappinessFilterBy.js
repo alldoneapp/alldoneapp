@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, Text, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import SelectHappinessRangeModal from './SelectHappinessRangeModal'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
@@ -27,7 +27,7 @@ export default function HappinessFilterBy({ updateFilterData, happinessFilter, r
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <SelectHappinessRangeModal
                     updateFilterData={updateFilterData}
@@ -52,7 +52,7 @@ export default function HappinessFilterBy({ updateFilterData, happinessFilter, r
                     onPress={showPopover}
                 />
             </View>
-        </Popover>
+        </AppPopover>
     )
 }
 

@@ -3,10 +3,10 @@ import { Image, Keyboard, Modal, StyleSheet, Text, View } from 'react-native'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import store from '../../redux/store'
-import styles, { colors } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { cloneDeep, isEqual } from 'lodash'
 import Backend from '../../utils/BackendBridge'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import ImagePickerModal from '../UIComponents/FloatModals/ImagePickerModal'
 import {
     hideFloatPopup,
@@ -30,8 +30,8 @@ import {
     DV_TAB_PROJECT_TEAM_MEMBERS,
     DV_TAB_USER_PROFILE,
 } from '../../utils/TabNavigationConstants'
-import Spinner from '../UIComponents/Spinner'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
+import ContactPhoto from './ContactPhoto'
 import CommentsWrapper from '../Feeds/InteractionBar/CommentsWrapper'
 import { FEED_CONTACT_OBJECT_TYPE, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/FeedsConstants'
 import PrivacyButton from '../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
@@ -48,6 +48,7 @@ import {
     setProjectContactPicture,
 } from '../../utils/backends/Contacts/contactsFirestore'
 import { MENTION_MODAL_CONTACTS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
+import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 
@@ -65,7 +66,6 @@ export default class EditContact extends Component {
             loggedUserId: store.getState().loggedUser.uid,
             loggedUserProjects: storeState.loggedUserProjects,
             loggedUserProjectsMap: storeState.loggedUserProjectsMap,
-            loading: false,
             contact: contact,
             tmpContact: clonedContact,
             isEmail: false,
@@ -371,7 +371,6 @@ export default class EditContact extends Component {
             showCopyContactModal,
             contactToCopy,
             loggedUserProjectsMap,
-            loading,
             loggedUserId,
         } = this.state
         const { onCancelAction, style, projectId, isNew, projectIndex, isMember, dismissibleRef, contact } = this.props
@@ -415,18 +414,11 @@ export default class EditContact extends Component {
                             <View style={localStyles.userPhoto}>
                                 {tmpContact.photoURL != null && tmpContact.photoURL !== '' ? (
                                     <View>
-                                        <Image
-                                            onLoadStart={() => this.setState({ loading: true })}
-                                            onLoadEnd={() => this.setState({ loading: false })}
-                                            source={{ uri: contactPhoto50 }}
-                                            style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
+                                        <ContactPhoto
+                                            uri={contactPhoto50}
+                                            style={localStyles.image}
+                                            spinnerContainerStyle={{ backgroundColor: colors.Gray200 }}
                                         />
-
-                                        {loading && (
-                                            <View style={{ backgroundColor: colors.Gray200 }}>
-                                                <Spinner containerSize={48} spinnerSize={24} />
-                                            </View>
-                                        )}
                                     </View>
                                 ) : (
                                     <SVGGenericUser
@@ -500,7 +492,7 @@ export default class EditContact extends Component {
                         </View>
 
                         {loggedUserCanUpdateObject && (
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ChangeContactInfoModal
                                         projectId={projectId}
@@ -539,11 +531,11 @@ export default class EditContact extends Component {
                                         shortcutText={'I'}
                                     />
                                 </Hotkeys>
-                            </Popover>
+                            </AppPopover>
                         )}
 
                         {!isMember && loggedUserCanUpdateObject && (
-                            <Popover
+                            <AppPopover
                                 content={
                                     <ImagePickerModal
                                         closePopover={this.hidePictureModal}
@@ -579,7 +571,7 @@ export default class EditContact extends Component {
                                         shortcutText={'1'}
                                     />
                                 </Hotkeys>
-                            </Popover>
+                            </AppPopover>
                         )}
 
                         {(isMember || isNew) && loggedUserCanUpdateObject && (
@@ -651,8 +643,8 @@ export default class EditContact extends Component {
                                 smallScreen
                                     ? null
                                     : contactChanged
-                                    ? translate(isEmail ? 'Invite' : isNew ? 'Add Person' : 'Save')
-                                    : 'Ok'
+                                      ? translate(isEmail ? 'Invite' : isNew ? 'Add Person' : 'Save')
+                                      : 'Ok'
                             }
                             type={'primary'}
                             icon={smallScreen ? (contactChanged ? (isNew ? 'plus' : 'save') : 'x') : null}
@@ -703,10 +695,25 @@ export default class EditContact extends Component {
         )
     }
 
-    addProjectContact = async (openDetails = false) => {
+    // Enter reaches this editor through the document listener, Quill's newline
+    // callback and the done button at once, and `addContactToProject` mints a
+    // new contact id per call, so creation is guarded.
+    addProjectContact = (openDetails = false) => {
+        const { tmpContact, contactChanged } = this.state
+        // Nothing to create: dismiss without consuming the single submission.
+        if (!contactChanged || tmpContact.displayName.trim().length === 0) {
+            this.dismiss()
+            return
+        }
+        return this.runAddProjectContact(openDetails)
+    }
+
+    runAddProjectContact = createSingleFlightSubmit(async (openDetails = false) => {
         const { projectId } = this.props
         const { tmpContact, contactChanged } = this.state
         tmpContact.displayName = tmpContact.displayName.trim()
+
+        let creation
 
         if (contactChanged) {
             if (tmpContact.displayName.length > 0) {
@@ -735,7 +742,7 @@ export default class EditContact extends Component {
                         tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
                         tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
                     }
-                    addContactToProject(projectId, tmpContact, contact => {
+                    creation = addContactToProject(projectId, tmpContact, contact => {
                         store.dispatch(stopLoadingData())
 
                         if (openDetails) {
@@ -752,7 +759,9 @@ export default class EditContact extends Component {
         } else {
             this.dismiss()
         }
-    }
+
+        return creation
+    })
 
     openBeforeCreate = () => {
         this.addProjectContact(true)
@@ -790,10 +799,7 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
         elevation: 3,
         marginLeft: -16,
         marginRight: -16,
@@ -869,7 +875,7 @@ const localStyles = StyleSheet.create({
     },
     copyModalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -879,10 +885,7 @@ const localStyles = StyleSheet.create({
         padding: 16,
         margin: 16,
         maxWidth: 320,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 5,
     },
     copyModalTitle: {

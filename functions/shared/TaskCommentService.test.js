@@ -188,8 +188,8 @@ describe('TaskCommentService', () => {
                             path === 'items/project-1/tasks/task-1'
                                 ? { exists: true, data: () => taskData }
                                 : path === 'projects/project-1'
-                                ? { exists: true, data: () => ({ name: 'Product' }) }
-                                : { exists: false, data: () => ({}) }
+                                  ? { exists: true, data: () => ({ name: 'Product' }) }
+                                  : { exists: false, data: () => ({}) }
                         ),
                 })
             }

@@ -23,6 +23,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
 }))
 
 const {
+    GMAIL_CLASSIFIER_SYSTEM_PROMPT,
     buildClassifierLabelDefinitions,
     buildClassifierMessage,
     classifyGmailMessage,
@@ -48,19 +49,27 @@ describe('gmailPromptClassifier', () => {
         }
     }
 
+    test('requires contextual user relevance before classifying an email as actionable', () => {
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('only when both conditions are met')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('likely something the user genuinely wants to do or should do')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('A call to action')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('choose informational')
+    })
+
     test('strips action fields from labels and caps large email bodies before prompting', () => {
+        const fullDescription = 'Project work '.repeat(200)
         expect(
             buildClassifierLabelDefinitions([
                 {
                     key: 'project_jtl',
                     gmailLabelName: 'JTL',
-                    description: 'Project work',
+                    description: fullDescription,
                     postLabelPrompt: 'Create tasks and update notes with a long prompt',
                     autoArchive: true,
                     sourceProjectId: 'project-1',
                 },
             ])
-        ).toEqual([{ key: 'project_jtl', gmailLabelName: 'JTL', description: 'Project work' }])
+        ).toEqual([{ key: 'project_jtl', gmailLabelName: 'JTL', description: fullDescription }])
 
         const compactMessage = buildClassifierMessage({ subject: 'Hello', bodyText: 'x'.repeat(20000) })
         expect(compactMessage.subject).toBe('Hello')

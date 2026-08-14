@@ -25,7 +25,9 @@ export default function WorkflowSelection({
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [hoverStep, setHoverStep] = useState(selectedNextStep)
     const sortedSteps = Object.entries(steps).sort(chronoEntriesOrder)
-    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length, currentStep)
+    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length, currentStep).filter(
+        index => !task.workflowTask || index !== OPEN_STEP
+    )
 
     const getNextStepIndex = () => {
         const index = indexes.indexOf(hoverStep)
@@ -96,17 +98,19 @@ export default function WorkflowSelection({
             </Hotkeys>
 
             <View style={localStyles.subsection}>
-                <WorkflowStepItem
-                    task={task}
-                    open
-                    selectedNextStep={selectedNextStep}
-                    assignee={assignee}
-                    selectStep={selectStep}
-                    stepIndex={OPEN_STEP}
-                    estimations={estimations}
-                    currentStep={currentStep}
-                    active={hoverStep === OPEN_STEP}
-                />
+                {!task.workflowTask && (
+                    <WorkflowStepItem
+                        task={task}
+                        open
+                        selectedNextStep={selectedNextStep}
+                        assignee={assignee}
+                        selectStep={selectStep}
+                        stepIndex={OPEN_STEP}
+                        estimations={estimations}
+                        currentStep={currentStep}
+                        active={hoverStep === OPEN_STEP}
+                    />
+                )}
                 {sortedSteps.map((step, index) => (
                     <WorkflowStepItem
                         key={index}
@@ -153,10 +157,7 @@ const localStyles = StyleSheet.create({
         width: 305,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     heading: {

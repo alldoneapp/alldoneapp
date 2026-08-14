@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { useDispatch } from 'react-redux'
 
@@ -57,7 +57,7 @@ export default function FollowUpWrapper({ createFollowUpTask, task }) {
 
     const cleanedName = task.extendedName.trim()
     return (
-        <Popover
+        <AppPopover
             content={
                 isDueDateOpen ? (
                     <FollowUpDueDate
@@ -97,6 +97,6 @@ export default function FollowUpWrapper({ createFollowUpTask, task }) {
                     disabled={!cleanedName}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

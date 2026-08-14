@@ -41,7 +41,15 @@ export default function TaskFlowModal({
         taskOwner.workflow[projectId] &&
         !isEmpty(taskOwner.workflow[projectId])
 
-    return isObservedTask && !isToReviewTask ? (
+    return isSuggested ? (
+        <SuggestedModal
+            task={task}
+            projectId={projectId}
+            hidePopover={hidePopover}
+            cancelPopover={cancelPopover}
+            checkBoxId={checkBoxIdRef.current}
+        />
+    ) : isObservedTask && !isToReviewTask ? (
         <WorkflowObserverModal
             workflow={taskOwner.workflow && taskOwner.workflow[projectId] ? taskOwner.workflow[projectId] : {}}
             projectId={projectId}
@@ -52,14 +60,6 @@ export default function TaskFlowModal({
             ownerIsWorkstream={ownerIsWorkstream}
             checkBoxId={checkBoxIdRef.current}
             isNonTeamMember={isNonTeamMember}
-        />
-    ) : isSuggested ? (
-        <SuggestedModal
-            task={task}
-            projectId={projectId}
-            hidePopover={hidePopover}
-            cancelPopover={cancelPopover}
-            checkBoxId={checkBoxIdRef.current}
         />
     ) : showWorkflowPopup ? (
         <WorkflowModal

@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import Backend from '../../../utils/BackendBridge'
 import { getObjectData, OBJECT_DATA_ID, OBJECT_DATA_TYPE, STAYWARD_COMMENT } from '../Utils/HelperFunctions'
 import Button from '../../UIControls/Button'
-import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
@@ -74,27 +74,29 @@ export default function CommentsWrapper({
             const clientSubmissionTime = Date.now()
             const { taskId, contactId, userId, noteId, goalId, skillId, assistantId } = commentedFeed
 
-            console.log('⏱️ [TIMING] CLIENT: CommentsWrapper addComment called', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                projectId,
-                objectType: taskId
-                    ? 'tasks'
-                    : noteId
-                    ? 'notes'
-                    : goalId
-                    ? 'goals'
-                    : skillId
-                    ? 'skills'
-                    : userId || contactId
-                    ? 'contacts'
-                    : assistantId
-                    ? 'assistants'
-                    : 'unknown',
-                objectId: taskId || noteId || goalId || skillId || userId || contactId || assistantId,
-                assistantId,
-                commentLength: comment?.length,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: CommentsWrapper addComment called', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    projectId,
+                    objectType: taskId
+                        ? 'tasks'
+                        : noteId
+                          ? 'notes'
+                          : goalId
+                            ? 'goals'
+                            : skillId
+                              ? 'skills'
+                              : userId || contactId
+                                ? 'contacts'
+                                : assistantId
+                                  ? 'assistants'
+                                  : 'unknown',
+                    objectId: taskId || noteId || goalId || skillId || userId || contactId || assistantId,
+                    assistantId,
+                    commentLength: comment?.length,
+                })
+            }
 
             if (taskId) {
                 await createObjectMessage(
@@ -182,9 +184,11 @@ export default function CommentsWrapper({
                 )
             }
 
-            console.log('⏱️ [TIMING] CLIENT: CommentsWrapper createObjectMessage completed', {
-                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: CommentsWrapper createObjectMessage completed', {
+                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                })
+            }
 
             extraFunction && extraFunction()
 
@@ -197,7 +201,7 @@ export default function CommentsWrapper({
 
     return (
         <View>
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         projectId={projectId}
@@ -218,6 +222,7 @@ export default function CommentsWrapper({
                 align={'start'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     disabled={true}
@@ -237,7 +242,7 @@ export default function CommentsWrapper({
                         disabled={disabled}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

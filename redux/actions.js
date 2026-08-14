@@ -1,4 +1,5 @@
 import { registerPopupDismiss } from '../utils/popupDismissGuard'
+import { normalizeAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 
 export const LogOut = () => {
     const action = {
@@ -550,15 +551,6 @@ export const setContactsInProject = (projectId, contacts) => {
         type: 'Set contacts in project',
         projectId,
         contacts,
-    }
-    return action
-}
-
-export const setMeetingsInProject = (projectId, meetings) => {
-    const action = {
-        type: 'Set meetings in project',
-        projectId,
-        meetings,
     }
     return action
 }
@@ -1123,30 +1115,6 @@ export const updateScreenRecordingModalData = (visible, projectId) => {
     const action = {
         type: 'Update screen recording modal data',
         screenRecordingModalData: { visible, projectId },
-    }
-    return action
-}
-
-export const updateChatGoogleMeetModalData = (visible, projectId, userId, userIds, title) => {
-    const action = {
-        type: 'Update chat google meet modal data',
-        chatGoogleMeetModalData: { visible, projectId, userId, userIds, title },
-    }
-    return action
-}
-
-export const updateGoogleMeetModalData = (visible, projectId, userId) => {
-    const action = {
-        type: 'Update google meet modal data',
-        googleMeetModalData: { visible, projectId, userId },
-    }
-    return action
-}
-
-export const updateGoogleMeetNotificationModalData = (visible, projectId, email, meeting) => {
-    const action = {
-        type: 'Update google meet notification modal data',
-        googleMeetNotificationModalData: { visible, projectId, email, meeting },
     }
     return action
 }
@@ -1830,6 +1798,19 @@ export const setTaskVmStateFilters = vmStates => {
     return action
 }
 
+export const clearNoteOwnerFilters = () => {
+    const action = { type: 'Clear note owner filters' }
+    return action
+}
+
+export const setNoteOwnerFilters = ownerIds => {
+    const action = {
+        type: 'Set note owner filters',
+        ownerIds,
+    }
+    return action
+}
+
 export const updateTaskVmState = (taskKey, vmState) => {
     const action = {
         type: 'Update task VM state',
@@ -2377,10 +2358,19 @@ export const setNewUserNeedToJoinToProject = newUserNeedToJoinToProject => {
     return action
 }
 
-export const setAssistantEnabled = assistantEnabled => {
+// `scope` is optional and, when given, must be built with `buildAssistantEnabledScope`
+// ({ projectId, objectId }). It marks the flag as belonging to ONE chat, so a Chat DV for a
+// different chat ignores it. Callers that arm the assistant for a chat the user may never be
+// navigated to MUST pass a scope, otherwise the flag leaks into the next chat that is opened
+// and can fire an unwanted assistant run there (AT-2084). Omitting the scope keeps the legacy
+// "applies to whichever chat is currently open" meaning used by every in-chat writer.
+export const setAssistantEnabled = (assistantEnabled, scope = null) => {
     const action = {
         type: 'Set assistant enabled',
         assistantEnabled,
+        // Clearing the flag always clears the scope with it, so a stale scope can never outlive
+        // the `true` it was describing.
+        assistantEnabledScope: assistantEnabled ? normalizeAssistantEnabledScope(scope) : null,
     }
     return action
 }
@@ -2393,10 +2383,17 @@ export const setNotEnabledAssistantWhenLoadComments = notEnabledAssistantWhenLoa
     return action
 }
 
+// The payload must be a chat-scoped trigger built with `buildBotSpinnerTrigger`
+// ({ projectId, chatId, createdAt }) or a falsy value to clear it. Bare booleans are
+// normalized away on purpose: an unscoped `true` leaks into the next Chat DV that mounts
+// and shows a permanent "assistant is working" placeholder there (AT-2084).
 export const setTriggerBotSpinner = triggerBotSpinner => {
     const action = {
         type: 'Set trigger bot spinner',
-        triggerBotSpinner,
+        triggerBotSpinner:
+            triggerBotSpinner && typeof triggerBotSpinner === 'object' && triggerBotSpinner.chatId
+                ? triggerBotSpinner
+                : null,
     }
     return action
 }
@@ -2648,6 +2645,20 @@ export const navigateToNewProject = (project, users, workstreams, contacts, assi
     return action
 }
 
+// Data-only sibling of 'Navigate to new project': inserts a project (plus its sub-stores) that
+// was dropped from the initial load by a transient read failure, WITHOUT navigating to it.
+export const addProjectData = (project, users, workstreams, contacts, assistants) => {
+    const action = {
+        type: 'Add project data',
+        project,
+        users,
+        workstreams,
+        contacts,
+        assistants,
+    }
+    return action
+}
+
 export const navigateToAllProjectsTasks = options => {
     const action = {
         type: 'Navigate to all projects tasks',
@@ -2854,13 +2865,17 @@ export const setTaskInFocus = taskInFocus => {
  * @param {string|null} taskId - Task ID to show as focused, or null to clear
  * @param {string|null} projectId - Project ID of the task
  * @param {string|null} goalId - Goal ID to keep pinned at top during transition
+ * @param {string|null} userId - Focus holder. AT-2191 uses it to tell whether a task being
+ *   postponed is the one currently shown as focused, without mistaking another user's swap for
+ *   this user's. Optional: callers that omit it are simply not user-scoped.
  */
-export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
+export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
     const action = {
         type: 'Set optimistic focus task',
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
         optimisticFocusGoalId: goalId || null,
+        optimisticFocusUserId: userId || null,
         optimisticFocusActive: true,
     }
     return action
@@ -2872,6 +2887,38 @@ export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
 export const clearOptimisticFocusTask = () => {
     const action = {
         type: 'Clear optimistic focus task',
+    }
+    return action
+}
+
+/**
+ * AT-2160: mark a goal as being postponed so the task list can drop it from today's buckets
+ * immediately, while the authoritative postpone (undo record + task cascade) still runs on the
+ * server. Keyed per project + goal so two goals can be postponed in a row.
+ * @param {string} projectId
+ * @param {string} goalId
+ * @param {number} date - target reminder date, kept for diagnostics/tests
+ * @param {number} startedAt - epoch ms the postpone was requested; drives the safety TTL
+ */
+export const setOptimisticGoalPostpone = (projectId, goalId, date, startedAt) => {
+    const action = {
+        type: 'Set optimistic goal postpone',
+        projectId,
+        goalId,
+        date,
+        startedAt,
+    }
+    return action
+}
+
+/**
+ * Drop the optimistic postpone for a goal (server rejected it, or the entry aged out).
+ */
+export const clearOptimisticGoalPostpone = (projectId, goalId) => {
+    const action = {
+        type: 'Clear optimistic goal postpone',
+        projectId,
+        goalId,
     }
     return action
 }

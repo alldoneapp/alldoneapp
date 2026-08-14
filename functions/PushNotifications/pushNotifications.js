@@ -10,6 +10,7 @@ const {
 const { divideArrayIntoSubgroups } = require('../Utils/HelperFunctionsCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+const { ALERT_NOTIFICATION_TYPE } = require('../Tasks/reminderChannels')
 
 const getUsersMap = async userIds => {
     const promises = []
@@ -139,6 +140,12 @@ const sendWhatsAppForNotifications = async (notifications, usersMap) => {
     const tasks = []
     notifications.forEach(notification => {
         const { userIds, body, link, chatId, projectId } = notification
+
+        // Task alerts own their WhatsApp delivery end-to-end: checkAndTriggerTaskAlerts
+        // enqueues a `whatsAppNotifications` doc with the real project/object names, while
+        // the push doc it writes alongside is for FCM only. Without this guard the same
+        // reminder goes out over WhatsApp twice (AT-2211).
+        if (notification.type === ALERT_NOTIFICATION_TYPE) return
         const { projectName: parsedProjectName, objectName: parsedObjectName, updateText } = parsePushBody(body)
         const commentId = notification.id
 

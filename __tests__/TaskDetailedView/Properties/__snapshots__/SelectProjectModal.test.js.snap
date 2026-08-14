@@ -1,161 +1,208 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SelectProjectModal component SelectProjectModal snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-padding-nsbfu8 r-zIndex-vpjg5r"
+  dir={null}
   style={
-    Object {
-      "flex": 1,
+    {
+      "maxHeight": "736px",
+      "maxWidth": "432px",
+      "minWidth": "432px",
+      "width": "432px",
     }
   }
 >
-  <RCTScrollView
-    onContentSizeChange={[Function]}
-    onLayout={[Function]}
-    onScroll={[Function]}
-    scrollEventThrottle={16}
-    showsVerticalScrollIndicator={false}
-    style={
-      Array [
-        Object {
-          "backgroundColor": "#091540",
-          "borderRadius": 4,
-          "elevation": 3,
-          "flexDirection": "column",
-          "paddingLeft": 16,
-          "paddingRight": 8,
-          "paddingVertical": 8,
-          "shadowColor": "rgba(78, 93, 120, 0.56)",
-          "shadowOffset": Object {
-            "height": 4,
-            "width": 0,
-          },
-          "shadowOpacity": 1,
-          "shadowRadius": 16,
-        },
-        Object {
-          "maxHeight": NaN,
-        },
-      ]
-    }
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
   >
-    <View>
-      <View
+    <div
+      className="css-view-g5y9jx r-position-u8s1d r-zIndex-184en5c r-right-1svt5kg r-top-1wghi3f"
+      dir={null}
+    >
+      <div
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci r-margin-1vuahiu r-padding-1sp51qo"
+        dir={null}
+        onClick={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
-          Object {
-            "flexDirection": "row",
+          {
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <View
-          style={
-            Object {
-              "flexDirection": "column",
-              "marginTop": 8,
-            }
-          }
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
         >
-          <Text
+          <div
+            className="css-text-146c3p1"
+            dir="auto"
             style={
-              Array [
-                Object {
-                  "color": "#04142F",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 18,
-                  "lineHeight": 26,
-                },
-                Object {
-                  "color": "white",
-                },
-              ]
-            }
-          >
-            Move task
-          </Text>
-          <Text
-            style={
-              Array [
-                Object {
-                  "color": "#04142F",
-                  "fontFamily": "Roboto-Regular",
-                  "fontSize": 14,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 22,
-                },
-                Object {
-                  "color": "#8A94A6",
-                },
-              ]
-            }
-          >
-            Select the project this task will move to
-          </Text>
-        </View>
-        <View
-          style={
-            Object {
-              "flexDirection": "row",
-              "height": 40,
-              "justifyContent": "flex-end",
-              "marginLeft": "auto",
-              "width": 40,
-            }
-          }
-        >
-          <RNGestureHandlerButton
-            collapsable={false}
-            onGestureEvent={[Function]}
-            onGestureHandlerEvent={[Function]}
-            onGestureHandlerStateChange={[Function]}
-            onHandlerStateChange={[Function]}
-            rippleColor={0}
-            style={
-              Array [
-                Object {
-                  "overflow": "hidden",
-                },
-                undefined,
-              ]
-            }
-          >
-            <View
-              accessible={true}
-              style={
-                Object {
-                  "alignItems": "center",
-                  "height": 24,
-                  "justifyContent": "center",
-                  "opacity": 1,
-                  "width": 24,
-                }
+              {
+                "color": "rgba(138,148,166,1.00)",
+                "fontFamily": "alldone",
+                "fontSize": "24px",
+                "opacity": 1,
               }
-            >
-              <View>
-                <Text
-                  style={
-                    Object {
-                      "color": "#8A94A6",
-                      "fontFamily": "alldone",
-                      "fontSize": 24,
-                      "opacity": 1,
-                    }
-                  }
-                >
-                  
-                </Text>
-              </View>
-            </View>
-          </RNGestureHandlerButton>
-        </View>
-      </View>
-      <View
-        style={
-          Object {
-            "flexDirection": "column",
-            "marginTop": 20,
+            }
+          >
+            
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-jwli3a r-fontFamily-1k9400p r-fontSize-1i10wst r-lineHeight-eaezby"
+      dir="auto"
+    >
+      Move task
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
+      dir="auto"
+    >
+      Select the project this task will move to
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-marginTop-1s2bzr4"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-marginBottom-1ifxtd0"
+      dir={null}
+    >
+      <div
+        className="css-view-g5y9jx r-flex-13awgt0"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
+          dir={null}
+          onClick={[Function]}
+          onContextMenu={[Function]}
+          onKeyDown={[Function]}
+          style={
+            {
+              "transitionDuration": "0s",
+            }
           }
+          tabIndex="0"
+        >
+          <div
+            className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j r-color-jwli3a"
+            dir="auto"
+          >
+            Active
+          </div>
+          <div
+            className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu r-backgroundColor-1kq6gdg"
+            dir={null}
+          />
+        </div>
+        <div
+          className="css-view-g5y9jx r-height-109y4c4 r-width-13qz1uu r-backgroundColor-1kq6gdg"
+          dir={null}
+        />
+      </div>
+      <div
+        className="css-view-g5y9jx r-flex-13awgt0"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-flex-13awgt0"
+          dir={null}
+          onClick={[Function]}
+          onContextMenu={[Function]}
+          onKeyDown={[Function]}
+          style={
+            {
+              "transitionDuration": "0s",
+            }
+          }
+          tabIndex="0"
+        >
+          <div
+            className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-height-1ugchlj r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-paddingBlock-kritb0 r-textAlign-q4m81j"
+            dir="auto"
+          >
+            Archived
+          </div>
+          <div
+            className="css-view-g5y9jx r-height-1hlnpa r-width-13qz1uu"
+            dir={null}
+          />
+        </div>
+        <div
+          className="css-view-g5y9jx r-backgroundColor-1ilzb06 r-height-109y4c4 r-width-13qz1uu"
+          dir={null}
+        />
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-eqz5dr r-marginInline-1xidu1v"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+      style={
+        {
+          "flex": 1,
         }
-      />
-    </View>
-  </RCTScrollView>
-</View>
+      }
+    >
+      <div
+        className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
+        dir={null}
+        onScroll={[Function]}
+        onTouchEnd={[Function]}
+        onTouchMove={[Function]}
+        onTouchStart={[Function]}
+        onWheel={[Function]}
+      >
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
+        >
+          <div
+            className="css-view-g5y9jx r-alignItems-1awozwy r-paddingInline-is05cd r-paddingTop-fd4yh7 r-marginBottom-zd98yo"
+            dir={null}
+          >
+            <div
+              className="css-view-g5y9jx"
+              dir={null}
+            >
+              <div
+                className="css-text-146c3p1"
+                dir="auto"
+                style={
+                  {
+                    "color": "rgba(183,189,200,1.00)",
+                    "fontFamily": "alldone",
+                    "fontSize": "32px",
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </div>
+            </div>
+            <div
+              className="css-text-146c3p1 r-color-1e7q3sq r-fontFamily-1k9400p r-fontSize-adyw6z r-lineHeight-vrz42v r-marginTop-knv0ih r-textAlign-q4m81j"
+              dir="auto"
+            >
+              There are not projects to show here.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

@@ -1,4 +1,4 @@
-import * as ImgManipulator from 'expo-image-manipulator'
+import * as ImgManipulator from './WebShims/ImageManipulator'
 import moment from 'moment'
 import { Dimensions } from 'react-native-web'
 import dom from 'react-dom'
@@ -11,6 +11,7 @@ import {
     POPOVER_TABLET_WIDTH_V2,
     SIDEBAR_MENU_WIDTH,
 } from '../components/styles/global'
+import { MODAL_EDGE_GAP } from '../components/styles/modals'
 import store from '../redux/store'
 import {
     hideFloatPopup,
@@ -25,15 +26,18 @@ import {
 } from '../redux/actions'
 import Backend from './BackendBridge'
 import { registerPopupDismiss } from './popupDismissGuard'
+import { centerPopoverInWindow, clampToRange } from './popoverPositioning'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
 import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
+import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
 
 class HelperFunctions {
     static isValidEmail = email => {
-        const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+        const re =
+            /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
         return re.test(String(email).toLowerCase())
     }
 
@@ -85,7 +89,7 @@ class HelperFunctions {
     }
 }
 
-export const MODAL_MAX_HEIGHT_GAP = 32
+export const MODAL_MAX_HEIGHT_GAP = MODAL_EDGE_GAP * 2
 export const MENTION_MODAL_MIN_HEIGHT = 150
 
 export const chronoKeysOrder = (a, b) => {
@@ -175,19 +179,6 @@ export const parsePastDate = (date, format) => {
     return toShowDate
 }
 
-const clampToRange = (value, min, max) => {
-    if (max < min) {
-        return min
-    }
-    if (value < min) {
-        return min
-    }
-    if (value > max) {
-        return max
-    }
-    return value
-}
-
 const getScrollOffsets = () => {
     if (typeof window === 'undefined') {
         return { scrollX: 0, scrollY: 0 }
@@ -197,24 +188,42 @@ const getScrollOffsets = () => {
     const docElement = doc?.documentElement
     const body = doc?.body
 
-    const scrollX = window.pageXOffset ?? window.scrollX ?? docElement?.scrollLeft ?? body?.scrollLeft ?? 0
+    // The scroll can live on the window OR on the body: with the RNW 0.21
+    // layout the body is its own scroll container, so window.pageYOffset is 0
+    // (not undefined!) while body.scrollTop carries the real offset — a ??
+    // chain never reaches it and popovers positioned with these offsets land
+    // above the scrolled viewport (Stage 2 QA: comment modal only visible
+    // after scrolling). Use || so zeros fall through to the actual scroller.
+    const scrollX = window.pageXOffset || docElement?.scrollLeft || body?.scrollLeft || 0
 
-    const scrollY = window.pageYOffset ?? window.scrollY ?? docElement?.scrollTop ?? body?.scrollTop ?? 0
+    const scrollY = window.pageYOffset || docElement?.scrollTop || body?.scrollTop || 0
 
     return { scrollX, scrollY }
 }
 
-export const popoverToCenter = (
-    { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
-    isMobile = true
-) => {
-    const dim = Dimensions.get('window')
-    const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const top = dim.height / 2 - popoverRect.height / 2
-    const left = dim.width / 2 - popoverRect.width / 2
-    const { scrollX, scrollY } = getScrollOffsets()
-    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
-}
+// NOTE: every contentLocation helper below returns VIEWPORT coordinates. The
+// patched react-tiny-popover positions the popover container `fixed` whenever
+// a contentLocation is in effect (and `absolute` for target-anchored mode), so
+// scroll offsets must NOT be added here — that is what made these popovers
+// invisible after scrolling and wobble while scrolling under the RNW 0.21
+// layout, where the body (not the window) is the scroll container.
+// A contentLocation function switches react-tiny-popover into "the caller
+// places it" mode: the library skips its own nudging/reposition pass entirely,
+// so whatever we return here is used verbatim on a `position: fixed`,
+// `overflow: hidden` container. Every helper must therefore keep the popover
+// inside the viewport itself. Centering without a clamp is what hid the swipe
+// postpone popup on phones (AT-2189): a modal taller than a short mobile
+// viewport centers to a NEGATIVE top, so its header and close button render
+// above the top edge; and on a narrow screen the desktop sidebar offset pushes
+// the container past the right edge, where `overflow: hidden` clips it.
+// The math lives in utils/popoverPositioning.js so it can be unit-tested.
+//
+// Centers in the WINDOW on every screen size. It used to add half the sidebar
+// width on desktop to center over the content area, but these popups dim the
+// whole window (sidebar included), so the offset read as "not centered"
+// (2026-08-12, same call as EndDayStatisticsModal). Callers still pass their
+// legacy isMobile argument; it is deliberately ignored.
+export const popoverToCenter = (positioningData = {}) => centerPopoverInWindow(positioningData, 0)
 
 export const popoverToSafePosition = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
@@ -223,7 +232,6 @@ export const popoverToSafePosition = (
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const padding = 16 // Safe padding from screen edges
-    const { scrollX, scrollY } = getScrollOffsets()
     const viewportWidth = dim.width
     const viewportHeight = dim.height
 
@@ -242,7 +250,7 @@ export const popoverToSafePosition = (
                 viewportWidth - popoverRect.width - padding
             )
 
-            return { top: centeredTop + scrollY, left: centeredLeft + scrollX }
+            return { top: centeredTop, left: centeredLeft }
         }
 
         const anchorGap = 8
@@ -277,7 +285,7 @@ export const popoverToSafePosition = (
             left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
 
-        return { top: top + scrollY, left: left + scrollX }
+        return { top, left }
     }
 
     // For desktop/tablet, use centered positioning with hard viewport clamping.
@@ -288,16 +296,19 @@ export const popoverToSafePosition = (
     top = clampToRange(top, padding, Math.max(padding, viewportHeight - popoverRect.height - padding))
     left = clampToRange(left, padding, Math.max(padding, viewportWidth - popoverRect.width - padding))
 
-    return { top: top + scrollY, left: left + scrollX }
+    return { top, left }
 }
+
+// Kept for explicitness at popoverToTop call sites; the patched
+// react-tiny-popover applies fixed positioning for ANY active contentLocation,
+// so this is redundant but harmless.
+export const popoverToTopContainerStyle = { position: 'fixed' }
 
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const top = 80
     const left = dim.width / 2 - popoverRect.width / 2
-    const { scrollX, scrollY } = getScrollOffsets()
-    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
+    return { top: FIXED_MODAL_TOP_OFFSET, left: left + sidebarDiff }
 }
 
 export const shortcutPreviewMount = () => {
@@ -431,16 +442,23 @@ export const calculateTimeDuration = secs => {
     return hr + ':' + min + ':' + sec
 }
 
+const POPOVER_EDGE_GUTTER = MODAL_EDGE_GAP * 2
+
 export const getPopoverWidth = () => {
     const { isMiddleScreen: tablet, smallScreenNavigation: mobile } = store.getState()
-    return mobile ? POPOVER_MOBILE_WIDTH : tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    if (!mobile) return tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    // Mobile popups use the full window width minus the gutter; the fixed
+    // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
+    // the window width is not measurable yet.
+    const { width: windowWidth } = Dimensions.get('window')
+    const fullWidth = windowWidth - POPOVER_EDGE_GUTTER
+    return fullWidth > 0 ? fullWidth : POPOVER_MOBILE_WIDTH
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
     const { width: windowWidth } = Dimensions.get('window')
-    const gutter = 32
-    const availableWidth = windowWidth - gutter
+    const availableWidth = windowWidth - POPOVER_EDGE_GUTTER
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }
@@ -453,8 +471,8 @@ const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) =
     return smallScreenNavigation
         ? windowWidth - 50
         : isMiddleScreen
-        ? POPOVER_TABLET_WIDTH_V2
-        : POPOVER_DESKTOP_WIDTH_V2
+          ? POPOVER_TABLET_WIDTH_V2
+          : POPOVER_DESKTOP_WIDTH_V2
 }
 
 export const applyPopoverWidthV2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
@@ -585,8 +603,8 @@ export const getCustomStyle = (inTaskDV, user, inFeedComment) => {
     return inTaskDV
         ? [{ height: 32, paddingRight: 12, paddingLeft: 7 }, user && { paddingLeft: 4 }]
         : inFeedComment
-        ? { minHeight: 20, height: 20, paddingRight: 6 }
-        : { height: 24, paddingRight: 8 }
+          ? { minHeight: 20, height: 20, paddingRight: 6 }
+          : { height: 24, paddingRight: 8 }
 }
 
 export default HelperFunctions

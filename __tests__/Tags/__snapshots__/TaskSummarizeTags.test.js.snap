@@ -1,7 +1,56 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
-exports[`TaskSummarizeTags component Function updateState snapshot test should execute and render correctly 1`] = `null`;
-
-exports[`TaskSummarizeTags component Function updateState snapshot test should execute and render correctly 2`] = `null`;
-
-exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test should render correctly 1`] = `null`;
+exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test should render correctly 1`] = `
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+  dir={null}
+  onClick={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
+  style={
+    {
+      "transitionDuration": "0s",
+    }
+  }
+  tabIndex="0"
+>
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-marginInline-1537yvj"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
+        style={
+          {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "alldone",
+            "fontSize": "16px",
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
+      dir="auto"
+      style={
+        {
+          "fontFamily": "Roboto-Medium",
+          "fontSize": "14px",
+          "letterSpacing": "0.16px",
+          "lineHeight": "22px",
+        }
+      }
+    >
+      0
+    </div>
+  </div>
+</div>
+`;

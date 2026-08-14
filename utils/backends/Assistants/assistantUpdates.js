@@ -40,6 +40,8 @@ import {
     MODEL_GPT5_1,
     MODEL_GPT5_5,
     MODEL_GPT5_6_SOL,
+    MODEL_GPT5_6_TERRA,
+    MODEL_GPT5_6_LUNA,
     MODEL_GPT5_2,
     TEMPERATURE_HIGH,
     TEMPERATURE_LOW,
@@ -54,6 +56,7 @@ import {
     MODEL_SONAR_REASONING,
     MODEL_SONAR_REASONING_PRO,
     MODEL_SONAR_DEEP_RESEARCH,
+    MODEL_DEEPSEEK_V4_FLASH,
 } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 
@@ -474,12 +477,15 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_GPT5_1) return 'GPT 5_1'
     if (modelKey === MODEL_GPT5_5) return 'GPT 5_5'
     if (modelKey === MODEL_GPT5_6_SOL) return 'GPT 5_6 Sol'
+    if (modelKey === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
+    if (modelKey === MODEL_GPT5_6_LUNA) return 'GPT 5_6 Luna'
     if (modelKey === MODEL_GPT5_2) return 'GPT 5_2'
     if (modelKey === MODEL_SONAR) return 'Sonar'
     if (modelKey === MODEL_SONAR_PRO) return 'Sonar Pro'
     if (modelKey === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
     if (modelKey === MODEL_SONAR_REASONING_PRO) return 'Sonar Reasoning Pro'
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 'Sonar Deep Research'
+    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 'DeepSeek V4 Flash'
 
     return modelKey || ''
 }

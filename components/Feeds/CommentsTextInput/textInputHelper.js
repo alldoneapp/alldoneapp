@@ -1,6 +1,6 @@
 import { QuillDeltaToHtmlConverter } from 'quill-delta-to-html'
 import v4 from 'uuid/v4'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import Quill from 'quill'
 
 import {
@@ -122,11 +122,17 @@ export const insertAttachmentInsideEditor = (inputCursorIndex, editor, text, uri
     }
 }
 
-const getEditorId = editor => {
-    const placeholder = editor.options.placeholder
-    const { editorId } = getPlaceholderData(placeholder)
-    return editorId
-}
+// The editorMeta module (quill2Setup) decodes the app-encoded placeholder during init and
+// then overwrites `options.placeholder` with the visible text only, so reading the raw
+// option here yields no metadata once the editor is live (AT-2227: every embed inserted
+// after init was stamped with `editorId: undefined`, which left images stuck on the
+// loading placeholder because their project could no longer be resolved). Read the decoded
+// metadata first and fall back to the raw placeholder for headless editors, which are
+// built with plain `new Quill(node)` and never run the module.
+export const getEditorMetaFromEditor = editor =>
+    editor?.editorMeta ? editor.editorMeta : getPlaceholderData(editor?.options?.placeholder || '')
+
+export const getEditorId = editor => getEditorMetaFromEditor(editor).editorId
 
 const insertAttachmentTag = (inputCursorIndex, editor, text, uri, id, isLoading) => {
     const editorId = getEditorId(editor)
@@ -814,7 +820,7 @@ export const insertPerplexityContent = (editor, content) => {
     })
 
     // Convert the processed HTML to Delta format
-    const tempDelta = editor.clipboard.convert(content)
+    const tempDelta = editor.clipboard.convert({ html: content })
 
     // Special handling for code blocks to ensure proper formatting
     tempDelta.ops.forEach(op => {

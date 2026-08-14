@@ -28,15 +28,16 @@ export default function OpenTasksViewAllProjects() {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
 
-    const sortedLoggedUserProjectIds = ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
-        projectIds,
-        guideProjectIds,
-        archivedProjectIds,
-        templateProjectIds,
-        loggedUserProjectsMap,
-        loggedUserId,
-        inFocusTaskProjectId
-    )
+    const sortedLoggedUserProjectIds =
+        ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            projectIds,
+            guideProjectIds,
+            archivedProjectIds,
+            templateProjectIds,
+            loggedUserProjectsMap,
+            loggedUserId,
+            inFocusTaskProjectId
+        )
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -66,9 +67,14 @@ export default function OpenTasksViewAllProjects() {
         >
             <AllProjectsLine showEmailLabels={true} />
             <AssistantLine useAssistantProjectContext={false} />
+            {/* AT-2262: the empty-inbox congrats sits directly UNDER the assistant line
+                (which also renders the latest comment) and above the email line and the
+                task filters. The assistant composer + last comment must keep the top of
+                the page — the congrats is a reward, not the primary control — but it is
+                still high enough to be visible without scrolling when the inbox is empty. */}
+            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {

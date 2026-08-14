@@ -13,12 +13,12 @@ export default function DoneButton({ adding, setTask, hasName, isSuggestedTask, 
               !hasName || !accessGranted
                   ? 'Ok'
                   : adding
-                  ? !isSuggestedTask
-                      ? 'Add'
-                      : 'Assign'
-                  : !adding && !hasName
-                  ? `Delete`
-                  : `Save`
+                    ? !isSuggestedTask
+                        ? 'Add'
+                        : 'Assign'
+                    : !adding && !hasName
+                      ? `Delete`
+                      : `Save`
           )
 
     const icon = smallScreen ? (!adding && !hasName ? 'trash-2' : !hasName ? 'x' : adding ? 'plus' : 'save') : null

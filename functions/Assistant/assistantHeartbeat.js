@@ -20,6 +20,7 @@ const {
     getEffectiveHeartbeatChanceNoReplyPercent,
     getEffectiveHeartbeatSendWhatsApp,
     getEffectiveHeartbeatModel,
+    getEffectiveHeartbeatReasoningEffort,
 } = require('./heartbeatSettingsHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
@@ -41,6 +42,7 @@ const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE =
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNoticeAt'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
+const { FieldValue } = require('firebase-admin/firestore')
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -69,14 +71,17 @@ async function getTopicConversationHistory(
             const data = doc.data()
             if (data.commentText) {
                 const role = data.fromAssistant ? 'assistant' : 'user'
-                messages.push([
-                    role,
-                    addTimestampToContextContent(
-                        data.commentText,
-                        Number(data.created || data.lastChangeDate || 0),
-                        userTimezoneOffset
-                    ),
-                ])
+                // Only user turns get the "[Sent at ...]" framing. Assistant turns are the
+                // assistant's own prior output; timestamping them invites the model to mimic
+                // the tag verbatim (AT-2241).
+                const content = data.fromAssistant
+                    ? data.commentText
+                    : addTimestampToContextContent(
+                          data.commentText,
+                          Number(data.created || data.lastChangeDate || 0),
+                          userTimezoneOffset
+                      )
+                messages.push([role, content])
             }
         }
         return messages
@@ -178,7 +183,7 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userDat
 
     await Promise.all([
         userFollowingRef.set({ topics: { [chatId]: true } }, { merge: true }),
-        followersRef.set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+        followersRef.set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 
     return { chatId, isNew: true }
@@ -635,6 +640,7 @@ async function checkAndExecuteHeartbeats() {
                     'en',
                     {
                         model: getEffectiveHeartbeatModel(assistant),
+                        reasoningEffort: getEffectiveHeartbeatReasoningEffort(assistant),
                         temperature: assistant.temperature,
                         instructions: assistant.instructions,
                     },
@@ -828,6 +834,7 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData 
         'en',
         {
             model: getEffectiveHeartbeatModel(assistant),
+            reasoningEffort: getEffectiveHeartbeatReasoningEffort(assistant),
             temperature: assistant.temperature,
             instructions: assistant.instructions,
         },

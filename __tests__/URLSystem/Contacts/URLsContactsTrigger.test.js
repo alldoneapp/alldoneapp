@@ -5,7 +5,6 @@ jest.mock('../../../components/ContactsView/Utils/ContactsHelper')
 ContactsHelper.processURLContactDetails = jest.fn()
 ContactsHelper.processURLContactDetailsTab = jest.fn()
 
-
 describe('URLsContactsTrigger', () => {
     it('match function should match correctly', () => {
         const result = URLsContactsTrigger.match('/projects/p1/contacts/c1')

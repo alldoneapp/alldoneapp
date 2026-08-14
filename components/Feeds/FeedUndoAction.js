@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'

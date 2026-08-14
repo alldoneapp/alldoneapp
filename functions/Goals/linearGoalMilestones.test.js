@@ -2,18 +2,22 @@ const moment = require('moment-timezone')
 
 const mockDb = { current: null }
 
+const mockFieldValue = {
+    arrayUnion: (...values) => ({ __op: 'arrayUnion', values }),
+    arrayRemove: (...values) => ({ __op: 'arrayRemove', values }),
+    delete: () => ({ __op: 'delete' }),
+}
+
 jest.mock('firebase-admin', () => ({
     firestore: Object.assign(
         jest.fn(() => mockDb.current),
         {
-            FieldValue: {
-                arrayUnion: (...values) => ({ __op: 'arrayUnion', values }),
-                arrayRemove: (...values) => ({ __op: 'arrayRemove', values }),
-                delete: () => ({ __op: 'delete' }),
-            },
+            FieldValue: mockFieldValue,
         }
     ),
 }))
+
+jest.mock('firebase-admin/firestore', () => ({ FieldValue: mockFieldValue }))
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     ALL_USERS: 'ALL_USERS',

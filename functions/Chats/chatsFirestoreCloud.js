@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getUserData } = require('../Users/usersFirestore')
 const { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const deleteChat = async (admin, projectId, chatId) => {
     await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).delete()
@@ -138,7 +139,7 @@ const deleteChatNotifications = async (projectId, userId, chatId) => {
 
     if (lastAssistantCommentData[projectId]?.objectId === chatId) {
         batch.update(admin.firestore().doc(`users/${userId}`), {
-            [`lastAssistantCommentData.${projectId}`]: admin.firestore.FieldValue.delete(),
+            [`lastAssistantCommentData.${projectId}`]: FieldValue.delete(),
         })
     }
     if (
@@ -146,7 +147,7 @@ const deleteChatNotifications = async (projectId, userId, chatId) => {
         lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.objectId === chatId
     ) {
         batch.update(admin.firestore().doc(`users/${userId}`), {
-            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: admin.firestore.FieldValue.delete(),
+            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: FieldValue.delete(),
         })
     }
 

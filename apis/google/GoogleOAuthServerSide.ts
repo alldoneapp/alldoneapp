@@ -134,14 +134,17 @@ export async function startServerSideAuth(
             }, 500)
 
             // Timeout after 5 minutes
-            timeout = setTimeout(() => {
-                window.removeEventListener('message', messageHandler)
-                clearInterval(checkPopupClosed)
-                if (!popup.closed) {
-                    popup.close()
-                }
-                reject(new Error('OAuth authentication timed out'))
-            }, 5 * 60 * 1000)
+            timeout = setTimeout(
+                () => {
+                    window.removeEventListener('message', messageHandler)
+                    clearInterval(checkPopupClosed)
+                    if (!popup.closed) {
+                        popup.close()
+                    }
+                    reject(new Error('OAuth authentication timed out'))
+                },
+                5 * 60 * 1000
+            )
         })
     } catch (error) {
         console.error('Error initiating OAuth:', error)

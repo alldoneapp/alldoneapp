@@ -1,10 +1,9 @@
 import React, { useState } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import { useSelector } from 'react-redux'
+import AppPopover from '../../ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 
 import PrivacyModal from './PrivacyModal'
-import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { execShortcutFn } from '../../../../utils/HelperFunctions'
 import GhostButton from '../../../UIControls/GhostButton'
 import ButtonUsersGroup from './ButtonUsersGroup'
@@ -12,6 +11,7 @@ import { FEED_PUBLIC_FOR_ALL, FEED_USER_OBJECT_TYPE } from '../../../Feeds/Utils
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ContactsHelper from '../../../ContactsView/Utils/ContactsHelper'
 import { translate } from '../../../../i18n/TranslationService'
+import useFloatPopupLock from '../../../../hooks/useFloatPopupLock'
 
 export default function PrivacyButton({
     projectId,
@@ -26,14 +26,14 @@ export default function PrivacyButton({
     onShowPopup,
     onDismissPopup,
 }) {
-    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const [visiblePopover, setVisiblePopover] = useState(false)
+    const popupLock = useFloatPopupLock()
 
     const hidePopover = () => {
         setVisiblePopover(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
         if (onDismissPopup) onDismissPopup()
     }
 
@@ -49,7 +49,7 @@ export default function PrivacyButton({
 
     const showPopover = () => {
         setVisiblePopover(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         if (onShowPopup) onShowPopup()
     }
 
@@ -61,7 +61,7 @@ export default function PrivacyButton({
     const { isPublicFor } = object
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <PrivacyModal
                     object={object}
@@ -92,8 +92,8 @@ export default function PrivacyButton({
                         inEditComponent && smallScreen
                             ? null
                             : isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                            ? translate('Project-wide')
-                            : translate('Private')
+                              ? translate('Project-wide')
+                              : translate('Private')
                     }
                     type={'ghost'}
                     noBorder={inEditComponent && smallScreen}
@@ -111,6 +111,6 @@ export default function PrivacyButton({
                     accessible={false}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

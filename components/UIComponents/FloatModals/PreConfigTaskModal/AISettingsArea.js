@@ -5,54 +5,51 @@ import styles, { colors } from '../../../styles/global'
 import DropDown from './DropDown'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
+import {
+    INHERIT_ASSISTANT_MODEL,
+    PRE_CONFIG_TASK_MODEL_OPTIONS,
+} from '../../../../functions/Assistant/preConfigTaskModel'
+import { PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
+import { getAssistantModelGoldRateText } from '../../AssistantModelGoldRate'
 
-const MODEL_OPTIONS = [
-    { label: 'GPT-3.5', value: 'MODEL_GPT3_5' },
-    { label: 'GPT-4', value: 'MODEL_GPT4' },
-    { label: 'GPT-4o', value: 'MODEL_GPT4O' },
-    { label: 'GPT-5.1', value: 'MODEL_GPT5_1' },
-    { label: 'GPT-5.6 Sol', value: 'MODEL_GPT5_6_SOL' },
-    { label: 'GPT-5.5', value: 'MODEL_GPT5_5' },
-    { label: 'Sonar', value: 'MODEL_SONAR' },
-    { label: 'Sonar Pro', value: 'MODEL_SONAR_PRO' },
-    { label: 'Sonar Reasoning', value: 'MODEL_SONAR_REASONING' },
-    { label: 'Sonar Reasoning Pro', value: 'MODEL_SONAR_REASONING_PRO' },
-    { label: 'Sonar Deep Research', value: 'MODEL_SONAR_DEEP_RESEARCH' },
-]
-
-const getModelOptions = selectedModel => {
-    if (selectedModel !== 'MODEL_GPT5_2') return MODEL_OPTIONS
-
-    return [...MODEL_OPTIONS, { label: 'GPT-5.2', value: 'MODEL_GPT5_2' }]
+export const getModelOptions = () => {
+    return [
+        { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
+        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({
+            ...option,
+            label: `${translate(option.labelKey)} · ${getAssistantModelGoldRateText({
+                tokensPerGold: option.tokensPerGold,
+            })}`,
+        })),
+    ]
 }
 
-const TEMPERATURE_OPTIONS = [
-    { label: translate('Very Low'), value: 'TEMPERATURE_VERY_LOW' },
-    { label: translate('Low'), value: 'TEMPERATURE_LOW' },
-    { label: translate('Normal'), value: 'TEMPERATURE_NORMAL' },
-    { label: translate('High'), value: 'TEMPERATURE_HIGH' },
-    { label: translate('Very High'), value: 'TEMPERATURE_VERY_HIGH' },
-]
+export const getReasoningEffortOptions = () =>
+    PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS.map(option => ({
+        ...option,
+        label: translate(option.labelKey),
+    }))
 
 export default function AISettingsArea({
     disabled,
     aiModel,
     setAiModel,
-    aiTemperature,
-    setAiTemperature,
+    aiReasoningEffort,
+    setAiReasoningEffort,
     aiSystemMessage,
     setAiSystemMessage,
     isMiddleScreen,
     smallScreenNavigation,
 }) {
-    const modelOptions = getModelOptions(aiModel)
+    const modelOptions = getModelOptions()
+    const reasoningEffortOptions = getReasoningEffortOptions()
 
     console.log('AISettingsArea render:', {
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         modelOptions: modelOptions.map(opt => opt.value),
-        tempOptions: TEMPERATURE_OPTIONS.map(opt => opt.value),
+        reasoningEffortOptions: reasoningEffortOptions.map(opt => opt.value),
     })
 
     const handleModelChange = value => {
@@ -60,9 +57,9 @@ export default function AISettingsArea({
         setAiModel(value)
     }
 
-    const handleTemperatureChange = value => {
-        console.log('Temperature change:', { from: aiTemperature, to: value })
-        setAiTemperature(value)
+    const handleReasoningEffortChange = value => {
+        console.log('Reasoning effort change:', { from: aiReasoningEffort, to: value })
+        setAiReasoningEffort(value)
     }
 
     return (
@@ -85,11 +82,11 @@ export default function AISettingsArea({
             />
 
             <DropDown
-                items={TEMPERATURE_OPTIONS}
-                value={aiTemperature}
-                setValue={handleTemperatureChange}
-                placeholder={translate('Choose temperature')}
-                header={translate('Temperature')}
+                items={reasoningEffortOptions}
+                value={aiReasoningEffort}
+                setValue={handleReasoningEffortChange}
+                placeholder={translate('Reasoning effort')}
+                header={translate('Reasoning effort')}
                 containerStyle={{ marginTop: 12, zIndex: 2 }}
                 disabled={disabled}
                 arrowStyle={{

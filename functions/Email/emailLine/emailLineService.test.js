@@ -802,9 +802,11 @@ describe('emailLineService', () => {
                 { messageId: 'm2', subject: 'FYI' },
             ],
             nextPageToken: null,
+            totalCount: 2,
         })
 
         const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
+        expect(result.totalCount).toBe(2)
         const first = result.messages.find(m => m.messageId === 'm_visible')
         expect(first.followUpType).toBe('informational')
         expect(first.hasAudit).toBe(true)

@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import '@firebase/functions'
 import Icon from '../../../Icon'
-import { colors } from '../../../styles/global'
+import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
+import useEscapeKey from '../../../../hooks/useEscapeKey'
 
 export default function IframeModal() {
     const dispatch = useDispatch()
@@ -19,6 +20,11 @@ export default function IframeModal() {
     const closeModal = () => {
         dispatch(setIframeModalData(false, '', ''))
     }
+
+    // Escape only — no backdrop-press dismiss on purpose: the iframe hosts
+    // live third-party surfaces (screen share, mic) where a stray outside tap
+    // must not tear the session down.
+    useEscapeKey(closeModal, { enabled: !!visible })
 
     useEffect(() => {
         if (!visible) return
@@ -191,7 +197,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         zIndex: 9999,
         justifyContent: 'center',
         alignItems: 'center',
@@ -205,10 +211,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#1a1a2e',
         borderRadius: 12,
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 24,
+        boxShadow: '0px 8px 24px rgba(0,0,0,0.40)',
     },
     header: {
         height: 44,

@@ -14,44 +14,14 @@ import PreConfigTasksArea from './PreConfigTasksArea'
 import StopChatingOption from './StopChatingOption'
 import StartChatingOption from './StartChatingOption'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
-import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { resolveAssistantForProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { setAssistantEnabled } from '../../../../../redux/actions'
 import SelectAssistantsOption from './SelectAssistantsOption'
 import AssistantModal from '../../../../UIComponents/FloatModals/ChangeAssistantModal/AssistantModal'
-import { setTaskAssistant } from '../../../../../utils/backends/Tasks/tasksFirestore'
-import { updateChatAssistant } from '../../../../../utils/backends/Chats/chatsFirestore'
-import { setNoteAssistant } from '../../../../../utils/backends/Notes/notesFirestore'
-import { setContactAssistant } from '../../../../../utils/backends/Contacts/contactsFirestore'
-import { setUserAssistant } from '../../../../../utils/backends/Users/usersFirestore'
-import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFirestore'
-
-import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
 import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
 import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 import Backend from '../../../../../utils/BackendBridge'
-
-const normalizeAssistantObjectType = objectType => {
-    switch (objectType) {
-        case 'task':
-            return 'tasks'
-        case 'chat':
-            return 'chats'
-        case 'topic':
-            return 'topics'
-        case 'note':
-            return 'notes'
-        case 'contact':
-            return 'contacts'
-        case 'user':
-            return 'users'
-        case 'skill':
-            return 'skills'
-        case 'goal':
-            return 'goals'
-        default:
-            return objectType
-    }
-}
+import { normalizeAssistantObjectType, setAssistantForObject } from './objectAssistantHelper'
 
 export default function BotOptionsModal({
     objectType,
@@ -92,7 +62,7 @@ export default function BotOptionsModal({
         }
     }, [projectId, linkedNoteId])
 
-    const assistant = getAssistantInProjectObject(projectId, assistantId)
+    const assistant = resolveAssistantForProjectObject(projectId, assistantId)
 
     const setAssistantEnabledForObject = isEnabled => {
         setObjectAssistantEnabled(projectId, objectId, normalizedObjectType, isEnabled)
@@ -122,21 +92,7 @@ export default function BotOptionsModal({
 
         setAssistantId?.(selectedAssistantId)
 
-        if (normalizedObjectType === 'tasks') {
-            await setTaskAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (normalizedObjectType === 'chats' || normalizedObjectType === 'topics') {
-            await updateChatAssistant(projectId, objectId, selectedAssistantId)
-        } else if (normalizedObjectType === 'notes') {
-            await setNoteAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (normalizedObjectType === 'contacts') {
-            await setContactAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (normalizedObjectType === 'users') {
-            await setUserAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (normalizedObjectType === 'skills') {
-            await setSkillAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (normalizedObjectType === 'goals') {
-            await setGoalAssistant(projectId, objectId, selectedAssistantId, true)
-        }
+        await setAssistantForObject(projectId, objectId, normalizedObjectType, selectedAssistantId, true)
 
         // Optimistic update for UI
         if (parentObject) {
@@ -210,7 +166,7 @@ export default function BotOptionsModal({
                         }
                         const aiSettings = {
                             model: selectedTask.aiModel,
-                            temperature: selectedTask.aiTemperature,
+                            reasoningEffort: selectedTask.aiReasoningEffort,
                             systemMessage: selectedTask.aiSystemMessage,
                         }
                         onSelectBotOption(prompt, selectedTask.name, aiSettings, {
@@ -286,10 +242,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     scroll: {

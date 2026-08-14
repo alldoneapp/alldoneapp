@@ -3,6 +3,7 @@ const admin = require('firebase-admin')
 const { createTaskFeedChain } = require('../Feeds/tasksFeedsChains')
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const deleteTask = async (projectId, taskId, admin) => {
     await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).delete()
@@ -56,7 +57,7 @@ const updateTaskEditionData = async (projectId, taskId, editorId) => {
 
 const deleteTaskMetaData = async (projectId, taskId) => {
     await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).update({
-        metaData: admin.firestore.FieldValue.delete(),
+        metaData: FieldValue.delete(),
     })
 }
 
@@ -69,7 +70,7 @@ const updateTaskLastCommentData = async (projectId, taskId, lastComment, lastCom
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                    [`commentsData.amount`]: FieldValue.increment(1),
                 })
         })
     } catch (e) {

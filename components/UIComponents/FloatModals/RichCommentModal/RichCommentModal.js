@@ -44,20 +44,29 @@ import {
     getParentObjectData,
 } from '../../../../utils/backends/Chats/chatsComments'
 import { translate } from '../../../../i18n/TranslationService'
-import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../../../ChatsView/Utils/assistantWaiting'
-import { performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import {
-    getLinkedEmailFromMessage,
+    hasLoadingAssistantMessage,
+    hasNewVisibleAssistantMessage,
+    shouldShowAssistantScrollIndicator,
+    snapshotAssistantMessageIds,
+} from '../../../ChatsView/Utils/assistantWaiting'
+import {
+    archiveAndMarkReadLinkedEmails,
     getLinkedEmailsFromMessages,
-    groupLinkedEmailsByConnection,
 } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
-import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
+import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
-import shouldAutoFocusChatInput from '../../../ChatsView/Utils/shouldAutoFocusChatInput'
+import useCommentPopupAutoFocus, {
+    COMMENT_POPUP_FOCUS_BLUR,
+    COMMENT_POPUP_FOCUS_DELAYED,
+    resolveCommentPopupFocusAction,
+} from './commentPopupAutoFocus'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
+import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
+import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 
 export default function RichCommentModal({
     projectId,
@@ -79,6 +88,7 @@ export default function RichCommentModal({
     objectName,
     externalAssistantId,
     initialAssistantEnabled = false,
+    openedFromUnreadComment = false,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -120,7 +130,7 @@ export default function RichCommentModal({
         projectId,
         objectId,
         objectType === 'users' ? 'contacts' : objectType,
-        2
+        3
     )
 
     disableDoneButton = !!botOptionModalIsOpen
@@ -128,11 +138,15 @@ export default function RichCommentModal({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = shouldAutoFocusChatInput(smallScreenNavigation)
+    const shouldAutoFocusInput = useCommentPopupAutoFocus({
+        mobile: smallScreenNavigation,
+        chatNotifications,
+        openedFromUnreadComment,
+    })
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)
-    const linkedEmails = getLinkedEmailsFromMessages(comments)
+    const linkedEmails = getLinkedEmailsFromMessages(comments, { projectId, chatId: objectId })
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const canArchiveLinkedEmails = SharedHelper.accessGranted(loggedUser, projectId)
     const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
@@ -140,6 +154,15 @@ export default function RichCommentModal({
         assistantMessageIdsAtWaitStartRef.current,
         getAssistant
     )
+    const assistantResponseIsLoading =
+        waitingForBotAnswer ||
+        hasLoadingAssistantMessage(
+            comments,
+            creatorId => !!getAssistant(creatorId),
+            message =>
+                message.assistantRun?.kind === 'chat' &&
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+        )
 
     const toggleShowFileSelector = () => {
         if (showFileSelector || !checkIsLimitedByTraffic(projectId)) {
@@ -153,15 +176,6 @@ export default function RichCommentModal({
         }
     }
 
-    const performLinkedEmailArchive = async emails => {
-        const groupedEmails = groupLinkedEmailsByConnection(emails)
-        await Promise.all(
-            Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-            )
-        )
-    }
-
     const archiveLinkedEmails = emails => {
         const pendingEmails = emails.filter(
             email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
@@ -170,7 +184,7 @@ export default function RichCommentModal({
 
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        performLinkedEmailArchive(pendingEmails)
+        archiveAndMarkReadLinkedEmails(pendingEmails)
             .then(() => {
                 if (modalMountedRef.current) {
                     setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
@@ -195,7 +209,9 @@ export default function RichCommentModal({
         const chatType = objectType === 'users' ? 'contacts' : objectType
         getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
             .then(allLinkedEmailComments =>
-                performLinkedEmailArchive(getLinkedEmailsFromMessages(allLinkedEmailComments))
+                archiveAndMarkReadLinkedEmails(
+                    getLinkedEmailsFromMessages(allLinkedEmailComments, { projectId, chatId: objectId })
+                )
             )
             .catch(error => {
                 console.error('Failed to archive linked emails from comment popup', error)
@@ -211,7 +227,9 @@ export default function RichCommentModal({
     }, [])
 
     useEffect(() => {
-        if (messages.loaded && comments.length === 0) {
+        // Diagnostics only — and the Firestore read below exists solely to fill in the log, so the
+        // whole effect stands down in production rather than just the console call.
+        if (__DEV__ && messages.loaded && comments.length === 0) {
             getParentObjectData(projectId, objectId, objectType)
                 .then(data => {
                     const commentsData = data?.object?.commentsData || null
@@ -282,18 +300,20 @@ export default function RichCommentModal({
     const done = ({ comment, mentions, privacy, hasKarma }) => {
         const clientSubmissionTime = Date.now()
         const shouldTriggerAssistant = isThreadAssistantEnabled === true
-        console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
-            timestamp: new Date().toISOString(),
-            submissionTime: clientSubmissionTime,
-            projectId,
-            objectType,
-            objectId,
-            assistantId,
-            assistantEnabled,
-            shouldTriggerAssistant,
-            inTaskModal,
-            commentLength: comment?.length,
-        })
+        if (__DEV__) {
+            console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
+                timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                assistantEnabled,
+                shouldTriggerAssistant,
+                inTaskModal,
+                commentLength: comment?.length,
+            })
+        }
 
         if (shouldTriggerAssistant && gold === 0) {
             setShowRunOutGoalModal(true)
@@ -306,15 +326,19 @@ export default function RichCommentModal({
 
             if (inTaskModal) {
                 processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
-                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                })
+                if (__DEV__) {
+                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
+                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                    })
+                }
             } else {
                 updateNewAttachmentsData(projectId, comment).then(text => {
                     processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
-                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                    })
+                    if (__DEV__) {
+                        console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
+                            timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                        })
+                    }
                 })
             }
 
@@ -335,12 +359,6 @@ export default function RichCommentModal({
         setInputCursorIndex(inputCursorIndex + 3)
     }
 
-    const getSelectionText = event => {
-        const selection = document.getSelection()
-        event.clipboardData.setData('text/plain', selection.toString().replaceAll('\n', ' '))
-        event.preventDefault()
-    }
-
     useEffect(() => {
         if (waitingForBotAnswer && hasNewAssistantMessage) setWaitingForBotAnswer(false)
     }, [waitingForBotAnswer, hasNewAssistantMessage])
@@ -358,29 +376,46 @@ export default function RichCommentModal({
     }, [messages])
 
     useEffect(() => {
-        if (inSuggested) return
+        // On mobile the input is focused by CustomTextInput3's own mount-time
+        // `autoFocus` (passed to EditForm below), which runs inside the tap that
+        // opened the pop-up — being inside that gesture is precisely what lets the
+        // browser raise the software keyboard (AT-2269). This is the same path
+        // `TaskInput` has always used to open the keyboard when a task line turns
+        // into an editor, so nothing new is being relied on.
+        //
+        // The delayed re-focus below is therefore skipped on mobile. It could not
+        // open the keyboard even if it wanted to — a second later it is long
+        // outside the gesture — while it can very easily re-open one the user just
+        // dismissed to read the comments underneath. It also focuses the notes
+        // document editor via `exportRef`, whose scroll-into-view is deliberately
+        // unconfined (AT-2220), which on a phone would drag the page around.
+        const focusAction = resolveCommentPopupFocusAction({
+            inSuggested,
+            shouldAutoFocus: shouldAutoFocusInput,
+            mobile: smallScreenNavigation,
+        })
 
-        if (!shouldAutoFocusInput) {
+        if (focusAction === COMMENT_POPUP_FOCUS_BLUR) {
             exportRef?.getEditor()?.blur()
             editForm?.current?.blur()
             Keyboard.dismiss()
             return
         }
 
+        if (focusAction !== COMMENT_POPUP_FOCUS_DELAYED) return
+
         const focusTimeout = setTimeout(() => {
             exportRef?.getEditor()?.focus()
             editForm?.current?.focus()
         }, 1000)
         return () => clearTimeout(focusTimeout)
-    }, [inSuggested, shouldAutoFocusInput])
+    }, [inSuggested, shouldAutoFocusInput, smallScreenNavigation])
 
     useEffect(() => {
         storeModal(COMMENT_MODAL_ID)
-        commentListRef.current.addEventListener('copy', getSelectionText)
 
         return () => {
             removeModal(COMMENT_MODAL_ID)
-            commentListRef?.current?.removeEventListener('copy', getSelectionText)
         }
     }, [])
 
@@ -441,6 +476,10 @@ export default function RichCommentModal({
                         { maxHeight: height - MODAL_MAX_HEIGHT_GAP - 64 },
                     ]}
                     showsVerticalScrollIndicator={false}
+                    showIndicator={shouldShowAssistantScrollIndicator(
+                        smallScreenNavigation,
+                        assistantResponseIsLoading
+                    )}
                     fixedChildren={
                         <CloseButton closeModal={closeModal} comments={comments} openChat={processShowMore} />
                     }
@@ -486,7 +525,7 @@ export default function RichCommentModal({
                             </View>
                         )}
 
-                        <ChatImageDropZone
+                        <AttachmentDropZone
                             testID="modal-chat-image-drop-zone"
                             disabled={loggedUser.isAnonymous}
                             editor={editor}
@@ -531,7 +570,7 @@ export default function RichCommentModal({
                                 updateObjectState={updateObjectState}
                                 autoFocus={shouldAutoFocusInput}
                             />
-                        </ChatImageDropZone>
+                        </AttachmentDropZone>
                         {waitingForBotAnswer && !hasNewAssistantMessage && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                         )}
@@ -582,10 +621,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         height: 'auto',
         maxWidth: 305,

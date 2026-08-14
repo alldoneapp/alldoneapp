@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import ReactDOM from 'react-dom'
 import { act } from 'react-dom/test-utils'
 
-import RichCommentDismissSurface from './RichCommentDismissSurface'
+import PopupDismissSurface from '../../PopupDismissSurface'
+import { ModalShellContext } from '../../ModalShell/ModalShellContext'
 
 jest.mock('react-native', () => {
     const React = require('react')
@@ -16,7 +17,7 @@ jest.mock('react-native', () => {
     return { Platform: { OS: 'web' }, View }
 })
 
-describe('RichCommentDismissSurface browser interactions', () => {
+describe('PopupDismissSurface browser interactions', () => {
     let appRoot
     let portalRoot
 
@@ -55,7 +56,7 @@ describe('RichCommentDismissSurface browser interactions', () => {
                     </button>
                     {popupIsOpen &&
                         ReactDOM.createPortal(
-                            <RichCommentDismissSurface
+                            <PopupDismissSurface
                                 onDismiss={event => {
                                     dismiss(event)
                                     setPopupIsOpen(false)
@@ -64,7 +65,7 @@ describe('RichCommentDismissSurface browser interactions', () => {
                                 <button data-testid="inside-button" onClick={insideAction}>
                                     Popup action
                                 </button>
-                            </RichCommentDismissSurface>,
+                            </PopupDismissSurface>,
                             portalRoot
                         )}
                 </React.Fragment>
@@ -127,6 +128,51 @@ describe('RichCommentDismissSurface browser interactions', () => {
         expect(insideAction).toHaveBeenCalledTimes(1)
     })
 
+    it('stands down inside a bottom sheet so the sheet handle keeps its touch gesture (AT-2287)', () => {
+        // In sheet mode the shell chrome (handle strip, backdrop) sits outside
+        // the surface. The window-capture guard used to swallow the handle's
+        // touchstart (the drag never started) and dismiss the popup on
+        // release. Inside a sheet the guard must not install at all.
+        const dismiss = jest.fn()
+        const handleTouchStart = jest.fn()
+
+        const Harness = () => (
+            <React.Fragment>
+                {ReactDOM.createPortal(
+                    <ModalShellContext.Provider value={{ presentation: 'sheet' }}>
+                        <div data-testid="sheet-handle" />
+                        <PopupDismissSurface
+                            onDismiss={event => {
+                                dismiss(event)
+                            }}
+                        >
+                            <button data-testid="inside-button">Popup action</button>
+                        </PopupDismissSurface>
+                    </ModalShellContext.Provider>,
+                    portalRoot
+                )}
+            </React.Fragment>
+        )
+
+        act(() => {
+            ReactDOM.render(<Harness />, appRoot)
+        })
+        act(() => {
+            jest.runOnlyPendingTimers()
+        })
+
+        const handle = portalRoot.querySelector('[data-testid="sheet-handle"]')
+        handle.addEventListener('touchstart', handleTouchStart)
+        act(() => {
+            dispatch(handle, 'touchstart')
+            dispatch(handle, 'touchend')
+        })
+
+        expect(handleTouchStart).toHaveBeenCalledTimes(1)
+        expect(dismiss).not.toHaveBeenCalled()
+        expect(portalRoot.querySelector('[data-testid="inside-button"]')).not.toBeNull()
+    })
+
     it('does not treat the mobile compatibility events from the opening tap as an outside dismissal', () => {
         const dismiss = jest.fn()
         const underlyingAction = jest.fn()
@@ -141,14 +187,14 @@ describe('RichCommentDismissSurface browser interactions', () => {
                     </button>
                     {popupIsOpen &&
                         ReactDOM.createPortal(
-                            <RichCommentDismissSurface
+                            <PopupDismissSurface
                                 onDismiss={event => {
                                     dismiss(event)
                                     setPopupIsOpen(false)
                                 }}
                             >
                                 <button data-testid="inside-button">Popup action</button>
-                            </RichCommentDismissSurface>,
+                            </PopupDismissSurface>,
                             portalRoot
                         )}
                     <button data-testid="underlying-button" onClick={underlyingAction}>

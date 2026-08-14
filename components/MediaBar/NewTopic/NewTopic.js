@@ -18,11 +18,11 @@ import { setAssistantEnabled, startLoadingData, stopLoadingData } from '../../..
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
+import useSingleFlightSubmit from '../../../hooks/useSingleFlightSubmit'
 import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
 
 export default function NewTopic({ projectId, propFiles, close }) {
     const dispatch = useDispatch()
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const { uid } = useSelector(state => state.loggedUser)
     const openModals = useSelector(state => state.openModals)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -107,43 +107,47 @@ export default function NewTopic({ projectId, propFiles, close }) {
         setBotIsActive(state => !state)
     }
 
+    // Enter reaches this modal through its own document listener, Quill's
+    // newline callback and the send button at once, and each run mints a new
+    // chat id, so submissions are guarded while one is in flight.
     const handleSubmit = () => {
-        if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
-            dispatch(startLoadingData())
-            const chatId = getId()
-            const assistantId = getDefaultAssistantInProjectById(projectId)
-            createChat(
-                chatId,
-                projectId,
-                uid,
-                '',
-                'topics',
-                'New Topic',
-                isPublicForRef.current,
-                '#FFFFFF',
-                null,
-                null,
-                '',
-                assistantId,
-                STAYWARD_COMMENT,
-                uid
-            ).then(async () => {
-                updateNewAttachmentsData(projectId, textRef.current).then(commentWithAttachments => {
-                    createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null).then(
-                        () => {
-                            dispatch(stopLoadingData())
-                            window.open(
-                                `${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`,
-                                '_blank'
-                            )
-                        }
-                    )
+        // Bail out before the guard, so a submission blocked by an open editor
+        // or modal does not consume the single allowed submission.
+        if (isQuillTagEditorOpen || openModals[MENTION_MODAL_ID]) return
+        return submitTopic()
+    }
+
+    const submitTopic = useSingleFlightSubmit(() => {
+        dispatch(startLoadingData())
+        const chatId = getId()
+        const assistantId = getDefaultAssistantInProjectById(projectId)
+        const creation = createChat(
+            chatId,
+            projectId,
+            uid,
+            '',
+            'topics',
+            'New Topic',
+            isPublicForRef.current,
+            '#FFFFFF',
+            null,
+            null,
+            '',
+            assistantId,
+            STAYWARD_COMMENT,
+            uid
+        ).then(async () => {
+            updateNewAttachmentsData(projectId, textRef.current).then(commentWithAttachments => {
+                createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null).then(() => {
+                    dispatch(stopLoadingData())
+                    window.open(`${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`, '_blank')
                 })
             })
+        })
 
-            closeModal()
-        }
-    }
+        closeModal()
+        return creation
+    })
 
     useEffect(() => {
         dispatch(setAssistantEnabled(false))
@@ -155,7 +159,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                 <AttachmentsSelectorModal
                     closeModal={setShowFileSelector}
                     addAttachmentTag={addAttachmentTag}
-                    style={[localStyles.parent, mobile && localStyles.mobile]}
+                    style={localStyles.parent}
                     projectId={projectId}
                 />
             ) : showPrivacyModalRef.current ? (
@@ -166,7 +170,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                     closePopover={setShowPrivacyModal}
                     delayClosePopover={setShowPrivacyModal}
                     savePrivacyBeforeSaveObject={setPrivacy}
-                    style={[localStyles.parent, mobile && localStyles.mobile]}
+                    style={localStyles.parent}
                 />
             ) : (
                 <AddTopicModal
@@ -195,11 +199,8 @@ const localStyles = StyleSheet.create({
         flex: 1,
         position: 'fixed',
         zIndex: 1,
-        left: '48.5%',
+        left: '50%',
         top: '50%',
-        transform: [{ translateX: '-43%' }, { translateY: '-50%' }],
-    },
-    mobile: {
-        transform: [{ translateX: '-48.5%' }, { translateY: '-50%' }],
+        transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     },
 })

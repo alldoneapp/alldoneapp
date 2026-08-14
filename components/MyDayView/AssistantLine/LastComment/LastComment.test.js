@@ -38,7 +38,7 @@ describe('LastComment', () => {
         })
     })
 
-    it('marks a grey preview as an unfollowed notification', () => {
+    it('ignores a grey notification and shows the assistant comment fallback', () => {
         const tree = renderer.create(
             <LastComment
                 project={project}
@@ -52,9 +52,9 @@ describe('LastComment', () => {
         )
 
         expect(tree.root.findByType(LastUserOrAssistantCommentContainer).props).toMatchObject({
-            objectId: 'grey-chat',
-            fromChatNotification: true,
-            isFollowedNotification: false,
+            objectId: 'assistant-chat',
+            objectType: 'topics',
         })
+        expect(tree.root.findByType(LastUserOrAssistantCommentContainer).props.fromChatNotification).toBeUndefined()
     })
 })

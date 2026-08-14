@@ -1,13 +1,13 @@
 import React, { Component } from 'react'
-import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import store from '../../redux/store'
 import MemberTag from '../Tags/MemberTag'
 import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
-import Spinner from '../UIComponents/Spinner'
 import ContactsHelper, { PHOTO_SIZE_50 } from './Utils/ContactsHelper'
+import ContactPhoto from './ContactPhoto'
 import Backend from '../../utils/BackendBridge'
 import BacklinksTag from '../Tags/BacklinksTag'
 import ContactCommentsWrapper from '../Tags/ContactCommentsWrapper'
@@ -33,7 +33,6 @@ export default class ContactItem extends Component {
         const storeState = store.getState()
 
         this.state = {
-            loading: false,
             loggedUserProjects: storeState.loggedUserProjects,
             smallScreenNavigation: storeState.smallScreenNavigation,
             isMiddleScreen: storeState.isMiddleScreen,
@@ -98,10 +97,17 @@ export default class ContactItem extends Component {
         this.setState(state => ({ showTagsSummarizeArea: !state.showTagsSummarizeArea }))
     }
 
-    renderLeftSwipe = (progress, dragX) => {
+    // Swipeable calls the swipe renderers during its own render, so setting state synchronously
+    // would update this component while another one renders. dragX is stable per Swipeable
+    // instance, so deferring the swap adopts it just as reliably, one render later.
+    adoptPanColor = dragX => {
         if (this.state.panColor !== dragX) {
-            this.setState({ panColor: dragX })
+            Promise.resolve().then(() => this.setState({ panColor: dragX }))
         }
+    }
+
+    renderLeftSwipe = (progress, dragX) => {
+        this.adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }
@@ -119,9 +125,7 @@ export default class ContactItem extends Component {
     }
 
     renderRightSwipe = (progress, dragX) => {
-        if (this.state.panColor !== dragX) {
-            this.setState({ panColor: dragX })
-        }
+        this.adoptPanColor(dragX)
 
         return <View style={{ width: 150 }} />
     }
@@ -148,7 +152,6 @@ export default class ContactItem extends Component {
 
     render() {
         const {
-            loading,
             loggedUserProjects,
             blockOpen,
             panColor,
@@ -257,6 +260,7 @@ export default class ContactItem extends Component {
                 </View>
 
                 <Swipeable
+                    useNativeAnimations={false}
                     ref={this.itemSwipe}
                     rightThreshold={80}
                     leftThreshold={80}
@@ -294,16 +298,7 @@ export default class ContactItem extends Component {
                             <View style={localStyles.mainRow}>
                                 <View style={localStyles.avatarContainer}>
                                     {contact.photoURL != null && contact.photoURL !== '' ? (
-                                        <>
-                                            <Image
-                                                onLoadStart={() => this.setState({ loading: true })}
-                                                onLoadEnd={() => this.setState({ loading: false })}
-                                                source={{ uri: contactPhotoURL50 }}
-                                                style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
-                                            />
-
-                                            {loading && <Spinner containerSize={48} spinnerSize={24} />}
-                                        </>
+                                        <ContactPhoto uri={contactPhotoURL50} style={localStyles.image} />
                                     ) : (
                                         <SVGGenericUser
                                             width={48}

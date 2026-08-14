@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 
 import CommentPopupWorkflowControls, {
     getCommentPopupSelectableSteps,
@@ -74,7 +74,23 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.shortcutsEnabled).toBe(false)
         expect(buttons.props.compact).toBe(true)
         expect(buttons.props.narrow).toBe(false)
+        expect(buttons.props.backwardStepName).toBe('Open')
+        expect(buttons.props.forwardStepName).toBe('Second review')
         expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
+    })
+
+    it('uses Done as the forward destination from the last workflow step', () => {
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={{ ...task, stepHistory: [-1, 'step1', 'step2'] }}
+                workflow={workflow}
+            />
+        )
+        const buttons = tree.root.findByType('MainButtons')
+
+        expect(buttons.props.backwardStepName).toBe('First review')
+        expect(buttons.props.forwardStepName).toBe('Done')
     })
 
     it('keeps long step names usable in a narrow mobile layout', async () => {
@@ -96,7 +112,7 @@ describe('CommentPopupWorkflowControls', () => {
         const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
 
         expect(selector.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
-        expect(selector.findByType('Text').props.numberOfLines).toBe(2)
+        expect(selector.findByType(Text).props.numberOfLines).toBe(2)
         expect(StyleSheet.flatten(selector.props.style)).toMatchObject({
             height: 'auto',
             minHeight: 44,
@@ -107,7 +123,7 @@ describe('CommentPopupWorkflowControls', () => {
         act(() => selector.props.onPress())
 
         const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
-        expect(currentStep.findAllByType('Text')[0].props.numberOfLines).toBe(3)
+        expect(currentStep.findAllByType(Text)[0].props.numberOfLines).toBe(3)
         expect(currentStep.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
     })
 
@@ -140,7 +156,7 @@ describe('CommentPopupWorkflowControls', () => {
             colors.Text02,
             colors.Text02,
         ])
-        expect(hoveredSelector.findByType('Text').props.style).toEqual(
+        expect(hoveredSelector.findByType(Text).props.style).toEqual(
             expect.arrayContaining([expect.objectContaining({ color: colors.Text02 })])
         )
     })
@@ -154,7 +170,7 @@ describe('CommentPopupWorkflowControls', () => {
 
         expect(StyleSheet.flatten(container.props.style).backgroundColor).toBe(colors.Secondary400)
         expect(StyleSheet.flatten(selector.props.style).backgroundColor).toBe(colors.Secondary250)
-        expect(selector.findByType('Text').props.style).toEqual(
+        expect(selector.findByType(Text).props.style).toEqual(
             expect.arrayContaining([expect.objectContaining({ color: 'white' })])
         )
     })
@@ -175,14 +191,14 @@ describe('CommentPopupWorkflowControls', () => {
         const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
 
         expect(selector.props.accessibilityLabel).toBe('Select workflow step: First review')
-        expect(selector.findByType('Text').props.children).toBe('Current workflow step: First review')
+        expect(selector.findByType(Text).props.children).toBe('Current workflow step: First review')
 
         await act(async () => Promise.resolve())
         act(() => selector.props.onPress())
 
         const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
         expect(currentStep.props.accessibilityState).toEqual({ selected: true, disabled: true })
-        expect(currentStep.findAllByType('Text').map(text => text.props.children)).toEqual(['First review', 'Current'])
+        expect(currentStep.findAllByType(Text).map(text => text.props.children)).toEqual(['First review', 'Current'])
     })
 
     it('moves directly to a selected non-adjacent workflow step', async () => {
@@ -410,23 +426,42 @@ describe('CommentPopupWorkflowControls', () => {
         expect(tree.root.findByType('MainButtons').props.disabled).toBe(false)
     })
 
-    it('does not show workflow controls for open or completed tasks', () => {
-        expect(getCommentPopupWorkflowTargets({ ...task, stepHistory: [-1] }, workflow)).toBeNull()
-        expect(getCommentPopupWorkflowTargets({ ...task, done: true }, workflow)).toBeNull()
+    it('shows the first forward target for an open workflow task but not for a regular open task', () => {
+        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: true, stepHistory: [-1] }, workflow)).toEqual({
+            currentStep: -1,
+            currentStepId: -1,
+            stepIds: ['step1', 'step2'],
+            backwardStepId: null,
+            forwardStepId: 'step1',
+        })
+        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: false, stepHistory: [-1] }, workflow)).toBeNull()
     })
 
-    it('uses the open-task transition path for a workflow entry edge case', async () => {
-        const openOwnedTask = { ...task, userIds: ['owner'] }
+    it('does not show workflow controls for completed tasks or workflows without steps', () => {
+        expect(getCommentPopupWorkflowTargets({ ...task, done: true }, workflow)).toBeNull()
+        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: true, stepHistory: [-1] }, {})).toBeNull()
+    })
+
+    it('shows the polished forward action and uses the open-task transition path for workflow entry', async () => {
+        const openOwnedTask = { ...task, workflowTask: true, userIds: ['owner'], stepHistory: [-1] }
         const tree = renderer.create(
             <CommentPopupWorkflowControls projectId="project-1" task={openOwnedTask} workflow={workflow} />
         )
+        const buttons = tree.root.findByType('MainButtons')
 
-        await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
+        expect(buttons.props.currentStep).toBe(-1)
+        expect(buttons.props.backwardStepName).toBeUndefined()
+        expect(buttons.props.forwardStepName).toBe('First review')
+        expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.accessibilityLabel).toBe(
+            'Select workflow step: Open'
+        )
+
+        await act(async () => buttons.props.onDonePress('FORWARD'))
 
         expect(moveTasksFromOpen).toHaveBeenCalledWith(
             'project-1',
             openOwnedTask,
-            'step2',
+            'step1',
             null,
             null,
             task.estimations,

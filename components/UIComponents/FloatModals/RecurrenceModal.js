@@ -15,6 +15,7 @@ import { translate } from '../../../i18n/TranslationService'
 import {
     RECURRENCE_MAP,
     RECURRENCE_NEVER,
+    RECURRENCE_ONCE,
     RECURRENCE_DAILY,
     RECURRENCE_EVERY_WORKDAY,
     RECURRENCE_WEEKLY,
@@ -49,6 +50,7 @@ class RecurrenceModal extends Component {
 
         this.recurrences = [
             RECURRENCE_NEVER,
+            ...(props.allowOneOffSchedule ? [RECURRENCE_ONCE] : []),
             RECURRENCE_DAILY,
             RECURRENCE_EVERY_WORKDAY,
             RECURRENCE_WEEKLY,
@@ -346,12 +348,8 @@ const localStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 8,
         borderRadius: 4,
-        width: 305,
         overflow: 'visible',
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
     },
     title: {
@@ -446,10 +444,12 @@ RecurrenceModal.propTypes = {
     projectId: PropTypes.string.isRequired,
     closePopover: PropTypes.func,
     showBackButton: PropTypes.bool,
+    allowOneOffSchedule: PropTypes.bool,
 }
 
 RecurrenceModal.defaultProps = {
     showBackButton: false,
+    allowOneOffSchedule: false,
 }
 
 export default withWindowSizeHook(RecurrenceModal)

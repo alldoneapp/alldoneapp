@@ -16,6 +16,7 @@ import {
 import GoalMilestoneRangeModal from '../GoalMilestoneRangeModal/GoalMilestoneRangeModal'
 import Backend from '../../../../utils/BackendBridge'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
+import useSingleFlightSubmit from '../../../../hooks/useSingleFlightSubmit'
 import GoalAssigneesModal from '../GoalAssigneesModal/GoalAssigneesModal'
 import HighlightColorModal from '../HighlightColorModal/HighlightColorModal'
 import DescriptionModal from '../DescriptionModal/DescriptionModal'
@@ -39,6 +40,10 @@ const getNewInitialDefaultGoal = projectId => {
 
 export default function RichCreateGoalModal({ projectId, closeModal }) {
     const dispatch = useDispatch()
+    // Enter reaches this popup through the done button's document listener and
+    // Quill's newline callback, so one guard keeps a double or held Return from
+    // creating several goals.
+    const submitOnce = useSingleFlightSubmit(submission => submission())
     const [showDateRangeModal, setShowDateRangeModal] = useState(false)
     const [showAssigneeModal, setShowAssigneeModal] = useState(false)
     const [showPrivacyModal, setShowPrivacyModal] = useState(false)
@@ -131,12 +136,17 @@ export default function RichCreateGoalModal({ projectId, closeModal }) {
     }
 
     const createGoal = () => {
-        if (goal.name.length > 0) {
+        // The empty-name check stays outside the guard so that pressing Enter on
+        // an empty popup does not consume the single allowed submission.
+        if (goal.name.trim().length === 0) return
+
+        return submitOnce(() => {
             closeModal()
-            Backend.uploadNewGoal(projectId, goal, BACKLOG_DATE_NUMERIC, true, false).then(finalGoal => {
+            return Backend.uploadNewGoal(projectId, goal, BACKLOG_DATE_NUMERIC, true, false).then(finalGoal => {
                 tryExpandGoalsList(finalGoal)
+                return finalGoal
             })
-        }
+        })
     }
 
     const tryExpandGoalInSelectedProject = (nextMilestones, finalGoal) => {

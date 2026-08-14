@@ -1,5 +1,10 @@
 import React from 'react'
+import { Platform } from 'react-native'
 import WorkflowStep from '../../components/WorkflowView/WorkflowStep'
+
+// MyPlatform.osType only consults window.navigator off the mobile path,
+// and the react-native preset reports ios.
+Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 import { Provider } from 'react-redux'

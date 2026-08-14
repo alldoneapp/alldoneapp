@@ -23,4 +23,9 @@ const run = () => {
 
 if (require.main === module) run()
 
+// The file ends in .test.js, so Jest collects it and would otherwise fail
+// the suite for having no tests. Running it as one keeps the assertions
+// meaningful in both places.
+if (typeof test === 'function') test('parseTextUtils mention parsing', run)
+
 module.exports = { run }

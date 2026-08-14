@@ -7,20 +7,17 @@ import URLSystem, { URL_FEEDS, URL_LOGOUT } from '../../URLSystem/URLSystem'
 
 jest.mock('../../components/MyPlatform', () => {
     return {
-        isMobile: false
+        isMobile: false,
     }
 })
 
 describe('URLSystem class', () => {
     describe('Function replace', () => {
-        it.each([
-            [URL_LOGOUT, '/logout']
-        ])
-            ('should set the value for lastVisitedScreen for %p', (constant, url) => {
-                URLSystem.replace(constant)
-                const storeState = store.getState()
-                expect(storeState.lastVisitedScreen).toEqual([url])
-            })
+        it.each([[URL_LOGOUT, '/logout']])('should set the value for lastVisitedScreen for %p', (constant, url) => {
+            URLSystem.replace(constant)
+            const storeState = store.getState()
+            expect(storeState.lastVisitedScreen).toEqual([url])
+        })
     })
 
     describe('Function push', () => {

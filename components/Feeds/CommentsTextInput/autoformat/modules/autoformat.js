@@ -1,9 +1,10 @@
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 
 import { formatUrl, getUrlObject } from '../../../../../utils/LinkingHelper'
 import {
     checkIfInputHaveKarma,
+    getEditorMetaFromEditor,
     getPlaceholderData,
     NEW_ATTACHMENT,
     processPastedText,
@@ -16,7 +17,7 @@ import { checkIsLimitedByTraffic } from '../../../../Premium/PremiumHelper'
 
 const Module = ReactQuill.Quill.import('core/module')
 const Delta = ReactQuill.Quill.import('delta')
-const { Attributor, Scope } = ReactQuill.Quill.import('parchment')
+const { StyleAttributor, Scope } = ReactQuill.Quill.import('parchment')
 
 // Binds autoformat transforms to typing and pasting
 class Autoformat extends Module {
@@ -24,14 +25,8 @@ class Autoformat extends Module {
         super(quill, options)
         this.transforms = options
 
-        const {
-            editorType,
-            editorId,
-            keyboardType,
-            singleLine,
-            userIdAllowedToEditTags,
-            disabledEnterKey,
-        } = getPlaceholderData(quill.options.placeholder)
+        const { editorType, editorId, keyboardType, singleLine, userIdAllowedToEditTags, disabledEnterKey } =
+            quill.editorMeta || getPlaceholderData(quill.options.placeholder || '')
 
         this.editorId = editorId
         this.isTextInputType = editorType === QUILL_EDITOR_TEXT_INPUT_TYPE
@@ -40,12 +35,12 @@ class Autoformat extends Module {
         this.disabledEnterKey = disabledEnterKey
 
         if (this.isTextInputType) {
-            delete quill.keyboard.bindings[13]
+            delete quill.keyboard.bindings['Enter']
         } else {
             loadQuill(quill)
         }
 
-        if (quill.options.formats.length > 0) {
+        if ((quill.options.formats || []).length > 0) {
             this.registerTypeListener()
 
             if (this.isTextInputType) {
@@ -65,16 +60,8 @@ class Autoformat extends Module {
                 const projectId = store.getState().quillEditorProjectId
                 const { attributes } = delta.ops[0]
                 const isFomatedLink = attributes && attributes.link && REGEX_URL.test(attributes.link)
-                const {
-                    hashtag,
-                    email,
-                    mention,
-                    image,
-                    url,
-                    customImageFormat,
-                    attachment,
-                    karma,
-                } = delta.ops[0].insert
+                const { hashtag, email, mention, image, url, customImageFormat, attachment, karma } =
+                    delta.ops[0].insert
                 if (hashtag) {
                     hashtag.id = v4()
                 } else if (email) {
@@ -197,7 +184,7 @@ class Autoformat extends Module {
     registerTypeListener() {
         this.quill.keyboard.addBinding(
             {
-                key: 38, // Arrow Up
+                key: 'ArrowUp',
                 collapsed: true,
                 format: ['autoformat-helper'],
             },
@@ -206,7 +193,7 @@ class Autoformat extends Module {
 
         this.quill.keyboard.addBinding(
             {
-                key: 40, // Arrow Down
+                key: 'ArrowDown',
                 collapsed: true,
                 format: ['autoformat-helper'],
             },
@@ -366,6 +353,7 @@ class Autoformat extends Module {
             this.currentHelper = transform.helper
             if (typeof transform.helper.open === 'function') {
                 let pos = this.quill.getBounds(index)
+                if (!pos) return
                 let helperNode = this.quill.addContainer('ql-helper')
                 helperNode.style.position = 'absolute'
                 helperNode.style.top = pos.top + 'px'
@@ -547,7 +535,9 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
 }
 
 function isTextInputEditor(quillInstance) {
-    const { editorType } = getPlaceholderData(quillInstance.options.placeholder)
+    // Same stripped-placeholder caveat as getEditorId (AT-2227): the editorMeta module
+    // clears the encoding off options.placeholder, so read the decoded metadata first.
+    const { editorType } = getEditorMetaFromEditor(quillInstance)
     return editorType === QUILL_EDITOR_TEXT_INPUT_TYPE
 }
 
@@ -615,6 +605,10 @@ Autoformat.DEFAULTS = {
     },
 }
 
-const AutoformatHelperAttribute = new Attributor.Style('autoformat-helper', 'data-helper', { scope: Scope.INLINE })
+// Parchment 3 flattened the v1 Attributor.Style namespace to StyleAttributor. Note this
+// attributor is deliberately kept style-based ('data-helper' is not a real CSS property,
+// so the value never persists) — switching it to an attribute-based Attributor would
+// activate the dormant autoformat-helper keyboard flow, which has been dead since Quill 1.
+const AutoformatHelperAttribute = new StyleAttributor('autoformat-helper', 'data-helper', { scope: Scope.INLINE })
 
 export { Autoformat as default, AutoformatHelperAttribute }

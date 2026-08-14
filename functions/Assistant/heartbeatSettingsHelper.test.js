@@ -1,14 +1,27 @@
 const {
     DEFAULT_PROMPT,
+    HEARTBEAT_MODEL_OPTIONS,
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
     getEffectiveHeartbeatModel,
+    getEffectiveHeartbeatReasoningEffort,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 } = require('./heartbeatSettingsHelper')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 describe('heartbeatSettingsHelper', () => {
+    test('allows exactly the shared selectable models as heartbeat selections', () => {
+        expect(HEARTBEAT_MODEL_OPTIONS).toEqual(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
+        expect(HEARTBEAT_MODEL_OPTIONS).toEqual([
+            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT5_6_TERRA',
+            'MODEL_GPT5_6_LUNA',
+            'MODEL_DEEPSEEK_V4_FLASH',
+        ])
+    })
+
     test('rounds and clamps heartbeat interval to the supported range', () => {
         expect(normalizeHeartbeatIntervalMs(17 * 60 * 1000)).toBe(15 * 60 * 1000)
         expect(normalizeHeartbeatIntervalMs(63 * 60 * 1000)).toBe(60 * 60 * 1000)
@@ -59,6 +72,16 @@ describe('heartbeatSettingsHelper', () => {
         expect(getEffectiveHeartbeatModel({ model: 'MODEL_GPT5_5' })).toBe('MODEL_GPT5_5')
     })
 
+    test('inherits assistant effort unless the heartbeat has an explicit effort setting', () => {
+        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high' })).toBe('high')
+        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: 'low' })).toBe(
+            'low'
+        )
+        expect(
+            getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: null })
+        ).toBeNull()
+    })
+
     test('builds context text including the current heartbeat prompt', () => {
         const contextMessage = buildHeartbeatSettingsContextMessage(
             {
@@ -69,6 +92,7 @@ describe('heartbeatSettingsHelper', () => {
                 heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
                 heartbeatSendWhatsApp: false,
                 heartbeatModel: 'MODEL_GPT5_6_LUNA',
+                heartbeatReasoningEffort: 'xhigh',
                 heartbeatPrompt: 'Check progress and remind about the focus task.',
             },
             { projectId: 'project-1', userData: { defaultProjectId: 'project-1' } }
@@ -81,6 +105,7 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Execution chance when the user did not reply that day: 15%')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
         expect(contextMessage).toContain('Heartbeat model: MODEL_GPT5_6_LUNA')
+        expect(contextMessage).toContain('Heartbeat reasoning effort: xhigh')
         expect(contextMessage).toContain('Check progress and remind about the focus task.')
     })
 })

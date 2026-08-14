@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { Droppable } from 'react-beautiful-dnd'
+import { Droppable } from '@hello-pangea/dnd'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DraggableTask from './DraggableTask'
@@ -11,7 +11,7 @@ import {
     addTaskIdWithSubtasksExpandedWhenActiveDragTaskMode,
     removeTaskIdWithSubtasksExpandedWhenActiveDragTaskMode,
 } from '../../redux/actions'
-import { CALENDAR_TASK_INDEX, WORKFLOW_TASK_INDEX } from '../../utils/backends/openTasks'
+import { WORKFLOW_TASK_INDEX } from '../../utils/backends/openTasks'
 import { sortTasksByPriority } from '../../utils/TaskPriority'
 
 export default function DroppableTaskList({
@@ -50,7 +50,7 @@ export default function DroppableTaskList({
                 draggingParentTaskId !== id
             ) {
                 const subtasks =
-                    taskListIndex === WORKFLOW_TASK_INDEX || taskListIndex === CALENDAR_TASK_INDEX
+                    taskListIndex === WORKFLOW_TASK_INDEX
                         ? subtaskByTask[id]
                         : sortTasksByPriority(subtaskByTask[id], focusedTaskId)
                 mixedTaskList.push(...subtasks)

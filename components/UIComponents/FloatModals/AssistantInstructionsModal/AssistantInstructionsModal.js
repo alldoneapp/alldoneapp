@@ -1,10 +1,11 @@
 import React from 'react'
-import { Dimensions, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import EditForm from './EditForm'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../ModalHeader'
+import useModalSizing from '../../../../hooks/useModalSizing'
 
 export default function AssistantInstructionsModal({
     disabled,
@@ -16,9 +17,8 @@ export default function AssistantInstructionsModal({
     placeholder = translate('Type to add instructions'),
 }) {
     const { instructions: initialInstructions } = assistant
-    const { width: windowWidth, height: windowHeight } = Dimensions.get('window')
-    const isMobile = windowWidth < 600
-    const modalWidth = isMobile ? windowWidth - 32 : Math.min(windowWidth * 0.9, 1200)
+    const { isSheet: isMobile, width: sheetWidth, windowWidth, windowHeight } = useModalSizing()
+    const modalWidth = isMobile ? sheetWidth : Math.min(windowWidth * 0.9, 1200)
     const maxInputHeight = isMobile ? windowHeight * 0.5 : 500
 
     const setInstructions = instructions => {
@@ -52,10 +52,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         height: 'auto',
         minWidth: 600,

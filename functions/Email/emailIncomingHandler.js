@@ -64,6 +64,7 @@ async function handleIncomingAnnaEmail(req, res) {
             textBody: payload.textBody,
             htmlBody: payload.htmlBody,
             receivedAt: payload.receivedAt,
+            sentAt: payload.sentAt,
             threadHeaders: payload.threadHeaders,
             headers: payload.headers,
             attachments,
@@ -93,6 +94,20 @@ async function handleIncomingAnnaEmail(req, res) {
     }
 }
 
+// The sender's own "Date:" header is the only record of when the mail was actually sent.
+// Without it the assistant is shown the queue-processing time, which drifts with backlog,
+// retries and cold starts. Returns null when the header is missing or unparseable so
+// downstream callers can fall back to the stored comment timestamp.
+function parseEmailDateHeader(value) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
+
+    const normalized = String(value || '').trim()
+    if (!normalized) return null
+
+    const parsed = Date.parse(normalized)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 function normalizeInboundEmailPayload(body = {}, headers = {}) {
     const normalizedHeaders = isObject(body.headers) ? body.headers : {}
     const threadHeaders = isObject(body.threadHeaders) ? body.threadHeaders : {}
@@ -110,6 +125,7 @@ function normalizeInboundEmailPayload(body = {}, headers = {}) {
         textBody: String(body.textBody || body.text || '').trim(),
         htmlBody: String(body.htmlBody || body.html || '').trim(),
         receivedAt: Number(body.receivedAt || Date.now()) || Date.now(),
+        sentAt: parseEmailDateHeader(body.sentAt || normalizedHeaders.Date || normalizedHeaders.date || ''),
         headers: normalizedHeaders,
         threadHeaders: {
             replyTo: String(

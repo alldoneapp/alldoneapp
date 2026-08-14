@@ -47,6 +47,14 @@ jest.mock('firebase-admin', () => {
     }
 })
 
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: {
+        serverTimestamp: () => 'SERVER_TIMESTAMP',
+        increment: value => ({ __increment: value }),
+    },
+    Timestamp: { now: () => 'TIMESTAMP' },
+}))
+
 jest.mock('firebase-admin/functions', () => ({ getFunctions: jest.fn() }), { virtual: true })
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
 jest.mock('../Services/TwilioWhatsAppService', () => jest.fn())

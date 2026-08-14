@@ -16,9 +16,7 @@ export default function Notes() {
             </View>
 
             <SectionInfo
-                text={translate(
-                    'The following shortcuts are available only in the note list'
-                )}
+                text={translate('The following shortcuts are available only in the note list')}
                 style={{ marginTop: 0 }}
             />
 
@@ -37,11 +35,7 @@ export default function Notes() {
                 </View>
             </View>
 
-            <SectionInfo
-                text={translate(
-                    'The following shortcuts are available only when the note is on edit mode'
-                )}
-            />
+            <SectionInfo text={translate('The following shortcuts are available only when the note is on edit mode')} />
 
             <View style={{ flexDirection: isMiddleScreen ? 'column' : 'row' }}>
                 <View style={{ flex: 1, marginRight: isMiddleScreen ? 0 : 8 }}>

@@ -4,7 +4,12 @@ import renderer, { act } from 'react-test-renderer'
 jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../../../../../utils/HelperFunctions', () => ({ applyPopoverWidth: () => ({ width: 320 }) }))
 jest.mock('../../../../UIComponents/FloatModals/DueDateModal/Header', () => 'Header')
-jest.mock('react-hot-keys', () => ({ children }) => children)
+jest.mock(
+    'react-hot-keys',
+    () =>
+        ({ children }) =>
+            children
+)
 jest.mock('../../../../UIControls/Button', () => {
     const React = require('react')
     const { TouchableOpacity } = require('react-native')

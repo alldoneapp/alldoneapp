@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -22,6 +22,7 @@ import {
     DV_TAB_ASSISTANT_BACKLINKS,
     DV_TAB_ASSISTANT_CHAT,
     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
+    DV_TAB_ASSISTANT_WORKFLOW,
     DV_TAB_ASSISTANT_NOTE,
     DV_TAB_ASSISTANT_UPDATES,
     DV_TAB_ROOT_TASKS,
@@ -42,6 +43,8 @@ import RootViewFeedsAssistant from '../Feeds/RootViewFeedsAssistant'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import WorkflowView from '../WorkflowView/WorkflowView'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function AssistantDetailedView({ navigation }) {
     const assistantId = navigation.getParam('assistantId', undefined)
@@ -57,11 +60,20 @@ export default function AssistantDetailedView({ navigation }) {
     const [assistant, setAssistant] = useState(null)
     const [projectOriginId, setProjectOriginId] = useState('')
     const [isFullscreen, setFullscreen] = useState(false)
+    const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     const isGlobalAsisstant = projectId !== projectOriginId
     const isInGlobalProject = projectId === GLOBAL_PROJECT_ID
+    const canManageWorkflow =
+        !isInGlobalProject &&
+        !isGlobalAsisstant &&
+        !loggedUser.isAnonymous &&
+        Array.isArray(loggedUser.realProjectIds) &&
+        loggedUser.realProjectIds.includes(projectId)
 
     const navigationTabs = [DV_TAB_ASSISTANT_CUSTOMIZATIONS]
+    if (canManageWorkflow) navigationTabs.push(DV_TAB_ASSISTANT_WORKFLOW)
     if (!isInGlobalProject) navigationTabs.push(DV_TAB_ASSISTANT_BACKLINKS)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_NOTE)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_CHAT)
@@ -154,6 +166,7 @@ export default function AssistantDetailedView({ navigation }) {
                     {!isMiddleScreen && <BackButton assistant={assistant} />}
 
                     <CustomView
+                        ref={scrollRef}
                         style={[
                             localStyles.scrollPanel,
                             smallScreenNavigation
@@ -195,6 +208,15 @@ export default function AssistantDetailedView({ navigation }) {
                                                     isGlobalAsisstant={isGlobalAsisstant}
                                                     isInGlobalProject={isInGlobalProject}
                                                     isAdmin={loggedUser.uid === administratorUserId}
+                                                />
+                                            )
+                                        case DV_TAB_ASSISTANT_WORKFLOW:
+                                            return (
+                                                <WorkflowView
+                                                    user={assistant}
+                                                    projectIndex={project.index}
+                                                    projectId={projectId}
+                                                    ownerType="assistant"
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_BACKLINKS:

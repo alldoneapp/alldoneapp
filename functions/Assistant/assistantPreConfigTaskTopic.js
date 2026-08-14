@@ -20,6 +20,7 @@ const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
 const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS: ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
+const { resolveAssistantReasoningEffort } = require('./selectableAssistantReasoningEfforts')
 
 // Pre-load tiktoken at module load (performance optimization)
 console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
@@ -168,6 +169,7 @@ async function generatePreConfigTaskResult(
         settings = {
             model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
+            reasoningEffort: resolveAssistantReasoningEffort(aiSettings),
             instructions,
             displayName,
             uid,
@@ -187,11 +189,12 @@ async function generatePreConfigTaskResult(
         const allowedTools = Array.isArray(aiSettings.allowedTools)
             ? aiSettings.allowedTools
             : Array.isArray(assistant.allowedTools)
-            ? assistant.allowedTools
-            : []
+              ? assistant.allowedTools
+              : []
         settings = {
             model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
+            reasoningEffort: resolveAssistantReasoningEffort(aiSettings, assistant.reasoningEffort),
             instructions: fallbackInstructions,
             displayName: fallbackDisplayName,
             uid: assistant.uid || assistantId,
@@ -366,6 +369,7 @@ async function generatePreConfigTaskResult(
             projectId,
             assistantId: settings.uid || assistantId,
             requestUserId: userId,
+            openAiReasoningEffort: settings.reasoningEffort || null,
             objectType,
             objectId,
             messageId: triggerMessageId || null,
@@ -591,7 +595,7 @@ async function generatePreConfigTaskResult(
         return {
             success: true,
             projectId,
-            objectType: 'tasks',
+            objectType,
             objectId,
             isPublicFor,
             assistantId: settings.uid,

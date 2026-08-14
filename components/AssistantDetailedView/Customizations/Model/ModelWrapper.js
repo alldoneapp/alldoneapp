@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -23,6 +23,7 @@ import {
     MODEL_SONAR_REASONING,
     MODEL_SONAR_REASONING_PRO,
     MODEL_SONAR_DEEP_RESEARCH,
+    MODEL_DEEPSEEK_V4_FLASH,
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
@@ -74,11 +75,12 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
         if (model === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
         if (model === MODEL_SONAR_REASONING_PRO) return 'Sonar Reasoning Pro'
         if (model === MODEL_SONAR_DEEP_RESEARCH) return 'Sonar Deep Research'
+        if (model === MODEL_DEEPSEEK_V4_FLASH) return 'DeepSeek V4 Flash'
         return model // return the model key as fallback
     }
 
     return (
-        <Popover
+        <AppPopover
             content={<AssistantModelModal updateModel={updateModel} closeModal={closeModal} model={model} />}
             align={'start'}
             position={['bottom']}
@@ -102,6 +104,6 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
                     title={translate(getModelText())}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

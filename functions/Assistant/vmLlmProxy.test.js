@@ -149,6 +149,70 @@ describe('vmLlmProxy token usage parsing', () => {
     })
 })
 
+// AT-2230 BYOK: the minted token must be scoped to the run's key slot, because the OpenAI and
+// OpenRouter routes share `agent: 'codex'` and are otherwise indistinguishable to the proxy.
+describe('vmLlmProxy credential scoping in minted tokens', () => {
+    const vmJob = { correlationId: 'cid-1', requestUserId: 'u1' }
+
+    test('carries the credential provider so a codex token cannot be spent on OpenRouter', () => {
+        const credentials = buildVmAgentCredentials({
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+            agent: 'codex',
+            credentialMode: 'byok',
+            credentialProvider: 'openrouter',
+            ttlMs: 60_000,
+            env: ENV,
+        })
+
+        const verdict = verifyProxyToken(credentials.apiKey, { expectedAgent: 'codex', env: ENV, nowMs: NOW })
+        expect(verdict.valid).toBe(true)
+        expect(verdict.payload.cp).toBe('openrouter')
+        expect(verdict.payload.cm).toBe('byok')
+        expect(credentials.credentialProvider).toBe('openrouter')
+    })
+
+    test('derives the provider from the job when the caller does not pass one', () => {
+        const credentials = buildVmAgentCredentials({
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-5.6-sol' },
+            agent: 'codex',
+            credentialMode: 'byok',
+            realApiKey: 'sk-openai-key',
+            ttlMs: 60_000,
+            env: ENV,
+        })
+
+        expect(verifyProxyToken(credentials.apiKey, { expectedAgent: 'codex', env: ENV, nowMs: NOW }).payload.cp).toBe(
+            'codex'
+        )
+    })
+
+    // BYOK means there is no platform key to require — the personal one is loaded per request.
+    test('a BYOK run needs no platform key, an Alldone Gold run still does', () => {
+        expect(() =>
+            buildVmAgentCredentials({
+                vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+                agent: 'codex',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                ttlMs: 60_000,
+                env: ENV,
+            })
+        ).not.toThrow()
+
+        expect(() =>
+            buildVmAgentCredentials({
+                vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+                agent: 'codex',
+                credentialMode: 'api',
+                credentialProvider: 'openrouter',
+                realApiKey: '',
+                ttlMs: 60_000,
+                env: ENV,
+            })
+        ).toThrow('API key is not configured')
+    })
+})
+
 describe('vmLlmProxy job authorization', () => {
     function buildDb(pendingData, userGold = 10) {
         return {
@@ -192,6 +256,94 @@ describe('vmLlmProxy job authorization', () => {
                 db: wrongModeDb,
             })
         ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('route') })
+    })
+
+    // AT-2230 BYOK. The token's `cp` is signed, but the JOB doc is the authority on who pays —
+    // this is the check that keeps proxy billing and runner settlement provably about the same run.
+    test('rejects a request whose credential provider does not match the job', async () => {
+        const openRouterJob = () =>
+            attachGets(
+                buildDb({
+                    userId: 'owner',
+                    credentialMode: 'byok',
+                    credentialProvider: 'openrouter',
+                    agent: 'codex',
+                    agentModel: 'openrouter:deepseek/deepseek-chat',
+                    status: 'initiated',
+                })
+            )
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'codex',
+                db: openRouterJob(),
+            })
+        ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('route') })
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                db: openRouterJob(),
+            })
+        ).resolves.toMatchObject({ allowed: true })
+    })
+
+    // Every job doc written before `credentialProvider` existed. It must keep working, and it must
+    // still be checked — derived from agent + agentModel, which those docs already carry.
+    test('derives the provider for a legacy job doc that has no credentialProvider field', async () => {
+        const legacyCodexJob = () =>
+            attachGets(
+                buildDb({
+                    userId: 'owner',
+                    credentialMode: 'byok',
+                    agent: 'codex',
+                    agentModel: 'gpt-5.6-sol',
+                    status: 'initiated',
+                })
+            )
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'codex',
+                db: legacyCodexJob(),
+            })
+        ).resolves.toMatchObject({ allowed: true })
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                db: legacyCodexJob(),
+            })
+        ).resolves.toMatchObject({ allowed: false })
+    })
+
+    // A legacy token carries no `cp` at all; the caller passes '' and the provider check is skipped,
+    // leaving exactly the pre-AT-2230 behaviour rather than failing every in-flight run on deploy.
+    test('skips the provider check when the token carries no credential provider', async () => {
+        const db = attachGets(
+            buildDb({ userId: 'owner', credentialMode: 'byok', credentialProvider: 'openrouter', status: 'initiated' })
+        )
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: '',
+                db,
+            })
+        ).resolves.toMatchObject({ allowed: true })
     })
 
     test('allows the owning user to use the selected BYOK route while the job is active', async () => {
@@ -281,6 +433,157 @@ describe('vmLlmProxy token Gold charging', () => {
             })
         )
     })
+
+    // AT-2230 pricing: the live half of per-model rates. The rate is read from the job doc — NOT from
+    // the sandbox's request body — so a compromised agent cannot talk its own tokens down to a
+    // cheaper model's rate.
+    test('charges token Gold at the rate frozen on the job at launch', async () => {
+        const { db, writes } = buildFakeDb({
+            userGold: 100000,
+            pendingData: { agentModel: 'openrouter:deepseek/deepseek-v4-pro', tokensPerGold: 1800 },
+        })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 100 }))
+
+        const result = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { inputTokens: 150000, outputTokens: 1000, cacheTokens: 29000, totalTokens: 180000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        // 180,000 tokens at 1800/Gold = 100 Gold (it would be 1800 at the Sol rate).
+        expect(result).toEqual(expect.objectContaining({ charged: 100 }))
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -100 }))
+        expect(writes[writes.length - 1].data).toEqual(expect.objectContaining({ proxyTokenGoldCharged: 100 }))
+    })
+
+    // The persisted rate is authoritative because it can carry a *live* upstream price the static
+    // table has never seen. If the proxy re-derived its own rate here it could disagree with the
+    // runner's settlement, which is exactly the drift vmTokenPricing exists to prevent.
+    test('a persisted rate overrides what the model id alone would resolve to', async () => {
+        const { db } = buildFakeDb({
+            userGold: 100000,
+            pendingData: { agentModel: 'openrouter:qwen/qwen3-coder', tokensPerGold: 5000 },
+        })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 20 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 100000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        // 100,000 / 5000 = 20, not the 104 the researched qwen rate (960) would give.
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -20 }))
+    })
+
+    // A job doc carrying only a model id (no frozen rate) must still price per model.
+    test('falls back to the researched per-model rate when no rate was persisted', async () => {
+        const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'openrouter:qwen/qwen3-coder' } })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 104 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 100000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        // round(100000 / 960) = 104
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -104 }))
+    })
+
+    test('charges a Luna run at 1/25 of the Sol rate', async () => {
+        const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'gpt-5.6-luna' } })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 40 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openai',
+            usage: { totalTokens: 100000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        // 100,000 / 2500 = 40 Gold, against 1000 on Sol.
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -40 }))
+    })
+
+    // A job doc written before agentModel was persisted must bill exactly as it did before.
+    test('a job doc with no recorded model charges at the standard rate', async () => {
+        const { db } = buildFakeDb({ userGold: 1000, pendingData: {} })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 10 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openai',
+            usage: { totalTokens: 1000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -10 }))
+    })
+
+    // Guards the revenue hole a bigger divisor opens: at 4900 tokens/Gold — the cheapest rate in the
+    // table — a single small request rounds to zero 49x more often than at the Sol rate, so the tokens
+    // must stay banked in the running total and be billed once it crosses the threshold, never dropped.
+    test('token dust below the rounding threshold is banked, then billed', async () => {
+        const first = buildFakeDb({
+            userGold: 1000,
+            pendingData: { agentModel: 'openrouter:deepseek/deepseek-v4-flash-0731', tokensPerGold: 4900 },
+        })
+        const firstCharge = jest.fn(() => ({ success: true, amount: 0 }))
+
+        const dust = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 2000 },
+            db: first.db,
+            applyGoldChangeInTransactionFn: firstCharge,
+        })
+
+        // Nothing charged yet, but the tokens are recorded.
+        expect(dust.charged).toBe(0)
+        expect(firstCharge).not.toHaveBeenCalled()
+        expect(first.writes[first.writes.length - 1].data).toEqual(
+            expect.objectContaining({ proxyTokenUsage: expect.objectContaining({ totalTokens: 2000 }) })
+        )
+
+        // Next request resumes from that banked total rather than starting over.
+        const second = buildFakeDb({
+            userGold: 1000,
+            pendingData: {
+                agentModel: 'openrouter:deepseek/deepseek-v4-flash-0731',
+                tokensPerGold: 4900,
+                proxyTokenUsage: { inputTokens: 0, outputTokens: 0, cacheTokens: 0, totalTokens: 2000 },
+                proxyTokenGoldCharged: 0,
+            },
+        })
+        const secondCharge = jest.fn(() => ({ success: true, amount: 1 }))
+
+        const result = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 3000 },
+            db: second.db,
+            applyGoldChangeInTransactionFn: secondCharge,
+        })
+
+        // 5000 cumulative tokens → round(5000/4900) = 1 Gold. The first 2000 were not lost.
+        expect(result).toEqual(expect.objectContaining({ charged: 1, totalTokensTracked: 5000 }))
+    })
 })
 
 describe('buildVmAgentCredentials', () => {
@@ -338,5 +641,132 @@ describe('buildVmAgentCredentials', () => {
                 env: { VM_PROXY_SIGNING_SECRET: SECRET },
             })
         ).toThrow('VM_LLM_PROXY_BASE_URL')
+    })
+})
+
+// ---------------------------------------------------------------------------
+// OpenRouter upstream for the Codex harness (AT-2230)
+// ---------------------------------------------------------------------------
+
+const { ensureStreamUsageRequested, shouldRequestStreamUsage } = require('./vmLlmProxy')
+
+describe('vmLlmProxy OpenRouter route', () => {
+    test('maps /openrouter to the OpenRouter upstream and keeps the forwarded path', () => {
+        const matched = resolveProvider('/openrouter/v1/chat/completions')
+        expect(matched).toMatchObject({
+            provider: 'openrouter',
+            forwardPath: '/v1/chat/completions',
+        })
+        expect(matched.config.upstreamBase).toBe('https://openrouter.ai/api')
+        expect(matched.config.realKeyField).toBe('OPENROUTER_API_KEY')
+    })
+
+    // The token is minted for the codex agent, so an OpenRouter run needs no new token shape — and
+    // a Claude token still cannot be replayed against this route.
+    test('accepts a codex token and rejects a claude one', () => {
+        const codexToken = mintProxyToken(
+            { correlationId: 'cid-1', agent: 'codex', userId: 'u1', expiresAtMs: FUTURE },
+            ENV
+        )
+        const claudeToken = mintProxyToken(
+            { correlationId: 'cid-1', agent: 'claude', userId: 'u1', expiresAtMs: FUTURE },
+            ENV
+        )
+        const { config } = resolveProvider('/openrouter/v1/chat/completions')
+
+        expect(verifyProxyToken(codexToken, { expectedAgent: config.expectedAgent, env: ENV, nowMs: NOW }).valid).toBe(
+            true
+        )
+        expect(verifyProxyToken(claudeToken, { expectedAgent: config.expectedAgent, env: ENV, nowMs: NOW }).valid).toBe(
+            false
+        )
+    })
+
+    // BYOK stores a key per *agent*; an OpenAI key cannot authenticate against OpenRouter, so this
+    // route is always platform-billed (startVmJob pins credentialMode to 'api' to match).
+    // AT-2230 BYOK: BYOK is keyed on the credential provider, NOT the agent. The OpenAI and
+    // OpenRouter routes share `expectedAgent: 'codex'`, so the agent cannot distinguish them and a
+    // Codex-BYOK job would otherwise reach for the OpenAI key on the OpenRouter route.
+    test('declares its own BYOK key slot, distinct from the shared codex agent', () => {
+        const openRouter = resolveProvider('/openrouter/v1/chat/completions').config
+        const openai = resolveProvider('/openai/v1/responses').config
+        expect(openRouter.expectedAgent).toBe('codex')
+        expect(openai.expectedAgent).toBe('codex')
+        expect(openRouter.byokProvider).toBe('openrouter')
+        expect(openai.byokProvider).toBe('codex')
+        expect(resolveProvider('/anthropic/v1/messages').config.byokProvider).toBe('claude')
+    })
+
+    test('captures usage from a streamed Chat Completions final chunk', () => {
+        const state = { buffer: '', usage: undefined, anthropicDeltaUsage: null }
+        captureUsageFromTextChunk(
+            'openrouter',
+            'data: {"choices":[{"delta":{"content":"hi"}}]}\n' +
+                'data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":30,"total_tokens":150}}\n' +
+                'data: [DONE]\n',
+            state
+        )
+        expect(finalizeCapturedUsage('openrouter', state)).toMatchObject({
+            inputTokens: 120,
+            outputTokens: 30,
+            totalTokens: 150,
+        })
+    })
+
+    test('reads usage from a non-streamed response body', () => {
+        expect(
+            extractUsageFromJsonPayload('openrouter', {
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            })
+        ).toMatchObject({ totalTokens: 15 })
+    })
+})
+
+describe('ensureStreamUsageRequested', () => {
+    // Without include_usage the Chat Completions stream reports no usage at all, so every streamed
+    // OpenRouter run would bill zero Gold — a silent revenue hole rather than a visible failure.
+    test('adds include_usage to a streaming request', () => {
+        const body = Buffer.from(JSON.stringify({ model: 'deepseek/deepseek-chat', stream: true }))
+        const rewritten = JSON.parse(ensureStreamUsageRequested(body).toString('utf8'))
+        expect(rewritten).toMatchObject({
+            model: 'deepseek/deepseek-chat',
+            stream: true,
+            stream_options: { include_usage: true },
+        })
+    })
+
+    test('preserves other stream options the caller already set', () => {
+        const body = Buffer.from(JSON.stringify({ stream: true, stream_options: { something: 1 } }))
+        const rewritten = JSON.parse(ensureStreamUsageRequested(body).toString('utf8'))
+        expect(rewritten.stream_options).toEqual({ something: 1, include_usage: true })
+    })
+
+    test('leaves a non-streaming request untouched', () => {
+        const body = Buffer.from(JSON.stringify({ stream: false }))
+        expect(ensureStreamUsageRequested(body)).toBe(body)
+    })
+
+    test('forwards anything it cannot parse byte-for-byte', () => {
+        const body = Buffer.from('not json at all')
+        expect(ensureStreamUsageRequested(body)).toBe(body)
+        expect(ensureStreamUsageRequested(undefined)).toBeUndefined()
+    })
+})
+
+describe('shouldRequestStreamUsage', () => {
+    const config = { requestsStreamUsage: true }
+
+    // Current Codex CLIs speak the Responses API on the OpenRouter route (the CLI removed
+    // wire_api "chat" in Feb 2026). `stream_options` is a Chat Completions field, and a
+    // Responses stream reports usage on `response.completed` unasked — so the rewrite must
+    // apply only to chat-completions bodies, never to `/v1/responses` requests.
+    test('applies only to chat-completions paths on a route that opted in', () => {
+        expect(shouldRequestStreamUsage(config, '/v1/chat/completions')).toBe(true)
+        expect(shouldRequestStreamUsage(config, '/v1/responses')).toBe(false)
+        expect(shouldRequestStreamUsage(config, '/v1/responses/resp_123')).toBe(false)
+    })
+
+    test('never applies on a route that did not opt in', () => {
+        expect(shouldRequestStreamUsage({}, '/v1/chat/completions')).toBe(false)
     })
 })

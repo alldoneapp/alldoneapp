@@ -52,8 +52,10 @@ export default function SocialText({
     const textSection = useRef(null)
 
     const calculateTextSectionWidth = () => {
-        const textSectionWidth = ReactDOM.findDOMNode(textSection.current).offsetWidth
-        setTextSectionWidth(textSectionWidth)
+        const textSectionNode = ReactDOM.findDOMNode(textSection.current)
+        if (!textSectionNode) return
+
+        setTextSectionWidth(textSectionNode.offsetWidth)
 
         if (textItemWidth > 0) handleShowEllipsis()
     }
@@ -127,10 +129,14 @@ export default function SocialText({
                         paddingTop: 40 + tagsExpandedHeight,
                     },
             ]}
-            onPress={e => {
-                const pressAllowed = allowPressInsidePopover ? !blockOpen : shouldOnPressInput(e, blockOpen)
-                if (onPress && pressAllowed) onPress(e)
-            }}
+            onPress={
+                onPress
+                    ? e => {
+                          const pressAllowed = allowPressInsidePopover ? !blockOpen : shouldOnPressInput(e, blockOpen)
+                          if (pressAllowed) onPress(e)
+                      }
+                    : undefined
+            }
             numberOfLines={activeCalendarStyle ? 1 : numberOfLines}
             onLayout={onLayoutChange}
         >

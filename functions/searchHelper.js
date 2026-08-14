@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const algoliasearch = require('algoliasearch')
 const moment = require('moment')
 const Y = require('yjs')
 
@@ -14,13 +13,9 @@ const {
     mapAssistantData,
 } = require('./ParsingTextHelper')
 const { mapUsersInProject, getProject } = require('./Firestore/generalFirestoreCloud')
-const { checkIfObjectIsLockedForUser, DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
+const { DYNAMIC_PERCENT } = require('./Utils/HelperFunctionsCloud')
 const { getProjectUsers } = require('./Users/usersFirestore')
-const { BatchWrapper } = require('./BatchWrapper/batchWrapper')
-const { getEnvFunctions } = require('./envFunctionsHelper')
 
-const APP_ID = '????'
-const ADMIN_API_KEY = '??????????'
 const TASKS_INDEX_NAME_PREFIX = 'dev_tasks'
 const GOALS_INDEX_NAME_PREFIX = 'dev_goals'
 const NOTES_INDEX_NAME_PREFIX = 'dev_notes'
@@ -36,13 +31,6 @@ const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
 const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
 const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
-
-const AMOUNT_OF_SEARCH_BY_PROJECT = 100
-
-const getAlgoliaClient = () => {
-    const { ALGOLIA_APP_ID, ALGOLIA_ADMIN_API_KEY } = getEnvFunctions()
-    return algoliasearch(ALGOLIA_APP_ID, ALGOLIA_ADMIN_API_KEY)
-}
 
 const parseObject = (objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive) => {
     if (objectsType === TASKS_OBJECTS_TYPE) {
@@ -191,7 +179,11 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
         object = mapGoalData(objectId, algoliaObjectId, baseObject, projectId)
     } else if (objectsType === NOTES_OBJECTS_TYPE) {
         console.log(`Processing note ${objectId} for Algolia indexing`)
-        object = mapNoteData(objectId, baseObject)
+        // mapNoteData is (noteId, algoliaObjectId, note, projectId) — this call used to pass
+        // (objectId, baseObject), so `note` was undefined and EVERY note in a bulk reindex
+        // threw at `note.extendedTitle`. Pre-AT-2258 the unawaited rejection was swallowed;
+        // afterwards it failed the whole notes indexation. Found by the Typesense backfill.
+        object = mapNoteData(objectId, algoliaObjectId, baseObject, projectId)
         // Add note content to the Algolia record
         console.log('Getting note content...')
         object.content = await getNoteContent(projectId, objectId)
@@ -216,14 +208,28 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
         object = mapChatData(objectId, algoliaObjectId, baseObject, projectId, { cleanComments })
     }
 
-    let isLocked = false
-    if (objectsType === TASKS_OBJECTS_TYPE || objectsType === GOALS_OBJECTS_TYPE) {
-        isLocked = checkIfObjectIsLockedForUser(object, usersMap)
-    }
-
-    const parsedObject = isLocked
-        ? null
-        : parseObject(objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive)
+    // NOTE: a guide-lock check used to sit here, as
+    // `checkIfObjectIsLockedForUser(object, usersMap)`. Its signature is
+    // `(projectId, lockKey, user)`, so the mapped object arrived as `projectId`,
+    // `usersMap` as `lockKey` — always a truthy object, so the `if (lockKey)`
+    // branch was always taken — and `user` as `undefined`, which the body
+    // immediately destructures. It therefore threw a TypeError for EVERY task
+    // and EVERY goal it ever saw. Because `processObject` is async that surfaced
+    // as a rejected promise, and the callers did not await it, so it was
+    // swallowed as an unhandled rejection: bulk reindexation of tasks and goals
+    // silently produced nothing at all. (AT-2258 measured it: the goals creator
+    // backfill reindexed 634 records and populated 0.)
+    //
+    // It is removed rather than repaired because there is no correct argument to
+    // give it here. The check asks "is this locked for THIS user", and the bulk
+    // path indexes a project once for everybody — there is no such user, only a
+    // map of them. More to the point, index-time locking was never actually in
+    // force: the per-object create/update path never applied it and writes
+    // almost every record in production, and the client does not filter on
+    // `lockKey` either. Reinstating it here would not restore a behaviour, it
+    // would introduce a new one — silently changing what every user can find —
+    // and that belongs in its own change.
+    const parsedObject = parseObject(objectsType, objectId, algoliaObjectId, object, projectId, canBeInactive)
     if (objectsType === NOTES_OBJECTS_TYPE && parsedObject) {
         console.log(`Final parsed note object for Algolia:`, {
             objectID: parsedObject.objectID,
@@ -263,39 +269,62 @@ const addChatsToList = async (projectId, usersMap, objectsList, activeFullSearch
     await Promise.all(promises)
 }
 
+// `processObject` is ASYNC (the chats branch awaits the topic's comments). A
+// caller that forgets to await it pushes a PROMISE into the upload list, and
+// `saveObjects` then serialises `{}` — the reindex "succeeds" and writes junk,
+// or throws far away from the mistake. `addNotesToList` / `addChatsToList`
+// await it; the four builders below did not, which silently broke bulk
+// reindexation for tasks, goals, contacts and assistants (found via AT-2258:
+// the goals creator backfill reindexed 634 records and populated none of them,
+// while chats — the one type that awaits — populated 327 of 337).
+//
+// Collecting promises and resolving them here keeps each builder's structure
+// and its `if (object)` skip for locked objects, which `processObject` returns
+// as null.
+const collectProcessedObjects = async (pendingObjects, objectsList) => {
+    const objects = await Promise.all(pendingObjects)
+    objects.forEach(object => {
+        if (object) objectsList.push(object)
+    })
+}
+
 const addAssistantsToList = async (projectId, usersMap, objectsList, db) => {
     const docs = await db.collection(`assistants/${projectId}/items`).get()
 
+    const pendingObjects = []
     const tryAddAssistant = doc => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, ASSISTANTS_OBJECTS_TYPE, baseObject, usersMap, false)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, ASSISTANTS_OBJECTS_TYPE, baseObject, usersMap, false))
     }
 
     docs.forEach(doc => {
         tryAddAssistant(doc)
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addContactsToList = async (projectId, usersMap, objectsList, db) => {
     const docs = await db.collection(`projectsContacts/${projectId}/contacts`).get()
 
+    const pendingObjects = []
     const tryAddContact = doc => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, CONTACTS_OBJECTS_TYPE, baseObject, usersMap, false)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, CONTACTS_OBJECTS_TYPE, baseObject, usersMap, false))
     }
 
     docs.forEach(doc => {
         tryAddContact(doc)
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addTasksToList = async (projectId, usersMap, objectsList, activeFullSearch, db) => {
+    const pendingObjects = []
     const tryAddTask = (doc, canBeInactive) => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, TASKS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, TASKS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive))
     }
 
     const mainRef = db.collection(`items/${projectId}/tasks`)
@@ -348,13 +377,15 @@ const addTasksToList = async (projectId, usersMap, objectsList, activeFullSearch
             tryAddTask(doc, true)
         })
     }
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 const addGoalsToList = async (projectId, usersMap, objectsList, activeFullSearch, db) => {
+    const pendingObjects = []
     const tryAddGoal = (doc, canBeInactive) => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, GOALS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive)
-        if (object) objectsList.push(object)
+        pendingObjects.push(processObject(projectId, doc.id, GOALS_OBJECTS_TYPE, baseObject, usersMap, canBeInactive))
     }
 
     const mainRef = db.collection(`goals/${projectId}/items`)
@@ -403,6 +434,8 @@ const addGoalsToList = async (projectId, usersMap, objectsList, activeFullSearch
             tryAddGoal(doc, true)
         }
     })
+
+    await collectProcessedObjects(pendingObjects, objectsList)
 }
 
 function chunkArray(initialArray, chunkSize) {
@@ -435,297 +468,21 @@ const getIndexName = objectsType => {
     return indexName
 }
 
-const createAlgoliaIndexes = async () => {
-    const algoliaClient = getAlgoliaClient()
-
-    const objectTypes = [
-        TASKS_OBJECTS_TYPE,
-        GOALS_OBJECTS_TYPE,
-        NOTES_OBJECTS_TYPE,
-        CONTACTS_OBJECTS_TYPE,
-        ASSISTANTS_OBJECTS_TYPE,
-        USERS_OBJECTS_TYPE,
-        CHATS_OBJECTS_TYPE,
-    ]
-
-    const promises = []
-    objectTypes.forEach(objectType => {
-        const indexName = getIndexName(objectType)
-        const algoliaIndex = algoliaClient.initIndex(indexName)
-        promises.push(configAlgoliaIndex(algoliaIndex, objectType))
-    })
-
-    await Promise.all(promises)
-}
-
-const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
-    if (objectsType === TASKS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['humanReadableIdSearchable', 'humanReadableId', 'name'],
-                typoTolerance: true, // Enable typo tolerance for better partial matching
-                ignorePlurals: false,
-                customRanking: ['desc(created)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(done)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(userId)',
-                    'filterOnly(lockKey)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === GOALS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['name'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(created)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(id)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(ownerId)',
-                    'filterOnly(lockKey)',
-                    'filterOnly(lastEditionDate)',
-                    'filterOnly(canBeInactive)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === NOTES_OBJECTS_TYPE) {
-        console.log('Configuring Algolia index for notes with searchable attributes:', ['title', 'content'])
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['title', 'content'],
-                typoTolerance: true,
-                ignorePlurals: true,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(userId)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-        // Verify the settings were applied
-        const settings = await algoliaIndex.getSettings()
-        console.log('Verified notes index settings:', settings)
-    } else if (
-        objectsType === CONTACTS_OBJECTS_TYPE ||
-        objectsType === USERS_OBJECTS_TYPE ||
-        objectsType === ASSISTANTS_OBJECTS_TYPE
-    ) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['displayName', 'cleanDescription', 'role', 'company'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(uid)',
-                    'filterOnly(recorderUserId)',
-                    'filterOnly(isAssistant)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    } else if (objectsType === CHATS_OBJECTS_TYPE) {
-        await algoliaIndex.setSettings(
-            {
-                searchableAttributes: ['cleanName', 'cleanLastComment', 'cleanComments'],
-                typoTolerance: false,
-                ignorePlurals: false,
-                customRanking: ['desc(lastEditionDate)'],
-                attributesForFaceting: [
-                    'filterOnly(projectId)',
-                    'filterOnly(isPrivate)',
-                    'filterOnly(isPublicFor)',
-                    'filterOnly(lastEditionDate)',
-                ],
-                hitsPerPage: AMOUNT_OF_SEARCH_BY_PROJECT,
-            },
-            {
-                forwardToReplicas: true,
-            }
-        )
-    }
-}
-
-const removeProjectObjectsFromAlgolia = async (objectsType, filters) => {
-    const algoliaClient = getAlgoliaClient()
-    const indexName = getIndexName(objectsType)
-    const algoliaIndex = algoliaClient.initIndex(indexName)
-
-    let matchingRecordIds = []
-    await algoliaIndex.browseObjects({
-        batch: hits => {
-            const hitIds = hits.map(hit => hit.objectID)
-            matchingRecordIds = matchingRecordIds.concat(hitIds)
-        },
-        query: '',
-        attributesToRetrieve: ['objectID'],
-        filters: filters,
-    })
-    await algoliaIndex.deleteObjects(matchingRecordIds)
-}
-
-const uploadObjectsToAlgolia = async (algoliaClient, objectsList, objectsType) => {
-    const indexName = getIndexName(objectsType)
-    const algoliaIndex = algoliaClient.initIndex(indexName)
-    await configAlgoliaIndex(algoliaIndex, objectsType)
-
-    const objectsGroups = chunkArray(objectsList, 500)
-
-    const promises = []
-    objectsGroups.forEach(group => {
-        promises.push(algoliaIndex.saveObjects(group))
-    })
-    await Promise.all(promises)
-}
+// The Algolia index-settings/config, bulk-upload and browse-delete helpers were removed in
+// Phase 5 of the search migration together with the algoliasearch dependency. Typesense
+// collections are created from schemas in typesenseHelper.js; bulk indexation is
+// migration/backfillTypesense.js.
 
 //////////////////////
 
-const getProjectAndUsersMap = async projectId => {
-    const usersMap = {}
+// The seven start*Indextion entry points, getProjectAndUsersMap and
+// checkAlgoliaFullSearchIndeaxtion were removed in Phase 4 of the Typesense migration
+// together with their algoliaIndexation/algoliaFullSearchIndexation triggers. Bulk
+// (re)indexation is Typesense-only now: migration/backfillTypesense.js.
 
-    const promises = []
-    promises.push(getProject(projectId, admin))
-    promises.push(mapUsersInProject(projectId, admin.firestore(), usersMap))
-    const [project] = await Promise.all(promises)
-
-    return { project, usersMap }
-}
-
-const startTasksIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const { project, usersMap } = await getProjectAndUsersMap(projectId)
-
-    const tasks = []
-    await addTasksToList(projectId, usersMap, tasks, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, tasks, TASKS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/tasks`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ tasksFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startGoalsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const { project, usersMap } = await getProjectAndUsersMap(projectId)
-
-    const goals = []
-    await addGoalsToList(projectId, usersMap, goals, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, goals, GOALS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/goals`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ goalsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startNotesIndextion = async (projectId, activeFullSearchDate) => {
-    console.log(`Starting notes indexation for project ${projectId}`)
-    const algoliaClient = getAlgoliaClient()
-
-    const notes = []
-    console.log('Fetching notes from Firestore...')
-    await addNotesToList(projectId, {}, notes, admin.firestore())
-    console.log(`Found ${notes.length} notes to index`)
-
-    console.log('Uploading notes to Algolia...')
-    await uploadObjectsToAlgolia(algoliaClient, notes, NOTES_OBJECTS_TYPE)
-    console.log('Notes uploaded to Algolia')
-
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/notes`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ notesFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-    console.log('Notes indexation completed')
-}
-
-const startChatsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const project = await getProject(projectId, admin)
-
-    const chats = []
-    await addChatsToList(projectId, {}, chats, !!project.activeFullSearch, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, chats, CHATS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/chats`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ chatsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startContactsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const contacts = []
-    await addContactsToList(projectId, {}, contacts, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, contacts, CONTACTS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/contacts`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ contactsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startAssistantsIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
-    const assistants = []
-    await addAssistantsToList(projectId, {}, assistants, admin.firestore())
-    await uploadObjectsToAlgolia(algoliaClient, assistants, ASSISTANTS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/assistants`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ assistantsFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const startUsersIndextion = async (projectId, activeFullSearchDate) => {
-    const algoliaClient = getAlgoliaClient()
-
+// Used by the Typesense backfill (migration/backfillTypesense.js): builds the per-project
+// member records exactly as the retired startUsersIndextion always did.
+const buildProjectUsersSearchRecords = async projectId => {
     const promises = []
     promises.push(getProject(projectId, admin))
     promises.push(getProjectUsers(projectId, false))
@@ -739,62 +496,22 @@ const startUsersIndextion = async (projectId, activeFullSearchDate) => {
         fillRolCompanyAndDescriptionInUser([project], projectId, userInProject)
         parsedUsers.push(userInProject)
     })
-
-    await uploadObjectsToAlgolia(algoliaClient, parsedUsers, USERS_OBJECTS_TYPE)
-    await admin.firestore().doc(`algoliaIndexation/${projectId}/objectTypes/users`).delete()
-    if (activeFullSearchDate) {
-        await admin
-            .firestore()
-            .doc(`algoliaFullSearchIndexation/${projectId}`)
-            .set({ usersFullSearchIndexed: true, activeFullSearchDate }, { merge: true })
-    }
-}
-
-const checkAlgoliaFullSearchIndeaxtion = async (projectId, fullSearchIndeaxtion) => {
-    const {
-        tasksFullSearchIndexed,
-        goalsFullSearchIndexed,
-        notesFullSearchIndexed,
-        chatsFullSearchIndexed,
-        contactsFullSearchIndexed,
-        assistantsFullSearchIndexed,
-        usersFullSearchIndexed,
-        activeFullSearchDate,
-    } = fullSearchIndeaxtion
-
-    if (
-        tasksFullSearchIndexed &&
-        goalsFullSearchIndexed &&
-        notesFullSearchIndexed &&
-        chatsFullSearchIndexed &&
-        contactsFullSearchIndexed &&
-        assistantsFullSearchIndexed &&
-        usersFullSearchIndexed
-    ) {
-        const batch = new BatchWrapper(admin.firestore())
-        batch.delete(admin.firestore().doc(`algoliaFullSearchIndexation/${projectId}`))
-        batch.update(admin.firestore().doc(`projects/${projectId}`), { activeFullSearch: activeFullSearchDate })
-        await batch.commit()
-    }
+    return parsedUsers
 }
 
 /////////////////////
 
 module.exports = {
-    removeProjectObjectsFromAlgolia,
-    startTasksIndextion,
-    startGoalsIndextion,
-    startNotesIndextion,
-    startContactsIndextion,
-    startAssistantsIndextion,
-    startChatsIndextion,
-    startUsersIndextion,
-    checkAlgoliaFullSearchIndeaxtion,
-    getAlgoliaClient,
     getNoteContent,
     processObject,
     addNotesToList,
-    configAlgoliaIndex,
-    uploadObjectsToAlgolia,
-    createAlgoliaIndexes,
+    addGoalsToList,
+    addTasksToList,
+    addContactsToList,
+    addAssistantsToList,
+    addChatsToList,
+    buildProjectUsersSearchRecords,
+    getIndexName,
+    GOALS_OBJECTS_TYPE,
+    CHATS_OBJECTS_TYPE,
 }

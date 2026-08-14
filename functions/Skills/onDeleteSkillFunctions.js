@@ -3,6 +3,7 @@ const admin = require('firebase-admin')
 const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
 const { deleteNote } = require('../Notes/notesFirestoreCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const updateSkillPoints = async (userId, points) => {
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
@@ -11,7 +12,7 @@ const updateSkillPoints = async (userId, points) => {
             .firestore()
             .doc(`users/${userId}`)
             .update({
-                skillPoints: admin.firestore.FieldValue.increment(points),
+                skillPoints: FieldValue.increment(points),
             })
     }
 }

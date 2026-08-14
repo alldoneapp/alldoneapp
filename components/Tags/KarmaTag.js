@@ -7,7 +7,15 @@ import Icon from '../Icon'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 
-export default function KarmaTag({ style, userId, useCommentTagStyle, viewProjectId, iconSize, textStyle, imageStyle }) {
+export default function KarmaTag({
+    style,
+    userId,
+    useCommentTagStyle,
+    viewProjectId,
+    iconSize,
+    textStyle,
+    imageStyle,
+}) {
     const projectId = viewProjectId ? viewProjectId : useSelector(state => state.quillEditorProjectId)
     const user = TasksHelper.getUserInProject(projectId, userId)
     const photoURL = user ? user.photoURL : ''
@@ -21,7 +29,10 @@ export default function KarmaTag({ style, userId, useCommentTagStyle, viewProjec
     return (
         <View style={[localStyles.tag, useCommentTagStyle && { minHeight: 20, height: 20 }, style]}>
             <Icon name="thumbs-up" size={iconSize || useCommentTagStyle ? 14 : 16} color={colors.Primary100} />
-            <Text style={[localStyles.text, useCommentTagStyle && localStyles.commentText, textStyle]} numberOfLines={1}>
+            <Text
+                style={[localStyles.text, useCommentTagStyle && localStyles.commentText, textStyle]}
+                numberOfLines={1}
+            >
                 Karma
             </Text>
             {photoURL ? (

@@ -18,24 +18,44 @@ const ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS = 55 * 60 * 1000
 // transport instead of the other way around.
 const HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
 
+// Runs hosted directly inside an onSchedule function are sized the same way, and for the same kind of
+// reason: Cloud Scheduler's attempt deadline tops out at 30 minutes no matter what timeout the
+// function itself carries. See SCHEDULED_FUNCTION_TIMEOUT_SECONDS below for why that ceiling is not
+// the 3600s one.
+const SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
+
 // Context assembly happens before the run and result posting after it, so the transport has to
 // outlive the run itself.
 const TRANSPORT_HEADROOM_MS = 5 * 60 * 1000
 
 const transportTimeoutSecondsFor = maxRunWallClockMs => (maxRunWallClockMs + TRANSPORT_HEADROOM_MS) / 1000
 
-// 3600s — also the ceiling for HTTP-invoked functions (onCall/onRequest/onSchedule). Event-triggered
-// functions cap at 540s and so cannot host a full assistant run at all.
+// 3600s — the ceiling for HTTP-invoked functions (onCall/onRequest) only. Event-triggered functions
+// cap at 540s and so cannot host a full assistant run at all.
 const ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS)
 
 // 1800s — also the Cloud Tasks dispatch ceiling, which is what sized the heartbeat run above.
 const HEARTBEAT_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS)
 
+// 1800s — the fourth ceiling, and the least obvious one. An onSchedule function IS an HTTP-invoked
+// Cloud Run service, so GCP will happily accept a 3600s timeout on it; four of ours ran at 3600s in
+// production for months. What that ignores is the Cloud Scheduler job in front of it, whose attempt
+// deadline caps at 1800s and then RETRIES. So a scheduled run past 30 minutes is not truncated — it
+// gets a second, concurrent invocation of the same function. firebase-tools warned about this
+// through v14 and made it a hard deploy error in v15, which is how it finally surfaced.
+//
+// Treating onSchedule as "HTTP, so 3600s" is exactly the mistake this file was written to prevent,
+// one tier over: runWorkflowAiStepsSecondGen was moved onto onSchedule to escape the 540s Eventarc
+// cap, on the assumption that a schedule could carry a 55-minute run. No trigger type can.
+const SCHEDULED_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS)
+
 module.exports = {
     ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+    SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     TRANSPORT_HEADROOM_MS,
     transportTimeoutSecondsFor,
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+    SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
 }

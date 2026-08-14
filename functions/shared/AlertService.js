@@ -5,14 +5,22 @@ const moment = require('moment')
  * Minimal server-side alert updater for tasks (Cloud Functions context).
  * - Updates task.alertEnabled
  * - When enabling and alertMoment provided, aligns task.dueDate to alert time in the user's timezone
+ * - Records which delivery channels the reminder explicitly asked for (AT-2211)
+ *
+ * This is the single funnel every server-side alert write goes through (create_task and
+ * update_task both land here), which is why the origin channel is stamped here rather
+ * than at each call site.
  *
  * @param {string} projectId
  * @param {string} taskId
  * @param {boolean} alertEnabled
  * @param {import('moment').Moment} alertMoment
  * @param {Object} task Optional current task snapshot to avoid refetch
+ * @param {Object} [options]
+ * @param {string[]} [options.alertChannels] Channels the reminder explicitly requested
+ *   (e.g. ['whatsapp'] when set from WhatsApp). Omit to leave any existing value alone.
  */
-async function setTaskAlertCloud(projectId, taskId, alertEnabled, alertMoment, task) {
+async function setTaskAlertCloud(projectId, taskId, alertEnabled, alertMoment, task, options = {}) {
     try {
         const db = admin.firestore()
         const taskRef = db.doc(`items/${projectId}/tasks/${taskId}`)
@@ -25,6 +33,20 @@ async function setTaskAlertCloud(projectId, taskId, alertEnabled, alertMoment, t
         }
 
         const updateData = { alertEnabled: !!alertEnabled }
+
+        if (!alertEnabled) {
+            // An explicit disable clears any origin-channel routing, so a later re-enable
+            // from the app cannot silently inherit a channel the user never asked for again.
+            updateData.alertChannels = []
+        } else if (Array.isArray(options.alertChannels)) {
+            updateData.alertChannels = [
+                ...new Set(
+                    options.alertChannels
+                        .filter(channel => typeof channel === 'string' && channel.trim().length > 0)
+                        .map(channel => channel.trim().toLowerCase())
+                ),
+            ]
+        }
 
         if (alertEnabled && alertMoment) {
             let baseDate = currentTask.dueDate ? moment(currentTask.dueDate) : moment()
@@ -53,6 +75,7 @@ async function setTaskAlertCloud(projectId, taskId, alertEnabled, alertMoment, t
             alertEnabled: updateData.alertEnabled,
             alertTime: alertMoment && alertMoment.format ? alertMoment.format('YYYY-MM-DD HH:mm:ss Z') : null,
             dueDate: updateData.dueDate || currentTask.dueDate || null,
+            alertChannels: updateData.alertChannels,
         })
     } catch (error) {
         console.error('setTaskAlertCloud failed:', error.message)

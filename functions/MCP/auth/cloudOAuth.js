@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const { v4: uuidv4 } = require('uuid')
 const { getEnvironmentConfig } = require('../config/environments.js')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -51,8 +52,8 @@ class CloudSessionManager {
             sessionId,
             userId,
             userData,
-            createdAt: admin.firestore.Timestamp.now(),
-            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
         }
 
         await this.db.collection(this.collection).doc(sessionId).set(session)
@@ -85,7 +86,7 @@ class CloudSessionManager {
         const snapshot = await this.db
             .collection(this.collection)
             .where('userId', '==', userId)
-            .where('expiresAt', '>', admin.firestore.Timestamp.now())
+            .where('expiresAt', '>', Timestamp.now())
             .orderBy('expiresAt', 'desc')
             .limit(1)
             .get()
@@ -115,9 +116,9 @@ class UserSessionManager {
             email,
             bearerToken,
             sessionId: mcpSessionId,
-            createdAt: admin.firestore.Timestamp.now(),
-            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
-            lastUsed: admin.firestore.Timestamp.now(),
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days
+            lastUsed: Timestamp.now(),
         }
 
         await this.db.collection(this.collection).doc(userId).set(session)
@@ -145,7 +146,7 @@ class UserSessionManager {
         if (!userId) return
 
         await this.db.collection(this.collection).doc(userId).update({
-            lastUsed: admin.firestore.Timestamp.now(),
+            lastUsed: Timestamp.now(),
         })
     }
 
@@ -205,7 +206,7 @@ class UserSessionManager {
 
     async cleanupExpiredSessions() {
         try {
-            const now = admin.firestore.Timestamp.now()
+            const now = Timestamp.now()
             const expiredSessions = await this.db.collection(this.collection).where('expiresAt', '<', now).get()
 
             const deletePromises = expiredSessions.docs.map(doc => doc.ref.delete())
@@ -248,8 +249,8 @@ class CloudOAuthHandler {
         const sessionId = uuidv4()
         const authData = {
             sessionId,
-            createdAt: admin.firestore.Timestamp.now(),
-            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 minutes
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 minutes
             status: 'pending',
         }
 
@@ -286,7 +287,7 @@ class CloudOAuthHandler {
                     mcpSessionId,
                     userId,
                     bearerToken: firebaseToken, // Include Bearer token for immediate use
-                    completedAt: admin.firestore.Timestamp.now(),
+                    completedAt: Timestamp.now(),
                 })
             }
 

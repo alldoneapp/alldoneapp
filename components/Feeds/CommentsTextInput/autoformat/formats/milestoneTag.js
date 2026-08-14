@@ -1,9 +1,9 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
-import MilestoneTagWrapper from "../tags/MilestoneTagWrapper";
+import MilestoneTagWrapper from '../tags/MilestoneTagWrapper'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -46,8 +46,8 @@ export default class MilestoneTag extends Embed {
         }
     }
 
-    constructor(domNode) {
-        super(domNode)
+    constructor(scroll, domNode) {
+        super(scroll, domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = MilestoneTag.data
     }

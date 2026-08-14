@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import Hotkeys from 'react-hot-keys'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import { QuillBinding } from 'y-quill'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
@@ -70,6 +70,7 @@ import {
 import { MANAGE_TASK_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { DV_TAB_NOTE_EDITOR } from '../../../../utils/TabNavigationConstants'
 import {
+    captureSelectionFromEditor,
     getSelection,
     handleTextChangeForMentions,
     loadMentionsData,
@@ -88,6 +89,8 @@ import { checkIsLimitedByTraffic } from '../../../Premium/PremiumHelper'
 import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
+import { loadNoteContentWithRetry } from './noteContentLoader'
+import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -108,6 +111,7 @@ export let exportRef = null
 export let exportLoadingRef = null
 export let loadedNote = null
 const SAVE_INTERVAL = 3000
+const NOTE_CONTENT_RETRY_DELAY = 5000
 
 const NotesEditorView = ({
     project,
@@ -136,7 +140,7 @@ const NotesEditorView = ({
     const userName = loggedUser.displayName
     const selectedTab = useSelector(state => state.selectedNavItem)
     const isLoadingData = useSelector(state => state.isLoadingData)
-    const [state, setState] = useState({ value: null })
+    const [editorRevision, setEditorRevision] = useState(0)
     const [synced, setSynced] = useState(false)
     const [editors, setEditors] = useState([])
     const [dataLoaded, setDataLoaded] = useState(false)
@@ -148,6 +152,7 @@ const NotesEditorView = ({
     let binding = useRef(null)
     let dirtyEditor = useRef(false)
     let saveTimeoutHandle = useRef(null)
+    const noteContentRetryTimeoutRef = useRef(null)
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
     const dispatch = useDispatch()
@@ -366,7 +371,7 @@ const NotesEditorView = ({
         }
     }
 
-    const handleChange = (value, delta, source) => {
+    const handleChange = (_value, delta, source) => {
         handleTextChangeForMentions()
         if (dataLoaded) {
             dirtyEditor.current = true
@@ -381,7 +386,7 @@ const NotesEditorView = ({
         }
         checkForInnerTasksChanges(delta.ops, source)
         checkIfNeedReplaceFormats(delta.ops)
-        setState({ value })
+        setEditorRevision(revision => revision + 1)
 
         resetTimeoutCounter()
     }
@@ -507,6 +512,8 @@ const NotesEditorView = ({
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
+        clearTimeout(noteContentRetryTimeoutRef.current)
+        noteContentRetryTimeoutRef.current = null
 
         if (!loadingRef.current && dirtyEditor.current) {
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
@@ -538,7 +545,7 @@ const NotesEditorView = ({
         if (needReplaceImageFormat.current) {
             replaceQuillImagesByCustomImagesFormat()
         }
-    }, [state])
+    }, [editorRevision])
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -617,7 +624,7 @@ const NotesEditorView = ({
 
                 // Fall back to HTML processing if available
                 if (htmlData) {
-                    const pastedDelta = exportRef.getEditor().clipboard.convert(htmlData)
+                    const pastedDelta = exportRef.getEditor().clipboard.convert({ html: htmlData })
                     const finalDelta = { ops: [] }
 
                     for (let i = 0; i < pastedDelta.ops.length; i++) {
@@ -721,36 +728,37 @@ const NotesEditorView = ({
             }
         })
 
-        ydoc.current = new Y.Doc()
-        const type = ydoc.current.getText('quill')
-        Backend.getNoteData(projectId, note.id).then(data => {
-            dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
-            if (!noteUnmountedRef.current) {
-                const update = new Uint8Array(data)
-                if (update.length > 0) {
-                    Y.applyUpdate(ydoc.current, update)
+        const loadNoteContent = async () => {
+            try {
+                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                if (noteUnmountedRef.current) return
+
+                const collaboration = await prepareSyncedNoteDocument(data, document => {
+                    return new WebsocketProvider(
+                        getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                        note.id,
+                        document
+                    )
+                })
+                if (noteUnmountedRef.current) {
+                    collaboration.provider.destroy()
+                    collaboration.document.destroy()
+                    return
                 }
 
-                provider.current = new WebsocketProvider(
-                    getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                    note.id,
-                    ydoc.current
-                )
-                /*provider.current = new WebrtcProvider(note.id, ydoc.current, {
-                        peerOpts: { config },
-                        signaling: signalingServers,
-                    })*/
+                ydoc.current = collaboration.document
+                provider.current = collaboration.provider
+                const type = ydoc.current.getText('quill')
                 provider.current.on('synced', synced => {
-                    setSynced(true)
+                    setSynced(synced)
                 })
+                setSynced(provider.current.synced)
                 provider.current.awareness.setLocalStateField('user', {
                     name: userName,
                     color: color.current,
                 })
                 binding.current = new QuillBinding(type, quillRef.current, provider.current.awareness)
 
-                loadingRef.current = false
-                exportLoadingRef = false
                 quillRef.current.focus()
                 quillRef.current.setSelection(0, 0)
 
@@ -772,8 +780,28 @@ const NotesEditorView = ({
                     }
                 }
                 checkMaxLength()
+                if (collaboration.recovered) {
+                    console.warn('Recovered note content after a destructive collaboration sync', {
+                        noteId: note.id,
+                    })
+                }
+                loadingRef.current = false
+                exportLoadingRef = false
+                dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
+            } catch (error) {
+                if (noteUnmountedRef.current) return
+                binding.current?.destroy()
+                provider.current?.destroy()
+                ydoc.current?.destroy()
+                binding.current = null
+                provider.current = null
+                ydoc.current = null
+                console.error('Failed to load note content; keeping the editor locked and retrying', error)
+                noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
-        })
+        }
+
+        loadNoteContent()
         return cleanup
     }, [])
 
@@ -887,10 +915,25 @@ const NotesEditorView = ({
         }
     }
 
+    // react-quill throws when the editor has not been instantiated yet, so every
+    // caller that only needs a best-effort read goes through this.
+    const getNoteEditor = () => {
+        try {
+            return reactQuillRef ? reactQuillRef.getEditor() : null
+        } catch (error) {
+            return null
+        }
+    }
+
     const renderTask = () => {
         if (blockShortcuts) {
             return
         }
+        // Snapshot what is selected right now, before the modal mounts and takes
+        // focus. The create-task popup pre-fills itself from this selection and
+        // the created task tag replaces it in the note, so it has to be read at
+        // press time rather than trusted to still be cached later.
+        captureSelectionFromEditor(getNoteEditor())
         storeModal(MANAGE_TASK_MODAL_ID)
     }
 
@@ -1233,7 +1276,6 @@ const NotesEditorView = ({
                         exportRef = el
                     }}
                     theme="snow"
-                    value={state.value}
                     onChange={handleChange}
                     placeholder={createPlaceholder('Type your note...', QUILL_EDITOR_NOTE_TYPE, note.id)}
                     modules={modules}

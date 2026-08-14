@@ -5,6 +5,7 @@ const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
 const { buildContactEmailFields, getContactEmails } = require('./contactEmailHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { ProjectService } = require('./ProjectService')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const MIN_FUZZY_NAME_SIMILARITY = 0.8
 
@@ -326,7 +327,7 @@ async function addDirectFollow({ db, projectId, userId, objectType, objectId }) 
 
     await db.doc(`followers/${projectId}/${objectType}/${objectId}`).set(
         {
-            usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+            usersFollowing: FieldValue.arrayUnion(userId),
         },
         { merge: true }
     )
@@ -353,8 +354,8 @@ async function ensureCurrentUserFollowsContactAndNote({ db, projectId, contact, 
 
     await db.doc(`noteItems/${projectId}/notes/${note.id}`).set(
         {
-            followersIds: admin.firestore.FieldValue.arrayUnion(feedUser.uid),
-            isVisibleInFollowedFor: admin.firestore.FieldValue.arrayUnion(feedUser.uid),
+            followersIds: FieldValue.arrayUnion(feedUser.uid),
+            isVisibleInFollowedFor: FieldValue.arrayUnion(feedUser.uid),
         },
         { merge: true }
     )

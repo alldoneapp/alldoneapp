@@ -1,4 +1,4 @@
-import * as Localization from 'expo-localization'
+import * as Localization from '../utils/WebShims/Localization'
 import { useSelector } from 'react-redux'
 import { useEffect, useState } from 'react'
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import ModalHeader from '../ModalHeader'
@@ -11,6 +11,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { getDateFormat, getTimeFormat } from '../DateFormatPickerModal'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import HelperFunctions from '../../../../utils/HelperFunctions'
+import useModalSizing from '../../../../hooks/useModalSizing'
 
 const CURRENT_PROMPT_ID = 'current'
 
@@ -30,8 +31,8 @@ function PromptVersionItem({ item, isSelected, onSelect }) {
     const metaText = item.isCurrent
         ? translate('Current version')
         : item.editorName
-        ? translate(`Name was last editor • Date Time`, { name: item.editorName, date: dateText, time: timeText })
-        : translate(`Version from Date`, { date: dateText })
+          ? translate(`Name was last editor • Date Time`, { name: item.editorName, date: dateText, time: timeText })
+          : translate(`Version from Date`, { date: dateText })
 
     return (
         <View style={localStyles.itemContainer}>
@@ -62,9 +63,8 @@ export default function AssistantPromptHistoryModal({
     closeModal,
     restorePrompt,
 }) {
-    const { width: windowWidth } = Dimensions.get('window')
-    const isMobile = windowWidth < 600
-    const modalWidth = isMobile ? windowWidth - 32 : Math.min(windowWidth * 0.9, 720)
+    const { isSheet: isMobile, width: sheetWidth, windowWidth } = useModalSizing()
+    const modalWidth = isMobile ? sheetWidth : Math.min(windowWidth * 0.9, 720)
     const [selectedId, setSelectedId] = useState(CURRENT_PROMPT_ID)
 
     const historyItems = (Array.isArray(history) ? history : []).map((entry, index) => {
@@ -139,10 +139,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: 'rgba(78, 93, 120, 0.56)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 16,
+        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
         paddingVertical: 16,
         paddingHorizontal: 16,

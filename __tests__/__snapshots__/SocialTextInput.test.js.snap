@@ -1,111 +1,47 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SocialTextInput component SocialTextInput snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx"
+  dir={null}
   style={
-    Object {
+    {
       "flexDirection": "row",
     }
   }
 >
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+  <div
+    className="css-view-g5y9jx r-borderColor-plf49q r-borderRadius-z2wwpe r-borderWidth-d045u9 r-minHeight-ero68b r-paddingInline-3pj75a"
+    dir={null}
     style={
-      Object {
+      {
         "flex": 1,
-        "opacity": 1,
       }
     }
   >
-    <RCTScrollView
-      horizontal={true}
-      showsHorizontalScrollIndicator={false}
-      style={
-        Object {
-          "flex": 1,
-        }
+    <CustomTextInput3
+      autoFocus={true}
+      containerStyle={
+        [
+          {
+            "height": 24,
+            "paddingLeft": 0,
+            "paddingRight": 0,
+          },
+          {
+            "minWidth": 0,
+          },
+        ]
       }
-    >
-      <View>
-        <View>
-          <TextInput
-            allowFontScaling={true}
-            autoFocus={true}
-            customOnSubmitEditing={[Function]}
-            onChangeSocialText={[Function]}
-            onChangeText={[Function]}
-            onSubmitEditing={[Function]}
-            rejectResponderTermination={true}
-            selectionColor="transparent"
-            style={
-              Array [
-                Object {
-                  "color": "transparent",
-                  "display": "flex",
-                  "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "height": 40,
-                  "letterSpacing": 0.32,
-                  "paddingLeft": 16,
-                  "position": "absolute",
-                  "textAlignVertical": "center",
-                  "top": -0.5,
-                },
-                Object {
-                  "width": 0,
-                },
-                undefined,
-                undefined,
-              ]
-            }
-            underlineColorAndroid="transparent"
-            value=""
-          />
-          <Text
-            onLayout={[Function]}
-            style={
-              Object {
-                "color": "#04142F",
-                "display": "flex",
-                "flexDirection": "row",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-                "paddingLeft": 16,
-                "paddingTop": 8,
-              }
-            }
-          >
-            <Text
-              style={
-                Object {
-                  "color": "#04142F",
-                  "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
-                }
-              }
-            >
-              
-            </Text>
-            <Text>
-               
-            </Text>
-          </Text>
-        </View>
-      </View>
-    </RCTScrollView>
-  </View>
-</View>
+      forceTriggerEnterActionForBreakLines={[Function]}
+      horizontalScroll={true}
+      initialMentions={[]}
+      initialTextExtended=" "
+      onChangeText={[Function]}
+      placeholder="Write the name of the task"
+      setMentionsModalActive={[Function]}
+      updateMentions={[Function]}
+    />
+  </div>
+</div>
 `;

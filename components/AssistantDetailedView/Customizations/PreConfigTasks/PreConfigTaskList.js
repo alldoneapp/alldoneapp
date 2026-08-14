@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
-import { DragDropContext } from 'react-beautiful-dnd'
+import { DragDropContext } from '@hello-pangea/dnd'
 
 import styles, { colors } from '../../../styles/global'
 import {

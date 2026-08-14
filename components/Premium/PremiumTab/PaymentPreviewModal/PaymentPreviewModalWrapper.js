@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../../UIControls/Button'
+import { popoverToCenter } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import PaymentPreviewModal from './PaymentPreviewModal'
 import { getSubscriptionStatus } from '../../PremiumHelper'
@@ -17,11 +18,8 @@ export default function PaymentPreviewModalWrapper({
 }) {
     const [showModal, setShowModal] = useState(false)
 
-    const {
-        isPendingSubscription,
-        isEditingUsersPendingSubscription,
-        isActivationPendingSubscription,
-    } = getSubscriptionStatus(subscription)
+    const { isPendingSubscription, isEditingUsersPendingSubscription, isActivationPendingSubscription } =
+        getSubscriptionStatus(subscription)
 
     const openModal = () => {
         setShowModal(true)
@@ -47,10 +45,11 @@ export default function PaymentPreviewModalWrapper({
         (isPendingSubscription || isEditingUsersPendingSubscription || isActivationPendingSubscription) && 'credit-card'
 
     return (
-        <Popover
+        <AppPopover
             position={['top', 'left', 'right', 'bottom']}
             padding={4}
             align={'center'}
+            contentLocation={popoverToCenter}
             onClickOutside={closeModal}
             isOpen={showModal}
             content={
@@ -71,6 +70,6 @@ export default function PaymentPreviewModalWrapper({
                 onPress={openModal}
                 icon={showButtonCreditCardIcon}
             />
-        </Popover>
+        </AppPopover>
     )
 }

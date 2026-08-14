@@ -119,9 +119,9 @@ The WebhookArea now displays fields in this order:
 
 The save button is now disabled unless:
 
--   ✅ Task name is not empty
--   ✅ Webhook URL is valid HTTPS
--   ✅ **Webhook prompt is not empty** ← NEW!
+- ✅ Task name is not empty
+- ✅ Webhook URL is valid HTTPS
+- ✅ **Webhook prompt is not empty** ← NEW!
 
 ## 🧪 Testing
 
@@ -137,11 +137,11 @@ The save button is now disabled unless:
 
 **User configures:**
 
--   **Name**: "Generate Marketing Video"
--   **Type**: Webhook
--   **URL**: `https://video-service.com/api/generate`
--   **Prompt**: "Create a 30-second marketing video showcasing our new product features with upbeat music"
--   **Auth**: `Bearer abc123`
+- **Name**: "Generate Marketing Video"
+- **Type**: Webhook
+- **URL**: `https://video-service.com/api/generate`
+- **Prompt**: "Create a 30-second marketing video showcasing our new product features with upbeat music"
+- **Auth**: `Bearer abc123`
 
 **External service receives:**
 
@@ -168,10 +168,10 @@ The save button is now disabled unless:
 
 ## 📚 Related Files
 
--   `WebhookArea.js` - UI component
--   `TaskModal.js` - Modal wrapper
--   `PreConfigTaskModal.js` - Parent component with state
--   `assistantPreConfigTaskTopic.js` - Backend executor
--   `en.json`, `de.json`, `es.json` - Translations
+- `WebhookArea.js` - UI component
+- `TaskModal.js` - Modal wrapper
+- `PreConfigTaskModal.js` - Parent component with state
+- `assistantPreConfigTaskTopic.js` - Backend executor
+- `en.json`, `de.json`, `es.json` - Translations
 
 All ready to use! 🚀

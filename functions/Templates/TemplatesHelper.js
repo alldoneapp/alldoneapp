@@ -174,8 +174,8 @@ const getItemsByOldIdsAndAddNewId = (items, guideId, useUidProperty, needsIdBoun
             !needsIdBoundedToTheTemplate || (item.parentObject && item.parentObject.id !== templateCreator.uid)
                 ? getId()
                 : item.parentObject && item.parentObject.id === templateCreator.uid
-                ? guideId + templateCreator.uid
-                : guideId + oldId
+                  ? guideId + templateCreator.uid
+                  : guideId + oldId
 
         item.oldId = oldId
         if (useUidProperty) item.uid = item.id
@@ -200,8 +200,8 @@ const proccessExtendedTexts = (text, templateId, creatorId, objectsMap, guideId,
                     creatorId === mentionUserId
                         ? `@${userName.replace(/ /g, MENTION_SPACE_CODE)}#${userId}`
                         : contact
-                        ? `@${contact.displayName.replace(/ /g, MENTION_SPACE_CODE)}#${contact.id}`
-                        : word
+                          ? `@${contact.displayName.replace(/ /g, MENTION_SPACE_CODE)}#${contact.id}`
+                          : word
                 finalText += mentionText
             } else {
                 finalText += word
@@ -462,13 +462,13 @@ const generateNewGoals = (
         newGoal.startingMilestoneDate = putGoalsInBacklog
             ? BACKLOG_DATE_NUMERIC
             : startingMilestoneDate === BACKLOG_DATE_NUMERIC
-            ? BACKLOG_DATE_NUMERIC
-            : startingMilestoneDate + dateDifference
+              ? BACKLOG_DATE_NUMERIC
+              : startingMilestoneDate + dateDifference
         newGoal.completionMilestoneDate = putGoalsInBacklog
             ? BACKLOG_DATE_NUMERIC
             : completionMilestoneDate === BACKLOG_DATE_NUMERIC
-            ? BACKLOG_DATE_NUMERIC
-            : completionMilestoneDate + dateDifference
+              ? BACKLOG_DATE_NUMERIC
+              : completionMilestoneDate + dateDifference
         newGoal.parentDoneMilestoneIds = []
         newGoal.progressByDoneMilestone = {}
         newGoal.dateByDoneMilestone = {}
@@ -866,16 +866,8 @@ const updateNoteContent = async (appAdmin, templateId, creatorId, guideId, userI
         const noteOps = type.toDelta()
 
         noteOps.forEach(op => {
-            const {
-                mention,
-                hashtag,
-                email,
-                url,
-                taskTagFormat,
-                attachment,
-                customImageFormat,
-                videoFormat,
-            } = op.insert
+            const { mention, hashtag, email, url, taskTagFormat, attachment, customImageFormat, videoFormat } =
+                op.insert
 
             const tagData =
                 mention || hashtag || email || url || taskTagFormat || attachment || customImageFormat || videoFormat
@@ -1105,36 +1097,29 @@ const copyDataFromTemplateToGuide = async (
         assistantTasks: assistantTasksByOldId,
     }
 
-    const {
-        newTasks,
-        newGoals,
-        newMilestones,
-        newContacts,
-        newNotes,
-        newAssistants,
-        newAssistantTasks,
-    } = generateNewObjects(
-        templateId,
-        creatorId,
-        guideId,
-        userId,
-        userName,
-        userPhotoUrl,
-        dateMiddleOfDay,
-        dateDifference,
-        dateNow,
-        serverTime,
-        objectsMap,
-        tasks,
-        goals,
-        milestones,
-        contacts,
-        notes,
-        notesLinkedToTemplate,
-        isNewGuide ? assistants : [],
-        assistantTasks,
-        unlockedTemplate
-    )
+    const { newTasks, newGoals, newMilestones, newContacts, newNotes, newAssistants, newAssistantTasks } =
+        generateNewObjects(
+            templateId,
+            creatorId,
+            guideId,
+            userId,
+            userName,
+            userPhotoUrl,
+            dateMiddleOfDay,
+            dateDifference,
+            dateNow,
+            serverTime,
+            objectsMap,
+            tasks,
+            goals,
+            milestones,
+            contacts,
+            notes,
+            notesLinkedToTemplate,
+            isNewGuide ? assistants : [],
+            assistantTasks,
+            unlockedTemplate
+        )
 
     promises = []
     promises.push(

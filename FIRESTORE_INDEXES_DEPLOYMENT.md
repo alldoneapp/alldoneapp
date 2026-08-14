@@ -4,9 +4,9 @@
 
 **Good news**: Deploying new indexes does NOT delete your existing ones by default!
 
--   ✅ New indexes are added
--   ✅ Matching indexes are updated
--   ✅ Unmatched existing indexes remain untouched
+- ✅ New indexes are added
+- ✅ Matching indexes are updated
+- ✅ Unmatched existing indexes remain untouched
 
 ## 🚀 Deployment Options
 
@@ -97,17 +97,17 @@ The composite indexes will improve:
 
 Note: The chat comments query (your main AI bottleneck) already uses Firestore's automatic single-field index. The real performance gains for AI will come from:
 
--   ✅ Tiktoken optimization (saves 800ms)
--   ✅ Parallel data fetching (saves 200-500ms)
--   🔍 Check Firestore region alignment with Cloud Functions
+- ✅ Tiktoken optimization (saves 800ms)
+- ✅ Parallel data fetching (saves 200-500ms)
+- 🔍 Check Firestore region alignment with Cloud Functions
 
 ## 🔍 Verify Indexes Are Being Used
 
 Check your logs after deployment:
 
--   Queries using indexes will be faster
--   No more "slow query" warnings in logs
--   Consistent query performance
+- Queries using indexes will be faster
+- No more "slow query" warnings in logs
+- Consistent query performance
 
 ## ⚠️ Important Notes
 
