@@ -28,7 +28,7 @@ const undoActionBarStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 8,
-        backgroundColor: hexColorToRGBa(colors.Text01, 0.7),
+        backgroundColor: hexColorToRGBa(colors.Text01, 0.8),
         flexDirection: 'row',
         alignItems: 'center',
         boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
