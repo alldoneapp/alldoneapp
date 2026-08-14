@@ -2,9 +2,10 @@
     "name": "Alldone",
     "short_name": "Alldone",
     "start_url": "/",
-    "display": "fullscreen",
+    "display": "standalone",
     "description": "Next gen collaboration tool that makes team productivity simple.",
     "background_color": "#0A44A5",
+    "theme_color": "#FFFFFF",
     "icons": [
         {
             "src": "icons/App-Icon(48x).png",
