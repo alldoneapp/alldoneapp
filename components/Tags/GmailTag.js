@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import { getGmailTaskData, getGmailTaskWebUrl } from '../../utils/Gmail/gmailTaskUtils'
@@ -31,7 +31,11 @@ const GmailTag = ({ gmailData, propStyles, showLabel, label = 'Email', iconSize 
 
     const openLink = event => {
         stopEvent(event)
-        const webUrl = getGmailTaskWebUrl(resolvedGmailData)
+        const webUrl = getGmailTaskWebUrl(resolvedGmailData, {
+            platform: Platform.OS,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0,
+        })
         if (webUrl) openUrlInNewTab(webUrl)
     }
 
