@@ -147,6 +147,16 @@ describe('ChatItemUnreadMessage email actions', () => {
         expect(tree.root.findAllByType(require('../Tags/GmailTag').default)).toHaveLength(1)
     })
 
+    it('makes the message preview itself clickable without replacing its nested actions', () => {
+        const onPress = jest.fn()
+        const tree = renderPreviewMessage({ onPress })
+
+        pressByLabel(tree, 'Open chat')
+
+        expect(onPress).toHaveBeenCalledTimes(1)
+        expect(labels(tree)).toEqual(expect.arrayContaining(['Open chat', 'Create task', 'Archive email']))
+    })
+
     it('shows no email actions for an ordinary chat message', () => {
         const tree = renderPreviewMessage({ message: emailMessage({ gmailData: undefined }) })
 
