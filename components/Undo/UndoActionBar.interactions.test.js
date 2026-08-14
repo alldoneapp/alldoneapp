@@ -30,7 +30,7 @@ jest.mock('../styles/global', () => ({
     __esModule: true,
     default: { body2: {}, button: {} },
     colors: { Text01: '#000000', UtilityBlue200: '#0000FF' },
-    hexColorToRGBa: () => 'rgba(0,0,0,0.7)',
+    hexColorToRGBa: () => 'rgba(0,0,0,0.8)',
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 
