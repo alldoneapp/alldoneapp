@@ -24,21 +24,33 @@ const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 60000
 
 const CLIENT_INFO = { name: 'alldone-assistant', version: '1.0.0' }
+const { logMcpConnectPhase } = require('../MCP/mcpConnectDiagnostics')
 
 // Cache the dynamically imported ESM modules so we only pay the import cost once
 // per warm function instance.
 let sdkModulesPromise = null
 function loadSdk() {
     if (!sdkModulesPromise) {
+        const startedAt = Date.now()
+        logMcpConnectPhase('sdk_load_start')
         sdkModulesPromise = Promise.all([
             import('@modelcontextprotocol/sdk/client/index.js'),
             import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
             import('@modelcontextprotocol/sdk/client/sse.js'),
-        ]).then(([clientMod, streamableMod, sseMod]) => ({
-            Client: clientMod.Client,
-            StreamableHTTPClientTransport: streamableMod.StreamableHTTPClientTransport,
-            SSEClientTransport: sseMod.SSEClientTransport,
-        }))
+        ]).then(
+            ([clientMod, streamableMod, sseMod]) => {
+                logMcpConnectPhase('sdk_load_complete', { durationMs: Date.now() - startedAt })
+                return {
+                    Client: clientMod.Client,
+                    StreamableHTTPClientTransport: streamableMod.StreamableHTTPClientTransport,
+                    SSEClientTransport: sseMod.SSEClientTransport,
+                }
+            },
+            error => {
+                logMcpConnectPhase('sdk_load_failed', { durationMs: Date.now() - startedAt })
+                throw error
+            }
+        )
     }
     return sdkModulesPromise
 }

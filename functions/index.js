@@ -1235,7 +1235,9 @@ exports.setVmCredentialMode = onCall(
 exports.connectAssistantMcpServer = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MiB',
+        // MCP SDK loading runs on top of the shared index.js cold-start footprint,
+        // which can exceed 256MiB before tools/list completes.
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
