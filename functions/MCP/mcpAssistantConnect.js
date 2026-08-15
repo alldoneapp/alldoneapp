@@ -3,6 +3,7 @@ const { HttpsError } = require('firebase-functions/v2/https')
 const { v4: uuidv4 } = require('uuid')
 
 const mcpClient = require('../Assistant/mcpClient')
+const { logMcpConnectPhase } = require('./mcpConnectDiagnostics')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 
@@ -216,18 +217,21 @@ async function connectAssistantMcpServer({ userId, projectId, assistantId, serve
 
     // Validate by listing tools. Surface a clean error to the UI on failure.
     let tools
+    const toolsListStartedAt = Date.now()
+    logMcpConnectPhase('tools_list_start')
     try {
         tools = await mcpClient.listTools(normalized, secretForValidation)
     } catch (err) {
+        logMcpConnectPhase('tools_list_failed', { durationMs: Date.now() - toolsListStartedAt })
         throw new HttpsError(
             'failed-precondition',
             `Could not connect to the MCP server: ${String(err && err.message ? err.message : err).slice(0, 300)}`
         )
     }
-
-    if (secretToPersist) {
-        await buildSecretDocRef(projectId, assistantId, normalized.id).set(secretToPersist, { merge: true })
-    }
+    logMcpConnectPhase('tools_list_complete', {
+        durationMs: Date.now() - toolsListStartedAt,
+        toolCount: tools.length,
+    })
 
     const entry = {
         id: normalized.id,
@@ -241,7 +245,19 @@ async function connectAssistantMcpServer({ userId, projectId, assistantId, serve
         connectedAt: Date.now(),
         lastValidatedAt: Date.now(),
     }
-    await upsertServerEntry(projectId, assistantId, entry)
+
+    const persistenceStartedAt = Date.now()
+    logMcpConnectPhase('persistence_start')
+    try {
+        if (secretToPersist) {
+            await buildSecretDocRef(projectId, assistantId, normalized.id).set(secretToPersist, { merge: true })
+        }
+        await upsertServerEntry(projectId, assistantId, entry)
+    } catch (error) {
+        logMcpConnectPhase('persistence_failed', { durationMs: Date.now() - persistenceStartedAt })
+        throw error
+    }
+    logMcpConnectPhase('persistence_complete', { durationMs: Date.now() - persistenceStartedAt })
 
     return {
         success: true,
