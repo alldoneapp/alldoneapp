@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import styles, { colors } from '../styles/global'
+import styles, { colors, SCREEN_BREAKPOINT } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { updateUserDataDirectly } from '../../utils/backends/Users/usersFirestore'
 import {
@@ -25,6 +25,11 @@ export default function AnalyticsConsentManager() {
     const loggedUser = useSelector(state => state.loggedUser)
     const navigationRoute = useSelector(state => state.route)
     const smallScreen = useSelector(state => state.smallScreen)
+    const [viewportWidth, setViewportWidth] = useState(() =>
+        typeof window !== 'undefined' && typeof window.innerWidth === 'number'
+            ? window.innerWidth
+            : Number.POSITIVE_INFINITY
+    )
     const [consent, setConsent] = useState(getAnalyticsConsent())
     const [dialogOpen, setDialogOpen] = useState(consent === ANALYTICS_CONSENT_UNKNOWN)
     // Render nothing until after the client mounts so the prerendered HTML and the
@@ -33,6 +38,16 @@ export default function AnalyticsConsentManager() {
     const [mounted, setMounted] = useState(false)
 
     useEffect(() => setMounted(true), [])
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined
+
+        const updateViewportWidth = () => setViewportWidth(window.innerWidth)
+        window.addEventListener('resize', updateViewportWidth)
+        updateViewportWidth()
+
+        return () => window.removeEventListener('resize', updateViewportWidth)
+    }, [])
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined
@@ -95,10 +110,15 @@ export default function AnalyticsConsentManager() {
 
     if (!mounted || !isAnalyticsEnabled() || !dialogOpen) return null
 
+    // Public routes such as LoginScreen are intentionally not rendered inside AppNavigator's
+    // responsive ScreenWrapper, so the global smallScreen flag can still have its desktop default
+    // on a phone. The consent banner is global and must also respond to the actual browser viewport.
+    const useMobileLayout = smallScreen || viewportWidth <= SCREEN_BREAKPOINT
+
     return (
         <View pointerEvents="box-none" style={localStyles.overlay} testID="analytics-consent-banner">
-            <View style={[localStyles.banner, smallScreen && localStyles.mobileBanner]}>
-                <View style={[localStyles.copy, smallScreen && localStyles.mobileCopy]}>
+            <View style={[localStyles.banner, useMobileLayout && localStyles.mobileBanner]}>
+                <View style={[localStyles.copy, useMobileLayout && localStyles.mobileCopy]}>
                     <Text style={[styles.subtitle1, localStyles.title]}>{translate('Analytics consent title')}</Text>
                     <Text style={[styles.body2, localStyles.description]}>
                         {translate('Analytics consent description')}{' '}
@@ -112,7 +132,7 @@ export default function AnalyticsConsentManager() {
                         </Text>
                     </Text>
                 </View>
-                <View style={[localStyles.actions, smallScreen && localStyles.mobileActions]}>
+                <View style={[localStyles.actions, useMobileLayout && localStyles.mobileActions]}>
                     <TouchableOpacity
                         accessibilityRole="button"
                         style={[localStyles.button, localStyles.secondaryButton]}
