@@ -176,7 +176,7 @@
                    body keeps overflow-y: auto below as a safety valve for any
                    screen without an inner scroller. */
                 height: 100%;
-                /* safe-area padding on body must not push the shell past 100% */
+                /* safe-area padding must not push the shell past 100% */
                 box-sizing: border-box;
                 background-color: #ffffff;
             }
@@ -187,6 +187,11 @@
                 flex-grow: 1;
                 display: flex;
                 flex: 1;
+                /* Paint the app shell through the home-indicator region while
+                   keeping its interactive content inside the safe area. Putting
+                   this inset on body would stop #root above that region and
+                   expose a detached page-background strip instead (AT-2321). */
+                padding-bottom: env(safe-area-inset-bottom) !important;
             }
 
             /* Mobile virtual keyboard (AT-2248).
@@ -217,7 +222,7 @@
 
             /* The measured keyboard inset already includes the covered home-
                indicator area, so do not reserve that strip a second time. */
-            html.app-keyboard-open body {
+            html.app-keyboard-open #root {
                 padding-bottom: 0 !important;
             }
 
@@ -240,7 +245,6 @@
                 -moz-osx-font-smoothing: grayscale;
                 -ms-overflow-style: scrollbar;
                 padding-top: env(safe-area-inset-top) !important;
-                padding-bottom: env(safe-area-inset-bottom) !important;
                 padding-left: env(safe-area-inset-left) !important;
                 padding-right: env(safe-area-inset-right) !important;
             }
