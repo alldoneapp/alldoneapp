@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Platform, StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
@@ -9,22 +9,31 @@ import Line from '../GoalMilestoneModal/Line'
 import LevelAndPoints from './LevelAndPoints'
 import ButtonsArea from './ButtonsArea'
 import Header from './Header'
+import { protectModalDismissFromClickThrough, registerPopupDismiss } from '../../../../utils/popupDismissGuard'
 
 export default function LevelUpModal({ setShowLevelUpModal }) {
-    const closeModal = () => {
-        setShowLevelUpModal(false)
-    }
+    const closeTimeoutRef = useRef(null)
+    const closingRef = useRef(false)
 
-    const onKeyDown = event => {
-        if (event.key === 'Escape') closeModal()
+    const closeModal = event => {
+        if (closingRef.current) return
+        closingRef.current = true
+
+        registerPopupDismiss()
+        protectModalDismissFromClickThrough(event)
+
+        // Keep the full-screen surface mounted until the current mobile touch
+        // sequence (including compatibility mouse/click events) has finished.
+        // Otherwise the trailing event is delivered to the app underneath and
+        // can leave its dismissible/sidebar interaction state out of sync.
+        closeTimeoutRef.current = setTimeout(() => setShowLevelUpModal(false))
     }
 
     useEffect(() => {
-        document.addEventListener('keydown', onKeyDown)
         return () => {
-            document.removeEventListener('keydown', onKeyDown)
+            clearTimeout(closeTimeoutRef.current)
         }
-    })
+    }, [])
 
     return (
         <View style={localStyles.parent}>
