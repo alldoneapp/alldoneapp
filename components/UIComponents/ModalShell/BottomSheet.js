@@ -22,6 +22,7 @@ import {
     BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS,
     BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
     clampBottomSheetDrag,
+    getBottomSheetUpwardDragLimit,
     getBottomSheetReleaseVelocity,
     shouldDismissBottomSheet,
 } from './bottomSheetGesture'
@@ -136,6 +137,7 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         let activeGesture = null
         let startY = 0
         let sheetHeight = 0
+        let upwardDragLimit = BOTTOM_SHEET_UPWARD_DRAG_LIMIT
         let samples = []
         let suppressMouseUntil = 0
         const settleDragBack = () => {
@@ -158,6 +160,13 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             activeGesture = { kind, id }
             startY = clientY
             sheetHeight = sheetNodeRef.current?.getBoundingClientRect().height || 0
+            upwardDragLimit = getBottomSheetUpwardDragLimit({
+                windowHeight,
+                bottomInset: keyboardInset > 0 ? keyboardInset : 0,
+                sheetHeight,
+                safeAreaTop: safeAreaInsets.top,
+                topGap: MODAL_EDGE_GAP,
+            })
             samples = [{ time: highResNow(), y: clientY }]
             return true
         }
@@ -167,7 +176,7 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
             const now = highResNow()
             samples.push({ time: now, y: clientY })
             samples = samples.filter(sample => sample.time >= now - BOTTOM_SHEET_RELEASE_VELOCITY_WINDOW_MS)
-            dragYRef.current.setValue(clampBottomSheetDrag(clientY - startY, sheetHeight))
+            dragYRef.current.setValue(clampBottomSheetDrag(clientY - startY, sheetHeight, upwardDragLimit))
         }
         const endGesture = (kind, id, clientY) => {
             if (activeGesture?.kind !== kind || activeGesture.id !== id) return
@@ -278,7 +287,7 @@ export default function BottomSheet({ isOpen, onRequestClose, modalId, children 
         // isMounted matters: on a reopen after a full (deferred) unmount the
         // first isOpen flush runs before the handle node exists — the effect
         // must re-run once the sheet has actually rendered.
-    }, [isOpen, isMounted])
+    }, [isOpen, isMounted, keyboardInset, safeAreaInsets.top, windowHeight])
 
     useEscapeKey(() => requestClose(), { enabled: !!isOpen })
 
