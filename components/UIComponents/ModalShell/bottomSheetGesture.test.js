@@ -1,6 +1,7 @@
 import {
     BOTTOM_SHEET_UPWARD_DRAG_LIMIT,
     clampBottomSheetDrag,
+    getBottomSheetUpwardDragLimit,
     getBottomSheetReleaseVelocity,
     shouldDismissBottomSheet,
 } from './bottomSheetGesture'
@@ -11,6 +12,38 @@ describe('bottom-sheet handle gestures', () => {
         expect(clampBottomSheetDrag(-200, 400)).toBe(-BOTTOM_SHEET_UPWARD_DRAG_LIMIT)
         expect(clampBottomSheetDrag(240, 400)).toBe(240)
         expect(clampBottomSheetDrag(600, 400)).toBe(400)
+    })
+
+    it('limits upward movement to the space below the top safe area', () => {
+        expect(
+            getBottomSheetUpwardDragLimit({
+                windowHeight: 844,
+                bottomInset: 0,
+                sheetHeight: 781,
+                safeAreaTop: 47,
+                topGap: 16,
+            })
+        ).toBe(0)
+        expect(
+            getBottomSheetUpwardDragLimit({
+                windowHeight: 844,
+                bottomInset: 0,
+                sheetHeight: 760,
+                safeAreaTop: 47,
+                topGap: 16,
+            })
+        ).toBe(21)
+        expect(
+            getBottomSheetUpwardDragLimit({
+                windowHeight: 844,
+                bottomInset: 0,
+                sheetHeight: 400,
+                safeAreaTop: 47,
+                topGap: 16,
+            })
+        ).toBe(BOTTOM_SHEET_UPWARD_DRAG_LIMIT)
+
+        expect(clampBottomSheetDrag(-100, 760, 21)).toBe(-21)
     })
 
     it('dismisses for a deliberate long drag, but not a nearby short drag', () => {
