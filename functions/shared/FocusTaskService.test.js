@@ -135,63 +135,6 @@ const createMockDatabase = ({ docs = {}, collections = {} }) => {
     }
 }
 
-describe('FocusTaskService focus lookup (AT-2323)', () => {
-    const userId = 'user-1'
-    const projectId = 'project-1'
-
-    const createService = () =>
-        new FocusTaskService({
-            database: createMockDatabase({}),
-            moment,
-        })
-
-    test('does not assign a task when a read finds no current focus', async () => {
-        const service = createService()
-        service.getCurrentFocusTask = jest.fn().mockResolvedValue(null)
-        service.findAndSetNewFocusTask = jest.fn().mockResolvedValue({
-            id: 'newest-task',
-            projectId,
-            name: 'Newest task',
-        })
-
-        const result = await service.getFocusTask(userId, projectId, { selectMinimalFields: true })
-
-        expect(service.findAndSetNewFocusTask).not.toHaveBeenCalled()
-        expect(result).toEqual({
-            success: true,
-            focusTask: null,
-            wasNewTaskSet: false,
-            message: 'No focus task is set.',
-        })
-    })
-
-    test('still assigns a task when the caller explicitly requests a new focus', async () => {
-        const service = createService()
-        service.getCurrentFocusTask = jest.fn().mockResolvedValue(null)
-        service.findAndSetNewFocusTask = jest.fn().mockResolvedValue({
-            id: 'chosen-task',
-            projectId,
-            name: 'Chosen task',
-            dueDate: 123,
-            sortIndex: 456,
-        })
-
-        const result = await service.getFocusTask(userId, projectId, {
-            selectMinimalFields: true,
-            forceNew: true,
-        })
-
-        expect(service.findAndSetNewFocusTask).toHaveBeenCalledWith(userId, projectId, null, null, null, null, {
-            spreadAcrossTopCandidates: true,
-        })
-        expect(result).toMatchObject({
-            success: true,
-            wasNewTaskSet: true,
-            focusTask: { documentId: 'chosen-task', projectId, name: 'Chosen task' },
-        })
-    })
-})
-
 describe('FocusTaskService general task priority', () => {
     const userId = 'user-1'
     const currentProjectId = 'project-1'

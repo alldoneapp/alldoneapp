@@ -642,24 +642,24 @@ const toolSchemas = {
         function: {
             name: 'get_focus_task',
             description:
-                'Retrieves the current focus task without changing it. If no focus task is set, returns no focus task. Use forceNew only when the user explicitly asks Alldone to choose or switch to a task for them.',
+                'Retrieves the current focus task for the user. By default, searches across all projects to find the highest priority focus task. Can optionally filter to a specific project or force finding a different task.',
             parameters: {
                 type: 'object',
                 properties: {
                     projectId: {
                         type: 'string',
                         description:
-                            'Optional project in which to choose a new focus task when forceNew is true. It does not change how the current focus task is read.',
+                            'Optional: limit search to a specific project ID. If omitted, searches across all projects.',
                     },
                     allProjects: {
                         type: 'boolean',
                         description:
-                            'When forceNew is true, search across all projects (the default when projectId is omitted).',
+                            'Explicitly search across all projects (default behavior when projectId is not specified)',
                     },
                     forceNew: {
                         type: 'boolean',
                         description:
-                            'Find and persist a new/different focus task, skipping the currently set focus task. Only set this when the user explicitly asks Alldone to choose or switch their focus, such as "what should I work on next?" If no alternative task exists, returns the current focus task unchanged.',
+                            'Force finding a new/different focus task, skipping the currently set focus task. Useful for "what should I work on next?" If no alternative task exists, returns current focus task with a message.',
                     },
                 },
                 required: [],

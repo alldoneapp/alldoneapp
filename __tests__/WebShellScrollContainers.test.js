@@ -28,7 +28,7 @@ describe('Web app shell scroll containers', () => {
 
         expect(rule).not.toBeNull()
         expect(rule).toMatch(/(^|[\s;])height:\s*100%\s*;/)
-        // border-box keeps the safe-area padding on body from exceeding that height
+        // border-box keeps safe-area padding from exceeding that height
         expect(rule).toMatch(/box-sizing:\s*border-box\s*;/)
     })
 
@@ -63,10 +63,10 @@ describe('Web app shell scroll containers', () => {
 
     test.each(TEMPLATES)('%s (%s) does not double-count the bottom safe area with the keyboard', relativePath => {
         const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
-        const bodyRule = html.match(/html\.app-keyboard-open body\s*\{([^}]*)\}/)
+        const rootRules = [...html.matchAll(/html\.app-keyboard-open #root\s*\{([^}]*)\}/g)].map(match => match[1])
 
-        expect(bodyRule).not.toBeNull()
-        expect(bodyRule[1]).toMatch(/padding-bottom:\s*0\s*!important\s*;/)
+        expect(rootRules).not.toHaveLength(0)
+        expect(rootRules.some(rule => /padding-bottom:\s*0\s*!important\s*;/.test(rule))).toBe(true)
     })
 
     // The declarative half of the same fix: Android Chrome resizes the layout
@@ -87,14 +87,20 @@ describe('Web app shell scroll containers', () => {
         expect(bodyRule[1]).toMatch(/overflow-y:\s*auto\s*;/)
     })
 
-    test.each(TEMPLATES)('%s (%s) reserves every iOS safe-area edge in the app shell', relativePath => {
+    test.each(TEMPLATES)('%s (%s) lets the app shell paint through the bottom safe area', relativePath => {
         const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
         const bodyRule = html.match(/\n\s*body\s*\{([^}]*)\}/)
+        const rootRules = [...html.matchAll(/\n\s*#root\s*\{([^}]*)\}/g)].map(match => match[1])
 
         expect(bodyRule).not.toBeNull()
-        for (const side of ['top', 'right', 'bottom', 'left']) {
+        expect(rootRules).not.toHaveLength(0)
+        for (const side of ['top', 'right', 'left']) {
             expect(bodyRule[1]).toMatch(new RegExp(`padding-${side}:\\s*env\\(safe-area-inset-${side}\\)`))
         }
+        expect(bodyRule[1]).not.toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom\)/)
+        expect(
+            rootRules.some(rule => /padding-bottom:\s*env\(safe-area-inset-bottom\)\s*!important\s*;/.test(rule))
+        ).toBe(true)
     })
 
     test.each(TEMPLATES)('%s (%s) configures a light standalone iOS status area', relativePath => {

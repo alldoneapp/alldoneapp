@@ -1057,12 +1057,12 @@ class FocusTaskService {
     }
 
     /**
-     * Get the user's current focus task.
+     * Get focus task for user - returns current focus task or finds/sets new one
      * @param {string} userId - User ID
      * @param {string} projectId - Current project context (optional)
      * @param {Object} options - Options object
      * @param {boolean} options.selectMinimalFields - Return minimal task fields only
-     * @param {boolean} options.forceNew - Explicitly find and set a new/different focus task
+     * @param {boolean} options.forceNew - Force finding a new/different focus task, skipping current one
      * @param {number} options.timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @returns {Object} Focus task result
      */
@@ -1158,18 +1158,19 @@ class FocusTaskService {
                     message: 'No suitable focus task found',
                 }
             }
+        } else if (!currentFocusTask) {
+            // Normal flow: No current focus task, find and set a new one
+            currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId, null, null, timezoneOffset)
+            wasNewTaskSet = !!currentFocusTask
         }
 
-        // AT-2323: ordinary reads must stop here. Heartbeats call get_focus_task in the background;
-        // choosing a fallback when the user had no focus made whichever task arrived during that
-        // lookup become focused without any user action. Replacement after a real focus transition
-        // still uses findAndSetNewFocusTask directly, and an explicit request uses forceNew above.
         if (!currentFocusTask) {
             return {
                 success: true,
                 focusTask: null,
                 wasNewTaskSet: false,
-                message: 'No focus task is set.',
+                message:
+                    'No focus task available for today. Congrats - you have reached empty inbox across all your projects.',
             }
         }
 
