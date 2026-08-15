@@ -284,6 +284,8 @@ Fixed portal content does not inherit body padding. `hooks/useModalSizing.js` th
 subtracts the measured safe-area rectangle as well as the keyboard, the bottom sheet
 paints through the home-indicator region while padding its content above it, and the
 vendored `react-tiny-popover` clamps anchored/fixed portals inside the safe rectangle.
+The sheet's upward handle over-drag is limited by its remaining top clearance, so a
+full-height sheet cannot be pulled into the status/header safe area.
 Browsers without safe-area insets resolve every value to zero, preserving desktop,
 Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` and legacy
 `web/` templates/manifests aligned; `__tests__/WebShellScrollContainers.test.js`,
