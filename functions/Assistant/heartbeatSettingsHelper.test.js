@@ -102,11 +102,14 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Awake time: 09:00 - 18:00')
         expect(contextMessage).toContain('Heartbeat interval: 20 minutes')
         expect(contextMessage).toContain(
-            'Execution chance after the user has written in either daily chat that local day: 45%'
+            'Execution chance after the user replies to the latest visible heartbeat that local day: 45%'
         )
         expect(contextMessage).toContain(
-            'Execution chance before the user has written in either daily chat that local day: 15%'
+            'Execution chance until the user replies to the latest visible heartbeat that local day: 15%'
         )
+        expect(contextMessage).toContain('Reply state resets after every new visible heartbeat')
+        expect(contextMessage).toContain('A message sent before the latest heartbeat does not count')
+        expect(contextMessage).toContain('HEARTBEAT_OK does not reset reply state')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
         expect(contextMessage).toContain('Heartbeat model: MODEL_GPT5_6_LUNA')
         expect(contextMessage).toContain('Heartbeat reasoning effort: xhigh')
