@@ -328,71 +328,98 @@ describe('assistant heartbeat reply-aware execution chance', () => {
         Math.random.mockRestore()
     })
 
-    test('uses the higher chance for the first completed heartbeat even before the user replies', async () => {
+    test('uses the no-message chance on the first opportunity when the user has not written that day', async () => {
         mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
 
         await checkAndExecuteHeartbeats()
 
-        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-    })
-
-    test('resets to the higher chance on the next local day', async () => {
-        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
-            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
-            heartbeatLastExecutedByUser: { 'user-1': 998500000 },
-        })
-        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
-
-        await checkAndExecuteHeartbeats()
-
-        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-    })
-
-    test('uses the replied chance after an earlier heartbeat when the user replied that day', async () => {
-        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
-            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
-            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
-        })
-        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
-
-        await checkAndExecuteHeartbeats()
-
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-    })
-
-    test('uses the no-reply chance after an earlier heartbeat when the user has not replied', async () => {
-        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
-            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
-            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
-        })
-        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
-
-        await checkAndExecuteHeartbeats()
-
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledTimes(2)
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
-    test('keeps using the higher chance after a silent OK', async () => {
+    test.each([
+        ['in-app Heartbeat', 'Heartbeat20260504user-1'],
+        ['WhatsApp', 'BotChat20260504user-1'],
+    ])('uses the message chance before the first heartbeat for the %s daily chat', async (_channel, matchingChatId) => {
+        mockHasUserMessageOnUserLocalDay.mockImplementation(async (_projectId, chatId) => chatId === matchingChatId)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledWith(
+            'project-1',
+            'Heartbeat20260504user-1',
+            'user-1',
+            expect.objectContaining({ uid: 'user-1' }),
+            1000000000
+        )
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledWith(
+            'project-1',
+            'BotChat20260504user-1',
+            'user-1',
+            expect.objectContaining({ uid: 'user-1' }),
+            1000000000
+        )
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('switches from the no-message chance to the message chance as soon as the user writes', async () => {
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
+        await checkAndExecuteHeartbeats()
+
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('uses only messages from the current local-day daily topics', async () => {
+        const { getUserLocalDateContext } = require('./contextTimestampHelper')
+        getUserLocalDateContext.mockReturnValueOnce({ dateKey: '20260505', dateLabel: 'May 5' })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(getUserLocalDateContext).toHaveBeenCalledWith(expect.any(Object), 1000000000)
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledWith(
+            'project-1',
+            'Heartbeat20260505user-1',
+            'user-1',
+            expect.any(Object),
+            1000000000
+        )
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledWith(
+            'project-1',
+            'BotChat20260505user-1',
+            'user-1',
+            expect.any(Object),
+            1000000000
+        )
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['a substantive heartbeat', { heartbeatLastExecutedByUser: { 'user-1': 999500000 } }],
+        ['HEARTBEAT_OK', { heartbeatLastSilentOkByUser: { 'user-1': 999500000 } }],
+    ])('does not use the message chance based on %s state', async (_state, heartbeatState) => {
         admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
             ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
-            heartbeatLastSilentOkByUser: { 'user-1': 999500000 },
+            ...heartbeatState,
         })
         mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
 
         await checkAndExecuteHeartbeats()
 
-        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockHasUserMessageOnUserLocalDay).toHaveBeenCalledTimes(2)
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
-    test('honors a no-reply chance higher than the replied chance', async () => {
+    test('honors a before-message chance higher than the after-message chance', async () => {
         admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
             ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
             heartbeatChancePercent: 0,
             heartbeatChanceNoReplyPercent: 100,
-            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
         })
         mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
 
@@ -401,7 +428,7 @@ describe('assistant heartbeat reply-aware execution chance', () => {
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
     })
 
-    test('does not query reply state when both chances are equal', async () => {
+    test('does not query daily-chat message state when both chances are equal', async () => {
         admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
             ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
             heartbeatChancePercent: 100,
@@ -568,6 +595,52 @@ describe('scheduled assistant heartbeat worker', () => {
         expect(result.outcome).toBe('chance_skipped')
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
         expect(admin.__mock.getDoc(`assistantHeartbeatSchedules/${scheduleId}`).lastOutcome).toBe('chance_skipped')
+    })
+
+    test('uses the no-message chance on the first scheduled opportunity', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 0,
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+        const { scheduleId, scheduleHash } = seedSchedule()
+
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result).toEqual(
+            expect.objectContaining({ outcome: 'chance_skipped', chancePercent: 0, userWroteToday: false })
+        )
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+
+    test('uses the message chance on the first scheduled opportunity when the user wrote first', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 0,
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
+        const { scheduleId, scheduleHash } = seedSchedule()
+
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result.outcome).toBe('executed')
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
     })
 
     test('records no-gold and sends the throttled notice without invoking the assistant', async () => {

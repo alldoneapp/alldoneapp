@@ -14,13 +14,17 @@ import { formatHeartbeatInterval, getHeartbeatIntervalMs } from './heartbeatInte
 const VARIANT_CONFIG = {
     replied: {
         field: 'heartbeatChancePercent',
-        rowLabel: 'Execution chance when you replied on the day',
-        modalTitle: 'Heartbeat execution chance (replied)',
+        rowLabel: 'Chance after you write in either daily chat today',
+        modalTitle: 'Heartbeat chance after writing today',
+        modalSubtitle:
+            'Applied each heartbeat interval after you write any message that local day in the in-app Heartbeat chat or WhatsApp daily chat. A message sent before any heartbeat counts. (%{interval})',
     },
     noReply: {
         field: 'heartbeatChanceNoReplyPercent',
-        rowLabel: 'Execution chance when you didn’t reply on the day',
-        modalTitle: 'Heartbeat execution chance (no reply)',
+        rowLabel: 'Chance before you write in either daily chat today',
+        modalTitle: 'Heartbeat chance before writing today',
+        modalSubtitle:
+            'Applied each heartbeat interval until you write a message that local day in the in-app Heartbeat chat or WhatsApp daily chat. (%{interval})',
     },
 }
 
@@ -64,10 +68,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                     content={
                         <ChangeNumberTodayTasks
                             customTitle={translate(config.modalTitle)}
-                            customSubtitle={translate(
-                                'Percent chance the heartbeat prompt will execute each heartbeat interval (%{interval})',
-                                { interval: intervalLabel }
-                            )}
+                            customSubtitle={translate(config.modalSubtitle, { interval: intervalLabel })}
                             closePopover={() => setOpen(false)}
                             onSaveData={changeData}
                             currentValue={chancePercent}
