@@ -15,10 +15,10 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
 
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
     const defaultChance = isDefaultAssistantInDefaultProject ? 10 : 0
-    const afterUserMessageChancePercent = assistant.heartbeatChancePercent ?? defaultChance
-    const beforeUserMessageChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
-    // The heartbeat is active when it can fire in either daily-chat message state.
-    const chancePercent = Math.max(afterUserMessageChancePercent, beforeUserMessageChancePercent)
+    const afterReplyChancePercent = assistant.heartbeatChancePercent ?? defaultChance
+    const beforeReplyChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
+    // The heartbeat is active when it can fire in either per-heartbeat reply state.
+    const chancePercent = Math.max(afterReplyChancePercent, beforeReplyChancePercent)
     const intervalMs = getHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
     const {
         lastCheckedAt,
@@ -68,7 +68,7 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
             <View style={localStyles.details}>
                 <StatusDetail label={translate('Last checked')} value={formatTimestamp(lastCheckedAt)} />
                 <StatusDetail label={translate('Last result')} value={lastResultLabel} />
-                <StatusDetail label={translate('Last executed')} value={formatTimestamp(lastExecutedAt)} />
+                <StatusDetail label={translate('Last visible heartbeat')} value={formatTimestamp(lastExecutedAt)} />
                 <StatusDetail
                     label={translate('Last silent OK (HEARTBEAT_OK)')}
                     value={formatTimestamp(lastSilentOkAt)}
