@@ -1026,7 +1026,7 @@ const toolSchemas = {
         function: {
             name: 'update_heartbeat_settings',
             description:
-                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, reasoning effort, interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
+                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, reasoning effort, interval, execution chance (separate values before vs. after the user writes in either supported daily chat on their local day), awake window, WhatsApp delivery, or heartbeat prompt. Any user-authored message in the in-app Heartbeat chat or WhatsApp daily chat counts, including one sent before an assistant heartbeat. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1050,12 +1050,12 @@ const toolSchemas = {
                     chancePercent: {
                         type: 'number',
                         description:
-                            'Optional: heartbeat execution chance percent for days the user has already replied to the assistant. Clamped between 0 and 100.',
+                            'Optional: heartbeat execution chance percent after the user has written any message that local day in the in-app Heartbeat chat or WhatsApp daily chat. A user-initiated message before any heartbeat counts. Clamped between 0 and 100.',
                     },
                     chanceNoReplyPercent: {
                         type: 'number',
                         description:
-                            'Optional: heartbeat execution chance percent for days the user has not replied to the assistant yet. Clamped between 0 and 100.',
+                            'Optional: heartbeat execution chance percent before the user has written any message that local day in the in-app Heartbeat chat or WhatsApp daily chat. Clamped between 0 and 100.',
                     },
                     awakeStartTime: {
                         type: 'string',

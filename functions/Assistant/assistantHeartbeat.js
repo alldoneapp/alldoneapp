@@ -6,7 +6,6 @@ const { getOpenTasksContextMessage, parseTextForUseLiKePrompt } = require('./ass
 const {
     addTimestampToContextContent,
     resolveUserTimezoneOffset,
-    getUserLocalDayBounds,
     getUserLocalDateContext,
 } = require('./contextTimestampHelper')
 const {
@@ -206,7 +205,8 @@ function isWithinAwakeWindow(assistant, timezoneOffsetMinutes) {
 }
 
 /**
- * Get the effective heartbeat chance percent for days the user already replied,
+ * Get the effective heartbeat chance percent after the user has written in a
+ * supported daily chat on their current local day,
  * considering defaults.
  */
 function getEffectiveChancePercent(assistant, projectId, userData) {
@@ -214,7 +214,8 @@ function getEffectiveChancePercent(assistant, projectId, userData) {
 }
 
 /**
- * Get the effective heartbeat chance percent for days the user has not replied yet,
+ * Get the effective heartbeat chance percent before the user has written in a
+ * supported daily chat on their current local day,
  * considering defaults.
  */
 function getEffectiveChanceNoReplyPercent(assistant, projectId, userData) {
@@ -222,22 +223,43 @@ function getEffectiveChanceNoReplyPercent(assistant, projectId, userData) {
 }
 
 /**
- * Determine whether the user has replied to the assistant during their current
- * local day. We look at both the in-app heartbeat daily topic and the WhatsApp
- * daily topic, since the heartbeat conversation can live in either channel.
+ * Determine whether the user has written any message in either supported daily
+ * chat during their current local day. A user-initiated message counts; it does
+ * not need to follow an assistant heartbeat.
  */
-async function hasUserRepliedToday(projectId, userId, userData) {
+async function hasUserWrittenInDailyChatToday(projectId, userId, userData) {
     const { hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
-    const { dateKey } = getUserLocalDateContext(userData)
+    // Use one instant for the topic IDs and query bounds so an opportunity that
+    // lands exactly at local midnight cannot combine two different local days.
+    const now = Date.now()
+    const { dateKey } = getUserLocalDateContext(userData, now)
     const heartbeatChatId = `Heartbeat${dateKey}${userId}`
     const whatsAppChatId = `BotChat${dateKey}${userId}`
 
     const [repliedInHeartbeat, repliedInWhatsApp] = await Promise.all([
-        hasUserMessageOnUserLocalDay(projectId, heartbeatChatId, userId, userData),
-        hasUserMessageOnUserLocalDay(projectId, whatsAppChatId, userId, userData),
+        hasUserMessageOnUserLocalDay(projectId, heartbeatChatId, userId, userData, now),
+        hasUserMessageOnUserLocalDay(projectId, whatsAppChatId, userId, userData, now),
     ])
 
     return repliedInHeartbeat || repliedInWhatsApp
+}
+
+async function getReplyAwareChance({ assistant, projectId, userId, userData }) {
+    const afterUserMessageChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+    const beforeUserMessageChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
+
+    if (afterUserMessageChancePercent === beforeUserMessageChancePercent) {
+        return {
+            chancePercent: afterUserMessageChancePercent,
+            userWroteToday: null,
+        }
+    }
+
+    const userWroteToday = await hasUserWrittenInDailyChatToday(projectId, userId, userData)
+    return {
+        chancePercent: userWroteToday ? afterUserMessageChancePercent : beforeUserMessageChancePercent,
+        userWroteToday,
+    }
 }
 
 function getEffectiveHeartbeatIntervalMs(assistant) {
@@ -254,15 +276,6 @@ function getTimestampMillis(value) {
     if (value && typeof value.toMillis === 'function') return value.toMillis()
     if (value && typeof value.seconds === 'number') return value.seconds * 1000
     return 0
-}
-
-function hasCompletedHeartbeatToday(assistant, userId, userData, now = Date.now()) {
-    const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, now)
-    const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
-
-    // HEARTBEAT_OK is only a silent evaluation result. Keep using the initial,
-    // higher chance until the assistant produces a substantive heartbeat.
-    return lastExecuted >= startOfDay && lastExecuted <= endOfDay
 }
 
 async function reserveHeartbeatInsufficientGoldNotice(userId, now = Date.now()) {
@@ -469,11 +482,15 @@ async function checkAndExecuteHeartbeats() {
                         if (!activeUsersMap.has(userId)) continue
 
                         let userData = activeUsersMap.get(userId)
-                        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
-                        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
+                        const afterUserMessageChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+                        const beforeUserMessageChancePercent = getEffectiveChanceNoReplyPercent(
+                            assistant,
+                            projectId,
+                            userData
+                        )
 
-                        // Skip only when the heartbeat is disabled for both reply states.
-                        if (repliedChancePercent <= 0 && noReplyChancePercent <= 0) continue
+                        // Skip only when the heartbeat is disabled in both daily-chat message states.
+                        if (afterUserMessageChancePercent <= 0 && beforeUserMessageChancePercent <= 0) continue
 
                         // Check awake window
                         const timezoneOffsetMinutes =
@@ -517,16 +534,15 @@ async function checkAndExecuteHeartbeats() {
                             }
                         }
 
-                        // Use the higher/replied chance until this assistant completes its
-                        // first heartbeat of the user's local day. After that first run,
-                        // use the lower/no-reply chance until the user replies that day.
-                        let chancePercent = repliedChancePercent
-                        let repliedToday = null
-                        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
-                        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
-                            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
-                            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
-                        }
+                        // The user's message state alone selects the chance. This applies
+                        // from the first opportunity of each local day and is independent
+                        // of prior substantive or silent heartbeat results.
+                        const { chancePercent, userWroteToday } = await getReplyAwareChance({
+                            assistant,
+                            projectId,
+                            userId,
+                            userData,
+                        })
 
                         if (chancePercent <= 0) continue
 
@@ -545,8 +561,7 @@ async function checkAndExecuteHeartbeats() {
                             assistantId: assistant.uid,
                             userId,
                             chancePercent,
-                            completedToday,
-                            repliedToday,
+                            userWroteToday,
                             intervalMs,
                         })
 
@@ -947,21 +962,18 @@ async function executeScheduledHeartbeat(task = {}) {
             }
         }
 
-        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
-        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
-        let chancePercent = repliedChancePercent
-        let repliedToday = null
-        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
-        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
-            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
-            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
-        }
+        const { chancePercent, userWroteToday } = await getReplyAwareChance({
+            assistant,
+            projectId,
+            userId,
+            userData,
+        })
 
         if (chancePercent <= 0 || Math.random() * 100 >= chancePercent) {
             await updateHeartbeatScheduleOutcome(scheduleRef, 'chance_skipped', {
                 lastChancePercent: chancePercent,
             })
-            return { outcome: 'chance_skipped', chancePercent, completedToday, repliedToday }
+            return { outcome: 'chance_skipped', chancePercent, userWroteToday }
         }
 
         const result = await executeHeartbeatContent({ projectId, assistant, userId, userData })

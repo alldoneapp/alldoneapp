@@ -15,10 +15,10 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
 
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
     const defaultChance = isDefaultAssistantInDefaultProject ? 10 : 0
-    const repliedChancePercent = assistant.heartbeatChancePercent ?? defaultChance
-    const noReplyChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
-    // The heartbeat is considered active when it can fire in at least one reply state.
-    const chancePercent = Math.max(repliedChancePercent, noReplyChancePercent)
+    const afterUserMessageChancePercent = assistant.heartbeatChancePercent ?? defaultChance
+    const beforeUserMessageChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
+    // The heartbeat is active when it can fire in either daily-chat message state.
+    const chancePercent = Math.max(afterUserMessageChancePercent, beforeUserMessageChancePercent)
     const intervalMs = getHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
     const {
         lastCheckedAt,
