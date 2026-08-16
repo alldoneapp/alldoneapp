@@ -5,12 +5,11 @@ import Backend from '../../utils/BackendBridge'
 import Colors from '../../Themes/Colors'
 
 export default function LogInButton({ btnId = 'google-sign-in-btn', containerStyle }) {
-    // Google Identity Services renders its button into a cross-origin iframe and can only
-    // sign in through a popup. Embedded and automated browsers block window.open, so on the
-    // dev server the click silently does nothing. Fall back to the custom button there, which
-    // goes through the redirect flow instead.
+    // Google Identity Services renders its desktop button into a cross-origin iframe. Mobile and
+    // local development use our button so Firebase can choose the same-origin redirect flow.
     const [useCustomButton, setUseCustomButton] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
+    const [errorMessage, setErrorMessage] = useState('')
 
     useEffect(() => {
         const custom = Backend.isMobileDevice() || Backend.isLocalDevHost()
@@ -38,22 +37,19 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
     }
 
     const handleCustomButtonLogin = async () => {
+        setErrorMessage('')
         setIsLoading(true)
         try {
             const user = await Backend.signInWithGoogleRedirect()
-            // If we get here, popup succeeded and user is signed in
-            // The onAuthStateChanged listener will handle the rest
-            // (on the dev server the page has already navigated to Google instead)
+            // Redirect navigation does not resolve on the outgoing page. If a popup fallback was
+            // used, onAuthStateChanged handles the returned user.
             if (user) {
-                console.log('User signed in via popup:', user.email)
+                if (__DEV__) console.log('User signed in via popup:', user.email)
             }
         } catch (error) {
             console.error('Error during Google sign-in:', error)
-            // If it was a redirect fallback, the page will reload
-            // Otherwise show the error
-            if (error.code !== 'auth/redirect-cancelled-by-user') {
-                setIsLoading(false)
-            }
+            setErrorMessage('Google sign-in could not be started. Please try again.')
+            setIsLoading(false)
         }
     }
 
@@ -65,6 +61,7 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
                     style={localStyles.googleButton}
                     onPress={handleCustomButtonLogin}
                     disabled={isLoading}
+                    accessibilityLabel="Sign in with Google"
                 >
                     {isLoading ? (
                         <ActivityIndicator color={Colors.Text01} size="small" />
@@ -92,6 +89,11 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
                         </>
                     )}
                 </TouchableOpacity>
+                {!!errorMessage && (
+                    <Text style={localStyles.errorText} accessibilityLiveRegion="polite" accessibilityRole="alert">
+                        {errorMessage}
+                    </Text>
+                )}
             </View>
         )
     }
@@ -124,5 +126,13 @@ const localStyles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
         fontFamily: 'Roboto, sans-serif',
+    },
+    errorText: {
+        color: Colors.UtilityRed300,
+        fontSize: 13,
+        lineHeight: 18,
+        marginTop: 8,
+        maxWidth: 260,
+        textAlign: 'center',
     },
 })

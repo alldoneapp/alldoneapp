@@ -51,6 +51,7 @@ import { isProjectOwnedByUser } from '../defaultProjectAuthorization'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
+import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from '../webFirebaseAuth'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -372,17 +373,18 @@ const backlinksCounterUnsub = {}
 const unsubHastagsColors = {}
 let noteRevisionHistoryCopiesUnsub = () => {}
 
-// Firebase's redirect sign-in hands off through a cross-origin helper iframe on the auth domain,
-// and that gapi handshake never completes in embedded browsers — signInWithRedirect then hangs
-// with no navigation and no error. Pointing authDomain at the dev origin makes the handler
-// same-origin (the dev server proxies /__/auth/* to the real auth domain), removing the iframe.
-// Only when the dev server is actually serving https, because Firebase hardcodes that scheme
-// when it builds the handler URL; plain http://localhost keeps the normal auth domain.
-const useLocalAuthHandler = () => isLocalDevHost() && window.location.protocol === 'https:'
+// Safari 16.1+ partitions the storage used by Firebase's cross-origin redirect helper. Firebase
+// Hosting exposes /__/auth/* on the app's custom domain, so use that same-origin handler on the
+// configured HTTPS deployment. The local HTTPS dev server proxies the same reserved paths.
+const firebaseAuthDomain = resolveFirebaseAuthDomain({
+    location: typeof window === 'undefined' ? null : window.location,
+    hostingUrl: HOSTING_URL,
+    fallbackAuthDomain: GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+})
 
 const firebaseConfig = {
     apiKey: GOOGLE_FIREBASE_WEB_API_KEY,
-    authDomain: useLocalAuthHandler() ? window.location.host : GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+    authDomain: firebaseAuthDomain,
     databaseURL: GOOGLE_FIREBASE_WEB_DATABASE_URL,
     projectId: GOOGLE_FIREBASE_WEB_PROJECT_ID,
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
@@ -805,31 +807,31 @@ export function isLocalDevHost() {
     return hostname === 'localhost' || hostname === '127.0.0.1'
 }
 
-// Sign in with Google using popup
-// Note: Redirect doesn't work on custom domains (my.alldone.app) because Firebase Auth
-// uses firebaseapp.com for the OAuth handler, and cookies don't transfer back properly.
-// Popup works because it handles everything in the popup window on the firebaseapp.com domain.
+// Mobile browsers use redirect because popup windows are frequently blocked on iOS. Redirect is
+// only selected when Firebase's auth handler is same-origin; other hosts keep the popup fallback.
 export async function signInWithGoogleRedirect() {
     const provider = new firebase.auth.GoogleAuthProvider()
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
 
-    // The custom-domain problem above does not apply to the dev server: localhost is an
-    // authorized redirect origin for the firebaseapp.com auth domain. Redirect needs no
-    // popup, which is what makes sign-in usable in embedded/automated browsers that block
-    // window.open. getRedirectResult() already runs on boot and completes the sign-in.
-    if (isLocalDevHost()) {
-        console.log('🔐 Local dev host: using Google sign-in with redirect (no popup)...')
+    const useRedirect = shouldUseGoogleRedirect({
+        isMobile: isMobileDevice(),
+        isLocalDev: isLocalDevHost(),
+        authDomain: firebaseAuthDomain,
+        location: typeof window === 'undefined' ? null : window.location,
+    })
+
+    if (useRedirect) {
+        if (__DEV__) console.log('🔐 Using Google sign-in with same-origin redirect...')
         await firebase.auth().signInWithRedirect(provider)
-        // The page navigates away; nothing after this runs on the outgoing document.
         return null
     }
 
     try {
-        console.log('🔐 Trying Google sign-in with popup...')
+        if (__DEV__) console.log('🔐 Trying Google sign-in with popup...')
         const result = await firebase.auth().signInWithPopup(provider)
-        console.log('✅ Popup sign-in successful:', result?.user?.email)
+        if (__DEV__) console.log('✅ Popup sign-in successful:', result?.user?.email)
         if (result && result.user) {
             if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
                 store.dispatch(setRegisteredNewUser(true))
