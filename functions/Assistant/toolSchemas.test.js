@@ -251,6 +251,12 @@ describe('User memory assistant tool schemas', () => {
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
+        expect(
+            toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.description
+        ).toContain('A user-initiated message before any heartbeat counts')
+        expect(
+            toolSchemas.update_heartbeat_settings.function.parameters.properties.chanceNoReplyPercent.description
+        ).toContain('in-app Heartbeat chat or WhatsApp daily chat')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeStartTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeEndTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.sendWhatsApp.type).toBe('boolean')

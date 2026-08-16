@@ -109,6 +109,27 @@ test('exports the local-day user-message lookup used by heartbeats', () => {
     expect(hasUserMessageOnUserLocalDay).toEqual(expect.any(Function))
 })
 
+test('daily-chat message lookup counts only user-authored messages inside the user local day', async () => {
+    jest.clearAllMocks()
+    mockGetUserLocalDayBounds.mockReturnValueOnce({ startOfDay: 300, endOfDay: 400 })
+
+    await hasUserMessageOnUserLocalDay(
+        'project-1',
+        'Heartbeat20260505user-1',
+        'user-1',
+        {
+            uid: 'user-1',
+            timezone: 120,
+        },
+        350
+    )
+
+    expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ timezone: 120 }), 350)
+    expect(mockCommentQueryWhere).toHaveBeenCalledWith('creatorId', '==', 'user-1')
+    expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 300)
+    expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 400)
+})
+
 describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
     const aiSettings = {
         model: 'MODEL_GPT5_5',
@@ -164,7 +185,10 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
 
         expect(mockGetCommonData).toHaveBeenCalledWith('project-1', 'topics', 'chat-1')
-        expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ uid: 'user-1' }))
+        expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(
+            expect.objectContaining({ uid: 'user-1' }),
+            expect.any(Number)
+        )
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 100)
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 200)
     })

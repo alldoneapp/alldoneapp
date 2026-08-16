@@ -40,10 +40,10 @@ function getEncoder() {
  * Check if the user has sent a message in the given topic on the user's current local day.
  * Used to determine whether to send a plain WhatsApp message or a template.
  */
-async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}) {
+async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}, timestamp = Date.now()) {
     try {
         const admin = require('firebase-admin')
-        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData)
+        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, timestamp)
 
         // Check in topics collection (for heartbeat and WhatsApp daily topics)
         const snapshot = await admin
