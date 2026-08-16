@@ -14,17 +14,17 @@ import { formatHeartbeatInterval, getHeartbeatIntervalMs } from './heartbeatInte
 const VARIANT_CONFIG = {
     replied: {
         field: 'heartbeatChancePercent',
-        rowLabel: 'Chance after you write in either daily chat today',
-        modalTitle: 'Heartbeat chance after writing today',
+        rowLabel: 'Chance after you reply to the latest heartbeat',
+        modalTitle: 'Heartbeat chance after replying',
         modalSubtitle:
-            'Applied each heartbeat interval after you write any message that local day in the in-app Heartbeat chat or WhatsApp daily chat. A message sent before any heartbeat counts. (%{interval})',
+            'Applied after you reply to the latest visible heartbeat in the in-app Heartbeat chat or WhatsApp daily chat that local day. The next visible heartbeat resets the chance to the before-reply value. (%{interval})',
     },
     noReply: {
         field: 'heartbeatChanceNoReplyPercent',
-        rowLabel: 'Chance before you write in either daily chat today',
-        modalTitle: 'Heartbeat chance before writing today',
+        rowLabel: 'Chance until you reply to the latest heartbeat',
+        modalTitle: 'Heartbeat chance before replying',
         modalSubtitle:
-            'Applied each heartbeat interval until you write a message that local day in the in-app Heartbeat chat or WhatsApp daily chat. (%{interval})',
+            'Applied before the first visible heartbeat that local day and after every new visible heartbeat until you reply in the in-app Heartbeat chat or WhatsApp daily chat. Messages sent before the latest heartbeat do not count. HEARTBEAT_OK does not reset the chance because it posts no message. (%{interval})',
     },
 }
 

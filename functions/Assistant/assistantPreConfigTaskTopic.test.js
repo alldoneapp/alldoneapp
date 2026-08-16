@@ -11,6 +11,7 @@ const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockGetUserLocalDayBounds = jest.fn(() => ({ startOfDay: 100, endOfDay: 200 }))
 const mockCommentQueryWhere = jest.fn()
+const mockCommentQueryGet = jest.fn(async () => mockBuildEmptyQuerySnapshot())
 
 const mockBuildEmptyQuerySnapshot = () => ({ empty: true })
 
@@ -72,7 +73,7 @@ jest.mock('firebase-admin', () => {
         }),
         orderBy: jest.fn(() => query),
         limit: jest.fn(() => query),
-        get: jest.fn(async () => mockBuildEmptyQuerySnapshot()),
+        get: jest.fn((...args) => mockCommentQueryGet(...args)),
     }
 
     return {
@@ -103,10 +104,33 @@ jest.mock(
     { virtual: true }
 )
 
-const { generatePreConfigTaskResult, hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
+const {
+    generatePreConfigTaskResult,
+    getLatestUserMessageOnUserLocalDay,
+    hasUserMessageOnUserLocalDay,
+} = require('./assistantPreConfigTaskTopic')
 
 test('exports the local-day user-message lookup used by heartbeats', () => {
+    expect(getLatestUserMessageOnUserLocalDay).toEqual(expect.any(Function))
     expect(hasUserMessageOnUserLocalDay).toEqual(expect.any(Function))
+})
+
+test('returns the latest user message position using timestamp and ID ordering', async () => {
+    jest.clearAllMocks()
+    mockCommentQueryGet
+        .mockResolvedValueOnce({
+            empty: false,
+            docs: [{ id: 'message-a', data: () => ({ created: 350 }) }],
+        })
+        .mockResolvedValueOnce({
+            empty: false,
+            docs: [{ id: 'message-z', data: () => ({ created: 350 }) }],
+        })
+
+    await expect(getLatestUserMessageOnUserLocalDay('project-1', 'chat-1', 'user-1', {}, 350)).resolves.toEqual({
+        createdAt: 350,
+        commentId: 'message-z',
+    })
 })
 
 test('daily-chat message lookup counts only user-authored messages inside the user local day', async () => {
