@@ -15,7 +15,9 @@ import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import DvBotButton from '../../UIControls/DvBotButton'
 import DvSearchButton from '../../UIControls/DvSearchButton'
-import CalendarTag from '../../Tags/CalendarTag'
+// NOTE: the calendar chip is deliberately NOT rendered here. SocialText already renders it inline
+// in front of the task name (LeftTagsAndIcons), so a copy in this row was a duplicate that also
+// pushed the metadata row onto an extra line on mobile (AT-2341).
 
 export default function TagList({ projectId, task, assistantId, setAssistantId, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -80,11 +82,6 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
                             }
                             isMobile={isMobile}
                         />
-                    </View>
-                )}
-                {task.calendarData && (
-                    <View>
-                        <CalendarTag calendarData={task.calendarData} />
                     </View>
                 )}
             </View>
