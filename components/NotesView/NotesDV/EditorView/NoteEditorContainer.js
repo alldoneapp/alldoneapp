@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import NotesEditorView from './NotesEditorView'
-import ConnectionStateModal from '../../../UIComponents/FloatModals/ConnectionStateModal'
 import {
     setActiveNoteId,
     setActiveNoteIsReadOnly,
@@ -34,11 +33,9 @@ export default function NoteEditorContainer({
     const dispatch = useDispatch()
     // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
     // utils/connectionState.js. '' until the first transition, then 'offline' or
-    // 'online' (the latter only as a recovery from 'offline').
+    // 'online' (the latter only as a recovery from 'offline'). The toast itself
+    // renders globally in GlobalModalsContainerApp (ConnectionStateToast).
     const connectionState = useSelector(state => state.connectionState)
-    // The toast is dismissible per state: closing the offline toast keeps it closed
-    // while the connection stays offline, and any transition shows it again.
-    const [dismissedConnectionState, setDismissedConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
 
     // Only members can edit the note body. Anonymous viewers and logged-in non-members get a
@@ -55,14 +52,6 @@ export default function NoteEditorContainer({
     // Use prop if provided, otherwise fall back to navigation param
     const autoStartTranscription =
         autoStartTranscriptionProp ?? (navigation ? navigation.getParam('autoStartTranscription') : false)
-
-    const closeConnectionStateModal = () => {
-        setDismissedConnectionState(connectionState)
-    }
-
-    useEffect(() => {
-        setDismissedConnectionState('')
-    }, [connectionState])
 
     useEffect(() => {
         // Offline no longer forces read-only (OFFLINE_SUPPORT_PLAN.md Stage 6):
@@ -113,10 +102,6 @@ export default function NoteEditorContainer({
                     onOpenSideChat={onOpenSideChat}
                 />
             )}
-            {(connectionState === 'online' || connectionState === 'offline') &&
-                connectionState !== dismissedConnectionState && (
-                    <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
-                )}
         </View>
     )
 }

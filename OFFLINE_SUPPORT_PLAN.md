@@ -228,6 +228,24 @@ Three gaps found in first-day QA of the shipped stages:
    editor area replaces the endless spinner; the existing 5s retry picks the
    content up on reconnect.
 
+Second round (same day, from on-device QA):
+
+4. **No 10s stall opening notes offline** — `prepareSyncedNoteDocument` skips the
+   collaboration sync wait entirely when `isBrowserOffline()` (a WS that cannot
+   connect only holds the spinner; y-websocket reconnects in the background
+   regardless), so offline opens are near-instant.
+5. **The unavailable message is actually visible** — `LoadingNoteData` is an
+   absolute spinner overlay (zIndex 10000) that covered the message; the loading
+   flag is now cleared while the explanation shows, with the editor kept locked
+   through `contentUnavailableOffline` in the pointerEvents/readOnly/disabled
+   gates instead.
+6. **The online/offline toast is global and positioned properly** —
+   `ConnectionStateToast` mounts once in `GlobalModalsContainerApp` (fixed
+   bottom-right card on desktop, safe-area-aware full-width banner on phones);
+   the notes-editor-only render with its hardcoded desktop offset is gone, and
+   `ConnectionStateModal` is now a pure card with no fixed height (long
+   translations no longer clip).
+
 ## Stage 7 — Degrade the online-only surfaces honestly — **SHIPPED 2026-08-17**
 
 _Implementation notes: `runHttpsCallableFunction` fast-fails offline with a typed
