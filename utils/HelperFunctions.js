@@ -34,6 +34,7 @@ import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
 import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
 import { getSafeAreaInsets } from './safeAreaInsets'
+import { getSafeAreaModalMaxWidth } from './modalSafeArea'
 
 class HelperFunctions {
     static isValidEmail = email => {
@@ -469,8 +470,6 @@ export const calculateTimeDuration = secs => {
     return hr + ':' + min + ':' + sec
 }
 
-const POPOVER_EDGE_GUTTER = MODAL_EDGE_GAP * 2
-
 export const getPopoverWidth = () => {
     const { isMiddleScreen: tablet, smallScreenNavigation: mobile } = store.getState()
     if (!mobile) return tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
@@ -478,14 +477,18 @@ export const getPopoverWidth = () => {
     // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
     // the window width is not measurable yet.
     const { width: windowWidth } = Dimensions.get('window')
-    const fullWidth = windowWidth - POPOVER_EDGE_GUTTER
+    // AT-2339: the landscape cutout on a notched iPhone eats ~59px off ONE
+    // side, so "full window width minus the gutter" is wider than the space
+    // that actually exists and the card overhangs whichever edge the popover
+    // does not get clamped to. Zero insets give back `windowWidth - 32`.
+    const fullWidth = getSafeAreaModalMaxWidth(windowWidth)
     return fullWidth > 0 ? fullWidth : POPOVER_MOBILE_WIDTH
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
     const { width: windowWidth } = Dimensions.get('window')
-    const availableWidth = windowWidth - POPOVER_EDGE_GUTTER
+    const availableWidth = getSafeAreaModalMaxWidth(windowWidth)
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }
@@ -495,8 +498,9 @@ export const applyPopoverWidth = (setMin = true, setMax = true) => {
 }
 
 const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
+    const { left: safeLeft, right: safeRight } = getSafeAreaInsets()
     return smallScreenNavigation
-        ? windowWidth - 50
+        ? windowWidth - 50 - safeLeft - safeRight
         : isMiddleScreen
           ? POPOVER_TABLET_WIDTH_V2
           : POPOVER_DESKTOP_WIDTH_V2
