@@ -18,6 +18,7 @@ const {
     deleteTypesenseProjectRecords,
 } = require('./typesenseHelper')
 const { getProject } = require('./Firestore/generalFirestoreCloud')
+const { noteUpdateNeedsIndexing } = require('./searchNoteUpdateGate')
 const { getGoalTasksAndSubtasks } = require('./Goals/goalsFirestore')
 const { getGoalData } = require('./Goals/goalsFirestore')
 const moment = require('moment')
@@ -196,6 +197,15 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
 
     const objectBefore = await mapObject(projectId, objectId, algoliaObjectId, oldItem, objectsType, canBeInactive, db)
     let objectAfter = await mapObject(projectId, objectId, algoliaObjectId, newItem, objectsType, canBeInactive, db)
+
+    // A note update that cannot have touched the content and changes no indexed
+    // field is not worth a full note download from Storage plus a re-index
+    // (AT-2340) — see `searchNoteUpdateGate.js` for why that was every backlink,
+    // follower and sticky-data write.
+    if (objectsType === NOTES_OBJECTS_TYPE && !noteUpdateNeedsIndexing(oldItem, newItem, objectBefore, objectAfter)) {
+        console.log(`No indexed change and no content signal for note ${objectId}, skipping search update`)
+        return
+    }
 
     // If this is a note, get its content from storage
     if (objectsType === NOTES_OBJECTS_TYPE) {

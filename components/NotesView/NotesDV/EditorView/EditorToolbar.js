@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
-import firebase from 'firebase/compat/app'
+import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Quill from 'quill'
 import moment from 'moment'
 import v4 from 'uuid/v4'
@@ -1176,13 +1176,16 @@ export const EditorToolbar = ({
                         reader.onloadend = async () => {
                             const base64data = reader.result
                             try {
-                                const result = await firebase
-                                    .app()
-                                    .functions('europe-west1')
-                                    .httpsCallable('transcribeMeetingAudio')({
+                                // Routed through the offline-aware funnel
+                                // (AT-2340). Each chunk is an independent
+                                // request/response — not SDK streaming — so the
+                                // funnel applies cleanly, and offline the
+                                // recording stops instead of queueing chunks
+                                // against a ~70s timeout each.
+                                const result = await runHttpsCallableFunction('transcribeMeetingAudio', {
                                     audioChunk: base64data,
                                 })
-                                const text = result.data.text
+                                const text = result.text
                                 if (text && text.trim().length > 0) {
                                     const editor = exportRef.getEditor()
                                     const length = editor.getLength()
@@ -1191,7 +1194,15 @@ export const EditorToolbar = ({
                                 }
                             } catch (err) {
                                 console.error('Transcription error:', err)
-                                if (err.code === 'resource-exhausted' || err.message?.includes('Insufficient Gold')) {
+                                if (err.code === 'offline') {
+                                    // Transcription is server-side; there is
+                                    // nothing to queue. Stop rather than keep
+                                    // recording into a void (AT-2340).
+                                    stopRecording()
+                                } else if (
+                                    err.code === 'resource-exhausted' ||
+                                    err.message?.includes('Insufficient Gold')
+                                ) {
                                     store.dispatch(
                                         setShowLimitedFeatureModal({
                                             title: translate('Not enough Gold'),
