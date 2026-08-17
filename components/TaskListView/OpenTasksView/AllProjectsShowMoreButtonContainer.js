@@ -7,6 +7,7 @@ import { contractOpenTasks, updateOpTasks, watchOpenTasks } from '../../../utils
 import { setLaterTasksExpandState } from '../../../redux/actions'
 import store from '../../../redux/store'
 import TaskListSkeleton from '../TaskListSkeleton'
+import { runInDispatchBatch } from '../../../utils/redux/dispatchBatch'
 
 export default function AllProjectsShowMoreButtonContainer({ projectIds, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
@@ -36,24 +37,29 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
         dispatch(setLaterTasksExpandState(1))
         startLoadingTasks()
 
-        projectIds.forEach(projectId => {
-            const instanceKey = projectId + loggedUserId
+        // AT-2337: re-subscribing every project used to emit 4 store notifications
+        // per project (~312 on a heavy account) in one synchronous loop. Collapse
+        // the whole sweep into a single notification.
+        runInDispatchBatch(() => {
+            projectIds.forEach(projectId => {
+                const instanceKey = projectId + loggedUserId
 
-            const updateTasks = (initialTasks, initialLoadingInOpenTasks) => {
-                updateOpTasks(
-                    projectId,
-                    instanceKey,
-                    initialTasks,
-                    initialLoadingInOpenTasks,
-                    setProjectsHaveTasksInFirstDay,
-                    false
-                )
-                markProjectLoaded(projectId)
-            }
+                const updateTasks = (initialTasks, initialLoadingInOpenTasks) => {
+                    updateOpTasks(
+                        projectId,
+                        instanceKey,
+                        initialTasks,
+                        initialLoadingInOpenTasks,
+                        setProjectsHaveTasksInFirstDay,
+                        false
+                    )
+                    markProjectLoaded(projectId)
+                }
 
-            // When expanding, we need to fetch fresh data to include tomorrow's tasks
-            // Use keepMainDayData=false to avoid issues with stale watcher data
-            watchOpenTasks(projectId, updateTasks, true, false, false, instanceKey)
+                // When expanding, we need to fetch fresh data to include tomorrow's tasks
+                // Use keepMainDayData=false to avoid issues with stale watcher data
+                watchOpenTasks(projectId, updateTasks, true, false, false, instanceKey)
+            })
         })
     }
 
@@ -63,24 +69,27 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
         dispatch(setLaterTasksExpandState(2))
         startLoadingTasks()
 
-        projectIds.forEach(projectId => {
-            const instanceKey = projectId + loggedUserId
+        // AT-2337: same sweep as expandToTomorrow - one notification, not ~312.
+        runInDispatchBatch(() => {
+            projectIds.forEach(projectId => {
+                const instanceKey = projectId + loggedUserId
 
-            const updateTasks = (initialTasks, initialLoadingInOpenTasks) => {
-                updateOpTasks(
-                    projectId,
-                    instanceKey,
-                    initialTasks,
-                    initialLoadingInOpenTasks,
-                    setProjectsHaveTasksInFirstDay,
-                    false
-                )
-                markProjectLoaded(projectId)
-            }
+                const updateTasks = (initialTasks, initialLoadingInOpenTasks) => {
+                    updateOpTasks(
+                        projectId,
+                        instanceKey,
+                        initialTasks,
+                        initialLoadingInOpenTasks,
+                        setProjectsHaveTasksInFirstDay,
+                        false
+                    )
+                    markProjectLoaded(projectId)
+                }
 
-            // When expanding, we need to fetch fresh data to include all future tasks
-            // Use keepMainDayData=false to avoid issues with stale watcher data
-            watchOpenTasks(projectId, updateTasks, true, true, false, instanceKey)
+                // When expanding, we need to fetch fresh data to include all future tasks
+                // Use keepMainDayData=false to avoid issues with stale watcher data
+                watchOpenTasks(projectId, updateTasks, true, true, false, instanceKey)
+            })
         })
     }
 
@@ -90,6 +99,10 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
         pendingProjectIds.current.clear()
         setIsLoadingTasks(false)
 
+        // AT-2337: deliberately NOT wrapped in runInDispatchBatch. Each iteration
+        // reads `openTasksStore` back out of the store and then writes it, so
+        // buffering the writes would make later reads observe pre-sweep state.
+        // The expand sweeps above have no such read-after-write and are batched.
         projectIds.forEach(projectId => {
             const instanceKey = projectId + loggedUserId
 
