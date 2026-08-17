@@ -5,7 +5,6 @@ import ShowMoreButton from '../../UIControls/ShowMoreButton'
 import {
     hideFloatPopup,
     setLaterTasksExpanded,
-    setTaskListSingleLoading,
     setSomedayTasksExpanded,
     hideWebSideBar,
     pressShowLaterTasksInAllProjects,
@@ -41,15 +40,15 @@ export default function TopShowMoreButton({ instanceKey, projectIndex, setProjec
         const thereAreLaterObjects = thereAreLaterOpenTasks[projectId] || thereAreLaterEmptyGoals[projectId]
 
         if (inSelectedProject) {
-            const expansionActions = [setTaskListSingleLoading(instanceKey, true), setLaterTasksExpanded(true)]
-            if (!thereAreLaterObjects) expansionActions.push(setSomedayTasksExpanded(true))
-            dispatch(expansionActions)
+            thereAreLaterObjects
+                ? dispatch(setLaterTasksExpanded(true))
+                : dispatch([setLaterTasksExpanded(true), setSomedayTasksExpanded(true)])
             watchOpenTasks(projectId, updateTaks, true, !thereAreLaterObjects, true, instanceKey)
         } else {
             const { loggedUser } = store.getState()
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             dismissAllPopups(true, true, true)
-            const actionsToDispatch = [hideFloatPopup(), setTaskListSingleLoading(instanceKey, true)]
+            const actionsToDispatch = [hideFloatPopup()]
 
             if (smallScreenNavigation) actionsToDispatch.push(hideWebSideBar())
             dispatch(actionsToDispatch)
