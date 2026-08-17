@@ -106,6 +106,62 @@ const generateCalendarTaskSortIndex = calendarData => {
     return defaultSortIndex === null ? moment().valueOf() : defaultSortIndex
 }
 
+const getCalendarStartDay = calendarData => {
+    const startValue = calendarData?.start?.date || calendarData?.start?.dateTime
+    if (typeof startValue !== 'string') return null
+
+    // Google and Microsoft both return ISO-style calendar values. Reading the date prefix keeps
+    // the event's own calendar day intact instead of converting an offset time through the
+    // Cloud Function's timezone first.
+    const dayMatch = startValue.match(/^(\d{4}-\d{2}-\d{2})/)
+    return dayMatch ? dayMatch[1] : null
+}
+
+const shouldReopenCompletedCalendarTask = (task, nextCalendarData) => {
+    if (!task?.done || task.completed == null) return false
+
+    const previousStartDay = getCalendarStartDay(task.calendarData)
+    const nextStartDay = getCalendarStartDay(nextCalendarData)
+    return Boolean(previousStartDay && nextStartDay && nextStartDay > previousStartDay)
+}
+
+const buildCalendarTaskReopenData = (task, userId, calendarData) => {
+    const ownerId = task.userId || userId
+    return {
+        done: false,
+        inDone: false,
+        completed: null,
+        completedDate: null,
+        completedTime: null,
+        userIds: [ownerId],
+        stepHistory: [OPEN_STEP],
+        currentReviewerId: ownerId,
+        dueDate: Date.now(),
+        sortIndex: generateCalendarTaskSortIndex(calendarData),
+        workflowAiPromptOverride: null,
+    }
+}
+
+const queueCalendarSubtasksReopen = (batch, projectId, task, reopenData) => {
+    const subtaskIds = Array.isArray(task.subtaskIds) ? task.subtaskIds.filter(Boolean) : []
+    if (subtaskIds.length === 0) return
+
+    const subtaskReopenData = {
+        completed: null,
+        completedDate: null,
+        completedTime: null,
+        userIds: reopenData.userIds,
+        stepHistory: reopenData.stepHistory,
+        currentReviewerId: reopenData.currentReviewerId,
+        dueDate: reopenData.dueDate,
+        parentDone: false,
+        inDone: false,
+    }
+    subtaskIds.forEach(subtaskId => {
+        batch.update(admin.firestore().doc(`items/${projectId}/tasks/${subtaskId}`), subtaskReopenData)
+    })
+}
+
 const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOffset = 0) => {
     const { start, end, summary, htmlLink, description } = event
 
@@ -272,6 +328,20 @@ const addOrUpdateCalendarTask = async (
         }
     }
 
+    const reopenData = shouldReopenCompletedCalendarTask(task, dataToUpdate.calendarData)
+        ? buildCalendarTaskReopenData(task, userId, dataToUpdate.calendarData)
+        : null
+    if (reopenData) {
+        Object.assign(dataToUpdate, reopenData)
+        console.log('[addOrUpdateCalendarTask] Reopening completed task after later-day reschedule', {
+            eventId: taskId,
+            projectId: task.projectId,
+            previousStartDay: getCalendarStartDay(task.calendarData),
+            nextStartDay: getCalendarStartDay(dataToUpdate.calendarData),
+            completed: task.completed,
+        })
+    }
+
     if (task) {
         // Respect manual pinning: if pinned, never move between projects
         const isPinned = Boolean(task.calendarData && task.calendarData.pinnedToProjectId)
@@ -295,9 +365,26 @@ const addOrUpdateCalendarTask = async (
                 newTaskData.sortIndex = generateCalendarTaskSortIndex(newTaskData.calendarData)
             }
 
-            // Create in new project, delete from old
-            await newRef.set(newTaskData, { merge: true })
-            await oldRef.delete()
+            // Create in new project, delete from old. If the reschedule also reopens a completed
+            // task, roll its historical completion statistics back in the same batch.
+            if (reopenData) {
+                const batch = new BatchWrapper(admin.firestore())
+                batch.set(newRef, newTaskData, { merge: true })
+                batch.delete(oldRef)
+                await updateStatistics(
+                    task.projectId,
+                    task.userId || userId,
+                    Number(task.estimations?.[OPEN_STEP] || 0),
+                    true,
+                    false,
+                    task.completed,
+                    batch
+                )
+                await batch.commit()
+            } else {
+                await newRef.set(newTaskData, { merge: true })
+                await oldRef.delete()
+            }
             await addCalendarRoutingCommentIfNeeded({
                 userData,
                 projectId: targetProjectId,
@@ -320,11 +407,25 @@ const addOrUpdateCalendarTask = async (
             // position is theirs and no sync ever touches it again. This is computed AFTER
             // checkIfNeedToUpdateTask, whose isEqual() comparison must keep seeing the same field
             // set it always has - an extra key there would make every task look changed forever.
-            if (isUntouchedCalendarSortIndex(task.sortIndex, task.calendarData, task.created)) {
+            if (!reopenData && isUntouchedCalendarSortIndex(task.sortIndex, task.calendarData, task.created)) {
                 dataToUpdate.sortIndex = generateCalendarTaskSortIndex(dataToUpdate.calendarData)
             }
 
-            if (task.done && task.completed && oldEstimation !== newEstimation) {
+            if (reopenData) {
+                const batch = new BatchWrapper(admin.firestore())
+                batch.update(taskRef, dataToUpdate)
+                queueCalendarSubtasksReopen(batch, task.projectId, task, reopenData)
+                await updateStatistics(
+                    task.projectId,
+                    task.userId || userId,
+                    oldEstimation,
+                    true,
+                    false,
+                    task.completed,
+                    batch
+                )
+                await batch.commit()
+            } else if (task.done && task.completed && oldEstimation !== newEstimation) {
                 const batch = new BatchWrapper(admin.firestore())
                 batch.update(taskRef, dataToUpdate)
                 await updateStatistics(task.projectId, task.userId, oldEstimation, true, true, task.completed, batch)

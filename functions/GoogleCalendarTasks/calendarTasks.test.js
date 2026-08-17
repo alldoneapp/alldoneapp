@@ -402,6 +402,135 @@ describe('calendarTasks routing', () => {
         )
     })
 
+    test('reopens a completed event when it is rescheduled to a later calendar day', async () => {
+        const rescheduledEvent = {
+            ...event,
+            start: { dateTime: '2026-04-25T12:00:00Z' },
+            end: { dateTime: '2026-04-25T13:00:00Z' },
+        }
+        const existingTask = {
+            id: 'event-1',
+            projectId: 'target-project',
+            userId: 'user-1',
+            userIds: ['user-1'],
+            stepHistory: ['open'],
+            currentReviewerId: -2,
+            done: true,
+            inDone: true,
+            completed: Date.parse('2026-04-24T08:00:00Z'),
+            completedTime: '08:00',
+            calendarData: {
+                link: event.htmlLink,
+                start: event.start,
+                end: event.end,
+                email: 'me@example.com',
+                provider: 'google',
+                originalProjectId: 'connected-project',
+            },
+            name: event.summary,
+            extendedName: event.summary,
+            description: event.description,
+            estimations: { open: 60 },
+            subtaskIds: ['subtask-1'],
+        }
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            rescheduledEvent,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                calendarData: expect.objectContaining({ start: rescheduledEvent.start }),
+                done: false,
+                inDone: false,
+                completed: null,
+                completedDate: null,
+                completedTime: null,
+                userIds: ['user-1'],
+                stepHistory: ['open'],
+                currentReviewerId: 'user-1',
+                dueDate: expect.any(Number),
+                sortIndex: expect.any(Number),
+                workflowAiPromptOverride: null,
+            })
+        )
+        expect(updateStatistics).toHaveBeenCalledTimes(1)
+        expect(updateStatistics).toHaveBeenCalledWith(
+            'target-project',
+            'user-1',
+            60,
+            true,
+            false,
+            existingTask.completed,
+            expect.anything()
+        )
+        expect(admin.__mock.refs.get('items/target-project/tasks/subtask-1').update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                completed: null,
+                userIds: ['user-1'],
+                currentReviewerId: 'user-1',
+                parentDone: false,
+                inDone: false,
+            })
+        )
+    })
+
+    test('keeps a completed event done when only its time changes on the same day', async () => {
+        const rescheduledEvent = {
+            ...event,
+            start: { dateTime: '2026-04-24T16:00:00Z' },
+            end: { dateTime: '2026-04-24T17:00:00Z' },
+        }
+        const existingTask = {
+            id: 'event-1',
+            projectId: 'target-project',
+            userId: 'user-1',
+            userIds: ['user-1'],
+            stepHistory: ['open'],
+            currentReviewerId: -2,
+            done: true,
+            inDone: true,
+            completed: Date.parse('2026-04-24T08:00:00Z'),
+            calendarData: {
+                link: event.htmlLink,
+                start: event.start,
+                end: event.end,
+                email: 'me@example.com',
+                provider: 'google',
+                originalProjectId: 'connected-project',
+            },
+            name: event.summary,
+            extendedName: event.summary,
+            description: event.description,
+            estimations: { open: 60 },
+        }
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            rescheduledEvent,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        const update = admin.__mock.refs.get('items/target-project/tasks/event-1').update.mock.calls[0][0]
+        expect(update).toEqual(
+            expect.objectContaining({ calendarData: expect.objectContaining({ start: rescheduledEvent.start }) })
+        )
+        expect(update).not.toHaveProperty('done')
+        expect(update).not.toHaveProperty('inDone')
+        expect(update).not.toHaveProperty('completed')
+        expect(updateStatistics).not.toHaveBeenCalled()
+    })
+
     test('creates all-day events with zero logged minutes', async () => {
         const allDayEvent = {
             ...event,
