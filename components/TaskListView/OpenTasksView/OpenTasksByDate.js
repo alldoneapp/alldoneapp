@@ -59,10 +59,8 @@ export default function OpenTasksByDate({
     const initialLoadingEndObservedTasks = useSelector(state =>
         state.initialLoadingEndObservedTasks[instanceKey] ? state.initialLoadingEndObservedTasks[instanceKey] : false
     )
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
     const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
-    const showFallbackSkeleton =
-        !singleTaskIsLoading && initialTaskDataIsLoading && amountTasks === 0 && emptyGoalsAmount === 0
+    const showFallbackSkeleton = initialTaskDataIsLoading && amountTasks === 0 && emptyGoalsAmount === 0
 
     const openTasksShowMoreData = useSelector(state => state.openTasksShowMoreData[projectId])
     const hasFutureTasks = openTasksShowMoreData?.hasFutureTasks
@@ -118,7 +116,6 @@ export default function OpenTasksByDate({
     const isFirstDate = dateIndex === 0
 
     const showAllProjectsShowMoreButtonContainer = sortedLoggedUserProjectIds && isFirstDate && laterTasksExpanded
-    const showSingleTaskSkeleton = singleTaskIsLoading && dateFormated === lastFormatedDate
 
     return (
         <View>
@@ -194,7 +191,6 @@ export default function OpenTasksByDate({
                     )}
                 </View>
             )}
-            {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
         </View>
     )
 }
