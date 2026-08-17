@@ -3,7 +3,7 @@ import renderer from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -17,8 +17,8 @@ jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
 jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
-    getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: jest.fn(() => ['project-1', 'project-2']),
+jest.mock('./openTasksViewProjectScope', () => ({
+    getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
 }))
 jest.mock('../../../redux/actions', () => ({
     resetLoadingData: jest.fn(() => ({ type: 'Reset loading data' })),
@@ -91,6 +91,28 @@ describe('OpenTasksViewAllProjects', () => {
         ).not.toContain('AllProjectsEmptyInbox')
     })
 
+    // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer
+    // appends guideProjectIds; it delegates the scope to the shared helper, which is
+    // built on the same ProjectHelper.getActiveProjects2 the Contacts view adopted.
+    it('scopes the board through the active-project helper with the slices it selects', () => {
+        const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+        state.loggedUser.projectIds = ['project-1', 'guide-project']
+        state.loggedUser.guideProjectIds = ['guide-project']
+        state.loggedUserProjectsMap = { 'project-1': { id: 'project-1' } }
+
+        renderView(state)
+
+        expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledWith({
+            projectIds: ['project-1', 'guide-project'],
+            guideProjectIds: ['guide-project'],
+            archivedProjectIds: [],
+            templateProjectIds: [],
+            loggedUserProjectsMap: state.loggedUserProjectsMap,
+            loggedUserId: 'user-1',
+            inFocusTaskProjectId: null,
+        })
+    })
+
     // AT-2337 - "All projects -> Tasks" is slow.
     //
     // This board renders one OpenTasksByProject per project (78 on a heavy
@@ -106,17 +128,13 @@ describe('OpenTasksViewAllProjects', () => {
             useSelector.mockImplementation(selector => selector(state))
             const tree = renderer.create(<OpenTasksViewAllProjects />)
 
-            expect(
-                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
-            ).toHaveBeenCalledTimes(1)
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
 
             renderer.act(() => {
                 tree.update(<OpenTasksViewAllProjects />)
             })
 
-            expect(
-                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
-            ).toHaveBeenCalledTimes(1)
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
         })
 
         it('hands every project block the SAME array instance across re-renders', () => {
@@ -140,9 +158,7 @@ describe('OpenTasksViewAllProjects', () => {
             const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
             useSelector.mockImplementation(selector => selector(state))
             const tree = renderer.create(<OpenTasksViewAllProjects />)
-            expect(
-                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
-            ).toHaveBeenCalledTimes(1)
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
 
             const nextState = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
             nextState.loggedUser.projectIds = ['project-1', 'project-2']
@@ -152,9 +168,7 @@ describe('OpenTasksViewAllProjects', () => {
                 tree.update(<OpenTasksViewAllProjects />)
             })
 
-            expect(
-                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
-            ).toHaveBeenCalledTimes(2)
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(2)
         })
     })
 })
