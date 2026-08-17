@@ -641,6 +641,15 @@ browser before trusting a bigger change.
   pre-merge QA surface for a feature branch is the **manual `deploy:web-webpack-preview`
   job**, which publishes a Firebase hosting preview channel `webpack-<ref-slug>` on the
   staging project.
+- **Manual QA that involves signing in must run on staging live
+  (`deploy:web-staging-live` → https://alldonestaging.web.app), NOT on a preview
+  channel.** Preview channels get a fresh random origin
+  (`alldonestaging--webpack-<ref>-<hash>.web.app`) that is not in the Google OAuth
+  client's authorized JavaScript origins, so Google sign-in fails there and the app is
+  untestable past the login screen (hit 2026-08-17 QA-ing the offline-support branch).
+  Preview channels remain useful only for compile/render smoke checks of the
+  logged-out surface. Deploying a feature branch to staging live is last-writer-wins
+  over whatever was there — fine for QA, just say so if others are testing.
 - **Build process**: `ci/replace-envs.sh` injects environment variables during build
 - **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
 - **`resource_group` serializes deploys but does NOT order them — production deploy jobs
