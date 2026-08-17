@@ -1048,7 +1048,7 @@
     "Alldone is online": "Alldone ist online",
     "Alldone is offline": "Alldone ist offline",
     "Alldone is online again, all functionalities are available": "Alldone ist wieder online - alles klappt wieder",
-    "Edition in notes will be disabled till Alldone goes back online again": "Änderungen in den Notizen klappen erst wieder, wenn Alldone wieder online ist.",
+    "Edition in notes will be disabled till Alldone goes back online again": "Du kannst Notizen weiter bearbeiten; deine Änderungen werden synchronisiert, sobald Alldone wieder online ist.",
     "This Object hasn't any note yet": "Dieses %{object} hat noch keine Notiz",
     "This Object hasn't any note yet description": "Wenn Du eine neue Notiz unter dem Objekt %{object} startest, wird diese Notiz die Eigenschaften des Objektes erben - z.b. die Privatspähre-Einstellungen. Die Notiz wird außerdem ganz normal unter Notizen erscheinen",
     "Write the name of the goal": "Schreibe den Namen der Notiz",

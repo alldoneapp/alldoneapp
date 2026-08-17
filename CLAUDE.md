@@ -292,7 +292,7 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–5 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–6 shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
@@ -305,6 +305,17 @@ pin the contract.
   `ConnectionStateModal` toast + notes read-only gating consume it in
   `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
   imported and needs the retired native toolchain; use this module instead.
+- **Notes offline (y-indexeddb)**: the LIVE notes editor attaches an
+  `IndexeddbPersistence` (`noteLocalPersistence.js`) alongside the `WebsocketProvider`;
+  the headless/virtual Quill path in `notesHelper.js` deliberately does not (online-only
+  operations, cleanup hazards). `prepareSyncedNoteDocument` opens from local state when
+  Storage and/or the collab server are unreachable, and flags
+  `storageNeedsLocalCatchUp` so offline edits get uploaded to Firebase Storage on the
+  next online open (detection compares merged encodings, NOT bare state vectors — a
+  state-vector diff over-reports on every open because it can't see delete-set equality,
+  and a false positive fires edit side effects like `startEditNoteFeedsChain`). Offline
+  no longer forces the notes editor read-only. Pinned by
+  `noteCollaborationRecovery.test.js` and `noteLocalPersistence.test.js`.
 - **Firestore persistence**: `initFirebase` enables IndexedDB persistence
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat

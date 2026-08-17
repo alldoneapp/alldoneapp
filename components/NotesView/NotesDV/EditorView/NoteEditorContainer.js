@@ -65,12 +65,14 @@ export default function NoteEditorContainer({
     }, [connectionState])
 
     useEffect(() => {
-        const isReadOnly = connectionState === 'offline' || !loggedUserCanUpdateObject
+        // Offline no longer forces read-only (OFFLINE_SUPPORT_PLAN.md Stage 6):
+        // y-indexeddb makes offline edits durable and CRDT merge-on-reconnect safe.
+        const isReadOnly = !loggedUserCanUpdateObject
         dispatch(setActiveNoteIsReadOnly(isReadOnly))
         return () => {
             dispatch(setActiveNoteIsReadOnly(false))
         }
-    }, [connectionState, loggedUserCanUpdateObject])
+    }, [loggedUserCanUpdateObject])
 
     const updateInnerTasks = tasks => {
         dispatch(setNoteInnerTasks(note.id, tasks))
@@ -102,7 +104,7 @@ export default function NoteEditorContainer({
                     isFullscreen={isFullscreen}
                     setFullscreen={setFullscreen}
                     followState={followState}
-                    readOnly={connectionState === 'offline' || !loggedUserCanUpdateObject}
+                    readOnly={!loggedUserCanUpdateObject}
                     connectionState={connectionState}
                     objectType={objectType}
                     objectId={objectId}
