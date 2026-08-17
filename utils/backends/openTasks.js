@@ -13,6 +13,7 @@ import {
     stopLoadingData,
     updateSubtaskByTask,
     setLaterTasksExpanded,
+    setTaskListSingleLoading,
     updateFilteredOpenTasks,
     updateThereAreHiddenNotMainTasks,
     updateInitialLoadingEndOpenTasks,
@@ -1539,6 +1540,13 @@ export const updateOpTasks = (
     store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
     updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+
+    // Expanding later/someday tasks keeps the rows already on screen and adds
+    // one task-shaped ghost until the replacement watcher resolves. Clear that
+    // incremental state only after the refreshed list has reached Redux.
+    if (store.getState().taskListSingleLoading?.[instanceKey]) {
+        store.dispatch(setTaskListSingleLoading(instanceKey, false))
+    }
 
     // The two Firestore streams can finish on different renders. Publish the
     // corresponding loaded flag only after the merged, filtered list is in the
