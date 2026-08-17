@@ -3,6 +3,7 @@ import renderer from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -17,7 +18,7 @@ jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
-    getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: () => ['project-1'],
+    getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: jest.fn(() => ['project-1', 'project-2']),
 }))
 jest.mock('../../../redux/actions', () => ({
     resetLoadingData: jest.fn(() => ({ type: 'Reset loading data' })),
@@ -88,5 +89,72 @@ describe('OpenTasksViewAllProjects', () => {
         expect(
             renderedChildTypes(renderView(buildState({ openTasksAmount: 5, todayEmptyGoalsTotal: 0 })))
         ).not.toContain('AllProjectsEmptyInbox')
+    })
+
+    // AT-2337 - "All projects -> Tasks" is slow.
+    //
+    // This board renders one OpenTasksByProject per project (78 on a heavy
+    // dogfooding account) and re-renders whenever ANY of the store slices it
+    // watches change - including once per project as each project's first-day
+    // task count arrives. The project list must therefore be memoised: it is an
+    // O(projects) sort recomputed on every render, and - more importantly - a
+    // fresh array identity on every render is a changed prop for all 78
+    // children, which defeats React.memo on them.
+    describe('project list memoisation', () => {
+        it('does not recompute the sorted project list on a re-render with unchanged inputs', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+
+            expect(
+                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
+            ).toHaveBeenCalledTimes(1)
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            expect(
+                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
+            ).toHaveBeenCalledTimes(1)
+        })
+
+        it('hands every project block the SAME array instance across re-renders', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+
+            const idsBefore = tree.root.findAllByType('OpenTasksByProject')[0].props.sortedLoggedUserProjectIds
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            const idsAfter = tree.root.findAllByType('OpenTasksByProject')[0].props.sortedLoggedUserProjectIds
+
+            // Referential equality, not deep equality - that is what React.memo compares.
+            expect(idsAfter).toBe(idsBefore)
+        })
+
+        it('recomputes when the project inputs actually change', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+            expect(
+                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
+            ).toHaveBeenCalledTimes(1)
+
+            const nextState = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            nextState.loggedUser.projectIds = ['project-1', 'project-2']
+            useSelector.mockImplementation(selector => selector(nextState))
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            expect(
+                ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop
+            ).toHaveBeenCalledTimes(2)
+        })
     })
 })
