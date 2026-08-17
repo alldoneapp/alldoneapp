@@ -278,7 +278,11 @@ export async function setContactProject(currentProject, newProject, contact) {
         recorderUserId: contact.recorderUserId || loggedUser.uid,
         lastEditorId: loggedUser.uid,
         lastEditionDate: Date.now(),
-        noteId: null,
+        // A contact note is a project-scoped object. Keep the link on the target
+        // contact and mark the source contact as a move before deleting it; the
+        // onDeleteContact trigger then moves the linked note (metadata, content,
+        // chat and feeds) instead of treating it as an ordinary deletion.
+        noteId: contact.noteId || null,
         isPremium: contact.isPremium || false,
         lastVisitBoard: {},
         lastVisitBoardInGoals: {},
@@ -324,7 +328,9 @@ export async function setContactProject(currentProject, newProject, contact) {
         ])
     }
 
-    await getDb().doc(`projectsContacts/${currentProject.id}/contacts/${contactId}`).delete()
+    const sourceContactRef = getDb().doc(`projectsContacts/${currentProject.id}/contacts/${contactId}`)
+    await sourceContactRef.update({ movingToOtherProjectId: newProject.id })
+    await sourceContactRef.delete()
 }
 
 export async function deleteProjectContact(projectId, contact, contactId) {
