@@ -26,6 +26,7 @@ import {
     updateGoalPrivacyFeedsChain,
     generateNegativeSortIndex,
     getMentionedUsersIdsWhenEditText,
+    runHttpsCallableFunction,
 } from '../firestore'
 import TasksHelper, {
     BACKLOG_DATE_NUMERIC,
@@ -1219,8 +1220,12 @@ export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks =
     try {
         const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
         const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-        const postponeGoal = firebase.app().functions('europe-west1').httpsCallable('postponeGoalWithUndoSecondGen')
-        const result = await postponeGoal({
+        // Routed through the offline-aware funnel (AT-2340): offline this now
+        // fails immediately with `code: 'offline'` instead of hanging for the
+        // SDK's ~70s timeout with the loading indicator up. The postpone is
+        // server-side (it writes the undo action too), so there is nothing
+        // useful to do locally — failing fast is the correct behaviour.
+        const result = await runHttpsCallableFunction('postponeGoalWithUndoSecondGen', {
             projectId,
             goalId: goal.id,
             targetUserId: userId,
@@ -1230,7 +1235,7 @@ export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks =
             requestId: getId(),
         })
         logEvent('goal_postponed')
-        return result?.data?.date ?? dateTimestamp
+        return result?.date ?? dateTimestamp
     } finally {
         if (!background) store.dispatch(stopLoadingData())
     }
