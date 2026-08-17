@@ -163,24 +163,14 @@ export default class GoalItemPresentation extends PureComponent {
         this._isUnmounted = true
     }
 
-    // Every goal row keeps a raw `store.subscribe`, so this fires once per goal for *every* redux
-    // action in the app. In "All projects - Goals" the board settles with hundreds of dispatches,
-    // which used to mean tens of thousands of no-op `setState` calls. Bail out before touching
-    // React state when none of the four values we mirror actually changed (AT-2336).
     updateState = () => {
         const storeState = store.getState()
-        const { loggedUser, isMiddleScreen, smallScreenNavigation } = storeState
-        const { isAnonymous, unlockedKeysByGuides } = loggedUser
-        const current = this.state
-        if (
-            current.isAnonymous === isAnonymous &&
-            current.isMiddleScreen === isMiddleScreen &&
-            current.smallScreenNavigation === smallScreenNavigation &&
-            current.unlockedKeysByGuides === unlockedKeysByGuides
-        ) {
-            return
-        }
-        this.setStateIfMounted({ isAnonymous, isMiddleScreen, smallScreenNavigation, unlockedKeysByGuides })
+        this.setStateIfMounted({
+            isAnonymous: storeState.loggedUser.isAnonymous,
+            isMiddleScreen: storeState.isMiddleScreen,
+            smallScreenNavigation: storeState.smallScreenNavigation,
+            unlockedKeysByGuides: storeState.loggedUser.unlockedKeysByGuides,
+        })
     }
 
     updateParentMilestonesData = parentOpenMilestones => {
