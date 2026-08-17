@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
@@ -28,16 +28,33 @@ export default function OpenTasksViewAllProjects() {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
 
-    const sortedLoggedUserProjectIds =
-        ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+    // AT-2337: this list is recomputed on every render of the all-projects board
+    // (two lodash `orderBy` passes with a `name.toLowerCase()` key, over a filter
+    // that scans the archived/template/guide arrays per project), and it is handed
+    // to every `OpenTasksByProject` as a prop. Without memoisation each render
+    // produced a NEW array identity, which defeats `React.memo` on the ~78 project
+    // blocks below and re-rendered all of them for any unrelated store change.
+    const sortedLoggedUserProjectIds = useMemo(
+        () =>
+            ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+                projectIds,
+                guideProjectIds,
+                archivedProjectIds,
+                templateProjectIds,
+                loggedUserProjectsMap,
+                loggedUserId,
+                inFocusTaskProjectId
+            ),
+        [
             projectIds,
             guideProjectIds,
             archivedProjectIds,
             templateProjectIds,
             loggedUserProjectsMap,
             loggedUserId,
-            inFocusTaskProjectId
-        )
+            inFocusTaskProjectId,
+        ]
+    )
 
     useEffect(() => {
         dispatch(resetLoadingData())
