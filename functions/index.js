@@ -362,28 +362,6 @@ exports.oauthProtectedResource = onRequest(
     }
 )
 
-// Out-of-scope bounce used by the app's "Open view in new window" button so an installed
-// desktop PWA can hand the destination to a normal browser tab (AT-2345). It only 302s to an
-// allowlisted Alldone URL — see functions/WebApp/openInBrowserTab.js for why it must live on
-// a different origin than the hosting domain.
-exports.openInBrowserTab = onRequest(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: {
-            origin: true,
-            methods: ['GET', 'HEAD', 'OPTIONS'],
-            allowedHeaders: ['*'],
-            credentials: false,
-        },
-    },
-    (req, res) => {
-        const { handleOpenInBrowserTab } = require('./WebApp/openInBrowserTab')
-        handleOpenInBrowserTab(req, res)
-    }
-)
-
 // Root-level OAuth endpoints that Claude Code expects
 // These proxy/redirect to the actual MCP server endpoints
 

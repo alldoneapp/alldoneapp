@@ -29,6 +29,11 @@ export default function FeedUndoAction({ actionId }) {
         setBusy(true)
         try {
             await reverseUndoAction(actionId, isUndone ? 'redo' : 'undo')
+        } catch (error) {
+            // Offline this rejects immediately with code 'offline' instead of
+            // hanging; either way the button must not leave an unhandled
+            // rejection behind (AT-2340).
+            console.warn('Could not reverse the undo action', error)
         } finally {
             setBusy(false)
         }

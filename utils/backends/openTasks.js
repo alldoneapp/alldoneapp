@@ -3,6 +3,7 @@ import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } f
 
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './Tasks/optimisticTaskCreate'
 import store from '../../redux/store'
 import {
     setGlobalDataByProject,
@@ -286,6 +287,50 @@ const watchOpenTasksInternal = (
     )
 }
 
+/**
+ * AT-2342 - does this raw task document satisfy the SAME conditions as `getOpenTasksQuery`?
+ *
+ * An optimistically published task (`optimisticTaskCreate.js`) never passes through Firestore's
+ * matcher, so this is the only thing standing between it and a list it does not belong in. It
+ * has to mirror `getOpenTasksQuery` clause for clause: the pipeline below re-derives the day
+ * bucket and the goal grouping, but it does NOT re-check `inDone`, `currentReviewerId`,
+ * `observersIds` or `isPublicFor`, so a task that fails those would be inserted and then never
+ * be echoed back to correct it - it would sit in the list until the watcher restarts.
+ *
+ * Keep the two functions edited together; `openTasksOptimisticCreate.test.js` pins the pairs
+ * that actually differ (assignee, visibility, done, and each of the three date windows).
+ */
+export const matchesOpenTasksQuery = (
+    taskData,
+    { areObservedTasks, currentUserId, loggedUser, showLaterTasks, showSomedayTasks, endOfDay, endOfTomorrow }
+) => {
+    if (!taskData || taskData.inDone !== false) return false
+
+    if (areObservedTasks) {
+        return Array.isArray(taskData.observersIds) && taskData.observersIds.includes(currentUserId)
+    }
+
+    const { uid: loggedUserId, isAnonymous } = loggedUser
+    const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+
+    if (taskData.currentReviewerId !== currentUserId) return false
+    if (!Array.isArray(taskData.isPublicFor) || !taskData.isPublicFor.some(id => allowUserIds.includes(id))) {
+        return false
+    }
+
+    const { dueDate } = taskData
+    if (!Number.isFinite(dueDate)) return false
+
+    // The three expand states of getOpenTasksQuery, in the same order.
+    if (!showLaterTasks && !showSomedayTasks) return dueDate <= endOfDay
+    if (showLaterTasks && !showSomedayTasks) {
+        return endOfTomorrow
+            ? dueDate <= endOfTomorrow && dueDate < BACKLOG_DATE_NUMERIC
+            : dueDate < BACKLOG_DATE_NUMERIC
+    }
+    return true
+}
+
 const getOpenTasksQuery = (
     projectId,
     areObservedTasks,
@@ -378,68 +423,114 @@ const watchUserOpenTasks = (
         if (gate.shouldBuffer(querySnapshot)) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
-            // AT-2337: one snapshot used to produce ~10 separate store notifications,
-            // and "All projects" runs this handler once per project (~78x on a heavy
-            // account). Collect them into a single array dispatch instead - same
-            // actions, same order, same resulting state, one subscriber pass.
-            runInDispatchBatch(() => {
-                const mergedChanges = [...cacheChanges, ...changes]
-
-                let subtasks = { ...subtasksByParentId }
-
-                if (mergedChanges.length > 0) {
-                    const { openTasksArray, subtasksByTasks } = processTaskChanges(
-                        projectId,
-                        mergedChanges,
-                        loggedUser,
-                        currentUserId,
-                        endOfDay,
-                        storedTasks,
-                        estimationByDate,
-                        amountOfTasksByDate,
-                        tasksMap,
-                        areObservedTasks,
-                        false,
-                        dayDateFormated,
-                        showLaterTasks,
-                        showSomedayTasks,
-                        subtasksByParentId,
-                        subtasksMap,
-                        assistantProfileMode
-                    )
-                    subtasks = subtasksByTasks
-                    callback(openTasksArray, !areObservedTasks)
-                    batchDispatch(
-                        setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById })
-                    )
-                } else if (Object.keys(storedTasks).length === 0) {
-                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
-                    batchDispatch(setOpenTasksMap(projectId, {}))
-                } else if (areObservedTasks) {
-                    batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
-                }
-
-                batchDispatch(stopLoadingData())
-
-                batchDispatch(
-                    setOpenSubtasksMap(projectId, {
-                        ...subtasksMap.observedSubtasksById,
-                        ...subtasksMap.userSubtasksById,
-                        ...subtasksMap.streamAndUserSubtasksById,
-                    })
-                )
-
-                batchDispatch(updateSubtaskByTask(instanceKey, subtasks))
-
-                cacheChanges = []
-            })
+            deliverOpenTasksChanges(changes)
         }
     }
+
+    /**
+     * The delivery half of the snapshot handler, split out so AT-2342's optimistic insert can
+     * reach it without impersonating a Firestore snapshot.
+     *
+     * `optimistic` turns off the two things that belong to a real snapshot and only to it:
+     * flushing whatever `cachedSnapshotGate` has buffered (those changes are still waiting for
+     * a server snapshot to confirm them - a locally created task is no reason to render a
+     * half-synced list early), and `stopLoadingData()`, which decrements a *counter* and would
+     * corrupt the global spinner if called without a matching `startLoadingData()`.
+     */
+    function deliverOpenTasksChanges(changes, { optimistic = false } = {}) {
+        // AT-2337: one snapshot used to produce ~10 separate store notifications,
+        // and "All projects" runs this handler once per project (~78x on a heavy
+        // account). Collect them into a single array dispatch instead - same
+        // actions, same order, same resulting state, one subscriber pass.
+        runInDispatchBatch(() => {
+            const mergedChanges = optimistic ? changes : [...cacheChanges, ...changes]
+
+            let subtasks = { ...subtasksByParentId }
+
+            if (mergedChanges.length > 0) {
+                const { openTasksArray, subtasksByTasks } = processTaskChanges(
+                    projectId,
+                    mergedChanges,
+                    loggedUser,
+                    currentUserId,
+                    endOfDay,
+                    storedTasks,
+                    estimationByDate,
+                    amountOfTasksByDate,
+                    tasksMap,
+                    areObservedTasks,
+                    false,
+                    dayDateFormated,
+                    showLaterTasks,
+                    showSomedayTasks,
+                    subtasksByParentId,
+                    subtasksMap,
+                    assistantProfileMode
+                )
+                subtasks = subtasksByTasks
+                callback(openTasksArray, !areObservedTasks)
+                batchDispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
+            } else if (Object.keys(storedTasks).length === 0) {
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
+                batchDispatch(setOpenTasksMap(projectId, {}))
+            } else if (areObservedTasks) {
+                batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+            }
+
+            if (!optimistic) batchDispatch(stopLoadingData())
+
+            batchDispatch(
+                setOpenSubtasksMap(projectId, {
+                    ...subtasksMap.observedSubtasksById,
+                    ...subtasksMap.userSubtasksById,
+                    ...subtasksMap.streamAndUserSubtasksById,
+                })
+            )
+
+            batchDispatch(updateSubtaskByTask(instanceKey, subtasks))
+
+            if (!optimistic) cacheChanges = []
+        })
+    }
+
+    // AT-2342 - render a task this user just created without waiting for it to come back from
+    // Firestore. `matchesOpenTasksQuery` is what keeps a task out of a list it does not belong
+    // in, since nothing else re-checks the query clauses.
+    const isTaskInThisView = taskData =>
+        matchesOpenTasksQuery(taskData, {
+            areObservedTasks,
+            currentUserId,
+            loggedUser,
+            showLaterTasks,
+            showSomedayTasks,
+            endOfDay,
+            endOfTomorrow,
+        }) && taskBelongsInOpenBoard(taskData, assistantOwner, areObservedTasks, assistantProfileMode)
+
+    const knownTaskIds = () => (areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById)
+
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+        const taskData = change.doc.data()
+        if (!isTaskInThisView(taskData)) return
+
+        // Removal must be idempotent: a rejected write is rolled back twice over - once by the
+        // explicit publication and once by Firestore reverting its own local mutation - and
+        // `deleteTask` decrements the per-day task count and estimation total every time it runs.
+        // A subtask lives in `subtasksMap`, not here, so let the pipeline judge that case itself.
+        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) return
+
+        deliverOpenTasksChanges([change], { optimistic: true })
+    })
+
     const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
+    const unsubAll = () => {
+        unsubOptimistic()
+        unsub()
+    }
 
     areObservedTasks
-        ? (userObservedTasks[projectId] = { [currentUserId]: [unsub] })
-        : (userOpenTasks[projectId] = { [currentUserId]: [unsub] })
+        ? (userObservedTasks[projectId] = { [currentUserId]: [unsubAll] })
+        : (userOpenTasks[projectId] = { [currentUserId]: [unsubAll] })
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
