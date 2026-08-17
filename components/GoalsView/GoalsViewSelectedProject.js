@@ -86,7 +86,6 @@ export default function GoalsViewSelectedProject({
             key={projectId + goalsActiveTab}
             projectId={projectId}
             projectIndex={selectedProjectIndex}
-            milestones={boardMilestones || []}
             goalsActiveTab={goalsActiveTab}
             firstMilestoneId={firstMilestoneId}
             setDismissibleRefs={setDismissibleRefs}
