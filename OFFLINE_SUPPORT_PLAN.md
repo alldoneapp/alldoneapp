@@ -239,20 +239,6 @@ Second round (same day, from on-device QA):
    flag is now cleared while the explanation shows, with the editor kept locked
    through `contentUnavailableOffline` in the pointerEvents/readOnly/disabled
    gates instead.
-6a. **The real "loads forever" root cause (found on a Pixel 6 PWA in airplane
-   mode, on the fixed build): the Firebase Storage SDK retries failed network
-   requests internally for up to 2 MINUTES per operation** (`maxOperationRetryTime`
-   default; uploads: 10 minutes). Every offline note open was stuck INSIDE
-   `getDownloadURL` before any app-level offline handling could run — which is
-   also why the "unavailable offline" message never appeared. Three bounds now:
-   the editor skips the download entirely while `isBrowserOffline()`;
-   `loadNoteContentWithRetry` takes `attemptTimeoutMs` (10s from the editor) for
-   degraded-but-"online" networks; and the notes Storage client is configured
-   with `setMaxOperationRetryTime(15000)` / `setMaxUploadRetryTime(60000)` so no
-   notes-storage call can stall for minutes anywhere. The Stage-8 harness missed
-   it because it injected the download RESULT instead of driving the real
-   Storage SDK offline — an injected failure fails fast; the real one does not.
-
 6. **The online/offline toast is global and positioned properly** —
    `ConnectionStateToast` mounts once in `GlobalModalsContainerApp` (fixed
    bottom-right card on desktop, safe-area-aware full-width banner on phones);
