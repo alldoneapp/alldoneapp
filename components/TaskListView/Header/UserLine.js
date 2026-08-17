@@ -31,8 +31,12 @@ import {
 import store from '../../../redux/store'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import useWindowSize from '../../../utils/useWindowSize'
+import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
+import { HEADER_POPOVER_HEIGHT_FRACTION } from '../../styles/modals'
 
 function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen }) {
+    const [, windowHeight] = useWindowSize()
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -129,7 +133,11 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
                         borderRadius: '8px',
                         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
                         minWidth: '300px',
-                        maxHeight: '80vh',
+                        // AT-2339: the library nudges this popover's POSITION
+                        // into the safe rectangle, but a card capped against
+                        // the raw viewport can still be taller than that
+                        // rectangle and overflow the opposite edge.
+                        maxHeight: getSafeAreaViewportHeightCap(windowHeight, HEADER_POPOVER_HEIGHT_FRACTION),
                         overflow: 'hidden',
                     }}
                 >

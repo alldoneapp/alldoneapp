@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
-import { Dimensions, View } from 'react-native'
+import { View } from 'react-native'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import GoalMilestoneRangeModal from '../UIComponents/FloatModals/GoalMilestoneRangeModal/GoalMilestoneRangeModal'
 import Backend from '../../utils/BackendBridge'
+import { centerPopoverInWindow } from '../../utils/popoverPositioning'
+import { SIDEBAR_MENU_WIDTH } from '../styles/global'
 
 export default function GoalSwipeDateRangeWrapper({
     goal,
@@ -23,18 +25,17 @@ export default function GoalSwipeDateRangeWrapper({
         Backend.updateGoalDateRange(projectId, goal, date, rangeEdgePropertyName, true, milestone?.milestoneType)
     }
 
-    const updateModalLocation = () => {
-        const MENU_WIDTH = smallScreenNavigation ? 0 : 263
-
-        const windowDimensions = Dimensions.get('window')
-        const windowWidth = windowDimensions.width
-        const windowHeight = windowDimensions.height
-
-        const left = (windowWidth - modalWidth + MENU_WIDTH) * 0.5
-        const top = (windowHeight - modalHeight) * 0.5
-
-        return { left, top }
-    }
+    // AT-2339: this was a hand-rolled copy of centerPopoverInWindow — the same
+    // "centre in the window, offset by half the sidebar" math, but against the
+    // RAW viewport and with no clamp, so a card taller than the safe rectangle
+    // centred with its header under the status bar. The shared helper centres
+    // within the safe rectangle and pins an oversized modal to the top edge
+    // instead of giving it a negative top (AT-2189).
+    const updateModalLocation = () =>
+        centerPopoverInWindow(
+            { popoverRect: { width: modalWidth, height: modalHeight } },
+            smallScreenNavigation ? 0 : SIDEBAR_MENU_WIDTH / 2
+        )
 
     return (
         <AppPopover

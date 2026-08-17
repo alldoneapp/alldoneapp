@@ -106,3 +106,63 @@ export const centerPopoverInWindow = ({ popoverRect } = {}, horizontalOffset = 0
         insets: getSafeAreaInsets(),
     })
 }
+
+// A handful of popovers are placed by hand at a literal offset meant to sit
+// just below the app header (`{ top: 60, left: 16 }` in the two header project
+// switchers) AND pass `disableReposition`, so the patched library never nudges
+// them into the safe rectangle either. Nothing clamps those: on a 59px Dynamic
+// Island `top: 60` leaves one pixel, and `left: 16` is under the landscape
+// cutout.
+//
+// These offsets are ADDITIVE against the insets — deliberately the opposite of
+// the overlay padding in utils/modalSafeArea.js, which uses minimum semantics.
+// The shell pads `body` with env(safe-area-inset-*) (web-bundler/index.html),
+// so the header these numbers were measured against already begins at
+// `insets.top`; a `position: fixed` portal does not inherit that padding, so
+// reproducing the same visual gap means adding the inset back. Minimum
+// semantics would resolve max(60, 59) = 60 and leave the popover sitting on
+// top of the very header it is supposed to hang beneath.
+//
+// The result is still clamped into the safe rectangle so a tall popover cannot
+// be pushed off the bottom edge by the offset it was just given.
+export const offsetPopoverInsideSafeArea = ({
+    top = 0,
+    left = 0,
+    viewportWidth,
+    viewportHeight,
+    popoverWidth = 0,
+    popoverHeight = 0,
+    padding = POPOVER_VIEWPORT_PADDING,
+    insets,
+}) => {
+    const inset = edge => (Number.isFinite(insets?.[edge]) ? insets[edge] : 0)
+    const width = Number.isFinite(popoverWidth) ? popoverWidth : 0
+    const height = Number.isFinite(popoverHeight) ? popoverHeight : 0
+
+    const minTop = inset('top') + padding
+    const minLeft = inset('left') + padding
+    const maxTop = viewportHeight - inset('bottom') - height - padding
+    const maxLeft = viewportWidth - inset('right') - width - padding
+
+    return {
+        top: clampToRange(inset('top') + top, minTop, maxTop),
+        left: clampToRange(inset('left') + left, minLeft, maxLeft),
+    }
+}
+
+// react-tiny-popover contentLocation adapter for the above, measured against
+// the live window. With zero insets and a popover that fits, this returns the
+// caller's literal `{ top, left }` unchanged.
+export const pinPopoverInsideWindow = ({ popoverRect } = {}, { top = 0, left = 0 } = {}) => {
+    const dim = Dimensions.get('window')
+
+    return offsetPopoverInsideSafeArea({
+        top,
+        left,
+        viewportWidth: dim.width,
+        viewportHeight: dim.height,
+        popoverWidth: popoverRect?.width,
+        popoverHeight: popoverRect?.height,
+        insets: getSafeAreaInsets(),
+    })
+}

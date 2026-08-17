@@ -8,6 +8,7 @@ import {
     centerPopoverInViewport,
     centerPopoverInWindow,
     clampToRange,
+    offsetPopoverInsideSafeArea,
 } from './popoverPositioning'
 
 const PADDING = POPOVER_VIEWPORT_PADDING
@@ -207,5 +208,64 @@ describe('centerPopoverInWindow', () => {
         setViewport(1440, 900)
 
         expect(centerPopoverInWindow()).toEqual({ top: 450, left: 720 })
+    })
+})
+
+describe('offsetPopoverInsideSafeArea (AT-2339)', () => {
+    const HEADER_OFFSET = { top: 60, left: 16 }
+    const fits = { viewportWidth: 390, viewportHeight: 844, popoverWidth: 300, popoverHeight: 400 }
+
+    it('returns the literal offset unchanged when there are no insets', () => {
+        // The anti-regression contract: desktop, Android and older iPhones must
+        // land on exactly the coordinates the call site asked for.
+        expect(offsetPopoverInsideSafeArea({ ...HEADER_OFFSET, ...fits })).toEqual({ top: 60, left: 16 })
+    })
+
+    it('ADDS the insets rather than max()-ing against them', () => {
+        // max(60, 59) would leave one pixel of clearance under a Dynamic
+        // Island. The header the offset is measured from already starts at
+        // insets.top, because the shell pads `body`.
+        expect(
+            offsetPopoverInsideSafeArea({
+                ...HEADER_OFFSET,
+                ...fits,
+                insets: { top: 59, right: 0, bottom: 34, left: 0 },
+            })
+        ).toEqual({ top: 119, left: 16 })
+    })
+
+    it('clears the landscape cutout on the left', () => {
+        expect(
+            offsetPopoverInsideSafeArea({
+                ...HEADER_OFFSET,
+                viewportWidth: 844,
+                viewportHeight: 390,
+                popoverWidth: 300,
+                popoverHeight: 200,
+                insets: { top: 0, right: 59, bottom: 21, left: 59 },
+            })
+        ).toEqual({ top: 60, left: 75 })
+    })
+
+    it('clamps a popover the offset would push past the bottom edge', () => {
+        const { top } = offsetPopoverInsideSafeArea({
+            ...HEADER_OFFSET,
+            viewportWidth: 390,
+            viewportHeight: 500,
+            popoverWidth: 300,
+            popoverHeight: 460,
+            insets: { top: 47, right: 0, bottom: 34, left: 0 },
+        })
+
+        // 47 + 60 = 107 would run off the bottom; pinned to the top inset
+        // instead so the header stays reachable.
+        expect(top).toBe(47 + POPOVER_VIEWPORT_PADDING)
+    })
+
+    it('tolerates missing insets and popover dimensions', () => {
+        expect(offsetPopoverInsideSafeArea({ viewportWidth: 390, viewportHeight: 844 })).toEqual({
+            top: PADDING,
+            left: PADDING,
+        })
     })
 })
