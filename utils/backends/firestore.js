@@ -45,6 +45,7 @@ import {
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { isBrowserOffline } from '../connectionState'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -7845,6 +7846,16 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
 }
 
 export async function runHttpsCallableFunction(functionName, data, options = {}) {
+    // Callables are server-side orchestration and can never work offline — fail
+    // fast with an identifiable error instead of letting the SDK hang into its
+    // 70s default timeout (OFFLINE_SUPPORT_PLAN.md Stage 7). Callers already
+    // handle callable failures; this only changes how quickly and clearly.
+    if (isBrowserOffline()) {
+        const offlineError = new Error(`"${functionName}" needs an internet connection`)
+        offlineError.code = 'offline'
+        throw offlineError
+    }
+
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)

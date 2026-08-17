@@ -292,7 +292,7 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–6 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–7 shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
@@ -305,6 +305,13 @@ pin the contract.
   `ConnectionStateModal` toast + notes read-only gating consume it in
   `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
   imported and needs the retired native toolchain; use this module instead.
+- **Online-only surfaces fail fast, never hang**: `runHttpsCallableFunction` and
+  `multiSearchTypesense` both throw a typed `code: 'offline'` error immediately while
+  offline (a callable otherwise hangs into its 70s SDK timeout). New features must
+  either work from the Firestore cache or gate on `connectionState`/`isBrowserOffline`
+  and fail fast with that same error shape. Mentions degrade to redux project members
+  (`MentionsModal.getLocalContactsFallback`); `getMentions` must never throw —
+  `updateResults` has no catch and a rejection leaves the mentions spinner hanging.
 - **Notes offline (y-indexeddb)**: the LIVE notes editor attaches an
   `IndexeddbPersistence` (`noteLocalPersistence.js`) alongside the `WebsocketProvider`;
   the headless/virtual Quill path in `notesHelper.js` deliberately does not (online-only

@@ -275,16 +275,36 @@ export default function MentionsModal({
         return ''
     }
 
+    // Offline (or any search outage) the contacts tab degrades to the project
+    // members already in redux — the common @-mention target — filtered by the
+    // typed text; the other tabs degrade to empty (OFFLINE_SUPPORT_PLAN.md
+    // Stage 7). Also the reason getMentions must never throw: updateResults has
+    // no catch, so a rejection used to leave the spinner hanging forever.
+    const getLocalContactsFallback = () => {
+        const { projectUsers } = store.getState()
+        const users = projectUsers[projectId] || []
+        const lowerSearch = (mentionText || '').toLowerCase()
+        return users
+            .filter(user => !lowerSearch || (user.displayName || '').toLowerCase().includes(lowerSearch))
+            .map(user => ({ ...user, projectId }))
+    }
+
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
         const isGuide = !!parentTemplateId
 
-        const results = await searchTypesenseCollection(
-            indexPrefix,
-            mentionText,
-            getTypesenseMentionFilter(indexPrefix, isGuide)
-        )
+        let results
+        try {
+            results = await searchTypesenseCollection(
+                indexPrefix,
+                mentionText,
+                getTypesenseMentionFilter(indexPrefix, isGuide)
+            )
+        } catch (error) {
+            console.log('Mentions search unavailable:', error.message)
+            return indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? getLocalContactsFallback() : []
+        }
 
         let items = results.hits
 

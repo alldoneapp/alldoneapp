@@ -205,7 +205,19 @@ does nothing for them.
   editing stays **enabled** (y-indexeddb makes it safe); read-only mode is only for
   "no local state and no network".
 
-## Stage 7 — Degrade the online-only surfaces honestly
+## Stage 7 — Degrade the online-only surfaces honestly — **SHIPPED 2026-08-17**
+
+_Implementation notes: `runHttpsCallableFunction` fast-fails offline with a typed
+`code: 'offline'` error (callers already handle callable failures — this converts a 70s
+SDK hang into an instant, identifiable one, covering goal postpone-undo, undo,
+transcription, Gold and every other callable at the single funnel).
+`multiSearchTypesense` fast-fails the same way; `GlobalSearchModal` shows a translated
+offline notice, and `MentionsModal.getMentions` no longer throws (its `updateResults`
+had no catch — the spinner hung forever on ANY search failure, a pre-existing bug):
+contacts degrade to redux project members filtered by the typed text, other tabs to
+empty, and pre-config tasks still come from the Firestore cache. Attachment-upload
+outbox stays out of scope as planned; assistant/VM/Gold surfaces get the fast-fail via
+the callable funnel rather than per-surface UI in v1._
 
 Everything that cannot work offline should say so immediately instead of hanging or
 silently failing:

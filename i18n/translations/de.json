@@ -1048,6 +1048,7 @@
     "Alldone is online": "Alldone ist online",
     "Alldone is offline": "Alldone ist offline",
     "Alldone is online again, all functionalities are available": "Alldone ist wieder online - alles klappt wieder",
+    "Search needs an internet connection": "Die Suche benötigt eine Internetverbindung. Ergebnisse sind wieder verfügbar, sobald du online bist.",
     "Edition in notes will be disabled till Alldone goes back online again": "Du kannst Notizen weiter bearbeiten; deine Änderungen werden synchronisiert, sobald Alldone wieder online ist.",
     "This Object hasn't any note yet": "Dieses %{object} hat noch keine Notiz",
     "This Object hasn't any note yet description": "Wenn Du eine neue Notiz unter dem Objekt %{object} startest, wird diese Notiz die Eigenschaften des Objektes erben - z.b. die Privatspähre-Einstellungen. Die Notiz wird außerdem ganz normal unter Notizen erscheinen",
