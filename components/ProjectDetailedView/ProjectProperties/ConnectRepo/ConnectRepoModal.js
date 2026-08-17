@@ -8,10 +8,10 @@ import { removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
 import useModalSizing from '../../../../hooks/useModalSizing'
+import { getSafeAreaEdgeOffsets, getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
-const MODAL_VERTICAL_MARGIN = 16
 const MODAL_PADDING = 16
 const MAX_MODAL_WIDTH = 520
 
@@ -37,8 +37,16 @@ export default function ConnectRepoModal({ project, closePopover, onConnectionCh
     const [success, setSuccess] = useState('')
 
     const horizontalMargin = smallScreenNavigation ? MOBILE_MODAL_HORIZONTAL_MARGIN : MODAL_HORIZONTAL_MARGIN
-    const containerWidth = Math.min(Math.max(windowWidth - horizontalMargin * 2, 0), MAX_MODAL_WIDTH)
-    const containerMaxHeight = Math.max(windowHeight - MODAL_VERTICAL_MARGIN * 2, 0)
+    const { left: safeAreaLeft, right: safeAreaRight } = getSafeAreaEdgeOffsets()
+    const containerWidth = Math.min(
+        Math.max(windowWidth - horizontalMargin * 2 - safeAreaLeft - safeAreaRight, 0),
+        MAX_MODAL_WIDTH
+    )
+    // AT-2339: the previous cap was `windowHeight - 32`, and the shared
+    // MODAL_SAFE_AREA_GAP is exactly that 32 — so this is a drop-in that
+    // additionally subtracts the iOS insets. Zero insets (desktop, Android,
+    // older iPhones) reproduce the previous number exactly.
+    const containerMaxHeight = getSafeAreaModalMaxHeight(windowHeight)
     const scrollMaxHeight = Math.max(containerMaxHeight - MODAL_PADDING * 2, 0)
 
     useEffect(() => {

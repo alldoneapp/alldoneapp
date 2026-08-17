@@ -22,8 +22,13 @@ import { DV_TAB_PROJECT_PROPERTIES, DV_TAB_ROOT_GOALS } from '../../../utils/Tab
 import { allGoals } from '../../AllSections/allSectionHelper'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import useWindowSize from '../../../utils/useWindowSize'
+import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
+import { pinPopoverInsideWindow } from '../../../utils/popoverPositioning'
+import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../styles/modals'
 
 function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen }) {
+    const [, windowHeight] = useWindowSize()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
@@ -126,7 +131,14 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             containerStyle={
                 mobile
                     ? {
-                          maxHeight: '80vh',
+                          // AT-2339: `80vh` is a fraction of the RAW viewport,
+                          // so it never accounted for the status bar or the
+                          // home indicator below the pinned top offset.
+                          maxHeight: getSafeAreaViewportHeightCap(
+                              windowHeight,
+                              HEADER_POPOVER_HEIGHT_FRACTION,
+                              HEADER_POPOVER_OFFSET.top
+                          ),
                           overflow: 'auto',
                           position: 'fixed',
                           zIndex: 9999,
@@ -135,10 +147,12 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             }
             contentLocation={
                 mobile
-                    ? args => {
-                          // Force position for small screens
-                          return { top: 60, left: 16 }
-                      }
+                    ? // Force position for small screens. `disableReposition`
+                      // means the library never nudges this into the safe
+                      // rectangle, so the offset has to absorb the insets
+                      // itself — otherwise a 59px Dynamic Island leaves the
+                      // hard-coded `top: 60` one pixel of clearance.
+                      args => pinPopoverInsideWindow(args, HEADER_POPOVER_OFFSET)
                     : args => popoverToSafePosition(args, mobile)
             }
             content={

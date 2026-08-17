@@ -48,6 +48,41 @@ describe('AT-2339: popup height caps go through the safe-area authority', () => 
 
         expect(offenders).toEqual([])
     })
+
+    // The spellings the first sweep's codemod could not see. Each one is a
+    // window-height cap wearing a different name, and each was a real miss
+    // found by auditing rather than by grepping for the known idiom.
+    it('no component re-derives a modal cap from a local vertical-margin constant', () => {
+        const localMargin = /maxHeight\s*=\s*Math\.max\(\s*windowHeight\s*-\s*[A-Z_]+\s*\*\s*2/
+        const offenders = collectJsFiles(path.join(ROOT, 'components'))
+            .filter(file => localMargin.test(read(file)))
+            .map(file => path.relative(ROOT, file))
+
+        expect(offenders).toEqual([])
+    })
+
+    it('no popup caps itself with a raw vh unit', () => {
+        // `vh` is a fraction of the RAW viewport, so it cannot see the insets.
+        // getSafeAreaViewportHeightCap is the drop-in.
+        const vhCap = /maxHeight:\s*'\d+vh'/
+        const offenders = collectJsFiles(path.join(ROOT, 'components'))
+            .filter(file => vhCap.test(read(file)))
+            .map(file => path.relative(ROOT, file))
+
+        expect(offenders).toEqual([])
+    })
+
+    it('no popover is pinned at hard-coded literal coordinates', () => {
+        // `contentLocation={() => ({ top: 60, left: 16 })}` together with
+        // `disableReposition` is the one combination nothing else can rescue:
+        // the library never nudges it into the safe rectangle.
+        const literalPin = /return\s*\{\s*top:\s*\d+\s*,\s*left:\s*\d+\s*\}/
+        const offenders = collectJsFiles(path.join(ROOT, 'components'))
+            .filter(file => literalPin.test(read(file)))
+            .map(file => path.relative(ROOT, file))
+
+        expect(offenders).toEqual([])
+    })
 })
 
 describe('AT-2339: the fixed-overlay dialog family pads for the safe area', () => {
@@ -67,6 +102,10 @@ describe('AT-2339: the fixed-overlay dialog family pads for the safe area', () =
         'components/Premium/LimitedFeatureModal.js',
         'components/Premium/FreePlanWarning.js',
         'components/MediaBar/ScreenRecording/NotAvailableScreenRecording.js',
+        // Found by audit after the first sweep: same shape, different spelling,
+        // so neither the codemod nor the regexes above could see them.
+        'components/Onboarding/WhatsAppOnboarding.js',
+        'components/MeetingBooking/MeetingBookingPage.js',
     ]
 
     // The top-pinned family, which shares utils/fixedModalPosition.js.

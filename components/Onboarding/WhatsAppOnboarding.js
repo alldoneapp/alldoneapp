@@ -27,6 +27,7 @@ import { requestNotificationPermission, logEvent } from '../../utils/backends/fi
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { updateAssistantHeartbeatSettings } from '../../utils/backends/Assistants/assistantsFirestore'
 import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../utils/CountryCodes'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 const DEFAULT_POST_ONBOARDING_URL = '/projects/tasks/open'
 
@@ -75,6 +76,7 @@ const ProgressBar = ({ current, total }) => {
 }
 
 export default function WhatsAppOnboarding({ navigation }) {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const [phone, setPhone] = useState('')
     const [selectedCountry, setSelectedCountry] = useState(DEFAULT_COUNTRY || COUNTRY_CODES[0])
     const [showCountryPicker, setShowCountryPicker] = useState(false)
@@ -372,7 +374,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         if (!showCountryPicker) return null
 
         return (
-            <View style={localStyles.modalOverlay}>
+            <View style={[localStyles.modalOverlay, safeAreaOverlayPadding]}>
                 <View style={localStyles.modalContent}>
                     <View style={localStyles.modalHeader}>
                         <Text style={localStyles.modalTitle}>{translate('Select Country')}</Text>
