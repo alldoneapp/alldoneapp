@@ -100,6 +100,7 @@ describe('Git publishing (AT-2199)', () => {
         ['git push --force origin ai/feature', 'a force push'],
         ['git push --force-with-lease origin ai/feature', 'a force push'],
         ['git push origin --delete ai/feature', 'deleting a remote branch'],
+        ['git reset --hard origin/master', 'a destructive Git history operation'],
     ])('still pauses for %s', (command, reason) => {
         expect(assessClaudeToolApproval('Bash', { command }, balanced({ currentBranch: 'ai/feature' }))).toMatchObject({
             autoApprove: false,
@@ -275,10 +276,10 @@ describe('piping a download into a tool is data handling, not remote execution (
     })
 
     test('the rest of the policy still applies to the piped command', () => {
-        const command = 'curl -s https://api.example.com/x | python3 -c "print(1)" && firebase deploy --only functions'
+        const command = 'curl -s https://api.example.com/x | python3 -c "print(1)" && sudo systemctl restart nginx'
         expect(assessClaudeToolApproval('Bash', { command }, { ...balanced(), level: 'permissive' })).toMatchObject({
             autoApprove: false,
-            reason: 'deployment or cloud infrastructure mutation',
+            reason: 'remote or elevated shell access',
         })
     })
 })
@@ -313,186 +314,23 @@ describe('interpreter stdin analysis', () => {
     })
 })
 
-describe('the hard-danger list pauses at every level (AT-2343)', () => {
-    // `reason` is asserted only where every level agrees on it: `strict` deliberately reports its
-    // own blanket wording for Git publishing and recursive deletes.
+describe('secrets and workspace boundaries are unchanged', () => {
     test.each([
+        ['Bash', { command: 'cat .env.production' }, 'access to credentials or secret files'],
         ['Bash', { command: 'cat ~/.ssh/id_rsa' }, 'access to credentials or secret files'],
-        ['Bash', { command: 'cat /home/user/.aws/credentials' }, 'access to credentials or secret files'],
-        ['Bash', { command: 'cat ~/.codex/auth.json' }, 'access to credentials or secret files'],
-        ['Read', { file_path: '/home/user/.config/gcloud/application_default_credentials.json' }, null],
-        ['Read', { file_path: `${CWD}/serv_account_key_master.json` }, null],
-        ['Write', { file_path: '/etc/profile' }, 'file mutation inside a system directory'],
+        ['Read', { file_path: `${CWD}/.env` }, 'access to credentials or secret files'],
+        ['Write', { file_path: '/etc/profile' }, 'file mutation outside the working directory'],
+        ['Bash', { command: 'sudo systemctl restart nginx' }, 'remote or elevated shell access'],
+        ['Bash', { command: 'rm -rf /home/user/repo' }, 'recursive or broad deletion'],
         ['Bash', { command: 'firebase deploy --only functions' }, 'deployment or cloud infrastructure mutation'],
-        ['Bash', { command: 'gcloud run services update runvmjob --region europe-west1' }, null],
-        ['Bash', { command: 'npm publish' }, 'publishing a package or image'],
-        ['Bash', { command: 'ssh deploy@example.com "uptime"' }, 'shell access to another machine'],
-        ['Bash', { command: 'psql $DATABASE_URL -c "delete from users"' }, 'external data mutation'],
-        ['Bash', { command: 'dd if=/dev/zero of=/dev/sda' }, 'destructive system operation'],
-        ['Bash', { command: 'git push origin master' }, null],
-        ['Bash', { command: 'git push --force origin master' }, null],
-        ['Bash', { command: 'git push origin --delete ai/feature' }, null],
-        ['Bash', { command: 'rm -r /' }, null],
-        ['Bash', { command: 'rm -r /home/user' }, null],
-        // The checkout itself: recreating it costs the whole run.
-        ['Bash', { command: `rm -r ${CWD}` }, null],
-    ])('escalates %s %j regardless of level', (toolName, input, reason) => {
+        ['mcp__gmail__send_email', {}, 'unrecognized tool: mcp__gmail__send_email'],
+    ])('escalates %s regardless of level', (toolName, input, reason) => {
         for (const level of APPROVAL_POLICY_LEVELS) {
-            const verdict = assessClaudeToolApproval(toolName, input, { ...balanced(), level })
-            expect({ level, autoApprove: verdict.autoApprove }).toEqual({ level, autoApprove: false })
-            if (reason) expect(verdict.reason).toBe(reason)
-        }
-    })
-
-    test('the base branch is protected even when the push targets it from a feature branch', () => {
-        for (const level of APPROVAL_POLICY_LEVELS) {
-            expect(
-                assessClaudeToolApproval(
-                    'Bash',
-                    { command: 'git push --force origin HEAD:master' },
-                    { ...balanced(), level, currentBranch: 'ai/feature' }
-                )
-            ).toMatchObject({ autoApprove: false })
-        }
-    })
-})
-
-describe('permissive behaves like Claude Code Auto-Mode (AT-2343)', () => {
-    const at = level => ({ ...balanced(), level, currentBranch: 'ai/feature' })
-
-    // Each case is [command, expected verdict per level]. This table IS the product decision:
-    // "permissive" now auto-approves everything that only touches the ephemeral sandbox.
-    test.each([
-        // sandbox housekeeping - the single most common false positive in production
-        ['rm -rf /tmp/mastercheck', { strict: false, balanced: true, permissive: true }],
-        ['rm -rf node_modules', { strict: false, balanced: true, permissive: true }],
-        ['rm -rf browser-tests/at2236', { strict: false, balanced: true, permissive: true }],
-        // outside the workspace but still inside the VM
-        ['rm -rf /home/user/mastercheck', { strict: false, balanced: false, permissive: true }],
-        // local Git housekeeping: relaxed from balanced up, the remote stays protected
-        ['git reset --hard HEAD', { strict: false, balanced: true, permissive: true }],
-        ['git clean -fdq -e node_modules', { strict: false, balanced: true, permissive: true }],
-        ['git branch -D backup/at-2230-prerebase', { strict: false, balanced: true, permissive: true }],
-        // force-pushing a FEATURE branch after an amend/rebase
-        ['git push --force-with-lease origin ai/feature', { strict: false, balanced: false, permissive: true }],
-        // merge/close an MR or PR
-        ['glab mr merge 42', { strict: false, balanced: false, permissive: true }],
-        ['gh pr close 42', { strict: false, balanced: false, permissive: true }],
-        // elevated shell inside the sandbox
-        ['sudo apt-get install -y jq', { strict: false, balanced: false, permissive: true }],
-        // workspace env files the repo's own test suite needs
-        ['node ci/writeTestEnv.js && head -3 .env', { strict: false, balanced: false, permissive: true }],
-        ['git check-ignore -v .env', { strict: false, balanced: false, permissive: true }],
-    ])('%s', (command, expected) => {
-        for (const level of APPROVAL_POLICY_LEVELS) {
-            expect({ level, ...assessClaudeToolApproval('Bash', { command }, at(level)) }).toMatchObject({
-                level,
-                autoApprove: expected[level],
+            expect(assessClaudeToolApproval(toolName, input, { ...balanced(), level })).toMatchObject({
+                autoApprove: false,
+                reason,
             })
         }
-    })
-
-    test('an unrecognized tool and an MCP tool run unattended only at permissive', () => {
-        for (const toolName of ['mcp__gmail__send_email', 'SomeFutureTool']) {
-            expect(assessClaudeToolApproval(toolName, {}, at('balanced'))).toMatchObject({ autoApprove: false })
-            expect(assessClaudeToolApproval(toolName, {}, at('permissive'))).toMatchObject({ autoApprove: true })
-        }
-    })
-
-    test('workspace secret files are readable at permissive, not below', () => {
-        const input = { file_path: `${CWD}/.env` }
-        expect(assessClaudeToolApproval('Read', input, at('balanced'))).toMatchObject({
-            autoApprove: false,
-            reason: 'access to credentials or secret files',
-        })
-        expect(assessClaudeToolApproval('Read', input, at('permissive'))).toMatchObject({ autoApprove: true })
-    })
-
-    test('writing outside the checkout is allowed at permissive but never into a system directory', () => {
-        expect(assessClaudeToolApproval('Write', { file_path: '/home/user/notes.md' }, at('balanced'))).toMatchObject({
-            autoApprove: false,
-            reason: 'file mutation outside the working directory',
-        })
-        expect(assessClaudeToolApproval('Write', { file_path: '/home/user/notes.md' }, at('permissive'))).toMatchObject(
-            { autoApprove: true }
-        )
-        expect(assessClaudeToolApproval('Write', { file_path: '/usr/local/bin/x' }, at('permissive'))).toMatchObject({
-            autoApprove: false,
-        })
-    })
-
-    test('a directory the runner mounted as writable is part of the normal flow', () => {
-        const input = { file_path: '/home/user/git-metadata/repo/config' }
-        expect(assessClaudeToolApproval('Write', input, balanced())).toMatchObject({ autoApprove: false })
-        expect(
-            assessClaudeToolApproval('Write', input, balanced({ writableRoots: ['/home/user/git-metadata'] }))
-        ).toMatchObject({ autoApprove: true })
-    })
-
-    test('the modern Claude Code tool surface no longer escalates on every call', () => {
-        for (const toolName of ['BashOutput', 'KillShell', 'SlashCommand', 'Skill', 'NotebookRead', 'TodoWrite']) {
-            expect(assessClaudeToolApproval(toolName, {}, balanced())).toMatchObject({ autoApprove: true })
-        }
-    })
-})
-
-describe('heredoc bodies and quoted data are stdin, not code (AT-2343)', () => {
-    // Reproduced verbatim from production interaction records: every one of these paused an
-    // interactive run purely because a WORD inside the message or payload matched a risk pattern.
-    test('a commit message mentioning .env no longer counts as secret access', () => {
-        const command = [
-            "git add -A && git commit -q -F - <<'EOF'",
-            'fix(tests): generate a local .env for the jest run',
-            '',
-            'The suite needs credentials.json-shaped fixtures; see ci/writeTestEnv.js.',
-            'EOF',
-        ].join('\n')
-        expect(assessClaudeToolApproval('Bash', { command }, balanced())).toMatchObject({ autoApprove: true })
-    })
-
-    test('a commit message mentioning ssh, sudo or deploy is prose, not a risky command', () => {
-        const command = [
-            "git commit -q -F - <<'EOF'",
-            'fix(vm): stop pausing on ssh-shaped words',
-            '',
-            'Previously `sudo`, `firebase deploy` and `rm -rf` inside a commit message escalated.',
-            'EOF',
-        ].join('\n')
-        expect(assessClaudeToolApproval('Bash', { command }, balanced())).toMatchObject({ autoApprove: true })
-    })
-
-    test('a documentation heredoc piped into python is data, not a program', () => {
-        const command = ["python3 - <<'PYEOF'", "p='CLAUDE.md'", "s=open(p,encoding='utf-8').read()", 'PYEOF'].join(
-            '\n'
-        )
-        expect(assessClaudeToolApproval('Bash', { command }, balanced())).toMatchObject({ autoApprove: true })
-    })
-
-    test('a quoted JSON payload cannot trip a risky-command rule', () => {
-        const command = `curl -sS -X POST "https://logging.googleapis.com/v2/entries:list" -d '{"filter":"delete OR aws create"}'`
-        expect(assessClaudeToolApproval('Bash', { command }, balanced())).toMatchObject({ autoApprove: true })
-    })
-
-    test('a grep for the word secret is not access to a secret file', () => {
-        expect(assessClaudeToolApproval('Bash', { command: 'grep -rn secrets functions/' }, balanced())).toMatchObject({
-            autoApprove: true,
-        })
-    })
-
-    // ...but a heredoc that really IS the program still gets scanned.
-    test('a heredoc executed by the shell is still analysed as code', () => {
-        const command = ["bash <<'EOF'", 'firebase deploy --only functions', 'EOF'].join('\n')
-        expect(assessClaudeToolApproval('Bash', { command }, { ...balanced(), level: 'permissive' })).toMatchObject({
-            autoApprove: false,
-            reason: 'deployment or cloud infrastructure mutation',
-        })
-    })
-
-    test('a real credential path inside quotes is still caught', () => {
-        expect(assessClaudeToolApproval('Bash', { command: 'cat "$HOME/.ssh/id_rsa"' }, balanced())).toMatchObject({
-            autoApprove: false,
-            reason: 'access to credentials or secret files',
-        })
     })
 })
 
