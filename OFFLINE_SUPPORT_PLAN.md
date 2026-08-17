@@ -80,7 +80,14 @@ day-rollover, and offline that's a blank page.
 - Verification: `browser-tests/` scenario — load app, go offline (devtools/network
   interception), reload, assert the shell boots.
 
-## Stage 3 — Firestore offline persistence
+## Stage 3 — Firestore offline persistence — **SHIPPED 2026-08-17**
+
+_Implementation notes: `utils/backends/firestorePersistence.js` (not awaited — the compat
+SDK queues later calls behind the enable), 100 MB `cacheSizeBytes`, persistence skipped
+under the emulator (its IndexedDB is wiped every boot anyway). The
+`firestoreDirectRead` verification paths needed no gating: both callers already treat a
+failed direct read as "failed read, retry" rather than absence, which is exactly the
+right offline behavior._
 
 - Enable IndexedDB persistence at the single init site (`firestore.js:477-487`):
   compat `db.enablePersistence({ synchronizeTabs: true })` **before any other Firestore

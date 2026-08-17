@@ -292,7 +292,7 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–2 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–3 shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
@@ -302,6 +302,18 @@ pin the contract.
   `ConnectionStateModal` toast + notes read-only gating consume it in
   `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
   imported and needs the retired native toolchain; use this module instead.
+- **Firestore persistence**: `initFirebase` enables IndexedDB persistence
+  (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
+  multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
+  SDK queues later calls behind the enable; every failure degrades to the in-memory
+  cache). Skipped under the emulator, whose IndexedDB is wiped each boot. Consequences to
+  respect: `watchForceReload` only honors a **server** snapshot (a cached `{reload: true}`
+  would reload-loop offline — the guard is `doc.metadata.fromCache`), and
+  `bootIntegrityHealer` stands down while `connectionState === 'offline'` (cached-only
+  data is not an anomaly, and the bounded `disableNetwork`/`enableNetwork` cycles must
+  not be burned offline). A doc "missing" in a cache-only snapshot is **unknown, not
+  deleted** — the `firestoreDirectRead` verification paths already treat a failed direct
+  read as retryable, keep it that way.
 - **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
   `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
   live in web-bundler's own package). It precaches the app shell (hashed chunks,
