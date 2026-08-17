@@ -292,7 +292,7 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–7 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — all 8 stages shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
