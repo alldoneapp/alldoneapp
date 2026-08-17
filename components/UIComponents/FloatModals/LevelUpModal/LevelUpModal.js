@@ -10,8 +10,10 @@ import LevelAndPoints from './LevelAndPoints'
 import ButtonsArea from './ButtonsArea'
 import Header from './Header'
 import { protectModalDismissFromClickThrough, registerPopupDismiss } from '../../../../utils/popupDismissGuard'
+import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function LevelUpModal({ setShowLevelUpModal }) {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const closeTimeoutRef = useRef(null)
     const closingRef = useRef(false)
 
@@ -36,7 +38,7 @@ export default function LevelUpModal({ setShowLevelUpModal }) {
     }, [])
 
     return (
-        <View style={localStyles.parent}>
+        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
             <View style={[localStyles.container, applyPopoverWidth()]}>
                 <Header />
                 <LevelAndPoints />

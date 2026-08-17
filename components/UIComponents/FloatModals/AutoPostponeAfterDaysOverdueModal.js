@@ -5,7 +5,7 @@ import Hotkeys from 'react-hot-keys'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
@@ -17,6 +17,7 @@ import {
     formatAutoPostponeAfterDaysOverdue,
     normalizeAutoPostponeAfterDaysOverdue,
 } from '../../SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function AutoPostponeAfterDaysOverdueModal({ userId, autoPostponeAfterDaysOverdue, closePopover }) {
     const [width, height] = useWindowSize()
@@ -75,7 +76,7 @@ export default function AutoPostponeAfterDaysOverdueModal({ userId, autoPostpone
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName={'esc'} onKeyDown={closePopover} filter={e => true}>
                     <View style={{ marginBottom: 20 }}>

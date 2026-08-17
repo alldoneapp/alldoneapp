@@ -12,10 +12,11 @@ import ModalHeader from '../ModalHeader'
 import Line from '../GoalMilestoneModal/Line'
 import EmptyResults from '../EmptyResults'
 import { blockBackgroundTabShortcut, unblockBackgroundTabShortcut } from '../../../../redux/actions'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import { colors } from '../../../styles/global'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const ROW_HEIGHT = 48
 
@@ -161,7 +162,7 @@ export default function ProjectListModal({
             style={[
                 localStyles.container,
                 applyPopoverWidth(),
-                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
+                { maxHeight: getSafeAreaModalMaxHeight(height) },
                 containerStyle,
             ]}
         >

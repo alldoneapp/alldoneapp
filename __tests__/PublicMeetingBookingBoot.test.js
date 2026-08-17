@@ -8,12 +8,6 @@
 //
 // AppNavigator is stubbed with a container that records every route it renders, so "the login
 // screen was never mounted" is an assertion instead of a guess.
-//
-// Every test here boots the WHOLE app, which does not fit jest's default 5s per-test budget: the
-// suite already takes ~4.8s on a developer machine and 33-35s on a CI runner, so the first test —
-// which also carries the module-loading cost — blew the default and failed `test:web:changed` on
-// every branch whose diff reached the app-boot import graph, regardless of what that branch changed.
-jest.setTimeout(30000)
 
 jest.mock('../utils/backends/firestore', () => ({
     ...jest.createMockFromModule('../utils/backends/firestore'),

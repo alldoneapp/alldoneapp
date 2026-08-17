@@ -6,7 +6,7 @@ import Hotkeys from 'react-hot-keys'
 
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import Icon from '../../../Icon'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { ASSIGNEE_PICKER_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -15,6 +15,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DV_TAB_ROOT_GOALS } from '../../../../utils/TabNavigationConstants'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function AssigneePickerModal({
     projectIndex,
@@ -142,7 +143,9 @@ export default function AssigneePickerModal({
 
     return (
         sortedUsers.length > 0 && (
-            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+            <View
+                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
+            >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
                         <View style={{ marginBottom: 20 }}>

@@ -77,10 +77,6 @@ const options = {
             baseBranch: input.baseBranch || '',
             currentBranch: resolveCurrentBranch(),
             sessionAllowlist: sessionAllowlist,
-            // Directories the runner deliberately mounted as writable (the relocated Git metadata,
-            // for example). Without them the policy reads a normal part of the flow as a write
-            // "outside the working directory".
-            writableRoots: Array.isArray(input.additionalDirectories) ? input.additionalDirectories : [],
         })
         if (review.autoApprove) {
             return { behavior: 'allow', updatedInput: toolInput }

@@ -41,6 +41,7 @@ import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import { rejectAllSuggestedTasks } from '../../utils/suggestedTaskBulkActions'
+import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -66,6 +67,7 @@ export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION 
 export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
     const [processing, setProcessing] = useState(false)
@@ -307,7 +309,7 @@ export default function ConfirmPopup() {
     const customStyles = getCustomStyle()
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
             {trigger === CONFIRM_POPUP_TRIGGER_KICK_USER_FROM_PROJECT ? (
                 <KickUserConfirmPopup projectId={object.projectId} userId={object.userId} hidePopup={hidePopup} />
             ) : trigger === CONFIRM_POPUP_MANDATORY_NOTIFICATION ? (

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { colors } from '../../../../styles/global'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { translate } from '../../../../../i18n/TranslationService'
@@ -13,6 +13,7 @@ import NavigationService from '../../../../../utils/NavigationService'
 import { navigateToSettings } from '../../../../../redux/actions'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../../../../utils/TabNavigationConstants'
 import { RUN_OUT_OF_GOLD_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function RunOutOfGoldAssistantModal({
     closeModal,
@@ -36,7 +37,7 @@ export default function RunOutOfGoldAssistantModal({
     }, [])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     closeModal={closeModal}

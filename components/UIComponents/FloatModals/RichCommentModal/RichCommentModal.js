@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import styles, { colors } from '../../../styles/global'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import EditForm from './EditForm'
-import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidthV2 } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CloseButton from './CloseButton'
 import CommentsList from './CommentsList'
@@ -67,6 +67,7 @@ import useCommentPopupAutoFocus, {
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function RichCommentModal({
     projectId,
@@ -473,7 +474,7 @@ export default function RichCommentModal({
                     style={[
                         localStyles.container,
                         applyPopoverWidthV2(isMiddleScreen, smallScreenNavigation, windowWidth),
-                        { maxHeight: height - MODAL_MAX_HEIGHT_GAP - 64 },
+                        { maxHeight: getSafeAreaModalMaxHeight(height, 64) },
                     ]}
                     showsVerticalScrollIndicator={false}
                     showIndicator={shouldShowAssistantScrollIndicator(

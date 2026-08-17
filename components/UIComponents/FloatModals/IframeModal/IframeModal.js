@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import firebase from 'firebase/compat/app'
+import '@firebase/functions'
 import Icon from '../../../Icon'
 import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
-import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
+import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function IframeModal() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const iframeModalData = useSelector(state => state.iframeModalData)
     const { visible, url, name } = iframeModalData
@@ -84,11 +87,8 @@ export default function IframeModal() {
                         userEmail: loggedUser?.email || '',
                     })
 
-                    // Routed through the offline-aware funnel (AT-2340): a gold
-                    // change is server-authoritative, so offline this now fails
-                    // immediately and the embedded surface gets a clean error
-                    // instead of a ~70s hang. The funnel unwraps the envelope.
-                    const result = await runHttpsCallableFunction(callableName, {
+                    const goldFn = firebase.app().functions('europe-west1').httpsCallable(callableName)
+                    const result = await goldFn({
                         gold: amount,
                         source,
                         channel: 'iframe',
@@ -97,18 +97,18 @@ export default function IframeModal() {
                     console.log('IframeModal: gold function responded', {
                         callableName,
                         amount,
-                        result,
+                        result: result?.data,
                     })
 
-                    if (result.success) {
+                    if (result.data.success) {
                         postResult({
                             type: successType,
-                            newBalance: result.newBalance,
+                            newBalance: result.data.newBalance,
                         })
                     } else {
                         postResult({
                             type: errorType,
-                            error: result.message,
+                            error: result.data.message,
                         })
                     }
                 } catch (error) {
@@ -161,7 +161,7 @@ export default function IframeModal() {
     if (!visible) return null
 
     return (
-        <View style={localStyles.overlay}>
+        <View style={[localStyles.overlay, safeAreaOverlayPadding]}>
             <View style={localStyles.container}>
                 <View style={localStyles.header}>
                     <View style={localStyles.headerLeft}>

@@ -2,7 +2,6 @@ import store from '../../redux/store'
 import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
 import { loadGlobalData, watchProjectData } from './initialLoadHelper'
-import { isBrowserOffline } from '../connectionState'
 
 /**
  * Post-boot integrity check for data a degraded initial load left behind.
@@ -27,44 +26,11 @@ import { isBrowserOffline } from '../connectionState'
 
 const CHECK_DELAYS_MS = [1000, 5000, 15000, 60000]
 const MAX_NETWORK_CYCLES_PER_SESSION = 2
-const RECHECK_AFTER_RECONNECT_MS = 3000
 
 let scheduledUserId = null
 let scheduledTimers = []
 let running = false
 let networkCyclesUsed = 0
-let recheckWhenBackOnline = null
-
-// The redux slice is debounced and is still '' during early boot (its listener is
-// installed from a component that only mounts once login resolves), so the very
-// first scheduled check at 1000ms would not see an offline browser at all.
-const isOffline = () => store.getState().connectionState === 'offline' || isBrowserOffline()
-
-const removeRecheckListener = () => {
-    if (!recheckWhenBackOnline) return
-    if (typeof window !== 'undefined' && window.removeEventListener) {
-        window.removeEventListener('online', recheckWhenBackOnline)
-    }
-    recheckWhenBackOnline = null
-}
-
-/**
- * A check skipped because we were offline is not a check that happened. Re-run it
- * once connectivity returns, rather than relying on a later scheduled pass that
- * may not exist.
- */
-const scheduleRecheckWhenBackOnline = () => {
-    if (recheckWhenBackOnline) return
-    if (typeof window === 'undefined' || !window.addEventListener) return
-    recheckWhenBackOnline = () => {
-        removeRecheckListener()
-        // Let the transport settle before deciding what is "missing".
-        setTimeout(() => {
-            runBootIntegrityCheck().catch(error => console.warn('[BootIntegrity] Check failed:', error))
-        }, RECHECK_AFTER_RECONNECT_MS)
-    }
-    window.addEventListener('online', recheckWhenBackOnline)
-}
 
 export const resetBootIntegrityHealerForTests = () => {
     scheduledTimers.forEach(timer => clearTimeout(timer))
@@ -72,7 +38,6 @@ export const resetBootIntegrityHealerForTests = () => {
     scheduledUserId = null
     running = false
     networkCyclesUsed = 0
-    removeRecheckListener()
 }
 
 const findAnomalies = async () => {
@@ -150,17 +115,9 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
     // Offline (OFFLINE_SUPPORT_PLAN.md Stage 3), "missing" data is just whatever the
     // IndexedDB cache has not seen — every pass would report anomalies, and the
     // network-cycle escalation would burn its two per-session uses tearing down a
-    // connection that is not there.
-    //
-    // The scheduled checks do NOT keep firing: CHECK_DELAYS_MS are four one-shot
-    // timers armed once per user, so a boot that is offline for the first 60s used
-    // to consume all four and leave the healer dead for the rest of the session —
-    // precisely the degraded boot it exists for. Re-arm on reconnect instead
-    // (AT-2340).
-    if (isOffline()) {
-        scheduleRecheckWhenBackOnline()
-        return
-    }
+    // connection that is not there. The scheduled checks keep firing, so the first
+    // pass after connectivity returns heals normally.
+    if (store.getState().connectionState === 'offline') return
     running = true
     try {
         const anomalies = await findAnomalies()
@@ -183,10 +140,7 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
         // Still missing: the connection itself is suspect. Rebuild it, let the new streams
         // settle, then re-fetch once more — unless the browser went offline mid-check, in
         // which case the cycle would waste one of its two bounded uses on nothing.
-        if (isOffline()) {
-            scheduleRecheckWhenBackOnline()
-            return
-        }
+        if (store.getState().connectionState === 'offline') return
         if (!(await cycleFirestoreNetwork())) return
         await new Promise(resolve => setTimeout(resolve, settleMs))
         await repairAnomalies(remaining)
