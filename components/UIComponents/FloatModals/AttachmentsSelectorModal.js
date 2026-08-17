@@ -3,7 +3,7 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import RecordVideo from '../../MediaBar/RecordVideo/RecordVideo'
 import ScreenRecording from '../../MediaBar/ScreenRecording/ScreenRecording'
 import MyPlatform from '../../MyPlatform'
@@ -12,6 +12,7 @@ import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { addFilesAsAttachments } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function AttachmentsSelectorModal({ projectId, closeModal, addAttachmentTag, style }) {
     const [width, height] = useWindowSize()
@@ -77,7 +78,7 @@ export default function AttachmentsSelectorModal({ projectId, closeModal, addAtt
             style={[
                 localStyles.container,
                 applyPopoverWidth(),
-                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
+                { maxHeight: getSafeAreaModalMaxHeight(height) },
                 style ? style : null,
             ]}
         >

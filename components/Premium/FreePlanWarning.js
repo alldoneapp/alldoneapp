@@ -24,8 +24,10 @@ import { translate } from '../../i18n/TranslationService'
 import ProgressBar from './LimitModal/ProgressBar'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { removeQuotaWarnings } from '../../utils/backends/Premium/premiumFirestore'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function FreePlanWarning() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const monthlyXp = useSelector(state => state.loggedUser.monthlyXp)
@@ -105,7 +107,7 @@ export default function FreePlanWarning() {
     return (
         <>
             {headerText ? (
-                <View style={localStyles.parent}>
+                <View style={[localStyles.parent, safeAreaOverlayPadding]}>
                     <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
                         <ScrollView showsVerticalScrollIndicator={false}>
                             <View style={{ paddingHorizontal: 16 }}>

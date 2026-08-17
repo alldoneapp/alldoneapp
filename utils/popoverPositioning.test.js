@@ -118,6 +118,61 @@ describe('centerPopoverInViewport', () => {
         })
     })
 
+    // AT-2339: ~10 call sites pass disableReposition, which skips the library's
+    // own safe-area nudge — for those this clamp is the only protection.
+    describe('safe-area insets', () => {
+        const IPHONE = { top: 47, right: 0, bottom: 34, left: 0 }
+        const IPHONE_LANDSCAPE = { top: 0, right: 0, bottom: 21, left: 59 }
+
+        it('keeps an oversized popover below the Dynamic Island', () => {
+            const { top } = centerPopoverInViewport({
+                viewportWidth: 390,
+                viewportHeight: 844,
+                popoverWidth: 304,
+                popoverHeight: 1200,
+                insets: IPHONE,
+            })
+
+            expect(top).toBe(47 + PADDING)
+        })
+
+        it('centres within the safe rectangle, not the hardware one', () => {
+            const { top } = centerPopoverInViewport({
+                viewportWidth: 390,
+                viewportHeight: 844,
+                popoverWidth: 304,
+                popoverHeight: 400,
+                insets: IPHONE,
+            })
+
+            // Safe band is 47..810, so its centre is 428.5 and the card starts
+            // 200 above that — visually centred between the system bars.
+            expect(top).toBe(228.5)
+            expect(top).toBeGreaterThanOrEqual(47)
+            expect(top + 400).toBeLessThanOrEqual(844 - 34)
+        })
+
+        it('keeps a wide popover clear of the landscape cutout', () => {
+            const { left } = centerPopoverInViewport({
+                viewportWidth: 844,
+                viewportHeight: 390,
+                popoverWidth: 900,
+                popoverHeight: 200,
+                insets: IPHONE_LANDSCAPE,
+            })
+
+            expect(left).toBe(59 + PADDING)
+        })
+
+        it('is identical to the pre-AT-2339 result when the insets are zero', () => {
+            const zero = { top: 0, right: 0, bottom: 0, left: 0 }
+            const args = { viewportWidth: 1440, viewportHeight: 900, popoverWidth: 432, popoverHeight: 500 }
+
+            expect(centerPopoverInViewport({ ...args, insets: zero })).toEqual(centerPopoverInViewport(args))
+            expect(centerPopoverInViewport({ ...args, insets: zero })).toEqual({ top: 200, left: 504 })
+        })
+    })
+
     it('treats a missing popover size as zero instead of producing NaN', () => {
         expect(centerPopoverInViewport({ viewportWidth: 400, viewportHeight: 600 })).toEqual({ top: 300, left: 200 })
     })

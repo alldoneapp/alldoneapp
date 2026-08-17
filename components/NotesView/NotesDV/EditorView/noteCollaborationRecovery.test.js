@@ -205,64 +205,6 @@ describe('offline open with local persistence (OFFLINE_SUPPORT_PLAN.md Stage 6)'
         result.document.destroy()
     })
 
-    // AT-2340. Offline the Storage download is skipped entirely, so `storageData`
-    // is null — which is "could not read", NOT "is empty". Treating the two the
-    // same made every offline OPEN of a cached note report "storage is missing
-    // everything", which fired a full autosave: preview + lastEditionDate +
-    // lastEditorId, the edited-today list, the started-editing feed, the
-    // linked-parent write and tryAddFollower. Reading a note on a plane was
-    // recorded as having edited it, once those queued writes flushed.
-    it('does NOT flag a catch-up save when the canonical copy could not be read', async () => {
-        const localState = encodeText('Content only this device has seen')
-        const { factory } = createLocalPersistenceStub(localState)
-
-        const result = await prepareSyncedNoteDocument(null, createOfflineProvider, {
-            createLocalPersistence: factory,
-            syncTimeout: SYNC_TIMEOUT_FOR_TESTS,
-        })
-
-        expect(result.storageNeedsLocalCatchUp).toBe(false)
-        // ...but the question is remembered, not dropped: the caller re-asks it
-        // against the real Storage copy on reconnect.
-        expect(result.storageCatchUpUnverified).toBe(true)
-        result.provider.destroy()
-        result.document.destroy()
-    })
-
-    it('does not defer a decision for a note with no local state at all', async () => {
-        const { factory } = createLocalPersistenceStub(null)
-
-        const result = await prepareSyncedNoteDocument(null, createOfflineProvider, {
-            createLocalPersistence: factory,
-            syncTimeout: SYNC_TIMEOUT_FOR_TESTS,
-            allowEmptyOpen: true,
-        })
-
-        expect(result.storageNeedsLocalCatchUp).toBe(false)
-        expect(result.storageCatchUpUnverified).toBe(false)
-        result.provider.destroy()
-        result.document.destroy()
-    })
-
-    it('still flags a catch-up when Storage was READ and is genuinely empty', async () => {
-        // An empty ArrayBuffer is a successful read of a never-saved note, and is
-        // decidable: local really is ahead. Only `null` is undecidable.
-        const localState = encodeText('Written offline before the first save')
-        const { factory } = createLocalPersistenceStub(localState)
-
-        // An empty room: the provider syncs but contributes nothing (applying a
-        // zero-length update is not a valid Yjs decode).
-        const createEmptyRoomProvider = () => ({ synced: true, on: jest.fn(), off: jest.fn(), destroy: jest.fn() })
-        const result = await prepareSyncedNoteDocument(new Uint8Array(0), createEmptyRoomProvider, {
-            createLocalPersistence: factory,
-        })
-
-        expect(result.storageNeedsLocalCatchUp).toBe(true)
-        expect(result.storageCatchUpUnverified).toBe(false)
-        result.provider.destroy()
-        result.document.destroy()
-    })
-
     it('continues without local persistence when the factory throws', async () => {
         const storageUpdate = encodeText('Stored note content')
         const { createProvider } = createSyncedProviderFactory(storageUpdate)

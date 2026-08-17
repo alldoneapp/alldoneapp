@@ -11,11 +11,12 @@ import DueDateCalendarModal from '../DueDateCalendarModal/DueDateCalendarModal'
 import DueDateCalendarModalFooter from '../DueDateModal/DueDateCalendarModalFooter'
 import Header from '../DueDateModal/Header'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import { RECURRENCE_DATE_BASIS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { RECURRENCE_NEVER, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export const getTaskRecurrenceValue = task => {
     const recurrence = task?.recurrence
@@ -101,7 +102,7 @@ function RecurringTaskDateBasisModal({ task, projectId, closePopover, selectDate
     const description = visibleCalendar
         ? translate('Select the custom base date for the next recurring task')
         : translate('Choose how Alldone should schedule the next recurring task')
-    const maxHeight = (windowSize?.[1] || 600) - MODAL_MAX_HEIGHT_GAP
+    const maxHeight = getSafeAreaModalMaxHeight(windowSize?.[1] || 600)
 
     return (
         <View style={[localStyles.container, applyPopoverWidth(), { maxHeight }]}>

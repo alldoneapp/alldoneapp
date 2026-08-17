@@ -8,7 +8,6 @@ import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
 import { sortTasksByPriority } from '../../TaskPriority'
-import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './optimisticTaskCreate'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -17,20 +16,6 @@ export const MAIN_TASK_INDEX = 3
 export const MENTION_TASK_INDEX = 4
 export const SUGGESTED_TASK_INDEX = 5
 // AT-2252: calendar (6) and email (7) buckets were removed — those tasks are ordinary main tasks now.
-
-/**
- * AT-2342 - mirrors the `watchOpenGoalTasks` query for an optimistically published task.
- * Note this list keys on `done`/`parentId`/`completed`, NOT the `inDone` the open board uses,
- * and a task only lands here when `parentGoalId` was already set at write time.
- */
-export const matchesOpenGoalTasksQuery = (taskData, goalId, allowUserIds) =>
-    !!taskData &&
-    taskData.done === false &&
-    (taskData.parentId === null || taskData.parentId === undefined) &&
-    (taskData.completed === null || taskData.completed === undefined) &&
-    taskData.parentGoalId === goalId &&
-    Array.isArray(taskData.isPublicFor) &&
-    taskData.isPublicFor.some(id => allowUserIds.includes(id))
 
 export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     const { loggedUser } = store.getState()
@@ -46,45 +31,10 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
         .where('parentGoalId', '==', goalId)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
 
-    // This watcher rebuilds its whole output from the document list on every snapshot, so the
-    // optimistic insert is simply an extra document in that list. Reconciliation is therefore
-    // free: as soon as the real snapshot carries the id, `emit` drops the pending copy and the
-    // rebuild runs on the real document alone - the two can never both be rendered.
-    let latestDocs = []
-    let hasRealSnapshot = false
-    const pendingDocsById = new Map()
-
-    const emit = () => {
-        const realIds = new Set(latestDocs.map(doc => doc.id))
-        pendingDocsById.forEach((_, taskId) => {
-            if (realIds.has(taskId)) pendingDocsById.delete(taskId)
-        })
-        const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
-        const { openTasksArray } = processTasks(projectId, docs)
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
+        const { openTasksArray } = processTasks(projectId, snapshot.docs)
         store.dispatch(setGoalOpenTasksData(openTasksArray))
-    }
-
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
-        if (!matchesOpenGoalTasksQuery(change.doc.data(), goalId, allowUserIds)) return
-        change.type === OPTIMISTIC_TASK_REMOVED
-            ? pendingDocsById.delete(change.doc.id)
-            : pendingDocsById.set(change.doc.id, change.doc)
-        // Before the first snapshot this rebuild would publish a list holding ONLY the new task,
-        // i.e. a goal that appears to have lost everything else. The task is still queued in
-        // `pendingDocsById` and the imminent first snapshot renders it together with the rest.
-        if (hasRealSnapshot) emit()
     })
-
-    const unsub = query.onSnapshot(snapshot => {
-        latestDocs = snapshot.docs
-        hasRealSnapshot = true
-        emit()
-    })
-
-    globalWatcherUnsub[watcherKey] = () => {
-        unsubOptimistic()
-        unsub()
-    }
 }
 
 const processTasks = (projectId, docs) => {

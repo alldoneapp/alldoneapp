@@ -6,7 +6,6 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
-import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import { getProviderLabel } from '../../../../utils/IntegrationProviders'
 import NavigationService from '../../../../utils/NavigationService'
@@ -25,6 +24,7 @@ import {
 import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
 import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import EmailRow from './EmailRow'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const collectRowMessageIds = row => [...new Set((row?.messageIds || [row?.messageId]).filter(Boolean))]
 
@@ -98,7 +98,7 @@ function EmailLabelModal({
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
     const width = Math.min(screenWidth - 32, MODAL_MAX_WIDTH)
-    const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
+    const maxHeight = getSafeAreaModalMaxHeight(screenHeight)
 
     const entries = activeGroup?.entries || []
 

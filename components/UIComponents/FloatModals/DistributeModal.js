@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import styles, { colors } from '../../styles/global'
 import CloseButton from '../../FollowUp/CloseButton'
 import Hotkeys from 'react-hot-keys'
@@ -12,6 +12,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setSelectedTasks } from '../../../redux/actions'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import useWindowSize from '../../../utils/useWindowSize'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const items = [
     { key: 'One per Day', value: '1', shortcut: 'Alt + 1' },
@@ -75,7 +76,7 @@ const DistributeModal = ({ closePopover, tasks, setIsLoading }) => {
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView showsVerticalScrollIndicator={false}>
                 <View style={localStyles.title}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>Distribute task to future days</Text>

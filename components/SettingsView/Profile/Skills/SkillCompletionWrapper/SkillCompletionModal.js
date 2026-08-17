@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../../styles/global'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { progressData } from '../../../../GoalsView/GoalsHelper'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
@@ -19,6 +19,7 @@ import CommentInfo from '../../../../UIComponents/FloatModals/GoalsProgressModal
 import EditForm from '../../../../UIComponents/FloatModals/RichCommentModal/EditForm'
 import AttachmentsSelectorModal from '../../../../UIComponents/FloatModals/AttachmentsSelectorModal'
 import { createObjectMessage } from '../../../../../utils/backends/Chats/chatsComments'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function SkillCompletionModal({ closeModal, changeCompletion, completion, projectId, skillId }) {
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -73,7 +74,11 @@ export default function SkillCompletionModal({ closeModal, changeCompletion, com
                 />
             ) : (
                 <View
-                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
+                    style={[
+                        localStyles.container,
+                        applyPopoverWidth(),
+                        { maxHeight: getSafeAreaModalMaxHeight(height) },
+                    ]}
                 >
                     <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                         <ModalHeader

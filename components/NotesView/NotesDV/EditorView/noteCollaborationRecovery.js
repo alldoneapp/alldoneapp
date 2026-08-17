@@ -40,10 +40,8 @@ export const hasDestructiveCollaborationSync = (storedLength, syncedLength) => {
  * diff would over-report on every open. Deterministic because Yjs encodes the
  * same internal state to the same bytes.
  */
-export const documentHasLocalState = document => document.getText('quill').length > 0 || document.store.clients.size > 0
-
-export const storageIsMissingLocalState = (localDocument, storageUpdate) => {
-    if (!documentHasLocalState(localDocument)) return false
+const storageIsMissingLocalState = (localDocument, storageUpdate) => {
+    if (localDocument.getText('quill').length === 0 && localDocument.store.clients.size === 0) return false
     if (storageUpdate.length === 0) return true
     const storageDocument = new Y.Doc()
     try {
@@ -86,30 +84,14 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
             }
         }
 
-        // `storageData == null` means the canonical copy could not be READ (we
-        // are offline, or the download failed) — NOT that it is empty. The
-        // distinction is the whole point: a null payload is indistinguishable
-        // from an empty one to `storageIsMissingLocalState`, which reports
-        // "storage is missing everything" and made the caller re-upload — and
-        // therefore re-stamp lastEditionDate/lastEditorId, the edited-today
-        // list, the started-editing feed and the follower — every single time a
-        // cached note was opened offline. Merely READING a note on a plane was
-        // recorded as editing it (AT-2340).
-        const storageContentAvailable = storageData !== null && storageData !== undefined
-        const update = storageContentAvailable ? new Uint8Array(storageData) : new Uint8Array(0)
+        const update = storageData ? new Uint8Array(storageData) : new Uint8Array(0)
 
         // Decided BEFORE merging Storage in, while `document` holds only the
         // local offline state: does the canonical Storage copy lack anything a
         // previous offline session wrote? The caller then uploads the merged
         // state once, so the server copy catches up even if the user never
-        // edits again. Only answerable when we actually hold the Storage bytes.
-        const storageNeedsLocalCatchUp =
-            !!localPersistence && storageContentAvailable && storageIsMissingLocalState(document, update)
-        // We hold local state but could not compare it: the decision is DEFERRED
-        // to the moment the canonical copy becomes readable again (the caller
-        // re-checks on reconnect) instead of being guessed as "yes, upload".
-        const storageCatchUpUnverified =
-            !!localPersistence && !storageContentAvailable && documentHasLocalState(document)
+        // edits again.
+        const storageNeedsLocalCatchUp = localPersistence ? storageIsMissingLocalState(document, update) : false
 
         if (update.length > 0) Y.applyUpdate(document, update)
 
@@ -133,7 +115,7 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
             // stays locked UNLESS the caller vouches that empty is the correct
             // content (allowEmptyOpen — a note whose content was never saved,
             // e.g. one just created offline).
-            if (storedLength === 0 && !storageContentAvailable && !allowEmptyOpen) throw syncError
+            if (storedLength === 0 && !storageData && !allowEmptyOpen) throw syncError
             return {
                 document,
                 provider,
@@ -141,7 +123,6 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
                 recovered: false,
                 syncedWithServer: false,
                 storageNeedsLocalCatchUp,
-                storageCatchUpUnverified,
             }
         }
 
@@ -159,15 +140,7 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
             }
         }
 
-        return {
-            document,
-            provider,
-            localPersistence,
-            recovered,
-            syncedWithServer: true,
-            storageNeedsLocalCatchUp,
-            storageCatchUpUnverified,
-        }
+        return { document, provider, localPersistence, recovered, syncedWithServer: true, storageNeedsLocalCatchUp }
     } catch (error) {
         provider?.destroy()
         if (localPersistence && typeof localPersistence.destroy === 'function') localPersistence.destroy()

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { union } from 'lodash'
 
 import { colors } from '../../../styles/global'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import {
     DEFAULT_SKILL_PRIVACY_OBJECT_TYPE,
     FEED_CHAT_OBJECT_TYPE,
@@ -46,6 +46,7 @@ import { updateChatPrivacy } from '../../../../utils/backends/Chats/chatsFiresto
 import { setUserPrivacyInProject } from '../../../../utils/backends/Users/usersFirestore'
 import { updateOKRPrivacy } from '../../../../utils/backends/OKRs/okrsFirestore'
 import { mergeRequiredPrivateAccess } from './privacyAccess'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const getOwnersId = (object, objectType) => {
     switch (objectType) {
@@ -351,7 +352,7 @@ function PrivacyModal({
             style={[
                 localStyles.container,
                 applyPopoverWidth(),
-                { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 style,
             ]}
         >
