@@ -4,11 +4,10 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import { sortBy } from 'lodash'
 import { useSelector } from 'react-redux'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function NoteAssigneePicker({
     note,
@@ -72,7 +71,7 @@ export default function NoteAssigneePicker({
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 20 }}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>{translate('Choose a user')}</Text>

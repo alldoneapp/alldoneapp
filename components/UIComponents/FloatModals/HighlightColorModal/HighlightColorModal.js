@@ -4,9 +4,8 @@ import { colors } from '../../../styles/global'
 import ColorItem from './ColorItem'
 import { BACKGROUND_COLORS } from '../../../../utils/ColorConstants'
 import useWindowSize from '../../../../utils/useWindowSize'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function HighlightColorModal({
     onPress,
@@ -33,7 +32,7 @@ export default function HighlightColorModal({
         <View
             style={[
                 localStyles.container,
-                responsive && { ...applyPopoverWidth(), maxHeight: getSafeAreaModalMaxHeight(height) },
+                responsive && { ...applyPopoverWidth(), maxHeight: height - MODAL_MAX_HEIGHT_GAP },
             ]}
         >
             <CustomScrollView showsVerticalScrollIndicator={false}>

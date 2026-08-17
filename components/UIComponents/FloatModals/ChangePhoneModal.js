@@ -7,12 +7,11 @@ import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { validatePhoneNumber, getDisplayPhoneNumber } from '../../../utils/phoneValidation'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function ChangePhoneModal({ currentPhone, closePopover, onSaveData, disabled }) {
     const [phone, setPhone] = useState(currentPhone && typeof currentPhone === 'string' ? currentPhone : '')
@@ -66,7 +65,7 @@ export default function ChangePhoneModal({ currentPhone, closePopover, onSaveDat
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 20 }}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>

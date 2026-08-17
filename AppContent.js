@@ -13,6 +13,7 @@ import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { isBrowserOffline } from './utils/connectionState'
 import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
+import { scheduleNotesOfflineCatchUp } from './utils/NotesOfflineCatchUp'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -247,6 +248,11 @@ export default function AppContent() {
                     // (OFFLINE_SUPPORT_PLAN.md notes follow-ups); also re-runs on
                     // reconnect. Fire-and-forget by design.
                     scheduleNotesOfflinePrefetch()
+                    // The mirror image of the prefetch: push note content that was
+                    // edited offline and never reached Firebase Storage, which has
+                    // no offline write queue of its own (AT-2340). Also re-runs on
+                    // reconnect. Fire-and-forget by design.
+                    scheduleNotesOfflineCatchUp()
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.

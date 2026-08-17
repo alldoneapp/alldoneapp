@@ -91,9 +91,10 @@ import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
-import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
+import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCollaborationRecovery'
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
+import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -152,6 +153,9 @@ const NotesEditorView = ({
     const [contentUnavailableOffline, setContentUnavailableOffline] = useState(false)
     // const [scrollEnabled, setScrollEnabled] = useState(false)
     const firstEditionRef = useRef(true)
+    // "This note holds local state we could not compare against the canonical
+    // Storage copy" — resolved on reconnect, never guessed (AT-2340).
+    const catchUpUnverifiedRef = useRef(false)
     let loadingRef = useRef(true)
     let provider = useRef(null)
     let ydoc = useRef(null)
@@ -437,11 +441,43 @@ const NotesEditorView = ({
     // Storage put fails); when connectivity returns while the editor is still
     // open, upload the current state so the canonical copy catches up
     // (OFFLINE_SUPPORT_PLAN.md Stage 6).
+    //
+    // This used to force `dirtyEditor` and autosave UNCONDITIONALLY on every
+    // `online` event, so a Wi-Fi switch or a laptop wake re-uploaded the whole
+    // note and re-stamped lastEditionDate/lastEditorId, the edited-today list,
+    // the linked-parent write and the follower — for a note nobody had touched,
+    // which in turn made every other open client re-download it. Now the
+    // decision is measured against the canonical copy first, and a note the
+    // server already has costs one read and no writes (AT-2340).
     useEffect(() => {
-        const uploadOnReconnect = () => {
-            if (!noteUnmountedRef.current && !loadingRef.current && ydoc.current && !readOnly) {
+        const uploadOnReconnect = async () => {
+            if (noteUnmountedRef.current || loadingRef.current || !ydoc.current || readOnly) return
+            // Real unsaved edits already have an autosave scheduled; letting it
+            // run avoids racing it with a second encode of the same document.
+            if (dirtyEditor.current) return
+            if (!catchUpUnverifiedRef.current && !hasPendingNoteUpload(note.id)) return
+
+            try {
+                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
+                    attemptTimeoutMs: 10000,
+                })
+                if (noteUnmountedRef.current || !ydoc.current) return
+                const storageUpdate = data ? new Uint8Array(data) : new Uint8Array(0)
+                catchUpUnverifiedRef.current = false
+                if (!storageIsMissingLocalState(ydoc.current, storageUpdate)) {
+                    clearPendingNoteUpload(note.id)
+                    return
+                }
+                // Merge the canonical copy in first so the upload is the CRDT
+                // union — an edit made elsewhere while we were offline must not
+                // be clobbered by our catch-up.
+                if (storageUpdate.length > 0) Y.applyUpdate(ydoc.current, storageUpdate, 'remote-storage-refresh')
                 dirtyEditor.current = true
                 autosave()
+            } catch (error) {
+                // Could not read the canonical copy: keep both flags so the next
+                // reconnect (or the next open) retries the comparison.
+                console.warn('Could not verify whether the note needs an offline catch-up upload', error)
             }
         }
         window.addEventListener('online', uploadOnReconnect)
@@ -849,6 +885,11 @@ const NotesEditorView = ({
                         noteId: note.id,
                     })
                 }
+                // Only set when the canonical copy was actually READ and found to
+                // be behind. When it could not be read (offline), the decision is
+                // deferred via storageCatchUpUnverified rather than guessed —
+                // guessing "yes" recorded every offline READ as an edit (AT-2340).
+                catchUpUnverifiedRef.current = !!collaboration.storageCatchUpUnverified
                 if (collaboration.storageNeedsLocalCatchUp && !readOnly) {
                     // A previous offline session edited this note and its writes never
                     // reached Firebase Storage. Upload the merged state now so the

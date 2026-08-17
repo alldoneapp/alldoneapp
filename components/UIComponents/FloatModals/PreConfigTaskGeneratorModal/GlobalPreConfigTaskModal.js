@@ -7,10 +7,8 @@ import { setPreConfigTaskModalData } from '../../../../redux/actions'
 import PreConfigTaskGeneratorModal from './PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
-import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function GlobalPreConfigTaskModal() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const preConfigTaskModalData = useSelector(state => state.preConfigTaskModalData)
     const gold = useSelector(state => state.loggedUser.gold)
@@ -27,7 +25,7 @@ export default function GlobalPreConfigTaskModal() {
     }
 
     return (
-        <View style={[localStyles.overlay, safeAreaOverlayPadding]}>
+        <View style={localStyles.overlay}>
             <TouchableWithoutFeedback onPress={closeModal}>
                 <View style={localStyles.backdrop} />
             </TouchableWithoutFeedback>

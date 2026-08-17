@@ -8,10 +8,8 @@ import { setShowAccessDeniedPopup, hideFloatPopup } from '../../redux/actions'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
-import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function AccessDeniedPopup() {
-    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
 
     useEffect(() => {
@@ -37,7 +35,7 @@ export default function AccessDeniedPopup() {
         // Dismissal lives on the backdrop element only: an onTouchStart on the
         // container bubbled up from the card, so tapping the text inside
         // dismissed the popup on touch devices.
-        <View style={[localStyles.container, safeAreaOverlayPadding]}>
+        <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.backdrop} onPress={closeModal} />
             <View style={localStyles.popup}>
                 <View style={localStyles.body}>

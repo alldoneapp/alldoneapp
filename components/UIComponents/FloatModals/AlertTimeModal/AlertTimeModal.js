@@ -7,9 +7,8 @@ import Icon from '../../../Icon'
 import { getTimeFormat } from '../DateFormatPickerModal'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { setTaskAlert } from '../../../../utils/backends/Tasks/tasksFirestore'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function AlertTimeModal({ task, projectId, closePopover, delayClosePopover }) {
     const [width, height] = useWindowSize()
@@ -73,7 +72,7 @@ export default function AlertTimeModal({ task, projectId, closePopover, delayClo
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView showsVerticalScrollIndicator={false}>
                 <View style={localStyles.title}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>{translate('Alert time')}</Text>
