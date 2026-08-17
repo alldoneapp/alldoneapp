@@ -323,6 +323,18 @@ pin the contract.
   and a false positive fires edit side effects like `startEditNoteFeedsChain`). Offline
   no longer forces the notes editor read-only. Pinned by
   `noteCollaborationRecovery.test.js` and `noteLocalPersistence.test.js`.
+  **Follow-ups (2026-08-17)**: (1) a note can be **created** offline end to end —
+  `uploadNewNote` stops awaiting server acks while offline (the awaited `.set()`, the
+  server-clock read in `updateEditionData`, and the side-effect `Promise.all` only
+  resolve on reconnect otherwise) and its empty Storage put is best-effort; the editor
+  then opens via `allowEmptyOpen`, passed when the note has no `preview` (previews are
+  written on every content autosave, so no preview ⇒ never-saved ⇒ empty is correct —
+  and CRDT merge makes even a false positive lossless). (2) `utils/NotesOfflinePrefetch.js`
+  warms the y-indexeddb stores with the most recently edited notes while online (top 5
+  per project, 30 per run, cooldown 10 min, marker-skips unchanged editions, never
+  touches the open note, scheduled post-login + on reconnect from `AppContent`). (3) a
+  note that still cannot load offline shows a translated explanation instead of an
+  endless spinner (`contentUnavailableOffline` in `NotesEditorView`).
 - **Firestore persistence**: `initFirebase` enables IndexedDB persistence
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat

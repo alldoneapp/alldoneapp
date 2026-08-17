@@ -1179,6 +1179,8 @@
     "Alldone is online": "Alldone está en línea",
     "Alldone is offline": "Alldone está desconectado",
     "Alldone is online again, all functionalities are available": "Alldone está en línea nuevamente, todas las funcionalidades están disponibles.",
+    "This note is not available offline yet": "Esta nota aún no está disponible sin conexión",
+    "It will load automatically when you are back online": "No se ha abierto antes en este dispositivo. Se cargará automáticamente cuando vuelvas a estar en línea.",
     "Search needs an internet connection": "La búsqueda necesita conexión a internet. Los resultados volverán a estar disponibles cuando estés en línea.",
     "Edition in notes will be disabled till Alldone goes back online again": "Puedes seguir editando notas; tus cambios se sincronizarán cuando Alldone vuelva a estar en línea.",
     "This Object hasn't any note yet": "Este %{object} aún no tiene ninguna nota",

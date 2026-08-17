@@ -127,6 +127,21 @@ describe('offline open with local persistence (OFFLINE_SUPPORT_PLAN.md Stage 6)'
         result.document.destroy()
     })
 
+    it('opens EMPTY when the caller vouches the note was never saved (allowEmptyOpen)', async () => {
+        const { factory } = createLocalPersistenceStub(null)
+
+        const result = await prepareSyncedNoteDocument(null, createOfflineProvider, {
+            createLocalPersistence: factory,
+            syncTimeout: SYNC_TIMEOUT_FOR_TESTS,
+            allowEmptyOpen: true,
+        })
+
+        expect(result.syncedWithServer).toBe(false)
+        expect(result.document.getText('quill').toString()).toBe('')
+        result.provider.destroy()
+        result.document.destroy()
+    })
+
     it('still locks the editor when there is truly nothing to show', async () => {
         const { factory, persistence } = createLocalPersistenceStub(null)
 

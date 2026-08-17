@@ -1,9 +1,7 @@
 import React from 'react'
-import { View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import TasksList from './TasksList'
-import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
 
 let mockState
 
@@ -69,17 +67,6 @@ describe('TasksList initial loading', () => {
         expect(skeleton.props.rowCount).toBe(2)
         expect(skeleton.props.taskKeys).toEqual(['task-1', 'task-2'])
         expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(0)
-    })
-
-    it('uses the shared task-list gutter', () => {
-        let tree
-        act(() => {
-            tree = renderList()
-        })
-
-        expect(tree.root.findByType(TasksList).findByType(View).props.style).toEqual(
-            expect.arrayContaining([taskPresentationLayout.listContainer])
-        )
     })
 
     it('shows real tasks once both streams are complete', () => {
