@@ -58,6 +58,7 @@ describe('OpenTasksByDate assistant task creation layout', () => {
             thereAreSomedayEmptyGoals: { 'project-1': false },
             initialLoadingEndOpenTasks: { instance: true },
             initialLoadingEndObservedTasks: { instance: true },
+            taskListSingleLoading: {},
             openTasksShowMoreData: {},
         }
     })
@@ -147,5 +148,19 @@ describe('OpenTasksByDate assistant task creation layout', () => {
         expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
         expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
         expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(1)
+    })
+
+    it('adds one ghost row while a later task is resolving', () => {
+        mockState.taskListSingleLoading.instance = true
+
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <OpenTasksByDate projectId="project-1" projectIndex={0} dateIndex={0} instanceKey="instance" />
+            )
+        })
+
+        expect(tree.root.findByType('TaskListSkeleton').props.rowCount).toBe(1)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
     })
 })
