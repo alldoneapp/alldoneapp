@@ -26,8 +26,7 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../ModalsManager/modalsManager'
 import CustomScrollView from '../../UIControls/CustomScrollView'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
-import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
@@ -90,7 +89,7 @@ export default function MentionsModal({
     const getInitValue = items => (items.length === 0 ? -1 : 0)
     const activeItemIndexRef = useRef(getInitValue(itemsRef.current))
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
-    const tmpHeight = getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
+    const tmpHeight = height - (contentLocation?.top || 0) - MODAL_MAX_HEIGHT_GAP
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
     const loggedUser = useSelector(state => state.loggedUser)
 

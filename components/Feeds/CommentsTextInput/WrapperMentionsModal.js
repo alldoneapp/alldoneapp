@@ -16,8 +16,7 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../ModalsManager/modalsManager'
 import useWindowSize from '../../../utils/useWindowSize'
-import { MENTION_MODAL_MIN_HEIGHT, popoverToCenter } from '../../../utils/HelperFunctions'
-import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { MENTION_MODAL_MIN_HEIGHT, MODAL_MAX_HEIGHT_GAP, popoverToCenter } from '../../../utils/HelperFunctions'
 
 export default function WrapperMentionsModal({
     mentionText,
@@ -30,7 +29,7 @@ export default function WrapperMentionsModal({
     insertNormalMention,
 }) {
     const [width, height] = useWindowSize()
-    const maxHeight = getSafeAreaModalMaxHeightBelow(height, contentLocation.top)
+    const maxHeight = height - contentLocation.top - MODAL_MAX_HEIGHT_GAP
     const finalLocation = maxHeight < MENTION_MODAL_MIN_HEIGHT ? null : contentLocation
     const mobile = useSelector(state => state.smallScreenNavigation)
     const dispatch = useDispatch()

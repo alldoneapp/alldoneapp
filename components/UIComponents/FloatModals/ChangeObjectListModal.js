@@ -4,7 +4,7 @@ import Hotkeys from 'react-hot-keys'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
@@ -16,7 +16,6 @@ import {
     DV_TAB_ROOT_TASKS,
 } from '../../../utils/TabNavigationConstants'
 import ChangeObjectListModalItem from './ChangeObjectListModalItem'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function ChangeObjectListModal({ closePopover }) {
     const [width, height] = useWindowSize()
@@ -30,7 +29,7 @@ export default function ChangeObjectListModal({ closePopover }) {
     ]
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName={'esc'} onKeyDown={closePopover} filter={e => true}>
                     <View style={{ marginBottom: 20 }}>

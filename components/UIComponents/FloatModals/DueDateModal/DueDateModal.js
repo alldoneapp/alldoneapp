@@ -5,7 +5,7 @@ import moment from 'moment'
 
 import { colors } from '../../../styles/global'
 import DueDateCalendarModal from './../DueDateCalendarModal/DueDateCalendarModal'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { DUE_DATE_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -21,7 +21,6 @@ import { watchGoal } from '../../../../utils/backends/Goals/goalsFirestore'
 import GoalBasedModal from './GoalBasedModal'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { applyPostponeToGoalTaskList } from './applyPostponeToGoalTaskList'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 function DueDateModal({
     task,
@@ -148,13 +147,7 @@ function DueDateModal({
     }
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                applyPopoverWidth(),
-                { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
-            ]}
-        >
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView showsVerticalScrollIndicator={false}>
                 <Header
                     setActiveTab={setActiveTab}

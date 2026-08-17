@@ -3,13 +3,12 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import styles, { colors } from '../../styles/global'
 import useWindowSize from '../../../utils/useWindowSize'
 import ModalHeader from './ModalHeader'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { translate } from '../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function GoalOrganizationModal({
     closeModal,
@@ -20,7 +19,7 @@ export default function GoalOrganizationModal({
     const [width, height] = useWindowSize()
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <ModalHeader
                 closeModal={closeModal}
                 title={translate('Organise goals')}

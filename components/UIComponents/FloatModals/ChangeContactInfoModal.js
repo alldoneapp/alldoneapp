@@ -12,13 +12,12 @@ import {
     MENTION_MODAL_CONTACTS_TAB,
     NEW_TOPIC_MODAL_THEME,
 } from '../../Feeds/CommentsTextInput/textInputHelper'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import ProjectHelper, { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import { copyContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function ChangeContactInfoModal({
     currentRole,
@@ -124,7 +123,7 @@ export default function ChangeContactInfoModal({
     const projectIndex = projectId ? ProjectHelper.getProjectIndexById(projectId) : ALL_PROJECTS_INDEX
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 20 }}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>{translate('Contact info')}</Text>

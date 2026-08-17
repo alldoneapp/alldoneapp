@@ -43,7 +43,6 @@ import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
-import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -58,7 +57,6 @@ const getActiveProjectsInSidebarOrder = (projects, user) =>
     )
 
 export default function EndDayStatisticsModal() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
     const statisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
@@ -521,7 +519,7 @@ export default function EndDayStatisticsModal() {
     return (
         !showNewVersionMandtoryNotifcation &&
         checkIfDataIsLoaded() && (
-            <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+            <View style={localStyles.parent}>
                 <View
                     style={[
                         localStyles.container,
