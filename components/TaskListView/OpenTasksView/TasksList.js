@@ -37,6 +37,7 @@ export default function TasksList({
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
     const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
     const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
+    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
 
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
@@ -82,7 +83,8 @@ export default function TasksList({
     const visibleTasks = sortedTaskList.filter(
         (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
     )
-    const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
+    const initialTaskDataIsLoading =
+        !singleTaskIsLoading && (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
 
     return (
         <View style={[taskPresentationLayout.listContainer, containerStyle]}>
