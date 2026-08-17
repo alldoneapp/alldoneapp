@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { orderBy, sortBy } from 'lodash'
 import { useSelector, useDispatch } from 'react-redux'
 
 import ContactsHeader from './ContactsHeader'
 import ContactListByProject from './ContactListByProject'
-import ProjectHelper, {
-    ALL_PROJECTS_INDEX,
-    checkIfSelectedAllProjects,
-} from '../SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_PROJECTS_INDEX, checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import URLsPeople, {
     URL_ALL_PROJECTS_PEOPLE_ALL,
     URL_ALL_PROJECTS_PEOPLE_FOLLOWED,
@@ -16,16 +13,16 @@ import URLsPeople, {
     URL_PROJECT_PEOPLE_FOLLOWED,
 } from '../../URLSystem/People/URLsPeople'
 import { setNavigationRoute } from '../../redux/actions'
-import { FOLLOWER_CONTACTS_TYPE, FOLLOWER_USERS_TYPE } from '../Followers/FollowerConstants'
-import Backend from '../../utils/BackendBridge'
-import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
+import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_CONTACTS } from '../../utils/TabNavigationConstants'
-import ContactsHelper from './Utils/ContactsHelper'
 import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
-import { PROJECT_TYPE_GUIDE } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import { watchFollowedPeople } from '../../utils/backends/Contacts/followedPeopleFirestore'
+import { createFollowedPeopleBatcher, getProjectsForFollowedPeopleWatch } from './followedPeopleBatcher'
+import { buildContactsViewData } from './contactsViewData'
+import { getProjectsForContactsView } from './contactsViewProjectScope'
 
 export default function ContactsView() {
     const dispatch = useDispatch()
@@ -38,18 +35,13 @@ export default function ContactsView() {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const projectUsers = useSelector(state => state.projectUsers)
     const projectContacts = useSelector(state => state.projectContacts)
-    const [followedUsers, setFollowedUsers] = useState([])
-    const [followedContacts, setFollowedContacts] = useState([])
-    const [filteredProjectsUsers, setFilteredProjectsUsers] = useState([])
-    const [filteredProjectsContacts, setFilteredProjectsContacts] = useState({})
-    const [amounts, setAmounts] = useState({
-        users: 0,
-        contacts: 0,
-        followedUsers: 0,
-        followedContacts: 0,
-    })
+    const [followedPeopleByProject, setFollowedPeopleByProject] = useState({})
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    const projectsForContactsView = useMemo(
+        () => getProjectsForContactsView(inAllProjects, loggedUserProjects, loggedUser),
+        [inAllProjects, loggedUserProjects, loggedUser]
+    )
 
     const writeBrowserURL = () => {
         if (inAllProjects) {
@@ -67,138 +59,60 @@ export default function ContactsView() {
         }
     }
 
-    const watchContacts = () => {
-        if (selectedProjectIndex >= 0) {
-            const project = loggedUserProjects[selectedProjectIndex]
-            Backend.watchFollowedUsers(project.id, loggedUser.uid, (projectId, users) => {
-                setFollowedUsers(followedUsers => {
-                    return { ...followedUsers, [selectedProjectIndex]: Object.keys(users) }
-                })
-            })
-            Backend.watchFollowedContacts(project.id, loggedUser.uid, (projectId, contacts) => {
-                setFollowedContacts(followedContacts => {
-                    return { ...followedContacts, [selectedProjectIndex]: Object.keys(contacts) }
-                })
-            })
-        } else {
-            for (let i = 0; i < loggedUserProjects.length; i++) {
-                const project = loggedUserProjects[i]
-                Backend.watchFollowedUsers(project.id, loggedUser.uid, (projectId, users) => {
-                    setFollowedUsers(followedUsers => {
-                        return { ...followedUsers, [i]: Object.keys(users) }
-                    })
-                })
-                Backend.watchFollowedContacts(project.id, loggedUser.uid, (projectId, contacts) => {
-                    setFollowedContacts(followedContacts => {
-                        return { ...followedContacts, [i]: Object.keys(contacts) }
-                    })
-                })
-            }
-        }
-    }
-
-    const unwatchContacts = () => {
-        const projects = selectedProjectIndex >= 0 ? [loggedUserProjects[selectedProjectIndex]] : loggedUserProjects
-        for (let i = 0; i < projects.length; i++) {
-            const project = projects[i]
-            Backend.unwatchFollowedUsers(project.id, loggedUser.uid)
-            Backend.unwatchFollowedContacts(project.id, loggedUser.uid)
-        }
-    }
-
-    const filterUsers = () => {
-        let filteredUsers = {}
-        let filteredContacts = {}
-
-        let amounts = {
-            users: 0,
-            contacts: 0,
-            followedUsers: 0,
-            followedContacts: 0,
-        }
-
-        const countByFollowed = (type = FOLLOWER_USERS_TYPE, pIndex, users) => {
-            const followedList = type === FOLLOWER_USERS_TYPE ? followedUsers : followedContacts
-            const list = users.filter(
-                user => followedList[pIndex]?.includes(user.uid) && !ContactsHelper.isPrivateContact(user)
-            )
-            return list.length
-        }
-
-        const countBy = users => {
-            const list = users.filter(user => !ContactsHelper.isPrivateContact(user))
-            return list.length
-        }
-
-        for (let pIdx = 0; pIdx < loggedUserProjects.length; pIdx++) {
-            const project = loggedUserProjects[pIdx]
-            if (
-                project &&
-                (ProjectHelper.getTypeOfProject(loggedUser, project.id) === selectedTypeOfProject ||
-                    (inAllProjects && ProjectHelper.getTypeOfProject(loggedUser, project.id) === PROJECT_TYPE_GUIDE))
-            ) {
-                filteredUsers[project.id] = projectUsers[project.id]
-                filteredContacts[project.id] = projectContacts[project.id]
-
-                amounts.users +=
-                    (selectedProjectIndex < 0 || selectedProjectIndex === pIdx) && filteredUsers[project.id]
-                        ? countBy(filteredUsers[project.id])
-                        : 0
-                amounts.contacts +=
-                    (selectedProjectIndex < 0 || selectedProjectIndex === pIdx) && filteredContacts[project.id]
-                        ? countBy(filteredContacts[project.id])
-                        : 0
-
-                amounts.followedUsers +=
-                    (selectedProjectIndex < 0 || selectedProjectIndex === pIdx) && filteredUsers[project.id]
-                        ? countByFollowed(FOLLOWER_USERS_TYPE, pIdx, filteredUsers[project.id])
-                        : 0
-                amounts.followedContacts +=
-                    (selectedProjectIndex < 0 || selectedProjectIndex === pIdx) && filteredContacts[project.id]
-                        ? countByFollowed(FOLLOWER_CONTACTS_TYPE, pIdx, filteredContacts[project.id])
-                        : 0
-
-                if (contactsActiveTab === 0) {
-                    filteredUsers[project.id] = filteredUsers[project.id].filter(user =>
-                        followedUsers[pIdx]?.includes(user.uid)
-                    )
-                    filteredContacts[project.id] = filteredContacts[project.id].filter(contact =>
-                        followedContacts[pIdx]?.includes(contact.uid)
-                    )
-                }
-            } else {
-                filteredUsers[project.id] = []
-                filteredContacts[project.id] = []
-            }
-        }
-
-        return { filteredProjectsUsers: filteredUsers, filteredProjectsContacts: filteredContacts, amounts: amounts }
-    }
-
-    useEffect(() => {
-        const { filteredProjectsUsers, filteredProjectsContacts, amounts } = filterUsers()
-        setFilteredProjectsUsers(filteredProjectsUsers)
-        setFilteredProjectsContacts(filteredProjectsContacts)
-        setAmounts(amounts)
-    }, [
-        followedUsers,
-        followedContacts,
-        loggedUserProjects,
-        JSON.stringify(projectUsers), // Without the Stringify, the component does not detect the removed items
-        JSON.stringify(projectContacts), // Without the Stringify, the component does not detect the removed items
-        contactsActiveTab,
-    ])
+    const { filteredProjectsUsers, filteredProjectsContacts, amounts } = useMemo(
+        () =>
+            buildContactsViewData({
+                loggedUser,
+                loggedUserProjects: projectsForContactsView,
+                projectUsers,
+                projectContacts,
+                followedPeopleByProject,
+                selectedTypeOfProject,
+                selectedProjectIndex,
+                contactsActiveTab,
+                inAllProjects,
+            }),
+        [
+            loggedUser,
+            projectsForContactsView,
+            projectUsers,
+            projectContacts,
+            followedPeopleByProject,
+            selectedTypeOfProject,
+            selectedProjectIndex,
+            contactsActiveTab,
+            inAllProjects,
+        ]
+    )
 
     useEffect(() => {
         dispatch(setNavigationRoute(DV_TAB_ROOT_CONTACTS))
     }, [])
 
+    const projectIdsKey = projectsForContactsView.map(project => project.id).join('|')
+
     useEffect(() => {
-        watchContacts()
+        const projects = getProjectsForFollowedPeopleWatch(
+            contactsActiveTab === FOLLOWED_TAB,
+            selectedProjectIndex,
+            projectsForContactsView
+        )
+        if (projects.length === 0) return
+
+        const batcher = createFollowedPeopleBatcher(updates => {
+            setFollowedPeopleByProject(current => ({ ...current, ...updates }))
+        })
+        const unsubscribes = projects.map(project =>
+            watchFollowedPeople(project.id, loggedUser.uid, (projectId, followedPeople) => {
+                batcher.add(projectId, followedPeople)
+            })
+        )
+
         return () => {
-            unwatchContacts()
+            batcher.cancel()
+            unsubscribes.forEach(unsubscribe => unsubscribe())
         }
-    }, [loggedUserProjects.length])
+    }, [contactsActiveTab, loggedUser.uid, projectIdsKey, selectedProjectIndex])
 
     useEffect(() => {
         writeBrowserURL()
@@ -206,29 +120,25 @@ export default function ContactsView() {
 
     const project = inAllProjects ? ALL_PROJECTS_INDEX : loggedUserProjects[selectedProjectIndex]
 
-    const normalProjects = loggedUserProjects.filter(project => !project.parentTemplateId)
-    const guides = loggedUserProjects.filter(project => !!project.parentTemplateId)
+    const sortedLoggedUserProjects = useMemo(() => {
+        const normalProjects = projectsForContactsView.filter(project => !project.parentTemplateId)
+        const guides = projectsForContactsView.filter(project => !!project.parentTemplateId)
+        const getLastEditedContactDate = projectId => {
+            const contacts = projectContacts[projectId] || []
+            return contacts.reduce((maxDate, contact) => Math.max(maxDate, contact?.lastEditionDate || 0), 0)
+        }
+        const sortProjects = projects =>
+            orderBy(
+                sortBy(projects, [project => project.name.toLowerCase()]),
+                [project => getLastEditedContactDate(project.id)],
+                ['desc']
+            )
 
-    const getLastEditedContactDate = projectId => {
-        const contacts = projectContacts[projectId] || []
-        return contacts.reduce((maxDate, contact) => Math.max(maxDate, contact?.lastEditionDate || 0), 0)
-    }
+        return [...sortProjects(normalProjects), ...sortProjects(guides)]
+    }, [projectsForContactsView, projectContacts])
 
-    const sortedLoggedUserProjects = [
-        ...orderBy(
-            sortBy(normalProjects, [project => project.name.toLowerCase()]),
-            [project => getLastEditedContactDate(project.id)],
-            ['desc']
-        ),
-        ...orderBy(
-            sortBy(guides, [project => project.name.toLowerCase()]),
-            [project => getLastEditedContactDate(project.id)],
-            ['desc']
-        ),
-    ]
-
-    let contactsAmount = amounts.users + amounts.contacts
-    let fContactsAmount = amounts.followedUsers + amounts.followedContacts
+    const contactsAmount = amounts.users + amounts.contacts
+    const followedContactsAmount = amounts.followedUsers + amounts.followedContacts
 
     return (
         <View
@@ -240,7 +150,9 @@ export default function ContactsView() {
         >
             {inAllProjects && <AllProjectsLine showActions={false} />}
             {inAllProjects && (
-                <ContactsHeader contactAmount={contactsActiveTab === 0 ? fContactsAmount : contactsAmount} />
+                <ContactsHeader
+                    contactAmount={contactsActiveTab === FOLLOWED_TAB ? followedContactsAmount : contactsAmount}
+                />
             )}
             {inAllProjects && <ContactStatusFiltersView projectContacts={projectContacts} />}
 
@@ -250,23 +162,16 @@ export default function ContactsView() {
                 inAllProjects ? (
                     sortedLoggedUserProjects.map((project, index) => {
                         if (filteredProjectsUsers[project.id]) {
-                            const matchTypeOfProject =
-                                ProjectHelper.getTypeOfProject(loggedUser, project.id) === selectedTypeOfProject ||
-                                (inAllProjects &&
-                                    ProjectHelper.getTypeOfProject(loggedUser, project.id) === PROJECT_TYPE_GUIDE)
-
                             return (
-                                matchTypeOfProject && (
-                                    <ContactListByProject
-                                        key={project.index}
-                                        projectIndex={project.index}
-                                        members={filteredProjectsUsers[project.id]}
-                                        contacts={filteredProjectsContacts[project.id]}
-                                        onlyMembers={false}
-                                        firstProject={index === 0}
-                                        maxContactsToRender={3}
-                                    />
-                                )
+                                <ContactListByProject
+                                    key={project.index}
+                                    projectIndex={project.index}
+                                    members={filteredProjectsUsers[project.id]}
+                                    contacts={filteredProjectsContacts[project.id]}
+                                    onlyMembers={false}
+                                    firstProject={index === 0}
+                                    maxContactsToRender={3}
+                                />
                             )
                         }
                     })
