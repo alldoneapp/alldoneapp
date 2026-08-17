@@ -7,9 +7,23 @@ const fs = require('fs')
 const path = require('path')
 
 const rootDir = path.resolve(__dirname, '..')
-const createWebpackConfig = require('../web-bundler/webpack.config.js')
 
 const swSource = fs.readFileSync(path.join(rootDir, 'web-bundler', 'service-worker.js'), 'utf8')
+const webpackConfigSource = fs.readFileSync(path.join(rootDir, 'web-bundler', 'webpack.config.js'), 'utf8')
+
+// Instantiating the real config needs web-bundler's own node_modules (webpack,
+// workbox-webpack-plugin, the resolve.fallback shims like `buffer/`). CI's
+// test:web:changed job only symlinks the ROOT node_modules, so the functional
+// checks below run locally (and anywhere `(cd web-bundler && npm install)` has
+// run) and are skipped in CI — where build_web_webpack_check compiles the real
+// config in the same pipeline, and the static-source checks still run.
+const webBundlerDepsInstalled = ['workbox-webpack-plugin', 'buffer', 'webpack'].every(dep =>
+    fs.existsSync(path.join(rootDir, 'web-bundler', 'node_modules', dep))
+)
+const describeWithBundlerDeps = webBundlerDepsInstalled ? describe : describe.skip
+// Guarded at module scope: describe.skip bodies still execute at collection
+// time, so an unconditional require would throw in CI anyway.
+const createWebpackConfig = webBundlerDepsInstalled ? require('../web-bundler/webpack.config.js') : null
 
 describe('workbox service worker source', () => {
     it('precaches the injected manifest', () => {
@@ -42,7 +56,19 @@ describe('workbox service worker source', () => {
     })
 })
 
-describe('web-bundler webpack config', () => {
+describe('web-bundler webpack config source (runs everywhere)', () => {
+    it('wires InjectManifest for production at the legacy SW URL', () => {
+        expect(webpackConfigSource).toContain('new InjectManifest')
+        expect(webpackConfigSource).toContain("swDest: 'service-worker.js'")
+        expect(webpackConfigSource).toContain('firebase-messaging-sw')
+    })
+
+    it('copies the no-op dev SW in development', () => {
+        expect(webpackConfigSource).toContain('service-worker.dev.js')
+    })
+})
+
+describeWithBundlerDeps('web-bundler webpack config (needs web-bundler/node_modules)', () => {
     it('injects the precache manifest in production at the legacy SW URL', () => {
         const config = createWebpackConfig(undefined, { mode: 'production' })
         const injectManifest = config.plugins.find(plugin => plugin.constructor.name === 'InjectManifest')
