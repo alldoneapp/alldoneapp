@@ -4,7 +4,7 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
@@ -12,6 +12,7 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { COLORS_THEME_DEFAULT, COLORS_THEME_MODERN } from '../../../Themes/Themes'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserThemeName } from '../../../utils/backends/Users/usersFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const themeOptions = [
     { symbol: 'Default', value: COLORS_THEME_DEFAULT, shortcut: '1', name: 'Blue' },
@@ -74,7 +75,7 @@ export default function AppThemeModal({ userId, themeName, closePopover }) {
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName={'esc'} onKeyDown={closePopover} filter={e => true}>
                     <View style={{ marginBottom: 20 }}>

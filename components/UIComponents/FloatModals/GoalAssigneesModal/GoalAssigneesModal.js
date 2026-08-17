@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import AssigneeItem from './AssigneeItem'
 import Button from '../../../UIControls/Button'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -19,6 +19,7 @@ import TabsHeader, { TEAM_MEMBERS_TAB } from './TabsHeader'
 import SearchForm from '../AssigneeAndObserversModal/Form/SearchForm'
 import { filterUserShapesByText } from '../AssigneeAndObserversModal/AssigneeAndObserversModal'
 import EmptyResults from '../EmptyResults'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalAssigneesModal({
     projectId,
@@ -120,7 +121,7 @@ export default function GoalAssigneesModal({
     const title = 'Goal assignees & capacity'
     const description = 'Select the users who will take care of this goal and their capacities'
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     return showCapacityModalForAssigneeId !== '' ? (

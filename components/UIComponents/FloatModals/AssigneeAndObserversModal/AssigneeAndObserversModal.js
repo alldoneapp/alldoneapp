@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { sortBy } from 'lodash'
 
 import useWindowSize from '../../../../utils/useWindowSize'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import Header, { ASSIGNEE_TAB, OBSERVERS_TAB } from './Header/Header'
 import SearchForm from './Form/SearchForm'
@@ -18,6 +18,7 @@ import { getWorkstreamInProject } from '../../../Workstreams/WorkstreamHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ModalHeader from '../ModalHeader'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function AssigneeAndObserversModal({
     projectIndex,
@@ -84,7 +85,7 @@ export default function AssigneeAndObserversModal({
               ? translate('Select here the observer subheader')
               : translate('Select here the assignee and observers subheader'))
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const changeTab = tab => {

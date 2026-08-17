@@ -4,13 +4,14 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { useTranslator, translate } from '../../../i18n/TranslationService'
 import { setUserLanguage } from '../../../utils/backends/Users/usersFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function LanguagePickerModal({ userId, language, closePopover }) {
     useTranslator()
@@ -70,7 +71,7 @@ export default function LanguagePickerModal({ userId, language, closePopover }) 
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName={'esc'} onKeyDown={closePopover} filter={e => true}>
                     <View style={{ marginBottom: 20 }}>

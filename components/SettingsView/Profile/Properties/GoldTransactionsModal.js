@@ -4,7 +4,7 @@ import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
 import { loadMoreGoldTransactions, watchGoldTransactions } from '../../../../utils/backends/Users/usersFirestore'
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import useWindowSize from '../../../../utils/useWindowSize'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
@@ -12,6 +12,7 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Button from '../../../UIControls/Button'
 import styles from '../../../styles/global'
 import { getDateFormat, getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 function getTransactionTimestamp(entry) {
     const createdAt = entry?.createdAt
@@ -235,7 +236,7 @@ export default function GoldTransactionsModal({ userId, closeModal }) {
     let currentDay = ''
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     closeModal={closeModal}

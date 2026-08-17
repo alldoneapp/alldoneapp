@@ -5,7 +5,7 @@ import PropTypes from 'prop-types'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import FileTag from '../../Tags/FileTag'
-import { applyPopoverWidth, getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, getPopoverWidth } from '../../../utils/HelperFunctions'
 import * as ImagePicker from '../../../utils/WebShims/ImagePicker'
 import { Platform } from 'react-native-web'
 import Spinner from '../Spinner'
@@ -15,6 +15,7 @@ import Hotkeys from 'react-hot-keys'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class ImagePickerModal extends Component {
     constructor(props) {
@@ -102,7 +103,7 @@ class ImagePickerModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>

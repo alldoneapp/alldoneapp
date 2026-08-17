@@ -7,8 +7,10 @@ import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import { translate } from '../../../i18n/TranslationService'
 import { MODAL_Z_CONTENT } from '../../styles/modals'
+import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 const NotAvailableScreenRecording = ({ onPress }) => {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     return (
         <Hotkeys
             keyName={'Esc'}
@@ -17,7 +19,7 @@ const NotAvailableScreenRecording = ({ onPress }) => {
             }}
             filter={e => true}
         >
-            <View style={localStyles.parent}>
+            <View style={[localStyles.parent, safeAreaOverlayPadding]}>
                 <View style={[localStyles.container, applyPopoverWidth()]}>
                     <View style={{ paddingHorizontal: 16 }}>
                         <Text style={[global.title7, localStyles.title]}>

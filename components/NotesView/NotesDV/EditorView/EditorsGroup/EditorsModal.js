@@ -4,10 +4,11 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, em2px } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 import { useSelector } from 'react-redux'
-import HelperFunctions, { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
+import HelperFunctions, { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { translate } from '../../../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function EditorsModal({ closeModal, editors, markAssignee = false }) {
     const [width, height] = useWindowSize()
@@ -15,7 +16,7 @@ export default function EditorsModal({ closeModal, editors, markAssignee = false
     const showAssignee = markAssignee && assignee && assignee.uid
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Text style={localStyles.title}>{translate('Editors')}</Text>
                 <Text style={localStyles.subtitle}>{translate('List of all the users editing this note')}</Text>

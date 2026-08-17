@@ -6,7 +6,7 @@ import ModalHeader from '../ModalHeader'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import {
@@ -19,6 +19,7 @@ import {
     normalizeTaskPriority,
 } from '../../../../utils/TaskPriority'
 import { getTaskPriorityColors } from '../../../TaskListView/Utils/TaskPriorityPresentation'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const PRIORITY_OPTIONS = [
     TASK_PRIORITY_MUST_DO,
@@ -39,7 +40,7 @@ export default function TaskPriorityModal({ priority, setPriority, closeModal })
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     closeModal={closeModal}

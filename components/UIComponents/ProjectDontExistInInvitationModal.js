@@ -8,8 +8,10 @@ import { setShowProjectDontExistInInvitationModal } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function ProjectDontExistInInvitationModal() {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
 
     const closeModal = () => {
@@ -17,7 +19,7 @@ export default function ProjectDontExistInInvitationModal() {
     }
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
             <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.header}>
                     <Text style={localStyles.title}>{translate('Invitation to project')}</Text>

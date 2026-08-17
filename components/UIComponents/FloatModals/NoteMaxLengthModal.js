@@ -7,8 +7,10 @@ import { setShowNoteMaxLengthModal } from '../../../redux/actions'
 import { useDispatch, useSelector } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
 import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
+import { useFixedModalOverlayPadding } from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function NoteMaxLengthModal() {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
     const showNoteMaxLengthModal = useSelector(state => state.showNoteMaxLengthModal)
 
@@ -18,7 +20,7 @@ export default function NoteMaxLengthModal() {
 
     return (
         showNoteMaxLengthModal && (
-            <View style={localStyles.parent}>
+            <View style={[localStyles.parent, safeAreaOverlayPadding]}>
                 <View style={localStyles.container}>
                     <Text style={[styles.title7, localStyles.title]}>{translate('Note size limit reached')}</Text>
                     <View style={{ flexDirection: 'row' }}>

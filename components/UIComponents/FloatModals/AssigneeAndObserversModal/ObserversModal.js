@@ -4,7 +4,7 @@ import { sortBy } from 'lodash'
 import { StyleSheet, View } from 'react-native'
 
 import useWindowSize from '../../../../utils/useWindowSize'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import SearchForm from './Form/SearchForm'
 import ContactList from './List/ContactList'
@@ -19,6 +19,7 @@ import ModalHeader from '../ModalHeader'
 import { OBSERVERS_TAB } from './Header/Header'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { filterUserShapesByText } from './AssigneeAndObserversModal'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function ObserversModal({
     projectIndex,
@@ -44,7 +45,7 @@ export default function ObserversModal({
     if (!canShowAllObservers) possibleObserver = possibleObserver.filter(user => user.uid === loggedUser.uid)
     const sortedObservers = sortBy(possibleObserver, [item => item.displayName.toLowerCase()])
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const onSelectContact = (contact, tab) => {

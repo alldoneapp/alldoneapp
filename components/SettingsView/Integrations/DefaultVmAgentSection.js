@@ -439,7 +439,7 @@ export default function DefaultVmAgentSection() {
             <Text style={[styles.title6, localStyles.effortTitle]}>{translate('VM approval policy')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
-                    'Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access, local Git housekeeping and pushing a feature branch or opening a merge request. Permissive works like the Auto-Mode in Claude Code: everything that only affects the sandbox runs unattended, and only base-branch pushes, deployments, publishing, remote shells and real key files still ask.'
+                    'Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access and pushing a feature branch or opening a merge request, and still asks before merging, pushing to the base branch, deployments and anything touching secrets.'
                 )}
             </Text>
             <View style={[localStyles.options, localStyles.effortOptions]}>

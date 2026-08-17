@@ -4,15 +4,16 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import StickynessItem from './StickynessItem'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const SelectStickynessPopup = ({ hidePopover, projectId, note, saveStickyBeforeSaveNote, isChat }) => {
     const [width, height] = useWindowSize()
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView showsVerticalScrollIndicator={false}>
                 <View style={localStyles.innerContainer}>
                     <View style={localStyles.heading}>

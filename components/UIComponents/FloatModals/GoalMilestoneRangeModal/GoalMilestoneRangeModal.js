@@ -5,7 +5,7 @@ import moment from 'moment'
 import v4 from 'uuid/v4'
 
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import DueDateCalendarModal from '../DueDateCalendarModal/DueDateCalendarModal'
 import useWindowSize from '../../../../utils/useWindowSize'
@@ -17,6 +17,7 @@ import OptionsArea from '../GoalMilestoneModal/OptionsArea'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import {
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
     GOAL_SCHEDULE_MODE_DYNAMIC,
     MILESTONE_TYPE_FIXED,
     MILESTONE_TYPE_LINEAR,
@@ -48,7 +49,7 @@ export default function GoalMilestoneRangeModal({
             ? MILESTONE_TYPE_LINEAR
             : MILESTONE_TYPE_FIXED
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 597 ? tmpHeight : 597
 
     const openCalendar = event => {

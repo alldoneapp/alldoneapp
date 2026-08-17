@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../../styles/global'
 import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import Line from '../../../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
@@ -15,6 +15,7 @@ import { translate } from '../../../../../i18n/TranslationService'
 import { checkIsLimitedByTraffic } from '../../../../Premium/PremiumHelper'
 import PointsStatistics from './PointsStatistics'
 import IncDecButtons from './IncDecButtons'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function SkillPointsModal({ projectId, skillId, points, changeSkillPoints, closeModal }) {
     const [showFileSelector, setShowFileSelector] = useState(false)
@@ -58,7 +59,11 @@ export default function SkillPointsModal({ projectId, skillId, points, changeSki
                 />
             ) : (
                 <View
-                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
+                    style={[
+                        localStyles.container,
+                        applyPopoverWidth(),
+                        { maxHeight: getSafeAreaModalMaxHeight(height) },
+                    ]}
                 >
                     <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                         <ModalHeader

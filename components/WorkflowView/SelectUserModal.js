@@ -7,10 +7,11 @@ import { findIndex, sortBy } from 'lodash'
 import WorkflowUserItem from './WorkflowUserItem'
 import Hotkeys from 'react-hot-keys'
 import { useSelector } from 'react-redux'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import useWindowSize from '../../utils/useWindowSize'
 import { translate } from '../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../utils/modalSafeArea'
 
 export default function SelectUserModal({ projectIndex, closePopover }) {
     const [width, height] = useWindowSize()
@@ -108,7 +109,11 @@ export default function SelectUserModal({ projectIndex, closePopover }) {
     return (
         <View ref={viewRef} style={localStyles.container}>
             <View
-                style={[localStyles.innerContainer, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
+                style={[
+                    localStyles.innerContainer,
+                    applyPopoverWidth(),
+                    { maxHeight: getSafeAreaModalMaxHeight(height) },
+                ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
                     <Hotkeys keyName={'up,down,enter'} onKeyDown={onKeyPress} filter={e => true}>

@@ -5,13 +5,14 @@ import Hotkeys from 'react-hot-keys'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserAutoArchiveProjectsAfterDays } from '../../../utils/backends/Users/usersFirestore'
 import {
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
     autoArchiveProjectsAfterDaysOptions,
     formatAutoArchiveProjectsAfterDays,
     normalizeAutoArchiveProjectsAfterDays,
@@ -68,7 +69,7 @@ export default function AutoArchiveProjectsAfterDaysModal({ userId, autoArchiveP
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName={'esc'} onKeyDown={closePopover} filter={e => true}>
                     <View style={{ marginBottom: 20 }}>

@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -13,6 +13,7 @@ import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TYPE_3RD_PARTY, TYPE_PROMPT_BASED } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const options = [
     { text: 'Prompt based', option: TYPE_PROMPT_BASED, shortcutKey: '1' },
@@ -75,7 +76,9 @@ export default function AssistantTypeModal({
 
     return (
         <View>
-            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+            <View
+                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
+            >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}

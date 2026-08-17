@@ -30,10 +30,20 @@ export default function ConnectionStateToast() {
         (connectionState === 'online' || connectionState === 'offline') && connectionState !== dismissedState
     if (!visible) return null
 
-    const safeAreaBottom = getSafeAreaInsets().bottom
+    // AT-2339: all four edges, not just the bottom. In landscape on a notched
+    // iPhone the cutout takes ~59px off one SIDE, which a left/right of 16
+    // renders straight underneath.
+    const { bottom: safeAreaBottom, left: safeAreaLeft, right: safeAreaRight } = getSafeAreaInsets()
     const wrapperStyle = mobile
-        ? { position: 'fixed', zIndex: 100000, left: 16, right: 16, bottom: 16 + safeAreaBottom, alignItems: 'center' }
-        : { position: 'fixed', zIndex: 100000, right: 24, bottom: 24 + safeAreaBottom, width: 320 }
+        ? {
+              position: 'fixed',
+              zIndex: 100000,
+              left: 16 + safeAreaLeft,
+              right: 16 + safeAreaRight,
+              bottom: 16 + safeAreaBottom,
+              alignItems: 'center',
+          }
+        : { position: 'fixed', zIndex: 100000, right: 24 + safeAreaRight, bottom: 24 + safeAreaBottom, width: 320 }
 
     return (
         <View style={wrapperStyle} pointerEvents="box-none">

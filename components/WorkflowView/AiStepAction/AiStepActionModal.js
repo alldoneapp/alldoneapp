@@ -9,10 +9,11 @@ import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
 import ModalHeader from '../../UIComponents/FloatModals/ModalHeader'
 import { TASK_TYPE_PROMPT } from '../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
 import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const CUSTOM_PROMPT_ID = null
 
@@ -104,7 +105,7 @@ export default function AiStepActionModal({ projectId, assistantId, step, onChan
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     title={translate('Assistant action')}
