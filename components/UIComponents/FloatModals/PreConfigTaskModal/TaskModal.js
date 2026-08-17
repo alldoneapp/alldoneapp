@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import styles from '../../../styles/global'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
@@ -29,6 +29,7 @@ import AppPopover from '../../ModalShell/AppPopover'
 import RecurrenceModal from '../RecurrenceModal'
 import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export const TASK_TYPE_PROMPT = 'prompt'
 export const TASK_TYPE_EXTERNAL_LINK = 'link'
@@ -781,7 +782,11 @@ export default function TaskModal({
                 />
             ) : (
                 <View
-                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
+                    style={[
+                        localStyles.container,
+                        applyPopoverWidth(),
+                        { maxHeight: getSafeAreaModalMaxHeight(height) },
+                    ]}
                 >
                     <MemoizedModalContent
                         disabled={disabled}

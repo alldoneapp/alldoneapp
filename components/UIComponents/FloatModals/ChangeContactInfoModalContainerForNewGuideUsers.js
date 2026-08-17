@@ -6,8 +6,10 @@ import ChangeContactInfoModal from './ChangeContactInfoModal'
 import { setUserInfoModalWhenUserJoinsToGuide } from '../../../redux/actions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { colors, hexColorToRGBa } from '../../styles/global'
+import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function ChangeContactInfoModalContainerForNewGuideUsers() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const projectId = useSelector(state => state.loggedUserProjects[state.loggedUserProjects.length - 1].id)
@@ -25,7 +27,7 @@ export default function ChangeContactInfoModalContainerForNewGuideUsers() {
     }
 
     return (
-        <View style={localStyles.parent}>
+        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
             <ChangeContactInfoModal
                 closePopover={closePopover}
                 onSaveData={onSaveData}

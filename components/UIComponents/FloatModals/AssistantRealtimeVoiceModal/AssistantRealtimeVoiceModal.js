@@ -1,13 +1,14 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
 import OptionItem from './OptionItem'
 import { translate } from '../../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const voices = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']
 
@@ -20,7 +21,9 @@ export default function AssistantRealtimeVoiceModal({ closeModal, realtimeVoice,
 
     return (
         <View>
-            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+            <View
+                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
+            >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}

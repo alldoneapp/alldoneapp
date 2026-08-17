@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { StyleSheet, View, Text } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import styles, { colors } from '../../../styles/global'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
@@ -29,6 +29,7 @@ import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import { GUIDE_MAIN_CHAT_ID } from '../../../../utils/backends/Projects/guidesFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function RunOutOfGoldForUnlockModal({ closeModal, projectId }) {
     const dispatch = useDispatch()
@@ -88,7 +89,7 @@ export default function RunOutOfGoldForUnlockModal({ closeModal, projectId }) {
     }, [])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View>
                     <CloseButton style={localStyles.closeButton} close={closeModal} />

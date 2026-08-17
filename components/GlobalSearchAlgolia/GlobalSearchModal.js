@@ -54,6 +54,7 @@ import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import BottomSheet from '../UIComponents/ModalShell/BottomSheet'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
 import useEscapeKey from '../../hooks/useEscapeKey'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
@@ -742,6 +743,14 @@ export default function GlobalSearchModal() {
     // results list needs a definite height to scroll internally) but follows
     // the sheet's keyboard-aware maxHeight.
     const { isSheet: isPhone, width: cardWidth, maxHeight: sheetMaxHeight } = useModalSizing({ size: 'L' })
+    // The overlay already pads MODAL_EDGE_GAP on every side; add the insets
+    // on top so the centered card clears the status bar and home indicator.
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding({
+        top: MODAL_EDGE_GAP,
+        bottom: MODAL_EDGE_GAP,
+        left: MODAL_EDGE_GAP,
+        right: MODAL_EDGE_GAP,
+    })
     const width = isPhone ? '100%' : cardWidth
     const sheetCardStyle = isPhone
         ? {
@@ -852,7 +861,7 @@ export default function GlobalSearchModal() {
     }
 
     return (
-        <View style={localStyles.container} ref={modalRef}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]} ref={modalRef}>
             <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
             {body}
         </View>

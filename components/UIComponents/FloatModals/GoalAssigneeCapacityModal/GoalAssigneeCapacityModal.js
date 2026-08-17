@@ -3,13 +3,14 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeaderWithAvatar from '../ModalHeaderWithAvatar'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import CapacityItem from './CapacityItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { capacityData, CAPACITY_AUTOMATIC } from '../../../GoalsView/GoalsHelper'
 import BackButton from '../GoalMilestoneModal/BackButton'
 import { translate } from '../../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalAssigneeCapacityModal({
     capacitySelected,
@@ -23,7 +24,7 @@ export default function GoalAssigneeCapacityModal({
     const [capacity, setCapacity] = useState(capacitySelected)
     const [width, height] = useWindowSize()
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeaderWithAvatar
                     closeModal={closeModalForButtonX ? closeModalForButtonX : closeModal}

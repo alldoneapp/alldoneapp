@@ -8,7 +8,7 @@ import store from '../../../redux/store'
 import Button from '../../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
@@ -32,6 +32,7 @@ import {
     isCustomRecurrence,
 } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskRecurrence } from '../../../utils/backends/Tasks/tasksFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class RecurrenceModal extends Component {
     constructor(props) {
@@ -212,7 +213,7 @@ class RecurrenceModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -272,7 +273,7 @@ class RecurrenceModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>

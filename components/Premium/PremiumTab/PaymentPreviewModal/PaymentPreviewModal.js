@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { intersection } from 'lodash'
 
 import Button from '../../../UIControls/Button'
-import { getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { getPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
@@ -22,6 +22,7 @@ import {
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../utils/useWindowSize'
 import Backend from '../../../../utils/BackendBridge'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function PaymentPreviewModal({ paymentMethod, closeModal, selectedUserIds, companyData, subscription }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -113,7 +114,7 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
                 {
                     minWidth: getPopoverWidth(),
                     maxWidth: getPopoverWidth(),
-                    maxHeight: height - MODAL_MAX_HEIGHT_GAP,
+                    maxHeight: getSafeAreaModalMaxHeight(height),
                 },
             ]}
         >
