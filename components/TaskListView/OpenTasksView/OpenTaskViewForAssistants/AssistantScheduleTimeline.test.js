@@ -4,6 +4,7 @@ import renderer from 'react-test-renderer'
 
 import { AssistantScheduleRows } from './AssistantScheduleTimeline'
 import AiStepCheckBox from '../../TaskItem/TaskPresentation/CheckBoxContainer/AiStepCheckBox'
+import { taskPresentationLayout } from '../../TaskItem/TaskPresentation/TaskPresentationLayout'
 import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
 
 const mockRunTask = jest.fn()
@@ -111,7 +112,7 @@ describe('AssistantScheduleRows', () => {
         const playButton = tree.root.findByProps({ testID: 'assistant-schedule-task-play-button' })
         const executionWrapper = tree.root.findByType(PreConfigTaskGeneratorWrapper)
         const tags = tree.root.findByProps({ testID: 'assistant-schedule-task-tags' })
-        expect(taskList.props.style).toBeUndefined()
+        expect(taskList.props.style).toBe(taskPresentationLayout.listContainer)
         expect(taskRow.findAllByType(View)).toContain(tags)
         expect(leadingContent.props.style).toEqual(
             expect.arrayContaining([expect.objectContaining({ alignItems: 'center' })])
