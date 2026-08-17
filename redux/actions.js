@@ -1980,14 +1980,6 @@ export const setLaterTasksExpanded = laterTasksExpanded => {
     return action
 }
 
-export const setTaskListSingleLoading = (instanceKey, loading) => {
-    return {
-        type: 'Set task list single loading',
-        instanceKey,
-        loading,
-    }
-}
-
 export const setSomedayTasksExpanded = somedayTasksExpanded => {
     const action = {
         type: 'Set someday tasks expanded',

@@ -41,7 +41,6 @@ describe('TasksList initial loading', () => {
             subtaskByTaskStore: { instance: {} },
             initialLoadingEndOpenTasks: { instance: true },
             initialLoadingEndObservedTasks: { instance: false },
-            taskListSingleLoading: {},
             optimisticFocusTaskId: null,
             optimisticFocusTaskProjectId: null,
             optimisticFocusActive: false,
@@ -85,18 +84,6 @@ describe('TasksList initial loading', () => {
 
     it('shows real tasks once both streams are complete', () => {
         mockState.initialLoadingEndObservedTasks.instance = true
-
-        let tree
-        act(() => {
-            tree = renderList()
-        })
-
-        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
-        expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(2)
-    })
-
-    it('keeps existing tasks visible during an incremental single-task load', () => {
-        mockState.taskListSingleLoading.instance = true
 
         let tree
         act(() => {
