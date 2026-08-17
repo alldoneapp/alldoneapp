@@ -1,5 +1,7 @@
 import * as Y from 'yjs'
 
+import { isBrowserOffline } from '../../../../utils/connectionState'
+
 const SYNC_TIMEOUT = 10000
 
 export const waitForProviderSync = (provider, timeout = SYNC_TIMEOUT) => {
@@ -99,6 +101,11 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
 
         provider = createProvider(document)
         try {
+            // Offline the collaboration server is unreachable by definition —
+            // waiting the full sync timeout (10s) just holds the spinner. Take
+            // the offline-open decision immediately; y-websocket keeps
+            // reconnecting in the background either way.
+            if (isBrowserOffline()) throw new Error('Browser is offline; opening from local state')
             await waitForProviderSync(provider, syncTimeout)
         } catch (syncError) {
             // The collaboration server is unreachable (offline). The document

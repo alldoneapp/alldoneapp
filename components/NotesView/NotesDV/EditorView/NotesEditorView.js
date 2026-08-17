@@ -864,8 +864,14 @@ const NotesEditorView = ({
                 ydoc.current = null
                 // Offline with no local copy: tell the user why the note cannot
                 // open instead of spinning forever; the retry below picks the
-                // content up as soon as connectivity returns.
-                setContentUnavailableOffline(isBrowserOffline())
+                // content up as soon as connectivity returns. The LoadingNoteData
+                // spinner overlays the editor (zIndex 10000) and would cover the
+                // message, so the loading flag is cleared while the explanation is
+                // up — the editor stays locked through contentUnavailableOffline
+                // in the pointerEvents/readOnly/disabled gates below.
+                const unavailableOffline = isBrowserOffline()
+                setContentUnavailableOffline(unavailableOffline)
+                if (unavailableOffline) dispatch(setIsLoadingNoteData(false))
                 console.error('Failed to load note content; keeping the editor locked and retrying', error)
                 noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
@@ -1300,7 +1306,10 @@ const NotesEditorView = ({
     }
 
     return (
-        <View style={{ flexDirection: 'column', flex: 1 }} pointerEvents={isLoadingNoteData ? 'none' : 'auto'}>
+        <View
+            style={{ flexDirection: 'column', flex: 1 }}
+            pointerEvents={isLoadingNoteData || contentUnavailableOffline ? 'none' : 'auto'}
+        >
             {renderShortcuts()}
 
             <EditorToolbar
@@ -1317,7 +1326,7 @@ const NotesEditorView = ({
                 setFullscreen={switchScreenModes}
                 ptojectId={projectId}
                 readOnly={readOnly}
-                disabled={timeoutModalIsOpen.current || isLoadingNoteData}
+                disabled={timeoutModalIsOpen.current || isLoadingNoteData || contentUnavailableOffline}
                 connectionState={connectionState}
                 scrollYPos={scrollYPos}
                 scrollRef={scrollRef}
@@ -1325,7 +1334,7 @@ const NotesEditorView = ({
                 onOpenSideChat={onOpenSideChat}
             />
 
-            {contentUnavailableOffline && isLoadingNoteData ? (
+            {contentUnavailableOffline ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
                     <Text style={[styles.title6, { color: colors.Text02, textAlign: 'center' }]}>
                         {translate('This note is not available offline yet')}
@@ -1363,7 +1372,13 @@ const NotesEditorView = ({
                     placeholder={createPlaceholder('Type your note...', QUILL_EDITOR_NOTE_TYPE, note.id)}
                     modules={modules}
                     formats={formats}
-                    readOnly={timeoutModalIsOpen.current || isLoadingNoteData || !accessGranted || readOnly}
+                    readOnly={
+                        timeoutModalIsOpen.current ||
+                        isLoadingNoteData ||
+                        contentUnavailableOffline ||
+                        !accessGranted ||
+                        readOnly
+                    }
                     style={{ marginTop: clicked ? -34 : 0 }}
                     onChangeSelection={onChangeSelection}
                 />
