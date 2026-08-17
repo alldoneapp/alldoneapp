@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../ParentTaskContainer'
@@ -15,7 +15,6 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
 import TaskListSkeleton from '../TaskListSkeleton'
-import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
 
 export default function TasksList({
     projectId,
@@ -85,7 +84,7 @@ export default function TasksList({
     const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
 
     return (
-        <View style={[taskPresentationLayout.listContainer, containerStyle]}>
+        <View style={[localStyles.container, containerStyle]}>
             {initialTaskDataIsLoading && visibleTasks.length > 0 ? (
                 <TaskListSkeleton
                     rowCount={visibleTasks.length}
@@ -123,3 +122,9 @@ export default function TasksList({
         </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        paddingHorizontal: 8,
+    },
+})

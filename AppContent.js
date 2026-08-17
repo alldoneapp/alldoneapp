@@ -12,6 +12,7 @@ import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { isBrowserOffline } from './utils/connectionState'
+import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -242,6 +243,10 @@ export default function AppContent() {
 
                 if (user) {
                     await loadInitialDataForLoggedUser(user)
+                    // Warm the offline note-content cache once the session is idle
+                    // (OFFLINE_SUPPORT_PLAN.md notes follow-ups); also re-runs on
+                    // reconnect. Fire-and-forget by design.
+                    scheduleNotesOfflinePrefetch()
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.
