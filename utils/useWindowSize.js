@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useState } from 'react'
 
 // Starting at [0, 0] made every consumer render one frame with a bogus size.
 // That is invisible for most of them, but modals cap themselves with
-// `maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP`, which resolves to a
+// `maxHeight: getSafeAreaModalMaxHeight(windowSize[1])`, which resolves to a
 // negative (ignored) max-height on that first frame — so the modal is laid out
 // at its full natural height. react-tiny-popover measures the popover exactly
 // then, and a contentLocation helper centers against that unclamped height,

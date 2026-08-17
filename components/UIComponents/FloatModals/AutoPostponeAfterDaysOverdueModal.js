@@ -12,12 +12,12 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserAutoPostponeAfterDaysOverdue } from '../../../utils/backends/Users/usersFirestore'
 import {
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
     autoPostponeAfterDaysOverdueOptions,
     AUTO_POSTPONE_AFTER_DAYS_OVERDUE_NEVER,
     formatAutoPostponeAfterDaysOverdue,
     normalizeAutoPostponeAfterDaysOverdue,
 } from '../../SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function AutoPostponeAfterDaysOverdueModal({ userId, autoPostponeAfterDaysOverdue, closePopover }) {
     const [width, height] = useWindowSize()

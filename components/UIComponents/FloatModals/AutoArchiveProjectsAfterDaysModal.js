@@ -12,11 +12,11 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserAutoArchiveProjectsAfterDays } from '../../../utils/backends/Users/usersFirestore'
 import {
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
     autoArchiveProjectsAfterDaysOptions,
     formatAutoArchiveProjectsAfterDays,
     normalizeAutoArchiveProjectsAfterDays,
 } from '../../SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function AutoArchiveProjectsAfterDaysModal({ userId, autoArchiveProjectsAfterDays, closePopover }) {
     const [, height] = useWindowSize()

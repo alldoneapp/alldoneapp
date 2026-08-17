@@ -17,7 +17,6 @@ import OptionsArea from '../GoalMilestoneModal/OptionsArea'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import {
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
     GOAL_SCHEDULE_MODE_DYNAMIC,
     MILESTONE_TYPE_FIXED,
     MILESTONE_TYPE_LINEAR,
@@ -25,6 +24,7 @@ import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
 } from '../../../../utils/GoalMilestonesHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalMilestoneRangeModal({
     projectId,

@@ -7,6 +7,7 @@ import GoalEditForm from './GoalEditForm'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import ModalHeader from '../ModalHeader'
 import { translate } from '../../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function MainModal({
     projectId,
@@ -41,7 +42,7 @@ export default function MainModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
-                { maxHeight: screenDimensions.height - 32 },
+                { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
             ]}
         >
             <ModalHeader closeModal={closeModal} title={translate('Add goal')} description="" />
