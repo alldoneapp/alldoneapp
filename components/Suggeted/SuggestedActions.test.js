@@ -59,11 +59,11 @@ describe('SuggestedActions', () => {
         expect(baseProps.onAcceptPress).not.toHaveBeenCalled()
     })
 
-    it('labels the bypass as a workflow bypass by default', () => {
+    it('labels the bypass as a workflow bypass that marks the task done by default', () => {
         const tree = renderer.create(<SuggestedActions {...baseProps} showBypassWorkflow />)
 
         expect(tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.accessibilityLabel).toBe(
-            'Bypass workflow'
+            'Bypass workflow and mark done'
         )
     })
 

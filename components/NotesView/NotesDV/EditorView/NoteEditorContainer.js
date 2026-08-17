@@ -32,13 +32,7 @@ export default function NoteEditorContainer({
     const loggedUser = useSelector(state => state.loggedUser)
     const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
-    // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
-    // utils/connectionState.js. '' until the first transition, then 'offline' or
-    // 'online' (the latter only as a recovery from 'offline').
-    const connectionState = useSelector(state => state.connectionState)
-    // The toast is dismissible per state: closing the offline toast keeps it closed
-    // while the connection stays offline, and any transition shows it again.
-    const [dismissedConnectionState, setDismissedConnectionState] = useState('')
+    const [connectionState, setConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
 
     // Only members can edit the note body. Anonymous viewers and logged-in non-members get a
@@ -57,22 +51,16 @@ export default function NoteEditorContainer({
         autoStartTranscriptionProp ?? (navigation ? navigation.getParam('autoStartTranscription') : false)
 
     const closeConnectionStateModal = () => {
-        setDismissedConnectionState(connectionState)
+        setConnectionState('')
     }
 
     useEffect(() => {
-        setDismissedConnectionState('')
-    }, [connectionState])
-
-    useEffect(() => {
-        // Offline no longer forces read-only (OFFLINE_SUPPORT_PLAN.md Stage 6):
-        // y-indexeddb makes offline edits durable and CRDT merge-on-reconnect safe.
-        const isReadOnly = !loggedUserCanUpdateObject
+        const isReadOnly = connectionState === 'offline' || !loggedUserCanUpdateObject
         dispatch(setActiveNoteIsReadOnly(isReadOnly))
         return () => {
             dispatch(setActiveNoteIsReadOnly(false))
         }
-    }, [loggedUserCanUpdateObject])
+    }, [connectionState, loggedUserCanUpdateObject])
 
     const updateInnerTasks = tasks => {
         dispatch(setNoteInnerTasks(note.id, tasks))
@@ -104,7 +92,7 @@ export default function NoteEditorContainer({
                     isFullscreen={isFullscreen}
                     setFullscreen={setFullscreen}
                     followState={followState}
-                    readOnly={!loggedUserCanUpdateObject}
+                    readOnly={connectionState === 'offline' || !loggedUserCanUpdateObject}
                     connectionState={connectionState}
                     objectType={objectType}
                     objectId={objectId}
@@ -113,10 +101,9 @@ export default function NoteEditorContainer({
                     onOpenSideChat={onOpenSideChat}
                 />
             )}
-            {(connectionState === 'online' || connectionState === 'offline') &&
-                connectionState !== dismissedConnectionState && (
-                    <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
-                )}
+            {(connectionState === 'online' || connectionState === 'offline') && (
+                <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
+            )}
         </View>
     )
 }

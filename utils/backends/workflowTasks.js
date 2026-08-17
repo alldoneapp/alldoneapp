@@ -1,6 +1,5 @@
 import moment from 'moment'
 import { getDb, mapTaskData } from './firestore'
-import { createCachedSnapshotGate } from './cachedSnapshotGate'
 
 import store from '../../redux/store'
 import { startLoadingData, stopLoadingData } from '../../redux/actions'
@@ -188,12 +187,11 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
         .where('currentReviewerId', '!=', currentUserId)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
 
-    const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot)
-    function handleWorkflowTasksSnapshot(querySnapshot) {
+    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot
             .docChanges()
             .filter(change => taskBelongsInWorkflowBoard(change.doc.data(), assistantOwner))
-        if (gate.shouldBuffer(querySnapshot)) {
+        if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -228,8 +226,7 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
             }
             store.dispatch(stopLoadingData())
         }
-    }
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleWorkflowTasksSnapshot))
+    })
 
     userTasksInWorkflow[projectId] = { [currentUserId]: unsub }
 }

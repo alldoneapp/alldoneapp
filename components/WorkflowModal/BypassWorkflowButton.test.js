@@ -13,7 +13,7 @@ describe('BypassWorkflowButton', () => {
         const button = tree.root.findByProps({ testID: 'bypass-workflow-button' })
         const text = button.findByType(Text)
 
-        expect(text.props.children).toBe('Bypass workflow')
+        expect(text.props.children).toBe('Bypass workflow and mark done')
         expect(StyleSheet.flatten(button.props.style)).toMatchObject({ marginTop: 0 })
         expect(StyleSheet.flatten(text.props.style)).toMatchObject({ color: colors.Text03 })
     })
