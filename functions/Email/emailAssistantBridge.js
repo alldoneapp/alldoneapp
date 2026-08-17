@@ -74,6 +74,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         latestSafeActionContext: null,
         userTimezoneName,
         calendarOwnerName,
+        // Meeting options proposed over email must follow the same availability policy as
+        // the account owner's public meeting link. The calendar tool uses this server-only
+        // flag to load and enforce those saved settings before returning any options.
+        respectPublicMeetingLinkSettings: true,
     }
 
     await addBaseInstructions(
@@ -91,6 +95,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         'Email channel rules:\n' +
             '- This channel is action-only. Do not reveal private account, project, or message history data.\n' +
             '- Calendar availability tools may return free meeting options only. Never reveal event titles, participants, descriptions, locations, or other calendar details.\n' +
+            "- Meeting options automatically follow the account owner's saved public meeting-link availability settings. Only pass different working hours, weekend behavior, minimum free time, or allowSameDayBooking=true when the current email explicitly requests that override. A request for today or a same-day meeting may override the saved no-same-day setting.\n" +
             '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
