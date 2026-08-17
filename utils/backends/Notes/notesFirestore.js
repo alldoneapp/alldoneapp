@@ -317,12 +317,7 @@ export async function updateNoteHighlight(projectId, noteId, hasStar) {
 
 export async function setNoteData(objectId, noteId, encodedStateData, preview, firstEditionRef, userCanEditNote) {
     const storageRef = notesStorage.ref()
-    // Fire-and-forget on purpose, but an offline failure must not surface as an
-    // unhandled rejection: the content is durable in the editor's local
-    // IndexedDB copy and is re-uploaded on reconnect / next online open.
-    Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)).catch(error =>
-        console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
-    )
+    storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
 
     if (userCanEditNote) {
         updateNoteData(objectId, noteId, { preview }, null)

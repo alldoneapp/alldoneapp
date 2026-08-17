@@ -4,7 +4,6 @@ import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
-import { translate } from '../../i18n/TranslationService'
 import { MODAL_EDGE_GAP } from '../styles/modals'
 import useModalSizing from '../../hooks/useModalSizing'
 import store from '../../redux/store'
@@ -65,7 +64,6 @@ export default function GlobalSearchModal() {
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
-    const [searchOfflineNotice, setSearchOfflineNotice] = useState(false)
     const [processing, setProcessing] = useState({
         [MENTION_MODAL_CONTACTS_TAB]: false,
         [MENTION_MODAL_GOALS_TAB]: false,
@@ -647,7 +645,6 @@ export default function GlobalSearchModal() {
         })
         if (searchableTabs.length === 0) return
 
-        setSearchOfflineNotice(false)
         try {
             const results = await multiSearchTypesense(
                 searchableTabs.map(({ indexPrefix, filterBy }) => ({
@@ -668,9 +665,6 @@ export default function GlobalSearchModal() {
             })
         } catch (error) {
             console.log('Typesense search failed:', error.message)
-            // Offline fast-fail from multiSearchTypesense (Stage 7): say so
-            // instead of silently showing zero results.
-            setSearchOfflineNotice(error.code === 'offline')
             setProcessing({
                 [MENTION_MODAL_CONTACTS_TAB]: false,
                 [MENTION_MODAL_GOALS_TAB]: false,
@@ -805,11 +799,6 @@ export default function GlobalSearchModal() {
                 onSubmitEditing={onSearch}
             />
 
-            {searchOfflineNotice && (
-                <Text style={[styles.body2, localStyles.offlineNotice]}>
-                    {translate('Search needs an internet connection')}
-                </Text>
-            )}
             <ResultLists
                 projects={projects}
                 processing={processing}
@@ -860,10 +849,6 @@ export default function GlobalSearchModal() {
 }
 
 const localStyles = StyleSheet.create({
-    offlineNotice: {
-        color: colors.Text02,
-        marginBottom: 12,
-    },
     container: {
         ...fixedModalOverlayStyle,
         zIndex: 10000,
