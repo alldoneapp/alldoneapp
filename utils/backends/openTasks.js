@@ -2,7 +2,6 @@ import moment from 'moment'
 import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } from 'lodash'
 
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
-import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import store from '../../redux/store'
 import {
     setGlobalDataByProject,
@@ -341,14 +340,13 @@ const watchUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot)
-    function handleOpenTasksSnapshot(querySnapshot) {
+    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-        if (gate.shouldBuffer(querySnapshot)) {
+        if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -399,8 +397,7 @@ const watchUserOpenTasks = (
 
             cacheChanges = []
         }
-    }
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
+    })
 
     areObservedTasks
         ? (userObservedTasks[projectId] = { [currentUserId]: [unsub] })
@@ -1153,10 +1150,9 @@ const watchStreamAndUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot)
-    function handleStreamAndUserTasksSnapshot(querySnapshot) {
+    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -1222,10 +1218,7 @@ const watchStreamAndUserOpenTasks = (
 
             cacheChanges = []
         }
-    }
-    const unsub = gate.wrapUnsubscribe(
-        query.onSnapshot({ includeMetadataChanges: true }, handleStreamAndUserTasksSnapshot)
-    )
+    })
 
     setProperty(streamAndUserOpenTasks, [projectId, currentUserId, assigneeUserId], unsub)
 }
@@ -1297,10 +1290,9 @@ function watchEmptyGoals(
         .where('assigneesIds', 'array-contains-any', [currentUserId])
         .where('ownerId', '==', ownerId)
 
-    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot)
-    function handleEmptyGoalsSnapshot(querySnapshot) {
+    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -1332,8 +1324,7 @@ function watchEmptyGoals(
             }
             cacheChanges = []
         }
-    }
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleEmptyGoalsSnapshot))
+    })
 
     activeMilestoneEmptyGoals[projectId] = { [currentUserId]: unsub }
 }
