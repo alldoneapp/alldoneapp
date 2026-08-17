@@ -26,6 +26,10 @@ jest.mock('./initialLoadHelper', () => ({
     watchProjectData: jest.fn(),
 }))
 
+// The synchronous browser-level tell; the redux slice is still '' during early boot.
+let mockBrowserIsOffline = false
+jest.mock('../connectionState', () => ({ isBrowserOffline: () => mockBrowserIsOffline }))
+
 // Mutable state the mocked store serves; repairs mutate it like the real dispatches would.
 let state
 
@@ -43,6 +47,7 @@ describe('runBootIntegrityCheck', () => {
 
     beforeEach(() => {
         resetBootIntegrityHealerForTests()
+        mockBrowserIsOffline = false
         state = {
             loggedUser: { uid: 'user1', projectIds: ['p1', 'p2'] },
             loggedUserProjectsMap: { p1: { id: 'p1' }, p2: { id: 'p2' } },
@@ -96,6 +101,48 @@ describe('runBootIntegrityCheck', () => {
         expect(recoverDroppedProject).not.toHaveBeenCalled()
         expect(loadGlobalData).not.toHaveBeenCalled()
         expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    // AT-2340. CHECK_DELAYS_MS are four ONE-SHOT timers armed once per user, and
+    // scheduleBootIntegrityChecks refuses to re-arm for the same uid. A boot that
+    // is offline for the first 60s therefore used to consume all four passes on
+    // early returns and leave the healer dead for the rest of the session — the
+    // in-code comment claiming "the scheduled checks keep firing" was wrong. The
+    // degraded boot it exists for is exactly the one it stopped covering.
+    it('re-runs once connectivity returns after standing down offline', async () => {
+        jest.useFakeTimers()
+        try {
+            const db = buildDbMock()
+            getDb.mockReturnValue(db)
+            state.connectionState = 'offline'
+            delete state.loggedUserProjectsMap.p2
+
+            await runBootIntegrityCheck({ settleMs: 0 })
+            expect(recoverDroppedProject).not.toHaveBeenCalled()
+
+            state.connectionState = 'online'
+            window.dispatchEvent(new Event('online'))
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(recoverDroppedProject).toHaveBeenCalled()
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('stands down when only the browser reports offline, before the slice is fed', async () => {
+        // During early boot connectionState is '' because its listener lives in a
+        // component that has not mounted yet; navigator already knows.
+        state.connectionState = ''
+        mockBrowserIsOffline = true
+        delete state.loggedUserProjectsMap.p2
+
+        await runBootIntegrityCheck({ settleMs: 0 })
+
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+        expect(loadGlobalData).not.toHaveBeenCalled()
     })
 
     it('skips the bounded network cycle when the browser goes offline mid-check', async () => {

@@ -29,6 +29,7 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
+import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
 import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
@@ -359,9 +360,21 @@ export async function setNoteData(objectId, noteId, encodedStateData, preview, f
     // Fire-and-forget on purpose, but an offline failure must not surface as an
     // unhandled rejection: the content is durable in the editor's local
     // IndexedDB copy and is re-uploaded on reconnect / next online open.
-    Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)).catch(error =>
-        console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
-    )
+    //
+    // Firebase Storage has no offline write queue (unlike Firestore) — a failed
+    // put is simply gone — so the note is recorded for the reconnect catch-up
+    // sweep, which is what makes an offline edit to a note the user then CLOSES
+    // reach the server without waiting for them to open it again (AT-2340).
+    const contentUploaded = Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData))
+        .then(() => {
+            clearPendingNoteUpload(noteId)
+            return true
+        })
+        .catch(error => {
+            console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
+            registerPendingNoteUpload(objectId, noteId)
+            return false
+        })
 
     if (userCanEditNote) {
         updateNoteData(objectId, noteId, { preview }, null)
@@ -373,6 +386,11 @@ export async function setNoteData(objectId, noteId, encodedStateData, preview, f
         firstEditionRef.current = false
         userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
     }
+
+    // Resolves to whether the canonical Storage copy actually received the
+    // content. Callers may ignore it (most do); the editor uses it to know a
+    // catch-up is outstanding without guessing from connectivity.
+    return contentUploaded
 }
 
 export const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCommentType) => {
