@@ -421,6 +421,90 @@ pin the contract.
   this; `__tests__/utils/DailyAppReload.test.js` pins that the daily reload defers while
   offline and catches up on the `online` event.
 
+**Never `await` a Firestore write when a server ack cannot arrive (AT-2340).** A write
+promise resolves on the **server** ack, not on the local cache write, so offline
+everything after `await ref.set(...)` is not slow — it is **unreachable**, while the
+mutation itself is already durable (with IndexedDB persistence the pending-write queue
+survives a tab close and flushes on the next boot). It is only the _continuation_ that is
+lost, which is why the symptom is never "the data didn't save": completing a task wrote
+the task but never awarded XP, never wrote the done feed and never added the follower
+(they all sit after `await taskBatch.commit()` in `setTaskStatus`); `updateTask`,
+`setTaskDueDate`, send-to-backlog and the three workflow movers armed a focus handoff
+_before_ their commit and ran it _after_, so the handoff stayed open forever with the
+optimistic focus already moved; and every comment-modal wrapper calls `closeModal()` after
+`await createObjectMessage(...)`, so posting a comment offline left the modal up on a
+comment that had in fact been stored. Use `awaitWriteAck(write, label)` from
+`utils/backends/offlineWriteAck.js`: online it returns the write promise unchanged (the
+online path's durability and ordering depend on that await — see the deliberate
+fire-and-forget → await change in `updateTaskInDone`), offline it issues the write and
+returns immediately, logging any rejection. Two things it deliberately does not do: cover
+**reads** (an offline `get()` resolves from the cache, so it does not block) and rescue a
+read that rejects because the document is not cached — `tryAddFollower` reads the followers
+doc, and that rejection used to discard the whole staged done feed, so `setTaskStatus` now
+commits `feedBatch` in a `finally`. Pinned by `utils/backends/offlineWriteAck.test.js` and
+the call-site contract in `__tests__/OfflineWriteAckCallSites.test.js`.
+
+**A collaborator's edits must not dirty YOUR editor (AT-2340).** `handleChange` in
+`NotesEditorView` set `dirtyEditor` for every Quill change, and y-quill applies remote Yjs
+updates through `quill.updateContents(delta, this)` — so two people typing meant both
+clients ran the **full local save fan-out** for text the other one wrote:
+`lastEditionDate`/`lastEditorId` stamped with the wrong user, the edited-today list, the
+started-editing feed, the backlink write and `tryAddFollower` — and each save bumped
+`lastEditionDate`, which makes every other open client re-download the note. The gate is
+`isRemoteEditorChange(source, binding.current)`: the change source **is** the QuillBinding
+instance for remote updates, while every local change carries a **string** source. Do not
+"simplify" this to `source === 'user'` — `'api'` is what Quill reports for the editor's own
+programmatic edits (the image-format rewrite, template application, mention insertion),
+which are local and must still save normally. Durability is kept by a separate
+`remoteDirtyEditor` latch that persists the merged document **content-only**
+(`setNoteData(..., { contentOnly: true })` — no preview, no edition data, no edited-today
+entry, no feed, no follower) on a much longer `REMOTE_SAVE_INTERVAL`, and at teardown. The
+author's own client is the primary writer; ours is a safety net.
+
+**One note save must produce one note-document write (AT-2340).** `setLinkedParentObjects`
+used to `update()` unconditionally, and it runs on every autosave through
+`scanLinkedObjects` — so a note whose links had not changed (i.e. typing prose) wrote the
+document **twice** per save: two versions, two `onUpdateNote` invocations, two full note
+downloads from Storage and two Typesense re-indexes. `utils/backends/linkedParentsWrite.js`
+compares against the **local cache** (`source: 'cache'` — no network, no billed read, works
+offline, and the object is under a live listener so the cached copy is current) and skips
+the no-op; every uncertain case (not cached, read error, no document) falls through to
+writing, because a redundant write is cheap and a skipped one silently loses backlinks. It
+takes `force` for the `beforeunload`/teardown path, where the async cache read may never
+run its continuation. Server-side, `functions/searchNoteUpdateGate.js` closes the same hole
+from the other end: `updateRecord`'s own `hasContentChanged` is **structurally true on every
+note update** (`objectBefore.content` is mapped from the document, which has no `content`
+field, so it is always `''`, while `objectAfter.content` is the real downloaded body), so
+every follower/sticky/backlink write paid for a Storage download plus a re-index. The gate
+requires either a content signal (`lastEditionDate`/`preview` moved — content is only ever
+written together with those) or a changed indexed field.
+
+**`getFirebaseTimestampDirectly` no longer touches `/info/currentTime` (AT-2340).** It used
+to write and then read that **global singleton** — contended by every user of the app, past
+Firestore's ~1 write/second per-document soft limit — through an unbounded read recursion,
+on the note-autosave critical path. `utils/serverClock.js` replaces it with a measured
+client/server clock offset: `getServerNow()` is synchronous and does no I/O, and the offset
+is measured in the background at most every 15 minutes against a **per-user**
+`users/{uid}/private/clockSync` document (owner-writable under the existing
+`users/{userId}/{document=**}` rule — no rules change), estimated NTP-style as
+`serverTime - (t0 + t1)/2` and read back with `source: 'server'` because a cached snapshot
+of a pending write resolves `serverTimestamp()` locally. Every failure path — offline, no
+signed-in user, a slow or failed round trip — falls back to the client clock, which is what
+`created` already uses everywhere. Seeded once per session from `AppContent`.
+
+**Callables fail fast offline; `runHttpsCallableFunction` is the funnel.** 36 of the 41
+direct `httpsCallable(` sites now route through it (AT-2340), including goal
+postpone-undo, the VM/MCP/GitLab/GitHub/GCP settings wrappers, gold changes from the
+embedded iframe surface and meeting transcription. Four are deliberate exceptions:
+`connectToConverter` and `connectToGmail` use the two-argument streaming-style signature
+and return the raw envelope; the emulator-bootstrap block only creates a reference; and the
+funnel itself. `reverseUndoAction` repeats the funnel's typed `code: 'offline'` error
+locally rather than importing it, because `utils/undo/undoActions.js` is a leaf module that
+the write paths import. Wrappers whose callers read `result.data` keep the envelope
+(`asCallableEnvelope`) instead of silently changing their contract, and any newly
+fail-fast call site needs a `catch` — an offline rejection where there was previously a
+70-second hang is an unhandled rejection otherwise.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
