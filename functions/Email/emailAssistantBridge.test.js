@@ -459,6 +459,117 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         )
     })
 
+    test('returns only stripped availability metadata for a scoped guest grant', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['find_calendar_availability', 'create_calendar_event'],
+            instructions: '',
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            timeZone: 'Europe/Berlin',
+            durationMinutes: 30,
+            options: [
+                {
+                    start: '2026-08-21T09:00:00+02:00',
+                    end: '2026-08-21T09:30:00+02:00',
+                    eventTitle: 'Private event',
+                },
+            ],
+            calendarEmail: 'private@example.com',
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'tool-availability',
+                                function: {
+                                    name: 'find_calendar_availability',
+                                    arguments: JSON.stringify({
+                                        timeMin: '2026-08-21T09:00:00+02:00',
+                                        timeMax: '2026-08-21T17:00:00+02:00',
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Karsten is available Friday at 09:00.' }])
+
+        const result = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please propose a meeting slot Friday',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                ccEmails: ['guest@example.com'],
+                hasAdditionalRecipients: true,
+                isParticipantScopedTopic: true,
+                skipCurrentMessageAppend: true,
+                returnExecutionMetadata: true,
+            }
+        )
+
+        expect(result).toEqual({
+            responseText: 'Karsten is available Friday at 09:00.',
+            guestMeetingContext: {
+                type: 'calendar_availability',
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+                options: [
+                    {
+                        start: '2026-08-21T09:00:00+02:00',
+                        end: '2026-08-21T09:30:00+02:00',
+                    },
+                ],
+                createdAt: expect.any(Number),
+            },
+            canCreateCalendarEvent: true,
+            calendarOwnerName: 'Karsten',
+            language: 'German',
+        })
+        expect(result.guestMeetingContext.calendarEmail).toBeUndefined()
+    })
+
+    test('does not expose prior availability as a guest grant without a successful current lookup', async () => {
+        const result = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please offer the guest some meeting times',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                ccEmails: ['guest@example.com'],
+                hasAdditionalRecipients: true,
+                isParticipantScopedTopic: true,
+                skipCurrentMessageAppend: true,
+                returnExecutionMetadata: true,
+            }
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                responseText: 'Termin erstellt.',
+                guestMeetingContext: null,
+                canCreateCalendarEvent: true,
+            })
+        )
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+    })
+
     test('rewrites first-person German calendar availability as the account owners availability', () => {
         expect(
             __private__.enforceCalendarOwnershipResponse(
