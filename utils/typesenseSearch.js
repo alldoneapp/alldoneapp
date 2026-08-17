@@ -8,6 +8,7 @@
 // Sort fields are optional in the schema, so missing_values keeps legacy records at the
 // end instead of erroring.
 import Backend from './BackendBridge'
+import { isBrowserOffline } from './connectionState'
 
 export const TYPESENSE_QUERY_CONFIG = {
     dev_tasks: {
@@ -70,6 +71,15 @@ export const adaptTypesenseHit = hit => {
 // collection that does not exist yet) yields { hits: [], error } for that entry rather
 // than failing the others.
 export const multiSearchTypesense = async searches => {
+    // Search has no offline index — fail fast with an identifiable error so the
+    // consumers (global search, mentions) can degrade instead of hanging on a
+    // doomed fetch (OFFLINE_SUPPORT_PLAN.md Stage 7).
+    if (isBrowserOffline()) {
+        const offlineError = new Error('Search needs an internet connection')
+        offlineError.code = 'offline'
+        throw offlineError
+    }
+
     const { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY } = Backend.getTypesenseSearchKeys()
     if (!TYPESENSE_HOST || !TYPESENSE_SEARCH_ONLY_API_KEY) {
         throw new Error('Typesense search keys are not configured')

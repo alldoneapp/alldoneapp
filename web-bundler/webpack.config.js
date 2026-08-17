@@ -25,6 +25,7 @@ const path = require('path')
 const webpack = require('webpack')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const CopyPlugin = require('copy-webpack-plugin')
+const { InjectManifest } = require('workbox-webpack-plugin')
 
 const rootDir = path.resolve(__dirname, '..')
 const outputDir = path.join(rootDir, 'web-build')
@@ -146,9 +147,48 @@ module.exports = (env, argv) => {
                     to: outputDir,
                     force: true,
                 },
+                // Dev builds get a no-op SW at the same URL so the registration in
+                // web/service-worker-handler.js keeps working without precaching
+                // HMR chunks; production gets the workbox SW from InjectManifest.
+                ...(isProd
+                    ? []
+                    : [
+                          {
+                              from: path.join(__dirname, 'service-worker.dev.js'),
+                              to: path.join(outputDir, 'service-worker.js'),
+                          },
+                      ]),
             ],
         }),
     ]
+
+    if (isProd) {
+        // Offline app shell (OFFLINE_SUPPORT_PLAN.md Stage 2): compiles
+        // service-worker.js in this directory (workbox imports resolve from this
+        // package's node_modules) and injects the precache manifest of every
+        // emitted asset — hashed JS/CSS chunks, index.html, fonts, manifest,
+        // icons. Exclusions keep the precache lean and correct:
+        // - source maps (users don't need them offline)
+        // - firebase-messaging-sw.js (a service worker itself; the browser must
+        //   always fetch it fresh, and its env placeholders are sed-injected)
+        // - web/images (3.3 MB of illustrations — runtime-cached on use instead)
+        // - audio/video (Range requests break against cached full bodies)
+        plugins.push(
+            new InjectManifest({
+                swSrc: path.join(__dirname, 'service-worker.js'),
+                swDest: 'service-worker.js',
+                exclude: [
+                    /\.map$/,
+                    /^firebase-messaging-sw\.js$/,
+                    /^images\//,
+                    /^serve\.json$/,
+                    /\.(?:mp4|webm|mov|mp3|wav|m4a|aac|oga|flac)$/,
+                ],
+                // The main app chunk is well above workbox's 2 MB default.
+                maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
+            })
+        )
+    }
 
     if (process.env.ANALYZE_BUNDLE) {
         const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')

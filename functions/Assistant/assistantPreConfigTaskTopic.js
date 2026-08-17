@@ -36,70 +36,51 @@ function getEncoder() {
     return encoder
 }
 
-function getCommentPosition(doc) {
-    if (!doc) return null
-    const data = typeof doc.data === 'function' ? doc.data() || {} : {}
-    const createdAt = Number(data.created)
-
-    return {
-        createdAt: Number.isFinite(createdAt) ? createdAt : 0,
-        commentId: String(doc.id || ''),
-    }
-}
-
 /**
- * Return the latest user-authored message position in a conversation on the
- * user's local day. The document ID is retained as a deterministic tie-breaker
- * when two messages share the same millisecond timestamp.
+ * Check if the user has sent a message in the given topic on the user's current local day.
+ * Used to determine whether to send a plain WhatsApp message or a template.
  */
-async function getLatestUserMessageOnUserLocalDay(
-    projectId,
-    chatId,
-    userId,
-    userData = {},
-    timestamp = Date.now(),
-    objectTypes = ['topics', 'tasks']
-) {
+async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}) {
     try {
         const admin = require('firebase-admin')
-        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, timestamp)
-        const snapshots = await Promise.all(
-            objectTypes.map(objectType =>
-                admin
-                    .firestore()
-                    .collection(`chatComments/${projectId}/${objectType}/${chatId}/comments`)
-                    .where('creatorId', '==', userId)
-                    .where('created', '>=', startOfDay)
-                    .where('created', '<=', endOfDay)
-                    .orderBy('created', 'desc')
-                    .limit(1)
-                    .get()
-            )
-        )
+        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData)
 
-        return snapshots
-            .flatMap(snapshot => snapshot.docs || [])
-            .map(getCommentPosition)
-            .filter(Boolean)
-            .sort((left, right) => {
-                if (left.createdAt !== right.createdAt) return right.createdAt - left.createdAt
-                if (left.commentId === right.commentId) return 0
-                return right.commentId > left.commentId ? 1 : -1
-            })[0]
+        // Check in topics collection (for heartbeat and WhatsApp daily topics)
+        const snapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        if (!snapshot.empty) return true
+
+        // Also check in tasks collection (for pre-config task chats)
+        const tasksSnapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/tasks/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        return !tasksSnapshot.empty
     } catch (error) {
-        console.warn('Error finding recent user messages:', {
+        console.warn('Error checking for recent user messages:', {
             projectId,
             chatId,
             userId,
             userTimezone: userData?.preferredTimezone || userData?.timezone || null,
             error: error.message,
         })
-        return null
+        // Default to template on error (safer)
+        return false
     }
-}
-
-async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}, timestamp = Date.now()) {
-    return !!(await getLatestUserMessageOnUserLocalDay(projectId, chatId, userId, userData, timestamp))
 }
 
 async function generatePreConfigTaskResult(
@@ -695,6 +676,5 @@ async function executeWebhookTask(
 module.exports = {
     generatePreConfigTaskResult,
     executeWebhookTask,
-    getLatestUserMessageOnUserLocalDay,
     hasUserMessageOnUserLocalDay,
 }
