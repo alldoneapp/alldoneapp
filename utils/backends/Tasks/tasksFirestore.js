@@ -3,6 +3,7 @@ import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import { preserveAutoAssignedGoal } from './autoAssignedGoalGuard'
+import { publishOptimisticTaskCreateFailed, publishOptimisticTaskCreated } from './optimisticTaskCreate'
 
 import {
     addUniqueInstanceTypeToArray,
@@ -543,29 +544,48 @@ export async function uploadNewTask(
         }
         const safeTaskCopy = removeUndefinedForFirestore(taskCopy)
 
+        // AT-2342 - put the task on screen NOW. Everything about this document is already known
+        // locally (the id was minted by `getId()` above, every field is filled in), so there is
+        // nothing to wait for: publishing it here lets each live task watcher render it in the
+        // same tick as the keypress instead of after the write has gone out to Firestore and come
+        // back through the Listen stream. The payload is `safeTaskCopy` itself, i.e. byte-identical
+        // to what the echo will carry, so the optimistic row cannot differ from the settled one.
+        // See utils/backends/Tasks/optimisticTaskCreate.js for why duplicates are impossible.
+        publishOptimisticTaskCreated(projectId, taskId, safeTaskCopy)
+
+        const onTaskWritten = isAwaited => () => {
+            queueUndoAction({
+                label: `Created task “${taskCopy.name}”`,
+                operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
+            })
+            if (__DEV__) {
+                console.log(
+                    `[HumanReadableID] Task ${taskId} committed to database (${isAwaited ? 'awaited' : 'non-awaited'})`
+                )
+            }
+            scheduleResetLastAddedTaskId(taskId)
+        }
+
+        // A `set()` rejects on permission-denied or invalid data - never merely because the user
+        // is offline, where it stays queued and the local cache already holds the document. So a
+        // rejection means the task will never exist, and the row published above has to go.
+        const onTaskWriteFailed = error => {
+            publishOptimisticTaskCreateFailed(projectId, taskId, safeTaskCopy)
+            throw error
+        }
+
         awaitForTaskCreation
             ? await getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(safeTaskCopy)
-                  .then(() => {
-                      queueUndoAction({
-                          label: `Created task “${taskCopy.name}”`,
-                          operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
-                      })
-                      if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
-                      scheduleResetLastAddedTaskId(taskId)
-                  })
+                  .then(onTaskWritten(true), onTaskWriteFailed)
             : getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(safeTaskCopy)
-                  .then(() => {
-                      queueUndoAction({
-                          label: `Created task “${taskCopy.name}”`,
-                          operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
-                      })
-                      if (__DEV__) console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
-                      scheduleResetLastAddedTaskId(taskId)
-                  })
+                  .then(onTaskWritten(false), onTaskWriteFailed)
+                  // The non-awaited branch has no caller to reject to; without this the rollback
+                  // above would surface as an unhandled rejection.
+                  .catch(error => console.warn(`[AT-2342] task ${taskId} creation failed`, error))
 
         logEvent('new_task', {
             taskOwnerUid: taskCopy.userId,
