@@ -243,7 +243,6 @@ class SocialTextInput extends Component {
             titleType,
             disabled,
             disabledMentions,
-            leftCustomElement,
         } = this.props
         const initialState = text.length === 0 && !inputFocus && !task.genericData
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
@@ -317,7 +316,6 @@ class SocialTextInput extends Component {
                 projectId={projectId}
                 wrapText={true}
                 numberOfLines={numberOfLines}
-                leftCustomElement={leftCustomElement}
             >
                 {text}
             </SocialText>

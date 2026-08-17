@@ -8,6 +8,7 @@ import {
     deleteLinkedGuidesNotesIfProjectIsTemplate,
     deleteNoteFeedsChain,
     getDb,
+    getFirebaseTimestampDirectly,
     getId,
     getMentionedUsersIdsWhenEditText,
     getNoteData,
@@ -28,8 +29,6 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
-import { getServerNow } from '../../serverClock'
-import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
 import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
@@ -71,12 +70,11 @@ export const updateNoteEditionData = async (projectId, noteId, editorId) => {
 
 const updateEditionData = async data => {
     const { loggedUser } = store.getState()
-    // No round trip in either branch since AT-2340: the online path used to
-    // write+read the global `/info/currentTime` singleton on every autosave, and
-    // the offline path could not do it at all (the ack only arrives on
-    // reconnect). Both now read the background-measured server-clock offset,
-    // falling back to the client clock — which is what `created` already uses.
-    data.lastEditionDate = isBrowserOffline() ? Date.now() : getServerNow()
+    // The server-clock read blocks until the write is acked, which offline means
+    // "until reconnect". The client clock is what `created` already uses, so it
+    // is good enough for edition ordering while offline (OFFLINE_SUPPORT_PLAN.md
+    // notes follow-ups).
+    data.lastEditionDate = isBrowserOffline() ? Date.now() : await getFirebaseTimestampDirectly()
     data.lastEditorId = loggedUser.uid
 }
 
@@ -356,64 +354,25 @@ export async function updateNoteHighlight(projectId, noteId, hasStar) {
     updateNoteHighlightFeedsChain(projectId, isHighlight, noteId)
 }
 
-/**
- * Persist note content.
- *
- * `options.contentOnly` uploads the Yjs state and NOTHING else — no preview, no
- * `lastEditionDate`/`lastEditorId`, no edited-today entry, no started-editing
- * feed. It exists for content this client merely RECEIVED (a collaborator's
- * edits arriving over the Yjs binding): persisting the merged document is a
- * durability safety net, but recording the local user as its last editor is
- * simply false, and it made every open client pay the full save fan-out for
- * text somebody else typed (AT-2340).
- */
-export async function setNoteData(
-    objectId,
-    noteId,
-    encodedStateData,
-    preview,
-    firstEditionRef,
-    userCanEditNote,
-    options = {}
-) {
-    const { contentOnly = false } = options
+export async function setNoteData(objectId, noteId, encodedStateData, preview, firstEditionRef, userCanEditNote) {
     const storageRef = notesStorage.ref()
     // Fire-and-forget on purpose, but an offline failure must not surface as an
     // unhandled rejection: the content is durable in the editor's local
     // IndexedDB copy and is re-uploaded on reconnect / next online open.
-    //
-    // Firebase Storage has no offline write queue (unlike Firestore) — a failed
-    // put is simply gone — so the note is recorded for the reconnect catch-up
-    // sweep, which is what makes an offline edit to a note the user then CLOSES
-    // reach the server without waiting for them to open it again (AT-2340).
-    const contentUploaded = Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData))
-        .then(() => {
-            clearPendingNoteUpload(noteId)
-            return true
-        })
-        .catch(error => {
-            console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
-            registerPendingNoteUpload(objectId, noteId)
-            return false
-        })
+    Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)).catch(error =>
+        console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
+    )
 
-    if (!contentOnly) {
-        if (userCanEditNote) {
-            updateNoteData(objectId, noteId, { preview }, null)
-        }
-
-        updateNotesEditedDailyList(objectId, noteId)
-
-        if (firstEditionRef && firstEditionRef.current) {
-            firstEditionRef.current = false
-            userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
-        }
+    if (userCanEditNote) {
+        updateNoteData(objectId, noteId, { preview }, null)
     }
 
-    // Resolves to whether the canonical Storage copy actually received the
-    // content. Callers may ignore it (most do); the editor uses it to know a
-    // catch-up is outstanding without guessing from connectivity.
-    return contentUploaded
+    updateNotesEditedDailyList(objectId, noteId)
+
+    if (firstEditionRef.current) {
+        firstEditionRef.current = false
+        userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
+    }
 }
 
 export const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCommentType) => {
