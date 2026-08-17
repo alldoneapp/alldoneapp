@@ -292,7 +292,7 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–3 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–4 shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
@@ -314,6 +314,19 @@ pin the contract.
   not be burned offline). A doc "missing" in a cache-only snapshot is **unknown, not
   deleted** — the `firestoreDirectRead` verification paths already treat a failed direct
   read as retryable, keep it that way.
+- **Cached-snapshot delivery (`utils/backends/cachedSnapshotGate.js`)**: the list
+  watchers (open/done/workflow tasks, the notes watchers via
+  `createNotesSnapshotHandler`) buffer `fromCache` snapshots online but must render them
+  offline — offline every snapshot is `fromCache` forever. Never test
+  `querySnapshot.metadata.fromCache` directly in a list watcher; use
+  `createCachedSnapshotGate` (`shouldBuffer` + `wrapUnsubscribe`). The gate delivers
+  cached data when `connectionState === 'offline'` **or** after a 4s only-cache grace
+  period — the grace exists because Firestore snapshots are edge-triggered and
+  `navigator.onLine` lies on captive portals; a level-check alone would leave lists
+  permanently blank when the offline transition lands after the initial cache snapshot.
+  Its flush re-invokes the watcher's handler with a synthetic snapshot whose
+  `docChanges()` is empty (buffered changes must not double-count) — pinned by
+  `cachedSnapshotGate.test.js`.
 - **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
   `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
   live in web-bundler's own package). It precaches the app shell (hashed chunks,

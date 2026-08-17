@@ -112,7 +112,16 @@ right offline behavior._
   cache and Firebase Auth's own IndexedDB session — no new class of exposure, but worth a
   line in the privacy docs.
 
-## Stage 4 — Let cached data render (the `fromCache` inversion)
+## Stage 4 — Let cached data render (the `fromCache` inversion) — **SHIPPED 2026-08-17**
+
+_Implementation notes: `utils/backends/cachedSnapshotGate.js` — each watcher keeps its
+buffer-and-merge structure; `gate.shouldBuffer(snapshot)` replaces the raw `fromCache`
+test. Cached snapshots deliver immediately when offline, or after a 4s only-cache grace
+(the captive-portal / edge-triggered-snapshot tell); the grace flush re-invokes the
+watcher's own handler with a synthetic empty-`docChanges()` snapshot so the buffered
+changes flow through the existing merge path. `wrapUnsubscribe` ties pending flush
+timers to the subscription. Two audited sites needed no change: `watchUserData` and
+`objectLinkSnapshot` already deliver cached data and only suppress cache-misses._
 
 The biggest correctness change. Today's pattern in list watchers is "buffer cached
 changes, only emit when a server snapshot arrives" — correct online (prevents flashing
