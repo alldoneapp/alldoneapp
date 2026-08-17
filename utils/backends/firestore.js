@@ -46,6 +46,8 @@ import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { isBrowserOffline } from '../connectionState'
+import { getServerTimestampNow } from '../serverClock'
+import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -4008,30 +4010,24 @@ export function mapWorkstreamData(wstreamId, workstreamData) {
     }
 }
 
+/**
+ * Server time in epoch milliseconds.
+ *
+ * Both of these used to write and then read the GLOBAL `/info/currentTime`
+ * singleton — a document every user of the app contends on, read back through
+ * an unbounded recursion, on the note-autosave critical path. They now read a
+ * background-measured client/server clock offset instead (`utils/serverClock.js`),
+ * so they cost no I/O, cannot hang offline, and contend with nothing (AT-2340).
+ *
+ * `getFirebaseTimestampDirectly` stays `async` so its existing `await` /
+ * `.then()` call sites are unchanged.
+ */
 export function getFirebaseTimestamp() {
-    firebase
-        .firestore()
-        .doc('/info/currentTime/')
-        .set({ time: firebase.firestore.FieldValue.serverTimestamp() })
-        .then(async () => {
-            const currentTime = (await db.doc('/info/currentTime/').get()).data()
-            return currentTime.time
-        })
-}
-
-async function getServerCurrentTime() {
-    const currentTime = (await db.doc('/info/currentTime/').get()).data()
-    if (currentTime.time) {
-        return currentTime.time.seconds * 1000
-    } else {
-        return await getServerCurrentTime()
-    }
+    return getServerTimestampNow()
 }
 
 export async function getFirebaseTimestampDirectly() {
-    await firebase.firestore().doc('/info/currentTime/').set({ time: firebase.firestore.FieldValue.serverTimestamp() })
-    const currentTime = await getServerCurrentTime()
-    return currentTime
+    return getServerTimestampNow()
 }
 
 /**
@@ -5311,7 +5307,7 @@ export async function getNoteMeta(objectId, noteId) {
     return noteData ? mapNoteData(noteId, noteData) : null
 }
 
-export function setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks) {
+export function setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options = {}) {
     const extractIdsInto = (destArr, sourceArr, idIndex) => {
         for (let url of sourceArr) {
             destArr.push(url.split('/')[idIndex])
@@ -5500,12 +5496,13 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         ]
     }
 
-    const actions = {
-        task: () => db.doc(`items/${projectId}/tasks/${linkedObject.id}`).update(updateObject),
-        note: () => db.doc(`noteItems/${projectId}/notes/${linkedObject.id}`).update(updateObject),
+    const refs = {
+        task: () => db.doc(`items/${projectId}/tasks/${linkedObject.id}`),
+        note: () => db.doc(`noteItems/${projectId}/notes/${linkedObject.id}`),
     }
 
-    actions[linkedObject.type]()
+    const ref = refs[linkedObject.type] ? refs[linkedObject.type]() : null
+    if (ref) writeLinkedParentsIfChanged(ref, updateObject, { force: !!options.forceWrite })
 
     // Commenting this by Customer request
     // logEvent('new_backlinks', {
@@ -5585,26 +5582,34 @@ export async function setNoteOwnerFeedsChain(projectId, note, newOwner, oldOwner
     batch.commit()
 }
 
+// These four historically returned the RAW callable envelope, and their callers
+// read `result.data`. Routing them through the offline-aware funnel (which
+// unwraps) would silently change that contract, so the envelope is rebuilt:
+// callers are untouched and only gain the fast offline failure (AT-2340).
+const asCallableEnvelope = async (functionName, payload) => ({
+    data: await runHttpsCallableFunction(functionName, payload),
+})
+
 export async function generateNTSToken() {
-    const generateNTSToken = functions.httpsCallable('generateNTSTokenSecondGen')
-    return generateNTSToken()
+    return asCallableEnvelope('generateNTSTokenSecondGen', undefined)
 }
 
 export async function mintMenubarAppToken() {
-    const mintToken = functions.httpsCallable('mintMenubarAppToken')
-    return mintToken()
+    return asCallableEnvelope('mintMenubarAppToken', undefined)
 }
 
 export async function listMenubarAppTokens() {
-    const listTokens = functions.httpsCallable('listMenubarAppTokens')
-    return listTokens()
+    return asCallableEnvelope('listMenubarAppTokens', undefined)
 }
 
 export async function revokeMenubarAppToken(tokenId) {
-    const revokeToken = functions.httpsCallable('revokeMenubarAppToken')
-    return revokeToken({ tokenId })
+    return asCallableEnvelope('revokeMenubarAppToken', { tokenId })
 }
 
+// Deliberately NOT routed through `runHttpsCallableFunction` (AT-2340): both use
+// the two-argument streaming-style callable signature, both return the raw
+// envelope that their callers destructure, and both are long-running background
+// jobs whose callers assume no throw propagates.
 export function connectToConverter(data, callback) {
     const convertVideos = functions.httpsCallable('convertVideosSecondGen')
     return convertVideos(data, callback)
@@ -6530,32 +6535,29 @@ export function getObjectFromUrl(objectType, url, callback) {
 }
 
 export async function sendPushNotification(data) {
-    const sendPushNotification = functions.httpsCallable('sendPushNotificationSecondGen')
-    sendPushNotification(data)
+    // Deliberately fire-and-forget: it is a side effect of feed writes, which DO
+    // work offline through the Firestore write queue. The rejection is swallowed
+    // so an offline feed write does not turn into an unhandled rejection; the
+    // server sends the notification when the queued feed write lands (AT-2340).
+    runHttpsCallableFunction('sendPushNotificationSecondGen', data).catch(() => {})
 }
 
 export async function callEnrichContactViaLinkedIn(data) {
-    const enrichFn = functions.httpsCallable('enrichContactViaLinkedIn')
-    return await enrichFn(data)
+    return asCallableEnvelope('enrichContactViaLinkedIn', data)
 }
 
 export async function callSearchLinkedInProfile(data) {
-    const searchFn = functions.httpsCallable('searchLinkedInProfile')
-    return await searchFn(data)
+    return asCallableEnvelope('searchLinkedInProfile', data)
 }
 
 // --- GitLab repo connection (per-project repo + per-user token, used by the VM coding flow) ---
 
 export async function connectGitlabRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGitlabRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGitlabRepo', data)
 }
 
 export async function disconnectGitlabRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGitlabRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGitlabRepo', data)
 }
 
 // Read whether the given user has linked their GitLab token for this project. Reads the
@@ -6582,31 +6584,23 @@ export async function getGitlabUserConnection(projectId, userId) {
 // --- GitHub repo connection (per-project repo + per-user token, used by the VM coding flow) ---
 
 export async function connectGithubRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGithubRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGithubRepo', data)
 }
 
 export async function disconnectGithubRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGithubRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGithubRepo', data)
 }
 
 // Refreshes the normalized status cached on a task. GitLab/GitHub credentials are
 // resolved and used only by the Cloud Function.
 export async function refreshTaskMergeStatus(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('refreshTaskMergeStatus')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('refreshTaskMergeStatus', data)
 }
 
 // Trigger an on-demand rebuild of the project's golden VM snapshot (repo + node_modules
 // pre-baked, so VM tasks skip the dependency install). Returns { success, buildId, alreadyBuilding }.
 export async function rebuildProjectVmGolden(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('rebuildProjectVmGolden')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('rebuildProjectVmGolden', data)
 }
 
 // Read whether the given user has linked their GitHub token for this project. Reads the
@@ -6634,15 +6628,11 @@ export async function getGithubUserConnection(projectId, userId) {
 // user's own Firestore / Cloud Logging via a short-lived read-only token. Mirrors GitHub/GitLab. ---
 
 export async function connectGcpProject(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGcpProject')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGcpProject', data)
 }
 
 export async function disconnectGcpProject(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGcpProject')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGcpProject', data)
 }
 
 // Read whether the given user has linked a Google Cloud service-account key for this project.
@@ -6667,81 +6657,55 @@ export async function getGcpConnection(projectId, userId) {
 // --- Personal Claude/Codex subscriptions for execute_task_in_vm ---
 
 export async function getVmAgentSettings() {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentSettings')
-    const result = await fn({})
-    return result.data
+    return runHttpsCallableFunction('getVmAgentSettings', {})
 }
 
 export async function setDefaultVmAgent(agent) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgent')
-    const result = await fn({ agent })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgent', { agent })
 }
 
 export async function setDefaultVmAgentReasoningEffort(effort) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentReasoningEffort')
-    const result = await fn({ effort })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgentReasoningEffort', { effort })
 }
 
 export async function setDefaultVmApprovalPolicy(policy) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmApprovalPolicy')
-    const result = await fn({ policy })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmApprovalPolicy', { policy })
 }
 
 export async function setDefaultVmAgentModel(agent, family) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentModel')
-    const result = await fn({ agent, family })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgentModel', { agent, family })
 }
 
 export async function getVmAgentModelOptions(forceRefresh = false) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentModelOptions')
-    const result = await fn({ forceRefresh })
-    return result.data
+    return runHttpsCallableFunction('getVmAgentModelOptions', { forceRefresh })
 }
 
 export async function getVmSubscriptionStatus() {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmSubscriptionStatus')
-    const result = await fn({})
-    return result.data
+    return runHttpsCallableFunction('getVmSubscriptionStatus', {})
 }
 
 export async function connectVmSubscription(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectVmSubscription')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectVmSubscription', data)
 }
 
 export async function disconnectVmSubscription(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectVmSubscription')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectVmSubscription', data)
 }
 
 export async function saveVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('saveVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('saveVmApiKey', data)
 }
 
 export async function testVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('testVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('testVmApiKey', data)
 }
 
 export async function removeVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('removeVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('removeVmApiKey', data)
 }
 
 export async function setVmCredentialMode(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setVmCredentialMode')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('setVmCredentialMode', data)
 }
 
 // --- Per-assistant MCP server connections ---
@@ -6750,27 +6714,19 @@ export async function setVmCredentialMode(data) {
 // (token / OAuth tokens) is connected/validated/stored server-side via these callables.
 
 export async function connectAssistantMcpServer(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectAssistantMcpServer')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectAssistantMcpServer', data)
 }
 
 export async function disconnectAssistantMcpServer(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectAssistantMcpServer')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectAssistantMcpServer', data)
 }
 
 export async function beginMcpOAuth(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('beginMcpOAuth')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('beginMcpOAuth', data)
 }
 
 export async function completeMcpOAuth(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('completeMcpOAuth')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('completeMcpOAuth', data)
 }
 
 //MENTION ALL
@@ -7725,8 +7681,7 @@ export async function checkIfGmailIsConnected(projectId) {
 
 export const duplicateProject = async (projectId, options) => {
     const user = store.getState().loggedUser
-    const moveTasksFn = functions.httpsCallable('onCopyProjectSecondGen')
-    await moveTasksFn({ projectId, user, options })
+    await runHttpsCallableFunction('onCopyProjectSecondGen', { projectId, user, options })
 }
 
 export const addToMarketingList = async (email, initialUrl) => {
@@ -7741,14 +7696,13 @@ export const addToMarketingList = async (email, initialUrl) => {
                 note: 'userId (EXT_ID) will be added automatically from auth context',
             })
 
-            const addToBrevoFn = functions.httpsCallable('addContactToBrevoMarketingList')
-            const result = await addToBrevoFn({
+            const result = await runHttpsCallableFunction('addContactToBrevoMarketingList', {
                 email,
                 initialUrl,
                 languageIndex,
             })
 
-            console.log('Successfully added contact to Brevo:', result.data)
+            console.log('Successfully added contact to Brevo:', result)
         } catch (error) {
             console.error('Failed to add contact to Brevo marketing list:', {
                 error: error.message,

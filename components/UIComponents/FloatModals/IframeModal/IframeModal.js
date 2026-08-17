@@ -1,12 +1,11 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import firebase from 'firebase/compat/app'
-import '@firebase/functions'
 import Icon from '../../../Icon'
 import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
+import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 
 export default function IframeModal() {
     const dispatch = useDispatch()
@@ -85,8 +84,11 @@ export default function IframeModal() {
                         userEmail: loggedUser?.email || '',
                     })
 
-                    const goldFn = firebase.app().functions('europe-west1').httpsCallable(callableName)
-                    const result = await goldFn({
+                    // Routed through the offline-aware funnel (AT-2340): a gold
+                    // change is server-authoritative, so offline this now fails
+                    // immediately and the embedded surface gets a clean error
+                    // instead of a ~70s hang. The funnel unwraps the envelope.
+                    const result = await runHttpsCallableFunction(callableName, {
                         gold: amount,
                         source,
                         channel: 'iframe',
@@ -95,18 +97,18 @@ export default function IframeModal() {
                     console.log('IframeModal: gold function responded', {
                         callableName,
                         amount,
-                        result: result?.data,
+                        result,
                     })
 
-                    if (result.data.success) {
+                    if (result.success) {
                         postResult({
                             type: successType,
-                            newBalance: result.data.newBalance,
+                            newBalance: result.newBalance,
                         })
                     } else {
                         postResult({
                             type: errorType,
-                            error: result.data.message,
+                            error: result.message,
                         })
                     }
                 } catch (error) {
