@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
-import { cloneDeep } from 'lodash'
 
 import store from '../../redux/store'
 import ContactItem from './ContactItem'
@@ -22,49 +21,36 @@ import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews
 import ContactsHeader from './ContactsHeader'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 
-export default function ContactListByProject({
-    members,
-    contacts,
-    onlyMembers,
-    projectIndex,
-    firstProject,
-    maxContactsToRender,
-}) {
-    const [contactsList, setContactsList] = useState([])
+const EMPTY_PROJECT_CONTACTS = {}
+
+function ContactListByProject({ members, contacts, onlyMembers, projectIndex, firstProject, maxContactsToRender }) {
     const [pressedShowMore, setPressedShowMore] = useState(false)
-    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const loggedUser = useSelector(state => state.loggedUser)
-    const projectContacts = useSelector(state => state.projectContacts)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const lastAddNewContact = useSelector(state => state.lastAddNewContact)
-    const [filters, filtersArray] = useSelectorHashtagFilters()
+    const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+    const handlesAddContactShortcut = inSelectedProject || firstProject
+    const loggedUser = useSelector(state => (inSelectedProject ? state.loggedUser : null))
+    const projectContacts = useSelector(state => (inSelectedProject ? state.projectContacts : EMPTY_PROJECT_CONTACTS))
+    const lastAddNewContact = useSelector(state => (handlesAddContactShortcut ? state.lastAddNewContact : null))
+    const [, filtersArray] = useSelectorHashtagFilters()
     const [contactStatusFilter] = useSelectorContactStatusFilter()
-    const [filteredMembers, setFilteredMembers] = useState(cloneDeep(members))
-    const [filteredContacts, setFilteredContacts] = useState(cloneDeep(contacts))
     const dispatch = useDispatch()
 
-    const project = loggedUserProjects[projectIndex]
+    const project = useSelector(state => state.loggedUserProjects[projectIndex])
 
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef({}).current
 
-    const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+    useEffect(() => {
+        if (handlesAddContactShortcut) dispatch(setLastAddNewContact({ projectId: project.id }))
+    }, [handlesAddContactShortcut, project.id])
 
     useEffect(() => {
-        buildContactsList()
-        updateLastAddNewContact()
-    }, [])
-
-    useEffect(() => {
+        if (!handlesAddContactShortcut) return
         document.addEventListener('keydown', onKeyDown)
         return () => document.removeEventListener('keydown', onKeyDown)
-    })
+    }, [handlesAddContactShortcut, lastAddNewContact, project.id])
 
-    useEffect(() => {
-        buildContactsList()
-    }, [filteredMembers, filteredContacts, onlyMembers, pressedShowMore])
-
-    useEffect(() => {
+    const contactsList = useMemo(() => {
         let newMembers = members
         let newContacts = contacts
 
@@ -84,32 +70,9 @@ export default function ContactListByProject({
                     : newContacts.filter(contact => contact.contactStatusId === contactStatusFilter)
         }
 
-        setFilteredMembers(cloneDeep(newMembers))
-        setFilteredContacts(cloneDeep(newContacts))
-        // Using plain "filtersArray" adds infinite re-renders here
-    }, [JSON.stringify(filtersArray), contactStatusFilter, members, contacts])
-
-    useEffect(() => {
-        updateLastAddNewContact()
-    }, [selectedProjectIndex])
-
-    const buildContactsList = () => {
-        const project = loggedUserProjects[projectIndex]
-        let contactsList = filteredMembers
-
-        if (!onlyMembers) {
-            contactsList = contactsList.concat(filteredContacts)
-        }
-
-        contactsList.sort((a, b) => ContactsHelper.sortContactsFn(a, b, project.id))
-        setContactsList(contactsList)
-    }
-
-    const updateLastAddNewContact = () => {
-        if (inSelectedProject || firstProject) {
-            dispatch(setLastAddNewContact({ projectId: project.id }))
-        }
-    }
+        const list = onlyMembers ? [...newMembers] : [...newMembers, ...newContacts]
+        return list.sort((a, b) => ContactsHelper.sortContactsFn(a, b, project.id))
+    }, [filtersArray, contactStatusFilter, members, contacts, onlyMembers, project.id])
 
     const onKeyDown = e => {
         if (!store.getState().blockShortcuts) {
@@ -128,8 +91,8 @@ export default function ContactListByProject({
     return contactsList.length > 0 || inSelectedProject ? (
         <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
             <ProjectHeader
-                projectIndex={loggedUserProjects[projectIndex].index}
-                projectId={loggedUserProjects[projectIndex].id}
+                projectIndex={project.index}
+                projectId={project.id}
                 customRight={
                     inSelectedProject ? (
                         <ContactMoreButton
@@ -182,7 +145,7 @@ export default function ContactListByProject({
                                 modalComponent={
                                     <EditContact
                                         isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
-                                        projectId={loggedUserProjects[projectIndex].id}
+                                        projectId={project.id}
                                         projectIndex={projectIndex}
                                         onCancelAction={() => dismissibleRefs[`${contact.uid}`].toggleModal()}
                                         contact={contact}
@@ -204,6 +167,8 @@ export default function ContactListByProject({
         </View>
     ) : null
 }
+
+export default memo(ContactListByProject)
 
 const localStyles = {
     moreButtonWrapper: {
