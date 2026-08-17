@@ -16,6 +16,7 @@ const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 const mockCreateAndPersistTask = jest.fn()
 const mockCreateAndPersistNote = jest.fn()
+const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
 const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     noteId,
@@ -42,6 +43,9 @@ jest.mock('../shared/NoteService', () => ({
         initialize: jest.fn().mockResolvedValue(undefined),
         createAndPersistNote: mockCreateAndPersistNote,
     })),
+}))
+jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
+    findCalendarAvailabilityForAssistantRequest: mockFindCalendarAvailabilityForAssistantRequest,
 }))
 jest.mock('../shared/UserHelper', () => ({
     UserHelper: {
@@ -1195,6 +1199,7 @@ describe('assistant attachment handoff helpers', () => {
         mockBatchDelete.mockClear()
         mockBatchCommit.mockClear()
         mockCreateAndPersistNote.mockReset()
+        mockFindCalendarAvailabilityForAssistantRequest.mockReset()
     })
 
     test('normalizes hour-based user timezone values into minutes', () => {
@@ -1224,6 +1229,35 @@ describe('assistant attachment handoff helpers', () => {
         expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_TERRA')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_LUNA')).toBe(400000)
+    })
+
+    test('passes the email meeting-link policy flag into availability execution', async () => {
+        mockFindCalendarAvailabilityForAssistantRequest.mockResolvedValue({
+            success: true,
+            options: [],
+        })
+
+        await executeToolNatively(
+            'find_calendar_availability',
+            {
+                timeMin: '2026-08-12T09:00:00+02:00',
+                timeMax: '2026-08-19T17:00:00+02:00',
+                allowSameDayBooking: true,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { respectPublicMeetingLinkSettings: true }
+        )
+
+        expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                allowSameDayBooking: true,
+                respectPublicMeetingLinkSettings: true,
+            })
+        )
     })
 
     test('returns the canonical URL when creating a note', async () => {

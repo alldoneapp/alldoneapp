@@ -40,6 +40,7 @@ const MAX_AVAILABILITY_RANGE_DAYS = 31
 const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
 const DEFAULT_WORKING_HOURS_START = '09:00'
 const DEFAULT_WORKING_HOURS_END = '17:00'
+const PUBLIC_MEETING_LINK_SETTINGS_PATH = userId => `users/${userId}/bookingSettings/default`
 
 function getActiveProjectIds(userData = {}) {
     const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
@@ -268,6 +269,25 @@ async function getUserDefaultTimeZone(userId) {
     return resolveUserIanaTimeZone(userDoc.data() || {})
 }
 
+async function getPublicMeetingLinkSettings(userId) {
+    if (!userId) return { exists: false, settings: null }
+
+    try {
+        const snapshot = await admin.firestore().doc(PUBLIC_MEETING_LINK_SETTINGS_PATH(userId)).get()
+        if (!snapshot?.exists) return { exists: false, settings: null }
+        return {
+            exists: true,
+            settings: (typeof snapshot.data === 'function' ? snapshot.data() : null) || {},
+        }
+    } catch (error) {
+        console.warn('📅 PUBLIC_MEETING_LINK_SETTINGS: failed to load availability policy', {
+            userId,
+            error: error?.message,
+        })
+        return { exists: false, settings: null, error }
+    }
+}
+
 function normalizeBoundedInteger(value, fallback, min, max) {
     const parsed = parseInt(value, 10)
     if (!Number.isFinite(parsed)) return fallback
@@ -493,25 +513,48 @@ async function findCalendarAvailabilityForAssistantRequest({
     durationMinutes = DEFAULT_AVAILABILITY_DURATION_MINUTES,
     maxOptions = DEFAULT_AVAILABILITY_MAX_OPTIONS,
     slotIntervalMinutes = DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES,
-    workingHoursStart = DEFAULT_WORKING_HOURS_START,
-    workingHoursEnd = DEFAULT_WORKING_HOURS_END,
-    includeWeekends = false,
-    bufferBeforeMinutes = 0,
-    bufferAfterMinutes = 0,
+    workingHoursStart = undefined,
+    workingHoursEnd = undefined,
+    includeWeekends = undefined,
+    bufferBeforeMinutes = undefined,
+    bufferAfterMinutes = undefined,
+    // Request-level override. The caller may set this only for an explicit current-message
+    // request for today/a same-day option; otherwise the saved meeting-link setting wins.
+    allowSameDayBooking = false,
     // Left undefined on purpose: undefined means "use the user's saved setting" (default 4h),
     // while an explicit number — including 0, which disables the rule — is an override.
     minFreeHoursPerDay = undefined,
+    // Server-controlled. Email uses this because its proposed slots can be sent directly to
+    // external recipients and therefore must obey the same policy as the public meeting link.
+    respectPublicMeetingLinkSettings = false,
 }) {
     const requestedTimeZone = safeTrim(timeZone)
-    const resolvedTimeZone =
-        (requestedTimeZone && moment.tz.zone(requestedTimeZone) ? requestedTimeZone : '') ||
-        (await getUserDefaultTimeZone(userId)) ||
-        'UTC'
     if (requestedTimeZone && !moment.tz.zone(requestedTimeZone)) {
         return { success: false, options: [], message: `Unknown IANA timezone "${requestedTimeZone}".` }
     }
 
-    const rangeStart = parseAvailabilityBoundary(timeMin, resolvedTimeZone, 'timeMin')
+    const publicMeetingLinkSettingsResult = respectPublicMeetingLinkSettings
+        ? await getPublicMeetingLinkSettings(userId)
+        : { exists: false, settings: null }
+    if (publicMeetingLinkSettingsResult.error) {
+        return {
+            success: false,
+            options: [],
+            message: 'Meeting availability settings could not be checked right now. Please try again later.',
+        }
+    }
+
+    const publicMeetingLinkSettings = publicMeetingLinkSettingsResult.exists
+        ? publicMeetingLinkSettingsResult.settings
+        : null
+    const publicMeetingLinkTimeZone = safeTrim(publicMeetingLinkSettings?.timeZone)
+    const resolvedTimeZone =
+        (publicMeetingLinkTimeZone && moment.tz.zone(publicMeetingLinkTimeZone) ? publicMeetingLinkTimeZone : '') ||
+        (requestedTimeZone && moment.tz.zone(requestedTimeZone) ? requestedTimeZone : '') ||
+        (await getUserDefaultTimeZone(userId)) ||
+        'UTC'
+
+    let rangeStart = parseAvailabilityBoundary(timeMin, resolvedTimeZone, 'timeMin')
     const rangeEnd = parseAvailabilityBoundary(timeMax, resolvedTimeZone, 'timeMax')
     if (!rangeEnd.isAfter(rangeStart)) {
         return { success: false, options: [], message: 'timeMax must be after timeMin.' }
@@ -542,16 +585,88 @@ async function findCalendarAvailabilityForAssistantRequest({
         5,
         120
     )
-    const normalizedWorkingHoursStart = normalizeClockTime(workingHoursStart, DEFAULT_WORKING_HOURS_START)
-    const normalizedWorkingHoursEnd = normalizeClockTime(workingHoursEnd, DEFAULT_WORKING_HOURS_END)
+    const savedSettingsApply = !!publicMeetingLinkSettings
+    const savedWorkingHoursStart = safeTrim(publicMeetingLinkSettings?.workingHoursStart)
+    const savedWorkingHoursEnd = safeTrim(publicMeetingLinkSettings?.workingHoursEnd)
+    const explicitWorkingHoursStart = safeTrim(workingHoursStart)
+    const explicitWorkingHoursEnd = safeTrim(workingHoursEnd)
+    const normalizedWorkingHoursStart =
+        savedSettingsApply && !explicitWorkingHoursStart
+            ? /^([01]\d|2[0-3]):[0-5]\d$/.test(savedWorkingHoursStart)
+                ? savedWorkingHoursStart
+                : DEFAULT_WORKING_HOURS_START
+            : normalizeClockTime(workingHoursStart, DEFAULT_WORKING_HOURS_START)
+    const normalizedWorkingHoursEnd =
+        savedSettingsApply && !explicitWorkingHoursEnd
+            ? /^([01]\d|2[0-3]):[0-5]\d$/.test(savedWorkingHoursEnd)
+                ? savedWorkingHoursEnd
+                : DEFAULT_WORKING_HOURS_END
+            : normalizeClockTime(workingHoursEnd, DEFAULT_WORKING_HOURS_END)
     if (normalizedWorkingHoursEnd <= normalizedWorkingHoursStart) {
         return { success: false, options: [], message: 'workingHoursEnd must be after workingHoursStart.' }
+    }
+
+    const normalizedIncludeWeekends =
+        savedSettingsApply && typeof includeWeekends !== 'boolean'
+            ? publicMeetingLinkSettings.includeWeekends === true
+            : includeWeekends === true
+    const hasBufferBeforeOverride = bufferBeforeMinutes !== undefined && bufferBeforeMinutes !== null
+    const hasBufferAfterOverride = bufferAfterMinutes !== undefined && bufferAfterMinutes !== null
+    const normalizedBufferBeforeMinutes = normalizeBoundedInteger(
+        savedSettingsApply && !hasBufferBeforeOverride
+            ? publicMeetingLinkSettings.bufferBeforeMinutes
+            : bufferBeforeMinutes,
+        0,
+        0,
+        240
+    )
+    const normalizedBufferAfterMinutes = normalizeBoundedInteger(
+        savedSettingsApply && !hasBufferAfterOverride
+            ? publicMeetingLinkSettings.bufferAfterMinutes
+            : bufferAfterMinutes,
+        0,
+        0,
+        240
+    )
+
+    // A saved settings document means the owner has configured the public meeting policy.
+    // As on the public link, only a strict boolean true permits today; older documents with
+    // no field retain the safer no-same-day behavior. An explicit current-request override
+    // may allow today without changing the persisted setting. The boundary is the host's day.
+    if (savedSettingsApply && publicMeetingLinkSettings.allowSameDayBooking !== true && allowSameDayBooking !== true) {
+        const earliestBookableStart = moment().tz(resolvedTimeZone).startOf('day').add(1, 'day')
+        if (!rangeEnd.isAfter(earliestBookableStart)) {
+            return {
+                success: true,
+                timeZone: resolvedTimeZone,
+                durationMinutes: normalizedDurationMinutes,
+                requestedRange: {
+                    start: rangeStart.clone().tz(resolvedTimeZone).format(),
+                    end: rangeEnd.clone().tz(resolvedTimeZone).format(),
+                },
+                workingHours: {
+                    start: normalizedWorkingHoursStart,
+                    end: normalizedWorkingHoursEnd,
+                    includeWeekends: normalizedIncludeWeekends,
+                    bufferBeforeMinutes: normalizedBufferBeforeMinutes,
+                    bufferAfterMinutes: normalizedBufferAfterMinutes,
+                },
+                options: [],
+                message:
+                    'No free meeting options were found in the requested range because the saved public meeting-link settings do not allow same-day meetings.',
+            }
+        }
+        if (rangeStart.isBefore(earliestBookableStart)) {
+            rangeStart = earliestBookableStart
+        }
     }
 
     const hasMinFreeHoursOverride = minFreeHoursPerDay !== undefined && minFreeHoursPerDay !== null
     const normalizedMinFreeHoursPerDay = hasMinFreeHoursOverride
         ? normalizeMinFreeHoursPerDay(minFreeHoursPerDay)
-        : await getMinFreeHoursPerDayForUser(userId)
+        : savedSettingsApply
+          ? normalizeMinFreeHoursPerDay(publicMeetingLinkSettings.minFreeHoursPerDay)
+          : await getMinFreeHoursPerDayForUser(userId)
     const minFreeMinutesPerDay = minFreeHoursToMinutes(normalizedMinFreeHoursPerDay)
 
     const normalizedCalendarId = normalizeCalendarId(calendarId)
@@ -618,7 +733,11 @@ async function findCalendarAvailabilityForAssistantRequest({
         }
     }
 
-    const bufferedBusyIntervals = applyBusyIntervalBuffers(busyIntervals, bufferBeforeMinutes, bufferAfterMinutes)
+    const bufferedBusyIntervals = applyBusyIntervalBuffers(
+        busyIntervals,
+        normalizedBufferBeforeMinutes,
+        normalizedBufferAfterMinutes
+    )
     const mergedBusyIntervals = mergeBusyIntervals(
         bufferedBusyIntervals,
         loadWindowStart.valueOf(),
@@ -635,7 +754,7 @@ async function findCalendarAvailabilityForAssistantRequest({
             slotIntervalMinutes: normalizedSlotIntervalMinutes,
             workingHoursStart: normalizedWorkingHoursStart,
             workingHoursEnd: normalizedWorkingHoursEnd,
-            includeWeekends: includeWeekends === true,
+            includeWeekends: normalizedIncludeWeekends,
             minFreeMinutesPerDay: minFreeMinutes,
         })
 
@@ -666,9 +785,9 @@ async function findCalendarAvailabilityForAssistantRequest({
         workingHours: {
             start: normalizedWorkingHoursStart,
             end: normalizedWorkingHoursEnd,
-            includeWeekends: includeWeekends === true,
-            bufferBeforeMinutes: Math.max(parseInt(bufferBeforeMinutes, 10) || 0, 0),
-            bufferAfterMinutes: Math.max(parseInt(bufferAfterMinutes, 10) || 0, 0),
+            includeWeekends: normalizedIncludeWeekends,
+            bufferBeforeMinutes: normalizedBufferBeforeMinutes,
+            bufferAfterMinutes: normalizedBufferAfterMinutes,
         },
         // AT-2278. `skippedDays` carries dates only — no event data — so the privacy contract
         // of this tool ("free options, never calendar contents") is unchanged.

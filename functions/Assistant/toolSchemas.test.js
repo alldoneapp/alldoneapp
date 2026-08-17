@@ -29,6 +29,14 @@ describe('Calendar assistant tool schemas', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('minFreeHoursPerDay')
     })
 
+    test('allows an explicit current-request override of the saved no-same-day setting', () => {
+        const property = toolSchemas.find_calendar_availability.function.parameters.properties.allowSameDayBooking
+
+        expect(property.type).toBe('boolean')
+        expect(property.description).toMatch(/current user message explicitly asks/i)
+        expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('allowSameDayBooking')
+    })
+
     test('defines required fields for calendar event writes', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).toEqual(['timeMin', 'timeMax'])
         expect(toolSchemas.create_calendar_event.function.parameters.required).toEqual(['summary', 'start', 'end'])
