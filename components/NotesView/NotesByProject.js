@@ -18,6 +18,7 @@ import NotesHeader from './NotesHeader'
 import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Notes/NoteMoreButton'
 import NoteOwnerFiltersLine from './NoteFilters/NoteOwnerFiltersLine'
 import { filterNotesByOwner, filterStickyNotesByOwner } from './NoteFilters/noteOwnerFilterHelper'
+import { getNoteFilterStateUpdate } from './noteFilterSubscription'
 
 export default class NotesByProject extends PureComponent {
     constructor(props) {
@@ -90,10 +91,7 @@ export default class NotesByProject extends PureComponent {
 
     updateState = () => {
         const storeState = store.getState()
-        this.setState({
-            hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
-            noteOwnerFilters: storeState.noteOwnerFilters,
-        })
+        this.setState(state => getNoteFilterStateUpdate(state, storeState))
     }
 
     setNeedShowMoreButton = amountOfNotes => {
