@@ -15,6 +15,21 @@ import GmailTag from '../../Tags/GmailTag'
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
 
+// The collapsed title height is expressed in lines instead of a magic pixel value, because the
+// heading has to fit a very different amount of text on a phone than on a desktop (AT-2341).
+// A wrapped title line is `styles.title4`'s lineHeight plus the 3px top/bottom margins that
+// WordsList adds to every wrapped word, and the whole title block also carries the fixed-height
+// spacer above the text.
+export const TITLE_UPPER_SPACER_HEIGHT = 32
+export const TITLE_LINE_HEIGHT = styles.title4.lineHeight + 6
+export const COLLAPSED_TITLE_LINES_DESKTOP = 1
+export const COLLAPSED_TITLE_LINES_MOBILE = 3
+export const EXPANDED_TITLE_MAX_HEIGHT = 800
+
+export const getCollapsedTitleMaxHeight = mobile =>
+    TITLE_UPPER_SPACER_HEIGHT +
+    TITLE_LINE_HEIGHT * (mobile ? COLLAPSED_TITLE_LINES_MOBILE : COLLAPSED_TITLE_LINES_DESKTOP)
+
 class TaskTitle extends Component {
     constructor(props) {
         super(props)
@@ -26,6 +41,7 @@ class TaskTitle extends Component {
             taskTitle: this.props.title,
             selectedTab: storeState.selectedNavItem,
             taskTitleInEditMode: storeState.taskTitleInEditMode,
+            mobile: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
         }
     }
@@ -35,8 +51,9 @@ class TaskTitle extends Component {
     }
 
     getMaxHeight = () => {
-        const { taskTitleInEditMode, selectedTab } = this.state
-        return (selectedTab === DV_TAB_TASK_CHAT || selectedTab === DV_TAB_TASK_NOTE) && !taskTitleInEditMode ? 70 : 800
+        const { taskTitleInEditMode, selectedTab, mobile } = this.state
+        const isCollapsedTab = selectedTab === DV_TAB_TASK_CHAT || selectedTab === DV_TAB_TASK_NOTE
+        return isCollapsedTab && !taskTitleInEditMode ? getCollapsedTitleMaxHeight(mobile) : EXPANDED_TITLE_MAX_HEIGHT
     }
 
     componentDidUpdate(prevProps) {
@@ -80,18 +97,18 @@ class TaskTitle extends Component {
 
         const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
+        // The type chip leads the title from *inside* the wrapping text flow (same as the task
+        // list does via SocialText's leftCustomElement). Rendering it as a sibling of the title
+        // instead gave it its own full-height column, so every wrapped line of the name stayed
+        // trapped in the remaining width and long names truncated almost immediately on mobile.
+        const gmailTag = isGmailLabelFollowUpTask(task) ? (
+            <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
+        ) : null
+
         return (
             <View style={[localStyles.titleContainer, { maxHeight: maxHeight }]}>
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
-                    {isGmailLabelFollowUpTask(task) && (
-                        <GmailTag
-                            gmailData={task.gmailData}
-                            propStyles={localStyles.gmailTag}
-                            showLabel
-                            iconSize={12}
-                        />
-                    )}
                     <View
                         style={{
                             flex: 1,
@@ -128,6 +145,7 @@ class TaskTitle extends Component {
                             object={object}
                             numberOfLines={numberOfLines}
                             disabled={isAssistant}
+                            leftCustomElement={gmailTag}
                         />
                     </View>
                 </View>
@@ -145,6 +163,7 @@ class TaskTitle extends Component {
         this.setState({
             selectedTab: storeState.selectedNavItem,
             taskTitleInEditMode: storeState.taskTitleInEditMode,
+            mobile: storeState.smallScreenNavigation,
         })
     }
 }
@@ -177,7 +196,9 @@ const localStyles = StyleSheet.create({
         alignContent: 'flex-start',
     },
     gmailTag: {
-        marginTop: 4,
+        // Matches the 3px vertical rhythm WordsList gives every wrapped word, so the chip sits on
+        // the first line of the title instead of floating above it.
+        marginVertical: 3,
         marginRight: 8,
     },
     ellipsis: {
