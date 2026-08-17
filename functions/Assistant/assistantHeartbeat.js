@@ -1,11 +1,12 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
-const { generatePreConfigTaskResult, getLatestUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
+const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { getOpenTasksContextMessage, parseTextForUseLiKePrompt } = require('./assistantHelper')
 const {
     addTimestampToContextContent,
     resolveUserTimezoneOffset,
+    getUserLocalDayBounds,
     getUserLocalDateContext,
 } = require('./contextTimestampHelper')
 const {
@@ -118,12 +119,11 @@ async function getTopicTitle(projectId, chatId) {
  * @param {string} projectId
  * @param {string} assistantId
  * @param {Object|null} userData
- * @param {number} timestamp - Instant used to resolve the user's local-day topic
  * @returns {Promise<{ chatId: string, isNew: boolean }>}
  */
-async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userData = null, timestamp = Date.now()) {
+async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userData = null) {
     const user = userData || (await getUserData(userId))
-    const { dateKey, dateLabel } = getUserLocalDateContext(user, timestamp)
+    const { dateKey, dateLabel } = getUserLocalDateContext(user)
     const today = dateKey
     const chatId = `Heartbeat${today}${userId}`
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
@@ -206,8 +206,7 @@ function isWithinAwakeWindow(assistant, timezoneOffsetMinutes) {
 }
 
 /**
- * Get the effective heartbeat chance percent after the user has replied to the
- * latest actual heartbeat in a supported daily chat on their current local day,
+ * Get the effective heartbeat chance percent for days the user already replied,
  * considering defaults.
  */
 function getEffectiveChancePercent(assistant, projectId, userData) {
@@ -215,8 +214,7 @@ function getEffectiveChancePercent(assistant, projectId, userData) {
 }
 
 /**
- * Get the effective heartbeat chance percent until the user has replied to the
- * latest actual heartbeat in a supported daily chat on their current local day,
+ * Get the effective heartbeat chance percent for days the user has not replied yet,
  * considering defaults.
  */
 function getEffectiveChanceNoReplyPercent(assistant, projectId, userData) {
@@ -224,78 +222,22 @@ function getEffectiveChanceNoReplyPercent(assistant, projectId, userData) {
 }
 
 /**
- * Compare two persisted message positions. Timestamps provide the primary
- * ordering and document IDs make equal-millisecond ordering deterministic.
+ * Determine whether the user has replied to the assistant during their current
+ * local day. We look at both the in-app heartbeat daily topic and the WhatsApp
+ * daily topic, since the heartbeat conversation can live in either channel.
  */
-function compareDailyMessagePositions(left, right) {
-    const leftCreatedAt = getTimestampMillis(left?.createdAt ?? left?.sentAt)
-    const rightCreatedAt = getTimestampMillis(right?.createdAt ?? right?.sentAt)
-    if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt - rightCreatedAt
-    const leftCommentId = String(left?.commentId || '')
-    const rightCommentId = String(right?.commentId || '')
-    if (leftCommentId === rightCommentId) return 0
-    return leftCommentId > rightCommentId ? 1 : -1
-}
+async function hasUserRepliedToday(projectId, userId, userData) {
+    const { hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
+    const { dateKey } = getUserLocalDateContext(userData)
+    const heartbeatChatId = `Heartbeat${dateKey}${userId}`
+    const whatsAppChatId = `BotChat${dateKey}${userId}`
 
-function getDailyHeartbeatChatIds(userId, userData, now) {
-    const { dateKey } = getUserLocalDateContext(userData, now)
-    return {
-        dateKey,
-        chatIds: [`Heartbeat${dateKey}${userId}`, `BotChat${dateKey}${userId}`],
-    }
-}
+    const [repliedInHeartbeat, repliedInWhatsApp] = await Promise.all([
+        hasUserMessageOnUserLocalDay(projectId, heartbeatChatId, userId, userData),
+        hasUserMessageOnUserLocalDay(projectId, whatsAppChatId, userId, userData),
+    ])
 
-/**
- * The high chance applies only when the newest user message across both daily
- * channels sorts after the latest substantive heartbeat message. With no
- * heartbeat on the current local day, user-initiated messages never count.
- */
-async function hasUserRepliedToLatestHeartbeat(projectId, assistant, userId, userData, now) {
-    const { dateKey, chatIds } = getDailyHeartbeatChatIds(userId, userData, now)
-    const latestHeartbeat = assistant.heartbeatLastVisibleMessageByUser?.[userId]
-
-    if (
-        !latestHeartbeat ||
-        latestHeartbeat.localDateKey !== dateKey ||
-        latestHeartbeat.projectId !== projectId ||
-        !chatIds.includes(latestHeartbeat.chatId) ||
-        !latestHeartbeat.commentId
-    ) {
-        return false
-    }
-
-    const userMessages = await Promise.all(
-        chatIds.map(chatId => getLatestUserMessageOnUserLocalDay(projectId, chatId, userId, userData, now, ['topics']))
-    )
-    const latestUserMessage = userMessages
-        .filter(Boolean)
-        .sort((left, right) => compareDailyMessagePositions(right, left))[0]
-
-    return !!latestUserMessage && compareDailyMessagePositions(latestUserMessage, latestHeartbeat) > 0
-}
-
-async function getReplyAwareChance({ assistant, projectId, userId, userData, now = Date.now() }) {
-    const afterReplyChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
-    const beforeReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
-
-    if (afterReplyChancePercent === beforeReplyChancePercent) {
-        return {
-            chancePercent: afterReplyChancePercent,
-            userRepliedToLatestHeartbeat: null,
-        }
-    }
-
-    const userRepliedToLatestHeartbeat = await hasUserRepliedToLatestHeartbeat(
-        projectId,
-        assistant,
-        userId,
-        userData,
-        now
-    )
-    return {
-        chancePercent: userRepliedToLatestHeartbeat ? afterReplyChancePercent : beforeReplyChancePercent,
-        userRepliedToLatestHeartbeat,
-    }
+    return repliedInHeartbeat || repliedInWhatsApp
 }
 
 function getEffectiveHeartbeatIntervalMs(assistant) {
@@ -314,59 +256,13 @@ function getTimestampMillis(value) {
     return 0
 }
 
-async function recordVisibleHeartbeatMessage({
-    projectId,
-    assistant,
-    userId,
-    userData,
-    chatId,
-    executionResult,
-    opportunityAt = Date.now(),
-}) {
-    const commentId = executionResult?.commentId
-    const commentText = typeof executionResult?.commentText === 'string' ? executionResult.commentText.trim() : ''
-    if (!commentId || !commentText || executionResult?.silentOk === true || executionResult?.guardrailStopped) {
-        return null
-    }
+function hasCompletedHeartbeatToday(assistant, userId, userData, now = Date.now()) {
+    const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, now)
+    const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
 
-    const recordedAt = Date.now()
-    const { dateKey: localDateKey, chatIds } = getDailyHeartbeatChatIds(userId, userData, opportunityAt)
-    if (!chatIds.includes(chatId)) return null
-    const db = admin.firestore()
-    const assistantRef = db.doc(`assistants/${projectId}/items/${assistant.uid}`)
-    const commentRef = db.doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
-    let marker = null
-
-    await db.runTransaction(async transaction => {
-        const commentDoc = await transaction.get(commentRef)
-        const commentData = commentDoc.exists ? commentDoc.data() || {} : null
-        const persistedCommentText = typeof commentData?.commentText === 'string' ? commentData.commentText.trim() : ''
-        if (
-            !commentData ||
-            !persistedCommentText ||
-            commentData.fromAssistant !== true ||
-            commentData.creatorId !== assistant.uid
-        ) {
-            return
-        }
-
-        marker = {
-            projectId,
-            assistantId: assistant.uid,
-            userId,
-            chatId,
-            commentId,
-            createdAt: getTimestampMillis(commentData.created) || recordedAt,
-            localDateKey,
-        }
-        transaction.set(commentRef, { heartbeatMessage: marker }, { merge: true })
-        transaction.update(assistantRef, {
-            [`heartbeatLastVisibleMessageByUser.${userId}`]: marker,
-            [`heartbeatLastExecutedByUser.${userId}`]: recordedAt,
-        })
-    })
-
-    return marker
+    // HEARTBEAT_OK is only a silent evaluation result. Keep using the initial,
+    // higher chance until the assistant produces a substantive heartbeat.
+    return lastExecuted >= startOfDay && lastExecuted <= endOfDay
 }
 
 async function reserveHeartbeatInsufficientGoldNotice(userId, now = Date.now()) {
@@ -573,15 +469,11 @@ async function checkAndExecuteHeartbeats() {
                         if (!activeUsersMap.has(userId)) continue
 
                         let userData = activeUsersMap.get(userId)
-                        const afterReplyChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
-                        const beforeReplyChancePercent = getEffectiveChanceNoReplyPercent(
-                            assistant,
-                            projectId,
-                            userData
-                        )
+                        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+                        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
 
-                        // Skip only when the heartbeat is disabled in both reply states.
-                        if (afterReplyChancePercent <= 0 && beforeReplyChancePercent <= 0) continue
+                        // Skip only when the heartbeat is disabled for both reply states.
+                        if (repliedChancePercent <= 0 && noReplyChancePercent <= 0) continue
 
                         // Check awake window
                         const timezoneOffsetMinutes =
@@ -625,16 +517,16 @@ async function checkAndExecuteHeartbeats() {
                             }
                         }
 
-                        const opportunityAt = Date.now()
-                        // Every actual heartbeat resets the state to the low chance. Only a
-                        // later user message in either supported daily channel enables high.
-                        const { chancePercent, userRepliedToLatestHeartbeat } = await getReplyAwareChance({
-                            assistant,
-                            projectId,
-                            userId,
-                            userData,
-                            now: opportunityAt,
-                        })
+                        // Use the higher/replied chance until this assistant completes its
+                        // first heartbeat of the user's local day. After that first run,
+                        // use the lower/no-reply chance until the user replies that day.
+                        let chancePercent = repliedChancePercent
+                        let repliedToday = null
+                        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
+                        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
+                            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
+                            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
+                        }
 
                         if (chancePercent <= 0) continue
 
@@ -653,11 +545,12 @@ async function checkAndExecuteHeartbeats() {
                             assistantId: assistant.uid,
                             userId,
                             chancePercent,
-                            userRepliedToLatestHeartbeat,
+                            completedToday,
+                            repliedToday,
                             intervalMs,
                         })
 
-                        heartbeatsToExecute.push({ projectId, assistant, userId, userData, opportunityAt })
+                        heartbeatsToExecute.push({ projectId, assistant, userId, userData })
                     }
 
                     if (Object.keys(processedWindowUpdates).length > 0) {
@@ -672,7 +565,7 @@ async function checkAndExecuteHeartbeats() {
         console.log('Heartbeat: Tasks to execute:', { count: heartbeatsToExecute.length })
 
         // Step 4: Execute heartbeats
-        for (const { projectId, assistant, userId, userData, opportunityAt } of heartbeatsToExecute) {
+        for (const { projectId, assistant, userId, userData } of heartbeatsToExecute) {
             try {
                 const assistantRef = admin.firestore().doc(`assistants/${projectId}/items/${assistant.uid}`)
                 // NOTE: duplicate runs within the same window are already prevented by
@@ -688,22 +581,10 @@ async function checkAndExecuteHeartbeats() {
                 let chatId
                 if (shouldSendWhatsApp) {
                     const { getOrCreateWhatsAppDailyTopic } = require('../WhatsApp/whatsAppDailyTopic')
-                    const result = await getOrCreateWhatsAppDailyTopic(
-                        userId,
-                        projectId,
-                        assistant.uid,
-                        userData,
-                        opportunityAt
-                    )
+                    const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid, userData)
                     chatId = result.chatId
                 } else {
-                    const result = await getOrCreateHeartbeatTopic(
-                        userId,
-                        projectId,
-                        assistant.uid,
-                        userData,
-                        opportunityAt
-                    )
+                    const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData)
                     chatId = result.chatId
                 }
 
@@ -808,21 +689,14 @@ async function checkAndExecuteHeartbeats() {
                         reason: executionResult.guardrailStopped.reason,
                     })
                 } else {
-                    const marker = await recordVisibleHeartbeatMessage({
-                        projectId,
-                        assistant,
-                        userId,
-                        userData,
-                        chatId,
-                        executionResult,
-                        opportunityAt,
+                    await assistantRef.update({
+                        [`heartbeatLastExecutedByUser.${userId}`]: Date.now(),
                     })
-                    console.log('Heartbeat: Execution completed:', {
+                    console.log('Heartbeat: Executed successfully:', {
                         projectId,
                         assistantId: assistant.uid,
                         userId,
                         sentWhatsApp: shouldSendWhatsApp,
-                        visibleHeartbeatRecorded: !!marker,
                     })
                 }
             } catch (error) {
@@ -911,7 +785,7 @@ async function claimScheduledHeartbeat({ scheduleId, projectId, assistantId, use
     return { ...result, scheduleRef }
 }
 
-async function executeHeartbeatContent({ projectId, assistant, userId, userData, opportunityAt = Date.now() }) {
+async function executeHeartbeatContent({ projectId, assistant, userId, userData }) {
     const assistantRef = admin.firestore().doc(`assistants/${projectId}/items/${assistant.uid}`)
     const sendWhatsApp = getEffectiveHeartbeatSendWhatsApp(assistant, userData)
     const shouldSendWhatsApp = sendWhatsApp && !!userData.phone
@@ -919,10 +793,10 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData,
     let chatId
     if (shouldSendWhatsApp) {
         const { getOrCreateWhatsAppDailyTopic } = require('../WhatsApp/whatsAppDailyTopic')
-        const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid, userData, opportunityAt)
+        const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid, userData)
         chatId = result.chatId
     } else {
-        const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData, opportunityAt)
+        const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData)
         chatId = result.chatId
     }
 
@@ -990,16 +864,8 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData,
         return { outcome: 'guardrail_failed', executionResult }
     }
 
-    const marker = await recordVisibleHeartbeatMessage({
-        projectId,
-        assistant,
-        userId,
-        userData,
-        chatId,
-        executionResult,
-        opportunityAt,
-    })
-    return { outcome: marker ? 'executed' : 'no_visible_message', executionResult }
+    await assistantRef.update({ [`heartbeatLastExecutedByUser.${userId}`]: Date.now() })
+    return { outcome: 'executed', executionResult }
 }
 
 async function executeScheduledHeartbeat(task = {}) {
@@ -1081,23 +947,24 @@ async function executeScheduledHeartbeat(task = {}) {
             }
         }
 
-        const opportunityAt = Date.now()
-        const { chancePercent, userRepliedToLatestHeartbeat } = await getReplyAwareChance({
-            assistant,
-            projectId,
-            userId,
-            userData,
-            now: opportunityAt,
-        })
+        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
+        let chancePercent = repliedChancePercent
+        let repliedToday = null
+        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
+        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
+            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
+            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
+        }
 
         if (chancePercent <= 0 || Math.random() * 100 >= chancePercent) {
             await updateHeartbeatScheduleOutcome(scheduleRef, 'chance_skipped', {
                 lastChancePercent: chancePercent,
             })
-            return { outcome: 'chance_skipped', chancePercent, userRepliedToLatestHeartbeat }
+            return { outcome: 'chance_skipped', chancePercent, completedToday, repliedToday }
         }
 
-        const result = await executeHeartbeatContent({ projectId, assistant, userId, userData, opportunityAt })
+        const result = await executeHeartbeatContent({ projectId, assistant, userId, userData })
         await updateHeartbeatScheduleOutcome(scheduleRef, result.outcome)
         return { outcome: result.outcome }
     } catch (error) {
