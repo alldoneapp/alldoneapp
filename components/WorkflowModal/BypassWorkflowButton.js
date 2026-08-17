@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
-export default function BypassWorkflowButton({ disabled, onPress, label = 'Bypass workflow' }) {
+export default function BypassWorkflowButton({ disabled, onPress, label = 'Bypass workflow and mark done' }) {
     const text = translate(label)
 
     return (

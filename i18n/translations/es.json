@@ -2606,6 +2606,7 @@
     "Task flow": "Flujo de la tarea",
     "Use workflow": "Usar flujo de trabajo",
     "Bypass workflow": "Omitir flujo de trabajo",
+    "Bypass workflow and mark done": "Omitir flujo de trabajo y marcar como hecho",
     "Submit": "Enviar",
     "Submitting task": "Enviando tarea...",
     "Task submitted": "Tarea enviada.",
