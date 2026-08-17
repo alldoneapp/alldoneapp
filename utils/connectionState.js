@@ -25,6 +25,14 @@ import { setConnectionState } from '../redux/actions'
 
 const CONNECTION_STATE_DEBOUNCE_MS = 500
 
+/**
+ * Synchronous browser-level offline check for early-boot code that runs before
+ * (or independently of) the debounced redux slice — the slice can still be ''
+ * while the first reads are already failing. `false` when there is no navigator
+ * (tests, non-browser).
+ */
+export const isBrowserOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
+
 export const installConnectionStateListener = ({
     windowObject = typeof window === 'undefined' ? undefined : window,
     dispatch = store.dispatch,

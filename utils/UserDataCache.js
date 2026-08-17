@@ -2,6 +2,7 @@
  * User Data Cache utility for faster app initialization
  * Caches user data in localStorage to reduce Firebase requests on subsequent visits
  */
+import { isBrowserOffline } from './connectionState'
 
 const CACHE_KEYS = {
     USER_DATA: 'alldone_cached_user_data',
@@ -25,6 +26,12 @@ class UserDataCache {
             if (!timestamp || !version || version !== CACHE_VERSION) {
                 return false
             }
+
+            // Offline, a stale cache beats a blank screen: the age limit exists to
+            // bound how long the fast-boot path can lag the server, and offline there
+            // is no server to lag (OFFLINE_SUPPORT_PLAN.md Stage 5). The version check
+            // above still applies — a structurally incompatible cache is never served.
+            if (isBrowserOffline()) return true
 
             const cacheAge = Date.now() - parseInt(timestamp)
             const maxAge = CACHE_EXPIRY_HOURS * 60 * 60 * 1000

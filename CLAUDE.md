@@ -292,12 +292,15 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
-### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–4 shipped 2026-08-17)
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–5 shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
   `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
   `utils/connectionState.js`, installed once from `AppNavigator`'s `AppContainer` like the
-  escape stack. Gate online-only features on `state.connectionState === 'offline'`; treat
+  escape stack. For early-boot code that runs before the debounced slice settles, use the
+  synchronous `isBrowserOffline()` from the same module (UserDataCache expiry tolerance,
+  login retry short-circuits, the offline branch of `handleLoginFailure` all do).
+  Gate online-only features on `state.connectionState === 'offline'`; treat
   `'offline'` as authoritative and `'online'` as a hint (captive portals lie). The
   `ConnectionStateModal` toast + notes read-only gating consume it in
   `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
