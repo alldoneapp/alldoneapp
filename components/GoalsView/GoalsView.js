@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -41,15 +41,18 @@ export default function GoalsView() {
     const forceCloseGoalEditionId = useSelector(state => state.forceCloseGoalEditionId)
     const dismissibleRefs = useRef({})
 
-    const setDismissibleRefs = (ref, dismissibleId) => {
+    // These only ever touch a ref and the store, so they are stable for the lifetime of the view.
+    // Keeping their identity stable is what lets `React.memo(MilestonesListByProject)` actually
+    // bail out of re-rendering every project row (AT-2336).
+    const setDismissibleRefs = useCallback((ref, dismissibleId) => {
         if (ref) dismissibleRefs.current[dismissibleId] = ref
-    }
+    }, [])
 
-    const unsetDismissibleRefs = dismissibleId => {
+    const unsetDismissibleRefs = useCallback(dismissibleId => {
         delete dismissibleRefs?.current?.[dismissibleId]
-    }
+    }, [])
 
-    const closeEdition = dismissibleId => {
+    const closeEdition = useCallback(dismissibleId => {
         if (
             !exitsOpenModals([
                 TASK_DESCRIPTION_MODAL_ID,
@@ -64,26 +67,29 @@ export default function GoalsView() {
         ) {
             dismissibleRefs.current[dismissibleId].closeModal()
         }
-    }
+    }, [])
 
-    const closeAllEdition = () => {
+    const closeAllEdition = useCallback(() => {
         for (let dismissibleId in dismissibleRefs.current) {
             if (dismissibleRefs.current[dismissibleId].modalIsVisible()) closeEdition(dismissibleId)
         }
-    }
+    }, [closeEdition])
 
-    const checkIfAnyDismissibleIsOpen = () => {
+    const checkIfAnyDismissibleIsOpen = useCallback(() => {
         for (let dismissibleId in dismissibleRefs.current) {
             if (dismissibleRefs.current[dismissibleId].modalIsVisible()) return true
         }
         return false
-    }
+    }, [])
 
-    const openEdition = dismissibleId => {
-        const { showFloatPopup } = store.getState()
-        if (showFloatPopup === 0) closeAllEdition()
-        if (!checkIfAnyDismissibleIsOpen()) dismissibleRefs.current[dismissibleId].openModal()
-    }
+    const openEdition = useCallback(
+        dismissibleId => {
+            const { showFloatPopup } = store.getState()
+            if (showFloatPopup === 0) closeAllEdition()
+            if (!checkIfAnyDismissibleIsOpen()) dismissibleRefs.current[dismissibleId].openModal()
+        },
+        [closeAllEdition, checkIfAnyDismissibleIsOpen]
+    )
 
     useEffect(() => {
         if (dismissibleRefs.current[forceCloseGoalEditionId]) {
