@@ -14,7 +14,6 @@ import {
 } from '../backends/firestore'
 import { initLogInForLoggedUser, setProjectsInitialData, updateLoadingStep } from '../../redux/actions'
 import { getProgressLoadingMessage } from '../FunnyLoadingMessages'
-import { isBrowserOffline } from '../connectionState'
 import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelper'
 import { getDeviceLanguage } from '../../i18n/TranslationService'
 import {
@@ -161,14 +160,6 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
 
     // If all projects failed and we have retries left, wait and try again
     if (loadedCount === 0 && projectIds.length > 0 && retryCount < MAX_RETRIES) {
-        // Offline, retrying cannot succeed (whatever the Firestore cache holds has
-        // already answered) — return what we have instead of burning 25s of delays.
-        // The live project watchers and the boot integrity checks recover the rest
-        // once connectivity returns.
-        if (isBrowserOffline()) {
-            console.warn('[InitialLoad] Browser is offline - not retrying project loads')
-            return results
-        }
         console.log(
             `All projects failed to load. Retrying in ${RETRY_DELAY_MS / 1000}s... (attempt ${
                 retryCount + 1
@@ -385,12 +376,7 @@ export const loadGlobalDataAndGetUserResult = async userId => {
     // No cache available, load from Firebase
     const promises = []
     promises.push(fetchUserDataResult(userId, true))
-    promises.push(
-        // Global data (administrator user, hashtag colors) must not fail the login:
-        // offline it can be unreachable while the user document is served from the
-        // Firestore cache, and the boot integrity checks re-fetch it once online.
-        loadGlobalData().catch(error => console.warn('Error loading global data during login:', error))
-    )
+    promises.push(loadGlobalData())
     const [{ user, missing, error }] = await Promise.all(promises)
 
     // Cache the fresh data
