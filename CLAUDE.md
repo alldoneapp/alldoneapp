@@ -292,6 +292,76 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
+### Offline support (OFFLINE_SUPPORT_PLAN.md — all 8 stages shipped 2026-08-17)
+
+- **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
+  `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
+  `utils/connectionState.js`, installed once from `AppNavigator`'s `AppContainer` like the
+  escape stack. For early-boot code that runs before the debounced slice settles, use the
+  synchronous `isBrowserOffline()` from the same module (UserDataCache expiry tolerance,
+  login retry short-circuits, the offline branch of `handleLoginFailure` all do).
+  Gate online-only features on `state.connectionState === 'offline'`; treat
+  `'offline'` as authoritative and `'online'` as a hint (captive portals lie). The
+  `ConnectionStateModal` toast + notes read-only gating consume it in
+  `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
+  imported and needs the retired native toolchain; use this module instead.
+- **Online-only surfaces fail fast, never hang**: `runHttpsCallableFunction` and
+  `multiSearchTypesense` both throw a typed `code: 'offline'` error immediately while
+  offline (a callable otherwise hangs into its 70s SDK timeout). New features must
+  either work from the Firestore cache or gate on `connectionState`/`isBrowserOffline`
+  and fail fast with that same error shape. Mentions degrade to redux project members
+  (`MentionsModal.getLocalContactsFallback`); `getMentions` must never throw —
+  `updateResults` has no catch and a rejection leaves the mentions spinner hanging.
+- **Notes offline (y-indexeddb)**: the LIVE notes editor attaches an
+  `IndexeddbPersistence` (`noteLocalPersistence.js`) alongside the `WebsocketProvider`;
+  the headless/virtual Quill path in `notesHelper.js` deliberately does not (online-only
+  operations, cleanup hazards). `prepareSyncedNoteDocument` opens from local state when
+  Storage and/or the collab server are unreachable, and flags
+  `storageNeedsLocalCatchUp` so offline edits get uploaded to Firebase Storage on the
+  next online open (detection compares merged encodings, NOT bare state vectors — a
+  state-vector diff over-reports on every open because it can't see delete-set equality,
+  and a false positive fires edit side effects like `startEditNoteFeedsChain`). Offline
+  no longer forces the notes editor read-only. Pinned by
+  `noteCollaborationRecovery.test.js` and `noteLocalPersistence.test.js`.
+- **Firestore persistence**: `initFirebase` enables IndexedDB persistence
+  (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
+  multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
+  SDK queues later calls behind the enable; every failure degrades to the in-memory
+  cache). Skipped under the emulator, whose IndexedDB is wiped each boot. Consequences to
+  respect: `watchForceReload` only honors a **server** snapshot (a cached `{reload: true}`
+  would reload-loop offline — the guard is `doc.metadata.fromCache`), and
+  `bootIntegrityHealer` stands down while `connectionState === 'offline'` (cached-only
+  data is not an anomaly, and the bounded `disableNetwork`/`enableNetwork` cycles must
+  not be burned offline). A doc "missing" in a cache-only snapshot is **unknown, not
+  deleted** — the `firestoreDirectRead` verification paths already treat a failed direct
+  read as retryable, keep it that way.
+- **Cached-snapshot delivery (`utils/backends/cachedSnapshotGate.js`)**: the list
+  watchers (open/done/workflow tasks, the notes watchers via
+  `createNotesSnapshotHandler`) buffer `fromCache` snapshots online but must render them
+  offline — offline every snapshot is `fromCache` forever. Never test
+  `querySnapshot.metadata.fromCache` directly in a list watcher; use
+  `createCachedSnapshotGate` (`shouldBuffer` + `wrapUnsubscribe`). The gate delivers
+  cached data when `connectionState === 'offline'` **or** after a 4s only-cache grace
+  period — the grace exists because Firestore snapshots are edge-triggered and
+  `navigator.onLine` lies on captive portals; a level-check alone would leave lists
+  permanently blank when the offline transition lands after the initial cache snapshot.
+  Its flush re-invokes the watcher's handler with a synthetic snapshot whose
+  `docChanges()` is empty (buffered changes must not double-count) — pinned by
+  `cachedSnapshotGate.test.js`.
+- **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
+  `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
+  live in web-bundler's own package). It precaches the app shell (hashed chunks,
+  index.html, fonts) so an offline reload boots; navigations stay network-first;
+  cross-origin SDK traffic is untouched (workbox only intercepts registered routes). Dev
+  builds copy the no-op `service-worker.dev.js` to the same URL. The legacy
+  `web/service-worker.js` (which deleted **every** cache on activate — do not resurrect
+  it) is gone; `firebase-messaging-sw.js` stays separate and un-precached (sed-injected
+  env placeholders). `utils/Observers.js` `deleteCache()` must never delete
+  `workbox-precache*` caches — it clears runtime caches and triggers
+  `registration.update()` instead. `__tests__/ServiceWorkerPrecache.test.js` pins all of
+  this; `__tests__/utils/DailyAppReload.test.js` pins that the daily reload defers while
+  offline and catches up on the `online` event.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
@@ -571,6 +641,15 @@ browser before trusting a bigger change.
   pre-merge QA surface for a feature branch is the **manual `deploy:web-webpack-preview`
   job**, which publishes a Firebase hosting preview channel `webpack-<ref-slug>` on the
   staging project.
+- **Manual QA that involves signing in must run on staging live
+  (`deploy:web-staging-live` → https://alldonestaging.web.app), NOT on a preview
+  channel.** Preview channels get a fresh random origin
+  (`alldonestaging--webpack-<ref>-<hash>.web.app`) that is not in the Google OAuth
+  client's authorized JavaScript origins, so Google sign-in fails there and the app is
+  untestable past the login screen (hit 2026-08-17 QA-ing the offline-support branch).
+  Preview channels remain useful only for compile/render smoke checks of the
+  logged-out surface. Deploying a feature branch to staging live is last-writer-wins
+  over whatever was there — fine for QA, just say so if others are testing.
 - **Build process**: `ci/replace-envs.sh` injects environment variables during build
 - **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
 - **`resource_group` serializes deploys but does NOT order them — production deploy jobs

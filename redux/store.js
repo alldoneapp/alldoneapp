@@ -162,6 +162,9 @@ export const initialState = {
     chatsActiveTab: FOLLOWED_TAB,
     chatsUnreadOnly: false,
     screenDimensions: {},
+    // '' until the first observed transition, then 'offline' | 'online' ('online' only
+    // ever set as a recovery from 'offline' — see utils/connectionState.js)
+    connectionState: '',
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     noteChangedNotification: false,
@@ -1058,6 +1061,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, contactsActiveTab: action.contactsActiveTab }
         case 'Set screen dimensions':
             return { ...state, screenDimensions: action.screenDimensions }
+        case 'Set connection state':
+            return { ...state, connectionState: action.connectionState }
         case 'Set show new day notification':
             return { ...state, showNewDayNotification: action.show }
         case 'Show note changed notification':
