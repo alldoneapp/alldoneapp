@@ -44,4 +44,14 @@ describe('TaskListSkeleton', () => {
 
         expect(tree.root.findAllByProps({ testID: 'task-loading-skeleton-row' })).toHaveLength(3)
     })
+
+    it('can render one shared task row for incremental task loading', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<TaskListSkeleton rowCount={1} />)
+            await Promise.resolve()
+        })
+
+        expect(tree.root.findAllByProps({ testID: 'task-loading-skeleton-row' })).toHaveLength(1)
+    })
 })
