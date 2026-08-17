@@ -61,4 +61,25 @@ describe('buildContactsViewData', () => {
         expect(result.filteredProjectsUsers['project-1']).toBe(baseData.projectUsers['project-1'])
         expect(result.filteredProjectsContacts['project-2']).toBe(baseData.projectContacts['project-2'])
     })
+
+    it('does not aggregate contacts from projects excluded by the active-project scope', () => {
+        const result = buildContactsViewData({
+            ...baseData,
+            loggedUserProjects: [projects[0]],
+            contactsActiveTab: 1,
+        })
+
+        expect(result.filteredProjectsUsers).toEqual({
+            'project-1': baseData.projectUsers['project-1'],
+        })
+        expect(result.filteredProjectsContacts).toEqual({
+            'project-1': baseData.projectContacts['project-1'],
+        })
+        expect(result.amounts).toEqual({
+            users: 1,
+            contacts: 1,
+            followedUsers: 0,
+            followedContacts: 0,
+        })
+    })
 })

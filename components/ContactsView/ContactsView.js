@@ -5,10 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 
 import ContactsHeader from './ContactsHeader'
 import ContactListByProject from './ContactListByProject'
-import ProjectHelper, {
-    ALL_PROJECTS_INDEX,
-    checkIfSelectedAllProjects,
-} from '../SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_PROJECTS_INDEX, checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import URLsPeople, {
     URL_ALL_PROJECTS_PEOPLE_ALL,
     URL_ALL_PROJECTS_PEOPLE_FOLLOWED,
@@ -22,10 +19,10 @@ import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
-import { PROJECT_TYPE_GUIDE } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import { watchFollowedPeople } from '../../utils/backends/Contacts/followedPeopleFirestore'
 import { createFollowedPeopleBatcher, getProjectsForFollowedPeopleWatch } from './followedPeopleBatcher'
 import { buildContactsViewData } from './contactsViewData'
+import { getProjectsForContactsView } from './contactsViewProjectScope'
 
 export default function ContactsView() {
     const dispatch = useDispatch()
@@ -41,6 +38,10 @@ export default function ContactsView() {
     const [followedPeopleByProject, setFollowedPeopleByProject] = useState({})
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    const projectsForContactsView = useMemo(
+        () => getProjectsForContactsView(inAllProjects, loggedUserProjects, loggedUser),
+        [inAllProjects, loggedUserProjects, loggedUser]
+    )
 
     const writeBrowserURL = () => {
         if (inAllProjects) {
@@ -62,7 +63,7 @@ export default function ContactsView() {
         () =>
             buildContactsViewData({
                 loggedUser,
-                loggedUserProjects,
+                loggedUserProjects: projectsForContactsView,
                 projectUsers,
                 projectContacts,
                 followedPeopleByProject,
@@ -73,7 +74,7 @@ export default function ContactsView() {
             }),
         [
             loggedUser,
-            loggedUserProjects,
+            projectsForContactsView,
             projectUsers,
             projectContacts,
             followedPeopleByProject,
@@ -88,13 +89,13 @@ export default function ContactsView() {
         dispatch(setNavigationRoute(DV_TAB_ROOT_CONTACTS))
     }, [])
 
-    const projectIdsKey = loggedUserProjects.map(project => project.id).join('|')
+    const projectIdsKey = projectsForContactsView.map(project => project.id).join('|')
 
     useEffect(() => {
         const projects = getProjectsForFollowedPeopleWatch(
             contactsActiveTab === FOLLOWED_TAB,
             selectedProjectIndex,
-            loggedUserProjects
+            projectsForContactsView
         )
         if (projects.length === 0) return
 
@@ -120,8 +121,8 @@ export default function ContactsView() {
     const project = inAllProjects ? ALL_PROJECTS_INDEX : loggedUserProjects[selectedProjectIndex]
 
     const sortedLoggedUserProjects = useMemo(() => {
-        const normalProjects = loggedUserProjects.filter(project => !project.parentTemplateId)
-        const guides = loggedUserProjects.filter(project => !!project.parentTemplateId)
+        const normalProjects = projectsForContactsView.filter(project => !project.parentTemplateId)
+        const guides = projectsForContactsView.filter(project => !!project.parentTemplateId)
         const getLastEditedContactDate = projectId => {
             const contacts = projectContacts[projectId] || []
             return contacts.reduce((maxDate, contact) => Math.max(maxDate, contact?.lastEditionDate || 0), 0)
@@ -134,7 +135,7 @@ export default function ContactsView() {
             )
 
         return [...sortProjects(normalProjects), ...sortProjects(guides)]
-    }, [loggedUserProjects, projectContacts])
+    }, [projectsForContactsView, projectContacts])
 
     const contactsAmount = amounts.users + amounts.contacts
     const followedContactsAmount = amounts.followedUsers + amounts.followedContacts
@@ -161,23 +162,16 @@ export default function ContactsView() {
                 inAllProjects ? (
                     sortedLoggedUserProjects.map((project, index) => {
                         if (filteredProjectsUsers[project.id]) {
-                            const matchTypeOfProject =
-                                ProjectHelper.getTypeOfProject(loggedUser, project.id) === selectedTypeOfProject ||
-                                (inAllProjects &&
-                                    ProjectHelper.getTypeOfProject(loggedUser, project.id) === PROJECT_TYPE_GUIDE)
-
                             return (
-                                matchTypeOfProject && (
-                                    <ContactListByProject
-                                        key={project.index}
-                                        projectIndex={project.index}
-                                        members={filteredProjectsUsers[project.id]}
-                                        contacts={filteredProjectsContacts[project.id]}
-                                        onlyMembers={false}
-                                        firstProject={index === 0}
-                                        maxContactsToRender={3}
-                                    />
-                                )
+                                <ContactListByProject
+                                    key={project.index}
+                                    projectIndex={project.index}
+                                    members={filteredProjectsUsers[project.id]}
+                                    contacts={filteredProjectsContacts[project.id]}
+                                    onlyMembers={false}
+                                    firstProject={index === 0}
+                                    maxContactsToRender={3}
+                                />
                             )
                         }
                     })

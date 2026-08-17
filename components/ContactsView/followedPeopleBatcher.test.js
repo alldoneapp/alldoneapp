@@ -11,6 +11,12 @@ describe('getProjectsForFollowedPeopleWatch', () => {
         expect(getProjectsForFollowedPeopleWatch(true, -1, projects)).toBe(projects)
     })
 
+    it('creates no listener for an inactive project removed from the view scope', () => {
+        const activeProjects = [projects[0]]
+
+        expect(getProjectsForFollowedPeopleWatch(true, -1, activeProjects)).toEqual([projects[0]])
+    })
+
     it('watches only the selected project outside All Projects', () => {
         expect(getProjectsForFollowedPeopleWatch(true, 1, projects)).toEqual([projects[1]])
     })
