@@ -162,7 +162,7 @@ describe('suggested email task Accept/Reject popup', () => {
         const { tree } = renderModal(WORKFLOW_PROJECT_ID)
 
         expect(tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.accessibilityLabel).toBe(
-            'Bypass workflow'
+            'Bypass workflow and mark done'
         )
     })
 
