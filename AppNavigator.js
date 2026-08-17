@@ -47,6 +47,7 @@ import AssistantDetailedView from './components/AssistantDetailedView/AssistantD
 import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
+import { installConnectionStateListener } from './utils/connectionState'
 
 const onLayoutChange = layout => {
     const {
@@ -220,6 +221,10 @@ export class AppContainer extends React.Component {
         // one component that mounts once for the whole app and owns its
         // document-level listeners.
         this.stopEscapeStack = installEscapeStack()
+        // Connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1): feeds the
+        // `connectionState` redux slice from the browser online/offline events.
+        // Installed here for the same reason as the listeners above.
+        this.stopConnectionStateListener = installConnectionStateListener()
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -238,6 +243,7 @@ export class AppContainer extends React.Component {
         document.removeEventListener('touchstart', this.handleDomPointerDown, { capture: true })
         this.stopVirtualKeyboardViewport && this.stopVirtualKeyboardViewport()
         this.stopEscapeStack && this.stopEscapeStack()
+        this.stopConnectionStateListener && this.stopConnectionStateListener()
     }
 
     // Feeds every press on the page into the dismissible-modal system with the

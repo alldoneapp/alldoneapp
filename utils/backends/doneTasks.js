@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import { getDb, mapTaskData, globalWatcherUnsub } from './firestore'
+import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import store from '../../redux/store'
 import { startLoadingData, stopLoadingData, updateUserProject } from '../../redux/actions'
 import { checkIfSelectedAllProjects } from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -25,49 +26,53 @@ export function watchTodayDoneTasks(project, watcherKey, callback) {
     const startOfToday = now.startOf('day').valueOf()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`items/${projectId}/tasks`)
-        .where('userId', '==', currentUserId)
-        .where('inDone', '==', true)
-        .where('completed', '<=', endOfToday)
-        .where('completed', '>=', startOfToday)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
-        .orderBy('completed', 'desc')
-        .orderBy('sortIndex', 'desc')
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            if (!querySnapshot.metadata.fromCache) {
-                const tasks = {}
-                const todaySubtasksByTask = {}
-                const estimationByDate = {}
+    const gate = createCachedSnapshotGate(() => handleNewestDoneTasksSnapshot)
+    function handleNewestDoneTasksSnapshot(querySnapshot) {
+        if (!gate.shouldBuffer(querySnapshot)) {
+            const tasks = {}
+            const todaySubtasksByTask = {}
+            const estimationByDate = {}
 
-                let lastDoneTimestamp = moment('01-01-1970', 'DD-MM-YYYY').valueOf()
-                if (querySnapshot.docs.length) {
-                    lastDoneTimestamp = querySnapshot.docs[0].data().completed
-                    const date = now.format('YYYYMMDD')
-                    tasks[date] = []
-                    estimationByDate[date] = ESTIMATION_0_MIN
-                    for (const doc of querySnapshot.docs) {
-                        const task = mapTaskData(doc.id, doc.data())
+            let lastDoneTimestamp = moment('01-01-1970', 'DD-MM-YYYY').valueOf()
+            if (querySnapshot.docs.length) {
+                lastDoneTimestamp = querySnapshot.docs[0].data().completed
+                const date = now.format('YYYYMMDD')
+                tasks[date] = []
+                estimationByDate[date] = ESTIMATION_0_MIN
+                for (const doc of querySnapshot.docs) {
+                    const task = mapTaskData(doc.id, doc.data())
 
-                        if (task.parentId) {
-                            todaySubtasksByTask[task.parentId]
-                                ? todaySubtasksByTask[task.parentId].push(task)
-                                : (todaySubtasksByTask[task.parentId] = [task])
-                        } else {
-                            tasks[date].push(task)
-                            estimationByDate[date] += getEstimationRealValue(projectId, task.estimations[OPEN_STEP])
-                        }
+                    if (task.parentId) {
+                        todaySubtasksByTask[task.parentId]
+                            ? todaySubtasksByTask[task.parentId].push(task)
+                            : (todaySubtasksByTask[task.parentId] = [task])
+                    } else {
+                        tasks[date].push(task)
+                        estimationByDate[date] += getEstimationRealValue(projectId, task.estimations[OPEN_STEP])
                     }
                 }
-
-                inAllProjects && store.dispatch(updateUserProject({ ...project, lastDoneDate: lastDoneTimestamp }))
-
-                const tasksByDate = Object.entries(tasks).sort((a, b) => b[0] - a[0])
-                store.dispatch(stopLoadingData())
-
-                callback(tasksByDate, todaySubtasksByTask, estimationByDate)
             }
-        })
+
+            inAllProjects && store.dispatch(updateUserProject({ ...project, lastDoneDate: lastDoneTimestamp }))
+
+            const tasksByDate = Object.entries(tasks).sort((a, b) => b[0] - a[0])
+            store.dispatch(stopLoadingData())
+
+            callback(tasksByDate, todaySubtasksByTask, estimationByDate)
+        }
+    }
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(
+        getDb()
+            .collection(`items/${projectId}/tasks`)
+            .where('userId', '==', currentUserId)
+            .where('inDone', '==', true)
+            .where('completed', '<=', endOfToday)
+            .where('completed', '>=', startOfToday)
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .orderBy('completed', 'desc')
+            .orderBy('sortIndex', 'desc')
+            .onSnapshot({ includeMetadataChanges: true }, handleNewestDoneTasksSnapshot)
+    )
 }
 
 export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, callback) {
@@ -167,31 +172,35 @@ export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, c
 
     let cacheChanges = []
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`items/${projectId}/tasks`)
-        .where('userId', '==', currentUserId)
-        .where('done', '==', true)
-        .where('completed', '<=', endOfToday)
-        .where('parentId', '==', null)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
-        .orderBy('completed', 'desc')
-        .limit(tasksAmountToWatch)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            const changes = querySnapshot.docChanges()
-            if (querySnapshot.metadata.fromCache) {
-                cacheChanges = [...cacheChanges, ...changes]
-            } else {
-                const mergedChanges = [...cacheChanges, ...changes]
-                if (mergedChanges.length > 0) {
-                    updateLastTwoWeeksTasks(mergedChanges)
-                    const tasksByDate = Object.entries(storedTasks).sort((a, b) => b[0] - a[0])
-                    const earlierCompletedDateToCheck = getEarlierCompletedDateToCheck(querySnapshot.docs)
-                    callback(tasksByDate, estimationByDate, querySnapshot.docs.length, earlierCompletedDateToCheck)
-                    cacheChanges = []
-                }
-                store.dispatch(stopLoadingData())
+    const gate = createCachedSnapshotGate(() => handleEarlierDoneTasksSnapshot)
+    function handleEarlierDoneTasksSnapshot(querySnapshot) {
+        const changes = querySnapshot.docChanges()
+        if (gate.shouldBuffer(querySnapshot)) {
+            cacheChanges = [...cacheChanges, ...changes]
+        } else {
+            const mergedChanges = [...cacheChanges, ...changes]
+            if (mergedChanges.length > 0) {
+                updateLastTwoWeeksTasks(mergedChanges)
+                const tasksByDate = Object.entries(storedTasks).sort((a, b) => b[0] - a[0])
+                const earlierCompletedDateToCheck = getEarlierCompletedDateToCheck(querySnapshot.docs)
+                callback(tasksByDate, estimationByDate, querySnapshot.docs.length, earlierCompletedDateToCheck)
+                cacheChanges = []
             }
-        })
+            store.dispatch(stopLoadingData())
+        }
+    }
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(
+        getDb()
+            .collection(`items/${projectId}/tasks`)
+            .where('userId', '==', currentUserId)
+            .where('done', '==', true)
+            .where('completed', '<=', endOfToday)
+            .where('parentId', '==', null)
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .orderBy('completed', 'desc')
+            .limit(tasksAmountToWatch)
+            .onSnapshot({ includeMetadataChanges: true }, handleEarlierDoneTasksSnapshot)
+    )
 }
 
 export function watchEarlierDoneSubtasks(project, watcherKey, callback, completedDateToCheck) {
@@ -240,24 +249,28 @@ export function watchEarlierDoneSubtasks(project, watcherKey, callback, complete
     const loggedUserId = loggedUser.uid
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`items/${projectId}/tasks`)
-        .where('userId', '==', currentUserId)
-        .where('parentDone', '==', true)
-        .where('completed', '>=', completedDateToCheck)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            const changes = querySnapshot.docChanges()
-            if (querySnapshot.metadata.fromCache) {
-                cacheChanges = [...cacheChanges, ...changes]
-            } else {
-                const mergedChanges = [...cacheChanges, ...changes]
-                if (mergedChanges.length > 0) updateLastTwoWeeksSubtasks(mergedChanges)
-                store.dispatch(stopLoadingData())
-                callback(subtasksByParentId)
-                cacheChanges = []
-            }
-        })
+    const gate = createCachedSnapshotGate(() => handleEarlierDoneSubtasksSnapshot)
+    function handleEarlierDoneSubtasksSnapshot(querySnapshot) {
+        const changes = querySnapshot.docChanges()
+        if (gate.shouldBuffer(querySnapshot)) {
+            cacheChanges = [...cacheChanges, ...changes]
+        } else {
+            const mergedChanges = [...cacheChanges, ...changes]
+            if (mergedChanges.length > 0) updateLastTwoWeeksSubtasks(mergedChanges)
+            store.dispatch(stopLoadingData())
+            callback(subtasksByParentId)
+            cacheChanges = []
+        }
+    }
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(
+        getDb()
+            .collection(`items/${projectId}/tasks`)
+            .where('userId', '==', currentUserId)
+            .where('parentDone', '==', true)
+            .where('completed', '>=', completedDateToCheck)
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .onSnapshot({ includeMetadataChanges: true }, handleEarlierDoneSubtasksSnapshot)
+    )
 }
 
 export function watchIfNeedToShowTheShowMoreButton(projectId, watcherKey, callback, completedDateToCheck) {

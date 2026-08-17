@@ -112,6 +112,12 @@ const cycleFirestoreNetwork = async () => {
 
 export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
     if (running) return
+    // Offline (OFFLINE_SUPPORT_PLAN.md Stage 3), "missing" data is just whatever the
+    // IndexedDB cache has not seen — every pass would report anomalies, and the
+    // network-cycle escalation would burn its two per-session uses tearing down a
+    // connection that is not there. The scheduled checks keep firing, so the first
+    // pass after connectivity returns heals normally.
+    if (store.getState().connectionState === 'offline') return
     running = true
     try {
         const anomalies = await findAnomalies()
@@ -132,7 +138,9 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
         }
 
         // Still missing: the connection itself is suspect. Rebuild it, let the new streams
-        // settle, then re-fetch once more.
+        // settle, then re-fetch once more — unless the browser went offline mid-check, in
+        // which case the cycle would waste one of its two bounded uses on nothing.
+        if (store.getState().connectionState === 'offline') return
         if (!(await cycleFirestoreNetwork())) return
         await new Promise(resolve => setTimeout(resolve, settleMs))
         await repairAnomalies(remaining)
