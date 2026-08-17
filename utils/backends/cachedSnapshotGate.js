@@ -31,19 +31,10 @@
  * mid-session cache blips keep today's buffered behavior.
  */
 import store from '../../redux/store'
-import { isBrowserOffline } from '../connectionState'
 
 export const CACHED_SNAPSHOT_GRACE_MS = 4000
 
-// The redux slice is the debounced, app-wide signal — but it is fed by a listener
-// installed from AppNavigator's AppContainer, which is NOT mounted while
-// `loggedIn === null` (AppContent renders the loading screen instead), and it is
-// debounced a further 500ms on top. During a cold offline boot the slice is
-// therefore still '' exactly when the list watchers take their first snapshots,
-// so a level check on it alone withheld cached data for the full 4s grace in the
-// one scenario offline boot exists for. `isBrowserOffline()` is the synchronous
-// browser-level tell every other early-boot consumer already uses (AT-2340).
-const defaultIsOffline = () => store.getState().connectionState === 'offline' || isBrowserOffline()
+const defaultIsOffline = () => store.getState().connectionState === 'offline'
 
 const createFlushSnapshot = snapshot => ({
     docChanges: () => [],
