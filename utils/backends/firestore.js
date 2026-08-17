@@ -7165,6 +7165,19 @@ export function getTypesenseSearchKeys() {
     return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
 }
 
+// The region every callable/onRequest function in this project is deployed to. It is a
+// literal in the several `firebase.app().functions(...)` call sites above; exported here so
+// code that has to address an HTTP function by URL cannot drift from it.
+export const FUNCTIONS_REGION = 'europe-west1'
+
+export function getFunctionsRegion() {
+    return FUNCTIONS_REGION
+}
+
+export function getFirebaseProjectId() {
+    return GOOGLE_FIREBASE_WEB_PROJECT_ID
+}
+
 export function getSentryVariables() {
     return { SENTRY_DSN }
 }

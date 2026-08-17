@@ -861,6 +861,14 @@ export default class Backend {
         return bridge.getTypesenseSearchKeys()
     }
 
+    static getFunctionsRegion() {
+        return bridge.getFunctionsRegion()
+    }
+
+    static getFirebaseProjectId() {
+        return bridge.getFirebaseProjectId()
+    }
+
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {
         return bridge.watchNoteRevisionHistoryCopies(projectId, noteId, callback)
     }

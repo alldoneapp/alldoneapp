@@ -331,6 +331,35 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
+**"Open view in new window" cannot reach a browser tab from an installed PWA without an
+out-of-scope hop (AT-2345).** The top-right button in every detailed view
+(`OpenInNewWindowButton`, plus `OpenInNewWindowModalItem` in the more-menus) was a bare
+`window.open(window.location, '_blank')`. That is correct in a browser tab and wrong in an
+installed app window: Chromium and WebKit both keep a navigation whose target falls inside
+the app's **manifest scope** inside the app, so the click spawns a second PWA window. Neither
+manifest declares a `scope`, so it defaults to the `start_url` directory (`/`) — the whole
+origin — and every Alldone URL is in scope. Nothing changed in the button; the app only
+recently became a _genuinely installable_ desktop PWA (the web-bundler manifest became the
+deployed pipeline on 2026-08-04, then the workbox service worker landed with offline support),
+and before that a macOS "app" was a plain shortcut window that delegated `_blank` to the
+browser. **No web API overrides the scope decision** — the only lever the page has is making
+the destination out-of-scope. `utils/openInNewWindow.js` therefore opens the
+`openInBrowserTab` Cloud Function (`functions/WebApp/openInBrowserTab.js`, on
+`*.cloudfunctions.net`, a different origin and so unambiguously out of scope), which 302s to
+the real URL; the browser opens the out-of-scope target in a normal tab and follows the
+redirect there. Three carve-outs are deliberate and load-bearing: an ordinary browser tab
+keeps the direct `window.open` (no hop, no dependency on the redirector being reachable);
+**iOS/iPadOS home-screen apps keep it too** (`navigator.standalone === true` — there `_blank`
+already hands the URL to the browser, so the bounce would only add a failure mode); and every
+way of failing to build the bounce falls back to the direct call, so the button can never
+become a no-op. The redirector is an open-redirect by construction, hence the explicit host
+allowlist (`isAllowedRedirectTarget`) — anything not an Alldone origin is 400, never
+redirected to. `window.open` must stay **synchronous** in the click handler on every path or
+desktop popup blockers eat it. Pinned by `utils/openInNewWindow.test.js` and
+`functions/WebApp/openInBrowserTab.test.js`. Note the browser, not the app, has the last
+word: if a future Chromium re-captures redirect chains back into the app window, the result
+degrades to today's behaviour rather than breaking.
+
 ### Offline support (OFFLINE_SUPPORT_PLAN.md — all 8 stages shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
