@@ -11,6 +11,7 @@ import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsCont
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
+import { isBrowserOffline } from './utils/connectionState'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -206,6 +207,20 @@ export default function AppContent() {
         }
 
         console.error('Initial data could not be loaded after several attempts. The user stays signed in.', details)
+
+        // Offline, the reload dialog is a dead end (reloading cannot make data
+        // appear); retry the whole initial load automatically when connectivity
+        // returns instead (OFFLINE_SUPPORT_PLAN.md Stage 5).
+        if (isBrowserOffline()) {
+            console.warn('Browser is offline - the initial load will retry when connectivity returns')
+            const retryWhenBackOnline = () => {
+                window.removeEventListener('online', retryWhenBackOnline)
+                tryLogIn(firebaseUser, 0, 0)
+            }
+            window.addEventListener('online', retryWhenBackOnline)
+            return
+        }
+
         const shouldReload = confirm(
             `The app could not finish loading your data: ${details.message}\n\n` +
                 'You are still signed in.\n\n' +

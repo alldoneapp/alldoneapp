@@ -1,4 +1,4 @@
-import { installConnectionStateListener } from './connectionState'
+import { installConnectionStateListener, isBrowserOffline } from './connectionState'
 import store from '../redux/store'
 import { setConnectionState } from '../redux/actions'
 
@@ -34,6 +34,18 @@ function createFakeStore(initialState = '') {
         dispatched,
     }
 }
+
+describe('isBrowserOffline', () => {
+    afterEach(() => {
+        Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+    })
+
+    it('reflects navigator.onLine synchronously', () => {
+        expect(isBrowserOffline()).toBe(false)
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+        expect(isBrowserOffline()).toBe(true)
+    })
+})
 
 describe('installConnectionStateListener', () => {
     beforeEach(() => {
