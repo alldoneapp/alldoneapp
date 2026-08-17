@@ -18,20 +18,12 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('../../../components/TaskListView/Header/OpenTasksDateHeader', () => 'OpenTasksDateHeader')
 jest.mock('../../../components/TaskListView/OpenTasksView/TasksSections', () => 'TasksSections')
-jest.mock('../../../components/TaskListView/TaskListSkeleton', () => 'TaskListSkeleton')
 jest.mock('../../../components/TaskListView/OpenTasksView/TopShowMoreButton', () => 'TopShowMoreButton')
 jest.mock('../../../components/TaskListView/OpenTasksView/MiddleShowMoreButton', () => 'MiddleShowMoreButton')
 jest.mock('../../../components/TaskListView/OpenTasksView/SelectedProjectEmptyInbox', () => 'SelectedProjectEmptyInbox')
 jest.mock(
     '../../../components/TaskListView/OpenTasksView/AllProjectsShowMoreButtonContainer',
     () => 'AllProjectsShowMoreButtonContainer'
-)
-jest.mock('../../../components/TaskListView/OpenTasksView/OpenTaskViewForAssistants/AssistantScheduleTimeline', () => ({
-    AssistantScheduleRows: 'AssistantScheduleRows',
-}))
-jest.mock(
-    '../../../components/TaskListView/OpenTasksView/OpenTaskViewForAssistants/WorkflowTaskCreator',
-    () => 'WorkflowTaskCreator'
 )
 jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: jest.fn(projectIndex => projectIndex > -1),
@@ -65,7 +57,6 @@ const createState = ({
     thereAreLaterOpenTasks = false,
     thereAreSomedayOpenTasks = false,
     initialLoadingEnd = true,
-    singleTaskIsLoading = false,
     activeDragTaskModeInDate = null,
     isAnonymous = false,
 } = {}) => {
@@ -80,7 +71,6 @@ const createState = ({
         filteredOpenTasksStore: { [instanceKey]: store },
         initialLoadingEndObservedTasks: { [instanceKey]: initialLoadingEnd },
         initialLoadingEndOpenTasks: { [instanceKey]: initialLoadingEnd },
-        taskListSingleLoading: singleTaskIsLoading ? { [instanceKey]: true } : {},
         laterTasksExpandState,
         laterTasksExpanded,
         loggedUser: { isAnonymous, projectIds: [projectId] },
@@ -152,13 +142,6 @@ describe('OpenTasksByDate component', () => {
             const tree = renderByDate(createState({ amountTasks: 0, emptyGoals: [{ id: 'goal-1' }] }))
 
             expect(tree.root.findAllByType('SelectedProjectEmptyInbox')).toHaveLength(0)
-        })
-
-        it('renders one ghost row at the end while a later task resolves', () => {
-            const tree = renderByDate(createState({ singleTaskIsLoading: true }))
-
-            expect(tree.root.findByType('TaskListSkeleton').props.rowCount).toBe(1)
-            expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
         })
     })
 
