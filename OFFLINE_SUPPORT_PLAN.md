@@ -236,7 +236,17 @@ silently failing:
 - **New-feature guardrail**: a short section in CLAUDE.md — new features must either work
   from Firestore cache or gate on `connectionState`.
 
-## Stage 8 — Verification & regression pinning
+## Stage 8 — Verification & regression pinning — **SHIPPED 2026-08-17**
+
+_Implementation notes: `browser-tests/offline/` (real Chromium via Playwright
+`context.setOffline`) pins the connectionState event→debounce→store composition, the
+gate's store-backed offline delivery + real-timer grace flush, and the y-indexeddb round
+trip with real IndexedDB — 11 checks, all green. The per-stage jest guards shipped with
+their stages (connectionState, ServiceWorkerPrecache, firestorePersistence,
+cachedSnapshotGate, UserDataCache, noteCollaborationRecovery, typesenseSearch,
+DailyAppReload offline cases, bootIntegrityHealer offline cases). The emulator-backed
+full-app flow (boot → edit → reload → reconnect → server sync) is deliberately left to
+preview-channel QA: it needs real auth/env and the manual checklist below._
 
 - `browser-tests/offline` suite (real Chromium, like `at2257`/`modalsheet`): boot online
   → go offline → create/edit/complete a task → reload → assert persistence → go online →
