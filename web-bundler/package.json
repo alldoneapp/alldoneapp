@@ -42,7 +42,13 @@
         "vm-browserify": "^1.1.2",
         "webpack": "^5.97.1",
         "webpack-cli": "^5.1.4",
-        "webpack-dev-server": "^5.2.0"
+        "webpack-dev-server": "^5.2.0",
+        "workbox-core": "^7.4.1",
+        "workbox-expiration": "^7.4.1",
+        "workbox-precaching": "^7.4.1",
+        "workbox-routing": "^7.4.1",
+        "workbox-strategies": "^7.4.1",
+        "workbox-webpack-plugin": "^7.4.1"
     },
     "devDependencies": {
         "webpack-bundle-analyzer": "^4.10.2"

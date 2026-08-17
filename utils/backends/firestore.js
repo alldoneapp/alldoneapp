@@ -43,6 +43,9 @@ import {
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
+import { enableFirestorePersistence } from './firestorePersistence'
+import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { isBrowserOffline } from '../connectionState'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -337,6 +340,7 @@ let functions
 let messaging
 let db
 let firestoreSettingsApplied = false
+let firestorePersistenceRequested = false
 let firestoreNetworkRestartPromise = null
 let somePrefix = 'Offline'
 let someId = -1
@@ -480,11 +484,21 @@ export async function initFirebase(onComplete) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
             // which resets host and logs "You are overriding the original host".
-            db.settings({ ignoreUndefinedProperties: true, merge: true })
+            // 100 MB cache with LRU GC: the feeds/chat collections are large, and
+            // unlimited would let the offline cache grow without bound.
+            db.settings({ ignoreUndefinedProperties: true, merge: true, cacheSizeBytes: 100 * 1024 * 1024 })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
         }
+    }
+    if (!firestorePersistenceRequested) {
+        firestorePersistenceRequested = true
+        // Deliberately not awaited: the compat SDK queues every later Firestore call
+        // behind the enable, so correctness needs no await and boot stays fast. Must
+        // stay between db.settings() and the first real Firestore operation — see
+        // firestorePersistence.js for the failure modes and the emulator skip.
+        enableFirestorePersistence(db, { useEmulator })
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -1423,6 +1437,11 @@ const reloadApp = () => {
 export const watchForceReload = async (userId, deleteOldData) => {
     if (deleteOldData) await db.doc(`userForceReloads/${userId}`).delete()
     db.doc(`userForceReloads/${userId}`).onSnapshot(doc => {
+        // With IndexedDB persistence a stale `{reload: true}` doc can be served from
+        // cache on boot (e.g. the session that was told to reload never got to delete
+        // it). Reloading is only meaningful — and only safe against a reload loop —
+        // when the server actually says so right now.
+        if (doc.metadata && doc.metadata.fromCache) return
         const data = doc.data()
         if (data && data.reload) reloadApp()
     })
@@ -4920,149 +4939,154 @@ export async function getNotesByProject(projectId) {
 export async function watchFollowedTabNotesExpanded(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '==', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '==', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '==', 0)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '==', 0)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
-    let cacheChanges = []
-    stickyNotesUnsubs = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '>', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, true)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, true)
+    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '>', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesExpanded(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '==', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '==', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '==', 0)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '==', 0)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesExpandedInAllProjects(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
-    let cacheChanges = []
-    stickyNotesUnsubs = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '>', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, true)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, true)
+    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '>', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
-const processNotesCacheResultsAndCallback = (querySnapshot, cacheChanges, callback, isStickyWatcher) => {
-    const changes = querySnapshot.docChanges()
-    if (querySnapshot.metadata.fromCache) {
-        return [...cacheChanges, ...changes]
-    } else {
+const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
+    let cacheChanges = []
+    const gate = createCachedSnapshotGate(() => handleSnapshot)
+    function handleSnapshot(querySnapshot) {
+        const changes = querySnapshot.docChanges()
+        if (gate.shouldBuffer(querySnapshot)) {
+            cacheChanges = [...cacheChanges, ...changes]
+            return
+        }
         const mergedChanges = [...cacheChanges, ...changes]
         callback(mergedChanges)
         if (!isStickyWatcher) {
             store.dispatch(stopLoadingData())
         }
-        return []
+        cacheChanges = []
     }
+    return { handleSnapshot, wrapUnsubscribe: gate.wrapUnsubscribe }
 }
 
 export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, callback) {
@@ -7822,6 +7846,16 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
 }
 
 export async function runHttpsCallableFunction(functionName, data, options = {}) {
+    // Callables are server-side orchestration and can never work offline — fail
+    // fast with an identifiable error instead of letting the SDK hang into its
+    // 70s default timeout (OFFLINE_SUPPORT_PLAN.md Stage 7). Callers already
+    // handle callable failures; this only changes how quickly and clearly.
+    if (isBrowserOffline()) {
+        const offlineError = new Error(`"${functionName}" needs an internet connection`)
+        offlineError.code = 'offline'
+        throw offlineError
+    }
+
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)

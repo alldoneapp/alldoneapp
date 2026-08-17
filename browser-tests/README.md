@@ -210,3 +210,25 @@ case that passes is "focus outside the field" — exactly the diagnosis). With t
 installed but no component converted, the untouched 2021 handler works again and only the
 nested cases fail, which is what demonstrates the legacy bridge repairs the other ~116 popups
 without editing them. With the full fix, all 16 pass.
+
+### `offline/` — offline support end-to-end machinery (OFFLINE_SUPPORT_PLAN.md Stage 8)
+
+Drives the real offline composition through Playwright's `context.setOffline()`, which
+flips `navigator.onLine` and fires the real window online/offline events — the layer
+every jest test necessarily stubs:
+
+- the connectionState listener (real events → debounce → real redux store), including
+  the `''` boot state and the `'online'` recovery transition;
+- the cached-snapshot gate's **default store-backed** offline check delivering a cached
+  snapshot immediately while offline, and the grace timer flushing cache-only snapshots
+  with real timers while online;
+- the y-indexeddb note round trip with **real IndexedDB** (jsdom has none, so the jest
+  suites inject stubs): content written with only the local persistence survives a full
+  teardown, reopens through `prepareSyncedNoteDocument` with no Storage and no
+  collaboration server, and is flagged for the Storage catch-up upload; a note with
+  nothing anywhere still rejects (locked-and-retry).
+
+The full-app service-worker boot (precache → offline reload) is deliberately NOT here:
+it needs real Firebase auth/env and is covered by the `ServiceWorkerPrecache` jest
+guards plus preview-channel QA. If `playwright` is not resolvable from the repo root,
+point `PLAYWRIGHT_HOME` at a directory whose `node_modules` contains it.
