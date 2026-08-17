@@ -2,8 +2,16 @@
 
 exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test Should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1h0z5md r-left-1d2f490 r-paddingBottom-1l7z4oj r-paddingTop-1hy97zq r-position-1xcajam r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1h0z5md r-left-1d2f490 r-position-1xcajam r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
   dir={null}
+  style={
+    {
+      "paddingBottom": "16px",
+      "paddingLeft": "0px",
+      "paddingRight": "0px",
+      "paddingTop": "80px",
+    }
+  }
 >
   <div
     className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-padding-nsbfu8"
