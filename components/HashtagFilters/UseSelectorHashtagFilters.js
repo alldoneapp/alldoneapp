@@ -1,11 +1,10 @@
-import { useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { addHashtagFilters, clearHashtagFilters, removeHashtagFilters } from '../../redux/actions'
 
 export default function useSelectorHashtagFilters() {
     const dispatch = useDispatch()
     const hashtagFilters = useSelector(state => state.hashtagFilters)
-    const hashtagFiltersArray = useMemo(() => Array.from(hashtagFilters.keys()), [hashtagFilters])
+    const hashtagFiltersArray = Array.from(hashtagFilters.keys())
 
     const addToFilters = hashtag => {
         dispatch(addHashtagFilters(hashtag))

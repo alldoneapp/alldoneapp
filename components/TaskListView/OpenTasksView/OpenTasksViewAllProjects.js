@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 
 import OpenTasksByProject from './OpenTasksByProject'
 import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actions'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
@@ -34,17 +34,20 @@ export default function OpenTasksViewAllProjects() {
     // to every `OpenTasksByProject` as a prop. Without memoisation each render
     // produced a NEW array identity, which defeats `React.memo` on the ~78 project
     // blocks below and re-rendered all of them for any unrelated store change.
+    //
+    // The scope itself is ACTIVE projects only (archived, template and guide projects
+    // excluded) — see `openTasksViewProjectScope.js`.
     const sortedLoggedUserProjectIds = useMemo(
         () =>
-            ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            getProjectIdsForAllProjectsTasks({
                 projectIds,
                 guideProjectIds,
                 archivedProjectIds,
                 templateProjectIds,
                 loggedUserProjectsMap,
                 loggedUserId,
-                inFocusTaskProjectId
-            ),
+                inFocusTaskProjectId,
+            }),
         [
             projectIds,
             guideProjectIds,

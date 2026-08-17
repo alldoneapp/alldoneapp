@@ -29,7 +29,6 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
-import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
 import { createGenericTaskWhenMention, setTaskNote } from '../Tasks/tasksFirestore'
@@ -110,10 +109,7 @@ export async function uploadNewNote(projectId, noteData) {
     try {
         await updateEditionData(noteData)
 
-        // Creator-follows-own-note is stamped at creation so the note is
-        // immediately visible in the Followed notes tab — offline, the feeds
-        // chain that normally establishes it only completes on reconnect.
-        const noteDataCopy = stampCreatorAsFollower({ ...noteData })
+        const noteDataCopy = { ...noteData }
         const noteId = noteDataCopy.id ? noteDataCopy.id : getId()
 
         // Offline, every server ack in this function is deferred until reconnect,

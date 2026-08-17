@@ -31,11 +31,10 @@ import AddGoals from './AddGoals'
 import { allGoals } from '../AllSections/allSectionHelper'
 import { getPreviousOpenMilestoneDate } from './GoalsBoardMilestonesHelper'
 
-const EMPTY_MILESTONES = []
-
-function MilestonesListByProject({
+export default function MilestonesListByProject({
     projectIndex,
     projectId,
+    milestones,
     goalsActiveTab,
     firstMilestoneId,
     setDismissibleRefs,
@@ -58,11 +57,6 @@ function MilestonesListByProject({
         shallowEqual
     )
 
-    // AT-2336: read this project's own board slice instead of receiving it from a parent that
-    // subscribed to the whole `boardMilestonesByProject` map. This keeps a snapshot for project A
-    // from re-rendering the rows of projects B..Z.
-    const milestones = useSelector(state => state.boardMilestonesByProject[projectId]) || EMPTY_MILESTONES
-
     const goals = useSelector(state => state.goalsByProject[projectId])
     const openMilestones = useSelector(state => state.openMilestonesByProject[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProject[projectId])
@@ -83,6 +77,15 @@ function MilestonesListByProject({
                 doneMilestones || [],
                 goals || []
             )
+            return () => {
+                dispatch([
+                    setBoardMilestonesInProject(projectId, null),
+                    setBoardGoalsByMilestoneInProject(projectId, null),
+                    setBoardNeedShowMoreInProject(projectId, null),
+                    setOpenGoalsAmount(projectId, null),
+                    setDoneGoalsAmount(projectId, null),
+                ])
+            }
         }
     }, [
         userWorkstreamsIdsInProject,
@@ -95,25 +98,6 @@ function MilestonesListByProject({
         inAllProjects,
         numberGoalsAllTeams,
     ])
-
-    // AT-2336: clearing this project's board is an unmount/context-change concern, not a
-    // recompute concern. It used to be the cleanup of the effect above, so every Firestore
-    // snapshot nulled all five slices and immediately rewrote them -- a redundant write pair per
-    // snapshot per project that also defeated the no-op guard in
-    // `filterMilestonesAndGoalsInCurrentUser`. React still runs this cleanup before the recompute
-    // above when `currentUserId` changes, so the "stale board for the previous user" case that
-    // the original cleanup existed for is unchanged.
-    useEffect(() => {
-        return () => {
-            dispatch([
-                setBoardMilestonesInProject(projectId, null),
-                setBoardGoalsByMilestoneInProject(projectId, null),
-                setBoardNeedShowMoreInProject(projectId, null),
-                setOpenGoalsAmount(projectId, null),
-                setDoneGoalsAmount(projectId, null),
-            ])
-        }
-    }, [projectId, currentUserId])
 
     useEffect(() => {
         return () => {
@@ -235,5 +219,3 @@ function MilestonesListByProject({
         </View>
     ) : null
 }
-
-export default React.memo(MilestonesListByProject)
