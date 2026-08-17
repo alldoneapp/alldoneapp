@@ -64,7 +64,6 @@ export default function OpenTasksByProject({
     const filteredOpenTasksDates = filteredOpenTasks.map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
     const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
     const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
     const assistantProfileTimelineDates = assistantProfileMode
         ? buildAssistantProfileTimelineDates(filteredOpenTasksDates, assistantScheduleOccurrences)
         : filteredOpenTasksDates.map((dateKey, dateIndex) => ({ dateKey, dateIndex, occurrences: [] }))
@@ -116,9 +115,7 @@ export default function OpenTasksByProject({
     const showInitialSkeleton =
         inSelectedProject &&
         filteredOpenTasksDates.length === 0 &&
-        !singleTaskIsLoading &&
         (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
-    const showSingleTaskSkeleton = singleTaskIsLoading && filteredOpenTasksDates.length === 0
 
     useEffect(() => {
         const watcherKey = v4()
@@ -207,7 +204,6 @@ export default function OpenTasksByProject({
                     {!assistantProfileMode && <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />}
                     {!assistantProfileMode && <UpcomingMilestoneRow projectId={projectId} />}
                     {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
-                    {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
                     {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
                         return timelineDate.dateIndex !== null ? (
                             <OpenTasksByDate

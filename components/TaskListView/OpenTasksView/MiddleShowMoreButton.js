@@ -2,14 +2,13 @@ import React from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
 import ShowMoreButton from '../../UIControls/ShowMoreButton'
-import { setSomedayTasksExpanded, setTaskListSingleLoading } from '../../../redux/actions'
+import { setSomedayTasksExpanded } from '../../../redux/actions'
 import { watchOpenTasks, contractOpenTasks, updateOpTasks } from '../../../utils/backends/openTasks'
 import store from '../../../redux/store'
 
 export default function MiddleShowMoreButton({ instanceKey, projectIndex, setProjectsHaveTasksInFirstDay, expanded }) {
     const dispatch = useDispatch()
     const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
 
     const updateTaks = (initialTasks, initialLoadingInOpenTasks) => {
         updateOpTasks(
@@ -23,9 +22,8 @@ export default function MiddleShowMoreButton({ instanceKey, projectIndex, setPro
     }
 
     const expandTasks = () => {
-        if (singleTaskIsLoading) return
-        dispatch([setTaskListSingleLoading(instanceKey, true), setSomedayTasksExpanded(true)])
         watchOpenTasks(projectId, updateTaks, true, true, true, instanceKey)
+        dispatch(setSomedayTasksExpanded(true))
     }
 
     const contractTasks = () => {

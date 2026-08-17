@@ -26,6 +26,12 @@ import ContactStatusTag from '../Tags/ContactStatusTag'
 import { translate } from '../../i18n/TranslationService'
 import { setSelectedNavItem } from '../../redux/actions'
 import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_USER_PROFILE } from '../../utils/TabNavigationConstants'
+import v4 from 'uuid/v4'
+import {
+    getContactBacklinksWatcherKey,
+    getContactItemStoreUpdate,
+    getContactPresentationData,
+} from './contactItemStoreUpdate'
 
 export default class ContactItem extends Component {
     constructor(props) {
@@ -55,6 +61,7 @@ export default class ContactItem extends Component {
         const { loggedUserProjects } = this.state
         const { projectIndex, contact } = this.props
         const projectId = loggedUserProjects[projectIndex].id
+        this.backlinksWatcherKey = getContactBacklinksWatcherKey(projectId, contact.uid, v4())
 
         Backend.watchBacklinksCount(
             projectId,
@@ -69,24 +76,21 @@ export default class ContactItem extends Component {
                 } else if (parentObjectType === 'notes') {
                     this.setState({ backlinksNotesCount: parentsAmount, backlinkNoteObject: aloneParentObject })
                 }
-            }
+            },
+            this.backlinksWatcherKey
         )
     }
 
     componentWillUnmount() {
         const { contact } = this.props
-        Backend.unwatchBacklinksCount(contact.uid)
+        Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
         this.state.unsubscribe()
     }
 
     updateState = () => {
         const storeState = store.getState()
 
-        this.setState({
-            loggedUserProjects: storeState.loggedUserProjects,
-            smallScreenNavigation: storeState.smallScreenNavigation,
-            isMiddleScreen: storeState.isMiddleScreen,
-        })
+        this.setState(state => getContactItemStoreUpdate(state, storeState))
     }
 
     toggleShowTagsSummarizeArea = e => {
@@ -162,7 +166,9 @@ export default class ContactItem extends Component {
             backlinkNoteObject,
             loggedUserId,
         } = this.state
-        const { projectIndex, contact, isMember, inCommentPopup, onPress } = this.props
+        const { projectIndex, contact: contactFromProps, isMember, inCommentPopup, onPress } = this.props
+        const projectPrivacy = isMember ? ProjectHelper.getUserPrivacyInProject(projectIndex, contactFromProps) : null
+        const contact = getContactPresentationData(contactFromProps, projectPrivacy)
 
         const projectId = loggedUserProjects[projectIndex].id
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
@@ -195,10 +201,6 @@ export default class ContactItem extends Component {
         const highlightColor =
             inCommentPopup || contactHighlightColor.toLowerCase() === '#ffffff' ? backColor : backColorHighlight
         const usesCommentPopupBackground = inCommentPopup
-
-        if (isMember) {
-            ContactsHelper.getAndAssignUserPrivacy(projectIndex, contact)
-        }
 
         const parseDate = date => {
             if (Date.now() - date < 60000) {

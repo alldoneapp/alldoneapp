@@ -604,15 +604,6 @@ function loadDeferredFirebaseModules() {
         // Load storage
         require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
-        // The Storage SDK retries failed network requests internally — by default
-        // for up to 2 MINUTES per operation (and 10 minutes per upload). In
-        // airplane mode that turned every note-content download into a silent
-        // two-minute stall that read as an endless spinner: the app's own offline
-        // handling never ran because the code was stuck inside getDownloadURL.
-        // Bound the retries so offline/degraded requests fail into the app's
-        // fallbacks (local y-indexeddb state, catch-up uploads) quickly.
-        notesStorage.setMaxOperationRetryTime(15000)
-        notesStorage.setMaxUploadRetryTime(60000)
 
         // Load messaging
         require('firebase/compat/messaging')

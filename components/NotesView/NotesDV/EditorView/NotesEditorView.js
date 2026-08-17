@@ -761,25 +761,14 @@ const NotesEditorView = ({
                 // Stage 6): the local IndexedDB copy can still open the note.
                 // prepareSyncedNoteDocument throws when there is truly nothing to
                 // show, which lands in the retry path below exactly as before.
-                // Offline the download is not even attempted — the Storage SDK
-                // retries network failures internally for up to 2 minutes, which
-                // held the spinner long before any offline fallback could run
-                // (the Pixel "loads forever" report). The per-attempt timeout
-                // bounds the degraded-but-"online" case the same way.
                 let data = null
-                if (isBrowserOffline()) {
-                    console.warn('Browser is offline; skipping the note content download')
-                } else {
-                    try {
-                        data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
-                            attemptTimeoutMs: 10000,
-                        })
-                    } catch (storageError) {
-                        console.warn(
-                            'Note content download failed; opening from local offline state if available',
-                            storageError
-                        )
-                    }
+                try {
+                    data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                } catch (storageError) {
+                    console.warn(
+                        'Note content download failed; opening from local offline state if available',
+                        storageError
+                    )
                 }
                 if (noteUnmountedRef.current) return
 
