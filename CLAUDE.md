@@ -331,6 +331,44 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
+**Every other popup sizes itself through `utils/modalSafeArea.js` (AT-2339).** AT-2314
+above only reached the two surfaces built on `useModalSizing` — the bottom sheet and the
+comment popup — because it fixed **position**, not **height**. The vendored popover patch
+nudges a portal into the safe rectangle, but a card taller than that rectangle simply
+overflows the opposite edge once its top is clamped, and **~10 call sites pass
+`disableReposition`, which skips that nudge entirely** (the comment popup is one; it reads
+correctly only because `popoverToTop` pins it at a hard 80px). Everything else measured
+against the raw window: ~75 popover-content modals capped at `windowHeight -
+MODAL_MAX_HEIGHT_GAP`, and the centred `position: fixed` overlay family capped in percent
+— `maxHeight: '90%'` is a ~42px top gap on an 844pt iPhone against a 47px inset, which is
+how the "new day" popup (`EndDayStatisticsModal`) ended up under the Dynamic Island.
+
+The module is the single authority for popup geometry: `getSafeAreaModalMaxHeight`
+(the drop-in for `height - MODAL_MAX_HEIGHT_GAP`), `getSafeAreaModalMaxWidth` (now behind
+`applyPopoverWidth`, so the landscape cutout no longer makes a "full width" card overhang),
+`getSafeAreaModalMaxHeightBelow` (the mentions dropdown — its top offset is **already** a
+clamped viewport coordinate, so subtracting the top inset again would double-count it) and
+`getSafeAreaOverlayPadding` via `hooks/useSafeAreaOverlayPadding.js`.
+
+Two rules that are easy to get wrong. **Overlay padding goes on the overlay, never on the
+card** — a percentage `max-height` resolves against the containing block's CONTENT box, so
+padding the inset-0 centring parent is exactly what makes the family's existing
+`'90%'`/`'94%'` caps correct with no per-modal retuning; padding the card would instead
+shrink its content. And the padding uses **minimum semantics, `max(existingGap, inset)`,
+not additive** — that is what makes the sweep provably non-regressive: a dialog whose gap
+already clears the system UI does not move a pixel, so the comment popup's 80px offset is
+byte-identical to before and only gains a horizontal clamp. Additive would have shoved the
+one surface that was signed off as correct 47px down the screen.
+
+The hook exists rather than a bare function call because these dialogs subscribe to redux,
+not to the viewport: without its `useWindowSize()` a rotation would leave a landscape
+overlay padded with the portrait insets. `__tests__/PopupSafeAreaGuardrails.test.js`
+ratchets the whole thing — no component may subtract the raw gap from a window height
+again, and every overlay-family member must apply the shared padding **last** in its style
+array (first would let the static `paddingTop` it is meant to override win). Note the
+`react-tiny-popover` ratchet in `__tests__/ModalSystemGuardrails.test.js` is a **substring**
+match over file sources, so even naming the package in a comment counts as a new importer.
+
 ### Offline support (OFFLINE_SUPPORT_PLAN.md — all 8 stages shipped 2026-08-17)
 
 - **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
