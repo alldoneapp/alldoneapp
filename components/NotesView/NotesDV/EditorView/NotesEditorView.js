@@ -115,7 +115,26 @@ export let exportRef = null
 export let exportLoadingRef = null
 export let loadedNote = null
 const SAVE_INTERVAL = 3000
+// Content this client only RECEIVED (a collaborator typing) is persisted far
+// less eagerly than content the local user authored: the author's own client is
+// already saving it, so our upload is a safety net, not the primary write path.
+// See `isRemoteEditorChange` below (AT-2340).
+const REMOTE_SAVE_INTERVAL = 60000
 const NOTE_CONTENT_RETRY_DELAY = 5000
+
+/**
+ * Did this Quill change come from a collaborator rather than from this user?
+ *
+ * y-quill applies remote Yjs updates with `quill.updateContents(delta, this)` —
+ * the QuillBinding instance itself is the change source — while every local
+ * change carries a string source ('user' for typing, 'api' for the editor's own
+ * programmatic edits such as the image-format rewrite, which ARE local and must
+ * still be saved normally). Matching on the binding instance is therefore both
+ * precise and conservative: anything we cannot positively attribute to the
+ * binding is treated as local.
+ */
+export const isRemoteEditorChange = (source, bindingInstance) =>
+    !!bindingInstance && typeof source === 'object' && source === bindingInstance
 
 const NotesEditorView = ({
     project,
@@ -162,7 +181,11 @@ const NotesEditorView = ({
     let binding = useRef(null)
     let localPersistence = useRef(null)
     let dirtyEditor = useRef(false)
+    // Content received from a collaborator and not yet persisted by us. Kept
+    // apart from `dirtyEditor` so it can never stamp this user as the editor.
+    const remoteDirtyEditor = useRef(false)
     let saveTimeoutHandle = useRef(null)
+    const remoteSaveTimeoutHandle = useRef(null)
     const noteContentRetryTimeoutRef = useRef(null)
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
@@ -174,6 +197,12 @@ const NotesEditorView = ({
     const scrollRef = useRef()
     const scrollYPos = useRef(0)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
+    // `cleanup` is returned from a mount-only effect, so it closes over the first
+    // render's values. It used to hardcode `true` for userCanEditNote where
+    // autosave passes `accessGranted` — meaning a user without write access
+    // still wrote the note's preview and edition data on the way out (AT-2340).
+    const accessGrantedRef = useRef(accessGranted)
+    accessGrantedRef.current = accessGranted
     const needReplaceImageFormat = useRef(false)
     const readOnlyRef = useRef(readOnly)
     const timeoutRef = useRef(null)
@@ -230,7 +259,7 @@ const NotesEditorView = ({
         }
     }
 
-    const scanLinkedObjects = () => {
+    const scanLinkedObjects = ({ forceWrite = false } = {}) => {
         const ops = quillRef.current.getContents().ops
         const linkedParentNotesUrl = []
         const linkedParentTasksUrl = []
@@ -292,7 +321,11 @@ const NotesEditorView = ({
                 notePartEdited: 'content',
                 isUpdatingNotes: true,
             },
-            {}
+            {},
+            // On teardown the backlink write must be issued at once: the
+            // no-op comparison reads the local cache asynchronously, and a page
+            // being unloaded may never run that continuation (AT-2340).
+            { forceWrite }
         )
     }
 
@@ -309,11 +342,36 @@ const NotesEditorView = ({
         }
     }
 
+    /**
+     * Persist content this client only RECEIVED.
+     *
+     * Content only: no preview, no lastEditionDate/lastEditorId, no edited-today
+     * entry, no started-editing feed, no follower. The collaborator who typed it
+     * owns all of that on their own client; duplicating it here made two people
+     * typing cost both of them the full save fan-out, and made each of them look
+     * like the last editor of the other's text (AT-2340).
+     */
+    const persistRemoteContent = () => {
+        clearTimeout(remoteSaveTimeoutHandle.current)
+        remoteSaveTimeoutHandle.current = null
+        if (!remoteDirtyEditor.current) return
+        remoteDirtyEditor.current = false
+        if (!ydoc.current || loadingRef.current) return
+
+        const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
+        setNoteData(projectId, note.id, stateUpdate, null, null, accessGrantedRef.current, { contentOnly: true })
+    }
+
     const autosave = () => {
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
         if (dirtyEditor.current) {
             dirtyEditor.current = false
+            // A local save uploads the merged document, which already contains
+            // everything received from collaborators.
+            remoteDirtyEditor.current = false
+            clearTimeout(remoteSaveTimeoutHandle.current)
+            remoteSaveTimeoutHandle.current = null
 
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
             const preview = getNotePreviewText(projectId, quillRef.current)
@@ -385,14 +443,28 @@ const NotesEditorView = ({
     const handleChange = (_value, delta, source) => {
         handleTextChangeForMentions()
         if (dataLoaded) {
-            dirtyEditor.current = true
-            if (saveTimeoutHandle.current === null) {
-                // Commenting this by Customer request
-                // Backend.logEvent('started_editing_note', {
-                //     uid: loggedUser.uid,
-                //     id: note.id,
-                // })
-                saveTimeoutHandle.current = setTimeout(autosave, SAVE_INTERVAL)
+            // A collaborator's edits must not dirty THIS editor: they are not our
+            // edits, and marking them dirty ran the whole local save fan-out —
+            // lastEditionDate/lastEditorId stamped with our id, the edited-today
+            // list, the started-editing feed, the backlink write and
+            // tryAddFollower — for text we merely received (AT-2340). The merged
+            // document is still persisted, content-only and far more lazily, so
+            // nothing is lost if the collaborator's own upload never lands.
+            if (isRemoteEditorChange(source, binding.current)) {
+                remoteDirtyEditor.current = true
+                if (remoteSaveTimeoutHandle.current === null && !readOnlyRef.current) {
+                    remoteSaveTimeoutHandle.current = setTimeout(persistRemoteContent, REMOTE_SAVE_INTERVAL)
+                }
+            } else {
+                dirtyEditor.current = true
+                if (saveTimeoutHandle.current === null) {
+                    // Commenting this by Customer request
+                    // Backend.logEvent('started_editing_note', {
+                    //     uid: loggedUser.uid,
+                    //     id: note.id,
+                    // })
+                    saveTimeoutHandle.current = setTimeout(autosave, SAVE_INTERVAL)
+                }
             }
         }
         checkForInnerTasksChanges(delta.ops, source)
@@ -570,14 +642,29 @@ const NotesEditorView = ({
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
+        clearTimeout(remoteSaveTimeoutHandle.current)
+        remoteSaveTimeoutHandle.current = null
         clearTimeout(noteContentRetryTimeoutRef.current)
         noteContentRetryTimeoutRef.current = null
 
         if (!loadingRef.current && dirtyEditor.current) {
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
-            scanLinkedObjects()
-            setNoteData(projectId, note.id, stateUpdate, quillRef.current.getText(0, 500), firstEditionRef, true)
+            // Same preview and same permission flag as `autosave` (AT-2340). This
+            // used to write a raw `getText(0, 500)` — which is not what the note
+            // list renders, so closing a note replaced its structured preview
+            // with a plain-text one — and to hardcode `true` for the permission
+            // flag, writing edition data for a user who may not have write access.
+            const preview = getNotePreviewText(projectId, quillRef.current)
+            scanLinkedObjects({ forceWrite: true })
+            setNoteData(projectId, note.id, stateUpdate, preview, firstEditionRef, accessGrantedRef.current)
+        } else if (!loadingRef.current && remoteDirtyEditor.current && !readOnlyRef.current) {
+            // Received-only content: persist the merged document without claiming
+            // authorship of it.
+            const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
+            setNoteData(projectId, note.id, stateUpdate, null, null, accessGrantedRef.current, { contentOnly: true })
         }
+        dirtyEditor.current = false
+        remoteDirtyEditor.current = false
 
         if (provider.current) {
             //provider.current.disconnect()

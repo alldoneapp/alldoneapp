@@ -46,6 +46,7 @@ import {
     uploadNewSubTaskFeedsChain,
 } from '../firestore'
 import store from '../../../redux/store'
+import { awaitWriteAck } from '../offlineWriteAck'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
     createSubtaskPromotedFeed,
@@ -1126,14 +1127,23 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
         }
     }
 
-    await batch.commit()
+    // Offline this ack cannot arrive, and the focus handoff below stayed open
+    // forever because of it — `startFocusHandoff` had already moved the
+    // optimistic focus, so the UI was left mid-swap until reconnect (AT-2340).
+    await awaitWriteAck(batch.commit(), 'updateTask batch')
 
     if (task.done && !isDayRateTimeLogTask(task)) {
-        await reconcileExistingDayRateTimeLog(projectId, task.userId, task.completed)
+        await awaitWriteAck(
+            reconcileExistingDayRateTimeLog(projectId, task.userId, task.completed),
+            'updateTask day-rate time log'
+        )
     }
 
     if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, oldTask.parentGoalId, taskId)
+        await awaitWriteAck(
+            runFocusHandoff(focusHandoffId, projectId, task.userId, oldTask.parentGoalId, taskId),
+            'updateTask focus handoff'
+        )
     }
 
     updateTaskFeedsChain(
@@ -2498,11 +2508,14 @@ export async function setTaskDueDate(
         }
     }
 
-    if (!externalBatch) await batch.commit()
+    if (!externalBatch) await awaitWriteAck(batch.commit(), 'setTaskDueDate batch')
 
     // If the postponed task was the focus task, find and set a new one now
     if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId)
+        await awaitWriteAck(
+            runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId),
+            'setTaskDueDate focus handoff'
+        )
     }
 
     setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask, didResetPriority)
@@ -2621,10 +2634,13 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
         setOptimisticNextFocusTask(projectId, task)
     }
 
-    if (!externalBatch) await batch.commit()
+    if (!externalBatch) await awaitWriteAck(batch.commit(), 'setTaskToBacklog batch')
 
     if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId)
+        await awaitWriteAck(
+            runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId),
+            'setTaskToBacklog focus handoff'
+        )
     }
 
     setTaskToBacklogFeedsChain(projectId, taskId, task, isObservedTask, !isObservedTask)
@@ -2863,10 +2879,15 @@ export async function moveTasksFromMiddleOfWorkflow(
     // picks the next one like a postpone instead of leaving the user with no focus at all.
     const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
 
-    await batch.commit()
+    // Offline these acks never arrive; the focus handoff below (and the feeds
+    // chain after it) must still run (AT-2340).
+    await awaitWriteAck(batch.commit(), 'moveTasksInWorkflow batch')
 
     if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
-        await reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed)
+        await awaitWriteAck(
+            reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed),
+            'moveTasksInWorkflow day-rate time log'
+        )
     }
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
@@ -3054,14 +3075,20 @@ export async function moveTasksFromOpen(
     // a postpone would. Captured before the commit so the optimistic swap lands without UI jumping.
     const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
 
-    await batch.commit()
+    await awaitWriteAck(batch.commit(), 'moveTasksToDone batch')
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
 
     if (stepToMoveId === DONE_STEP && ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
-        await reconcileExistingDayRateTimeLog(projectId, newUserId, completionDate)
+        await awaitWriteAck(
+            reconcileExistingDayRateTimeLog(projectId, newUserId, completionDate),
+            'moveTasksToDone day-rate time log'
+        )
     }
 
-    await updateLinkedContactsEditionData(projectId, task, completionDate)
+    await awaitWriteAck(
+        updateLinkedContactsEditionData(projectId, task, completionDate),
+        'moveTasksToDone linked contacts edition data'
+    )
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
@@ -3170,10 +3197,13 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     // the incoming reviewer and therefore keeps it.
     const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
 
-    await batch.commit()
+    await awaitWriteAck(batch.commit(), 'moveTasksFromDone batch')
 
     if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
-        await reconcileExistingDayRateTimeLog(projectId, userId, task.completed)
+        await awaitWriteAck(
+            reconcileExistingDayRateTimeLog(projectId, userId, task.completed),
+            'moveTasksFromDone day-rate time log'
+        )
     }
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
@@ -3307,14 +3337,25 @@ export async function setTaskStatus(
         })
     }
 
-    await taskBatch.commit()
+    // Offline these acks never arrive, and everything below — XP, the done feed,
+    // tryAddFollower, the focus handoff — used to be unreachable because of it,
+    // permanently lost if the tab closed before reconnect. The writes themselves
+    // are durable in the persisted mutation queue, so offline we issue them and
+    // keep going (AT-2340).
+    await awaitWriteAck(taskBatch.commit(), 'setTaskStatus task batch')
 
     if (!isDayRateTimeLogTask(task)) {
-        await reconcileExistingDayRateTimeLog(projectId, statisticUserUid, isDone ? completedDate : task.completed)
+        await awaitWriteAck(
+            reconcileExistingDayRateTimeLog(projectId, statisticUserUid, isDone ? completedDate : task.completed),
+            'setTaskStatus day-rate time log'
+        )
     }
 
     if (isDone && completedDate) {
-        await updateLinkedContactsEditionData(projectId, task, completedDate)
+        await awaitWriteAck(
+            updateLinkedContactsEditionData(projectId, task, completedDate),
+            'setTaskStatus linked contacts edition data'
+        )
     }
 
     const assignee = TasksHelper.getUserInProject(projectId, taskOwnerUid)
@@ -3341,7 +3382,10 @@ export async function setTaskStatus(
     // with it cannot resurrect the completed task as the new focus.
     if (isDone && isFocusTaskForUser(projectId, taskId, taskOwnerUid)) {
         if (__DEV__) console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
-        await runFocusHandoff(startFocusHandoff(taskId), projectId, taskOwnerUid, task.parentGoalId, taskId)
+        await awaitWriteAck(
+            runFocusHandoff(startFocusHandoff(taskId), projectId, taskOwnerUid, task.parentGoalId, taskId),
+            'setTaskStatus focus handoff'
+        )
     } else if (isDone) {
         if (__DEV__) console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
     }
@@ -3352,49 +3396,58 @@ export async function setTaskStatus(
         createObjectMessage(projectId, taskId, comment, 'tasks', STAYWARD_COMMENT, null, null)
     }
 
-    if (isDone) {
-        if (!task.parentId) {
-            updateXpByDoneTask(statisticUserUid, task.estimations[OPEN_STEP], firebase, getDb(), projectId)
-        }
-
-        // Recurring task creation moved to cloud function (onUpdateTask)
-        // This ensures reliable creation regardless of client state
-        logEvent('done_task', {
-            taskOwnerUid: task.userId,
-            effectingUserUid: store.getState().loggedUser.uid,
-            isInWorkflow: task.userIds.length > 1,
-        })
-        if (createDoneFeed) {
-            if (oldEstimation !== newEstimation) {
-                await createTaskAssigneeEstimationChangedFeed(
-                    projectId,
-                    task.id,
-                    oldEstimation,
-                    newEstimation,
-                    feedBatch
-                )
+    // The feed batch is committed in `finally`: offline, a read inside one of the
+    // feed builders (tryAddFollower reads the followers doc) rejects outright
+    // when the document is not in the local cache, and that used to discard the
+    // whole done feed with it (AT-2340).
+    try {
+        if (isDone) {
+            if (!task.parentId) {
+                updateXpByDoneTask(statisticUserUid, task.estimations[OPEN_STEP], firebase, getDb(), projectId)
             }
 
-            updateSubtasksState(projectId, task.subtaskIds, {
-                parentDone: true,
-                currentReviewerId: DONE_STEP,
-                inDone: true,
+            // Recurring task creation moved to cloud function (onUpdateTask)
+            // This ensures reliable creation regardless of client state
+            logEvent('done_task', {
+                taskOwnerUid: task.userId,
+                effectingUserUid: store.getState().loggedUser.uid,
+                isInWorkflow: task.userIds.length > 1,
             })
+            if (createDoneFeed) {
+                if (oldEstimation !== newEstimation) {
+                    await createTaskAssigneeEstimationChangedFeed(
+                        projectId,
+                        task.id,
+                        oldEstimation,
+                        newEstimation,
+                        feedBatch
+                    )
+                }
 
-            await createTaskCheckedDoneFeed(projectId, task, taskId, feedBatch)
+                updateSubtasksState(projectId, task.subtaskIds, {
+                    parentDone: true,
+                    currentReviewerId: DONE_STEP,
+                    inDone: true,
+                })
 
-            const followTaskData = {
-                followObjectsType: FOLLOWER_TASKS_TYPE,
-                followObjectId: taskId,
-                followObject: task,
-                feedCreator: store.getState().loggedUser,
+                await createTaskCheckedDoneFeed(projectId, task, taskId, feedBatch)
+
+                const followTaskData = {
+                    followObjectsType: FOLLOWER_TASKS_TYPE,
+                    followObjectId: taskId,
+                    followObject: task,
+                    feedCreator: store.getState().loggedUser,
+                }
+                await tryAddFollower(projectId, followTaskData, feedBatch)
             }
-            await tryAddFollower(projectId, followTaskData, feedBatch)
+        } else {
+            await createTaskUncheckedDoneFeed(projectId, task, taskId, feedBatch)
         }
-    } else {
-        await createTaskUncheckedDoneFeed(projectId, task, taskId, feedBatch)
+    } catch (error) {
+        console.warn('Could not complete every done-feed side effect; committing what was staged.', error)
+    } finally {
+        feedBatch.commit()
     }
-    feedBatch.commit()
 }
 
 export const updateSubtasksCompletedState = (projectId, subtaskIds, completed, externalBatch) => {
@@ -4103,7 +4156,10 @@ function beginWorkflowFocusHandoff(projectId, task, incomingReviewerId) {
  */
 async function finishWorkflowFocusHandoff(projectId, task, focusHandoff) {
     if (!focusHandoff || !focusHandoff.focusUserId) return
-    await runFocusHandoff(focusHandoff.handoffId, projectId, focusHandoff.focusUserId, task.parentGoalId, task.id)
+    await awaitWriteAck(
+        runFocusHandoff(focusHandoff.handoffId, projectId, focusHandoff.focusUserId, task.parentGoalId, task.id),
+        'workflow focus handoff'
+    )
 }
 
 async function findAndSetNewFocusedTask(

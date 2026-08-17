@@ -8,7 +8,6 @@ import {
     deleteLinkedGuidesNotesIfProjectIsTemplate,
     deleteNoteFeedsChain,
     getDb,
-    getFirebaseTimestampDirectly,
     getId,
     getMentionedUsersIdsWhenEditText,
     getNoteData,
@@ -29,6 +28,7 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
+import { getServerNow } from '../../serverClock'
 import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
 import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -71,11 +71,12 @@ export const updateNoteEditionData = async (projectId, noteId, editorId) => {
 
 const updateEditionData = async data => {
     const { loggedUser } = store.getState()
-    // The server-clock read blocks until the write is acked, which offline means
-    // "until reconnect". The client clock is what `created` already uses, so it
-    // is good enough for edition ordering while offline (OFFLINE_SUPPORT_PLAN.md
-    // notes follow-ups).
-    data.lastEditionDate = isBrowserOffline() ? Date.now() : await getFirebaseTimestampDirectly()
+    // No round trip in either branch since AT-2340: the online path used to
+    // write+read the global `/info/currentTime` singleton on every autosave, and
+    // the offline path could not do it at all (the ack only arrives on
+    // reconnect). Both now read the background-measured server-clock offset,
+    // falling back to the client clock — which is what `created` already uses.
+    data.lastEditionDate = isBrowserOffline() ? Date.now() : getServerNow()
     data.lastEditorId = loggedUser.uid
 }
 
@@ -355,7 +356,27 @@ export async function updateNoteHighlight(projectId, noteId, hasStar) {
     updateNoteHighlightFeedsChain(projectId, isHighlight, noteId)
 }
 
-export async function setNoteData(objectId, noteId, encodedStateData, preview, firstEditionRef, userCanEditNote) {
+/**
+ * Persist note content.
+ *
+ * `options.contentOnly` uploads the Yjs state and NOTHING else — no preview, no
+ * `lastEditionDate`/`lastEditorId`, no edited-today entry, no started-editing
+ * feed. It exists for content this client merely RECEIVED (a collaborator's
+ * edits arriving over the Yjs binding): persisting the merged document is a
+ * durability safety net, but recording the local user as its last editor is
+ * simply false, and it made every open client pay the full save fan-out for
+ * text somebody else typed (AT-2340).
+ */
+export async function setNoteData(
+    objectId,
+    noteId,
+    encodedStateData,
+    preview,
+    firstEditionRef,
+    userCanEditNote,
+    options = {}
+) {
+    const { contentOnly = false } = options
     const storageRef = notesStorage.ref()
     // Fire-and-forget on purpose, but an offline failure must not surface as an
     // unhandled rejection: the content is durable in the editor's local
@@ -376,15 +397,17 @@ export async function setNoteData(objectId, noteId, encodedStateData, preview, f
             return false
         })
 
-    if (userCanEditNote) {
-        updateNoteData(objectId, noteId, { preview }, null)
-    }
+    if (!contentOnly) {
+        if (userCanEditNote) {
+            updateNoteData(objectId, noteId, { preview }, null)
+        }
 
-    updateNotesEditedDailyList(objectId, noteId)
+        updateNotesEditedDailyList(objectId, noteId)
 
-    if (firstEditionRef.current) {
-        firstEditionRef.current = false
-        userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
+        if (firstEditionRef && firstEditionRef.current) {
+            firstEditionRef.current = false
+            userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
+        }
     }
 
     // Resolves to whether the canonical Storage copy actually received the

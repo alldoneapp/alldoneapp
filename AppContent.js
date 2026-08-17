@@ -14,6 +14,7 @@ import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { isBrowserOffline } from './utils/connectionState'
 import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
 import { scheduleNotesOfflineCatchUp } from './utils/NotesOfflineCatchUp'
+import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -253,6 +254,10 @@ export default function AppContent() {
                     // no offline write queue of its own (AT-2340). Also re-runs on
                     // reconnect. Fire-and-forget by design.
                     scheduleNotesOfflineCatchUp()
+                    // Measure the server-clock offset once the session is up, so
+                    // the first note save already has it. Fire-and-forget: every
+                    // caller falls back to the client clock (AT-2340).
+                    syncServerClock().catch(() => {})
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.
