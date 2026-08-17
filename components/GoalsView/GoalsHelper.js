@@ -27,6 +27,7 @@ import {
     normalizeMilestoneType,
 } from '../../utils/GoalMilestonesHelper'
 import { shouldShowMilestoneWithoutGoals } from './GoalsBoardMilestonesHelper'
+import { isSameBoardResult } from './goalsBoardSelectors'
 
 export {
     GOAL_MILESTONES_MODE_MANUAL,
@@ -791,6 +792,28 @@ export const filterMilestonesAndGoalsInCurrentUser = (
                   goals,
                   assigneesIdsToShow
               )
+
+    // AT-2336: this runs once per project per Firestore snapshot in "All projects". Writing an
+    // identical board back into redux replaces five top-level maps and gives every MilestoneItem a
+    // brand new goals array, which re-runs its hashtag/assignee filtering effect and setStates.
+    // Skip the write when nothing actually changed. The comparison is by element reference, and
+    // goal/milestone objects are rebuilt on every snapshot, so real data updates always get through.
+    const state = store.getState()
+    const previous = {
+        boardMilestones: state.boardMilestonesByProject[projectId],
+        boardGoalsByMilestones: state.boardGoalsByMilestoneByProject[projectId],
+        boardNeedShowMore: state.boardNeedShowMoreByProject[projectId],
+        openGoalsAmount: state.openGoalsAmountByProject[projectId],
+        doneGoalsAmount: state.doneGoalsAmountByProject[projectId],
+    }
+    const next = {
+        boardMilestones,
+        boardGoalsByMilestones,
+        boardNeedShowMore,
+        openGoalsAmount: goalsAmount.open,
+        doneGoalsAmount: goalsAmount.done,
+    }
+    if (previous.boardMilestones !== undefined && isSameBoardResult(previous, next)) return
 
     store.dispatch([
         setBoardMilestonesInProject(projectId, boardMilestones),
