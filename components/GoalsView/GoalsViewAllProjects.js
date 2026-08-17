@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect } from 'react'
 import { View } from 'react-native'
-import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 
@@ -20,79 +20,71 @@ import EmptyGoalsAllProjects from './EmptyGoalsAllProjects'
 import Backend from '../../utils/BackendBridge'
 import store from '../../redux/store'
 import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
-import { decodeFirstBoardMilestone, selectFirstBoardMilestoneByProject } from './goalsBoardSelectors'
-
-const NO_MILESTONE_DATE = moment('5000-01-01').valueOf()
-const EMPTY_IDS = []
-
-export const getProjectsToWatch = (loggedUserProjects, templateProjectIds, archivedProjectIds) =>
-    loggedUserProjects.filter(
-        project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
-    )
 
 export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetDismissibleRefs, setDismissibleRefs }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const processedInitialURL = useSelector(state => state.processedInitialURL)
-    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds || EMPTY_IDS)
-    const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds || EMPTY_IDS)
-    const loggedUserProjectsAmount = loggedUserProjects.length
-    const archivedProjectIdsAmount = archivedProjectIds.length
-    const templateProjectsAmount = templateProjectIds.length
+    const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
+    const archivedProjectIdsAmount = useSelector(state => state.loggedUser.archivedProjectIds.length)
+    const templateProjectsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const goalsActiveTab = useSelector(state => state.goalsActiveTab)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
+    const boardMilestonesByProject = useSelector(state => state.boardMilestonesByProject)
 
-    // AT-2336: subscribing to the whole `boardMilestonesByProject` map re-rendered this component
-    // -- and with it every project row -- once per project per Firestore snapshot. The board only
-    // needs each project's first milestone (id for `firstMilestoneId`, date for ordering), so we
-    // select a flat primitive map and compare it with `shallowEqual`. Each `MilestonesListByProject`
-    // reads its own milestone array itself.
-    const firstBoardMilestoneByProject = useSelector(selectFirstBoardMilestoneByProject, shallowEqual)
+    const sortProjectsByMilestoneDate = () => {
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const { templateProjectIds, archivedProjectIds } = loggedUser
+        const projects = loggedUserProjects.filter(
+            project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
+        )
 
-    const sortedLoggedUserProjects = useMemo(() => {
-        const projects = getProjectsToWatch(loggedUserProjects, templateProjectIds, archivedProjectIds)
+        const normalProjects = projects.filter(project => !project.parentTemplateId)
+        const guides = projects.filter(project => !!project.parentTemplateId)
 
-        const withNextMilestoneDate = project => {
-            const firstMilestone = decodeFirstBoardMilestone(firstBoardMilestoneByProject[project.id])
-            const nextMilestoneDate =
-                firstMilestone && firstMilestone.date != null ? firstMilestone.date : NO_MILESTONE_DATE
-            return { ...project, nextMilestoneDate }
-        }
+        const normalProjectsSorted = []
+        normalProjects.forEach(project => {
+            const milestones = boardMilestonesByProject[project.id] || []
+            const nextMilestoneDate = milestones.length > 0 ? milestones[0].date : moment('5000-01-01').valueOf()
+            normalProjectsSorted.push({ ...project, nextMilestoneDate })
+        })
+        const sortedLoggedUserNormalProjects = Object.values(normalProjectsSorted).sort(
+            (a, b) => (b.nextMilestoneDate - a.nextMilestoneDate) * -1
+        )
 
-        const byNextMilestoneDate = (a, b) => (b.nextMilestoneDate - a.nextMilestoneDate) * -1
+        const guidesSorted = []
+        guides.forEach(project => {
+            const milestones = boardMilestonesByProject[project.id] || []
+            const nextMilestoneDate = milestones.length > 0 ? milestones[0].date : moment('5000-01-01').valueOf()
+            guidesSorted.push({ ...project, nextMilestoneDate })
+        })
+        const sortedLoggedUserGuides = Object.values(guidesSorted).sort(
+            (a, b) => (b.nextMilestoneDate - a.nextMilestoneDate) * -1
+        )
 
-        const normalProjectsSorted = projects
-            .filter(project => !project.parentTemplateId)
-            .map(withNextMilestoneDate)
-            .sort(byNextMilestoneDate)
+        const sortedLoggedUserProjects = [...sortedLoggedUserNormalProjects, ...sortedLoggedUserGuides]
 
-        const guidesSorted = projects
-            .filter(project => !!project.parentTemplateId)
-            .map(withNextMilestoneDate)
-            .sort(byNextMilestoneDate)
-
-        return [...normalProjectsSorted, ...guidesSorted]
-    }, [loggedUserProjects, templateProjectIds, archivedProjectIds, firstBoardMilestoneByProject])
+        return sortedLoggedUserProjects
+    }
 
     useEffect(() => {
         const { loggedUserProjects, loggedUser } = store.getState()
         const { templateProjectIds, archivedProjectIds } = loggedUser
-        const projects = getProjectsToWatch(loggedUserProjects, templateProjectIds, archivedProjectIds)
+        const projects = loggedUserProjects.filter(
+            project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
+        )
         const watcherKeys = []
-        // One batched increment instead of one `setTimeout` + dispatch per project (AT-2336).
-        const loadingTimeout = setTimeout(() => {
-            if (projects.length > 0) dispatch(startLoadingData(projects.length))
-        }, 1)
         projects.forEach(project => {
             const watcherKey = v4()
             watcherKeys.push(watcherKey)
+            setTimeout(() => {
+                dispatch(startLoadingData())
+            }, 1)
             const ownerId = getOwnerId(project.id, currentUserId)
             watchAllMilestones(project.id, watcherKey, ownerId)
         })
         return () => {
-            clearTimeout(loadingTimeout)
             projects.forEach((project, index) => {
                 Backend.unwatch(watcherKeys[index])
                 dispatch([
@@ -107,19 +99,20 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
     useEffect(() => {
         const { loggedUserProjects, loggedUser } = store.getState()
         const { templateProjectIds, archivedProjectIds } = loggedUser
-        const projects = getProjectsToWatch(loggedUserProjects, templateProjectIds, archivedProjectIds)
+        const projects = loggedUserProjects.filter(
+            project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
+        )
         const watcherKeys = []
-        const loadingTimeout = setTimeout(() => {
-            if (projects.length > 0) dispatch(startLoadingData(projects.length))
-        }, 1)
         projects.forEach(project => {
             const watcherKey = v4()
             watcherKeys.push(watcherKey)
+            setTimeout(() => {
+                dispatch(startLoadingData())
+            }, 1)
             const ownerId = getOwnerId(project.id, currentUserId)
             watchAllGoals(project.id, watcherKey, ownerId)
         })
         return () => {
-            clearTimeout(loadingTimeout)
             projects.forEach((project, index) => {
                 Backend.unwatch(watcherKeys[index])
                 dispatch([stopLoadingData(), setGoalsInProject(project.id, null)])
@@ -138,15 +131,17 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
         if (processedInitialURL && selectedTab === DV_TAB_ROOT_GOALS) writeBrowserURL()
     }, [processedInitialURL, selectedProjectIndex, selectedTab, goalsActiveTab, currentUserId])
 
+    const sortedLoggedUserProjects = sortProjectsByMilestoneDate()
+
     let firstMilestoneId = ''
     let amountOfProjectsWithMilestones = 0
 
     return (
         <View>
             {sortedLoggedUserProjects.map(project => {
-                const firstMilestone = decodeFirstBoardMilestone(firstBoardMilestoneByProject[project.id])
-                const canShowProject = !!firstMilestone
-                if (canShowProject && !firstMilestoneId) firstMilestoneId = firstMilestone.id
+                const boardMilestones = boardMilestonesByProject[project.id] || []
+                const canShowProject = boardMilestones.length > 0
+                if (canShowProject && !firstMilestoneId) firstMilestoneId = boardMilestones[0].id
                 if (canShowProject) amountOfProjectsWithMilestones++
 
                 return (
@@ -154,6 +149,7 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
                         key={project.id}
                         projectId={project.id}
                         projectIndex={project.index}
+                        milestones={boardMilestones}
                         goalsActiveTab={goalsActiveTab}
                         firstMilestoneId={firstMilestoneId}
                         setDismissibleRefs={setDismissibleRefs}
