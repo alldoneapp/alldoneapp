@@ -141,7 +141,19 @@ partial data), fatal offline (nothing ever renders).
 - UI: subtle "showing offline data" indicator (reuse the ConnectionStateModal slice), no
   per-row noise.
 
-## Stage 5 — Offline-tolerant boot
+## Stage 5 — Offline-tolerant boot — **SHIPPED 2026-08-17**
+
+_Implementation notes: much of this stage was already covered once Stage 3 landed —
+offline, `.get()` reads resolve from the Firestore cache, so the normal login path
+mostly succeeds without special-casing. What shipped: `loadGlobalData` failures no
+longer fail the login (no-cache path contained them via `Promise.all`),
+`UserDataCache.isCacheValid` skips the 24h age check while offline (version check
+stays), `loadProjectsDataFromFirebase` stops retrying while offline, and
+`handleLoginFailure`'s terminal branch swaps the useless offline `confirm()` reload
+dialog for an automatic retry on the `online` event. `getRedirectResult` needed
+nothing — it already had a `.catch` and its awaiter swallows rejections. New
+synchronous helper: `isBrowserOffline()` in `utils/connectionState.js` for early-boot
+code that runs before the debounced redux slice settles._
 
 - `AppContent.js` login flow: when the initial reads fail **and** we're offline, fall
   back to `UserDataCache.getCachedGlobalData()`/cached user data (extend its expiry
