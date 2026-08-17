@@ -6,6 +6,7 @@ import {
     computeSafeAreaModalMaxHeightBelow,
     computeSafeAreaModalMaxWidth,
     computeSafeAreaOverlayPadding,
+    computeSafeAreaViewportHeightCap,
     getSafeAreaEdgeOffsets,
     getSafeAreaModalMaxHeight,
     getSafeAreaModalMaxHeightBelow,
@@ -184,5 +185,77 @@ describe('modalSafeArea', () => {
                 paddingLeft: 0,
             })
         })
+    })
+})
+
+describe('computeSafeAreaViewportHeightCap (AT-2339)', () => {
+    // The drop-in for `maxHeight: '80vh'`, which is a fraction of the RAW
+    // viewport and therefore blind to the status bar and home indicator.
+    it('returns the plain fraction when the fraction is the binding constraint', () => {
+        // 0.8 * 844 = 675.2, and the safe room is 844 - 32 = 812.
+        expect(computeSafeAreaViewportHeightCap({ windowHeight: 844, fraction: 0.8 })).toBeCloseTo(675.2)
+    })
+
+    it('tightens to the safe rectangle once the insets bind', () => {
+        // Safe room is 844 - 47 - 34 - 32 = 731, still above 675.2, so the
+        // fraction wins and the card does not shrink for no reason.
+        expect(
+            computeSafeAreaViewportHeightCap({ windowHeight: 844, fraction: 0.8, insets: IPHONE_INSETS })
+        ).toBeCloseTo(675.2)
+
+        // A landscape phone: 0.9 * 390 = 351 but only 390 - 21 - 32 = 337 is safe.
+        expect(
+            computeSafeAreaViewportHeightCap({ windowHeight: 390, fraction: 0.9, insets: IPHONE_LANDSCAPE_INSETS })
+        ).toBe(337)
+    })
+
+    it('measures below a pinned top offset when one is given', () => {
+        // The header switchers pin the popover at a known coordinate and may
+        // only use what is left underneath it, not a slice of the whole screen.
+        // With fraction 1 the room below is what binds: 844 - 60 - 34 - 32.
+        expect(
+            computeSafeAreaViewportHeightCap({
+                windowHeight: 844,
+                fraction: 1,
+                topOffset: 60,
+                insets: IPHONE_INSETS,
+            })
+        ).toBe(844 - 60 - 34 - MODAL_SAFE_AREA_GAP)
+
+        // At the real call site's 0.8 the fraction is still the smaller of the
+        // two on a tall phone, so the popover keeps its intended proportion.
+        expect(
+            computeSafeAreaViewportHeightCap({
+                windowHeight: 844,
+                fraction: 0.8,
+                topOffset: 60,
+                insets: IPHONE_INSETS,
+            })
+        ).toBeCloseTo(675.2)
+    })
+
+    it('does not double-count the top inset against an already-clamped offset', () => {
+        // Same contract as computeSafeAreaModalMaxHeightBelow: topOffset is
+        // already a viewport coordinate. The inset is only a floor, so an
+        // offset below it is used as-is.
+        expect(
+            computeSafeAreaViewportHeightCap({ windowHeight: 800, fraction: 1, topOffset: 100, insets: IPHONE_INSETS })
+        ).toBe(800 - 100 - 34 - MODAL_SAFE_AREA_GAP)
+
+        // An offset *above* the status bar is not usable space, so the inset wins.
+        expect(
+            computeSafeAreaViewportHeightCap({ windowHeight: 800, fraction: 1, topOffset: 10, insets: IPHONE_INSETS })
+        ).toBe(800 - 47 - 34 - MODAL_SAFE_AREA_GAP)
+    })
+
+    it('never returns a negative cap', () => {
+        expect(computeSafeAreaViewportHeightCap({ windowHeight: 20, fraction: 0.8, insets: IPHONE_INSETS })).toBe(0)
+    })
+
+    it('is a no-op relative to the raw fraction on a device with no insets', () => {
+        const zero = { top: 0, right: 0, bottom: 0, left: 0 }
+
+        // 0.8 * 1000 = 800 <= 1000 - 32, so desktop is byte-identical to `80vh`.
+        expect(computeSafeAreaViewportHeightCap({ windowHeight: 1000, fraction: 0.8, insets: zero })).toBe(800)
     })
 })

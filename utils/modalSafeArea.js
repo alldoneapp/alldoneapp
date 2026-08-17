@@ -125,6 +125,42 @@ export const getSafeAreaModalMaxHeightBelow = (windowHeight, topOffset) =>
     computeSafeAreaModalMaxHeightBelow({ windowHeight, topOffset, insets: getSafeAreaInsets() })
 
 /**
+ * Pure form: the drop-in for a `maxHeight: '80vh'` style cap.
+ *
+ * `vh` is a fraction of the RAW viewport, so it knows nothing about the status
+ * bar or the home indicator; an 80vh card can still be 20% too tall once the
+ * insets are taken out. This keeps the caller's fraction as the intent and
+ * only tightens it when the safe rectangle is the smaller of the two.
+ *
+ * With zero insets it returns `fraction * windowHeight` for any viewport tall
+ * enough that the fraction was already the binding constraint (every desktop
+ * and Android case), so it is not a regression.
+ */
+export const computeSafeAreaViewportHeightCap = ({
+    windowHeight,
+    fraction = 1,
+    insets = ZERO_INSETS,
+    gap = MODAL_SAFE_AREA_GAP,
+    topOffset,
+} = {}) => {
+    const height = toFiniteNumber(windowHeight)
+    const requested = height * toFiniteNumber(fraction)
+    const available = Number.isFinite(topOffset)
+        ? computeSafeAreaModalMaxHeightBelow({ windowHeight: height, topOffset, insets, gap })
+        : computeSafeAreaModalMaxHeight({ windowHeight: height, insets, gap })
+
+    return Math.max(Math.min(requested, available), 0)
+}
+
+/**
+ * Live form. Pass `topOffset` when the popup is pinned at a known viewport
+ * coordinate (the header switchers), so the cap measures the room actually
+ * left below it rather than the whole screen.
+ */
+export const getSafeAreaViewportHeightCap = (windowHeight, fraction, topOffset) =>
+    computeSafeAreaViewportHeightCap({ windowHeight, fraction, topOffset, insets: getSafeAreaInsets() })
+
+/**
  * Pure form of the padding a full-viewport `position: fixed` overlay needs so
  * its centered card cannot reach under the system UI.
  *

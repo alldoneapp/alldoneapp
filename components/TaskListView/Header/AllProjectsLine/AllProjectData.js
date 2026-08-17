@@ -13,8 +13,13 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DV_TAB_ROOT_GOALS } from '../../../../utils/TabNavigationConstants'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 import AllProjectsButton from './AllProjectsButton'
+import useWindowSize from '../../../../utils/useWindowSize'
+import { getSafeAreaViewportHeightCap } from '../../../../utils/modalSafeArea'
+import { pinPopoverInsideWindow } from '../../../../utils/popoverPositioning'
+import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../../styles/modals'
 
 export default function AllProjectData() {
+    const [, windowHeight] = useWindowSize()
     const dispatch = useDispatch()
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
@@ -95,7 +100,13 @@ export default function AllProjectData() {
             containerStyle={
                 mobile
                     ? {
-                          maxHeight: '80vh',
+                          // AT-2339: see ProjectLine.js — `80vh` is measured
+                          // against the raw viewport and ignores the insets.
+                          maxHeight: getSafeAreaViewportHeightCap(
+                              windowHeight,
+                              HEADER_POPOVER_HEIGHT_FRACTION,
+                              HEADER_POPOVER_OFFSET.top
+                          ),
                           overflow: 'auto',
                           position: 'fixed',
                           zIndex: 9999,
@@ -104,10 +115,9 @@ export default function AllProjectData() {
             }
             contentLocation={
                 mobile
-                    ? args => {
-                          // Force position for small screens
-                          return { top: 60, left: 16 }
-                      }
+                    ? // Force position for small screens, offset into the safe
+                      // rectangle: `disableReposition` skips the library nudge.
+                      args => pinPopoverInsideWindow(args, HEADER_POPOVER_OFFSET)
                     : args => popoverToSafePosition(args, mobile)
             }
         >
