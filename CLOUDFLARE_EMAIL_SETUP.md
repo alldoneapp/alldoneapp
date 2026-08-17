@@ -90,6 +90,13 @@ recipients, excluding Anna’s own addresses. When additional recipients are pre
 current email, current-message participant addresses, and an immediately preceding privacy-safe availability result
 rather than general earlier daily-email context. Rejection replies for unknown senders remain sender-only.
 
+The only external-sender exception is a scoped meeting-option grant. When a verified owner explicitly asks Anna to
+offer meeting times to exactly one external participant, the availability reply stores a short-lived grant keyed to
+Anna's outbound SMTP message ID. A reply can use that grant only when the SMTP envelope sender matches the stored
+guest and `In-Reply-To`/`References` contains that exact Anna message. The guest path can select one previously offered
+slot or decline it; it never enters the general assistant path, reads conversation/project history, or exposes other
+email tools. The slot is checked again before one event is created, and the grant is then consumed.
+
 ## Sender Authentication Boundary
 
 - The Worker authorizes from Cloudflare’s SMTP envelope sender (`message.from`), never the spoofable message-header
@@ -101,6 +108,8 @@ rather than general earlier daily-email context. Rejection replies for unknown s
   sender address directly.
 - Firebase still performs the final exact identity match and requires `assistantEmailEnabled === true` before any
   assistant or tool execution.
+- Guest meeting grants are bound to one envelope sender, one outbound Anna message, one participant set, one action,
+  and a finite expiry. Subjects, quoted text, To/CC membership, and contact records never authorize a guest.
 
 Allowed tools by email remain action-only:
 
@@ -119,7 +128,7 @@ Allowed tools by email remain action-only:
 Run targeted tests:
 
 ```bash
-npx jest functions/Email/emailChannelHelpers.test.js --runInBand
+npx jest --config ci/jest.functions.config.js functions/Email --runInBand
 cd cloudflare/email-worker && npm test
 ```
 
