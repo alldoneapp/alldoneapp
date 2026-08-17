@@ -29,4 +29,40 @@ describe('loadNoteContentWithRetry', () => {
         expect(waitForRetry).toHaveBeenNthCalledWith(1, 250)
         expect(waitForRetry).toHaveBeenNthCalledWith(2, 500)
     })
+
+    it('bounds a hanging attempt with attemptTimeoutMs and lets the next attempt win', async () => {
+        jest.useFakeTimers()
+        const content = new ArrayBuffer(4)
+        const loadContent = jest
+            .fn()
+            .mockImplementationOnce(() => new Promise(() => {})) // the Storage SDK retrying internally
+            .mockResolvedValueOnce(content)
+
+        const promise = loadNoteContentWithRetry(loadContent, {
+            attempts: 2,
+            attemptTimeoutMs: 100,
+            waitForRetry: () => Promise.resolve(),
+        })
+        await jest.advanceTimersByTimeAsync(100)
+        await expect(promise).resolves.toBe(content)
+        expect(loadContent).toHaveBeenCalledTimes(2)
+        jest.useRealTimers()
+    })
+
+    it('rejects with the timeout error when every attempt hangs', async () => {
+        jest.useFakeTimers()
+        const loadContent = jest.fn(() => new Promise(() => {}))
+
+        const promise = loadNoteContentWithRetry(loadContent, {
+            attempts: 2,
+            attemptTimeoutMs: 100,
+            waitForRetry: () => Promise.resolve(),
+        })
+        // Attach the rejection expectation before advancing so the rejection is handled.
+        const expectation = expect(promise).rejects.toThrow('timed out after 100ms')
+        await jest.advanceTimersByTimeAsync(250)
+        await expectation
+        expect(loadContent).toHaveBeenCalledTimes(2)
+        jest.useRealTimers()
+    })
 })
