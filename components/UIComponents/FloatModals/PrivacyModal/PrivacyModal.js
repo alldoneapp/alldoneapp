@@ -45,7 +45,6 @@ import { updateNotePrivacy } from '../../../../utils/backends/Notes/notesFiresto
 import { updateChatPrivacy } from '../../../../utils/backends/Chats/chatsFirestore'
 import { setUserPrivacyInProject } from '../../../../utils/backends/Users/usersFirestore'
 import { updateOKRPrivacy } from '../../../../utils/backends/OKRs/okrsFirestore'
-import { mergeRequiredPrivateAccess } from './privacyAccess'
 
 const getOwnersId = (object, objectType) => {
     switch (objectType) {
@@ -133,13 +132,12 @@ function PrivacyModal({
     const [optionList, setOptionList] = useState([])
     const [activeOptionIndex, setActiveOptionIndex] = useState(0)
     const [filterText, setFilterText] = useState('')
-    const actingUserId = useSelector(state => state.loggedUser.uid)
 
     const PUBLIC_ITEM = 0
     const PRIVATE_ITEM = 1
 
     const ownerIds = getOwnersId(object, objectType)
-    const userWithPermanentAccessIds = mergeRequiredPrivateAccess([], getAllOwnerIds(projectId, ownerIds), actingUserId)
+    const userWithPermanentAccessIds = getAllOwnerIds(projectId, ownerIds)
     const { ownerText, objectText } = getObjectTypeData(objectType)
 
     const selectItem = () => {
@@ -217,51 +215,39 @@ function PrivacyModal({
     }
 
     const done = async (isPrivate, isPublicFor) => {
-        const resolvedIsPublicFor = isPrivate
-            ? mergeRequiredPrivateAccess(isPublicFor, userWithPermanentAccessIds, actingUserId)
-            : isPublicFor
-
         if (savePrivacyBeforeSaveObject) {
             objectType === FEED_GOAL_OBJECT_TYPE || objectType === FEED_SKILL_OBJECT_TYPE
                 ? closePopover()
                 : delayClosePopover()
-            savePrivacyBeforeSaveObject(isPrivate, resolvedIsPublicFor)
+            savePrivacyBeforeSaveObject(isPrivate, isPublicFor)
         } else {
             switch (objectType) {
                 case FEED_GOAL_OBJECT_TYPE:
-                    Backend.updateGoalPrivacy(projectId, resolvedIsPublicFor, object)
+                    Backend.updateGoalPrivacy(projectId, isPublicFor, object)
                     break
                 case FEED_TASK_OBJECT_TYPE:
-                    setTaskPrivacy(projectId, object.id, isPrivate, resolvedIsPublicFor, object)
+                    setTaskPrivacy(projectId, object.id, isPrivate, isPublicFor, object)
                     break
                 case FEED_NOTE_OBJECT_TYPE:
-                    updateNotePrivacy(
-                        projectId,
-                        object.id,
-                        isPrivate,
-                        resolvedIsPublicFor,
-                        object.followersIds,
-                        false,
-                        object
-                    )
+                    updateNotePrivacy(projectId, object.id, isPrivate, isPublicFor, object.followersIds, false, object)
                     break
                 case FEED_CONTACT_OBJECT_TYPE:
-                    setProjectContactPrivacy(projectId, object, object.uid, isPrivate, resolvedIsPublicFor)
+                    setProjectContactPrivacy(projectId, object, object.uid, isPrivate, isPublicFor)
                     break
                 case FEED_USER_OBJECT_TYPE:
-                    setUserPrivacyInProject({ id: projectId }, object, isPrivate, resolvedIsPublicFor)
+                    setUserPrivacyInProject({ id: projectId }, object, isPrivate, isPublicFor)
                     break
                 case FEED_CHAT_OBJECT_TYPE:
-                    updateChatPrivacy(projectId, object.id, 'topics', resolvedIsPublicFor)
+                    updateChatPrivacy(projectId, object.id, 'topics', isPublicFor)
                     break
                 case FEED_SKILL_OBJECT_TYPE:
-                    Backend.updateSkillPrivacy(projectId, object, resolvedIsPublicFor)
+                    Backend.updateSkillPrivacy(projectId, object, isPublicFor)
                     break
                 case FEED_OKR_OBJECT_TYPE:
-                    updateOKRPrivacy(projectId, object.id, isPrivate, resolvedIsPublicFor)
+                    updateOKRPrivacy(projectId, object.id, isPrivate, isPublicFor)
                     break
             }
-            if (callback) callback(isPrivate, resolvedIsPublicFor)
+            if (callback) callback(isPrivate, isPublicFor)
             closePopover()
         }
     }

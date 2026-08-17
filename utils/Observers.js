@@ -123,21 +123,29 @@ export const appReloader = {
 }
 
 export const deleteCache = async () => {
-    // const registrations = await navigator.serviceWorker.getRegistration()
-    // if (registrations) {
-    //     if (Array.isArray(registrations)) {
-    //         for (let registration of registrations) {
-    //             registration.unregister()
-    //         }
-    //     } else {
-    //         registrations.unregister()
-    //     }
-    // }
-
     if (typeof caches !== 'undefined') {
         caches.keys().then(function (names) {
-            for (let name of names) caches.delete(name)
+            for (let name of names) {
+                // The workbox precache is the offline app shell (OFFLINE_SUPPORT_PLAN.md
+                // Stage 2). Deleting it fetches nothing fresher — its entries are
+                // content-hashed and revisioned, and fresh bundles only ever arrive via a
+                // service worker update — but it would break offline boot until the next
+                // SW install. Runtime caches are cleared as before.
+                if (!name.startsWith('workbox-precache')) caches.delete(name)
+            }
         })
+    }
+
+    // The reason every caller clears caches is to get onto a new release, so ask
+    // the service worker to check for one right now instead of waiting for the
+    // browser's own update-on-navigation cadence.
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+        try {
+            const registration = await navigator.serviceWorker.getRegistration()
+            if (registration) await registration.update()
+        } catch (error) {
+            // A failed update check must never block the refresh the user asked for.
+        }
     }
 }
 
