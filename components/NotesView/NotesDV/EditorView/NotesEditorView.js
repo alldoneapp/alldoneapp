@@ -91,6 +91,7 @@ import { getDb, getNotesCollaborationServerData } from '../../../../utils/backen
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
 import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
+import { createNoteLocalPersistence } from './noteLocalPersistence'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -150,6 +151,7 @@ const NotesEditorView = ({
     let provider = useRef(null)
     let ydoc = useRef(null)
     let binding = useRef(null)
+    let localPersistence = useRef(null)
     let dirtyEditor = useRef(false)
     let saveTimeoutHandle = useRef(null)
     const noteContentRetryTimeoutRef = useRef(null)
@@ -426,6 +428,21 @@ const NotesEditorView = ({
         }
     }, [])
 
+    // Saves made offline reach only the local IndexedDB copy (the Firebase
+    // Storage put fails); when connectivity returns while the editor is still
+    // open, upload the current state so the canonical copy catches up
+    // (OFFLINE_SUPPORT_PLAN.md Stage 6).
+    useEffect(() => {
+        const uploadOnReconnect = () => {
+            if (!noteUnmountedRef.current && !loadingRef.current && ydoc.current && !readOnly) {
+                dirtyEditor.current = true
+                autosave()
+            }
+        }
+        window.addEventListener('online', uploadOnReconnect)
+        return () => window.removeEventListener('online', uploadOnReconnect)
+    }, [readOnly])
+
     useEffect(() => {
         dispatch(setQuillTextInputProjectIdsByEditorId(note.id, projectId))
         quillTextInputProjectIds[note.id] = projectId
@@ -524,6 +541,11 @@ const NotesEditorView = ({
         if (provider.current) {
             //provider.current.disconnect()
             provider.current.destroy()
+        }
+        // Closes the IndexedDB connection; the persisted note state itself stays,
+        // that is the whole point (destroy() ≠ clearData()).
+        if (localPersistence.current) {
+            localPersistence.current.destroy()
         }
         if (ydoc.current) {
             ydoc.current.destroy()
@@ -730,24 +752,42 @@ const NotesEditorView = ({
 
         const loadNoteContent = async () => {
             try {
-                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                // A failed Storage download is no longer fatal (OFFLINE_SUPPORT_PLAN.md
+                // Stage 6): the local IndexedDB copy can still open the note.
+                // prepareSyncedNoteDocument throws when there is truly nothing to
+                // show, which lands in the retry path below exactly as before.
+                let data = null
+                try {
+                    data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                } catch (storageError) {
+                    console.warn(
+                        'Note content download failed; opening from local offline state if available',
+                        storageError
+                    )
+                }
                 if (noteUnmountedRef.current) return
 
-                const collaboration = await prepareSyncedNoteDocument(data, document => {
-                    return new WebsocketProvider(
-                        getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                        note.id,
-                        document
-                    )
-                })
+                const collaboration = await prepareSyncedNoteDocument(
+                    data,
+                    document => {
+                        return new WebsocketProvider(
+                            getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                            note.id,
+                            document
+                        )
+                    },
+                    { createLocalPersistence: document => createNoteLocalPersistence(note.id, document) }
+                )
                 if (noteUnmountedRef.current) {
                     collaboration.provider.destroy()
+                    collaboration.localPersistence?.destroy()
                     collaboration.document.destroy()
                     return
                 }
 
                 ydoc.current = collaboration.document
                 provider.current = collaboration.provider
+                localPersistence.current = collaboration.localPersistence
                 const type = ydoc.current.getText('quill')
                 provider.current.on('synced', synced => {
                     setSynced(synced)
@@ -785,6 +825,16 @@ const NotesEditorView = ({
                         noteId: note.id,
                     })
                 }
+                if (collaboration.storageNeedsLocalCatchUp && !readOnly) {
+                    // A previous offline session edited this note and its writes never
+                    // reached Firebase Storage. Upload the merged state now so the
+                    // canonical copy catches up even if the user never edits again.
+                    console.warn('Uploading offline note edits that had not reached Firebase Storage', {
+                        noteId: note.id,
+                    })
+                    dirtyEditor.current = true
+                    autosave()
+                }
                 loadingRef.current = false
                 exportLoadingRef = false
                 dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
@@ -792,9 +842,11 @@ const NotesEditorView = ({
                 if (noteUnmountedRef.current) return
                 binding.current?.destroy()
                 provider.current?.destroy()
+                localPersistence.current?.destroy()
                 ydoc.current?.destroy()
                 binding.current = null
                 provider.current = null
+                localPersistence.current = null
                 ydoc.current = null
                 console.error('Failed to load note content; keeping the editor locked and retrying', error)
                 noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
@@ -855,6 +907,9 @@ const NotesEditorView = ({
         if (provider.current) {
             //provider.current.disconnect()
             provider.current.destroy()
+        }
+        if (localPersistence.current) {
+            localPersistence.current.destroy()
         }
         if (ydoc.current) {
             ydoc.current.destroy()

@@ -1188,7 +1188,7 @@
     "Alldone is online": "Alldone is online",
     "Alldone is offline": "Alldone is offline",
     "Alldone is online again, all functionalities are available": "Alldone is online again, all functionalities are available.",
-    "Edition in notes will be disabled till Alldone goes back online again": "Edition in notes will be disabled till Alldone goes back online again.",
+    "Edition in notes will be disabled till Alldone goes back online again": "You can keep editing notes; your changes will sync when Alldone is back online.",
     "This Object hasn't any note yet": "This %{object} hasn't any note yet",
     "This Object hasn't any note yet description": "Starting a new note will create it under this %{object}, and inherit all its properties like title and privacy. Also, the note will appear as a normal note in the main list of notes.",
     "Write the name of the goal": "Write the name of the goal",
