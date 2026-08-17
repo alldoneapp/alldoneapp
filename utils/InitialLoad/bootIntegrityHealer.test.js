@@ -87,6 +87,34 @@ describe('runBootIntegrityCheck', () => {
         expect(recoverDroppedProject).not.toHaveBeenCalled()
     })
 
+    it('stands down entirely while offline — cached-only data is not an anomaly', async () => {
+        state.connectionState = 'offline'
+        delete state.loggedUserProjectsMap.p2
+
+        await runBootIntegrityCheck({ settleMs: 0 })
+
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+        expect(loadGlobalData).not.toHaveBeenCalled()
+        expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('skips the bounded network cycle when the browser goes offline mid-check', async () => {
+        const db = buildDbMock()
+        getDb.mockReturnValue(db)
+        delete state.loggedUserProjectsMap.p2
+        // The re-fetch fails to repair AND flips the connection state, simulating
+        // connectivity dropping between the first pass and the escalation.
+        recoverDroppedProject.mockImplementation(async () => {
+            state.connectionState = 'offline'
+            return false
+        })
+
+        await runBootIntegrityCheck({ settleMs: 0 })
+
+        expect(recoverDroppedProject).toHaveBeenCalled()
+        expect(db.disableNetwork).not.toHaveBeenCalled()
+    })
+
     it('recovers a dropped project by plain re-fetch, without touching the network', async () => {
         delete state.loggedUserProjectsMap.p2
 
