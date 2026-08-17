@@ -292,6 +292,30 @@ Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` a
 `utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
 pin the contract.
 
+### Offline support (OFFLINE_SUPPORT_PLAN.md — Stages 1–2 shipped 2026-08-17)
+
+- **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
+  `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
+  `utils/connectionState.js`, installed once from `AppNavigator`'s `AppContainer` like the
+  escape stack. Gate online-only features on `state.connectionState === 'offline'`; treat
+  `'offline'` as authoritative and `'online'` as a hint (captive portals lie). The
+  `ConnectionStateModal` toast + notes read-only gating consume it in
+  `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
+  imported and needs the retired native toolchain; use this module instead.
+- **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
+  `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
+  live in web-bundler's own package). It precaches the app shell (hashed chunks,
+  index.html, fonts) so an offline reload boots; navigations stay network-first;
+  cross-origin SDK traffic is untouched (workbox only intercepts registered routes). Dev
+  builds copy the no-op `service-worker.dev.js` to the same URL. The legacy
+  `web/service-worker.js` (which deleted **every** cache on activate — do not resurrect
+  it) is gone; `firebase-messaging-sw.js` stays separate and un-precached (sed-injected
+  env placeholders). `utils/Observers.js` `deleteCache()` must never delete
+  `workbox-precache*` caches — it clears runtime caches and triggers
+  `registration.update()` instead. `__tests__/ServiceWorkerPrecache.test.js` pins all of
+  this; `__tests__/utils/DailyAppReload.test.js` pins that the daily reload defers while
+  offline and catches up on the `online` event.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.

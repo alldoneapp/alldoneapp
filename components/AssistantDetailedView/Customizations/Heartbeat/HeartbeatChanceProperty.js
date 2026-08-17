@@ -14,17 +14,13 @@ import { formatHeartbeatInterval, getHeartbeatIntervalMs } from './heartbeatInte
 const VARIANT_CONFIG = {
     replied: {
         field: 'heartbeatChancePercent',
-        rowLabel: 'Chance after you reply to the latest heartbeat',
-        modalTitle: 'Heartbeat chance after replying',
-        modalSubtitle:
-            'Applied after you reply to the latest visible heartbeat in the in-app Heartbeat chat or WhatsApp daily chat that local day. The next visible heartbeat resets the chance to the before-reply value. (%{interval})',
+        rowLabel: 'Execution chance when you replied on the day',
+        modalTitle: 'Heartbeat execution chance (replied)',
     },
     noReply: {
         field: 'heartbeatChanceNoReplyPercent',
-        rowLabel: 'Chance until you reply to the latest heartbeat',
-        modalTitle: 'Heartbeat chance before replying',
-        modalSubtitle:
-            'Applied before the first visible heartbeat that local day and after every new visible heartbeat until you reply in the in-app Heartbeat chat or WhatsApp daily chat. Messages sent before the latest heartbeat do not count. HEARTBEAT_OK does not reset the chance because it posts no message. (%{interval})',
+        rowLabel: 'Execution chance when you didn’t reply on the day',
+        modalTitle: 'Heartbeat execution chance (no reply)',
     },
 }
 
@@ -68,7 +64,10 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                     content={
                         <ChangeNumberTodayTasks
                             customTitle={translate(config.modalTitle)}
-                            customSubtitle={translate(config.modalSubtitle, { interval: intervalLabel })}
+                            customSubtitle={translate(
+                                'Percent chance the heartbeat prompt will execute each heartbeat interval (%{interval})',
+                                { interval: intervalLabel }
+                            )}
                             closePopover={() => setOpen(false)}
                             onSaveData={changeData}
                             currentValue={chancePercent}

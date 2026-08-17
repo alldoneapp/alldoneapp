@@ -32,7 +32,13 @@ export default function NoteEditorContainer({
     const loggedUser = useSelector(state => state.loggedUser)
     const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
-    const [connectionState, setConnectionState] = useState('')
+    // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
+    // utils/connectionState.js. '' until the first transition, then 'offline' or
+    // 'online' (the latter only as a recovery from 'offline').
+    const connectionState = useSelector(state => state.connectionState)
+    // The toast is dismissible per state: closing the offline toast keeps it closed
+    // while the connection stays offline, and any transition shows it again.
+    const [dismissedConnectionState, setDismissedConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
 
     // Only members can edit the note body. Anonymous viewers and logged-in non-members get a
@@ -51,8 +57,12 @@ export default function NoteEditorContainer({
         autoStartTranscriptionProp ?? (navigation ? navigation.getParam('autoStartTranscription') : false)
 
     const closeConnectionStateModal = () => {
-        setConnectionState('')
+        setDismissedConnectionState(connectionState)
     }
+
+    useEffect(() => {
+        setDismissedConnectionState('')
+    }, [connectionState])
 
     useEffect(() => {
         const isReadOnly = connectionState === 'offline' || !loggedUserCanUpdateObject
@@ -101,9 +111,10 @@ export default function NoteEditorContainer({
                     onOpenSideChat={onOpenSideChat}
                 />
             )}
-            {(connectionState === 'online' || connectionState === 'offline') && (
-                <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
-            )}
+            {(connectionState === 'online' || connectionState === 'offline') &&
+                connectionState !== dismissedConnectionState && (
+                    <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
+                )}
         </View>
     )
 }
