@@ -205,6 +205,29 @@ does nothing for them.
   editing stays **enabled** (y-indexeddb makes it safe); read-only mode is only for
   "no local state and no network".
 
+## Notes follow-ups — **SHIPPED 2026-08-17** (post-launch)
+
+Three gaps found in first-day QA of the shipped stages:
+
+1. **Creating a note offline now works end to end.** `uploadNewNote` awaited three
+   things that only resolve on reconnect (the Firestore `.set()` ack, the
+   server-clock read in `updateEditionData`, and the side-effect `Promise.all`
+   including a Storage put that outright rejects offline) — so creation hung and the
+   editor never opened. Offline, the writes are fired without awaiting acks (the
+   local cache applies them instantly and syncs later), and the editor opens empty
+   via `prepareSyncedNoteDocument`'s new `allowEmptyOpen` — passed when the note has
+   no `preview`, i.e. its content was never saved, so empty IS correct. CRDT merge
+   keeps even a false positive lossless.
+2. **Recently edited notes are readable offline without having opened them**
+   (`utils/NotesOfflinePrefetch.js`): while online, the top 5 notes per project
+   (max 30/run, newest first) are downloaded and written into the same y-indexeddb
+   stores the editor uses. Runs after login and on reconnect, 10-min cooldown,
+   localStorage markers skip unchanged editions, and the currently open note is
+   never touched (the live editor owns its store).
+3. **A note that still cannot load offline says so** — a translated message in the
+   editor area replaces the endless spinner; the existing 5s retry picks the
+   content up on reconnect.
+
 ## Stage 7 — Degrade the online-only surfaces honestly — **SHIPPED 2026-08-17**
 
 _Implementation notes: `runHttpsCallableFunction` fast-fails offline with a typed

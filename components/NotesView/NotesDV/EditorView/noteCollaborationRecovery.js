@@ -62,7 +62,7 @@ const storageIsMissingLocalState = (localDocument, storageUpdate) => {
  * caller's locked-and-retry behavior for the genuinely empty case.
  */
 export const prepareSyncedNoteDocument = async (storageData, createProvider, options = {}) => {
-    const { createLocalPersistence, syncTimeout } = options
+    const { createLocalPersistence, syncTimeout, allowEmptyOpen = false } = options
     let document = new Y.Doc()
     let provider
     let localPersistence = null
@@ -104,8 +104,11 @@ export const prepareSyncedNoteDocument = async (storageData, createProvider, opt
             // The collaboration server is unreachable (offline). The document
             // already holds the Storage and/or local IndexedDB content — open
             // from it; y-websocket keeps reconnecting and CRDT-merges with the
-            // room when connectivity returns.
-            if (storedLength === 0 && !storageData) throw syncError
+            // room when connectivity returns. A document with nothing anywhere
+            // stays locked UNLESS the caller vouches that empty is the correct
+            // content (allowEmptyOpen — a note whose content was never saved,
+            // e.g. one just created offline).
+            if (storedLength === 0 && !storageData && !allowEmptyOpen) throw syncError
             return {
                 document,
                 provider,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
@@ -35,7 +35,8 @@ import './toolbar-styles.css'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import Backend from '../../../../utils/BackendBridge'
 import URLsNotes, { URL_NOTE_DETAILS_EDITOR } from '../../../../URLSystem/Notes/URLsNotes'
-import { getRandomCollabColor } from '../../../styles/global'
+import styles, { colors, getRandomCollabColor } from '../../../styles/global'
+import { translate } from '../../../../i18n/TranslationService'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import {
     resetLoadingData,
@@ -92,6 +93,7 @@ import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
 import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
 import { createNoteLocalPersistence } from './noteLocalPersistence'
+import { isBrowserOffline } from '../../../../utils/connectionState'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -145,6 +147,9 @@ const NotesEditorView = ({
     const [synced, setSynced] = useState(false)
     const [editors, setEditors] = useState([])
     const [dataLoaded, setDataLoaded] = useState(false)
+    // The note's content could not be loaded AND the browser is offline — shown
+    // as an explanatory message instead of an endless spinner (notes follow-ups).
+    const [contentUnavailableOffline, setContentUnavailableOffline] = useState(false)
     // const [scrollEnabled, setScrollEnabled] = useState(false)
     const firstEditionRef = useRef(true)
     let loadingRef = useRef(true)
@@ -776,7 +781,15 @@ const NotesEditorView = ({
                             document
                         )
                     },
-                    { createLocalPersistence: document => createNoteLocalPersistence(note.id, document) }
+                    {
+                        createLocalPersistence: document => createNoteLocalPersistence(note.id, document),
+                        // A note whose content was never saved (no preview — the
+                        // preview is written on every content autosave) is CORRECT
+                        // when empty, so it may open offline with nothing anywhere:
+                        // the case of a note just created offline. CRDT merge keeps
+                        // this safe even against a false positive.
+                        allowEmptyOpen: !(note.preview && note.preview.trim()),
+                    }
                 )
                 if (noteUnmountedRef.current) {
                     collaboration.provider.destroy()
@@ -835,6 +848,7 @@ const NotesEditorView = ({
                     dirtyEditor.current = true
                     autosave()
                 }
+                setContentUnavailableOffline(false)
                 loadingRef.current = false
                 exportLoadingRef = false
                 dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
@@ -848,6 +862,10 @@ const NotesEditorView = ({
                 provider.current = null
                 localPersistence.current = null
                 ydoc.current = null
+                // Offline with no local copy: tell the user why the note cannot
+                // open instead of spinning forever; the retry below picks the
+                // content up as soon as connectivity returns.
+                setContentUnavailableOffline(isBrowserOffline())
                 console.error('Failed to load note content; keeping the editor locked and retrying', error)
                 noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
@@ -1307,6 +1325,16 @@ const NotesEditorView = ({
                 onOpenSideChat={onOpenSideChat}
             />
 
+            {contentUnavailableOffline && isLoadingNoteData ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+                    <Text style={[styles.title6, { color: colors.Text02, textAlign: 'center' }]}>
+                        {translate('This note is not available offline yet')}
+                    </Text>
+                    <Text style={[styles.body1, { color: colors.Text03, textAlign: 'center', marginTop: 8 }]}>
+                        {translate('It will load automatically when you are back online')}
+                    </Text>
+                </View>
+            ) : null}
             <CustomScrollView
                 ref={scrollRef}
                 onScroll={e => {

@@ -1188,6 +1188,8 @@
     "Alldone is online": "Alldone is online",
     "Alldone is offline": "Alldone is offline",
     "Alldone is online again, all functionalities are available": "Alldone is online again, all functionalities are available.",
+    "This note is not available offline yet": "This note is not available offline yet",
+    "It will load automatically when you are back online": "It has not been opened on this device before. It will load automatically when you are back online.",
     "Search needs an internet connection": "Search needs an internet connection. Results will be available again once you are back online.",
     "Edition in notes will be disabled till Alldone goes back online again": "You can keep editing notes; your changes will sync when Alldone is back online.",
     "This Object hasn't any note yet": "This %{object} hasn't any note yet",
