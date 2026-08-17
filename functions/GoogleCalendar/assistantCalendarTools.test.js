@@ -14,11 +14,13 @@ jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
 
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
+const moment = require('moment-timezone')
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 
 const firestoreState = {
     users: {},
     bookingSettings: {},
+    bookingSettingsErrors: {},
 }
 
 const calendarClients = {}
@@ -45,6 +47,8 @@ function buildFirestore() {
         doc: jest.fn(path => {
             const match = /^users\/([^/]+)\/bookingSettings\/default$/.exec(path)
             if (!match) throw new Error(`Unexpected doc path: ${path}`)
+            const error = firestoreState.bookingSettingsErrors[match[1]]
+            if (error) return { get: jest.fn().mockRejectedValue(error) }
             const data = firestoreState.bookingSettings[match[1]]
             return {
                 get: jest.fn().mockResolvedValue({ exists: !!data, data: () => data }),
@@ -64,6 +68,7 @@ describe('assistantCalendarTools', () => {
     beforeEach(() => {
         firestoreState.users = {}
         firestoreState.bookingSettings = {}
+        firestoreState.bookingSettingsErrors = {}
         Object.keys(calendarClients).forEach(key => delete calendarClients[key])
         jest.clearAllMocks()
 
@@ -425,6 +430,142 @@ describe('assistantCalendarTools', () => {
                 skippedDays: [],
             })
             expect(result.options).toEqual([{ start: '2026-03-10T14:00:00+01:00', end: '2026-03-10T14:30:00+01:00' }])
+        })
+    })
+
+    describe('public meeting-link policy for emailed options', () => {
+        const NOW = moment.tz('2026-08-12T14:00:00', 'Europe/Berlin').valueOf()
+        const CALENDAR_USER = {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        }
+
+        beforeEach(() => {
+            jest.useFakeTimers()
+            jest.setSystemTime(NOW)
+            setUser('user-1', CALENDAR_USER)
+        })
+
+        afterEach(() => {
+            jest.useRealTimers()
+        })
+
+        test('clamps an emailed search to tomorrow and applies the saved availability settings', async () => {
+            setBookingSettings('user-1', {
+                timeZone: 'Europe/Berlin',
+                workingHoursStart: '10:00',
+                workingHoursEnd: '16:00',
+                includeWeekends: true,
+                allowSameDayBooking: false,
+                bufferBeforeMinutes: 15,
+                bufferAfterMinutes: 20,
+                minFreeHoursPerDay: 0,
+            })
+            setCalendarClient('p1')
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-08-12T09:00:00+02:00',
+                timeMax: '2026-08-13T17:00:00+02:00',
+                maxOptions: 2,
+                respectPublicMeetingLinkSettings: true,
+            })
+
+            expect(result.success).toBe(true)
+            expect(result.requestedRange.start).toBe('2026-08-13T00:00:00+02:00')
+            expect(result.workingHours).toEqual({
+                start: '10:00',
+                end: '16:00',
+                includeWeekends: true,
+                bufferBeforeMinutes: 15,
+                bufferAfterMinutes: 20,
+            })
+            expect(result.minFreeHours).toMatchObject({ perDay: 0, source: 'settings' })
+            expect(result.options).toEqual([
+                { start: '2026-08-13T10:00:00+02:00', end: '2026-08-13T10:30:00+02:00' },
+                { start: '2026-08-13T10:30:00+02:00', end: '2026-08-13T11:00:00+02:00' },
+            ])
+        })
+
+        test('returns no emailed options for today when same-day meetings are disabled', async () => {
+            setBookingSettings('user-1', {
+                timeZone: 'Europe/Berlin',
+                allowSameDayBooking: false,
+            })
+            const client = setCalendarClient('p1')
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-08-12T14:00:00+02:00',
+                timeMax: '2026-08-12T17:00:00+02:00',
+                respectPublicMeetingLinkSettings: true,
+            })
+
+            expect(result).toMatchObject({
+                success: true,
+                options: [],
+            })
+            expect(result.message).toContain('do not allow same-day meetings')
+            expect(client.events.list).not.toHaveBeenCalled()
+        })
+
+        test('keeps today available when the current request explicitly overrides the saved setting', async () => {
+            setBookingSettings('user-1', {
+                timeZone: 'Europe/Berlin',
+                allowSameDayBooking: false,
+                minFreeHoursPerDay: 0,
+            })
+            setCalendarClient('p1')
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-08-12T14:00:00+02:00',
+                timeMax: '2026-08-12T17:00:00+02:00',
+                maxOptions: 1,
+                allowSameDayBooking: true,
+                respectPublicMeetingLinkSettings: true,
+            })
+
+            expect(result.options).toEqual([{ start: '2026-08-12T14:00:00+02:00', end: '2026-08-12T14:30:00+02:00' }])
+        })
+
+        test('does not invent a same-day policy when no public meeting settings were saved', async () => {
+            setCalendarClient('p1')
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-08-12T14:00:00+02:00',
+                timeMax: '2026-08-12T17:00:00+02:00',
+                maxOptions: 1,
+                minFreeHoursPerDay: 0,
+                respectPublicMeetingLinkSettings: true,
+            })
+
+            expect(result.options).toEqual([{ start: '2026-08-12T14:00:00+02:00', end: '2026-08-12T14:30:00+02:00' }])
+        })
+
+        test('fails closed when emailed availability settings cannot be read', async () => {
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+            firestoreState.bookingSettingsErrors['user-1'] = new Error('firestore unavailable')
+            const client = setCalendarClient('p1')
+
+            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+                userId: 'user-1',
+                timeMin: '2026-08-12T14:00:00+02:00',
+                timeMax: '2026-08-13T17:00:00+02:00',
+                respectPublicMeetingLinkSettings: true,
+            })
+
+            expect(result).toMatchObject({
+                success: false,
+                options: [],
+                message: 'Meeting availability settings could not be checked right now. Please try again later.',
+            })
+            expect(client.events.list).not.toHaveBeenCalled()
+            warnSpy.mockRestore()
         })
     })
 

@@ -1917,6 +1917,11 @@ const toolSchemas = {
                         type: 'boolean',
                         description: 'Optional: include Saturdays and Sundays. Defaults to false.',
                     },
+                    allowSameDayBooking: {
+                        type: 'boolean',
+                        description:
+                            "Optional request-level override for the user's saved no-same-day setting. Pass true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it.",
+                    },
                     minFreeHoursPerDay: {
                         type: 'number',
                         description:

@@ -200,6 +200,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             expect.objectContaining({
                 channel: 'email',
                 disableToolSearch: true,
+                respectPublicMeetingLinkSettings: true,
             })
         )
     })
@@ -427,6 +428,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(initialSystemText).toContain("Calendar tools operate on Karsten's connected calendars")
         expect(initialSystemText).toContain("Availability results represent Karsten's availability")
         expect(initialSystemText).toContain('explicitly attribute it to Karsten')
+        expect(initialSystemText).toContain('A request for today or a same-day meeting may override')
         expect(finalInstruction).toContain(
             "represents Karsten's availability across Karsten's connected calendars, not Anna's availability or calendar"
         )
@@ -434,7 +436,17 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
             expect.objectContaining({
                 calendarOwnerName: 'Karsten',
+                respectPublicMeetingLinkSettings: true,
             })
+        )
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'find_calendar_availability',
+            expect.any(Object),
+            'project-1',
+            'assistant-1',
+            'user-1',
+            expect.any(Object),
+            expect.objectContaining({ respectPublicMeetingLinkSettings: true })
         )
         expect(responseText).toBe("Tomorrow Karsten is free at 09:00. Karsten's calendar is otherwise busy.")
         expect(storeEmailAssistantMessageInTopic).toHaveBeenCalledWith(
