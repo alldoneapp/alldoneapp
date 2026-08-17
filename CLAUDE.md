@@ -360,6 +360,24 @@ already clears the system UI does not move a pixel, so the comment popup's 80px 
 byte-identical to before and only gains a horizontal clamp. Additive would have shoved the
 one surface that was signed off as correct 47px down the screen.
 
+**Minimum semantics are for gaps measured from the SCREEN edge; an offset measured from
+the CONTENT area is additive instead.** The two header project switchers pin themselves at
+a literal `{ top: 60, left: 16 }` _and_ pass `disableReposition`, so nothing clamps them at
+all. But `60` was measured against the app header, and the shell already pads `body` with
+`env(safe-area-inset-*)` — so the header starts at `insets.top` while a `position: fixed`
+portal does not inherit that padding. `max(60, 59)` would leave one pixel of clearance
+under a Dynamic Island; `offsetPopoverInsideSafeArea` (`utils/popoverPositioning.js`)
+therefore ADDS the inset and then clamps, so the offset cannot push a tall popover off the
+bottom. Getting this backwards is silent — it looks fixed and is still one pixel wrong.
+
+A second sweep covered the spellings the first codemod could not see, and each needed its
+own ratchet: a cap re-derived from a local constant (`windowHeight - MODAL_VERTICAL_MARGIN
+
+- 2`, where that constant is exactly the 32 of `MODAL_SAFE_AREA_GAP`—`ConnectRepoModal`even called the inset-aware`useModalSizing`and then discarded its`maxHeight`), a raw
+`vh`unit (a fraction of the RAW viewport, blind to the insets — use`getSafeAreaViewportHeightCap`), and a literal `contentLocation` coordinate pair. Treat
+  "the guardrail is green" as meaning only "no file matches the idioms we already know";
+  the misses were found by auditing for the geometry, not by grepping for the pattern.
+
 The hook exists rather than a bare function call because these dialogs subscribe to redux,
 not to the viewport: without its `useWindowSize()` a rotation would leave a landscape
 overlay padded with the portrait insets. `__tests__/PopupSafeAreaGuardrails.test.js`
