@@ -167,7 +167,21 @@ code that runs before the debounced redux slice settles._
 - Verification: browser test — boot the app with network blocked from the start,
   assert task list renders from cache.
 
-## Stage 6 — Notes offline (Yjs)
+## Stage 6 — Notes offline (Yjs) — **SHIPPED 2026-08-17**
+
+_Implementation notes: `y-indexeddb@9.0.12` (root dep + jest transform allowlist entry),
+attached only to the LIVE editor via `noteLocalPersistence.js` — the headless/virtual
+Quill path in `notesHelper.js` serves online-only operations and deliberately stays
+WS-only. `prepareSyncedNoteDocument` now takes `{ createLocalPersistence, syncTimeout }`,
+tolerates a null `storageData` (failed download), opens offline when the WS sync times
+out but content exists, and computes `storageNeedsLocalCatchUp` by applying local state
+onto a throwaway storage doc and comparing encodings (catches deletions; a bare
+state-vector diff would over-report on every open and fire spurious edit side effects).
+Catch-up uploads happen on next online open and on the `online` event while the editor
+is open; `setNoteData`'s Storage put failure is caught (content is locally durable).
+Offline read-only gating removed; toast copy updated in en/de/es (same key). Known
+limit: the destructive-collaboration-sync recovery still only guards the load moment,
+not a late reconnect sync — unchanged from before._
 
 Notes are the special case: content lives in Firebase Storage, not Firestore, so Stage 3
 does nothing for them.

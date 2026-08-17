@@ -1179,7 +1179,7 @@
     "Alldone is online": "Alldone está en línea",
     "Alldone is offline": "Alldone está desconectado",
     "Alldone is online again, all functionalities are available": "Alldone está en línea nuevamente, todas las funcionalidades están disponibles.",
-    "Edition in notes will be disabled till Alldone goes back online again": "La edición en notas se desactivará hasta que Alldone vuelva a estar en línea.",
+    "Edition in notes will be disabled till Alldone goes back online again": "Puedes seguir editando notas; tus cambios se sincronizarán cuando Alldone vuelva a estar en línea.",
     "This Object hasn't any note yet": "Este %{object} aún no tiene ninguna nota",
     "This Object hasn't any note yet description": "Comenzar una nueva nota la creará bajo este %{object}, y heredará todas sus propiedades como título y privacidad. Además, la nota aparecerá como una nota normal en la lista principal de notas.",
     "Write the name of the goal": "Escriba el nombre de la meta",
