@@ -334,7 +334,15 @@ pin the contract.
   per project, 30 per run, cooldown 10 min, marker-skips unchanged editions, never
   touches the open note, scheduled post-login + on reconnect from `AppContent`). (3) a
   note that still cannot load offline shows a translated explanation instead of an
-  endless spinner (`contentUnavailableOffline` in `NotesEditorView`).
+  endless spinner (`contentUnavailableOffline` in `NotesEditorView`). **The Firebase
+  Storage SDK retries failed network requests internally for up to 2 minutes per
+  operation (10 for uploads)** — offline, any unguarded notes-storage call stalls the
+  UI long before app-level offline handling can run. The notes storage client is
+  bounded (`setMaxOperationRetryTime(15000)` / `setMaxUploadRetryTime(60000)` at init),
+  the editor skips the download outright while `isBrowserOffline()`, and
+  `loadNoteContentWithRetry` bounds each attempt (`attemptTimeoutMs`). When testing
+  offline behavior, drive the REAL SDK offline — injecting a failed download result
+  fails fast and masks exactly this class of stall.
 - **Firestore persistence**: `initFirebase` enables IndexedDB persistence
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
