@@ -23,15 +23,6 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
-// The preview reserves a constant height so the assistant line (and everything below it) never
-// reflows when the last comment changes length. The numbers below are the layout that was already
-// the maximum before AT-2344: one clipped title line plus two clipped body lines.
-export const PREVIEW_LINE_HEIGHT = 22 // styles.subtitle2 lineHeight
-export const PREVIEW_TITLE_HEIGHT = PREVIEW_LINE_HEIGHT
-export const PREVIEW_BODY_HEIGHT = PREVIEW_LINE_HEIGHT * 2
-export const PREVIEW_VERTICAL_PADDING = 12
-export const LAST_COMMENT_PREVIEW_HEIGHT = PREVIEW_TITLE_HEIGHT + PREVIEW_BODY_HEIGHT + PREVIEW_VERTICAL_PADDING * 2
-
 export default function LastAssistantComment({
     projectId,
     commentText,
@@ -71,13 +62,11 @@ export default function LastAssistantComment({
         <TouchableOpacity onPress={onPress} style={[localStyles.container]}>
             <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
             <View style={localStyles.textContainer}>
-                <View style={localStyles.titleRow}>
-                    {!!objectName && (
-                        <Text numberOfLines={2} style={localStyles.title}>
-                            {objectName}
-                        </Text>
-                    )}
-                </View>
+                {!!objectName && (
+                    <Text numberOfLines={2} style={localStyles.title}>
+                        {objectName}
+                    </Text>
+                )}
                 <View style={localStyles.parsedTextContainer}>
                     <View style={localStyles.parsedTextBody}>
                         {parsedElements.map((element, index) => {
@@ -162,41 +151,31 @@ export default function LastAssistantComment({
 
 const localStyles = StyleSheet.create({
     container: {
-        // Fixed (not min/max) so a short comment reserves exactly as much room as a long one.
-        height: LAST_COMMENT_PREVIEW_HEIGHT,
-        flexShrink: 0,
-        // No overflow: 'hidden' here — the unread badge sits at top/right: -5, outside the card.
+        minHeight: 80,
         backgroundColor: colors.Grey300,
         borderRadius: 12,
         flexDirection: 'row',
         paddingHorizontal: 4,
-        paddingVertical: PREVIEW_VERTICAL_PADDING,
+        paddingVertical: 12,
     },
     textContainer: {
         width: '100%',
         paddingRight: 20,
         justifyContent: 'flex-start',
     },
-    titleRow: {
-        // Reserved even when the chat has no title, so the body text never shifts upwards.
-        height: PREVIEW_TITLE_HEIGHT,
-        flexShrink: 0,
-        overflow: 'hidden',
-    },
     title: {
         ...styles.subtitle2,
         color: colors.Text03,
         fontWeight: 'bold',
         overflow: 'hidden',
-        maxHeight: PREVIEW_TITLE_HEIGHT,
+        maxHeight: 22,
     },
     text: {
         ...styles.subtitle2,
         color: colors.Text03,
     },
     parsedTextContainer: {
-        height: PREVIEW_BODY_HEIGHT,
-        flexShrink: 0,
+        maxHeight: 44,
         overflow: 'hidden',
     },
     parsedTextBody: {

@@ -508,8 +508,8 @@ export default class Backend {
         return bridge.getNoteMeta(projectId, noteId)
     }
 
-    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options) {
-        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options)
+    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks) {
+        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks)
     }
 
     static watchNotesCollab(noteId, callback) {

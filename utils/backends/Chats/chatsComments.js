@@ -42,7 +42,6 @@ import {
     rebuildTaskLastCommentData,
 } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
-import { awaitWriteAck } from '../offlineWriteAck'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     cleanTextMetaData,
@@ -649,15 +648,8 @@ export async function createObjectMessage(
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         try {
-            // Offline these acks never arrive, so awaiting them left the comment
-            // modal open forever on a comment that was in fact already stored
-            // locally and queued for the server. The writes stay durable in the
-            // persisted mutation queue; only the wait is skipped (AT-2340).
-            await awaitWriteAck(Promise.all(promises), 'createObjectMessage comment')
-            await awaitWriteAck(
-                updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType),
-                'createObjectMessage last-comment preview'
-            )
+            await Promise.all(promises)
+            await updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
         } catch (error) {
             console.error('[TaskComments] Failed to persist comment before updating preview metadata', {
                 projectId,
