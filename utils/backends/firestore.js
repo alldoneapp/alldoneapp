@@ -43,6 +43,7 @@ import {
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
+import { enableFirestorePersistence } from './firestorePersistence'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -337,6 +338,7 @@ let functions
 let messaging
 let db
 let firestoreSettingsApplied = false
+let firestorePersistenceRequested = false
 let firestoreNetworkRestartPromise = null
 let somePrefix = 'Offline'
 let someId = -1
@@ -480,11 +482,21 @@ export async function initFirebase(onComplete) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
             // which resets host and logs "You are overriding the original host".
-            db.settings({ ignoreUndefinedProperties: true, merge: true })
+            // 100 MB cache with LRU GC: the feeds/chat collections are large, and
+            // unlimited would let the offline cache grow without bound.
+            db.settings({ ignoreUndefinedProperties: true, merge: true, cacheSizeBytes: 100 * 1024 * 1024 })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
         }
+    }
+    if (!firestorePersistenceRequested) {
+        firestorePersistenceRequested = true
+        // Deliberately not awaited: the compat SDK queues every later Firestore call
+        // behind the enable, so correctness needs no await and boot stays fast. Must
+        // stay between db.settings() and the first real Firestore operation — see
+        // firestorePersistence.js for the failure modes and the emulator skip.
+        enableFirestorePersistence(db, { useEmulator })
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -1423,6 +1435,11 @@ const reloadApp = () => {
 export const watchForceReload = async (userId, deleteOldData) => {
     if (deleteOldData) await db.doc(`userForceReloads/${userId}`).delete()
     db.doc(`userForceReloads/${userId}`).onSnapshot(doc => {
+        // With IndexedDB persistence a stale `{reload: true}` doc can be served from
+        // cache on boot (e.g. the session that was told to reload never got to delete
+        // it). Reloading is only meaningful — and only safe against a reload loop —
+        // when the server actually says so right now.
+        if (doc.metadata && doc.metadata.fromCache) return
         const data = doc.data()
         if (data && data.reload) reloadApp()
     })
