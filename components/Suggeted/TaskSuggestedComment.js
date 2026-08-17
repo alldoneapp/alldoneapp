@@ -13,8 +13,10 @@ import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function TaskSuggestedComment({ task, projectId }) {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
@@ -58,7 +60,7 @@ export default function TaskSuggestedComment({ task, projectId }) {
     }
 
     return (
-        <View style={[localStyles.container]}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
             <AppPopover isOpen={true} content={null} onClickOutside={closeModal}>
                 <RichCommentModal
                     projectId={projectId}

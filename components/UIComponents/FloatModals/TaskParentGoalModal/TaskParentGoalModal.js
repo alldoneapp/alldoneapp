@@ -9,7 +9,7 @@ import { colors } from '../../../styles/global'
 import { MENTION_MODAL_GOALS_TAB } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { TASK_PARENT_GOAL_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
 import MentionsGoalsGrouped from './MentionsGoalsGrouped'
 import EmptyMatch from '../../../Feeds/CommentsTextInput/MentionsModal/EmptyMatch'
@@ -35,6 +35,7 @@ import { DYNAMIC_PERCENT, getOwnerId } from '../../../GoalsView/GoalsHelper'
 import { ALL_GOALS_ID } from '../../../AllSections/allSectionHelper'
 import store from '../../../../redux/store'
 import { goalSelectionId, shouldUnselectGoal } from './goalSelectionToggle'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -107,7 +108,7 @@ export default function TaskParentGoalModal({
     const activeGoalRef = useRef(null)
 
     const [width, height] = useWindowSize()
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const onKeyDown = event => {

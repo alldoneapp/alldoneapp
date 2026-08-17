@@ -6,7 +6,7 @@ import { getPreConfigTasksForAllProjects } from '../../../../../utils/backends/A
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
 import { setIframeModalData, setPreConfigTaskExecuting } from '../../../../../redux/actions'
 import useWindowSize from '../../../../../utils/useWindowSize'
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
 import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
@@ -25,6 +25,7 @@ import {
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
 import { getAssistantTaskIcon } from '../assistantTaskIcon'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 const getAiSettings = task => {
     return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
@@ -193,7 +194,7 @@ export default function AssistantTaskSearchModal({ closeModal }) {
           })()
 
     return (
-        <View style={[localStyles.container, widerPopoverStyle, { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, widerPopoverStyle, { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <ModalHeader closeModal={closeModal} title={translate('Search assistant tasks')} />
             <View style={localStyles.searchBox}>
                 <Icon name="search" size={18} color={colors.Text03} />

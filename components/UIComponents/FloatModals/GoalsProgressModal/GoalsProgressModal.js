@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import ProgressItem from './ProgressItem'
 import { progressData, dynamicData } from '../../../GoalsView/GoalsHelper'
 import useWindowSize from '../../../../utils/useWindowSize'
@@ -22,6 +22,7 @@ import { checkIsLimitedByTraffic } from '../../../Premium/PremiumHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import { moveCompletedGoalInBacklogToDone } from '../../../../utils/backends/Goals/goalsFirestore'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalsProgressModal({ closeModal, updateProgress, progress, projectId, goal }) {
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -100,7 +101,11 @@ export default function GoalsProgressModal({ closeModal, updateProgress, progres
                 />
             ) : (
                 <View
-                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
+                    style={[
+                        localStyles.container,
+                        applyPopoverWidth(),
+                        { maxHeight: getSafeAreaModalMaxHeight(height) },
+                    ]}
                 >
                     <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                         <ModalHeader

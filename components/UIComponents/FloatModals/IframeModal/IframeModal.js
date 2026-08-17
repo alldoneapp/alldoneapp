@@ -7,8 +7,10 @@ import Icon from '../../../Icon'
 import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
 import useEscapeKey from '../../../../hooks/useEscapeKey'
+import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function IframeModal() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const iframeModalData = useSelector(state => state.iframeModalData)
     const { visible, url, name } = iframeModalData
@@ -159,7 +161,7 @@ export default function IframeModal() {
     if (!visible) return null
 
     return (
-        <View style={localStyles.overlay}>
+        <View style={[localStyles.overlay, safeAreaOverlayPadding]}>
             <View style={localStyles.container}>
                 <View style={localStyles.header}>
                     <View style={localStyles.headerLeft}>
