@@ -1,6 +1,6 @@
 'use strict'
 
-const mockSendTransacEmail = jest.fn().mockResolvedValue({})
+const mockSendTransacEmail = jest.fn().mockResolvedValue({ messageId: '<outbound-1@brevo.example>' })
 
 jest.mock('sib-api-v3-sdk', () => ({
     ApiClient: {
@@ -27,7 +27,7 @@ describe('emailReplyService', () => {
     })
 
     test('sends normalized To and CC recipient lists with the default signature', async () => {
-        await sendAnnaEmailReply({
+        const result = await sendAnnaEmailReply({
             toEmails: ['Owner@Example.com', 'teammate@example.com'],
             ccEmails: ['observer@example.com', 'owner@example.com'],
             subject: 'Re: Meeting',
@@ -47,6 +47,7 @@ describe('emailReplyService', () => {
         expect(htmlContent).toContain('<a href="https://alldone.app/"')
         expect(htmlContent).toContain('https://alldone.app/</a>')
         expect(htmlContent).toContain('Three options follow.')
+        expect(result.messageId).toBe('<outbound-1@brevo.example>')
     })
 
     test('escapes assistant reply text while keeping the default signature link intact', async () => {
