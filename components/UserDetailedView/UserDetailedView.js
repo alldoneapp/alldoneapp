@@ -238,6 +238,8 @@ const UserDetailedView = ({ navigation }) => {
                                                     chatTitle={user.displayName}
                                                     assistantId={user.assistantId}
                                                     objectType={'users'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_USER_NOTE:

@@ -54,6 +54,13 @@ import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import useNewEmailCommentIds from './useNewEmailCommentIds'
 import shouldAutoFocusChatInput from '../Utils/shouldAutoFocusChatInput'
+import {
+    CHAT_EDGE_TOP,
+    CHAT_FULLSCREEN_COOLDOWN_MS,
+    getChatEdgeAtPosition,
+    getChatFullscreenTolerances,
+    resolveChatFullscreenChange,
+} from '../Utils/chatScrollFullscreen'
 
 export default function ChatBoard({
     projectId,
@@ -64,6 +71,8 @@ export default function ChatBoard({
     chatTitle,
     members,
     objectType,
+    isFullscreen = false,
+    setFullscreen,
 }) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
@@ -76,6 +85,7 @@ export default function ChatBoard({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const chatPagesAmount = useSelector(state => state.chatPagesAmount)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const chatNotifications = useSelector(state => state.projectChatNotifications[projectId][chat.id])
     const [amountOfNewCommentsToHighligth, setAmountOfNewCommentsToHighligth] = useState(0)
     const [page, setPage] = useState(1)
@@ -92,6 +102,16 @@ export default function ChatBoard({
     const contentHeightRef = useRef(0)
     const scrollViewHeightRef = useRef(0)
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
+    const isFullscreenRef = useRef(isFullscreen)
+    isFullscreenRef.current = isFullscreen
+    const lastFullscreenChangeRef = useRef(0)
+    const previousFullscreenRef = useRef(isFullscreen)
+    const requestedFullscreenRef = useRef(null)
+    const suppressExpandUntilEdgeRef = useRef(false)
+    // Read through a ref on unmount so leaving the chat tab always restores the normal layout,
+    // even when the parent re-created the callback in the meantime.
+    const setFullscreenRef = useRef(setFullscreen)
+    setFullscreenRef.current = setFullscreen
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${chat.id}`, chatNotifications)
@@ -162,6 +182,56 @@ export default function ChatBoard({
         }
     }
 
+    // Reading the thread in the middle expands the chat over the DV chrome; resting at either
+    // edge restores the normal layout. Only a DV that passes `setFullscreen` takes part — the
+    // note side chat deliberately does not, since it is a panel beside the editor rather than
+    // the tab's main content.
+    const updateFullscreenMode = ({ scrollY, contentHeight, viewportHeight }) => {
+        if (!setFullscreen) return
+
+        const { enter, exit } = getChatFullscreenTolerances({
+            mobile: smallScreenNavigation,
+            tablet: isMiddleScreen,
+        })
+
+        if (suppressExpandUntilEdgeRef.current) {
+            const edge = getChatEdgeAtPosition({ scrollY, contentHeight, viewportHeight, exit })
+            if (!edge) return
+            suppressExpandUntilEdgeRef.current = false
+        }
+
+        const now = Date.now()
+        if (now - lastFullscreenChangeRef.current < CHAT_FULLSCREEN_COOLDOWN_MS) return
+
+        const change = resolveChatFullscreenChange({
+            scrollY,
+            contentHeight,
+            viewportHeight,
+            isFullscreen: isFullscreenRef.current,
+            enter,
+            exit,
+        })
+        if (!change) return
+
+        lastFullscreenChangeRef.current = now
+        // The prop only catches up a render later, and onScroll fires every frame until then.
+        isFullscreenRef.current = change.fullscreen
+        requestedFullscreenRef.current = change.fullscreen
+        setFullscreen(change.fullscreen)
+
+        // Restoring the chrome takes that height back off the scroll viewport, which would push
+        // the edge the user just reached back out of view. Re-anchor to it once layout settles.
+        if (!change.fullscreen) {
+            setTimeout(() => {
+                if (change.edge === CHAT_EDGE_TOP) {
+                    scrollViewRef.current?.scrollTo({ x: 0, y: 0, animated: false })
+                } else {
+                    scrollToEnd()
+                }
+            })
+        }
+    }
+
     const handleScroll = event => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         const currentScrollPosition = contentOffset.y
@@ -177,6 +247,12 @@ export default function ChatBoard({
         if (distanceFromBottom > 50) {
             setAutoScrollEnabled(false)
         }
+
+        updateFullscreenMode({
+            scrollY: currentScrollPosition,
+            contentHeight: contentSize.height,
+            viewportHeight: layoutMeasurement.height,
+        })
     }
 
     const handleContentSizeChange = (contentWidth, contentHeight) => {
@@ -286,6 +362,27 @@ export default function ChatBoard({
             dispatch(setAssistantEnabled(false))
         }
     }, [chat.id])
+
+    // The DV can also collapse the layout on its own — that is what the bot line's close button
+    // does. The reader is then still sitting at the position that expanded it, so the next scroll
+    // event would otherwise reopen what they just closed. Hold expansion until they come back to
+    // a resting position, which makes the one after that a deliberate scroll. Only a change the
+    // scroll handler did not ask for counts: our own switch reaches the prop a render later.
+    useEffect(() => {
+        const collapsedByTheDv =
+            previousFullscreenRef.current && !isFullscreen && requestedFullscreenRef.current !== false
+        previousFullscreenRef.current = isFullscreen
+        if (requestedFullscreenRef.current === isFullscreen) requestedFullscreenRef.current = null
+        if (collapsedByTheDv) suppressExpandUntilEdgeRef.current = true
+    }, [isFullscreen])
+
+    // The expanded layout belongs to the chat tab only: leaving it (tab switch, DV close) must
+    // hand the header and navigation bar back to whatever renders next.
+    useEffect(() => {
+        return () => {
+            if (setFullscreenRef.current) setFullscreenRef.current(false)
+        }
+    }, [])
 
     useEffect(() => {
         if (!showingEarlier && autoScrollEnabled) {

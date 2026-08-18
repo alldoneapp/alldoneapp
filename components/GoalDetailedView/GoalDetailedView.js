@@ -260,6 +260,8 @@ export default function GoalDetailedView({ navigation }) {
                                                     chatTitle={goal.name}
                                                     assistantId={goal.assistantId}
                                                     objectType={'goals'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_GOAL_NOTE:
