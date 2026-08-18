@@ -1,3 +1,5 @@
+import { orderCalendarTasksLast } from './CalendarTaskOrder'
+
 export const TASK_PRIORITY_NONE = 'none'
 export const TASK_PRIORITY_DO_LATER = 'do_later'
 export const TASK_PRIORITY_COULD_DO = 'could_do'
@@ -34,10 +36,27 @@ export const getTaskPriorityRank = priority => TASK_PRIORITY_RANK[normalizeTaskP
 
 export const getTaskPriorityLabel = priority => TASK_PRIORITY_LABEL[normalizeTaskPriority(priority)]
 
+/**
+ * THE ordering funnel for a rendered task group. Every grouped list goes through it — the open-tasks
+ * list (`openTasks.js`), goal tasks (`openGoalTasks.js`, `GoalTasksList`), the rendered list
+ * (`TasksList`), subtasks (`SubTasksView`, `DroppableTaskList`) and My Day's subtask map — so a rule
+ * applied here cannot be forgotten by a view. `tasks` arrives already ordered by `sortIndex`
+ * descending; this adds the two rules that outrank it.
+ *
+ * Order of the stages is the order of authority, weakest last:
+ *
+ *   1. the focused task is pinned to the top      — an explicit "I am working on this now"
+ *   2. priority, then arrival (= sortIndex desc)  — the ordering the user controls
+ *   3. calendar tasks are moved to the end        — AT-2351, see utils/CalendarTaskOrder.js
+ *
+ * Stage 3 runs last precisely BECAUSE priority would otherwise defeat it: a Must-do meeting used to
+ * be lifted out of the calendar block no matter what its stored `sortIndex` said, which is one of
+ * the ways AT-2270 leaked. The focused task is passed through so stage 1 survives stage 3.
+ */
 export const sortTasksByPriority = (tasks, focusedTaskId = null) => {
     if (!Array.isArray(tasks)) return []
 
-    return tasks
+    const tasksByPriority = tasks
         .map((task, index) => ({ task, index }))
         .sort((a, b) => {
             if (focusedTaskId) {
@@ -50,6 +69,8 @@ export const sortTasksByPriority = (tasks, focusedTaskId = null) => {
             return priorityDifference || a.index - b.index
         })
         .map(item => item.task)
+
+    return orderCalendarTasksLast(tasksByPriority, focusedTaskId)
 }
 
 export const compareTasksByPriorityThenCompleted = (a, b) => {
