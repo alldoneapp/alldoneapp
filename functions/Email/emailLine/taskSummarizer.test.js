@@ -25,7 +25,7 @@ describe('taskSummarizer', () => {
             cacheScope: 'user-1:project-1',
         })
 
-        expect(result).toEqual({ name: 'Review the launch plan.', totalTokens: 42, modelKey: 'MODEL_GPT5_4_NANO' })
+        expect(result).toEqual({ name: 'Review the launch plan.', totalTokens: 42, modelKey: 'MODEL_GPT5_6_LUNA' })
         expect(mockCreate.mock.calls[0][0].prompt_cache_key).toBe('email-summary-cache-key')
         expect(logOpenAiCacheUsage).toHaveBeenCalledWith(
             expect.objectContaining({ route: 'email-task-summarizer', cacheKey: 'email-summary-cache-key' })

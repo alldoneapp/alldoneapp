@@ -7,11 +7,11 @@ const {
     logOpenAiCacheUsage,
 } = require('../../Assistant/assistantHelper')
 const { resolveClassifierClient } = require('../../Assistant/classifierModelClient')
+const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
 
-// Default model for composing email replies; users can override it per account in Settings →
-// Customizations (featureModelPreferences.emailDraftReply). The MODEL_ key is what the Gold
-// metering (calculateGoldCostFromTokens) expects; the upstream id is derived per provider.
-const REPLY_MODEL_KEY = 'MODEL_GPT5_4_MINI'
+// The model comes from the caller (the user's Settings → Customizations preference); with none
+// given, the feature default from featureModelPreferences applies — no model is named here. The
+// MODEL_ key is what the Gold metering expects; the upstream id is derived per provider.
 
 const REPLY_SYSTEM_PROMPT =
     'You draft concise, professional email replies on behalf of the user. Return ONLY the reply body text — no subject line, no quoted original message, no "Dear"/signature placeholders unless clearly warranted. Match the tone and language of the original message, keep it natural and human, and do not invent facts or commitments the user did not ask for.'
@@ -62,14 +62,8 @@ function buildUserContent({ context = {}, guidance, language, groundingContext =
 
 // Returns { body, totalTokens, modelKey }. The caller must bill against the returned modelKey —
 // it is the model that actually ran. Throws when the required provider key is unavailable.
-async function composeReply({
-    context,
-    guidance,
-    language,
-    groundingContext,
-    cacheScope = '',
-    modelKey = REPLY_MODEL_KEY,
-} = {}) {
+async function composeReply({ context, guidance, language, groundingContext, cacheScope = '', modelKey = null } = {}) {
+    if (!modelKey) modelKey = resolveFeatureModelKey('emailDraftReply', null)
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for reply composition')
@@ -108,5 +102,4 @@ async function composeReply({
 module.exports = {
     composeReply,
     buildUserContent,
-    REPLY_MODEL_KEY,
 }
