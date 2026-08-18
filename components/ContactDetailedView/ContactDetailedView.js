@@ -214,6 +214,8 @@ const ContactDetailedView = ({ navigation }) => {
                                                     assistantId={contact.assistantId}
                                                     parentObject={contact}
                                                     objectType={'contacts'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_CONTACT_NOTE:

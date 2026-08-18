@@ -207,6 +207,8 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                             assistantId={assistantId}
                                             setAssistantId={setAssistantId}
                                             objectType={'notes'}
+                                            isFullscreen={isFullscreen}
+                                            setFullscreen={setFullscreen}
                                         />
                                     </View>
                                 )

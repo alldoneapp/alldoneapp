@@ -164,6 +164,8 @@ const ChatDetailedView = ({ navigation }) => {
                                             assistantId={assistantId}
                                             setAssistantId={setAssistantId}
                                             objectType={'chats'}
+                                            isFullscreen={isFullscreen}
+                                            setFullscreen={setFullscreen}
                                         />
                                     )
                                 case DV_TAB_CHAT_PROPERTIES:

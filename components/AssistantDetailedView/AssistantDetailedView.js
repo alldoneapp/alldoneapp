@@ -183,14 +183,16 @@ export default function AssistantDetailedView({ navigation }) {
                                 />
                             )}
                             <View style={{ flex: 1 }}>
-                                <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
-                                    <NavigationBar
-                                        taskDetail
-                                        isSecondary
-                                        tabs={navigationTabs}
-                                        style={{ height: 56 }}
-                                    />
-                                </View>
+                                {!isFullscreen && (
+                                    <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
+                                        <NavigationBar
+                                            taskDetail
+                                            isSecondary
+                                            tabs={navigationTabs}
+                                            style={{ height: 56 }}
+                                        />
+                                    </View>
+                                )}
 
                                 {(() => {
                                     switch (selectedNavItem) {
@@ -246,6 +248,8 @@ export default function AssistantDetailedView({ navigation }) {
                                                     chatTitle={assistant.displayName}
                                                     assistantId={assistant.uid}
                                                     objectType={'assistants'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_UPDATES:

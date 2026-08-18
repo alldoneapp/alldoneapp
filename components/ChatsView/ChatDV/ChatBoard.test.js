@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 import ChatBoard from './ChatBoard'
 import { buildBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../Utils/assistantEnabledScope'
+import { CHAT_FULLSCREEN_COOLDOWN_MS } from '../Utils/chatScrollFullscreen'
 
 const PROJECT_ID = 'project-1'
 const TASK_CHAT_ID = 'task-1'
@@ -75,14 +76,16 @@ jest.mock('./useNewEmailCommentIds', () => () => new Set())
 jest.mock('./PagesAmountSubscriptionContainer', () => () => null)
 jest.mock('./EditorView/ChatInput', () => () => null)
 jest.mock('./EditorView/MessageItem', () => () => null)
+const mockScrollToEnd = jest.fn()
+const mockScrollTo = jest.fn()
 jest.mock('../../UIControls/CustomScrollView', () => {
     const React = require('react')
     const { View } = require('react-native')
     return React.forwardRef((props, ref) => {
-        React.useImperativeHandle(ref, () => ({ scrollToEnd: jest.fn(), scrollTo: jest.fn() }))
+        React.useImperativeHandle(ref, () => ({ scrollToEnd: mockScrollToEnd, scrollTo: mockScrollTo }))
         return React.createElement(
             View,
-            { testID: 'chat-scroll-view', showIndicator: props.showIndicator },
+            { testID: 'chat-scroll-view', showIndicator: props.showIndicator, onScroll: props.onScroll },
             props.children
         )
     })
@@ -95,7 +98,7 @@ jest.mock('./EditorView/BotMessagePlaceholder', () => {
 
 const CHAT = { id: TASK_CHAT_ID, type: 'tasks' }
 
-const renderChatBoard = () => {
+const renderChatBoard = (props = {}) => {
     let tree
     act(() => {
         tree = renderer.create(
@@ -107,6 +110,7 @@ const renderChatBoard = () => {
                 chatTitle="Task"
                 members={[]}
                 objectType="tasks"
+                {...props}
             />
         )
     })
@@ -349,5 +353,173 @@ describe('ChatBoard placeholder safety timeout', () => {
         })
 
         expect(hasPlaceholder(tree)).toBe(false)
+    })
+})
+
+// Scrolling into the middle of a thread hands the DV chrome's space to the messages; resting at
+// either edge — newest message or beginning of the thread — restores the normal layout. The
+// trigger used to be `assistantEnabled` (removed in "Keep detail headers visible with
+// assistants"); it is scroll position now, so the header only moves when the reader asks for it.
+describe('ChatBoard scroll-driven fullscreen', () => {
+    const VIEWPORT = 800
+    const CONTENT = 4000
+    const MAX_SCROLL = CONTENT - VIEWPORT
+
+    let setFullscreen
+
+    const scrollTo = (tree, scrollY) => {
+        act(() => {
+            tree.root.findByProps({ testID: 'chat-scroll-view' }).props.onScroll({
+                nativeEvent: {
+                    contentOffset: { y: scrollY },
+                    contentSize: { height: CONTENT },
+                    layoutMeasurement: { height: VIEWPORT },
+                },
+            })
+        })
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers()
+        mockDispatch.mockClear()
+        mockScrollToEnd.mockClear()
+        mockScrollTo.mockClear()
+        mockMessages = []
+        setFullscreen = jest.fn()
+        mockState = {
+            triggerBotSpinner: null,
+            assistantEnabled: false,
+            assistantEnabledScope: null,
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: false,
+            isMiddleScreen: false,
+            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
+        }
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
+    })
+
+    it('expands when the reader scrolls away from both edges', () => {
+        const tree = renderChatBoard({ setFullscreen })
+
+        scrollTo(tree, MAX_SCROLL / 2)
+
+        expect(setFullscreen).toHaveBeenCalledWith(true)
+    })
+
+    it('stays normal while the newest message is on screen', () => {
+        const tree = renderChatBoard({ setFullscreen })
+
+        scrollTo(tree, MAX_SCROLL)
+
+        expect(setFullscreen).not.toHaveBeenCalled()
+    })
+
+    it('collapses back at the bottom and re-anchors to the newest message', () => {
+        const tree = renderChatBoard({ setFullscreen, isFullscreen: true })
+
+        scrollTo(tree, MAX_SCROLL)
+
+        expect(setFullscreen).toHaveBeenCalledWith(false)
+        act(() => {
+            jest.runOnlyPendingTimers()
+        })
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    it('collapses back at the top and re-anchors to the beginning of the thread', () => {
+        const tree = renderChatBoard({ setFullscreen, isFullscreen: true })
+
+        scrollTo(tree, 0)
+
+        expect(setFullscreen).toHaveBeenCalledWith(false)
+        act(() => {
+            jest.runOnlyPendingTimers()
+        })
+        expect(mockScrollTo).toHaveBeenCalledWith({ x: 0, y: 0, animated: false })
+    })
+
+    // A layout change re-fires onScroll, so a switch must not be able to chase its own
+    // consequences within the cooldown.
+    it('does not switch twice in a row while the cooldown holds', () => {
+        const tree = renderChatBoard({ setFullscreen })
+
+        scrollTo(tree, MAX_SCROLL / 2)
+        scrollTo(tree, MAX_SCROLL)
+
+        expect(setFullscreen).toHaveBeenCalledTimes(1)
+        expect(setFullscreen).toHaveBeenCalledWith(true)
+    })
+
+    it('leaves the layout alone in a DV that does not opt in', () => {
+        const tree = renderChatBoard()
+
+        expect(() => scrollTo(tree, MAX_SCROLL / 2)).not.toThrow()
+    })
+
+    // Pressing the bot line's X leaves the reader on the position that expanded the layout, so
+    // reopening it on their next wheel tick would fight the close they just asked for.
+    it('does not reopen after the DV collapses the layout until an edge is reached', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <ChatBoard
+                    projectId={PROJECT_ID}
+                    chat={CHAT}
+                    parentObject={{ id: TASK_CHAT_ID, isAssistantEnabled: false }}
+                    assistantId="assistant-1"
+                    chatTitle="Task"
+                    members={[]}
+                    objectType="tasks"
+                    isFullscreen={true}
+                    setFullscreen={setFullscreen}
+                />
+            )
+        })
+
+        // The DV collapses on its own (bot line close button), reader still mid-thread.
+        act(() => {
+            tree.update(
+                <ChatBoard
+                    projectId={PROJECT_ID}
+                    chat={CHAT}
+                    parentObject={{ id: TASK_CHAT_ID, isAssistantEnabled: false }}
+                    assistantId="assistant-1"
+                    chatTitle="Task"
+                    members={[]}
+                    objectType="tasks"
+                    isFullscreen={false}
+                    setFullscreen={setFullscreen}
+                />
+            )
+        })
+        setFullscreen.mockClear()
+
+        scrollTo(tree, MAX_SCROLL / 2)
+        expect(setFullscreen).not.toHaveBeenCalled()
+
+        // Returning to the newest message arms it again.
+        scrollTo(tree, MAX_SCROLL)
+        act(() => {
+            jest.advanceTimersByTime(CHAT_FULLSCREEN_COOLDOWN_MS)
+        })
+        scrollTo(tree, MAX_SCROLL / 2)
+        expect(setFullscreen).toHaveBeenCalledWith(true)
+    })
+
+    // The expanded layout belongs to the chat tab: switching tabs must give the header and the
+    // navigation bar back to whatever renders next.
+    it('restores the normal layout when the chat unmounts', () => {
+        const tree = renderChatBoard({ setFullscreen, isFullscreen: true })
+
+        act(() => {
+            tree.unmount()
+        })
+
+        expect(setFullscreen).toHaveBeenCalledWith(false)
     })
 })

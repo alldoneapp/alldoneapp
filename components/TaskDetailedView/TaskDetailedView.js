@@ -331,6 +331,8 @@ const TaskDetailedView = ({ navigation }) => {
                                             setAssistantId={setAssistantId}
                                             objectType={'tasks'}
                                             parentObject={task}
+                                            isFullscreen={isFullscreen}
+                                            setFullscreen={setFullscreen}
                                         />
                                     </>
                                 )}
