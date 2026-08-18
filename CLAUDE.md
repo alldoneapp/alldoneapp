@@ -274,26 +274,7 @@ Responses-only**, so OpenRouter runs always send full function schemas (Flash's 
 it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
 extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
 (`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
-failing the whole request. Modality is answered per model by
-`assistantModelSupportsImageInput` in `assistantModelRouting.js` — it sits next to the pinned
-upstream id because it is a fact about that release, and an unlisted OpenRouter model is assumed
-text-only (a stripped image degrades to a note the model can explain; an image sent to a text-only
-model takes the whole request down). The transport counts the replacements and warns, because a
-dropped image is otherwise invisible: the request succeeds and the only symptom is an answer that
-ignores the attachment the user is looking at.
-
-**A chat image is fetchable, and `get_chat_attachment` used to say otherwise.** The tool and its
-fallback filtered `media.kind === 'file'`, while WhatsApp and web uploads store a photo as
-`kind: 'image'` — and `list_recent_chat_media` advertises those images together with their
-messageIds. So the discovery tool named an image the fetch tool then denied existed
-(`No file attachment was found on the requested chat message`), which is exactly the loop a
-text-only model falls into when it cannot see an attached photo: it asked three times and burned a
-minute of wall clock before answering. The bytes come from the same `storageUrl` whatever the kind,
-so `isFetchableChatAttachment` now accepts `file`/`image`/`video`. The one thing widening the kinds
-must not break is a message carrying an image **next to** a document: that used to resolve to the
-document, so `selectRequestedChatAttachments` keeps that preference rather than turning a working
-call into an ambiguity error, and an explicit `expectedFileName` outranks it. Base64 never enters
-the conversation either way — `buildConversationSafeToolResult` redacts it. Labeling was the cheap half — the Gmail and calendar classifiers already
+failing the whole request. Labeling was the cheap half — the Gmail and calendar classifiers already
 call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
 classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
 default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
