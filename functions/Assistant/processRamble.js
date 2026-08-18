@@ -108,6 +108,9 @@ const processRambleSecondGen = onCall(
 
         const normalizedTargetKind = normalizeTargetKind(targetKind)
 
+        const startedAt = Date.now()
+        const timings = {}
+
         const { transcribeAudioBase64 } = require('../Notes/deepgramTranscribe')
         // Context loading never rejects (see loadCleanupContext), so a failure here is transcription.
         const contextPromise = loadCleanupContext({ userData, projectId, userId: auth.uid })
@@ -118,7 +121,11 @@ const processRambleSecondGen = onCall(
             console.error('[processRamble] Transcription failed:', error)
             throw new HttpsError('internal', 'Failed to transcribe audio')
         }
+        timings.transcriptionMs = Date.now() - startedAt
+        const contextWaitStartedAt = Date.now()
         const context = await contextPromise
+        // Context loads in parallel with transcription; this is only the tail not hidden behind it.
+        timings.contextExtraMs = Date.now() - contextWaitStartedAt
 
         const transcript = transcription.transcript
         if (!transcript) {
@@ -126,6 +133,7 @@ const processRambleSecondGen = onCall(
         }
 
         const { cleanupRamble } = require('./ramblerCleanup')
+        const cleanupStartedAt = Date.now()
         let text = transcript
         let totalTokens = 0
         let modelKey = null
@@ -154,11 +162,14 @@ const processRambleSecondGen = onCall(
             cleanupFailed = true
         }
 
+        timings.cleanupMs = Date.now() - cleanupStartedAt
+
         const goldCost = calculateRambleGoldCost({
             durationSeconds: transcription.durationSeconds,
             totalTokens,
             modelKey,
         })
+        const billingStartedAt = Date.now()
         const { deductGold } = require('../Gold/goldHelper')
         const goldResult = await deductGold(auth.uid, goldCost, {
             source: RAMBLER_GOLD_SOURCE,
@@ -168,11 +179,24 @@ const processRambleSecondGen = onCall(
         if (!goldResult?.success) {
             throw new HttpsError('resource-exhausted', 'Insufficient Gold to process dictation.')
         }
+        timings.billingMs = Date.now() - billingStartedAt
+        timings.totalMs = Date.now() - startedAt
+
+        console.log('[processRamble] timing', {
+            ...timings,
+            audioSeconds: transcription.durationSeconds,
+            payloadChars: audio.length,
+            transcriptChars: transcript.length,
+            totalTokens,
+            modelKey,
+            targetKind: normalizedTargetKind,
+        })
 
         return {
             text,
             transcript,
             goldCharged: goldCost,
+            timings,
             ...(cleanupFailed ? { cleanupFailed: true } : {}),
         }
     }
