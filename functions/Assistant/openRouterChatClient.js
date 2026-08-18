@@ -87,7 +87,10 @@ function getOpenRouterClient(apiKey) {
  * assistant can then say "I can't view the attachment" instead of confidently answering as if no
  * image had been sent.
  */
-const UNSUPPORTED_IMAGE_PLACEHOLDER = '[An image was attached, but the selected model cannot read images.]'
+const UNSUPPORTED_IMAGE_PLACEHOLDER =
+    '[An image was attached, but the selected model cannot read images. Fetching it with a tool will ' +
+    'not make it viewable either — say plainly that you cannot see the image and that switching the ' +
+    "assistant's model to an image-capable one would let you read it.]"
 
 /**
  * Multi-part content, flattened when the target model is text-only.
@@ -102,12 +105,13 @@ const UNSUPPORTED_IMAGE_PLACEHOLDER = '[An image was attached, but the selected 
  * An all-text part list is collapsed back to a plain string: some OpenAI-compatible providers accept
  * the parts array only on `user` messages, and a string is universally accepted.
  */
-function normalizeContentForChatCompletions(content, { supportsImages = false } = {}) {
+function normalizeContentForChatCompletions(content, { supportsImages = false, stats = null } = {}) {
     if (!Array.isArray(content)) return content ?? ''
 
     const parts = content.map(part => {
         if (!part || typeof part !== 'object') return { type: 'text', text: String(part ?? '') }
         if (part.type === 'image_url' && !supportsImages) {
+            if (stats) stats.strippedImageParts = (stats.strippedImageParts || 0) + 1
             return { type: 'text', text: UNSUPPORTED_IMAGE_PLACEHOLDER }
         }
         return part
@@ -128,12 +132,12 @@ function normalizeContentForChatCompletions(content, { supportsImages = false } 
  * than spread. `tool_calls`/`tool_call_id` are carried through untouched because the assistant's
  * tool loop feeds prior rounds back in and OpenRouter needs them to reconstruct the exchange.
  */
-function toChatCompletionsMessages(messages, { supportsImages = false } = {}) {
+function toChatCompletionsMessages(messages, { supportsImages = false, stats = null } = {}) {
     if (!Array.isArray(messages)) throw new Error('Messages must be an array')
 
     return messages.map(msg => {
         if (Array.isArray(msg)) {
-            return { role: msg[0], content: normalizeContentForChatCompletions(msg[1], { supportsImages }) }
+            return { role: msg[0], content: normalizeContentForChatCompletions(msg[1], { supportsImages, stats }) }
         }
         if (!msg || typeof msg !== 'object' || !msg.role) {
             throw new Error('Unexpected message format')
@@ -146,7 +150,7 @@ function toChatCompletionsMessages(messages, { supportsImages = false } = {}) {
             content:
                 msg.role === 'tool' && typeof msg.content !== 'string'
                     ? JSON.stringify(msg.content ?? '')
-                    : normalizeContentForChatCompletions(msg.content, { supportsImages }),
+                    : normalizeContentForChatCompletions(msg.content, { supportsImages, stats }),
         }
         if (msg.tool_calls) converted.tool_calls = msg.tool_calls
         if (msg.tool_call_id) converted.tool_call_id = msg.tool_call_id
@@ -286,9 +290,13 @@ async function streamOpenRouterChat({
     if (!model) throw new Error('Model name is required')
 
     const client = getOpenRouterClient(apiKey)
+    // Dropping an image is invisible from the outside: the request succeeds, the model answers, and
+    // the only symptom is an answer that ignores the attachment the user is looking at. Counting the
+    // replacements is what makes "why did it not see my photo?" answerable from the logs.
+    const conversionStats = { strippedImageParts: 0 }
     const requestParams = {
         model,
-        messages: toChatCompletionsMessages(messages, { supportsImages }),
+        messages: toChatCompletionsMessages(messages, { supportsImages, stats: conversionStats }),
         stream: true,
         // Chat Completions drops `usage` from a stream unless it is explicitly requested.
         stream_options: { include_usage: true },
@@ -296,11 +304,20 @@ async function streamOpenRouterChat({
     if (Array.isArray(tools) && tools.length > 0) requestParams.tools = tools
     if (Number.isFinite(temperature)) requestParams.temperature = temperature
 
+    if (conversionStats.strippedImageParts > 0) {
+        console.warn('🖼️ OPENROUTER: Replaced image parts the model cannot read', {
+            model,
+            strippedImageParts: conversionStats.strippedImageParts,
+            route: usageContext.route || 'assistant',
+        })
+    }
+
     console.log('🌐 OPENROUTER: Creating chat completion stream', {
         model,
         messageCount: requestParams.messages.length,
         toolCount: requestParams.tools?.length || 0,
         hasTemperature: Number.isFinite(temperature),
+        strippedImageParts: conversionStats.strippedImageParts,
         route: usageContext.route || 'assistant',
     })
 
