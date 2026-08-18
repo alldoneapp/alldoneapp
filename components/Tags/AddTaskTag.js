@@ -25,6 +25,10 @@ function AddTaskTag({
     forceShrink,
     expandTaskListIfNeeded,
     primary,
+    // The empty-inbox call to action (AT-2306) is the same control at a bigger
+    // size — sharing the component keeps one popup wiring (popover, float-popup
+    // bookkeeping, mention-modal-aware close) instead of a second copy of it.
+    large,
     openPopover,
     closePopover,
     isOpen,
@@ -46,12 +50,18 @@ function AddTaskTag({
         }
     }
 
+    // The large variant keeps its label at every width: it is the only call to
+    // action on the screen it lives on, so shrinking it to a bare icon would
+    // leave nothing to read.
+    const showLabel = large || (!smallScreenNavigation && !forceShrink)
+
     const trigger = (
         <TouchableOpacity
             style={[
                 localStyles.tag,
                 primary && localStyles.tagPrimary,
-                (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
+                !large && (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
+                large && localStyles.tagLarge,
                 style,
             ]}
             onPress={handleOpen}
@@ -61,11 +71,17 @@ function AddTaskTag({
             accessibilityState={{ disabled: !!disabled, expanded: isOpen }}
         >
             <View style={localStyles.icon}>
-                <Icon name={'check-square'} size={16} color={primary ? '#ffffff' : colors.Text03} />
+                <Icon name={'check-square'} size={large ? 20 : 16} color={primary ? '#ffffff' : colors.Text03} />
             </View>
-            {!smallScreenNavigation && !forceShrink && (
+            {showLabel && (
                 <Text
-                    style={[styles.subtitle2, localStyles.text, primary && localStyles.textPrimary, windowTagStyle()]}
+                    style={[
+                        large ? styles.subtitle1 : styles.subtitle2,
+                        localStyles.text,
+                        primary && localStyles.textPrimary,
+                        large && localStyles.textLarge,
+                        windowTagStyle(),
+                    ]}
                 >
                     {translate('Add task')}
                 </Text>
@@ -134,6 +150,11 @@ const localStyles = StyleSheet.create({
         width: 24,
         height: 24,
     },
+    tagLarge: {
+        height: 44,
+        paddingHorizontal: 20,
+        alignSelf: 'center',
+    },
     text: {
         color: colors.Text03,
         marginLeft: 6,
@@ -141,6 +162,10 @@ const localStyles = StyleSheet.create({
     },
     textPrimary: {
         color: '#ffffff',
+    },
+    textLarge: {
+        marginLeft: 10,
+        marginRight: 2,
     },
     icon: {
         flexDirection: 'row',

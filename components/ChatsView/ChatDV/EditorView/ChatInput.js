@@ -416,6 +416,10 @@ export default function ChatInput({
                 setShowRunOutGoalModal={setShowRunOutGoalModal}
                 chatAssistantData={{ objectId, objectAssistantId: assistantId, objectType: chatType }}
                 setAssistantId={updateSelectedAssistant}
+                // Same as the assistant line: the mic is pinned on in the chat composer rather
+                // than revealed on hover/focus (AT-2355). The strip it sits in is reserved
+                // whenever dictation is enabled, so nothing reflows.
+                alwaysShowDictation={true}
             />
             <ChatInputButtons
                 projectId={projectId}

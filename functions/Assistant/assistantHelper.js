@@ -13685,6 +13685,9 @@ module.exports = {
     getTokensPerGold,
     calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
+    // The one task-move implementation (chat + Updates feed travel with the task).
+    // Also used by automatic project routing (AT-2306, functions/Tasks/taskProjectRouting.js).
+    moveTaskToDifferentProject,
     isToolAllowedForExecution,
     filterAllowedToolsForRuntimeContext,
     getDynamicToolSchemasWithCache,

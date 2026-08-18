@@ -475,3 +475,30 @@ describe('ChatInput auto focus', () => {
         tree.unmount()
     })
 })
+
+// AT-2355: the dictation mic was revealed by hover/focus only, so on touch it appeared only after
+// the composer had already been tapped. The chat composer pins it on, like the assistant line.
+describe('ChatInput dictation mic', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('shows the mic without focusing or hovering the composer', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.alwaysShowDictation).toBe(true)
+        expect(mockInputFocus).not.toHaveBeenCalled()
+
+        tree.unmount()
+    })
+})
