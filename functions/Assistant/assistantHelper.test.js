@@ -783,6 +783,7 @@ describe('Responses API compatibility helpers', () => {
 
     test('blocks an oversized OpenAI request during preflight before dispatch', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        expect(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT).toBe(200000)
         mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
 
         expect(() =>
@@ -793,7 +794,7 @@ describe('Responses API compatibility helpers', () => {
                             type: 'function_call',
                             call_id: 'call-file',
                             name: 'external_tool_bookkeeping_attach_invoice',
-                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(160000) }),
+                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(210000) }),
                         },
                     ],
                 },
