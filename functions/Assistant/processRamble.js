@@ -32,21 +32,30 @@ function normalizeTargetKind(targetKind) {
     return VALID_TARGET_KINDS.includes(targetKind) ? targetKind : 'generic'
 }
 
+// Context makes the cleanup better but is never worth failing the ramble over: ANY error here —
+// including an unexpected synchronous one — degrades to an uncontextualized cleanup. (The first
+// production failure was exactly that: a missing assistantHelper export threw synchronously,
+// escaped the per-call catches, and surfaced to the user as "Failed to transcribe audio".)
 async function loadCleanupContext({ userData, projectId, userId }) {
-    const { getDefaultAssistantIdForProject } = require('../shared/projectRoutingCommentHelper')
-    const {
-        getAssistantForChat,
-        getProjectDescriptionContextMessage,
-        getUserDescriptionContextMessage,
-    } = require('./assistantHelper')
+    try {
+        const { getDefaultAssistantIdForProject } = require('../shared/projectRoutingCommentHelper')
+        const {
+            getAssistantForChat,
+            getProjectDescriptionContextMessage,
+            getUserDescriptionContextMessage,
+        } = require('./assistantHelper')
 
-    const assistantId = await getDefaultAssistantIdForProject(userData, projectId).catch(() => null)
-    const [assistant, projectContext, userContext] = await Promise.all([
-        getAssistantForChat(projectId, assistantId, userId).catch(() => null),
-        getProjectDescriptionContextMessage(projectId).catch(() => ''),
-        getUserDescriptionContextMessage(projectId, userId).catch(() => ''),
-    ])
-    return { assistant, projectContext, userContext }
+        const assistantId = await getDefaultAssistantIdForProject(userData, projectId).catch(() => null)
+        const [assistant, projectContext, userContext] = await Promise.all([
+            getAssistantForChat(projectId, assistantId, userId).catch(() => null),
+            getProjectDescriptionContextMessage(projectId).catch(() => ''),
+            getUserDescriptionContextMessage(projectId, userId).catch(() => ''),
+        ])
+        return { assistant, projectContext, userContext }
+    } catch (error) {
+        console.error('[processRamble] Context loading failed, cleaning without context:', error)
+        return { assistant: null, projectContext: '', userContext: '' }
+    }
 }
 
 function calculateRambleGoldCost({ durationSeconds, totalTokens, modelKey }) {
@@ -100,17 +109,16 @@ const processRambleSecondGen = onCall(
         const normalizedTargetKind = normalizeTargetKind(targetKind)
 
         const { transcribeAudioBase64 } = require('../Notes/deepgramTranscribe')
+        // Context loading never rejects (see loadCleanupContext), so a failure here is transcription.
+        const contextPromise = loadCleanupContext({ userData, projectId, userId: auth.uid })
         let transcription
-        let context
         try {
-            ;[transcription, context] = await Promise.all([
-                transcribeAudioBase64(audio),
-                loadCleanupContext({ userData, projectId, userId: auth.uid }),
-            ])
+            transcription = await transcribeAudioBase64(audio)
         } catch (error) {
             console.error('[processRamble] Transcription failed:', error)
             throw new HttpsError('internal', 'Failed to transcribe audio')
         }
+        const context = await contextPromise
 
         const transcript = transcription.transcript
         if (!transcript) {

@@ -181,6 +181,21 @@ describe('processRambleSecondGen', () => {
         await expect(callHandler()).rejects.toMatchObject({ code: 'internal' })
         expect(mockDeductGold).not.toHaveBeenCalled()
     })
+
+    test('a context-loading crash degrades to an uncontextualized cleanup instead of failing the ramble', async () => {
+        // Synchronous throw — the shape of the missing-export production incident, which the
+        // per-call .catch() handlers cannot intercept.
+        mockGetAssistantForChat.mockImplementation(() => {
+            throw new TypeError('getAssistantForChat is not a function')
+        })
+
+        const result = await callHandler()
+
+        expect(result.text).toBe('cleaned text')
+        expect(mockCleanupRamble).toHaveBeenCalledWith(
+            expect.objectContaining({ assistant: null, projectContext: '', userContext: '' })
+        )
+    })
 })
 
 describe('calculateRambleGoldCost', () => {
@@ -202,6 +217,37 @@ describe('calculateRambleGoldCost', () => {
         mockGetTokensPerGold.mockReturnValue(undefined)
         // 0s + 500 tokens / 100 fallback = 5
         expect(calculateRambleGoldCost({ durationSeconds: 0, totalTokens: 500, modelKey: null })).toBe(5)
+    })
+})
+
+describe('assistantHelper exports used by the rambler', () => {
+    // The first production failure was exactly this: getUserDescriptionContextMessage existed in
+    // assistantHelper but was missing from its module.exports, and the wholesale jest mock above
+    // hid it. Check the REAL sources: every name the rambler modules destructure from
+    // assistantHelper must appear in its module.exports block.
+    test('every destructured assistantHelper function is actually exported', () => {
+        const fs = require('fs')
+        const path = require('path')
+        const read = file => fs.readFileSync(path.join(__dirname, file), 'utf8')
+
+        const exportsBlock = read('assistantHelper.js').match(/module\.exports = \{([\s\S]*?)\n\}/)[1]
+        const ramblerSources = ['processRamble.js', 'ramblerCleanup.js'].map(read).join('\n')
+
+        const destructured = new Set()
+        const requirePattern = /\{([^{}]+)\}\s*=\s*require\('\.\/assistantHelper'\)/g
+        let match
+        while ((match = requirePattern.exec(ramblerSources))) {
+            match[1]
+                .split(',')
+                .map(name => name.trim())
+                .filter(Boolean)
+                .forEach(name => destructured.add(name))
+        }
+
+        expect(destructured.size).toBeGreaterThan(0)
+        for (const name of destructured) {
+            expect(exportsBlock).toMatch(new RegExp(`\\b${name}\\b`))
+        }
     })
 })
 
