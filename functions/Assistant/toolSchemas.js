@@ -1498,7 +1498,7 @@ const toolSchemas = {
         function: {
             name: 'get_chat_attachment',
             description:
-                'Fetch the single file attached to a user chat message in the current thread. If messageId is omitted, it uses the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
+                'Fetch the single file, image, or video attached to a user chat message in the current thread. If messageId is omitted, it uses the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Note that fetching an image returns its bytes for passing on to another tool; it does not let you see the image when the running model cannot read images. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1510,7 +1510,7 @@ const toolSchemas = {
                     expectedFileName: {
                         type: 'string',
                         description:
-                            'Optional expected file name used for validation. If provided and it does not match the requested chat attachment, the tool returns an error.',
+                            'Optional expected file name. Used to pick the right one when a message carries several attachments, and to validate the match: if it does not match the requested chat attachment, the tool returns an error.',
                     },
                 },
                 required: [],
