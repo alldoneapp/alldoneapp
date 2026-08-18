@@ -285,11 +285,7 @@ const localStyles = StyleSheet.create({
     inputContainer: {
         paddingTop: 3,
         paddingBottom: 5,
-        paddingLeft: 16,
-        // 8, not 16: the dictation mic anchors to the input frame's right edge, and 16 left it
-        // indented against the button bar below (paddingHorizontal 8). The typed text keeps its
-        // clearance through the reserved mic strip inside the editor (.ql-editorWithDictation).
-        paddingRight: 8,
+        paddingHorizontal: 16,
     },
     textInputText: {
         ...styles.body1,
