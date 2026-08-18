@@ -26,26 +26,19 @@ const FEATURE_MODEL_PREFERENCES_FIELD = 'featureModelPreferences'
 
 const FEATURE_MODEL_FEATURES = {
     rambler: { defaultModelKey: 'MODEL_GPT5_6_LUNA' },
-    emailDraftReply: { defaultModelKey: 'MODEL_GPT5_4_MINI' },
-    emailTaskSummary: { defaultModelKey: 'MODEL_GPT5_4_NANO' },
+    emailDraftReply: { defaultModelKey: 'MODEL_GPT5_6_LUNA' },
+    emailTaskSummary: { defaultModelKey: 'MODEL_GPT5_6_LUNA' },
     // Runs on the OpenAI Responses API (strict JSON schema + reasoning effort), which OpenRouter
     // does not serve — Chat Completions only. OpenRouter models are therefore not valid here.
     taskGoalRouting: { defaultModelKey: 'MODEL_GPT5_6_LUNA', openAiOnly: true },
 }
 
-// Display info for feature DEFAULT models that are not part of the selectable product menu (the
-// email defaults are deliberately cheaper than any menu entry). tokensPerGold mirrors
-// assistantHelper.getTokensPerGold for these keys — display only, billing reads the real table.
-const NON_SELECTABLE_MODEL_INFO = {
-    MODEL_GPT5_4_MINI: { name: 'GPT-5.4 Mini', tokensPerGold: 333 },
-    MODEL_GPT5_4_NANO: { name: 'GPT-5.4 Nano', tokensPerGold: 1200 },
-}
-
-// { name, tokensPerGold } for any key a feature default or picker can reference; null when unknown.
+// { name, tokensPerGold } for any key a feature default or picker can reference; null when
+// unknown. Every feature default is currently a selectable product model; a future default
+// outside the menu needs its display info added here (the test suite enforces this).
 function getFeatureModelOptionInfo(modelKey) {
     const selectable = SELECTABLE_ASSISTANT_MODELS.find(option => option.model === modelKey)
-    if (selectable) return { name: selectable.name, tokensPerGold: selectable.tokensPerGold }
-    return NON_SELECTABLE_MODEL_INFO[modelKey] || null
+    return selectable ? { name: selectable.name, tokensPerGold: selectable.tokensPerGold } : null
 }
 
 function isSelectableAssistantModelKey(modelKey) {

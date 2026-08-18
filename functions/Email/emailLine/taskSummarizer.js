@@ -7,11 +7,11 @@ const {
     logOpenAiCacheUsage,
 } = require('../../Assistant/assistantHelper')
 const { resolveClassifierClient } = require('../../Assistant/classifierModelClient')
+const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
 
-// Default model for summarizing an email into a task title; users can override it per account in
-// Settings → Customizations (featureModelPreferences.emailTaskSummary). The MODEL_ key is what the
-// Gold metering (calculateGoldCostFromTokens) expects; the upstream id is derived per provider.
-const TASK_SUMMARY_MODEL_KEY = 'MODEL_GPT5_4_NANO'
+// The model comes from the caller (the user's Settings → Customizations preference); with none
+// given, the feature default from featureModelPreferences applies — no model is named here. The
+// MODEL_ key is what the Gold metering expects; the upstream id is derived per provider.
 
 const TASK_SUMMARY_SYSTEM_PROMPT =
     'You turn one email into a single actionable task title. Return ONLY one short sentence (at most 15 words) ' +
@@ -32,12 +32,8 @@ function buildUserContent({ context = {}, language }) {
 
 // Returns { name, totalTokens, modelKey }. The caller must bill against the returned modelKey —
 // it is the model that actually ran. Throws when the required provider key is unavailable.
-async function summarizeEmailAsTaskName({
-    context,
-    language,
-    cacheScope = '',
-    modelKey = TASK_SUMMARY_MODEL_KEY,
-} = {}) {
+async function summarizeEmailAsTaskName({ context, language, cacheScope = '', modelKey = null } = {}) {
+    if (!modelKey) modelKey = resolveFeatureModelKey('emailTaskSummary', null)
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for email task summarization')
@@ -75,5 +71,4 @@ async function summarizeEmailAsTaskName({
 
 module.exports = {
     summarizeEmailAsTaskName,
-    TASK_SUMMARY_MODEL_KEY,
 }
