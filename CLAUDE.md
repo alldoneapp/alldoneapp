@@ -672,6 +672,36 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 **Nested `react-tiny-popover` dismisses its parent on tap (mobile tap/click timing)**: `react-tiny-popover` (v4) closes a popover by attaching a `window` `'click'` listener and calling `onClickOutside` whenever the click target is not inside **that** popover's own `document.body` portal. A nested popover (a dropdown/picker opened from inside a popover-based modal) renders in a **separate** portal, so tapping an item in the child is "outside" the parent — the parent's `onClickOutside` fires and the whole modal closes. This reproduces mainly on **mobile web**: a tap emits the touch press (`onPress`, which does the selection) and then a **synthesized `click` shortly after**, and it is that trailing click that reaches the parent's window listener — on desktop the RN-web press typically stops the click from bubbling to `window`, hiding the bug. The ordering is dependable: `onPress` (pointerup/touchend, or the click at the event target during bubbling) always runs before the trailing `click` reaches `window`, so a flag set in `onPress` is readable by the parent's `onClickOutside`. Fix (see `components/TaskListView/EmailLine/EmailLabelChip.js` + `EmailLabelModal/EmailRow.js` + `emailLineHelper.js`): on the child item's `onPress`, stamp a module-level interaction (`markEmailLabelPickerInteraction`); in the parent's `onClickOutside`, swallow the dismiss **once** (`shouldIgnoreEmailLabelModalDismiss` clears the stamp and returns true). Prefer this **consume-once** guard over a fixed time window so it does not depend on how far apart the tap and click land; keep a generous sanity cap (~2s) so a stamp whose dismiss never arrives (the desktop case) can't later swallow a genuine outside tap. Do not reach for `contentDestination` to re-parent the child into the modal DOM — it breaks the library's viewport-relative positioning math — and avoid an in-flow inline dropdown (it expands the modal) or an absolute in-modal overlay (it gets clipped by the modal's `CustomScrollView`).
 
+### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
+
+On macOS, `getUserMedia({ audio: true })` enables Chrome's default processing chain
+(echoCancellation/noiseSuppression/autoGainControl), which routes capture through the system
+**Voice-Processing I/O** audio unit. With some input/output device combinations — built-in mic
+while output goes somewhere else, virtual audio devices, mic modes — that unit hands the page a
+track of **literal digital silence**, while macOS' own input-level meter (which never goes near the
+browser) keeps showing a healthy level. It works with AirPods because input and output are then the
+same device. **The user-visible symptom is a server error**: MediaRecorder happily encodes the
+silence, the blob is non-empty (Opus compresses silence to a few hundred bytes/s) so the client size
+guard passes, the clip uploads, Gold is spent, and Deepgram correctly reports nothing —
+`EMPTY_TRANSCRIPT` → "No speech detected". The signature in the Cloud Run logs for
+`processramblesecondgen` is the **payload size**: the reported failures were 3.7–5.9 KB against
+~102 KB for working takes of the same length in the same session.
+
+`hooks/rambleMicCapture.js` therefore measures the captured signal in the browser, and
+`useRambleRecorder` acts on it twice. **Before** recording, a probe (≤350ms, and a healthy mic
+clears it on the first read) re-acquires the mic with the processing chain disabled when the device
+delivers bit-exact silence or the track is already `muted`; the aliveness test is `peak > 0`, so any
+energy at all — including inaudible self-noise — counts as a working microphone, which is what keeps
+a quiet room from being mistaken for a dead device. **After** recording, a peak below
+`SILENT_PEAK_THRESHOLD` (~-66 dBFS, three orders of magnitude under speech) means the take is never
+uploaded: no Gold, and a message that names the device instead of blaming the speech. A capture that
+is silent processed **and** alive raw is the proof that the processing path is the broken one, and
+only that combination persists `rambler.captureMode = raw` in localStorage; a raw capture that is
+also silent clears it again rather than pinning a degraded mode forever. Everything degrades to
+"unknown" without Web Audio, and **unknown never blocks an upload** — a false "silent" verdict would
+throw away a recording the user actually made. Pinned by `hooks/rambleMicCapture.test.js` and the
+`silent microphone (AT-2357)` block in `hooks/useRambleRecorder.test.js`.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.

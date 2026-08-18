@@ -28,9 +28,20 @@ export function formatRambleElapsed(elapsedSeconds) {
 export function useRambleController({ projectId, targetKind = 'generic', getCurrentText, onTextReady }) {
     const [processing, setProcessing] = useState(false)
 
-    const handleRecorderError = useCallback(code => {
+    // 'silent-input*' means the microphone handed the browser silence (AT-2357) — the recording was
+    // never uploaded, so these messages replace a Gold charge and a misleading "No speech detected".
+    const handleRecorderError = useCallback((code, details = {}) => {
         if (code === 'permission-denied') {
             alert(translate('Microphone access was denied. Please allow microphone access in your browser settings.'))
+        } else if (code === 'silent-input-retry') {
+            alert(translate('No sound came from your microphone. Switched recording mode, please try again.'))
+        } else if (code === 'silent-input') {
+            const deviceLabel = details?.deviceLabel
+            alert(
+                deviceLabel
+                    ? translate('No sound came from the microphone named', { device: deviceLabel })
+                    : translate('No sound came from your microphone. Check your system input device.')
+            )
         } else if (code !== 'not-supported') {
             alert(translate('Could not process dictation'))
         }
