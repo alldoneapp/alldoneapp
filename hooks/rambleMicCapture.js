@@ -188,16 +188,31 @@ export function isTrackMuted(stream) {
  * one probe (~350ms) on the next recording and is what makes the setting self-correcting in both
  * directions: it re-engages just as automatically as it stands down.
  */
-let deviceChangeInstalled = false
+// Refcounted, NOT a boolean latch: a RambleButton is mounted next to essentially every text input,
+// so several hooks install this at once. A latch would let the first one to unmount remove the
+// listener while the others are still mounted, and the invalidation would go quietly missing.
+let deviceChangeSubscribers = 0
+let removeDeviceChangeListener = null
 export function installDeviceChangeInvalidation() {
-    if (deviceChangeInstalled) return () => {}
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.addEventListener) return () => {}
-    deviceChangeInstalled = true
-    const onDeviceChange = () => forgetLearnedCaptureMode()
-    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
+
+    if (deviceChangeSubscribers === 0) {
+        const onDeviceChange = () => forgetLearnedCaptureMode()
+        const mediaDevices = navigator.mediaDevices
+        mediaDevices.addEventListener('devicechange', onDeviceChange)
+        removeDeviceChangeListener = () => mediaDevices.removeEventListener?.('devicechange', onDeviceChange)
+    }
+    deviceChangeSubscribers += 1
+
+    let released = false
     return () => {
-        navigator.mediaDevices.removeEventListener?.('devicechange', onDeviceChange)
-        deviceChangeInstalled = false
+        if (released) return
+        released = true
+        deviceChangeSubscribers -= 1
+        if (deviceChangeSubscribers === 0) {
+            removeDeviceChangeListener?.()
+            removeDeviceChangeListener = null
+        }
     }
 }
 
