@@ -2,15 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
     CAPTURE_MODE_PROCESSED,
-    CAPTURE_MODE_RAW,
-    buildAudioConstraints,
-    createInputLevelMonitor,
-    getInputDeviceLabel,
+    MIC_MODE_AUTO,
+    acquireDictationStream,
+    forgetLearnedCaptureMode,
+    installDeviceChangeInvalidation,
     isSilentCapture,
-    isTrackMuted,
-    readPreferredCaptureMode,
-    waitForInputSignal,
-    writePreferredCaptureMode,
+    rememberLearnedCaptureMode,
 } from './rambleMicCapture'
 
 /**
@@ -72,6 +69,8 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const monitorRef = useRef(null)
     const levelTimerRef = useRef(null)
     const captureModeRef = useRef(CAPTURE_MODE_PROCESSED)
+    const micModeSettingRef = useRef(MIC_MODE_AUTO)
+    const deviceIdRef = useRef('')
     const deviceLabelRef = useRef('')
 
     const onCompleteRef = useRef(onComplete)
@@ -128,40 +127,20 @@ export default function useRambleRecorder({ onComplete, onError }) {
             return
         }
 
-        let captureMode = readPreferredCaptureMode()
-        let stream
+        // Acquisition owns the capture-mode decision: the user's setting, the remembered
+        // workaround (and whether it still belongs to this device), and the pre-flight probe that
+        // re-acquires a silent device with processing disabled BEFORE recording starts, so the
+        // broken take never happens and no speech is lost. See rambleMicCapture.js.
+        let acquired
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(captureMode) })
+            acquired = await acquireDictationStream({
+                requestStream: audio => navigator.mediaDevices.getUserMedia({ audio }),
+            })
         } catch (error) {
             onErrorRef.current?.('permission-denied')
             return
         }
-
-        // Pre-flight: a device that hands us bit-exact silence (or a track Chrome has already
-        // flagged as not delivering) is re-acquired with the processing chain switched off before
-        // a single byte is recorded, so the broken take never happens. A healthy mic clears this
-        // on the first read — the wait is only ever paid by a device that is actually dead.
-        let monitor = createInputLevelMonitor(stream)
-        if (captureMode === CAPTURE_MODE_PROCESSED) {
-            const alive = !isTrackMuted(stream) && (await waitForInputSignal(monitor))
-            if (!alive) {
-                monitor?.close()
-                stream.getTracks().forEach(track => track.stop())
-                captureMode = CAPTURE_MODE_RAW
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        audio: buildAudioConstraints(captureMode),
-                    })
-                } catch (error) {
-                    onErrorRef.current?.('permission-denied')
-                    return
-                }
-                monitor = createInputLevelMonitor(stream)
-                // Only a device that is silent processed AND alive raw proves the processing path
-                // is the broken one; that is what earns a remembered preference.
-                if (await waitForInputSignal(monitor)) writePreferredCaptureMode(CAPTURE_MODE_RAW)
-            }
-        }
+        const { stream, monitor, captureMode, setting, deviceId, deviceLabel } = acquired
 
         const mimeType = pickSupportedMimeType()
         let recorder
@@ -176,7 +155,9 @@ export default function useRambleRecorder({ onComplete, onError }) {
 
         monitorRef.current = monitor
         captureModeRef.current = captureMode
-        deviceLabelRef.current = getInputDeviceLabel(stream)
+        micModeSettingRef.current = setting
+        deviceIdRef.current = deviceId
+        deviceLabelRef.current = deviceLabel
         cancelledRef.current = false
         chunksRef.current = []
         mimeTypeRef.current = recorder.mimeType || mimeType || 'audio/webm'
@@ -202,6 +183,8 @@ export default function useRambleRecorder({ onComplete, onError }) {
             // measure at all (no Web Audio), which never blocks the upload.
             const peak = monitorRef.current ? monitorRef.current.sample() : null
             const usedCaptureMode = captureModeRef.current
+            const usedMicModeSetting = micModeSettingRef.current
+            const usedDeviceId = deviceIdRef.current
             const deviceLabel = deviceLabelRef.current
             cleanup()
             if (wasCancelled) return
@@ -214,6 +197,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
             // Diagnostics for the next report of this class: a silent take is obvious here and
             // nowhere else (the blob is non-empty and the server error is generic).
             console.log('[rambler] capture', {
+                micModeSetting: usedMicModeSetting,
                 captureMode: usedCaptureMode,
                 peak,
                 deviceLabel,
@@ -222,14 +206,21 @@ export default function useRambleRecorder({ onComplete, onError }) {
             })
             if (isSilentCapture(peak)) {
                 // Never upload silence: it costs Gold and comes back as "No speech detected".
-                if (usedCaptureMode === CAPTURE_MODE_PROCESSED) {
-                    writePreferredCaptureMode(CAPTURE_MODE_RAW)
-                    onErrorRef.current?.('silent-input-retry', { deviceLabel, captureMode: usedCaptureMode, peak })
+                const details = { deviceLabel, captureMode: usedCaptureMode, peak }
+                // An explicit user setting is reported, never overridden — the whole point of the
+                // setting is that the automatic path stops making decisions for them.
+                if (usedMicModeSetting !== MIC_MODE_AUTO) {
+                    onErrorRef.current?.('silent-input', details)
+                } else if (usedCaptureMode === CAPTURE_MODE_PROCESSED) {
+                    // The probe let this through (it went dead mid-take, or its noise floor was
+                    // non-zero); the completed take is the stronger signal, so learn from it.
+                    rememberLearnedCaptureMode({ deviceId: usedDeviceId, deviceLabel })
+                    onErrorRef.current?.('silent-input-retry', details)
                 } else {
                     // Raw capture is silent too, so the remembered workaround is not the answer
                     // here — drop it rather than keeping a degraded mode forever.
-                    writePreferredCaptureMode(CAPTURE_MODE_PROCESSED)
-                    onErrorRef.current?.('silent-input', { deviceLabel, captureMode: usedCaptureMode, peak })
+                    forgetLearnedCaptureMode()
+                    onErrorRef.current?.('silent-input', details)
                 }
                 return
             }
@@ -272,6 +263,10 @@ export default function useRambleRecorder({ onComplete, onError }) {
             })
         }, 1000)
     }, [cleanup])
+
+    // Plugging in headphones or switching the system default retires a learned workaround, so the
+    // capture mode follows the hardware instead of outliving it.
+    useEffect(() => installDeviceChangeInvalidation(), [])
 
     useEffect(() => {
         return () => {

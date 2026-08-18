@@ -7,6 +7,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
+import { readLearnedCaptureMode } from './rambleMicCapture'
 import useRambleRecorder, {
     pickSupportedMimeType,
     isDictationSupported,
@@ -287,7 +288,7 @@ describe('useRambleRecorder', () => {
             // Silent processed + silent raw ends on the raw verdict, which clears the preference
             // rather than pinning a degraded mode forever.
             expect(onError).toHaveBeenCalledWith('silent-input', expect.objectContaining({ peak: 0 }))
-            expect(localStorage.getItem('rambler.captureMode')).toBeNull()
+            expect(readLearnedCaptureMode()).toBeNull()
         })
 
         test('a dead processed device is re-acquired with processing disabled before recording', async () => {
@@ -308,7 +309,9 @@ describe('useRambleRecorder', () => {
                 audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
             })
             // Silent processed AND alive raw proves the processing path is the broken one.
-            expect(localStorage.getItem('rambler.captureMode')).toBe('raw')
+            expect(readLearnedCaptureMode()).toEqual(
+                expect.objectContaining({ mode: 'raw', deviceLabel: 'MacBook Pro Microphone' })
+            )
             expect(onError).not.toHaveBeenCalled()
 
             await act(async () => {
@@ -317,7 +320,7 @@ describe('useRambleRecorder', () => {
         })
 
         test('a remembered raw mode skips the probe and is dropped when raw is silent too', async () => {
-            localStorage.setItem('rambler.captureMode', 'raw')
+            localStorage.setItem('rambler.captureMode', JSON.stringify({ mode: 'raw', deviceId: '' }))
             installAudioContext([0])
             const onComplete = jest.fn()
             const onError = jest.fn()
@@ -331,7 +334,7 @@ describe('useRambleRecorder', () => {
             })
             expect(onComplete).not.toHaveBeenCalled()
             expect(onError).toHaveBeenCalledWith('silent-input', expect.any(Object))
-            expect(localStorage.getItem('rambler.captureMode')).toBeNull()
+            expect(readLearnedCaptureMode()).toBeNull()
         })
 
         test('audible speech uploads normally and leaves the processed mode alone', async () => {
@@ -356,7 +359,7 @@ describe('useRambleRecorder', () => {
             expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
             expect(onError).not.toHaveBeenCalled()
             expect(onComplete).toHaveBeenCalledTimes(1)
-            expect(localStorage.getItem('rambler.captureMode')).toBeNull()
+            expect(readLearnedCaptureMode()).toBeNull()
         })
 
         test('a muted track is rescued without waiting for the probe timeout', async () => {

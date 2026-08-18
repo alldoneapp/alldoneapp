@@ -688,18 +688,30 @@ guard passes, the clip uploads, Gold is spent, and Deepgram correctly reports no
 ~102 KB for working takes of the same length in the same session.
 
 `hooks/rambleMicCapture.js` therefore measures the captured signal in the browser, and
-`useRambleRecorder` acts on it twice. **Before** recording, a probe (≤350ms, and a healthy mic
-clears it on the first read) re-acquires the mic with the processing chain disabled when the device
-delivers bit-exact silence or the track is already `muted`; the aliveness test is `peak > 0`, so any
-energy at all — including inaudible self-noise — counts as a working microphone, which is what keeps
-a quiet room from being mistaken for a dead device. **After** recording, a peak below
-`SILENT_PEAK_THRESHOLD` (~-66 dBFS, three orders of magnitude under speech) means the take is never
-uploaded: no Gold, and a message that names the device instead of blaming the speech. A capture that
-is silent processed **and** alive raw is the proof that the processing path is the broken one, and
-only that combination persists `rambler.captureMode = raw` in localStorage; a raw capture that is
-also silent clears it again rather than pinning a degraded mode forever. Everything degrades to
-"unknown" without Web Audio, and **unknown never blocks an upload** — a false "silent" verdict would
-throw away a recording the user actually made. Pinned by `hooks/rambleMicCapture.test.js` and the
+`useRambleRecorder` acts on it twice. **Before** recording, `acquireDictationStream` probes (≤350ms,
+and a healthy mic clears it on the first read) and re-acquires the mic with the processing chain
+disabled when the device delivers bit-exact silence or the track is already `muted`; the aliveness
+test is `peak > 0`, so any energy at all — including inaudible self-noise — counts as a working
+microphone, which is what keeps a quiet room from being mistaken for a dead device. Because the
+rescue happens before `MediaRecorder` starts, the broken take never happens and no speech is lost.
+**After** recording, a peak below `SILENT_PEAK_THRESHOLD` (~-66 dBFS, three orders of magnitude
+under speech) means the take is never uploaded: no Gold, and a message that names the device instead
+of blaming the speech. Everything degrades to "unknown" without Web Audio, and **unknown never
+blocks an upload** — a false "silent" verdict would throw away a recording the user actually made.
+
+What is remembered, and what retires it, is the fiddly half. A capture that is silent processed
+**and** alive raw is the only proof that the processing path is the broken one, so only that
+combination writes the learned record (`rambler.captureMode`), and the record carries the
+**deviceId** it was learned on. It is retired three ways, because a workaround that outlives its
+hardware is the same bug in reverse: a `devicechange` event drops it (plugging in headphones or
+switching the system default does **not** change the `"default"` deviceId, so the event is the only
+signal there), a recording whose actual device differs from the learned one re-acquires with the
+normal defaults and gets a fresh verdict, and a raw capture that is silent too clears it rather than
+pinning a degraded mode forever. Above all that sits the user's own setting
+(`rambler.micMode`, Settings → Customizations → "Dictation microphone": Automatic / Standard /
+Compatibility) — deliberately localStorage and not the user doc, since it describes one machine's
+audio hardware. **An explicit choice is obeyed as written**: no probe, no second acquisition, and a
+silent take is reported without overriding it. Pinned by `hooks/rambleMicCapture.test.js` and the
 `silent microphone (AT-2357)` block in `hooks/useRambleRecorder.test.js`.
 
 ### Gold Transactions
