@@ -6,7 +6,6 @@ const { checkIfObjectIsLocked } = require('../Utils/HelperFunctionsCloud')
 const { updateContactOpenTasksAmount } = require('../Firestore/contactsFirestore')
 const { getNextTaskId } = require('../shared/taskIdGenerator')
 const { routeNewTaskToGoal } = require('./taskGoalRouting')
-const { routeNewTaskToProject } = require('./taskProjectRouting')
 const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 
 const proccessAlgoliaRecord = async (task, projectId) => {
@@ -116,6 +115,7 @@ const onCreateTask = async (task, projectId) => {
     // Generate human readable ID asynchronously (non-blocking)
     console.log(`[HumanReadableID] Starting generateHumanReadableIdAsync for task ${task.id}`)
     promises.push(generateHumanReadableIdAsync(task, projectId))
+    promises.push(routeNewTaskToGoal({ task, projectId }))
     if (task.workflowTask === true) {
         promises.push(
             enqueueWorkflowAiRunIfNeeded(projectId, task.id, {}, task).catch(error =>
@@ -128,29 +128,6 @@ const onCreateTask = async (task, projectId) => {
     }
 
     await Promise.all(promises)
-
-    // Automatic project selection runs LAST and on its own (AT-2306), for two
-    // ordering reasons that are invisible until they bite:
-    //
-    // 1. A routed task is MOVED, which deletes this project's document. Anything
-    //    above that is still writing to it would either fail (the human-readable
-    //    id `update()`) or leave the moved copy without work that was supposed to
-    //    be part of its creation. Once they have finished, the move carries their
-    //    result with it (the human-readable id travels on the document) and the
-    //    delete cascade cleans this project up (Algolia record, contact count).
-    // 2. Goal routing must not run in a project the task is about to leave: goals
-    //    are project-local and the move nulls `parentGoalId`, so the assignment
-    //    would be undone the moment it is paid for. The moved copy routes its
-    //    goal from its own onCreate in the target project instead.
-    //
-    // A task without an "Automatic" stamp — every task created the normal way —
-    // returns 'skipped' before any read, so this is one no-op call for them.
-    const projectRouting = await routeNewTaskToProject({ task, projectId }).catch(error => {
-        console.error('[taskProjectRouting] Routing failed', { taskId: task.id, error: error.message })
-        return { action: 'failed' }
-    })
-    if (projectRouting?.action !== 'moved') await routeNewTaskToGoal({ task, projectId })
-
     console.log(`[HumanReadableID] onCreateTask completed for task ${task.id}`)
 }
 

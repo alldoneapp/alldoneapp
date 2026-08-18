@@ -15,7 +15,6 @@ jest.mock('../../../utils/NavigationService', () => ({ navigate: jest.fn() }))
 jest.mock('../../../redux/actions', () => ({
     navigateToSettings: jest.fn(options => ({ type: 'Navigate to settings', options })),
 }))
-jest.mock('./AllProjectsEmptyInboxAddTask', () => 'AllProjectsEmptyInboxAddTask')
 jest.mock('./AllProjectsEmptyInboxTags', () => 'AllProjectsEmptyInboxTags')
 jest.mock('./AllProjectsEmptyInboxText', () => 'AllProjectsEmptyInboxText')
 jest.mock('./AllProjectsEmptyInboxPicture', () => 'AllProjectsEmptyInboxPicture')
@@ -59,21 +58,5 @@ describe('AllProjectsEmptyInbox', () => {
         expect(NavigationService.navigate).toHaveBeenCalledWith('SettingsView')
         expect(children[children.length - 2].type).toBe('EmptyInboxOverview')
         expect(children[children.length - 1].type).toBe('AllProjectsEmptyInboxPicture')
-    })
-
-    // AT-2306: adding a task is the primary action on this screen, so the button
-    // sits directly under the congrats headline and the project list — which only
-    // navigates — is demoted below it.
-    it('puts the add-task button above the project list', () => {
-        const emptyInbox = renderer.create(<AllProjectsEmptyInbox />)
-        const addTask = emptyInbox.root.findByType('AllProjectsEmptyInboxAddTask')
-        const children = addTask.parent.children.map(child => child.type)
-
-        expect(children.indexOf('AllProjectsEmptyInboxText')).toBeLessThan(
-            children.indexOf('AllProjectsEmptyInboxAddTask')
-        )
-        expect(children.indexOf('AllProjectsEmptyInboxAddTask')).toBeLessThan(
-            children.indexOf('AllProjectsEmptyInboxTags')
-        )
     })
 })
