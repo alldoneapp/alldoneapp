@@ -3,14 +3,15 @@
 const {
     buildOpenAiPromptCacheKey,
     getCachedEnvFunctions,
-    getOpenAIClient,
+    getModel,
     logOpenAiCacheUsage,
 } = require('../../Assistant/assistantHelper')
+const { resolveClassifierClient } = require('../../Assistant/classifierModelClient')
 
-// Model used to summarize an email into a task title. The MODEL_ key is what the Gold
-// metering (calculateGoldCostFromTokens) expects; the OpenAI id is what the API needs.
+// Default model for summarizing an email into a task title; users can override it per account in
+// Settings → Customizations (featureModelPreferences.emailTaskSummary). The MODEL_ key is what the
+// Gold metering (calculateGoldCostFromTokens) expects; the upstream id is derived per provider.
 const TASK_SUMMARY_MODEL_KEY = 'MODEL_GPT5_4_NANO'
-const TASK_SUMMARY_OPENAI_MODEL = 'gpt-5.4-nano'
 
 const TASK_SUMMARY_SYSTEM_PROMPT =
     'You turn one email into a single actionable task title. Return ONLY one short sentence (at most 15 words) ' +
@@ -29,41 +30,50 @@ function buildUserContent({ context = {}, language }) {
     return parts.join('\n')
 }
 
-// Returns { name, totalTokens }. Throws when the OpenAI key is unavailable.
-async function summarizeEmailAsTaskName({ context, language, cacheScope = '' } = {}) {
+// Returns { name, totalTokens, modelKey }. The caller must bill against the returned modelKey —
+// it is the model that actually ran. Throws when the required provider key is unavailable.
+async function summarizeEmailAsTaskName({
+    context,
+    language,
+    cacheScope = '',
+    modelKey = TASK_SUMMARY_MODEL_KEY,
+} = {}) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for email task summarization')
+    const { client, model, isOpenRouter } = resolveClassifierClient(modelKey, {
+        openAiKey,
+        openRouterKey: envFunctions?.OPENROUTER_API_KEY,
+    })
+    const upstreamModel = isOpenRouter ? model : getModel(modelKey)
 
-    const openai = getOpenAIClient(openAiKey)
-    const promptCacheKey = buildOpenAiPromptCacheKey(
-        'email-summary',
-        TASK_SUMMARY_OPENAI_MODEL,
-        cacheScope,
-        TASK_SUMMARY_SYSTEM_PROMPT
-    )
-    const completion = await openai.chat.completions.create({
-        model: TASK_SUMMARY_OPENAI_MODEL,
+    const request = {
+        model: upstreamModel,
         messages: [
             { role: 'system', content: TASK_SUMMARY_SYSTEM_PROMPT },
             { role: 'user', content: buildUserContent({ context, language }) },
         ],
-        prompt_cache_key: promptCacheKey,
-    })
+    }
+    // prompt_cache_key is an OpenAI extension; other providers reject or ignore it.
+    const promptCacheKey = isOpenRouter
+        ? null
+        : buildOpenAiPromptCacheKey('email-summary', upstreamModel, cacheScope, TASK_SUMMARY_SYSTEM_PROMPT)
+    if (promptCacheKey) request.prompt_cache_key = promptCacheKey
+
+    const completion = await client.chat.completions.create(request)
     logOpenAiCacheUsage({
         usage: completion?.usage,
         route: 'email-task-summarizer',
-        model: TASK_SUMMARY_OPENAI_MODEL,
-        cacheKey: promptCacheKey,
+        model: upstreamModel,
+        cacheKey: promptCacheKey || undefined,
     })
 
     const name = completion?.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, '') || ''
     const totalTokens = Number.isFinite(completion?.usage?.total_tokens) ? completion.usage.total_tokens : 0
-    return { name, totalTokens }
+    return { name, totalTokens, modelKey }
 }
 
 module.exports = {
     summarizeEmailAsTaskName,
     TASK_SUMMARY_MODEL_KEY,
-    TASK_SUMMARY_OPENAI_MODEL,
 }
