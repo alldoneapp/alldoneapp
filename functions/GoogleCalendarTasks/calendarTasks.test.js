@@ -673,7 +673,9 @@ describe('calendarTasks routing', () => {
     })
 })
 
-describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a meeting', () => {
+describe('AT-2270 - a synced meeting lands at the bottom of its group, in event order', () => {
+    const { getDefaultCalendarSortIndex } = require('../shared/calendarTaskSortIndex')
+
     const buildExistingTask = (overrides = {}) => ({
         id: 'event-1',
         projectId: 'target-project',
@@ -699,26 +701,33 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
         updateStatistics.mockClear()
     })
 
-    test('creates the task with an ordinary arrival index, not one derived from the event', async () => {
+    test('creates the task with the sortIndex derived from the event start', async () => {
         await addOrUpdateCalendarTask('connected-project', 'target-project', null, event, 'user-1', 'me@example.com', 0)
 
-        const written = admin.__mock.refs.get('items/target-project/tasks/event-1').set.mock.calls[0][0]
-        const eventStart = Date.parse(event.start.dateTime || event.start.date)
-
-        // An ordinary positive "arrived now" index - the same shape every non-calendar task gets.
-        expect(written.sortIndex).toBeGreaterThan(0)
-        // Never the event start (AT-2259) and never the reserved band (AT-2270).
-        expect(written.sortIndex).not.toBe(eventStart)
-        expect(written.sortIndex).toBeGreaterThan(-1e13)
+        const expected = getDefaultCalendarSortIndex({ start: event.start })
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: expected })
+        )
+        // Below every generated ordering index, so it sits under the ordinary tasks of the group.
+        expect(expected).toBeLessThan(-Date.now())
     })
 
-    test('does not write a sortIndex when a rescheduled event moves the task', async () => {
+    test('an earlier event sorts above a later one', async () => {
+        const earlier = getDefaultCalendarSortIndex({ start: { dateTime: '2026-04-24T09:00:00Z' } })
+        const later = getDefaultCalendarSortIndex({ start: { dateTime: '2026-04-24T15:00:00Z' } })
+
+        expect(earlier).toBeGreaterThan(later)
+    })
+
+    test('re-sorts an untouched task when the event is rescheduled', async () => {
         const rescheduled = {
             ...event,
             start: { dateTime: '2026-04-24T16:00:00Z' },
             end: { dateTime: '2026-04-24T17:00:00Z' },
         }
-        const existingTask = buildExistingTask({ sortIndex: Date.parse('2026-04-21T10:00:00Z') })
+        const existingTask = buildExistingTask({
+            sortIndex: getDefaultCalendarSortIndex({ start: event.start }),
+        })
 
         await addOrUpdateCalendarTask(
             'connected-project',
@@ -730,11 +739,9 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
             0
         )
 
-        // The meeting moves among the other meetings because calendarData.start moved; the list
-        // reads that field directly. Nothing needs to re-sort it, so nothing writes sortIndex.
-        const updateCall = admin.__mock.refs.get('items/target-project/tasks/event-1').update.mock.calls[0][0]
-        expect(updateCall).not.toHaveProperty('sortIndex')
-        expect(updateCall.calendarData.start).toEqual(rescheduled.start)
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').update).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: getDefaultCalendarSortIndex({ start: rescheduled.start }) })
+        )
     })
 
     test('leaves a task the user rearranged exactly where it is, even when the event moves', async () => {
@@ -743,6 +750,7 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
             start: { dateTime: '2026-04-24T16:00:00Z' },
             end: { dateTime: '2026-04-24T17:00:00Z' },
         }
+        // Dragged to the top of the list: an ordinary "just moved" index.
         const existingTask = buildExistingTask({ sortIndex: Date.parse('2026-04-23T11:22:33.444Z') })
 
         await addOrUpdateCalendarTask(
@@ -759,8 +767,10 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
         expect(updateCall).not.toHaveProperty('sortIndex')
     })
 
-    test('does not write anything when nothing about the event changed', async () => {
-        const existingTask = buildExistingTask({ sortIndex: Date.parse('2026-04-21T10:00:00Z') })
+    test('does not write a sortIndex when nothing about the event changed', async () => {
+        const existingTask = buildExistingTask({
+            sortIndex: getDefaultCalendarSortIndex({ start: event.start }),
+        })
 
         await addOrUpdateCalendarTask(
             'connected-project',
@@ -772,10 +782,34 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
             0
         )
 
+        // No write at all: the sortIndex is only re-derived inside an update that was needed
+        // anyway, so an unchanged event does not churn the document on every sync.
         expect(admin.__mock.refs.get('items/target-project/tasks/event-1')).toBeUndefined()
     })
 
-    test('carries the existing ordering across a project move', async () => {
+    test('moves an untouched task to the new default when it is routed to another project', async () => {
+        const existingTask = buildExistingTask({
+            projectId: 'old-project',
+            sortIndex: Date.parse('2026-04-20T08:00:00Z') + 1, // pre-AT-2270 arrival index
+        })
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            event,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ sortIndex: getDefaultCalendarSortIndex({ start: event.start }) }),
+            { merge: true }
+        )
+    })
+
+    test('carries a user placement across a project move', async () => {
         const placed = Date.parse('2026-04-23T11:22:33.444Z')
         const existingTask = buildExistingTask({ projectId: 'old-project', sortIndex: placed })
 
@@ -793,22 +827,5 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
             expect.objectContaining({ sortIndex: placed }),
             { merge: true }
         )
-    })
-
-    test('gives a task with no ordering at all one on a project move', async () => {
-        const existingTask = buildExistingTask({ projectId: 'old-project', sortIndex: undefined })
-
-        await addOrUpdateCalendarTask(
-            'connected-project',
-            'target-project',
-            existingTask,
-            event,
-            'user-1',
-            'me@example.com',
-            0
-        )
-
-        const written = admin.__mock.refs.get('items/target-project/tasks/event-1').set.mock.calls[0][0]
-        expect(written.sortIndex).toBeGreaterThan(0)
     })
 })
