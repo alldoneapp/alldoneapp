@@ -164,6 +164,38 @@ describe('installDeviceChangeInvalidation', () => {
         uninstall()
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
     })
+
+    test('refcounts, so one unmounted recorder cannot silence the others', () => {
+        const listeners = {}
+        const removeEventListener = jest.fn()
+        const mediaDevices = {
+            addEventListener: (type, handler) => {
+                listeners[type] = handler
+            },
+            removeEventListener,
+        }
+        const original = navigator.mediaDevices
+        Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: mediaDevices })
+
+        // A RambleButton sits next to essentially every text input, so several install at once.
+        const first = installDeviceChangeInvalidation()
+        const second = installDeviceChangeInvalidation()
+
+        first()
+        expect(removeEventListener).not.toHaveBeenCalled()
+        rememberLearnedCaptureMode({ deviceId: 'webcam-1' })
+        listeners.devicechange()
+        expect(readLearnedCaptureMode()).toBeNull()
+
+        second()
+        expect(removeEventListener).toHaveBeenCalledTimes(1)
+        // A double release must not drive the refcount negative and wedge the next install.
+        second()
+        expect(removeEventListener).toHaveBeenCalledTimes(1)
+        installDeviceChangeInvalidation()()
+
+        Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
+    })
 })
 
 describe('track inspection', () => {
