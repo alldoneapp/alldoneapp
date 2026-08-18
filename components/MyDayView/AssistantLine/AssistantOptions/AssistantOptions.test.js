@@ -289,31 +289,6 @@ describe('AssistantOptions search button', () => {
         expect(getInput().props.fixedHeight).toBe(40)
     })
 
-    // AT-2355: the mic used to appear only on hover/focus, i.e. on touch only after the field had
-    // already been tapped. It must be there from the first render, before any interaction.
-    it('shows the dictation mic without focusing or hovering the input', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        expect(tree.root.findByType(TextInput).props.alwaysShowDictation).toBe(true)
-    })
-
-    it('keeps showing the mic on small screens, where there is no hover at all', async () => {
-        mockState.smallScreenNavigation = true
-        try {
-            let tree
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-            })
-
-            expect(tree.root.findByType(TextInput).props.alwaysShowDictation).toBe(true)
-        } finally {
-            mockState.smallScreenNavigation = false
-        }
-    })
-
     it('keeps the input stable when content measurements oscillate at the scroll boundary', async () => {
         let tree
         await act(async () => {

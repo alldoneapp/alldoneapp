@@ -31,6 +31,10 @@ const FEATURE_MODEL_FEATURES = {
     // Runs on the OpenAI Responses API (strict JSON schema + reasoning effort), which OpenRouter
     // does not serve — Chat Completions only. OpenRouter models are therefore not valid here.
     taskGoalRouting: { defaultModelKey: 'MODEL_GPT5_6_LUNA', openAiOnly: true },
+    // Automatic task→project routing (AT-2306). Same Responses-API constraint as
+    // goal routing above: strict JSON schema + reasoning effort, so OpenRouter
+    // models are not valid choices here.
+    taskProjectRouting: { defaultModelKey: 'MODEL_GPT5_6_LUNA', openAiOnly: true },
 }
 
 // { name, tokensPerGold } for any key a feature default or picker can reference; null when

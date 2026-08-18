@@ -46,6 +46,8 @@ function getTransactionLabel(source) {
         gmail_labeling: 'Gmail labeling',
         gmail_label_follow_up: 'Gmail label follow-up',
         calendar_project_routing: 'Calendar project routing',
+        task_project_routing: 'Automatic project selection',
+        task_goal_routing: 'Automatic goal assignment',
         linkedin_enrichment: 'LinkedIn enrichment',
         linkedin_search: 'LinkedIn search',
         monthly_gold: 'Monthly gold',
@@ -107,6 +109,17 @@ function getTransactionLink(entry) {
         return {
             label: translate('Open contact'),
             url: `${window.location.origin}/projects/${projectId}/contacts/${objectId}`,
+            external: false,
+        }
+    }
+
+    // Automatic task routing charges are always about one task, and the project
+    // recorded on the transaction is the one the task ended up in (AT-2306), so
+    // the link stays valid even when project routing moved it.
+    if ((source === 'task_project_routing' || source === 'task_goal_routing') && projectId && objectId) {
+        return {
+            label: translate('Open the task'),
+            url: `${window.location.origin}/projects/${projectId}/tasks/${objectId}`,
             external: false,
         }
     }
