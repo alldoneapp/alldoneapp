@@ -1429,17 +1429,18 @@ function CustomTextInput3(
 }
 
 // Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
-// offset clears CustomScrollView's 4px scroll indicator. The mic aligns with the FIRST text line:
-// the editor renders with zero padding and a fixed 24px line-height from the frame's top
-// (.ql-textInputEditor in styles.css), so a 24px band at top centers the icon on that line in
-// every input — one-line task/title rows and tall description editors alike. Frame-centering or
-// bottom-anchoring both drift below the text in inputs whose frame is taller than their content
-// (the add-task row has minHeight 45 with one 24px line at the top). Box-none so the band never
-// swallows clicks meant for the input.
+// offset clears CustomScrollView's 4px scroll indicator. The mic centers on the FIRST text line,
+// which sits ~5px below the frame top (that offset is codified by the global placeholder rule
+// `.ql-textInputContainer > .ql-editor.ql-blank::before { top: 5px }` in styles.css) with a fixed
+// 24px line-height — so a 24px band at top:6 centers the icon on that line in every input, and in
+// the task row it lands level with the 24px assignee avatar (avatar top 8 in the outer row, this
+// frame at row y=2 → both centers at frame y=18). Frame-centering or bottom-anchoring both drift
+// below the text in inputs whose frame is taller than their content (the add-task row has
+// minHeight 45 with one line at the top). Box-none so the band never swallows input clicks.
 const localDictationWrapperStyle = {
     position: 'absolute',
     right: 8,
-    top: 0,
+    top: 6,
     height: 24,
     justifyContent: 'center',
     zIndex: 10,
