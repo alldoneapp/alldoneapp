@@ -45,13 +45,6 @@ export default function FeatureModelsSection({ userId }) {
                 helpText={'Assigns new tasks to matching goals.'}
                 iconName={'target'}
             />
-            <FeatureModelProperty
-                userId={userId}
-                featureKey={'taskProjectRouting'}
-                label={'Automatic project selection'}
-                helpText={'Picks the project for tasks added with "Automatic".'}
-                iconName={'cpu'}
-            />
         </View>
     )
 }

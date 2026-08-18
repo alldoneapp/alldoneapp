@@ -257,10 +257,6 @@ export default function AssistantOptions({
                     scrollEnabled={inputLayout.scrollEnabled}
                     showScrollIndicator={inputLayout.scrollEnabled}
                     autoExpand={true}
-                    // Dictating is a primary way to use this composer, so the mic is pinned on
-                    // instead of waiting for hover/focus — on touch there is no hover at all, so
-                    // it used to appear only after the field was already tapped (AT-2355).
-                    alwaysShowDictation={true}
                 />
                 <AppPopover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
