@@ -190,6 +190,9 @@ const processRambleSecondGen = onCall(
             totalTokens,
             modelKey,
             targetKind: normalizedTargetKind,
+            projectId,
+            assistantId: context.assistant?.uid || null,
+            assistantModel: context.assistant?.model || null,
         })
 
         return {
