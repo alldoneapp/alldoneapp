@@ -49,6 +49,7 @@ import {
 } from './textInputHelper'
 import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
+import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -141,6 +142,7 @@ function CustomTextInput3(
         autoExpand = false,
         hideDictation = false,
         dictationTargetKind,
+        alwaysShowDictation = false,
     },
     ref
 ) {
@@ -246,8 +248,15 @@ function CustomTextInput3(
         return () => editorElement.classList.remove('ql-editorWithDictation')
     }, [dictationEnabled, editorElement])
 
+    // Composer inputs (assistant line, chat) pin the mic on: on touch there is no hover, so the
+    // activity rule below only reveals it once the field is already focused — AT-2355.
+    const dictationButtonVisible = isDictationButtonVisible({
+        alwaysShowDictation,
+        activityVisible: dictationVisible,
+    })
+
     useEffect(() => {
-        if (!dictationEnabled || !containerElement) return
+        if (!shouldTrackDictationActivity({ dictationEnabled, alwaysShowDictation }) || !containerElement) return
         // The mic overlay lives in CustomScrollView's fixedChildren, OUTSIDE the Quill container —
         // so visibility tracks the whole input frame (the scroll-boundary element), not
         // ql-container: moving the pointer onto the overlay itself must not count as leaving.
@@ -287,7 +296,7 @@ function CustomTextInput3(
             frameElement.removeEventListener('mouseenter', activate)
             frameElement.removeEventListener('mouseleave', onMouseLeave)
         }
-    }, [dictationEnabled, containerElement])
+    }, [dictationEnabled, alwaysShowDictation, containerElement])
 
     const insertDictatedText = text => {
         const editor = quillRef.current
@@ -1395,7 +1404,7 @@ function CustomTextInput3(
                             targetKind={dictationKind}
                             getCurrentText={() => textRef.current}
                             onTextReady={insertDictatedText}
-                            visible={dictationVisible}
+                            visible={dictationButtonVisible}
                         />
                     </View>
                 ) : null
