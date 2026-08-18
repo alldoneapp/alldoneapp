@@ -14,9 +14,7 @@ describe('BypassWorkflowButton', () => {
         const text = button.findByType(Text)
 
         expect(text.props.children).toBe('Bypass workflow and mark done')
-        // Sits 8pt below the primary button row, which contributes its own 16px bottom
-        // padding — 24px of separation in total (AT-2354).
-        expect(StyleSheet.flatten(button.props.style)).toMatchObject({ marginTop: 8 })
+        expect(StyleSheet.flatten(button.props.style)).toMatchObject({ marginTop: 0 })
         expect(StyleSheet.flatten(text.props.style)).toMatchObject({ color: colors.Text03 })
     })
 
