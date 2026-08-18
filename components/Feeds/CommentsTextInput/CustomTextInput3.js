@@ -45,6 +45,7 @@ import {
     INVITE_THEME_DEFAULT,
     normalizeDictatedText,
     buildDictationDelta,
+    placeDictationCaret,
 } from './textInputHelper'
 import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
@@ -307,7 +308,7 @@ function CustomTextInput3(
         // 'user' source: runs the normal onChange path (htmlRef stays in sync — AT-2178, and
         // onChangeText reaches the parent's save flow) and lands in the undo history.
         editor.updateContents(delta, 'user')
-        editor.setSelection(caretIndex, 0, 'user')
+        placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
     }
 
     //MENTIONS

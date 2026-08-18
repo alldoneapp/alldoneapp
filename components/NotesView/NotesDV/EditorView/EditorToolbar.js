@@ -46,6 +46,7 @@ import {
     LOADING_MODE,
     beforeUndoRedo,
     NOT_USER_MENTIONED,
+    placeDictationCaret,
 } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import store from '../../../../redux/store'
 import { setQuotedNoteText, storeOpenModal, setShowLimitedFeatureModal } from '../../../../redux/actions'
@@ -1044,7 +1045,7 @@ export const EditorToolbar = ({
         const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 }
         if (range.length > 0) editor.deleteText(range.index, range.length, 'user')
         editor.insertText(range.index, trimmed + ' ', 'user')
-        editor.setSelection(range.index + trimmed.length + 1, 0, 'user')
+        placeDictationCaret(editor, range.index + trimmed.length + 1, () => exportRef.getEditor?.() === editor)
     }
     const {
         phase: ramblePhase,
