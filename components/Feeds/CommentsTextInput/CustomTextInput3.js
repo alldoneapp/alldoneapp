@@ -223,6 +223,20 @@ function CustomTextInput3(
         styleTheme !== SEARCH_THEME &&
         !!innerProjectId &&
         isDictationSupported()
+    // Task/goal-name editors are title inputs even though they are not `singleLine` — they accept
+    // breaklines only to convert them into the Enter action (i.e. submit), so dictated text must
+    // arrive as a single line there too or a stray '\n' would submit the task mid-insert.
+    const dictationIsTitleTarget =
+        singleLine ||
+        [
+            TASK_THEME,
+            SUBTASK_THEME,
+            GOAL_THEME,
+            CREATE_TASK_MODAL_THEME,
+            CREATE_SUBTASK_MODAL_THEME,
+            NEW_TOPIC_MODAL_THEME,
+        ].includes(styleTheme)
+    const dictationKind = dictationTargetKind || (dictationIsTitleTarget ? 'title' : 'generic')
 
     useEffect(() => {
         if (!dictationEnabled || !containerElement) return
@@ -256,7 +270,7 @@ function CustomTextInput3(
     const insertDictatedText = text => {
         const editor = quillRef.current
         if (!editor) return
-        const cleaned = normalizeDictatedText(text, singleLine)
+        const cleaned = normalizeDictatedText(text, dictationIsTitleTarget)
         if (!cleaned) return
 
         const liveSelection = editor.hasFocus() ? editor.getSelection() : null
@@ -1353,17 +1367,10 @@ function CustomTextInput3(
             showIndicator={showScrollIndicator}
             fixedChildren={
                 dictationEnabled ? (
-                    <View
-                        pointerEvents={'box-none'}
-                        style={
-                            singleLine
-                                ? localDictationWrapperStyles.centered
-                                : localDictationWrapperStyles.bottomAnchored
-                        }
-                    >
+                    <View pointerEvents={'box-none'} style={localDictationWrapperStyle}>
                         <RambleButton
                             projectId={innerProjectId}
-                            targetKind={dictationTargetKind || (singleLine ? 'title' : 'generic')}
+                            targetKind={dictationKind}
                             getCurrentText={() => textRef.current}
                             onTextReady={insertDictatedText}
                             visible={dictationVisible}
@@ -1422,12 +1429,20 @@ function CustomTextInput3(
 }
 
 // Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
-// offset clears CustomScrollView's 4px scroll indicator. Single-line inputs (task names, titles)
-// center the mic on the text line; taller editors anchor it to the bottom-right corner. The
-// wrapper is box-none so the stretched centering frame never swallows clicks meant for the input.
-const localDictationWrapperStyles = {
-    centered: { position: 'absolute', right: 8, top: 0, bottom: 0, justifyContent: 'center', zIndex: 10 },
-    bottomAnchored: { position: 'absolute', right: 8, bottom: 4, zIndex: 10 },
+// offset clears CustomScrollView's 4px scroll indicator. The mic aligns with the FIRST text line:
+// the editor renders with zero padding and a fixed 24px line-height from the frame's top
+// (.ql-textInputEditor in styles.css), so a 24px band at top centers the icon on that line in
+// every input — one-line task/title rows and tall description editors alike. Frame-centering or
+// bottom-anchoring both drift below the text in inputs whose frame is taller than their content
+// (the add-task row has minHeight 45 with one 24px line at the top). Box-none so the band never
+// swallows clicks meant for the input.
+const localDictationWrapperStyle = {
+    position: 'absolute',
+    right: 8,
+    top: 0,
+    height: 24,
+    justifyContent: 'center',
+    zIndex: 10,
 }
 
 export default forwardRef(CustomTextInput3)
