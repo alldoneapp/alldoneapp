@@ -50,15 +50,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         [adding, assistantId, projectId]
     )
 
-    console.log('PreConfigTaskModal props:', {
-        disabled,
-        projectId,
-        adding,
-        assistantId,
-        taskData: task,
-        currentAssistant,
-    })
-
     const initialState = useMemo(() => {
         const getInitialStartDate = () => {
             if (task?.startDate) {
@@ -96,14 +87,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             webhookAuth: task?.taskMetadata?.webhookAuth ?? '',
         }
     }, [task, currentAssistant])
-
-    console.log('PreConfigTaskModal initialState:', {
-        taskStartDate: task?.startDate,
-        taskStartTime: task?.startTime,
-        initialStartDate: initialState.startDate,
-        formattedInitialDate: moment(initialState.startDate).format('YYYY-MM-DD HH:mm:ss'),
-        startDateType: typeof initialState.startDate,
-    })
 
     const [name, setName] = useState(initialState.name)
     const [prompt, setPrompt] = useState(initialState.prompt)
@@ -173,32 +156,17 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [webhookAuth, setWebhookAuth] = useState(initialState.webhookAuth)
 
     const handleSetStartDate = useCallback(value => {
-        console.log('PreConfigTaskModal - handleSetStartDate called with:', {
-            value,
-            valueType: typeof value,
-            formattedDate: moment(value).format('YYYY-MM-DD HH:mm:ss'),
-        })
         setStartDate(value)
     }, [])
-
-    console.log('PreConfigTaskModal state initialized:', {
-        aiModel,
-        aiReasoningEffort,
-        aiSystemMessage,
-        taskType,
-        fromAssistant: !!currentAssistant,
-    })
 
     const promptInputRef = useRef()
     const linkInputRef = useRef()
 
     const handleSetRecurrence = useCallback(value => {
-        console.log('PreConfigTaskModal - handleSetRecurrence called with:', value)
         setRecurrence(value)
     }, [])
 
     const handleSetName = useCallback(value => {
-        console.log('PreConfigTaskModal - handleSetName called with:', value)
         setName(value)
     }, [])
 
@@ -256,14 +224,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     }
 
     const addTask = async () => {
-        console.log('Adding task with startDate:', {
-            startDate,
-            formattedDate: moment(startDate).format('YYYY-MM-DD'),
-            formattedTime: moment(startDate).format('HH:mm'),
-            fullDateTime: moment(startDate).format('YYYY-MM-DD HH:mm:ss'),
-            startDateType: typeof startDate,
-            userTimezone: moment().format('Z'),
-        })
         closeModal()
 
         // Convert startDate to UTC by removing the local timezone offset
@@ -334,17 +294,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     }
 
     const saveTask = async () => {
-        console.log('Saving task with startDate:', {
-            startDate,
-            formattedDate: moment(startDate).format('YYYY-MM-DD'),
-            formattedTime: moment(startDate).format('HH:mm'),
-            fullDateTime: moment(startDate).format('YYYY-MM-DD HH:mm:ss'),
-            startDateType: typeof startDate,
-            userTimezone: moment().format('Z'),
-            sendWhatsApp,
-            sendWhatsAppType: typeof sendWhatsApp,
-        })
-
         // Convert startDate to UTC by removing the local timezone offset
         const utcStartDate = moment(startDate).utc().valueOf()
         const iframeTaskMetadata =
@@ -422,13 +371,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                           executionMode,
                           sendWhatsApp,
                       }
-        console.log('PreConfigTaskModal - updatedTask to save:', {
-            taskId: updatedTask.id,
-            taskName: updatedTask.name,
-            sendWhatsApp: updatedTask.sendWhatsApp,
-            sendWhatsAppType: typeof updatedTask.sendWhatsApp,
-            taskMetadata: updatedTask.taskMetadata,
-        })
         updatePreConfigTask(projectId, assistantId, applyCurrentUserRecurrenceConfig(updatedTask))
         closeModal()
     }

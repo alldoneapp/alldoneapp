@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { StyleSheet, View, Text } from 'react-native'
 import DropDownPicker from 'react-native-dropdown-picker'
 
@@ -17,22 +17,7 @@ export default function DropDown({
 }) {
     const [open, setOpen] = useState(false)
 
-    console.log('DropDown render:', {
-        value,
-        availableValues: items.map(item => item.value),
-        hasMatchingOption: items.some(item => item.value === value),
-        placeholder,
-    })
-
-    useEffect(() => {
-        console.log('DropDown value changed:', {
-            newValue: value,
-            hasMatchingOption: items.some(item => item.value === value),
-        })
-    }, [value])
-
     const handleValueChange = newValue => {
-        console.log('DropDown value change:', { from: value, to: newValue })
         setValue(newValue)
     }
 
@@ -47,8 +32,11 @@ export default function DropDown({
                 setValue={handleValueChange}
                 placeholder={placeholder}
                 textStyle={localStyles.optionText}
+                style={localStyles.dropDown}
                 containerStyle={localStyles.dropDownContainer}
                 dropDownContainerStyle={localStyles.optionsContainer}
+                placeholderStyle={localStyles.placeholder}
+                listItemLabelStyle={localStyles.optionText}
                 selectedItemLabelStyle={localStyles.selectedItem}
                 showTickIcon={false}
                 showArrowIcon={true}
@@ -74,16 +62,30 @@ const localStyles = StyleSheet.create({
         marginBottom: 4,
     },
     dropDownContainer: {
-        borderWidth: 1,
-        borderColor: colors.Grey400,
-        borderRadius: 4,
         height: 42,
         alignContent: 'center',
     },
+    dropDown: {
+        backgroundColor: colors.Secondary400,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        borderRadius: 4,
+        minHeight: 42,
+        paddingHorizontal: 0,
+    },
     optionsContainer: {
-        backgroundColor: Colors.GraySidebar,
+        backgroundColor: colors.Secondary300,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        borderRadius: 4,
     },
     optionText: {
+        ...styles.body1,
+        color: Colors.White,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+    },
+    placeholder: {
         ...styles.body1,
         color: colors.Text03,
         paddingVertical: 8,
@@ -91,6 +93,7 @@ const localStyles = StyleSheet.create({
     },
     selectedItem: {
         fontWeight: 'bold',
+        color: Colors.White,
     },
     arrow: {
         width: 24,

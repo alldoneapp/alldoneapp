@@ -44,21 +44,11 @@ export default function AISettingsArea({
     const modelOptions = getModelOptions()
     const reasoningEffortOptions = getReasoningEffortOptions()
 
-    console.log('AISettingsArea render:', {
-        aiModel,
-        aiReasoningEffort,
-        aiSystemMessage,
-        modelOptions: modelOptions.map(opt => opt.value),
-        reasoningEffortOptions: reasoningEffortOptions.map(opt => opt.value),
-    })
-
     const handleModelChange = value => {
-        console.log('Model change:', { from: aiModel, to: value })
         setAiModel(value)
     }
 
     const handleReasoningEffortChange = value => {
-        console.log('Reasoning effort change:', { from: aiReasoningEffort, to: value })
         setAiReasoningEffort(value)
     }
 
