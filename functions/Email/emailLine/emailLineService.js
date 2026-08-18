@@ -11,8 +11,8 @@ const { getGmailLabelingConfigRef, getGmailLabelingStateRef } = require('../../G
 const gmailEmailLine = require('./gmailEmailLine')
 const microsoftEmailLine = require('./microsoftEmailLine')
 const { EmailLineAuthError, isAuthError } = require('./emailLineErrors')
-const { composeReply, REPLY_MODEL_KEY } = require('./replyComposer')
-const { summarizeEmailAsTaskName, TASK_SUMMARY_MODEL_KEY } = require('./taskSummarizer')
+const { composeReply } = require('./replyComposer')
+const { summarizeEmailAsTaskName } = require('./taskSummarizer')
 
 const GOLD_SOURCE_DRAFT_REPLY = 'email_draft_reply'
 const GOLD_SOURCE_CREATE_TASK = 'email_create_task'
@@ -693,18 +693,21 @@ async function draftReply({
         throw error
     }
 
+    const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
     const composed = await composeReply({
         context,
         guidance,
         language: userData?.language || userData?.appLanguage,
         groundingContext: await loadReplyGroundingContext({ userId, userData, projectId }),
         cacheScope: `${userId}:${projectId}`,
+        modelKey: resolveFeatureModelKey('emailDraftReply', userData),
     })
     if (!composed.body) throw new Error('Failed to compose a reply draft')
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
     const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
-    const goldCost = Math.max(1, calculateGoldCostFromTokens(composed.totalTokens, REPLY_MODEL_KEY))
+    // Bill the model that actually ran — composeReply returns its modelKey.
+    const goldCost = Math.max(1, calculateGoldCostFromTokens(composed.totalTokens, composed.modelKey))
     const goldContext = {
         source: GOLD_SOURCE_DRAFT_REPLY,
         projectId: resolveConnectionProjectId(userData, projectId),
@@ -820,10 +823,12 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         throw error
     }
 
+    const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
     const summary = await summarizeEmailAsTaskName({
         context,
         language: userData?.language || userData?.appLanguage,
         cacheScope: `${userId}:${projectId}`,
+        modelKey: resolveFeatureModelKey('emailTaskSummary', userData),
     })
 
     const taskName = summary.name || context.subject || 'Follow up on email'
@@ -871,7 +876,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
     const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
-    const goldCost = Math.max(1, calculateGoldCostFromTokens(summary.totalTokens, TASK_SUMMARY_MODEL_KEY))
+    // Bill the model that actually ran — summarizeEmailAsTaskName returns its modelKey.
+    const goldCost = Math.max(1, calculateGoldCostFromTokens(summary.totalTokens, summary.modelKey))
     const goldContext = {
         source: GOLD_SOURCE_CREATE_TASK,
         projectId: targetProjectId,

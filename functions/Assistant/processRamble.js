@@ -143,6 +143,7 @@ const processRambleSecondGen = onCall(
                 transcript,
                 targetKind: normalizedTargetKind,
                 assistant: context.assistant,
+                userData,
                 projectContext: context.projectContext,
                 userContext: context.userContext,
                 currentText: typeof currentText === 'string' ? currentText : '',

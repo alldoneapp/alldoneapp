@@ -3,6 +3,7 @@ const mockCreate = jest.fn()
 jest.mock('../../Assistant/assistantHelper', () => ({
     buildOpenAiPromptCacheKey: jest.fn(scope => `${scope}-cache-key`),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'key' })),
+    getModel: jest.fn(() => 'gpt-5.4-mini'),
     getOpenAIClient: jest.fn(() => ({ chat: { completions: { create: (...args) => mockCreate(...args) } } })),
     logOpenAiCacheUsage: jest.fn(),
 }))

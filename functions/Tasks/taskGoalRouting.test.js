@@ -13,6 +13,7 @@ jest.mock('firebase-admin', () => ({
 jest.mock('../Assistant/assistantHelper', () => ({
     calculateGoldCostFromTokens: jest.fn(() => 1),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'test-key' })),
+    getModel: jest.fn(() => 'gpt-5.6-luna'),
     getOpenAIClient: jest.fn(() => ({
         responses: { create: mockResponsesCreate },
     })),
