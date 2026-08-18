@@ -4,22 +4,16 @@ import { Platform, StyleSheet, Text, View } from 'react-native'
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
-import { addFilesAsAttachments } from './attachmentFileUtils'
+import { addFilesAsAttachments, eventContainsFiles, getDroppedFiles } from './attachmentFileUtils'
 import { insertAttachmentInsideEditor } from './textInputHelper'
 
 const WEB_CONTAINER_STYLE = {
     display: 'contents',
 }
 
-export const getDroppedFiles = event => {
-    const dataTransfer = event?.dataTransfer || event?.nativeEvent?.dataTransfer
-    return Array.from(dataTransfer?.files || [])
-}
-
-export const eventContainsFiles = event => {
-    const dataTransfer = event?.dataTransfer || event?.nativeEvent?.dataTransfer
-    return Array.from(dataTransfer?.types || []).includes('Files')
-}
+// Re-exported from their new home in attachmentFileUtils (a leaf module) so existing importers,
+// including the ChatImageDropZone back-compat shim, keep working unchanged.
+export { eventContainsFiles, getDroppedFiles }
 
 export const addDroppedFilesToEditor = ({ files, editor, inputCursorIndex = 0, setInputCursorIndex }) => {
     let nextCursorIndex = inputCursorIndex
