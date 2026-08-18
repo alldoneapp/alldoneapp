@@ -2690,10 +2690,5 @@
     "Paste your OpenRouter API key (sk-or-…)": "Paste your OpenRouter API key (sk-or-…)",
     "One earlier unread message": "1 earlier unread message",
     "Amount earlier unread messages": "%{amount} earlier unread messages",
-    "Created by me": "Created by me",
-    "Automatic project description": "Let Alldone pick the project for you",
-    "Or open one of your projects": "Or open one of your projects",
-    "Automatic project selection": "Automatic project selection",
-    "Open the task": "Open task",
-    "Picks the project for tasks added with \"Automatic\".": "Picks the project for tasks added with \"Automatic\"."
+    "Created by me": "Created by me"
 }

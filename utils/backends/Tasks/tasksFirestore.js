@@ -123,7 +123,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
 import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
-import { getDefaultCalendarSortIndex } from '../../CalendarTaskSortIndex'
+import { compareTasksByCalendarPlacement } from '../../CalendarTaskOrder'
 import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
@@ -1697,13 +1697,10 @@ export async function updateFocusedTask(
                         // AT-2259 - a task leaving focus rejoins the list at the top like any other
                         // freshly moved task. It used to be dropped back onto its calendar event
                         // start, which pinned it above everything in its group forever.
-                        // AT-2270 - except a calendar task, which rejoins the calendar block at the
-                        // bottom of the group instead. The focus boost overwrote whatever ordering
-                        // it had, so the only sensible value to come back to is its default one -
-                        // otherwise an auto-focused meeting ends up parked on top of the list.
-                        const oldFocusedTaskData = oldFocusedTaskSnap.data()
-                        const calendarSortIndex = getDefaultCalendarSortIndex(oldFocusedTaskData?.calendarData)
-                        sortIndexForOldTask = calendarSortIndex !== null ? calendarSortIndex : generateSortIndex()
+                        // AT-2351 - a calendar task needs no special value either. It rejoins the
+                        // calendar block because the group ordering puts every calendar task there,
+                        // not because of anything written here, so one plain index covers both.
+                        sortIndexForOldTask = generateSortIndex()
                     } else {
                         // REMOVE LOGGING HERE
                         // console.warn(`[updateFocusedTask] Old focused task ${assignee.inFocusTaskId} not found for sortIndex update.`);
@@ -3654,7 +3651,12 @@ const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
 // goal group by priority first (must_do > should_do > could_do > do_later > none) and then
 // by sortIndex. Keeping this in sync avoids picking a lower-priority task as the next focus
 // when a higher-priority one is visible above it.
+// AT-2351 - calendar placement is the strongest term here, because the rendered order applies it
+// LAST (see sortTasksByPriority) and it therefore outranks priority.
 const compareTasksByPriorityThenSortIndex = (a, b) => {
+    const calendarDiff = compareTasksByCalendarPlacement(a, b)
+    if (calendarDiff !== 0) return calendarDiff
+
     const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
     return priorityDiff !== 0 ? priorityDiff : (b.sortIndex || 0) - (a.sortIndex || 0)
 }

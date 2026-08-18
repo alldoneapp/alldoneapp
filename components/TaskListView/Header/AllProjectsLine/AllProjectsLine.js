@@ -10,9 +10,9 @@ import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
-import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 
 export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
+    const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
@@ -37,12 +37,8 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                 {customRight}
                 {showActions && inOpenSection && (
                     <>
-                        {/* In All Projects there is no project in context, so the picker
-                            opens on "Automatic" and the server routes the task (AT-2306).
-                            The user's default project is still where it is created, and
-                            picking a project by hand overrides the routing entirely. */}
                         <AddTaskTag
-                            projectId={AUTOMATIC_PROJECT_OPTION}
+                            projectId={defaultProjectId}
                             style={{ marginLeft: 8 }}
                             sourceType={FEED_TASK_OBJECT_TYPE}
                             expandTaskListIfNeeded={true}
