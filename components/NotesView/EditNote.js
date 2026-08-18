@@ -832,7 +832,10 @@ const localStyles = StyleSheet.create({
         borderTopRightRadius: 4,
         minHeight: 40, // 59 - (7 + 12)
         marginLeft: 51,
-        marginRight: 40,
+        // 8, not TaskInput's 40: that margin clears the assignee avatar in the task row, but the
+        // note form has nothing on the input's right (its buttons live below) and the dictation
+        // mic anchors to the frame's right edge.
+        marginRight: 8,
     },
     textInputAlignment: {
         paddingLeft: 0,
@@ -843,7 +846,7 @@ const localStyles = StyleSheet.create({
     },
     inputUnderBreakpoint: {
         marginLeft: 44,
-        marginRight: 32,
+        marginRight: 8,
     },
 })
 
