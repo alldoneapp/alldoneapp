@@ -979,7 +979,9 @@ class TasksHelper {
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
 
-        if (note !== null && !note.parentObject) {
+        // A note attached to a contact/goal/task opens in the note editor too (AT-2356) —
+        // the `!note.parentObject` guard used to drop those on the followed-notes list.
+        if (note !== null) {
             let data = {
                 noteId: note.id,
                 projectId: projectId,
@@ -1324,7 +1326,37 @@ class TasksHelper {
                 note?.parentObject
             )
         }
-        if (note && inSelectedProject && user != null && !note.parentObject) {
+        // A note attached to a TASK still opens inside its task's note tab: that is where the
+        // meeting-transcription deep links land (`autoStartTranscription`), and it already shows
+        // the note. Every other note — standalone, or attached to a contact/goal/… — opens the
+        // note editor itself, which is exactly what the tag popup does (AT-2356). Before, only
+        // a note with no `parentObject` at all took that path, so a tag pointing at a contact
+        // note dropped the user on the followed-notes list. An unreadable parent task falls
+        // through to the standalone editor rather than leaving the click doing nothing.
+        const parentTask =
+            note && inSelectedProject && note.parentObject?.type === 'tasks'
+                ? await Backend.getTaskData(projectId, note.parentObject.id)
+                : null
+
+        if (parentTask) {
+            const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+            if (__DEV__) {
+                console.log(
+                    '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                    autoStartTranscription
+                )
+            }
+            store.dispatch([
+                switchProject(projectIndex),
+                setSelectedNavItem(DV_TAB_TASK_NOTE),
+                setSelectedTypeOfProject(projectType),
+            ])
+            navigation.navigate('TaskDetailedView', {
+                task: parentTask,
+                projectId,
+                autoStartTranscription,
+            })
+        } else if (note && inSelectedProject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             let data = {
                 noteId: note.id,
@@ -1341,28 +1373,6 @@ class TasksHelper {
                 setSelectedNote(note),
             ])
             navigation.navigate('NotesDetailedView', data)
-        } else if (note && inSelectedProject && note.parentObject?.type === 'tasks') {
-            // Note is attached to a task - fetch the task and navigate to the task's note tab
-            const task = await Backend.getTaskData(projectId, note.parentObject.id)
-            if (task) {
-                const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-                if (__DEV__) {
-                    console.log(
-                        '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
-                        autoStartTranscription
-                    )
-                }
-                store.dispatch([
-                    switchProject(projectIndex),
-                    setSelectedNavItem(DV_TAB_TASK_NOTE),
-                    setSelectedTypeOfProject(projectType),
-                ])
-                navigation.navigate('TaskDetailedView', {
-                    task,
-                    projectId,
-                    autoStartTranscription,
-                })
-            }
         } else if (inSelectedProject) {
             const { loggedUser } = store.getState()
             let data = {

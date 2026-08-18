@@ -110,6 +110,61 @@ describe('AT-2356 - opening a note from a note tag URL', () => {
         )
     })
 
+    // Second half of AT-2356: a note ATTACHED to another object (`parentObject`) was only
+    // routed when its parent was a task. A note attached to a contact or a goal took the
+    // same bail-out as the assistant-owned note above and landed on the notes list, even
+    // though the tag popup opens it in the note editor without complaining.
+    describe('notes attached to another object', () => {
+        beforeEach(() => {
+            jest.spyOn(Backend, 'getUserOrContactBy').mockResolvedValue(null)
+        })
+
+        it('opens a note attached to a contact in the note editor', async () => {
+            Backend.getNoteMeta.mockResolvedValue({
+                ...note,
+                parentObject: { type: 'contacts', id: '-OpCUNAMXp-vouR5zak7' },
+            })
+
+            await TasksHelper.processURLNoteDetailsTab(navigation, DV_TAB_NOTE_EDITOR, PROJECT_ID, NOTE_ID)
+
+            expectNoteOpened()
+        })
+
+        it('still opens a note attached to a task inside its task, keeping the transcription flag', async () => {
+            const task = { id: '-Oy32IXsBqnUTWUGv3jd', name: 'Meeting' }
+            Backend.getNoteMeta.mockResolvedValue({ ...note, parentObject: { type: 'tasks', id: task.id } })
+            jest.spyOn(Backend, 'getTaskData').mockResolvedValue(task)
+
+            await TasksHelper.processURLNoteDetailsTab(navigation, DV_TAB_NOTE_EDITOR, PROJECT_ID, NOTE_ID, null, true)
+
+            expect(navigation.navigate).toHaveBeenCalledWith('TaskDetailedView', {
+                task,
+                projectId: PROJECT_ID,
+                autoStartTranscription: true,
+            })
+        })
+
+        it('opens the note itself when its parent task cannot be read, instead of doing nothing', async () => {
+            Backend.getNoteMeta.mockResolvedValue({ ...note, parentObject: { type: 'tasks', id: 'gone' } })
+            jest.spyOn(Backend, 'getTaskData').mockResolvedValue(null)
+
+            await TasksHelper.processURLNoteDetailsTab(navigation, DV_TAB_NOTE_EDITOR, PROJECT_ID, NOTE_ID)
+
+            expectNoteOpened()
+        })
+
+        it('opens an attached note from the tabless note URL as well', async () => {
+            Backend.getNoteMeta.mockResolvedValue({
+                ...note,
+                parentObject: { type: 'contacts', id: '-OpCUNAMXp-vouR5zak7' },
+            })
+
+            await TasksHelper.processURLNoteDetails(navigation, PROJECT_ID, NOTE_ID)
+
+            expectNoteOpened()
+        })
+    })
+
     describe('getNoteDVUserContext', () => {
         it('never returns null, so an unresolvable owner cannot block the note', async () => {
             jest.spyOn(Backend, 'getUserOrContactBy').mockResolvedValue(null)
