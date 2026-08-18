@@ -53,6 +53,7 @@ import {
     TODAY_DATE,
 } from '../../../../utils/backends/openTasks'
 import MainModal from './MainModal'
+import useCreateTaskPopupWidth from './createTaskPopupWidth'
 import TaskParentGoalModal from '../TaskParentGoalModal/TaskParentGoalModal'
 import TaskMoreOptionModal from '../TaskMoreOptionsModal/TaskMoreOptionModal'
 import { isWorkstream, WORKSTREAM_ID_PREFIX } from '../../../Workstreams/WorkstreamHelper'
@@ -197,8 +198,14 @@ export default function RichCreateTaskModal({
     useLoggedUser,
     showProjectSelector,
     expandTaskListIfNeeded,
+    // AT-2364: opt in to the wide card (used by the big, centered All Projects
+    // "Add task" call to action). Every other entry point keeps its width.
+    wide,
 }) {
     const dispatch = useDispatch()
+    // One measurement shared by the form and the in-place project picker, so
+    // the popup never changes width between the two steps.
+    const widthStyle = useCreateTaskPopupWidth(wide)
     // "Automatic" is a picker option, not a project: the task still needs a real
     // project to be written to, so the sentinel is split here into the flag that
     // asks the server to route it and the host project it is created in.
@@ -653,6 +660,7 @@ export default function RichCreateTaskModal({
                     showGuideTab={true}
                     showAutomaticProject={true}
                     positionInPlace={true}
+                    widthStyle={widthStyle}
                 />
             ) : showDueDateModal ? (
                 <DueDateModal
@@ -726,6 +734,7 @@ export default function RichCreateTaskModal({
                     createTask={createTask}
                     setTask={setTask}
                     selectedProject={selectedProject}
+                    widthStyle={widthStyle}
                 />
             )}
         </CustomScrollView>

@@ -4,6 +4,19 @@ export const ATTACHMENT_FILE_SIZE_LIMIT_MB = 50
 
 export const normalizeAttachmentFileName = fileName => fileName.replaceAll(/\s/g, '_')
 
+// These two live here rather than in AttachmentDropZone so a drop target that is not an editor
+// (AT-2363: the task list row) can share them without importing the whole Quill/redux tree.
+// AttachmentDropZone re-exports them, so its existing importers are unaffected.
+export const getDroppedFiles = event => {
+    const dataTransfer = event?.dataTransfer || event?.nativeEvent?.dataTransfer
+    return Array.from(dataTransfer?.files || [])
+}
+
+export const eventContainsFiles = event => {
+    const dataTransfer = event?.dataTransfer || event?.nativeEvent?.dataTransfer
+    return Array.from(dataTransfer?.types || []).includes('Files')
+}
+
 export const addFilesAsAttachments = (files, addAttachmentTag) => {
     const addedFiles = []
 
