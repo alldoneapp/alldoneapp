@@ -798,6 +798,28 @@ export const beforeUndoRedo = (stack, startAction, endAction) => {
     }
 }
 
+// Single-line inputs (task names, titles) must never receive line breaks: a programmatic '\n'
+// bypasses the Enter keybinding that normally blocks them, so the collapse happens on the text.
+export const normalizeDictatedText = (text, singleLine) => {
+    const trimmed = typeof text === 'string' ? text.trim() : ''
+    return singleLine ? trimmed.replace(/\s+/g, ' ') : trimmed
+}
+
+/**
+ * Composes the update applied when dictated text lands in an editor: replace the current selection
+ * (when there is one) with the processed content, optionally separated from the preceding character
+ * by a space. `contentDelta` is the insert-ops delta built by processPastedText(WithBreakLines), so
+ * mentions/#hashtags/urls arrive as their blots. Returns the delta plus the caret position after it.
+ */
+export const buildDictationDelta = ({ Delta, contentDelta, index, length, needsLeadingSpace }) => {
+    let delta = new Delta().retain(index)
+    if (length > 0) delta = delta.delete(length)
+    if (needsLeadingSpace) delta = delta.insert(' ')
+    delta = delta.concat(contentDelta)
+    const caretIndex = index + (needsLeadingSpace ? 1 : 0) + contentDelta.length()
+    return { delta, caretIndex }
+}
+
 export const insertPerplexityContent = (editor, content) => {
     if (!editor) return
 

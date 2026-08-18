@@ -13681,6 +13681,7 @@ module.exports = {
     generateSearchSummary,
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
+    getModel, // Canonical model-key → OpenAI id mapper (see assistantModelRouting's header)
     getTokensPerGold,
     calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
