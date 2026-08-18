@@ -55,12 +55,7 @@ export default function MainButtons({
 
 const localStyles = StyleSheet.create({
     container: {
-        // minHeight, not height: the forward button grows to 52px when it carries a
-        // target-step sub-label ("AI: please build"), and a fixed 72px row clamped it —
-        // the 84px of button + padding overflowed and ate 6px off each of the row's own
-        // 16px paddings, leaving the bypass link almost touching the blue button
-        // (AT-2354). A row with a plain 40px button is unchanged at 72px.
-        minHeight: 72,
+        height: 72,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -69,7 +64,6 @@ const localStyles = StyleSheet.create({
     },
     compactContainer: {
         flex: 1,
-        minHeight: 0,
         height: 'auto',
         paddingTop: 0,
         paddingBottom: 0,
