@@ -44,6 +44,7 @@ import {
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
+import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { isBrowserOffline } from '../connectionState'
 import { getServerTimestampNow } from '../serverClock'
@@ -501,6 +502,19 @@ export async function initFirebase(onComplete) {
         // stay between db.settings() and the first real Firestore operation — see
         // firestorePersistence.js for the failure modes and the emulator skip.
         enableFirestorePersistence(db, { useEmulator })
+        // Offline is a designed state now, not an error: silence the SDK's WARN
+        // chatter (the enablePersistence deprecation notice, `WebChannelConnection
+        // RPC 'Listen' transport errored` on every reconnect attempt, BloomFilter
+        // warnings). Real errors still log at 'error'.
+        try {
+            firebase.firestore.setLogLevel('error')
+        } catch (error) {
+            // Logging config must never affect boot.
+        }
+        // Park the SDK's transport entirely while the app is offline — no doomed
+        // reconnect attempts, no browser-level network error spam, no battery
+        // burn in airplane mode. See firestoreNetworkGate.js.
+        installFirestoreNetworkGate(db)
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'

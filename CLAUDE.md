@@ -467,6 +467,17 @@ degrades to today's behaviour rather than breaking.
   `loadNoteContentWithRetry` bounds each attempt (`attemptTimeoutMs`). When testing
   offline behavior, drive the REAL SDK offline — injecting a failed download result
   fails fast and masks exactly this class of stall.
+- **Offline is quiet, not an error**: `initFirebase` sets
+  `firebase.firestore.setLogLevel('error')` (the SDK's WARN chatter — the
+  enablePersistence deprecation notice, per-reconnect `transport errored`, BloomFilter —
+  is steady-state noise for an offline-capable app), and
+  `utils/backends/firestoreNetworkGate.js` parks the SDK transport via
+  `disableNetwork()` while `connectionState === 'offline'`, resuming on the recovery
+  transition. That removes the browser-level `ERR_INTERNET_DISCONNECTED` spam AND the
+  battery cost of doomed reconnect attempts in airplane mode; cache reads and queued
+  writes are unaffected (`disableNetwork` only parks the transport). The gate is keyed
+  on the debounced slice, so it cannot flap, and the boot-integrity healer already
+  stands down offline so their disable/enable cycles cannot interleave.
 - **Firestore persistence**: `initFirebase` enables IndexedDB persistence
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
