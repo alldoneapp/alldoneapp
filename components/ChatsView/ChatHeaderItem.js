@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../styles/global'
 import ChatHeaderMemeber from './ChatHeaderMemeber'
+import { CHAT_AVATAR_COLUMN_GUTTER, CHAT_AVATAR_COLUMN_WIDTH } from './chatRowLayout'
 
 const ChatHeaderItem = ({ members, membersNumber }) => {
     const userId1 = members[membersNumber - 1]
@@ -53,9 +54,9 @@ const ChatHeaderItem = ({ members, membersNumber }) => {
 
 const localStyles = StyleSheet.create({
     container: {
-        marginRight: 16,
+        marginRight: CHAT_AVATAR_COLUMN_GUTTER,
         alignItems: 'center',
-        width: 48,
+        width: CHAT_AVATAR_COLUMN_WIDTH,
     },
     userImage: {
         width: 44,
@@ -78,8 +79,8 @@ const localStyles = StyleSheet.create({
     },
 
     container3: {
-        marginRight: 16,
-        width: 48,
+        marginRight: CHAT_AVATAR_COLUMN_GUTTER,
+        width: CHAT_AVATAR_COLUMN_WIDTH,
     },
     userImage3: {
         width: 24,

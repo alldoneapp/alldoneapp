@@ -40,6 +40,7 @@ export default function ChatItemUnreadMessage({
     isArchivedEmail,
     onArchiveLinkedEmail,
     onPress,
+    compact = false,
 }) {
     const creatorData = useGetUserPresentationData(message.creatorId)
 
@@ -83,7 +84,7 @@ export default function ChatItemUnreadMessage({
                 linkedEmailArchived={!!isArchivedEmail?.(linkedEmail?.key)}
                 onArchiveLinkedEmail={onArchiveLinkedEmail}
                 canArchiveLinkedEmail={accessGranted}
-                containerStyle={localStyles.body}
+                containerStyle={compact ? localStyles.bodyCompact : localStyles.body}
             />
         </TouchableOpacity>
     )
@@ -98,6 +99,15 @@ const localStyles = StyleSheet.create({
         // preview keeps that alignment but sits in a narrower column, so it is set explicitly
         // here rather than inherited, and the row below it gets a little breathing room.
         marginLeft: 36,
+        marginTop: 2,
+    },
+    bodyCompact: {
+        // Phone widths (AT-2361): the body stops hanging under the sender avatar and starts at the
+        // message's own left edge instead. Hierarchy survives because the avatar + name + time line
+        // is still directly above it and the topic's rail still runs down the side - the 36px only
+        // ever bought alignment with an avatar, and on a phone it costs a word or two per line in
+        // the subject and pushes the email action buttons onto an extra row.
+        marginLeft: 0,
         marginTop: 2,
     },
 })
