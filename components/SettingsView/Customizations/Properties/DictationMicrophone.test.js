@@ -2,22 +2,26 @@
  * @jest-environment jsdom
  *
  * Settings → Customizations → "Dictation microphone" (AT-2357): the escape hatch from the automatic
- * silent-mic workaround. What matters here is that an explicit choice is persisted and that
- * "Automatic" admits when it has actually switched something — the workaround is otherwise
+ * silent-mic workaround, and the only way to overrule the browser's own microphone choice. What
+ * matters here is that an explicit choice — of device or of capture mode — is persisted, and that
+ * "Automatic" admits when it has actually switched something: the workaround is otherwise
  * invisible, which is exactly how the original bug went unnoticed for so long.
  */
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Text, TouchableOpacity } from 'react-native'
 
-import DictationMicrophone from './DictationMicrophone'
+import DictationMicrophone, { SYSTEM_DEFAULT_OPTION_LABEL } from './DictationMicrophone'
 import {
     MIC_MODE_AUTO,
     MIC_MODE_COMPATIBILITY,
     MIC_MODE_STANDARD,
     readLearnedCaptureMode,
+    readLearnedInputDevice,
     readMicModeSetting,
+    readPreferredInputDevice,
     rememberLearnedCaptureMode,
+    rememberLearnedInputDevice,
 } from '../../../../hooks/rambleMicCapture'
 
 jest.mock('react-redux', () => ({
@@ -82,6 +86,56 @@ describe('DictationMicrophone', () => {
         expect(readLearnedCaptureMode()).toBeNull()
         const labels = tree.findAllByType(Text).map(node => node.props.children)
         expect(labels.join(' ')).not.toContain('compatibility in use')
+    })
+
+    test('lists the browser audio inputs and persists an explicit choice', async () => {
+        const original = navigator.mediaDevices
+        Object.defineProperty(navigator, 'mediaDevices', {
+            configurable: true,
+            value: {
+                enumerateDevices: async () => [
+                    { kind: 'audioinput', deviceId: 'builtin-1', label: 'MacBook Pro Microphone', groupId: 'g1' },
+                    { kind: 'audioinput', deviceId: 'webcam-1', label: 'HD Webcam', groupId: 'g2' },
+                    { kind: 'videoinput', deviceId: 'cam-1', label: 'Camera', groupId: 'g2' },
+                ],
+            },
+        })
+
+        let instance
+        await act(async () => {
+            instance = renderer.create(<DictationMicrophone />)
+        })
+        const tree = instance.root
+        // The list is only enumerated when the picker is opened, so a settings screen never touches
+        // the microphone on mount.
+        await act(async () => {
+            tree.findAllByType(TouchableOpacity)[0].props.onPress()
+        })
+
+        const labels = tree.findAllByType(Text).map(node => node.props.children)
+        expect(labels).toContain('HD Webcam')
+        expect(labels).not.toContain('Camera')
+
+        selectOption(tree, 'HD Webcam')
+        expect(readPreferredInputDevice()).toEqual({ deviceId: 'webcam-1', label: 'HD Webcam' })
+
+        // Back to letting the browser decide.
+        selectOption(tree, SYSTEM_DEFAULT_OPTION_LABEL)
+        expect(readPreferredInputDevice()).toBeNull()
+
+        Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
+    })
+
+    test('choosing a device by hand retires what automatic had learned', async () => {
+        rememberLearnedInputDevice({ deviceId: 'builtin-1', label: 'MacBook Pro Microphone' })
+        rememberLearnedCaptureMode({ deviceId: 'builtin-1' })
+        const tree = renderRow()
+
+        // No enumeration needed: the row itself must still be able to hand control back.
+        selectOption(tree, SYSTEM_DEFAULT_OPTION_LABEL)
+
+        expect(readLearnedInputDevice()).toBeNull()
+        expect(readLearnedCaptureMode()).toBeNull()
     })
 
     test('compatibility can be forced, and Automatic can be restored', () => {
