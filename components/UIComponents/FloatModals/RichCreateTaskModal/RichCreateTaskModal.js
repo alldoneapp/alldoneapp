@@ -59,6 +59,8 @@ import { isWorkstream, WORKSTREAM_ID_PREFIX } from '../../../Workstreams/Workstr
 import { getDvTabLink } from '../../../../utils/LinkingHelper'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import SelectProjectModalInSearch from '../SelectProjectModal/SelectProjectModalInSearch'
+import { AUTOMATIC_PROJECT_OPTION, isAutomaticProjectOption } from '../SelectProjectModal/projectPickerConstants'
+import { buildPendingProjectRouting, resolveAutomaticHostProjectId } from '../../../../utils/automaticProjectRouting'
 import {
     addProjectDataToMyDayData,
     processMyDayData,
@@ -167,6 +169,16 @@ const getNewInitialDefaultTask = (
     return newTask
 }
 
+// The real project an "Automatic" task is created in while the server-side
+// router decides where it belongs (AT-2306). Read from the store rather than
+// from the modal's own `projects` state because that list is only built when the
+// project selector is opened, while the host project is needed at mount.
+const getAutomaticHostProjectId = () => {
+    const { loggedUser, loggedUserProjects } = store.getState()
+    const activeProjects = ProjectHelper.getActiveProjects2(loggedUserProjects, loggedUser)
+    return resolveAutomaticHostProjectId({ defaultProjectId: loggedUser.defaultProjectId, projects: activeProjects })
+}
+
 export default function RichCreateTaskModal({
     initialProjectId,
     initialTask,
@@ -187,7 +199,13 @@ export default function RichCreateTaskModal({
     expandTaskListIfNeeded,
 }) {
     const dispatch = useDispatch()
-    const [projectId, setProjectId] = useState(initialProjectId)
+    // "Automatic" is a picker option, not a project: the task still needs a real
+    // project to be written to, so the sentinel is split here into the flag that
+    // asks the server to route it and the host project it is created in.
+    const [automaticProject, setAutomaticProject] = useState(() => isAutomaticProjectOption(initialProjectId))
+    const [projectId, setProjectId] = useState(() =>
+        isAutomaticProjectOption(initialProjectId) ? getAutomaticHostProjectId() : initialProjectId
+    )
     const [activeGoal, setActiveGoal] = useState(null)
     const [showDueDateModal, setShowDueDateModal] = useState(false)
     const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
@@ -343,6 +361,12 @@ export default function RichCreateTaskModal({
         dispatch(hideFloatPopup())
     }
 
+    // Spread into the create payload: `{}` for a normally picked project, so a
+    // task that was not created with "Automatic" carries no routing field at all
+    // and the Cloud Function skips it without a read.
+    const automaticProjectRoutingFields = () =>
+        automaticProject ? { projectRouting: buildPendingProjectRouting({ hostProjectId: projectId }) } : {}
+
     const assignAndComment = (user, observers) =>
         submitOnce(() => {
             const { uid } = user
@@ -372,6 +396,7 @@ export default function RichCreateTaskModal({
                 {
                     projectId,
                     ...updatedTask,
+                    ...automaticProjectRoutingFields(),
                 },
                 {
                     awaitForTaskCreation: true,
@@ -428,6 +453,9 @@ export default function RichCreateTaskModal({
                     parentGoalId: task.parentGoalId,
                     // Pass through all other task properties
                     ...task,
+                    // Last on purpose: the draft task never carries a routing
+                    // stamp, and only the picker's current state decides it.
+                    ...automaticProjectRoutingFields(),
                 },
                 {
                     awaitForTaskCreation: true,
@@ -596,7 +624,7 @@ export default function RichCreateTaskModal({
             ]
 
             setProjects(sortedProjects)
-            setSelectedProject(loggedUserProjectsMap[projectId])
+            setSelectedProject(automaticProject ? { id: AUTOMATIC_PROJECT_OPTION } : loggedUserProjectsMap[projectId])
         }
     }, [showProjectSelector])
 
@@ -604,19 +632,26 @@ export default function RichCreateTaskModal({
         <CustomScrollView showsVerticalScrollIndicator={false}>
             {showSelectProjectModal ? (
                 <SelectProjectModalInSearch
-                    projectId={projectId}
+                    projectId={automaticProject ? AUTOMATIC_PROJECT_OPTION : projectId}
                     closePopover={() => {
                         setTimeout(() => {
                             setShowSelectProjectModal(false)
                         })
                     }}
                     projects={projects}
-                    setSelectedProjectId={projectId => {
-                        setProjectId(projectId)
-                        const selectedProject = projects.find(project => project.id === projectId)
-                        setSelectedProject(selectedProject)
+                    setSelectedProjectId={selectedProjectId => {
+                        if (isAutomaticProjectOption(selectedProjectId)) {
+                            setAutomaticProject(true)
+                            setProjectId(getAutomaticHostProjectId())
+                            setSelectedProject({ id: AUTOMATIC_PROJECT_OPTION })
+                            return
+                        }
+                        setAutomaticProject(false)
+                        setProjectId(selectedProjectId)
+                        setSelectedProject(projects.find(project => project.id === selectedProjectId))
                     }}
                     showGuideTab={true}
+                    showAutomaticProject={true}
                     positionInPlace={true}
                 />
             ) : showDueDateModal ? (

@@ -9,6 +9,7 @@ const { updateStatistics } = require('../Utils/statisticsHelper')
 const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { getDefaultCalendarSortIndex, isUntouchedCalendarSortIndex } = require('../shared/calendarTaskSortIndex')
 const { FieldPath } = require('firebase-admin/firestore')
 
 const FIRESTORE_IN_QUERY_MAX_IDS = 30
@@ -90,22 +91,20 @@ const checkIfNeedToUpdateTask = (oldTask, dataToUpdate) => {
     return !isEqual(oldData, dataToUpdate)
 }
 
-// AT-2351 - where a synced meeting lands in the task list: a calendar task gets an ORDINARY
-// arrival index, exactly like any other task, and the
-// event start is never encoded into it.
+// AT-2259 / AT-2270 - where a synced meeting lands in the task list.
 //
-// The two previous attempts both smuggled the event time in here - AT-2259 stored the raw start,
-// AT-2270 stored `-1e14 - start` - so that descending `sortIndex` would place the meeting where it
-// belonged. Neither survived contact with the ~25 code paths that legitimately rewrite `sortIndex`
-// (postpone, backlog, assignee, project, goal, un-complete, auto-postpone...), each of which
-// silently destroyed the encoding and, under AT-2270's heuristic, was then mistaken for the user
-// deliberately placing the task.
-//
-// Where a meeting renders is now decided when the group is ordered (`utils/CalendarTaskOrder.js`),
-// which needs nothing from this field. So the sync writes a plain index and, crucially, never has
-// to RE-write it: a rescheduled event moves in the list because its `calendarData.start` moved,
-// not because anything re-sorted it.
-const generateCalendarTaskSortIndex = () => moment().valueOf()
+// AT-2259: sortIndex used to hold the EVENT START, a future timestamp that no creation-time index
+// can ever beat, so meetings were pinned to the top of their group and a newly added task could not
+// be placed above them.
+// AT-2270: the default is now the BOTTOM of the group, in event order - derived from the event
+// start inside a reserved band far below every generated index (see shared/calendarTaskSortIndex).
+// It stays an ordinary sortIndex, so the user can drag the meeting anywhere; the moment they do,
+// the value is no longer the derived one and the sync stops re-sorting it (isUntouched... below).
+const generateCalendarTaskSortIndex = calendarData => {
+    const defaultSortIndex = getDefaultCalendarSortIndex(calendarData)
+    // No usable event start (should not happen for a synced event): fall back to "arrived now".
+    return defaultSortIndex === null ? moment().valueOf() : defaultSortIndex
+}
 
 const getCalendarStartDay = calendarData => {
     const startValue = calendarData?.start?.date || calendarData?.start?.dateTime
@@ -138,7 +137,7 @@ const buildCalendarTaskReopenData = (task, userId, calendarData) => {
         stepHistory: [OPEN_STEP],
         currentReviewerId: ownerId,
         dueDate: Date.now(),
-        sortIndex: generateCalendarTaskSortIndex(),
+        sortIndex: generateCalendarTaskSortIndex(calendarData),
         workflowAiPromptOverride: null,
     }
 }
@@ -357,11 +356,13 @@ const addOrUpdateCalendarTask = async (
             const { id, projectId: oldProjectId, ...persistableTask } = task
             const newTaskData = { ...persistableTask, ...dataToUpdate }
 
-            // AT-2351 - the task keeps whatever ordering it had; only a task with none at all needs
-            // one. Its position among the meetings comes from the event start at render time, so
-            // there is nothing project-specific to re-derive here.
-            if (!newTaskData.sortIndex) {
-                newTaskData.sortIndex = generateCalendarTaskSortIndex()
+            // Keep an ordering the user produced; a task that is still in its default place (or has
+            // no ordering at all) follows the AT-2270 default into the new project.
+            if (
+                !newTaskData.sortIndex ||
+                isUntouchedCalendarSortIndex(task.sortIndex, task.calendarData, task.created)
+            ) {
+                newTaskData.sortIndex = generateCalendarTaskSortIndex(newTaskData.calendarData)
             }
 
             // Create in new project, delete from old. If the reschedule also reopens a completed
@@ -401,10 +402,14 @@ const addOrUpdateCalendarTask = async (
             const oldEstimation = Number(task.estimations?.[OPEN_STEP] || 0)
             const newEstimation = Number(dataToUpdate.estimations?.[OPEN_STEP] || 0)
 
-            // AT-2351 - a rescheduled event needs no sortIndex write at all. It moves to its new
-            // slot among the meetings because `calendarData.start` moved, and the ordering reads
-            // that field directly. AT-2270 had to re-derive the index here, guarded by a heuristic
-            // guessing whether the user had ever dragged the task; both are gone.
+            // AT-2270 - a rescheduled event has to move to its new slot in the calendar block, but
+            // only while the task is still where the sync put it. Once the user has dragged it, the
+            // position is theirs and no sync ever touches it again. This is computed AFTER
+            // checkIfNeedToUpdateTask, whose isEqual() comparison must keep seeing the same field
+            // set it always has - an extra key there would make every task look changed forever.
+            if (!reopenData && isUntouchedCalendarSortIndex(task.sortIndex, task.calendarData, task.created)) {
+                dataToUpdate.sortIndex = generateCalendarTaskSortIndex(dataToUpdate.calendarData)
+            }
 
             if (reopenData) {
                 const batch = new BatchWrapper(admin.firestore())
@@ -439,7 +444,7 @@ const addOrUpdateCalendarTask = async (
             syncProjectId,
         })
     } else {
-        dataToUpdate.sortIndex = generateCalendarTaskSortIndex()
+        dataToUpdate.sortIndex = generateCalendarTaskSortIndex(dataToUpdate.calendarData)
         const newTask = generateTask(dataToUpdate, userId)
         await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
         await addCalendarRoutingCommentIfNeeded({
