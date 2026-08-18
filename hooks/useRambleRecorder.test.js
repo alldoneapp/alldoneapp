@@ -7,7 +7,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import { readLearnedCaptureMode } from './rambleMicCapture'
+import { readLastUsedInputDevice, readLearnedCaptureMode, readLearnedInputDevice } from './rambleMicCapture'
 import useRambleRecorder, {
     pickSupportedMimeType,
     isDictationSupported,
@@ -359,6 +359,105 @@ describe('useRambleRecorder', () => {
             expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
             expect(onError).not.toHaveBeenCalled()
             expect(onComplete).toHaveBeenCalledTimes(1)
+            expect(readLearnedCaptureMode()).toBeNull()
+        })
+
+        // The follow-up half of AT-2357: the browser's microphone choice is NOT the system input
+        // source, so the device it hands us can simply be the wrong one — and no capture setting
+        // can make a dead device produce audio.
+        const deviceStream = (deviceId, label) => {
+            const tracks = [
+                {
+                    stop: jest.fn(),
+                    label,
+                    muted: false,
+                    getSettings: () => ({ deviceId, groupId: `g-${deviceId}` }),
+                },
+            ]
+            return { getTracks: () => tracks, getAudioTracks: () => tracks, tracks }
+        }
+
+        const installDevices = () => {
+            navigator.mediaDevices.getUserMedia = jest.fn(async constraints =>
+                constraints?.audio?.deviceId?.exact === 'webcam-1'
+                    ? deviceStream('webcam-1', 'HD Webcam')
+                    : deviceStream('builtin-1', 'MacBook Pro Microphone')
+            )
+            navigator.mediaDevices.enumerateDevices = jest.fn(async () => [
+                {
+                    kind: 'audioinput',
+                    deviceId: 'default',
+                    label: 'Default - MacBook Pro Microphone',
+                    groupId: 'g-builtin-1',
+                },
+                { kind: 'audioinput', deviceId: 'builtin-1', label: 'MacBook Pro Microphone', groupId: 'g-builtin-1' },
+                { kind: 'audioinput', deviceId: 'webcam-1', label: 'HD Webcam', groupId: 'g-webcam-1' },
+            ])
+        }
+
+        test('a microphone that is dead both ways is escaped by recording from another input', async () => {
+            installDevices()
+            // built-in silent processed, silent raw, webcam alive.
+            installAudioContext([0, 0, 0.3])
+            const onError = jest.fn()
+            renderHook({ onComplete: jest.fn(), onError })
+
+            jest.useRealTimers()
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            const calls = navigator.mediaDevices.getUserMedia.mock.calls
+            expect(calls).toHaveLength(3)
+            // The rescue on the original device is PINNED to it...
+            expect(calls[1][0].audio.deviceId).toEqual({ exact: 'builtin-1' })
+            // ...and only then do we move to a different microphone, never the alias entry pointing
+            // back at the device we just measured.
+            expect(calls[2][0].audio.deviceId).toEqual({ exact: 'webcam-1' })
+            expect(readLearnedInputDevice()).toEqual({ deviceId: 'webcam-1', label: 'HD Webcam' })
+            expect(onError).not.toHaveBeenCalled()
+
+            await act(async () => {
+                hookValue.cancel()
+            })
+        })
+
+        test('the device actually recorded from is remembered for the settings picker', async () => {
+            installDevices()
+            installAudioContext([0.3])
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            jest.useRealTimers()
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            // A user who cannot open DevTools has no other way to see that "System default" is the
+            // built-in microphone rather than the one selected in macOS.
+            expect(readLastUsedInputDevice()).toEqual({ deviceId: 'builtin-1', label: 'MacBook Pro Microphone' })
+
+            await act(async () => {
+                hookValue.cancel()
+            })
+        })
+
+        test('when every microphone is silent the message can name what was tried', async () => {
+            installDevices()
+            installAudioContext([0])
+            const onComplete = jest.fn()
+            const onError = jest.fn()
+            renderHook({ onComplete, onError })
+
+            await recordAndStop()
+
+            expect(onComplete).not.toHaveBeenCalled()
+            expect(onError).toHaveBeenCalledWith(
+                'silent-input',
+                expect.objectContaining({ triedDeviceLabels: ['MacBook Pro Microphone', 'HD Webcam'] })
+            )
+            // Nothing worked, so nothing is remembered — the next take starts from a clean slate
+            // instead of pinning a device that is just as dead.
+            expect(readLearnedInputDevice()).toBeNull()
             expect(readLearnedCaptureMode()).toBeNull()
         })
 

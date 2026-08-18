@@ -112,7 +112,6 @@ const {
     PROVIDER_OPENROUTER,
     resolveAssistantModelProvider,
     getOpenRouterAssistantModelId,
-    assistantModelSupportsImageInput,
 } = require('./assistantModelRouting')
 const { SELECTABLE_ASSISTANT_MODELS, getAssistantModelTokensPerGold } = require('./selectableAssistantModels')
 
@@ -2733,9 +2732,6 @@ async function interactWithChatStream(
             messages: formattedPrompt,
             tools: openRouterTools,
             temperature: modelSupportsCustomTemperature(modelKey) ? temperature : null,
-            // Modality is a per-model fact, not a per-provider one: a text-only model must have
-            // image parts replaced or the whole request fails, and a multimodal one must keep them.
-            supportsImages: assistantModelSupportsImageInput(modelKey),
             usageContext: {
                 route:
                     toolRuntimeContext?.promptCacheScope ||
@@ -12409,42 +12405,6 @@ function scoreAttachmentCandidate(media = {}, lookupText = '', expectedFileName 
     return score
 }
 
-/**
- * The media kinds `get_chat_attachment` can hand back as bytes.
- *
- * It used to accept only `kind === 'file'`, which made an image structurally unfetchable: WhatsApp
- * and web uploads store a photo as `kind: 'image'`, `list_recent_chat_media` advertises it together
- * with its messageId, and the fetch then answered "No file attachment was found" for a file sitting
- * in Storage. A text-only model asking for the image it could not see spent three round trips on
- * that contradiction before giving up. The bytes come from the same `storageUrl` whatever the kind,
- * so the kind was never a real constraint on fetching — only on which media the tool admitted to.
- */
-const FETCHABLE_CHAT_ATTACHMENT_KINDS = ['file', 'image', 'video']
-
-function isFetchableChatAttachment(media = {}) {
-    return !!media?.storageUrl && FETCHABLE_CHAT_ATTACHMENT_KINDS.includes(media?.kind || 'file')
-}
-
-/**
- * Narrow several fetchable attachments on one message down to the one that was asked for.
- *
- * Only reached when a message carries more than one attachment. An explicit `expectedFileName`
- * wins; otherwise a document is preferred over an image, because that is what a message carrying
- * both resolved to before images were fetchable at all — widening the accepted kinds must not turn
- * a call that used to work into "Multiple attachments were found".
- */
-function selectRequestedChatAttachments(attachments, expectedFileName = '') {
-    if (attachments.length <= 1) return attachments
-
-    if (expectedFileName) {
-        const named = attachments.filter(media => media.fileName === expectedFileName)
-        if (named.length > 0) return named
-    }
-
-    const files = attachments.filter(media => (media.kind || 'file') === 'file')
-    return files.length > 0 ? files : attachments
-}
-
 async function findFallbackRecentChatAttachment({
     projectId,
     objectType,
@@ -12467,14 +12427,16 @@ async function findFallbackRecentChatAttachment({
         const messageData = doc.data() || {}
         if (messageData.fromAssistant) continue
         const mediaContext = await enrichCommentMediaContext(doc.ref, messageData)
-        mediaContext.filter(isFetchableChatAttachment).forEach(media => {
-            candidates.push({
-                messageId: doc.id,
-                created: Number(messageData.created) || 0,
-                media,
-                score: scoreAttachmentCandidate(media, userMessageText, expectedFileName),
+        mediaContext
+            .filter(media => media.kind === 'file')
+            .forEach(media => {
+                candidates.push({
+                    messageId: doc.id,
+                    created: Number(messageData.created) || 0,
+                    media,
+                    score: scoreAttachmentCandidate(media, userMessageText, expectedFileName),
+                })
             })
-        })
     }
 
     if (candidates.length === 0) return null
@@ -12616,10 +12578,7 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
-    let attachments = selectRequestedChatAttachments(
-        mediaContext.filter(isFetchableChatAttachment),
-        normalizedExpectedFileName
-    )
+    let attachments = mediaContext.filter(media => media.kind === 'file')
 
     if (attachments.length === 0 && !explicitMessageIdProvided) {
         const fallbackAttachment = await findFallbackRecentChatAttachment({
@@ -12654,12 +12613,10 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     if (attachments.length === 0) {
-        throw new Error('No file or image attachment was found on the requested chat message')
+        throw new Error('No file attachment was found on the requested chat message')
     }
     if (attachments.length > 1) {
-        throw new Error(
-            'Multiple attachments were found on the requested chat message. Pass expectedFileName to choose one.'
-        )
+        throw new Error('Multiple file attachments were found on the requested chat message')
     }
 
     const attachment = attachments[0]
@@ -13780,8 +13737,6 @@ module.exports = {
     injectPendingAttachmentIntoToolArgs,
     getChatAttachmentForAssistantRequest,
     listRecentChatMediaForAssistantRequest,
-    isFetchableChatAttachment,
-    selectRequestedChatAttachments,
     normalizeCommentMediaContext,
     buildUserMessageContentFromComment,
     addTimestampToContextContent,

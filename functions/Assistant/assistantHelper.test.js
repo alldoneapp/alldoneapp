@@ -369,44 +369,8 @@ const {
     modelSupportsToolSearch,
     modelSupportsAssistantReasoningEffort,
     modelSupportsExplicitPromptCaching,
-    isFetchableChatAttachment,
-    selectRequestedChatAttachments,
 } = require('./assistantHelper')
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
-
-describe('chat attachment kinds', () => {
-    const image = { kind: 'image', fileName: 'photo.jpg', storageUrl: 'https://example.com/photo.jpg' }
-    const document = { kind: 'file', fileName: 'invoice.pdf', storageUrl: 'https://example.com/invoice.pdf' }
-
-    test('an image is fetchable, not just a file', () => {
-        // Only `kind === 'file'` was accepted, so a WhatsApp photo — stored as `kind: 'image'` and
-        // advertised by list_recent_chat_media with its messageId — answered "no attachment found".
-        expect(isFetchableChatAttachment(image)).toBe(true)
-        expect(isFetchableChatAttachment(document)).toBe(true)
-        expect(isFetchableChatAttachment({ kind: 'video', storageUrl: 'https://example.com/clip.mp4' })).toBe(true)
-    })
-
-    test('media with no storage URL is not fetchable', () => {
-        expect(isFetchableChatAttachment({ kind: 'image', fileName: 'photo.jpg' })).toBe(false)
-        expect(isFetchableChatAttachment({})).toBe(false)
-    })
-
-    test('a message carrying both a document and an image still resolves to the document', () => {
-        // Widening the accepted kinds must not turn a call that used to work into an ambiguity
-        // error: before images were fetchable this message resolved to the PDF.
-        expect(selectRequestedChatAttachments([image, document])).toEqual([document])
-    })
-
-    test('an explicit expected file name outranks the document preference', () => {
-        expect(selectRequestedChatAttachments([image, document], 'photo.jpg')).toEqual([image])
-    })
-
-    test('leaves a genuinely ambiguous set alone so the caller can report it', () => {
-        const second = { kind: 'image', fileName: 'other.jpg', storageUrl: 'https://example.com/other.jpg' }
-
-        expect(selectRequestedChatAttachments([image, second])).toEqual([image, second])
-    })
-})
 
 describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
     const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
