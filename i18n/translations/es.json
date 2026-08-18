@@ -2656,7 +2656,6 @@
     "Amount earlier unread messages": "%{amount} mensajes anteriores sin leer",
     "Created by me": "Creado por mí",
     "Automatic project description": "Deja que Alldone elija el proyecto por ti",
-    "Or open one of your projects": "O abre uno de tus proyectos",
     "Automatic project selection": "Selección automática de proyecto",
     "Open the task": "Abrir tarea",
     "Picks the project for tasks added with \"Automatic\".": "Elige el proyecto para las tareas añadidas con «Automatic»."
