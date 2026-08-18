@@ -5425,6 +5425,9 @@ exports.runGmailLabelingSyncSecondGen = onCall(
 
 exports.transcribeMeetingAudio = require('./Notes/transcribeMeeting').transcribeMeetingAudio
 
+// RAMBLER DICTATION - audio → transcript → assistant-context LLM cleanup, returned to the input
+exports.processRambleSecondGen = require('./Assistant/processRamble').processRambleSecondGen
+
 // WHATSAPP INCOMING MESSAGE - Receives messages from Twilio WhatsApp webhook
 exports.whatsAppIncomingMessage = onRequest(
     {

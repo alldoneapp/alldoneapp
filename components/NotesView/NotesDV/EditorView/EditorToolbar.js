@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
+import {
+    useRambleController,
+    formatRambleElapsed,
+    RAMBLE_PHASE_RECORDING,
+    RAMBLE_PHASE_PROCESSING,
+} from '../../../UIControls/RambleButton'
+import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Quill from 'quill'
 import moment from 'moment'
@@ -1025,6 +1032,34 @@ export const EditorToolbar = ({
     const barPointerEvents = readOnly || disabled ? 'none' : 'auto'
     const commentPointerEvents = connectionState === 'offline' || disabled ? 'none' : 'auto'
 
+    // DICTATION (rambler): one-shot mic recording cleaned up by the project assistant, inserted at
+    // the caret. Separate from the meeting Transcribe flow below, which live-appends raw chunks.
+    const insertDictatedNoteText = text => {
+        const trimmed = typeof text === 'string' ? text.trim() : ''
+        if (!trimmed) return
+        const editor = exportRef.getEditor()
+        if (!editor) return
+        // String source 'user': a LOCAL change for the y-quill binding (isRemoteEditorChange), so it
+        // lands in Yjs, syncs to collaborators, and runs the normal dirty-editor save path.
+        const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 }
+        if (range.length > 0) editor.deleteText(range.index, range.length, 'user')
+        editor.insertText(range.index, trimmed + ' ', 'user')
+        editor.setSelection(range.index + trimmed.length + 1, 0, 'user')
+    }
+    const {
+        phase: ramblePhase,
+        elapsedSeconds: rambleElapsedSeconds,
+        toggle: toggleRamble,
+    } = useRambleController({
+        projectId,
+        targetKind: 'note',
+        getCurrentText: () => {
+            const editor = exportRef.getEditor?.()
+            return editor ? editor.getText(0, 2000) : ''
+        },
+        onTextReady: insertDictatedNoteText,
+    })
+
     const [isRecording, setIsRecording] = useState(false)
     const mediaRecorderRef = useRef(null)
     const streamsRef = useRef([]) // Store all streams to stop them
@@ -1467,11 +1502,47 @@ export const EditorToolbar = ({
                         </EditorToolbarButton>
                     </span>
 
+                    {isDictationSupported() && (
+                        <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
+                            <EditorToolbarButton onClick={toggleRamble} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    {ramblePhase === RAMBLE_PHASE_PROCESSING ? (
+                                        <ActivityIndicator size={12} color={colors.Text03} />
+                                    ) : (
+                                        <Icon
+                                            name={'mic'}
+                                            size={18}
+                                            color={
+                                                ramblePhase === RAMBLE_PHASE_RECORDING ? colors.Red200 : colors.Text03
+                                            }
+                                        />
+                                    )}
+                                </View>
+                                {!tablet && (
+                                    <Text
+                                        style={[
+                                            styles.caption1,
+                                            localStyles.barIconText,
+                                            ramblePhase === RAMBLE_PHASE_RECORDING ? { color: colors.Red200 } : {},
+                                        ]}
+                                    >
+                                        {ramblePhase === RAMBLE_PHASE_RECORDING
+                                            ? formatRambleElapsed(rambleElapsedSeconds)
+                                            : translate('Dictate')}
+                                    </Text>
+                                )}
+                            </EditorToolbarButton>
+                        </span>
+                    )}
+
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                         <EditorToolbarButton onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
                             <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                {/* Meeting transcription records a screen-shared meeting, so it
+                                    carries the video-meeting glyph; the plain mic now means
+                                    Dictate, matching the mic overlay in every other input. */}
                                 <Icon
-                                    name={isRecording ? 'mic-off' : 'mic'}
+                                    name={'video-meeting'}
                                     size={18}
                                     color={isRecording ? colors.Red200 : colors.Text03}
                                 />

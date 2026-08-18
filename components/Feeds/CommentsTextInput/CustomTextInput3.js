@@ -43,7 +43,11 @@ import {
     CREATE_PROJECT_THEME_MODERN,
     INVITE_THEME_MODERN,
     INVITE_THEME_DEFAULT,
+    normalizeDictatedText,
+    buildDictationDelta,
 } from './textInputHelper'
+import RambleButton from '../../UIControls/RambleButton'
+import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -134,6 +138,8 @@ function CustomTextInput3(
         scrollEnabled = true,
         showScrollIndicator = true,
         autoExpand = false,
+        hideDictation = false,
+        dictationTargetKind,
     },
     ref
 ) {
@@ -206,6 +212,82 @@ function CustomTextInput3(
     const processPastedFn = keepBreakLines ? processPastedTextWithBreakLines : processPastedText
 
     const allowMentions = !disabledTags && !disabledMentions && !inMentionsEditionTag
+
+    //DICTATION (rambler)
+    const selectionTouchedRef = useRef(false)
+    const [dictationVisible, setDictationVisible] = useState(false)
+    const dictationEnabled =
+        !hideDictation &&
+        !disabledEdition &&
+        !inMentionsEditionTag &&
+        styleTheme !== SEARCH_THEME &&
+        !!innerProjectId &&
+        isDictationSupported()
+
+    useEffect(() => {
+        if (!dictationEnabled || !containerElement) return
+        // The mic overlay lives in CustomScrollView's fixedChildren, OUTSIDE the Quill container —
+        // so visibility tracks the whole input frame (the scroll-boundary element), not
+        // ql-container: moving the pointer onto the overlay itself must not count as leaving.
+        const frameElement = document.getElementById(scrollBoundaryId)
+        if (!frameElement) return
+
+        const activate = () => setDictationVisible(true)
+        const onFocusOut = event => {
+            if (event.relatedTarget && frameElement.contains(event.relatedTarget)) return
+            setDictationVisible(false)
+        }
+        const onMouseLeave = () => {
+            if (frameElement.contains(document.activeElement)) return
+            setDictationVisible(false)
+        }
+        frameElement.addEventListener('focusin', activate)
+        frameElement.addEventListener('focusout', onFocusOut)
+        frameElement.addEventListener('mouseenter', activate)
+        frameElement.addEventListener('mouseleave', onMouseLeave)
+        return () => {
+            frameElement.removeEventListener('focusin', activate)
+            frameElement.removeEventListener('focusout', onFocusOut)
+            frameElement.removeEventListener('mouseenter', activate)
+            frameElement.removeEventListener('mouseleave', onMouseLeave)
+        }
+    }, [dictationEnabled, containerElement])
+
+    const insertDictatedText = text => {
+        const editor = quillRef.current
+        if (!editor) return
+        const cleaned = normalizeDictatedText(text, singleLine)
+        if (!cleaned) return
+
+        const liveSelection = editor.hasFocus() ? editor.getSelection() : null
+        // With no live selection fall back to the last known caret; if the editor was never
+        // focused at all, append at the end rather than pushing dictation before existing text.
+        const fallback = selectionTouchedRef.current
+            ? selectionRef.current
+            : { index: Math.max(0, editor.getLength() - 1), length: 0 }
+        const { index, length } = liveSelection || fallback
+
+        const contentDelta = processPastedFn(
+            cleaned,
+            Delta,
+            innerProjectId,
+            editorId,
+            userEditingTagsId,
+            inGenericTask,
+            genericData,
+            editor,
+            false,
+            null,
+            false
+        )
+        const charBefore = index > 0 ? editor.getText(index - 1, 1) : ''
+        const needsLeadingSpace = !!charBefore && !/\s/.test(charBefore)
+        const { delta, caretIndex } = buildDictationDelta({ Delta, contentDelta, index, length, needsLeadingSpace })
+        // 'user' source: runs the normal onChange path (htmlRef stays in sync — AT-2178, and
+        // onChangeText reaches the parent's save flow) and lands in the undo history.
+        editor.updateContents(delta, 'user')
+        editor.setSelection(caretIndex, 0, 'user')
+    }
 
     //MENTIONS
     const tryToOpenMentionModalBySelection = contentLength => {
@@ -533,6 +615,7 @@ function CustomTextInput3(
             onCustomSelectionChange?.(selection, quillRef)
             const { index, length } = selection
             selectionRef.current = { index, length }
+            selectionTouchedRef.current = true
         }
 
         if (!disabledTags && !disabledMentions && selection && editorElement) {
@@ -1268,6 +1351,18 @@ function CustomTextInput3(
             onContentSizeChange={autoExpand ? undefined : onContentSizeChange}
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
+            fixedChildren={
+                dictationEnabled ? (
+                    <RambleButton
+                        projectId={innerProjectId}
+                        targetKind={dictationTargetKind || (singleLine ? 'title' : 'generic')}
+                        getCurrentText={() => textRef.current}
+                        onTextReady={insertDictatedText}
+                        visible={dictationVisible}
+                        style={localDictationOverlayStyle}
+                    />
+                ) : null
+            }
         >
             <ReactQuill
                 ref={el => {
@@ -1317,5 +1412,9 @@ function CustomTextInput3(
         </CustomScrollView>
     )
 }
+
+// Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
+// offset clears CustomScrollView's 4px scroll indicator.
+const localDictationOverlayStyle = { position: 'absolute', right: 10, bottom: 2, zIndex: 10 }
 
 export default forwardRef(CustomTextInput3)
