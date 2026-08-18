@@ -263,6 +263,20 @@ function CustomTextInput3(
             if (frameElement.contains(document.activeElement)) return
             setDictationVisible(false)
         }
+        // The listeners attach AFTER the mount effect has already autofocused the editor, and the
+        // pointer that clicked the input is usually still inside the frame — so neither focusin
+        // nor mouseenter will fire until the user happens to leave and re-enter. Initialize from
+        // the current state or the mic stays invisible on exactly the surfaces that autofocus
+        // (add goal/contact/topic — AT: rambler QA).
+        const alreadyActive = (() => {
+            if (frameElement.contains(document.activeElement)) return true
+            try {
+                return frameElement.matches(':hover')
+            } catch (error) {
+                return false
+            }
+        })()
+        if (alreadyActive) setDictationVisible(true)
         frameElement.addEventListener('focusin', activate)
         frameElement.addEventListener('focusout', onFocusOut)
         frameElement.addEventListener('mouseenter', activate)
