@@ -50,7 +50,6 @@ const RecurrencePickerArea = memo(
                     <TouchableOpacity
                         style={localStyles.dateButton}
                         onPress={() => {
-                            console.log('Recurrence button - onPress called')
                             setRecurrence()
                         }}
                         disabled={disabled}
@@ -465,7 +464,7 @@ const MemoizedModalContent = memo(
 )
 
 export default function TaskModal({
-    closeModal: originalCloseModal,
+    closeModal,
     adding,
     name,
     setName,
@@ -520,32 +519,8 @@ export default function TaskModal({
     const [promptMentionsActive, setPromptMentionsActive] = useState(false)
     const timeFormat = getTimeFormat()
 
-    console.log('TaskModal render:', {
-        adding,
-        projectId,
-        assistantId,
-        currentAssistant,
-        aiModel,
-        aiReasoningEffort,
-        aiSystemMessage,
-        assistantInstructions: currentAssistant?.instructions,
-        startDateType: typeof startDate,
-        startDate,
-    })
-
-    console.log('TaskModal render - current startDate:', {
-        startDate,
-        startDateType: typeof startDate,
-        formattedDate: moment(startDate).format('DD.MM.YYYY HH:mm'),
-        showDatePicker,
-    })
-
     useEffect(() => {
         if (adding && currentAssistant && !aiSystemMessage) {
-            console.log('Setting system message from assistant:', {
-                current: aiSystemMessage,
-                new: currentAssistant.instructions,
-            })
             setAiSystemMessage(currentAssistant.instructions)
         }
     }, [currentAssistant, adding, aiSystemMessage])
@@ -591,16 +566,6 @@ export default function TaskModal({
         (taskType === TASK_TYPE_IFRAME && !checkIfIsValidLink()) ||
         (taskType === TASK_TYPE_WEBHOOK && !checkIfIsValidWebhookUrl())
 
-    // Debug logging for webhook validation
-    if (taskType === TASK_TYPE_WEBHOOK) {
-        console.log('Webhook validation:', {
-            name: name,
-            webhookUrl: webhookUrl,
-            isValidUrl: checkIfIsValidWebhookUrl(),
-            disableButton: disableButton,
-        })
-    }
-
     const onPressKey = event => {
         if (disabled || event.defaultPrevented || promptMentionsActive) return
         if (event.key === 'Enter') {
@@ -642,7 +607,6 @@ export default function TaskModal({
     // Memoize callback functions
     const memoizedSetName = useCallback(
         value => {
-            console.log('TaskModal - setName called with:', value)
             setName(value)
         },
         [setName]
@@ -650,7 +614,6 @@ export default function TaskModal({
 
     const memoizedSetTaskType = useCallback(
         value => {
-            console.log('TaskModal - setTaskType called with:', value)
             setTaskType(value)
         },
         [setTaskType]
@@ -658,7 +621,6 @@ export default function TaskModal({
 
     const memoizedSetPrompt = useCallback(
         value => {
-            console.log('TaskModal - setPrompt called with:', value)
             setPrompt(value)
         },
         [setPrompt]
@@ -666,35 +628,29 @@ export default function TaskModal({
 
     const memoizedSetRecurrence = useCallback(
         value => {
-            console.log('TaskModal - setRecurrence called with:', value)
             setRecurrence(value)
         },
         [setRecurrence]
     )
 
     const memoizedSetStartDate = useCallback(value => {
-        console.log('TaskModal - setStartDate called with:', value)
         setStartDate(value)
     }, [])
 
     const memoizedSetShowDatePicker = useCallback(value => {
-        console.log('TaskModal - setShowDatePicker called with:', value)
         setShowDatePicker(value)
     }, [])
 
     const memoizedSetShowTimePicker = useCallback(value => {
-        console.log('TaskModal - setShowTimePicker called with:', value)
         setShowTimePicker(value)
     }, [])
 
     const memoizedSetShowAISettings = useCallback(value => {
-        console.log('TaskModal - setShowAISettings called with:', value)
         setShowAISettings(value)
     }, [])
 
     const memoizedHandleStartTimeChange = useCallback(
         time => {
-            console.log('TaskModal - handleStartTimeChange called with:', time)
             const newDate = moment(startDate).hour(moment(time).hour()).minute(moment(time).minute()).valueOf()
             setStartDate(newDate)
             setShowTimePicker(false)
@@ -702,18 +658,11 @@ export default function TaskModal({
         [startDate, setStartDate, setShowTimePicker]
     )
 
-    const closeModal = (...args) => {
-        console.log('closeModal called with args:', args)
-        console.trace('closeModal stack trace:')
-        originalCloseModal(...args)
-    }
-
     const handleRecurrenceClick = () => {
         setShowRecurrenceModal(true)
     }
 
     const handleRecurrenceSelect = newRecurrence => {
-        console.log('handleRecurrenceSelect called with:', newRecurrence)
         setShowRecurrenceModal(false)
         setRecurrence(newRecurrence)
 
@@ -726,14 +675,12 @@ export default function TaskModal({
     }
 
     const handleStartDateChange = date => {
-        console.log('handleStartDateChange called with:', date)
         const newDate = moment(date).hour(moment(startDate).hour()).minute(moment(startDate).minute()).valueOf()
         setStartDate(newDate)
         setShowDatePicker(false)
     }
 
     const handleStartTimeChange = time => {
-        console.log('handleStartTimeChange called with:', time)
         const newDate = moment(startDate).hour(moment(time).hour()).minute(moment(time).minute()).valueOf()
         setStartDate(newDate)
         setShowTimePicker(false)
