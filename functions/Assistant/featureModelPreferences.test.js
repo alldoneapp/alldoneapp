@@ -7,10 +7,10 @@ const {
 } = require('./featureModelPreferences')
 
 describe('resolveFeatureModelKey', () => {
-    test('every feature resolves to its default with no stored preference', () => {
+    test('every feature resolves to its default (Luna across the board) with no stored preference', () => {
         expect(resolveFeatureModelKey('rambler', {})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveFeatureModelKey('emailDraftReply', {})).toBe('MODEL_GPT5_4_MINI')
-        expect(resolveFeatureModelKey('emailTaskSummary', {})).toBe('MODEL_GPT5_4_NANO')
+        expect(resolveFeatureModelKey('emailDraftReply', {})).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveFeatureModelKey('emailTaskSummary', {})).toBe('MODEL_GPT5_6_LUNA')
         expect(resolveFeatureModelKey('taskGoalRouting', {})).toBe('MODEL_GPT5_6_LUNA')
         expect(resolveFeatureModelKey('rambler', null)).toBe('MODEL_GPT5_6_LUNA')
     })
@@ -24,13 +24,12 @@ describe('resolveFeatureModelKey', () => {
         expect(resolveFeatureModelKey('rambler', { featureModelPreferences: { rambler: 'MODEL_BOGUS' } })).toBe(
             'MODEL_GPT5_6_LUNA'
         )
-        // The email defaults are non-selectable keys; storing one explicitly is not a valid
-        // picker choice and resolves to the default (which happens to be the same model).
+        // Non-selectable keys (the retired mini/nano defaults) are not valid picker choices.
         expect(
             resolveFeatureModelKey('emailDraftReply', {
                 featureModelPreferences: { emailDraftReply: 'MODEL_GPT5_4_NANO' },
             })
-        ).toBe('MODEL_GPT5_4_MINI')
+        ).toBe('MODEL_GPT5_6_LUNA')
     })
 
     test('OpenRouter models are rejected for Responses-API-only features but allowed elsewhere', () => {
@@ -59,10 +58,10 @@ describe('isValidFeatureModelChoice', () => {
 })
 
 describe('getFeatureModelOptionInfo', () => {
-    test('covers selectable models, the non-selectable feature defaults, and nothing else', () => {
+    test('covers the selectable models and nothing else', () => {
         expect(getFeatureModelOptionInfo('MODEL_GPT5_6_SOL')).toEqual({ name: 'Sol', tokensPerGold: 100 })
-        expect(getFeatureModelOptionInfo('MODEL_GPT5_4_MINI')).toEqual({ name: 'GPT-5.4 Mini', tokensPerGold: 333 })
-        expect(getFeatureModelOptionInfo('MODEL_GPT5_4_NANO')).toEqual({ name: 'GPT-5.4 Nano', tokensPerGold: 1200 })
+        expect(getFeatureModelOptionInfo('MODEL_GPT5_6_LUNA')).toEqual({ name: 'Luna', tokensPerGold: 500 })
+        expect(getFeatureModelOptionInfo('MODEL_GPT5_4_MINI')).toBeNull()
         expect(getFeatureModelOptionInfo('MODEL_BOGUS')).toBeNull()
     })
 
