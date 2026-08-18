@@ -40,6 +40,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         async ({ audioBase64, mimeType, durationSeconds }) => {
             setProcessing(true)
             try {
+                const requestStartedAt = Date.now()
                 const currentText = getCurrentText ? (getCurrentText() || '').slice(0, 2000) : ''
                 const result = await processRamble({
                     projectId,
@@ -49,6 +50,13 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
                     currentText,
                     durationSeconds,
                     language: store.getState().loggedUser?.language,
+                })
+                // requestMs minus the server totalMs ≈ network + cold start; see the matching
+                // '[processRamble] timing' line in the function logs for the server breakdown.
+                console.log('[rambler] timing', {
+                    requestMs: Date.now() - requestStartedAt,
+                    audioSeconds: durationSeconds,
+                    ...(result?.timings || {}),
                 })
                 if (result?.text) onTextReady(result.text)
             } catch (error) {

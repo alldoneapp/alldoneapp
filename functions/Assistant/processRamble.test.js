@@ -94,7 +94,12 @@ describe('processRambleSecondGen', () => {
             channel: 'comment',
             projectId: 'project-1',
         })
-        expect(result).toEqual({ text: 'cleaned text', transcript: 'raw transcript', goldCharged: 11 })
+        expect(result).toEqual({
+            text: 'cleaned text',
+            transcript: 'raw transcript',
+            goldCharged: 11,
+            timings: expect.objectContaining({ totalMs: expect.any(Number), cleanupMs: expect.any(Number) }),
+        })
         expect(mockCleanupRamble).toHaveBeenCalledWith(
             expect.objectContaining({
                 transcript: 'raw transcript',
@@ -157,6 +162,7 @@ describe('processRambleSecondGen', () => {
             transcript: 'raw transcript',
             goldCharged: 1, // max(1, round(60 * 0.02)) with zero cleanup tokens
             cleanupFailed: true,
+            timings: expect.any(Object),
         })
         expect(mockDeductGold).toHaveBeenCalledWith('user-1', 1, expect.objectContaining({ source: 'rambler' }))
     })
