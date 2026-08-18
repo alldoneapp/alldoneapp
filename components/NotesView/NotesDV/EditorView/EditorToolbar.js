@@ -1051,7 +1051,9 @@ export const EditorToolbar = ({
         elapsedSeconds: rambleElapsedSeconds,
         toggle: toggleRamble,
     } = useRambleController({
-        projectId,
+        // The projectId prop arrived misspelled ('ptojectId') for years; keep the belt-and-braces
+        // fallback to the project doc so dictation cannot lose its project again.
+        projectId: projectId || project?.id,
         targetKind: 'note',
         getCurrentText: () => {
             const editor = exportRef.getEditor?.()
