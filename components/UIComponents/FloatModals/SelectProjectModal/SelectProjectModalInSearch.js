@@ -44,7 +44,6 @@ export default function SelectProjectModalInSearch({
     showArchivedTab,
     showAllProjects,
     showAutomaticProject,
-    widthStyle,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -119,7 +118,6 @@ export default function SelectProjectModalInSearch({
                 setSelectedProjectId(project.id)
             }}
             selectedProjectId={projectId}
-            widthStyle={widthStyle}
             containerStyle={sidebarOpenStyle}
         />
     )

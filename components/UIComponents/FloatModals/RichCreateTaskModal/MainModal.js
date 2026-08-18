@@ -28,7 +28,6 @@ export default function MainModal({
     setTask,
     showMoreOptions,
     selectedProject,
-    widthStyle,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
@@ -54,9 +53,6 @@ export default function MainModal({
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
                 { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
-                // AT-2364: last, so the wide variant overrides both the legacy
-                // popover width and the small-screen minimum above it.
-                widthStyle,
             ]}
         >
             <ModalHeader closeModal={closeModal} title={title} description="" />
