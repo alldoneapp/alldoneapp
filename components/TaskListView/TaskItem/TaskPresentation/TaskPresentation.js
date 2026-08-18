@@ -8,7 +8,7 @@ import store from '../../../../redux/store'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem, setSwipeDueDatePopupData, showSwipeDueDatePopup } from '../../../../redux/actions'
 import MyPlatform from '../../../MyPlatform'
-import TasksHelper from '../../Utils/TasksHelper'
+import TasksHelper, { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../Utils/TasksHelper'
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import SharedHelper from '../../../../utils/SharedHelper'
 import GmailTag from '../../../Tags/GmailTag'
@@ -39,6 +39,8 @@ import { shouldShowAiStepControl } from './taskAiStepControl'
 import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
 import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
 import { taskPresentationLayout } from './TaskPresentationLayout'
+import TaskFileDropZone from './TaskFileDropZone'
+import { canDropFilesOnTaskRow } from './taskFileDropHelper'
 
 function TaskPresentation(
     {
@@ -252,6 +254,18 @@ function TaskPresentation(
 
     const isLocked = objectIsLockedForUser(projectId, unlockedKeysByGuides, task.lockKey, task.userId)
 
+    // AT-2363: dropping a file on the row appends it to the task description.
+    const fileDropAllowed = canDropFilesOnTaskRow({
+        accessGranted,
+        loggedUserCanUpdateObject,
+        isCalendarTask: !!task.calendarData,
+        isAssistantTask: task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE,
+        isLocked,
+        isActiveOrganizeMode,
+        isSuggested,
+        inCommentPopup,
+    })
+
     // Priority chip is now shown at the START of the task row (like a calendar task's time) instead
     // of in the trailing tags. Built once here so the regular view (in the title via leftCustomElement)
     // and the My Day by-time view (in the left time area) share the same clickable element + disabled
@@ -273,190 +287,196 @@ function TaskPresentation(
     )
 
     return (
-        <View style={isLocked && !inParentGoal && localStyles.blurry}>
-            <SwipeAreasContainer
-                leftText={'Properties'}
-                rightText={'Reminder'}
-                isActiveOrganizeMode={isActiveOrganizeMode}
-            />
-            <Swipeable
-                useNativeAnimations={false}
-                ref={itemSwipe}
-                rightThreshold={80}
-                leftThreshold={80}
-                enabled={!inCommentPopup && !activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted}
-                renderLeftActions={renderLeftSwipe}
-                renderRightActions={accessGranted && renderRightSwipe}
-                onSwipeableLeftWillOpen={onLeftSwipe}
-                onSwipeableRightWillOpen={loggedUserCanUpdateObject && accessGranted && onRightSwipe}
-                overshootLeft={false}
-                overshootRight={false}
-                friction={2}
-                containerStyle={{ overflow: 'visible' }}
-                failOffsetY={[-5, 5]}
-                onSwipeableWillClose={() => {
-                    setBlockOpen(true)
-                }}
-                onSwipeableClose={() => {
-                    setBlockOpen(false)
-                }}
-            >
-                <View style={taskPresentationLayout.container}>
-                    <View style={{ borderRadius: 4 }}>
-                        <Animated.View
-                            style={[
-                                !isActiveOrganizeMode &&
-                                    inFocusTaskId === task.id && { borderColor: colors.Primary100, borderWidth: 2 },
-                                taskPresentationLayout.taskRow,
-                                task.isSubtask ? subTaskStyles.taskRow : undefined,
-                                task.isSubtask ? { paddingLeft: 2 } : undefined,
-                                isActiveOrganizeMode &&
-                                    (task.isSubtask ? subTaskStyles.dragModeContainer : localStyles.dragModeContainer),
-                                { backgroundColor: highlightColor },
-                            ]}
-                            onLayout={onLayoutChange}
-                            nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
-                        >
-                            <View
-                                pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
+        <TaskFileDropZone disabled={!fileDropAllowed} projectId={projectId} task={task}>
+            <View style={isLocked && !inParentGoal && localStyles.blurry}>
+                <SwipeAreasContainer
+                    leftText={'Properties'}
+                    rightText={'Reminder'}
+                    isActiveOrganizeMode={isActiveOrganizeMode}
+                />
+                <Swipeable
+                    useNativeAnimations={false}
+                    ref={itemSwipe}
+                    rightThreshold={80}
+                    leftThreshold={80}
+                    enabled={
+                        !inCommentPopup && !activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted
+                    }
+                    renderLeftActions={renderLeftSwipe}
+                    renderRightActions={accessGranted && renderRightSwipe}
+                    onSwipeableLeftWillOpen={onLeftSwipe}
+                    onSwipeableRightWillOpen={loggedUserCanUpdateObject && accessGranted && onRightSwipe}
+                    overshootLeft={false}
+                    overshootRight={false}
+                    friction={2}
+                    containerStyle={{ overflow: 'visible' }}
+                    failOffsetY={[-5, 5]}
+                    onSwipeableWillClose={() => {
+                        setBlockOpen(true)
+                    }}
+                    onSwipeableClose={() => {
+                        setBlockOpen(false)
+                    }}
+                >
+                    <View style={taskPresentationLayout.container}>
+                        <View style={{ borderRadius: 4 }}>
+                            <Animated.View
                                 style={[
-                                    taskPresentationLayout.leadingContent,
-                                    !inMyDayAndNotSubtask && { paddingBottom: tagsExpandedHeight },
+                                    !isActiveOrganizeMode &&
+                                        inFocusTaskId === task.id && { borderColor: colors.Primary100, borderWidth: 2 },
+                                    taskPresentationLayout.taskRow,
+                                    task.isSubtask ? subTaskStyles.taskRow : undefined,
+                                    task.isSubtask ? { paddingLeft: 2 } : undefined,
+                                    isActiveOrganizeMode &&
+                                        (task.isSubtask
+                                            ? subTaskStyles.dragModeContainer
+                                            : localStyles.dragModeContainer),
+                                    { backgroundColor: highlightColor },
                                 ]}
+                                onLayout={onLayoutChange}
+                                nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
                             >
-                                <CheckBoxWrapper
-                                    ref={checkBoxRef}
-                                    task={task}
-                                    projectId={projectId}
-                                    isObservedTask={isObservedTask}
-                                    isToReviewTask={isToReviewTask}
-                                    isSuggested={isSuggested}
-                                    isActiveOrganizeMode={isActiveOrganizeMode}
-                                    checkOnDrag={checkOnDrag}
-                                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                                    highlightColor={highlightColor}
-                                    accessGranted={accessGranted}
-                                    pending={pending}
-                                    showWorkflowIndicator={showWorkflowIndicator}
-                                    isNextStepAi={showAiStepControl}
-                                />
-                                {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
-                                    <GmailTag
-                                        gmailData={task.gmailData}
-                                        propStyles={{ marginTop: 8, marginLeft: 12 }}
+                                <View
+                                    pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
+                                    style={[
+                                        taskPresentationLayout.leadingContent,
+                                        !inMyDayAndNotSubtask && { paddingBottom: tagsExpandedHeight },
+                                    ]}
+                                >
+                                    <CheckBoxWrapper
+                                        ref={checkBoxRef}
+                                        task={task}
+                                        projectId={projectId}
+                                        isObservedTask={isObservedTask}
+                                        isToReviewTask={isToReviewTask}
+                                        isSuggested={isSuggested}
+                                        isActiveOrganizeMode={isActiveOrganizeMode}
+                                        checkOnDrag={checkOnDrag}
+                                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                                        highlightColor={highlightColor}
+                                        accessGranted={accessGranted}
+                                        pending={pending}
+                                        showWorkflowIndicator={showWorkflowIndicator}
+                                        isNextStepAi={showAiStepControl}
+                                    />
+                                    {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
+                                        <GmailTag
+                                            gmailData={task.gmailData}
+                                            propStyles={{ marginTop: 8, marginLeft: 12 }}
+                                        />
+                                    )}
+                                    {!inMyDayAndNotSubtask && task?.alertEnabled && (
+                                        <>
+                                            {task.calendarData ? (
+                                                <TranscribeTag
+                                                    task={task}
+                                                    projectId={projectId}
+                                                    containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                />
+                                            ) : (
+                                                <AlertTag
+                                                    task={task}
+                                                    containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                    onPress={onLeftSwipe}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                    <TitleContainer
+                                        task={task}
+                                        projectId={projectId}
+                                        isObservedTask={isObservedTask}
+                                        toggleModal={toggleModal}
+                                        backColorHighlight={backColorHighlight}
+                                        backColor={backColor}
+                                        hasStar={hasStar}
+                                        inMyDayAndNotSubtask={inMyDayAndNotSubtask}
+                                        blockOpen={blockOpen}
+                                        tagsExpandedHeight={tagsExpandedHeight}
+                                        showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
+                                        leadingVmStatusTag={leadingVmStatusTag}
+                                        leadingPriorityTag={leadingPriorityTag}
+                                        useCommentPopupTextColor={inCommentPopup}
+                                        setTaskTitleIsMultiline={setTaskTitleIsMultiline}
+                                    />
+                                </View>
+                                {inMyDayAndNotSubtask && (
+                                    <TaskTagsContainerByTime
+                                        task={task}
+                                        projectId={projectId}
+                                        isObservedTask={isObservedTask}
+                                        isToReviewTask={isToReviewTask}
+                                        toggleSubTaskList={toggleSubTaskList}
+                                        subtaskList={subtaskList}
+                                        isSuggested={isSuggested}
+                                        isActiveOrganizeMode={isActiveOrganizeMode}
+                                        isPending={isPending}
+                                        isLocked={isLocked}
+                                        highlightColor={highlightColor}
+                                        anonymousGranted={anonymousGranted}
+                                        accessGranted={accessGranted}
+                                        taskTagsSection={taskTagsSection}
+                                        forceTagsMobile={forceTagsMobile}
+                                        setTagsExpandedHeight={setTagsExpandedHeight}
+                                        toggleModal={toggleModal}
+                                        blockOpen={blockOpen}
+                                        onAlertTagPress={onLeftSwipe}
+                                        leadingVmStatusTag={leadingVmStatusTag}
+                                        leadingPriorityTag={leadingPriorityTag}
+                                        inCommentPopup={inCommentPopup}
                                     />
                                 )}
-                                {!inMyDayAndNotSubtask && task?.alertEnabled && (
-                                    <>
-                                        {task.calendarData ? (
-                                            <TranscribeTag
-                                                task={task}
-                                                projectId={projectId}
-                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
-                                            />
-                                        ) : (
-                                            <AlertTag
-                                                task={task}
-                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
-                                                onPress={onLeftSwipe}
-                                            />
-                                        )}
-                                    </>
+                                {!inMyDayAndNotSubtask && (
+                                    <TaskTagsContainer
+                                        task={task}
+                                        projectId={projectId}
+                                        isObservedTask={isObservedTask}
+                                        isToReviewTask={isToReviewTask}
+                                        toggleSubTaskList={toggleSubTaskList}
+                                        subtaskList={subtaskList}
+                                        isSuggested={isSuggested}
+                                        isActiveOrganizeMode={isActiveOrganizeMode}
+                                        isPending={isPending}
+                                        isLocked={isLocked}
+                                        showVerticalEllipsis={showVerticalEllipsis}
+                                        highlightColor={highlightColor}
+                                        anonymousGranted={anonymousGranted}
+                                        accessGranted={accessGranted}
+                                        taskTagsSection={taskTagsSection}
+                                        forceTagsMobile={forceTagsMobile}
+                                        trailingTagsCrowdTitle={trailingTagsCrowdTitle}
+                                        setTagsExpandedHeight={setTagsExpandedHeight}
+                                        inCommentPopup={inCommentPopup}
+                                    />
                                 )}
-                                <TitleContainer
-                                    task={task}
-                                    projectId={projectId}
-                                    isObservedTask={isObservedTask}
-                                    toggleModal={toggleModal}
-                                    backColorHighlight={backColorHighlight}
-                                    backColor={backColor}
-                                    hasStar={hasStar}
-                                    inMyDayAndNotSubtask={inMyDayAndNotSubtask}
-                                    blockOpen={blockOpen}
-                                    tagsExpandedHeight={tagsExpandedHeight}
-                                    showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
-                                    leadingVmStatusTag={leadingVmStatusTag}
-                                    leadingPriorityTag={leadingPriorityTag}
-                                    useCommentPopupTextColor={inCommentPopup}
-                                    setTaskTitleIsMultiline={setTaskTitleIsMultiline}
-                                />
-                            </View>
-                            {inMyDayAndNotSubtask && (
-                                <TaskTagsContainerByTime
-                                    task={task}
-                                    projectId={projectId}
-                                    isObservedTask={isObservedTask}
-                                    isToReviewTask={isToReviewTask}
-                                    toggleSubTaskList={toggleSubTaskList}
-                                    subtaskList={subtaskList}
-                                    isSuggested={isSuggested}
-                                    isActiveOrganizeMode={isActiveOrganizeMode}
-                                    isPending={isPending}
-                                    isLocked={isLocked}
-                                    highlightColor={highlightColor}
-                                    anonymousGranted={anonymousGranted}
-                                    accessGranted={accessGranted}
-                                    taskTagsSection={taskTagsSection}
-                                    forceTagsMobile={forceTagsMobile}
-                                    setTagsExpandedHeight={setTagsExpandedHeight}
-                                    toggleModal={toggleModal}
-                                    blockOpen={blockOpen}
-                                    onAlertTagPress={onLeftSwipe}
-                                    leadingVmStatusTag={leadingVmStatusTag}
-                                    leadingPriorityTag={leadingPriorityTag}
-                                    inCommentPopup={inCommentPopup}
-                                />
+                            </Animated.View>
+                            {!isActiveOrganizeMode && inMyDayOpenTab && isActiveTask && task.time && (
+                                <LineOfTime time={task.time} tagsExpandedHeight={tagsExpandedHeight} />
                             )}
-                            {!inMyDayAndNotSubtask && (
-                                <TaskTagsContainer
-                                    task={task}
-                                    projectId={projectId}
-                                    isObservedTask={isObservedTask}
-                                    isToReviewTask={isToReviewTask}
-                                    toggleSubTaskList={toggleSubTaskList}
-                                    subtaskList={subtaskList}
-                                    isSuggested={isSuggested}
-                                    isActiveOrganizeMode={isActiveOrganizeMode}
-                                    isPending={isPending}
-                                    isLocked={isLocked}
-                                    showVerticalEllipsis={showVerticalEllipsis}
-                                    highlightColor={highlightColor}
-                                    anonymousGranted={anonymousGranted}
-                                    accessGranted={accessGranted}
-                                    taskTagsSection={taskTagsSection}
-                                    forceTagsMobile={forceTagsMobile}
-                                    trailingTagsCrowdTitle={trailingTagsCrowdTitle}
-                                    setTagsExpandedHeight={setTagsExpandedHeight}
-                                    inCommentPopup={inCommentPopup}
-                                />
-                            )}
-                        </Animated.View>
-                        {!isActiveOrganizeMode && inMyDayOpenTab && isActiveTask && task.time && (
-                            <LineOfTime time={task.time} tagsExpandedHeight={tagsExpandedHeight} />
+                        </View>
+                        {isActiveOrganizeMode && <SixDotsContainer />}
+                        {!inCommentPopup && (
+                            <ShortcutsArea
+                                task={task}
+                                isActiveOrganizeMode={isActiveOrganizeMode}
+                                accessGranted={accessGranted}
+                                projectId={projectId}
+                                isLocked={isLocked}
+                            />
+                        )}
+                        {inCommentPopup && (
+                            <CommentPopupWorkflowControls
+                                projectId={projectId}
+                                task={task}
+                                workflow={workflow}
+                                disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
+                                onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
+                            />
                         )}
                     </View>
-                    {isActiveOrganizeMode && <SixDotsContainer />}
-                    {!inCommentPopup && (
-                        <ShortcutsArea
-                            task={task}
-                            isActiveOrganizeMode={isActiveOrganizeMode}
-                            accessGranted={accessGranted}
-                            projectId={projectId}
-                            isLocked={isLocked}
-                        />
-                    )}
-                    {inCommentPopup && (
-                        <CommentPopupWorkflowControls
-                            projectId={projectId}
-                            task={task}
-                            workflow={workflow}
-                            disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
-                            onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
-                        />
-                    )}
-                </View>
-            </Swipeable>
-        </View>
+                </Swipeable>
+            </View>
+        </TaskFileDropZone>
     )
 }
 
