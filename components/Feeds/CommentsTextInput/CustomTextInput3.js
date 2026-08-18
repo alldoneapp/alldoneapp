@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Dimensions } from 'react-native'
+import { Dimensions, View } from 'react-native'
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
@@ -1353,14 +1353,22 @@ function CustomTextInput3(
             showIndicator={showScrollIndicator}
             fixedChildren={
                 dictationEnabled ? (
-                    <RambleButton
-                        projectId={innerProjectId}
-                        targetKind={dictationTargetKind || (singleLine ? 'title' : 'generic')}
-                        getCurrentText={() => textRef.current}
-                        onTextReady={insertDictatedText}
-                        visible={dictationVisible}
-                        style={localDictationOverlayStyle}
-                    />
+                    <View
+                        pointerEvents={'box-none'}
+                        style={
+                            singleLine
+                                ? localDictationWrapperStyles.centered
+                                : localDictationWrapperStyles.bottomAnchored
+                        }
+                    >
+                        <RambleButton
+                            projectId={innerProjectId}
+                            targetKind={dictationTargetKind || (singleLine ? 'title' : 'generic')}
+                            getCurrentText={() => textRef.current}
+                            onTextReady={insertDictatedText}
+                            visible={dictationVisible}
+                        />
+                    </View>
                 ) : null
             }
         >
@@ -1414,7 +1422,12 @@ function CustomTextInput3(
 }
 
 // Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
-// offset clears CustomScrollView's 4px scroll indicator.
-const localDictationOverlayStyle = { position: 'absolute', right: 10, bottom: 2, zIndex: 10 }
+// offset clears CustomScrollView's 4px scroll indicator. Single-line inputs (task names, titles)
+// center the mic on the text line; taller editors anchor it to the bottom-right corner. The
+// wrapper is box-none so the stretched centering frame never swallows clicks meant for the input.
+const localDictationWrapperStyles = {
+    centered: { position: 'absolute', right: 8, top: 0, bottom: 0, justifyContent: 'center', zIndex: 10 },
+    bottomAnchored: { position: 'absolute', right: 8, bottom: 4, zIndex: 10 },
+}
 
 export default forwardRef(CustomTextInput3)
