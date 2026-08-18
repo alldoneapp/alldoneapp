@@ -51,6 +51,7 @@ function getTransactionLabel(source) {
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
         meeting_transcription: 'Meeting transcription',
+        rambler: 'Rambler dictation',
         email_draft_reply: 'Email reply draft',
         email_needs_reply: 'Email needs-reply scan',
         email_create_task: 'Task from email',
