@@ -260,6 +260,17 @@ Second round (same day, from on-device QA):
    `ConnectionStateModal` is now a pure card with no fixed height (long
    translations no longer clip).
 
+## Console/battery follow-up — **SHIPPED 2026-08-18**
+
+Offline is a designed state, so it should not read as an error storm:
+`firebase.firestore.setLogLevel('error')` silences the SDK's WARN chatter, and
+`firestoreNetworkGate.js` calls `disableNetwork()` on the offline transition /
+`enableNetwork()` on recovery — no doomed reconnect attempts, so no browser-level
+`ERR_INTERNET_DISCONNECTED` lines (those cannot be suppressed from JS; the only fix
+is not making the requests) and no reconnect battery burn in airplane mode. The
+remaining `[Violation] unload` line comes from Google's gapi script and is
+harmless/out of our control.
+
 ## Stage 7 — Degrade the online-only surfaces honestly — **SHIPPED 2026-08-17**
 
 _Implementation notes: `runHttpsCallableFunction` fast-fails offline with a typed
