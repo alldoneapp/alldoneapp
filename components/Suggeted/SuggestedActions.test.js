@@ -1,4 +1,5 @@
 import React from 'react'
+import { StyleSheet } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import SuggestedActions from './SuggestedActions'
@@ -24,6 +25,17 @@ describe('SuggestedActions', () => {
 
         expect(findButton(tree, 'Go to next step').props.type).toBe('secondary')
         expect(findButton(tree, 'Accept').props.type).toBe('primary')
+    })
+
+    // AT-2354: the bypass link must clear the button row by the full 16px bottom padding,
+    // and the row may grow rather than clamp a taller button into it.
+    it('states the button row padding on both sides so the bypass link keeps its distance', () => {
+        const tree = renderer.create(<SuggestedActions {...baseProps} showBypassWorkflow />)
+        const container = tree.root.findByProps({ testID: 'suggested-actions-buttons' })
+        const style = StyleSheet.flatten(container.props.style)
+
+        expect(style).toMatchObject({ minHeight: 72, paddingTop: 16, paddingBottom: 16 })
+        expect(style.height).toBeUndefined()
     })
 
     it('labels the secondary action as a rejection for assistant suggestions', () => {
