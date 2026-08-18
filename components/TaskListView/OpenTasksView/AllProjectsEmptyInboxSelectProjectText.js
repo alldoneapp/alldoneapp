@@ -10,8 +10,12 @@ export default function AllProjectsEmptyInboxSelectProjectText() {
 
     return (
         <View style={[localStyles.emptyInboxText, isMiddleScreen ? localStyles.emptyInboxTextMobile : undefined]}>
+            {/* Secondary to the "Add task" button above it (AT-2306): these tags
+                open a project, they never add a task, so the old
+                "Please select a project to add a new task" wording now describes
+                the button instead of the list underneath. */}
             <Text style={[styles.body1, { color: colors.Text02, textAlign: 'center' }]}>
-                {translate('Please select a project to add a new task')}
+                {translate('Or open one of your projects')}
             </Text>
         </View>
     )
