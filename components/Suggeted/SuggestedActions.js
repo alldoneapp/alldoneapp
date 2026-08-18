@@ -16,7 +16,7 @@ export default function SuggestedActions({
 }) {
     return (
         <View testID="suggested-actions">
-            <View style={localStyles.buttonsContainer}>
+            <View testID="suggested-actions-buttons" style={localStyles.buttonsContainer}>
                 <Button
                     disabled={disabled}
                     // The icon has to follow the label: rejecting an assistant suggestion is not a
@@ -39,10 +39,14 @@ export default function SuggestedActions({
 
 const localStyles = StyleSheet.create({
     buttonsContainer: {
-        height: 72,
+        // Same 72px row as the workflow modal, but with both paddings stated explicitly so
+        // the bypass link below keeps the identical 24px of separation from the buttons
+        // even if they grow taller (AT-2354).
+        minHeight: 72,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         paddingTop: 16,
+        paddingBottom: 16,
     },
 })
