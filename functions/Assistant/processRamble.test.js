@@ -106,6 +106,8 @@ describe('processRambleSecondGen', () => {
                 targetKind: 'comment',
                 appLanguage: 'de',
                 cacheScope: 'user-1:project-1',
+                // The rambler model preference lives on the user doc; cleanup must receive it.
+                userData: expect.objectContaining({ language: 'de' }),
             })
         )
     })

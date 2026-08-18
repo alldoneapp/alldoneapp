@@ -8,20 +8,14 @@
  * and the orchestration in `processRamble.js`, so a future "clean up typed text" callable can reuse
  * `cleanupRamble` with a typed draft in place of a transcript.
  *
- * The cleanup runs on the project default assistant's configured model (a product decision — the
- * assistant's persona and the workspace context come along with its model), resolved through the
- * same provider routing as the labeling classifiers. Perplexity-configured assistants fall back to
- * the app default model: Sonar models are a search surface, not a Chat Completions rewrite model.
+ * The cleanup uses the project default assistant's PERSONA and workspace context, but runs on the
+ * user's configured rambler model (Settings → Customizations, `featureModelPreferences.rambler`,
+ * default Luna) — a rewrite task does not need the assistant's reasoning tier, and the user, not
+ * the project, pays for it.
  */
 
 const { resolveClassifierClient } = require('./classifierModelClient')
-const { resolveAssistantModelProvider, PROVIDER_PERPLEXITY } = require('./assistantModelRouting')
-
-// Set to a MODEL_* key to pin cleanup to one model for every assistant (cost/latency escape hatch).
-const RAMBLER_MODEL_OVERRIDE = null
-
-// The app default; also the billing fallback rate lives on this key (100 tokens/Gold).
-const RAMBLER_FALLBACK_MODEL_KEY = 'MODEL_GPT5_6_SOL'
+const { resolveFeatureModelKey } = require('./featureModelPreferences')
 
 const RAMBLER_SYSTEM_PROMPT = [
     'You turn rambling dictated speech into clear, coherent, well-written text on behalf of the user.',
@@ -93,15 +87,12 @@ function buildRamblerUserContent({
 }
 
 /**
- * Which model key actually executes the cleanup for an assistant's configured key.
- * Exported for tests and for the billing side, which must charge the model that ran.
+ * Which model key executes the cleanup for this user: their rambler preference, falling back to
+ * the feature default. Exported for tests and for the billing side, which charges the model that
+ * ran.
  */
-function resolveCleanupModelKey(assistantModelKey) {
-    if (RAMBLER_MODEL_OVERRIDE) return RAMBLER_MODEL_OVERRIDE
-    if (!hasText(assistantModelKey)) return RAMBLER_FALLBACK_MODEL_KEY
-    const route = resolveAssistantModelProvider(assistantModelKey)
-    if (route.provider === PROVIDER_PERPLEXITY) return RAMBLER_FALLBACK_MODEL_KEY
-    return route.modelKey || assistantModelKey
+function resolveCleanupModelKey(userData) {
+    return resolveFeatureModelKey('rambler', userData)
 }
 
 // Returns { text, totalTokens, modelKey }. Throws when no usable LLM client/key is available or the
@@ -110,6 +101,7 @@ async function cleanupRamble({
     transcript,
     targetKind = 'generic',
     assistant = null,
+    userData = null,
     projectContext = '',
     userContext = '',
     currentText = '',
@@ -124,7 +116,7 @@ async function cleanupRamble({
     } = require('./assistantHelper')
 
     const envFunctions = getCachedEnvFunctions()
-    const modelKey = resolveCleanupModelKey(assistant?.model)
+    const modelKey = resolveCleanupModelKey(userData)
     const { client, model, isOpenRouter } = resolveClassifierClient(modelKey, {
         openAiKey: envFunctions?.OPEN_AI_KEY,
         openRouterKey: envFunctions?.OPENROUTER_API_KEY,
@@ -173,7 +165,5 @@ module.exports = {
     buildRamblerUserContent,
     resolveCleanupModelKey,
     RAMBLER_SYSTEM_PROMPT,
-    RAMBLER_MODEL_OVERRIDE,
-    RAMBLER_FALLBACK_MODEL_KEY,
     TARGET_KIND_RULES,
 }

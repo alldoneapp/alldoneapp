@@ -3789,6 +3789,12 @@ export function mapUserData(userId, user) {
             : null,
         mcpEnabled: user.mcpEnabled !== false,
         mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
+        // One-shot AI feature model choices (rambler, email draft reply, …). This mapping is an
+        // explicit whitelist — without this line the Settings pickers would never see the field.
+        featureModelPreferences:
+            user.featureModelPreferences && typeof user.featureModelPreferences === 'object'
+                ? user.featureModelPreferences
+                : {},
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],

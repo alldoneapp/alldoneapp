@@ -15,7 +15,12 @@ const mockLogOpenAiCacheUsage = jest.fn()
 jest.mock('./assistantHelper', () => ({
     buildOpenAiPromptCacheKey: (...args) => mockBuildOpenAiPromptCacheKey(...args),
     getCachedEnvFunctions: () => ({ OPEN_AI_KEY: 'openai-key', OPENROUTER_API_KEY: 'openrouter-key' }),
-    getModel: modelKey => (modelKey === 'MODEL_GPT5_6_TERRA' ? 'gpt-5.6-terra' : 'gpt-5.6-sol'),
+    getModel: modelKey =>
+        modelKey === 'MODEL_GPT5_6_TERRA'
+            ? 'gpt-5.6-terra'
+            : modelKey === 'MODEL_GPT5_6_LUNA'
+              ? 'gpt-5.6-luna'
+              : 'gpt-5.6-sol',
     logOpenAiCacheUsage: (...args) => mockLogOpenAiCacheUsage(...args),
 }))
 
@@ -24,7 +29,6 @@ const {
     buildRamblerUserContent,
     resolveCleanupModelKey,
     RAMBLER_SYSTEM_PROMPT,
-    RAMBLER_FALLBACK_MODEL_KEY,
     TARGET_KIND_RULES,
 } = require('./ramblerCleanup')
 
@@ -104,18 +108,24 @@ describe('buildRamblerUserContent', () => {
 })
 
 describe('resolveCleanupModelKey', () => {
-    test('keeps the assistant configured model for OpenAI and OpenRouter keys', () => {
-        expect(resolveCleanupModelKey('MODEL_GPT5_6_TERRA')).toBe('MODEL_GPT5_6_TERRA')
-        expect(resolveCleanupModelKey('MODEL_DEEPSEEK_V4_FLASH')).toBe('MODEL_DEEPSEEK_V4_FLASH')
+    test('defaults to Luna with no stored preference', () => {
+        expect(resolveCleanupModelKey({})).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveCleanupModelKey(undefined)).toBe('MODEL_GPT5_6_LUNA')
     })
 
-    test('Perplexity-configured assistants fall back to the default model', () => {
-        expect(resolveCleanupModelKey('MODEL_SONAR_PRO')).toBe(RAMBLER_FALLBACK_MODEL_KEY)
+    test('uses the user preference when valid, including OpenRouter models', () => {
+        expect(resolveCleanupModelKey({ featureModelPreferences: { rambler: 'MODEL_GPT5_6_TERRA' } })).toBe(
+            'MODEL_GPT5_6_TERRA'
+        )
+        expect(resolveCleanupModelKey({ featureModelPreferences: { rambler: 'MODEL_DEEPSEEK_V4_FLASH' } })).toBe(
+            'MODEL_DEEPSEEK_V4_FLASH'
+        )
     })
 
-    test('a missing model falls back to the default model', () => {
-        expect(resolveCleanupModelKey(undefined)).toBe(RAMBLER_FALLBACK_MODEL_KEY)
-        expect(resolveCleanupModelKey('')).toBe(RAMBLER_FALLBACK_MODEL_KEY)
+    test('an invalid stored value falls back to the default', () => {
+        expect(resolveCleanupModelKey({ featureModelPreferences: { rambler: 'MODEL_SONAR_PRO' } })).toBe(
+            'MODEL_GPT5_6_LUNA'
+        )
     })
 })
 
@@ -123,7 +133,8 @@ describe('cleanupRamble', () => {
     test('OpenAI path maps the key through getModel and sends prompt_cache_key', async () => {
         const result = await cleanupRamble({
             transcript: 'raw',
-            assistant: { model: 'MODEL_GPT5_6_TERRA', instructions: 'Be nice.' },
+            assistant: { instructions: 'Be nice.' },
+            userData: { featureModelPreferences: { rambler: 'MODEL_GPT5_6_TERRA' } },
             cacheScope: 'u1:p1',
         })
 
@@ -144,7 +155,7 @@ describe('cleanupRamble', () => {
 
         const result = await cleanupRamble({
             transcript: 'raw',
-            assistant: { model: 'MODEL_DEEPSEEK_V4_FLASH' },
+            userData: { featureModelPreferences: { rambler: 'MODEL_DEEPSEEK_V4_FLASH' } },
         })
 
         const request = mockCreate.mock.calls[0][0]

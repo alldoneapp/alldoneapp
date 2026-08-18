@@ -10,6 +10,8 @@ const { goalIsVisibleInOpenMilestone } = require('../shared/goalMilestonesHelper
 const TASK_GOAL_ROUTING_OFF = 'off'
 const TASK_GOAL_ROUTING_SUGGESTIONS = 'suggestions'
 const TASK_GOAL_ROUTING_AUTOMATIC = 'automatic'
+// Default only — the routing user can override the model in Settings → Customizations
+// (featureModelPreferences.taskGoalRouting; OpenAI models only, this runs on the Responses API).
 const TASK_GOAL_ROUTING_MODEL = 'gpt-5.6-luna'
 const TASK_GOAL_ROUTING_MODEL_KEY = 'MODEL_GPT5_6_LUNA'
 const SUGGESTION_CONFIDENCE_THRESHOLD = 0.65
@@ -163,14 +165,14 @@ const buildClassifierInput = (task, goals) => ({
     })),
 })
 
-async function classifyTaskAgainstGoals({ task, goals, userId }) {
+async function classifyTaskAgainstGoals({ task, goals, userId, model = TASK_GOAL_ROUTING_MODEL }) {
     const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
     const { OPEN_AI_KEY } = getCachedEnvFunctions()
     if (!OPEN_AI_KEY) throw new Error('OPEN_AI_KEY is not configured')
 
     const openai = getOpenAIClient(OPEN_AI_KEY)
     const response = await openai.responses.create({
-        model: TASK_GOAL_ROUTING_MODEL,
+        model,
         instructions:
             'Choose the single active goal that this task most directly advances. Return no goal when the match is weak or merely topical. Never invent IDs. Keep the reason short, user-facing, and in the same language as the task.',
         input: JSON.stringify(buildClassifierInput(task, goals)),
@@ -238,7 +240,7 @@ async function loadCandidateGoals(db, projectId, project, userId, task) {
     return selectCandidateGoals(task, eligibleGoals, currentMilestone)
 }
 
-const createSuggestion = ({ classification, action, claimId, projectId, now, goldSpent }) => ({
+const createSuggestion = ({ classification, action, claimId, projectId, now, goldSpent, model }) => ({
     goalId: classification.goalId,
     status: action === 'auto_assign' ? 'auto_assigned' : action === 'suggest' ? 'pending' : 'none',
     confidence: classification.confidence,
@@ -246,7 +248,7 @@ const createSuggestion = ({ classification, action, claimId, projectId, now, gol
     alternativeConfidence: classification.alternativeConfidence,
     reason: classification.reason,
     projectId,
-    model: TASK_GOAL_ROUTING_MODEL,
+    model: model || TASK_GOAL_ROUTING_MODEL,
     source: 'task_goal_router',
     claimId,
     goldSpent,
@@ -418,6 +420,11 @@ async function routeNewTaskToGoal({
     if (!userSnapshot.exists || (Number(userSnapshot.data()?.gold) || 0) < MINIMUM_GOLD_COST) {
         return { action: 'insufficient_gold' }
     }
+    // The routing user's model preference; upstream id for the API, key for Gold metering.
+    const { resolveFeatureModelKey } = require('../Assistant/featureModelPreferences')
+    const { getModel } = require('../Assistant/assistantHelper')
+    const routingModelKey = resolveFeatureModelKey('taskGoalRouting', userSnapshot.data() || {})
+    const routingModel = getModel(routingModelKey)
 
     const goals = await loadCandidateGoals(db, projectId, project, userId, task)
     if (goals.length === 0) return { action: 'no_goals' }
@@ -459,7 +466,7 @@ async function routeNewTaskToGoal({
     }
 
     try {
-        const classified = await classify({ task, goals, userId })
+        const classified = await classify({ task, goals, userId, model: routingModel })
         const classification = normalizeClassificationResult(
             classified.result,
             goals.map(goal => goal.id)
@@ -467,7 +474,7 @@ async function routeNewTaskToGoal({
         const action = chooseRoutingAction(mode, classification)
         const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
         const { deductGold } = require('../Gold/goldHelper')
-        const estimatedGold = calculateGoldCostFromTokens(classified.totalTokens, TASK_GOAL_ROUTING_MODEL_KEY)
+        const estimatedGold = calculateGoldCostFromTokens(classified.totalTokens, routingModelKey)
         const goldSpent = Math.max(MINIMUM_GOLD_COST, estimatedGold)
         const charge = await deductGold(userId, goldSpent, {
             source: 'task_goal_routing',
@@ -520,6 +527,7 @@ async function routeNewTaskToGoal({
                 projectId,
                 now,
                 goldSpent,
+                model: routingModel,
             })
 
             if (!currentProjectSnapshot.exists || currentMode === TASK_GOAL_ROUTING_OFF) {

@@ -1051,6 +1051,15 @@ export async function setUserMCPSettings(userId, mcpEnabled, mcpDisabledTools) {
         })
 }
 
+// Per-user model choice for the one-shot AI features (rambler dictation, email draft reply,
+// email task summary, task-goal routing) — see functions/Assistant/featureModelPreferences.js.
+// Dotted field path so saving one feature cannot clobber the others (the vmAgentSettings lesson).
+export async function setUserFeatureModelPreference(userId, featureKey, modelKey) {
+    return getDb()
+        .doc(`users/${userId}`)
+        .update({ [`featureModelPreferences.${featureKey}`]: modelKey || null })
+}
+
 export async function setUserAutoPostponeAfterDaysOverdue(userId, autoPostponeAfterDaysOverdue) {
     getDb().doc(`users/${userId}`).update({ autoPostponeAfterDaysOverdue })
 }
