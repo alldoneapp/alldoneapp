@@ -21,56 +21,38 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     generateNegativeSortIndex: () => -1,
 }))
 
-const { CALENDAR_LEGACY_SORT_INDEX_BASE, resolveTaskSortIndex } = require('./calendarTaskSortIndex')
+const { getDefaultCalendarSortIndex, resolveTaskSortIndex } = require('./calendarTaskSortIndex')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
 
 const MEETING_START = '2026-08-20T10:00:00+02:00'
 const CREATED = moment('2026-08-08T09:00:00+02:00').valueOf()
-const LEGACY_EVENT_START = moment(MEETING_START).valueOf()
-const LEGACY_BAND = CALENDAR_LEGACY_SORT_INDEX_BASE - LEGACY_EVENT_START
+const DEFAULT_PLACEMENT = getDefaultCalendarSortIndex({ start: { dateTime: MEETING_START } })
 
-const calendarData = { eventId: 'event-1', start: { dateTime: MEETING_START } }
-
-describe('AT-2351 - server-side task mapping repairs the two abandoned sortIndex encodings', () => {
-    it('maps a pre-AT-2259 event-start index onto the created stamp', () => {
-        const mapped = mapTaskData('task-1', {
+describe('AT-2259 / AT-2270 - server-side task mapping normalizes the calendar sortIndex', () => {
+    it('maps an untouched calendar sortIndex onto the default placement, in both stored shapes', () => {
+        const legacy = mapTaskData('task-1', {
             name: 'Weekly sync',
             userId: 'user-1',
             created: CREATED,
-            calendarData,
-            sortIndex: LEGACY_EVENT_START,
+            calendarData: { eventId: 'event-1', start: { dateTime: MEETING_START } },
+            sortIndex: moment(MEETING_START).valueOf(), // pre-AT-2259: the event start
         })
+        expect(legacy.sortIndex).toBe(DEFAULT_PLACEMENT)
 
-        expect(mapped.sortIndex).toBe(CREATED)
-        // The whole point: it is no longer a FUTURE timestamp that nothing generated can outrank.
-        expect(mapped.sortIndex).toBeLessThan(LEGACY_EVENT_START)
+        const arrival = mapTaskData('task-1b', {
+            name: 'Weekly sync',
+            userId: 'user-1',
+            created: CREATED,
+            calendarData: { eventId: 'event-1', start: { dateTime: MEETING_START } },
+            sortIndex: CREATED + 1, // post-AT-2259: the arrival index
+        })
+        expect(arrival.sortIndex).toBe(DEFAULT_PLACEMENT)
+        // Below every generated index, so the meeting sits under the ordinary tasks of its group.
+        expect(DEFAULT_PLACEMENT).toBeLessThan(-moment().valueOf())
     })
 
-    it('maps an AT-2270 band index onto the created stamp', () => {
-        const mapped = mapTaskData('task-2', {
-            name: 'Weekly sync',
-            userId: 'user-1',
-            created: CREATED,
-            calendarData,
-            sortIndex: LEGACY_BAND,
-        })
-
-        expect(mapped.sortIndex).toBe(CREATED)
-    })
-
-    it('leaves an ordinary index alone, on a calendar task as much as a normal one', () => {
-        // Since AT-2351 the sync writes a plain arrival index and nothing re-derives it. Where the
-        // meeting renders is decided by calendarTaskOrder.js, not by this number.
-        const arrival = mapTaskData('task-3', {
-            name: 'Weekly sync',
-            userId: 'user-1',
-            created: CREATED,
-            calendarData,
-            sortIndex: CREATED + 1,
-        })
-        expect(arrival.sortIndex).toBe(CREATED + 1)
-
-        const normal = mapTaskData('task-4', {
+    it('leaves a normal task and a user-influenced calendar task untouched', () => {
+        const normal = mapTaskData('task-2', {
             name: 'Write the report',
             userId: 'user-1',
             created: CREATED,
@@ -79,43 +61,37 @@ describe('AT-2351 - server-side task mapping repairs the two abandoned sortIndex
         expect(normal.sortIndex).toBe(CREATED)
 
         const dragged = moment('2026-08-11T17:04:03.271+02:00').valueOf()
-        const movedCalendarTask = mapTaskData('task-5', {
+        const movedCalendarTask = mapTaskData('task-3', {
             name: 'Weekly sync',
             userId: 'user-1',
             created: CREATED,
-            calendarData,
+            calendarData: { eventId: 'event-1', start: { dateTime: MEETING_START } },
             sortIndex: dragged,
         })
         expect(movedCalendarTask.sortIndex).toBe(dragged)
     })
 
     it('keeps the existing fallback for a task with no sortIndex at all', () => {
-        const mapped = mapTaskData('task-6', { name: 'Imported', userId: 'user-1', created: CREATED })
+        const mapped = mapTaskData('task-4', { name: 'Imported', userId: 'user-1', created: CREATED })
         expect(mapped.sortIndex).toBeLessThan(0)
     })
 })
 
 describe('resolveTaskSortIndex', () => {
-    it('rewrites only the two abandoned encodings', () => {
-        expect(resolveTaskSortIndex(LEGACY_EVENT_START, calendarData, CREATED)).toBe(CREATED)
-        expect(resolveTaskSortIndex(LEGACY_BAND, calendarData, CREATED)).toBe(CREATED)
+    it('only rewrites a sortIndex no user has influenced', () => {
+        const legacy = moment(MEETING_START).valueOf()
+        const calendarData = { start: { dateTime: MEETING_START } }
 
-        expect(resolveTaskSortIndex(LEGACY_EVENT_START + 1, calendarData, CREATED)).toBe(LEGACY_EVENT_START + 1)
-        expect(resolveTaskSortIndex(LEGACY_EVENT_START, null, CREATED)).toBe(LEGACY_EVENT_START)
-    })
-
-    it('repairs a band index on a normal task too', () => {
-        // Drag & drop derives a dropped task's index from its neighbours, so a normal task dropped
-        // below a banded meeting inherited ~-1e14 and sank below everything else permanently.
-        expect(resolveTaskSortIndex(LEGACY_BAND - 1, null, CREATED)).toBe(CREATED)
-    })
-
-    it('needs a usable created stamp to repair anything', () => {
-        expect(resolveTaskSortIndex(LEGACY_BAND, calendarData, undefined)).toBe(LEGACY_BAND)
+        expect(resolveTaskSortIndex(legacy, calendarData, CREATED)).toBe(DEFAULT_PLACEMENT)
+        expect(resolveTaskSortIndex(legacy + 1, calendarData, CREATED)).toBe(legacy + 1)
+        expect(resolveTaskSortIndex(legacy, null, CREATED)).toBe(legacy)
+        // A legacy value is recognisable without `created`, an arrival index is not.
+        expect(resolveTaskSortIndex(legacy, calendarData, undefined)).toBe(DEFAULT_PLACEMENT)
+        expect(resolveTaskSortIndex(CREATED, calendarData, undefined)).toBe(CREATED)
     })
 })
 
-describe('the calendar sync never encodes the event time into sortIndex', () => {
+describe('the calendar sync never stores a sortIndex that can outrank an ordinary task', () => {
     it('derives every calendar sortIndex through the shared helper', () => {
         const source = require('fs').readFileSync(
             require('path').join(__dirname, '../GoogleCalendarTasks/calendarTasks.js'),
@@ -125,11 +101,10 @@ describe('the calendar sync never encodes the event time into sortIndex', () => 
 
         expect(assignments.length).toBeGreaterThan(0)
         assignments.forEach(assignment => {
-            // AT-2259 forbade assigning the event start raw; AT-2270 replaced it with a derived
-            // band; AT-2351 removed the derivation entirely. The one permitted source is
-            // generateCalendarTaskSortIndex(), which is now just "now".
-            expect(assignment).toMatch(/generateCalendarTaskSortIndex\(\)/)
-            expect(assignment).not.toMatch(/moment\(|timezoneOffset|calendarData/)
+            // AT-2259: the event start must never be assigned raw. AT-2270: the only permitted
+            // source is generateCalendarTaskSortIndex(), which derives the below-everything band.
+            expect(assignment).toMatch(/generateCalendarTaskSortIndex\(/)
+            expect(assignment).not.toMatch(/moment\(|timezoneOffset/)
         })
     })
 })
