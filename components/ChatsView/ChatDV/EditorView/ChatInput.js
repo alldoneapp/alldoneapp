@@ -463,7 +463,10 @@ const localStyles = StyleSheet.create({
         borderTopRightRadius: 4,
         minHeight: 40, // 59 - (7 + 12)
         marginLeft: 17,
-        marginRight: 40,
+        // 8, not TaskInput's 40: that margin clears the assignee avatar in the task row, but the
+        // chat input has nothing on its right (its buttons live below), and the dictation mic
+        // anchors to the frame's right edge — 40 left it floating mid-row.
+        marginRight: 8,
     },
     textInputAlignment: {
         paddingLeft: 0,
