@@ -2,7 +2,6 @@ import React from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import AllProjectsEmptyInboxAddTask from './AllProjectsEmptyInboxAddTask'
 import AllProjectsEmptyInboxTags from './AllProjectsEmptyInboxTags'
 import AllProjectsEmptyInboxText from './AllProjectsEmptyInboxText'
 import AllProjectsEmptyInboxPicture from './AllProjectsEmptyInboxPicture'
@@ -28,7 +27,6 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
     return (
         <View style={localStyles.emptyInbox}>
             <AllProjectsEmptyInboxText />
-            <AllProjectsEmptyInboxAddTask />
             <AllProjectsEmptyInboxTags />
             {showEmptyInboxOverview && (
                 <EmptyInboxOverview

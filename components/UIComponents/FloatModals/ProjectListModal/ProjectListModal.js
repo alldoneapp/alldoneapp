@@ -4,9 +4,8 @@ import { useDispatch } from 'react-redux'
 
 import ProjectModalItem from '../SelectProjectModal/ProjectModalItem'
 import AllProjectItem from '../SelectProjectModal/AllProjectItem'
-import AutomaticProjectItem from '../SelectProjectModal/AutomaticProjectItem'
 import HeaderInSearch from '../SelectProjectModal/HeaderInSearch'
-import { ALL_PROJECTS_OPTION, AUTOMATIC_PROJECT_OPTION } from '../SelectProjectModal/projectPickerConstants'
+import { ALL_PROJECTS_OPTION } from '../SelectProjectModal/projectPickerConstants'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Button from '../../../UIControls/Button'
 import ModalHeader from '../ModalHeader'
@@ -36,12 +35,6 @@ const ROW_HEIGHT = 48
  * semantics (real* vs plain) out of this component. `leadingAllOption`
  * prepends the "All projects" row (index -1) on the FIRST tab and commits the
  * ALL_PROJECTS_OPTION sentinel.
- *
- * `leadingAutomaticOption` (AT-2306) is the same mechanism for the add-task
- * picker's "Automatic" row. There is exactly ONE leading row at index -1 — the
- * keyboard cycle in moveSelection() is built on that single slot — so the two
- * props are mutually exclusive and "All projects" wins if a caller ever passes
- * both. No caller does: search scopes offer All, task creation offers Automatic.
  */
 export default function ProjectListModal({
     closeModal,
@@ -49,7 +42,6 @@ export default function ProjectListModal({
     tabs,
     initialTabIndex = 0,
     leadingAllOption = false,
-    leadingAutomaticOption = false,
     title,
     description,
     onSelectProject, // (project, arrayIndex) => void
@@ -62,12 +54,7 @@ export default function ProjectListModal({
     const dispatch = useDispatch()
     const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
     const currentProjects = tabs ? tabs[activeTabIndex]?.projects || [] : projects
-    const leadingOptionId = leadingAllOption
-        ? ALL_PROJECTS_OPTION
-        : leadingAutomaticOption
-          ? AUTOMATIC_PROJECT_OPTION
-          : null
-    const leadingOptionVisible = !!leadingOptionId && (!tabs || activeTabIndex === 0)
+    const allOptionVisible = leadingAllOption && (!tabs || activeTabIndex === 0)
     const [activeOptionIndex, setActiveOptionIndex] = useState(() => {
         const selectedIndex = selectedProjectId
             ? (tabs ? tabs[initialTabIndex]?.projects || [] : projects).findIndex(
@@ -110,10 +97,10 @@ export default function ProjectListModal({
     }
 
     const moveSelection = delta => {
-        if (currentProjects.length === 0 && !leadingOptionVisible) return
+        if (currentProjects.length === 0 && !allOptionVisible) return
         let next
-        if (leadingOptionVisible) {
-            // The leading row (All projects / Automatic) is index -1 and part of the cycle.
+        if (allOptionVisible) {
+            // The All row is index -1 and part of the cycle.
             const span = currentProjects.length + 1
             next = ((activeOptionIndex + 1 + delta + span) % span) - 1
         } else {
@@ -133,8 +120,8 @@ export default function ProjectListModal({
     // backend work before the picker reports itself closed (the old tabbed
     // modal awaited the move before calling closePopover).
     const commit = async index => {
-        if (index === -1 && leadingOptionVisible) {
-            await onSelectProject({ id: leadingOptionId }, -1)
+        if (index === -1 && allOptionVisible) {
+            await onSelectProject({ id: ALL_PROJECTS_OPTION }, -1)
             closeModal()
             return
         }
@@ -154,7 +141,7 @@ export default function ProjectListModal({
             if (key === 'ArrowUp') moveSelection(-1)
             else if (key === 'ArrowDown') moveSelection(1)
             else if (key === 'Enter') {
-                if (activeOptionIndex === -1 && !leadingOptionVisible) closeModal()
+                if (activeOptionIndex === -1 && !allOptionVisible) closeModal()
                 else commit(activeOptionIndex)
             } else if (tabs && (key === 'Tab' || key === 'ArrowRight')) {
                 changeTab(activeTabIndex + 1 === tabs.length ? 0 : activeTabIndex + 1)
@@ -200,20 +187,13 @@ export default function ProjectListModal({
                         viewportRef.current = { ...viewportRef.current, top: nativeEvent.contentOffset.y }
                     }}
                 >
-                    {leadingOptionVisible &&
-                        (leadingOptionId === AUTOMATIC_PROJECT_OPTION ? (
-                            <AutomaticProjectItem
-                                selectedProjectId={selectedProjectId}
-                                onProjectSelect={() => commit(-1)}
-                                active={activeOptionIndex === -1}
-                            />
-                        ) : (
-                            <AllProjectItem
-                                selectedProjectId={selectedProjectId}
-                                onProjectSelect={() => commit(-1)}
-                                active={activeOptionIndex === -1}
-                            />
-                        ))}
+                    {allOptionVisible && (
+                        <AllProjectItem
+                            selectedProjectId={selectedProjectId}
+                            onProjectSelect={() => commit(-1)}
+                            active={activeOptionIndex === -1}
+                        />
+                    )}
 
                     {currentProjects.length > 0 ? (
                         currentProjects.map((projectItem, index) => (
