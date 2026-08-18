@@ -32,7 +32,7 @@ jest.mock('../../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: jest.
 
 import Delta from 'quill-delta'
 
-import { buildDictationDelta, normalizeDictatedText } from './textInputHelper'
+import { buildDictationDelta, normalizeDictatedText, placeDictationCaret } from './textInputHelper'
 
 describe('normalizeDictatedText', () => {
     test('trims surrounding whitespace', () => {
@@ -107,5 +107,37 @@ describe('buildDictationDelta', () => {
             needsLeadingSpace: false,
         })
         expect(caretIndex).toBe(5)
+    })
+})
+
+describe('placeDictationCaret', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    const buildEditor = () => ({ setSelection: jest.fn(), focus: jest.fn() })
+
+    test("sets the caret immediately AND re-asserts it after Quill's update cycle", () => {
+        const editor = buildEditor()
+        placeDictationCaret(editor, 12, () => true)
+
+        // Immediate set covers the common case…
+        expect(editor.setSelection).toHaveBeenCalledWith(12, 0, 'user')
+        expect(editor.setSelection).toHaveBeenCalledTimes(1)
+
+        // …the deferred set wins over Quill's own post-mutation selection reconciliation,
+        // which would otherwise leave the caret before the inserted text.
+        jest.runAllTimers()
+        expect(editor.focus).toHaveBeenCalled()
+        expect(editor.setSelection).toHaveBeenCalledTimes(2)
+        expect(editor.setSelection).toHaveBeenLastCalledWith(12, 0, 'user')
+    })
+
+    test('skips the deferred set when the editor is no longer live', () => {
+        const editor = buildEditor()
+        placeDictationCaret(editor, 5, () => false)
+
+        jest.runAllTimers()
+        expect(editor.setSelection).toHaveBeenCalledTimes(1)
+        expect(editor.focus).not.toHaveBeenCalled()
     })
 })

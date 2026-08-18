@@ -820,6 +820,23 @@ export const buildDictationDelta = ({ Delta, contentDelta, index, length, needsL
     return { delta, caretIndex }
 }
 
+/**
+ * Puts the caret right after dictated text, reliably. A setSelection made synchronously after
+ * updateContents/insertText can be overridden by Quill's own scheduled selection reconciliation
+ * (the mutation update transforms and restores the pre-insert selection), which leaves the caret
+ * before the inserted text. Set it now for the common case, then re-assert it after Quill's update
+ * cycle has run. `isEditorStillLive` guards the deferred call against the editor unmounting in the
+ * meantime.
+ */
+export const placeDictationCaret = (editor, caretIndex, isEditorStillLive) => {
+    editor.setSelection(caretIndex, 0, 'user')
+    setTimeout(() => {
+        if (isEditorStillLive && !isEditorStillLive()) return
+        editor.focus()
+        editor.setSelection(caretIndex, 0, 'user')
+    }, 0)
+}
+
 export const insertPerplexityContent = (editor, content) => {
     if (!editor) return
 
