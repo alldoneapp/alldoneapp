@@ -15,7 +15,7 @@ import v4 from 'uuid/v4'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
-import './noteAttachmentDrop'
+import DragAndDropModule from 'quill-drag-and-drop-module'
 import '../../../Feeds/CommentsTextInput/quill2Setup'
 import EditorsGroup from './EditorsGroup/EditorsGroup'
 import { useSelector } from 'react-redux'
@@ -41,7 +41,6 @@ import { shortcutNotePreviewMount, shortcutNotePreviewUnmount } from '../../../.
 import NotesAttachmentsSelectorModal from '../../../UIComponents/FloatModals/NotesAttachmentsSelectorModal'
 import {
     ATTACHMENTS_SELECTOR_MODAL_ID,
-    getEditorId,
     getPlaceholderData,
     insertAttachmentInsideEditor,
     LOADING_MODE,
@@ -636,7 +635,7 @@ Font.whitelist = ['arial', 'comic-sans', 'courier-new', 'georgia', 'helvetica', 
 Quill.register(Font, true)
 Quill.register('modules/cursors', QuillCursors)
 // Quill.register('modules/imageDrop', ImageDrop)
-// `modules/noteAttachmentDrop` registers itself on import (see noteAttachmentDrop.js).
+Quill.register('modules/dragAndDrop', DragAndDropModule, true)
 Quill.register({
     'modules/autoformat': Autoformat,
     'formats/hashtag': Hashtag,
@@ -665,6 +664,9 @@ LinkFormat.sanitize = function customSanitizeLinkInput(linkValueInput) {
 
     return builtInFunc.call(this, val) // retain the built-in logic
 }
+
+const image_content_type_pattern = DragAndDropModule.image_content_type_pattern
+const getFileDataUrl = DragAndDropModule.utils.getFileDataUrl
 
 const convertContentToText = (projectId, deltaContent) => {
     let textExtended = ''
@@ -856,16 +858,85 @@ export const modules = {
             },
         },
     },
-    // AT-2365: multi-file drag & drop. Replaces `quill-drag-and-drop-module`, whose
-    // per-file `onDrop` ran in parallel behind an unused base64 read and therefore
-    // ordered the inserts by file size instead of by drop order. See noteAttachmentDrop.js.
-    noteAttachmentDrop: {
-        getProjectId: editor => quillTextInputProjectIds[getEditorId(editor)],
+    dragAndDrop: {
+        // draggables is an array containing the types of files that are allowed
+        // to be dragged onto the editor, and the type of html element & name of
+        // html attribute that will be added to the editor from this file
+        draggables: [
+            {
+                // string regex pattern used to match a dropped file's `type`
+                content_type_pattern: image_content_type_pattern,
+
+                // the type of html element that will be added when a file matching
+                // this draggable is dropped on the editor
+                tag: 'img',
+
+                // the attribute of the created html element that will be set based on
+                // the file's data & result of onDrop (see below)
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^video/',
+                tag: 'video',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^text/',
+                tag: 'div',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^audio/',
+                tag: 'div',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^application/',
+                tag: 'div',
+                attr: 'src',
+            },
+        ],
+
+        // onDrop will be called any time a file with a type matching a
+        // content_type_pattern defined in draggables is dropped on the editor
+        // params:
+        //    file - the File object that was dropped
+        onDrop(file) {
+            return getFileDataUrl(file)
+                .then(base64_content => {
+                    // do something with the base64 content
+                    // e.g. save file to server, resize image, add a watermark, etc.
+
+                    const id = v4()
+                    const uri = URL.createObjectURL(file)
+                    const editor = exportRef.getEditor()
+                    const index = (editor.getSelection() || {}).index || editor.getLength()
+
+                    insertAttachmentInsideEditor(index, editor, file.name.replaceAll(/\s/g, '_'), uri, id, LOADING_MODE)
+                    updateNewAttachmentsDataInNotes(editor, id, file.name.replaceAll(/\s/g, '_'), uri, 'user')
+                })
+                .then(response_from_do_something => {
+                    // whatever you return (or promise) from `onDrop` will be used as the
+                    // value of the `attr` attribute for the new html element,
+                    // with a couple of exceptions:
+                    //   returning `false` from `onDrop` =>
+                    //     this file will be ignored; no new element will be added to the
+                    //     editor
+                    //   returning `null` from `onDrop` =>
+                    //     the file's data url (i.e. base64 representation) will be used
+                    //     it's the same as if you'd done:
+                    //       `onDrop: DragAndDropModule.utils.getFileDataUrl`
+                    //     This is the default behavior (i.e., it's what will happen if
+                    //     you don't define `onDrop`)
+                    return false
+                })
+                .catch(err => {
+                    console.log(err)
+                    // return false to tell Quill to ignore this dropped file
+                    return false
+                })
+        },
     },
-    // Quill 2's built-in uploader listens for `drop` on the same node and inserts png/jpeg
-    // a SECOND time as a base64 `image` embed, so every dropped screenshot was duplicated.
-    // Disabled here only: paste keeps going through the clipboard module untouched.
-    uploader: false,
     // imageDrop: true,
     history: {
         maxStack: 100,
