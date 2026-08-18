@@ -134,7 +134,7 @@ const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
 const OPENAI_INPUT_TOKEN_ALERT_THRESHOLD = 180000
 const OPENAI_INPUT_TOKEN_TARGET_CEILING = 200000
-const OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT = 150000
+const OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT = OPENAI_INPUT_TOKEN_TARGET_CEILING
 
 const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
@@ -12984,7 +12984,7 @@ function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', mo
         hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     })
     const error = new Error(
-        `OpenAI request blocked before dispatch because the estimated input size (${estimate.estimatedInputTokens} tokens) exceeds the ${OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT}-token safety limit.`
+        `OpenAI request blocked before dispatch because the estimated input size (${estimate.estimatedInputTokens} tokens) reaches or exceeds the ${OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT}-token safety limit.`
     )
     error.code = 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT'
     error.estimatedInputTokens = estimate.estimatedInputTokens
