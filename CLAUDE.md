@@ -740,6 +740,12 @@ labels are empty until permission has been granted once, hence the opt-in "Show 
 The failure message had to change too: naming only the device we recorded from reads as an
 accusation to someone who picked a different one in macOS, and it sends them to the one place that
 cannot fix it — it now says the microphone is the **browser's** choice and points at the picker.
+The reporting user confirmed both halves: Chrome's site-settings microphone was pinned to
+"MacBook Pro Microphone", and he was in the **installed PWA**, whose entry is separate from the
+browser tab's. He also could not open DevTools — which is why `rambler.lastDevice` records the
+device each recording actually came from and the picker shows it under "System default": from
+inside a page there is otherwise no way to learn which microphone that resolves to, and a settings
+row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 

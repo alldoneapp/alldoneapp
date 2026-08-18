@@ -7,7 +7,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import { readLearnedCaptureMode, readLearnedInputDevice } from './rambleMicCapture'
+import { readLastUsedInputDevice, readLearnedCaptureMode, readLearnedInputDevice } from './rambleMicCapture'
 import useRambleRecorder, {
     pickSupportedMimeType,
     isDictationSupported,
@@ -416,6 +416,25 @@ describe('useRambleRecorder', () => {
             expect(calls[2][0].audio.deviceId).toEqual({ exact: 'webcam-1' })
             expect(readLearnedInputDevice()).toEqual({ deviceId: 'webcam-1', label: 'HD Webcam' })
             expect(onError).not.toHaveBeenCalled()
+
+            await act(async () => {
+                hookValue.cancel()
+            })
+        })
+
+        test('the device actually recorded from is remembered for the settings picker', async () => {
+            installDevices()
+            installAudioContext([0.3])
+            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
+
+            jest.useRealTimers()
+            await act(async () => {
+                await hookValue.start()
+            })
+
+            // A user who cannot open DevTools has no other way to see that "System default" is the
+            // built-in microphone rather than the one selected in macOS.
+            expect(readLastUsedInputDevice()).toEqual({ deviceId: 'builtin-1', label: 'MacBook Pro Microphone' })
 
             await act(async () => {
                 hookValue.cancel()

@@ -7,6 +7,7 @@ import {
     forgetLearnedCapture,
     installDeviceChangeInvalidation,
     isSilentCapture,
+    rememberLastUsedInputDevice,
     rememberLearnedCaptureMode,
 } from './rambleMicCapture'
 
@@ -162,6 +163,9 @@ export default function useRambleRecorder({ onComplete, onError }) {
         deviceIdRef.current = deviceId
         deviceLabelRef.current = deviceLabel
         triedDevicesRef.current = triedDevices || []
+        // Diagnostic only: the Settings picker shows this so "System default" is not a black box.
+        // Which microphone the browser hands us is otherwise only visible in the DevTools console.
+        rememberLastUsedInputDevice({ deviceId, label: deviceLabel })
         if (switchedDevice) {
             // Worth a line of its own: from here on the recording is NOT coming from the microphone
             // the browser would have chosen, which is the single most confusing thing about this

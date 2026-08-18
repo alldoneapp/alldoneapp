@@ -84,6 +84,7 @@ const MIC_MODE_STORAGE_KEY = 'rambler.micMode'
 const LEARNED_CAPTURE_STORAGE_KEY = 'rambler.captureMode'
 const PREFERRED_DEVICE_STORAGE_KEY = 'rambler.micDevice'
 const LEARNED_DEVICE_STORAGE_KEY = 'rambler.inputDevice'
+const LAST_DEVICE_STORAGE_KEY = 'rambler.lastDevice'
 
 // "Let the browser decide", i.e. exactly the behaviour before this device handling existed.
 export const SYSTEM_DEFAULT_DEVICE_ID = ''
@@ -241,6 +242,26 @@ export function forgetLearnedInputDevice() {
 export function forgetLearnedCapture() {
     forgetLearnedCaptureMode()
     forgetLearnedInputDevice()
+}
+
+/**
+ * The microphone the LAST recording actually came from — purely a diagnostic, never an input to a
+ * decision.
+ *
+ * It exists because "System default" is a black box from inside the page: the browser's own
+ * microphone preference is unreadable, so a user whose browser is pinned to the wrong device sees a
+ * settings row that says "System default" and learns nothing. The reporting user could not open
+ * DevTools, which is where that information otherwise lives. Writing it after every acquisition
+ * makes the picker say which device the browser is really handing us.
+ */
+export function readLastUsedInputDevice() {
+    return readDeviceRecord(LAST_DEVICE_STORAGE_KEY)
+}
+
+export function rememberLastUsedInputDevice(device) {
+    // A label-less record would render as a blank hint; better to keep the previous known name.
+    if (!device?.deviceId || !device?.label) return
+    writeDeviceRecord(LAST_DEVICE_STORAGE_KEY, device)
 }
 
 /**

@@ -20,8 +20,10 @@ import {
     readLearnedInputDevice,
     readMicModeSetting,
     readPreferredInputDevice,
+    rememberLastUsedInputDevice,
     rememberLearnedCaptureMode,
     rememberLearnedInputDevice,
+    writePreferredInputDevice,
 } from '../../../../hooks/rambleMicCapture'
 
 jest.mock('react-redux', () => ({
@@ -124,6 +126,30 @@ describe('DictationMicrophone', () => {
         expect(readPreferredInputDevice()).toBeNull()
 
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
+    })
+
+    test('says which device "System default" actually resolved to', () => {
+        // The reporting user could not open DevTools, and a browser pinned to the wrong microphone
+        // is invisible from inside the page — so the last device we really recorded from is the only
+        // way for him to see that "System default" means the built-in mic.
+        rememberLastUsedInputDevice({ deviceId: 'builtin-1', label: 'MacBook Pro Microphone' })
+        const tree = renderRow()
+
+        const labels = tree.findAllByType(Text).map(node => node.props.children)
+        expect(labels.join(' ')).toContain('MacBook Pro Microphone')
+    })
+
+    test('an explicit device replaces the resolved-default hint rather than adding to it', () => {
+        rememberLastUsedInputDevice({ deviceId: 'builtin-1', label: 'MacBook Pro Microphone' })
+        writePreferredInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
+        const tree = renderRow()
+
+        const labels = tree
+            .findAllByType(Text)
+            .map(node => node.props.children)
+            .join(' ')
+        expect(labels).toContain('HD Webcam')
+        expect(labels).not.toContain('MacBook Pro Microphone')
     })
 
     test('choosing a device by hand retires what automatic had learned', async () => {

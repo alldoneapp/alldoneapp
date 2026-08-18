@@ -12,6 +12,7 @@ import {
     isWorkaroundActive,
     listAudioInputDevices,
     micModeOptions,
+    readLastUsedInputDevice,
     readLearnedInputDevice,
     readMicModeSetting,
     readPreferredInputDevice,
@@ -58,6 +59,7 @@ export default function DictationMicrophone() {
     const [workaroundActive, setWorkaroundActive] = useState(() => isWorkaroundActive())
     const [preferred, setPreferred] = useState(() => readPreferredInputDevice())
     const [learnedDevice, setLearnedDevice] = useState(() => readLearnedInputDevice())
+    const [lastUsedDevice, setLastUsedDevice] = useState(() => readLastUsedInputDevice())
     const [devices, setDevices] = useState([])
     const [permissionAsked, setPermissionAsked] = useState(false)
 
@@ -71,6 +73,7 @@ export default function DictationMicrophone() {
         setWorkaroundActive(isWorkaroundActive())
         setPreferred(readPreferredInputDevice())
         setLearnedDevice(readLearnedInputDevice())
+        setLastUsedDevice(readLastUsedInputDevice())
     }, [])
 
     const refreshDevices = useCallback(async () => {
@@ -111,7 +114,10 @@ export default function DictationMicrophone() {
     const suffixes = []
     if (mode !== MIC_MODE_AUTO) suffixes.push(translate(currentOption.label))
     if (mode === MIC_MODE_AUTO && workaroundActive) suffixes.push(translate('compatibility in use'))
-    if (!preferred && learnedDevice) suffixes.push(shortenDeviceLabel(learnedDevice.label))
+    // Which device "System default" resolves to is the one thing the user cannot find out anywhere
+    // else — the browser's own microphone preference is unreadable from a page.
+    const resolvedDevice = learnedDevice || lastUsedDevice
+    if (!preferred && resolvedDevice?.label) suffixes.push(shortenDeviceLabel(resolvedDevice.label))
     const currentLabel = suffixes.length ? `${deviceLabel} (${suffixes.join(', ')})` : deviceLabel
 
     const namedDevices = devices.filter(device => device.deviceId)
@@ -141,11 +147,16 @@ export default function DictationMicrophone() {
                         <View style={localStyles.optionsContainer}>
                             <Text style={[styles.body2, localStyles.helpText]}>
                                 {translate(
-                                    'Your browser keeps its own microphone choice, which can differ from the input selected in your system settings. Pick the device to record from here.'
+                                    'Your browser keeps its own microphone choice, which can differ from the input selected in your system settings — an installed app window can even differ from the browser tab. Pick the device to record from here.'
                                 )}
                             </Text>
 
                             <Text style={[styles.caption1, localStyles.sectionLabel]}>{translate('Microphone')}</Text>
+                            {!preferred && resolvedDevice?.label && (
+                                <Text style={[styles.body2, localStyles.helpText]}>
+                                    {translate('Last recording used', { device: resolvedDevice.label })}
+                                </Text>
+                            )}
                             {renderOption('system-default', translate(SYSTEM_DEFAULT_OPTION_LABEL), !preferred, () =>
                                 onSelectDevice(null)
                             )}
