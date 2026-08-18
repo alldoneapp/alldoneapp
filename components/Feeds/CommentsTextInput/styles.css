@@ -70,6 +70,15 @@
     line-height: 24px !important;
 }
 
+/* Reserves the dictation mic overlay's strip (right: 8 + 24px button + gap) so text wraps before
+   it instead of flowing beneath. Applied whenever dictation is enabled on the input — not only
+   while the mic is visible — so focusing/hovering never reflows the text. Must stay AFTER
+   .ql-textInputEditor: both are single-class selectors, so source order decides which
+   !important padding wins. */
+.ql-editorWithDictation {
+    padding-right: 34px !important;
+}
+
 .ql-clipboard {
     -webkit-user-select: text;
 }

@@ -239,6 +239,13 @@ function CustomTextInput3(
     const dictationKind = dictationTargetKind || (dictationIsTitleTarget ? 'title' : 'generic')
 
     useEffect(() => {
+        if (!dictationEnabled || !editorElement) return
+        // Reserve the mic strip in the text layout (see .ql-editorWithDictation in styles.css).
+        editorElement.classList.add('ql-editorWithDictation')
+        return () => editorElement.classList.remove('ql-editorWithDictation')
+    }, [dictationEnabled, editorElement])
+
+    useEffect(() => {
         if (!dictationEnabled || !containerElement) return
         // The mic overlay lives in CustomScrollView's fixedChildren, OUTSIDE the Quill container —
         // so visibility tracks the whole input frame (the scroll-boundary element), not
