@@ -20,7 +20,6 @@ import {
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import UpdateFromTemplate from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/UpdateFromTemplate'
-import { hasAssistantTemplateReview } from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/templateReview'
 
 export default function OpenTasksAssistantData({ projectId }) {
     const dispatch = useDispatch()
@@ -39,7 +38,8 @@ export default function OpenTasksAssistantData({ projectId }) {
     const currentUser = useSelector(state => state.currentUser)
 
     const isGlobal = isGlobalAssistant(assistantId)
-    const hasTemplateConflicts = hasAssistantTemplateReview(currentUser)
+    const hasTemplateConflicts =
+        Array.isArray(currentUser.templateSyncConflicts) && currentUser.templateSyncConflicts.length
 
     const copyToEdit = async () => {
         const { currentUser } = store.getState()

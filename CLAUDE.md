@@ -274,26 +274,7 @@ Responses-only**, so OpenRouter runs always send full function schemas (Flash's 
 it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
 extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
 (`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
-failing the whole request. Modality is answered per model by
-`assistantModelSupportsImageInput` in `assistantModelRouting.js` — it sits next to the pinned
-upstream id because it is a fact about that release, and an unlisted OpenRouter model is assumed
-text-only (a stripped image degrades to a note the model can explain; an image sent to a text-only
-model takes the whole request down). The transport counts the replacements and warns, because a
-dropped image is otherwise invisible: the request succeeds and the only symptom is an answer that
-ignores the attachment the user is looking at.
-
-**A chat image is fetchable, and `get_chat_attachment` used to say otherwise.** The tool and its
-fallback filtered `media.kind === 'file'`, while WhatsApp and web uploads store a photo as
-`kind: 'image'` — and `list_recent_chat_media` advertises those images together with their
-messageIds. So the discovery tool named an image the fetch tool then denied existed
-(`No file attachment was found on the requested chat message`), which is exactly the loop a
-text-only model falls into when it cannot see an attached photo: it asked three times and burned a
-minute of wall clock before answering. The bytes come from the same `storageUrl` whatever the kind,
-so `isFetchableChatAttachment` now accepts `file`/`image`/`video`. The one thing widening the kinds
-must not break is a message carrying an image **next to** a document: that used to resolve to the
-document, so `selectRequestedChatAttachments` keeps that preference rather than turning a working
-call into an ambiguity error, and an explicit `expectedFileName` outranks it. Base64 never enters
-the conversation either way — `buildConversationSafeToolResult` redacts it. Labeling was the cheap half — the Gmail and calendar classifiers already
+failing the whole request. Labeling was the cheap half — the Gmail and calendar classifiers already
 call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
 classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
 default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
@@ -732,6 +713,35 @@ Compatibility) — deliberately localStorage and not the user doc, since it desc
 audio hardware. **An explicit choice is obeyed as written**: no probe, no second acquisition, and a
 silent take is reported without overriding it. Pinned by `hooks/rambleMicCapture.test.js` and the
 `silent microphone (AT-2357)` block in `hooks/useRambleRecorder.test.js`.
+
+**The processing chain was only half of it: the browser also hands you a different microphone than
+macOS does.** The first fix shipped and the same user still failed — with an error naming
+"MacBook Pro Microphone" while macOS System Settings was set to his webcam, level meter healthy.
+A browser keeps its **own** microphone preference (Chrome: Settings → Site settings → Microphone,
+and an installed PWA gets a **separate** entry from the browser tab), and a device pinned there, or
+a stale cached `"default"`, outranks the system input source. No web API can read or change that
+preference — `enumerateDevices` will not tell you which entry the browser would pick, and
+`getUserMedia({audio: true})` just returns it. So switching the capture mode on that device could
+only ever produce silence more efficiently, which is exactly what the user saw. Two consequences:
+**every re-acquisition pins the device** (`deviceId: { exact }` — `ideal` is a preference the
+browser may silently ignore, and a silently ignored pin means the probe measured one mic and the
+recording used another), and when the acquired device is silent **both** ways the automatic path
+**walks the other audio inputs** (`findWorkingInputDevice`, capped at `MAX_FALLBACK_DEVICES`) and
+records from the first one that is alive, remembering it as `rambler.inputDevice`. Declining to
+record from a device that demonstrably produces nothing is the only lever the page actually has.
+Alias entries (`default`, `communications`) are never walk candidates — they point at the hardware
+we just measured — and neither are devices sharing its `groupId` or label; a candidate that cannot
+be opened is skipped rather than retried unpinned, because the unpinned retry would reopen the
+device we are escaping. The learned device retires exactly like the learned mode (devicechange,
+still-silent raw), and **an explicit device chosen in Settings → Customizations → "Dictation
+microphone" is never walked away from**, same rule as the mode. That row now lists the real devices
+(`rambler.micDevice`), which is the only thing that can overrule a browser pinned to the wrong mic;
+labels are empty until permission has been granted once, hence the opt-in "Show my microphones".
+The failure message had to change too: naming only the device we recorded from reads as an
+accusation to someone who picked a different one in macOS, and it sends them to the one place that
+cannot fix it — it now says the microphone is the **browser's** choice and points at the picker.
+Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
+the three suites above.
 
 ### Gold Transactions
 
