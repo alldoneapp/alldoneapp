@@ -55,8 +55,16 @@ Setup (Firebase console, production project `alldonealeph`):
 3. After the first Play upload: Play Console → Test and release → Setup →
    App signing → copy the **App signing key certificate** SHA-256 and add it as
    a second fingerprint in the same Firebase screen (makes the Play-installed
-   app verify).
+   app verify). Done 2026-08-19; the verified Play App Signing cert is
+   `5E:9B:A8:9B:97:EB:5E:E2:FB:F8:B4:6E:5D:49:67:B9:D6:58:C5:CF:AD:52:AF:09:7F:EB:DB:A4:91:9D:AD:91`
+   (read directly off the Play-installed APK with `apksigner verify
+--print-certs` — the App signing page has many similar-looking rows and the
+   first copy grabbed a wrong value, so verify against the APK if in doubt).
 4. Check `curl https://my.alldone.app/.well-known/assetlinks.json` lists both.
+
+If the Play-installed app shows a URL bar even though the fingerprint is
+correct, Chrome cached a failed verification: force-stop both Chrome and the
+app (or clear Chrome's cache) and relaunch.
 
 Without step 3 the Play-installed app still works but shows a Chrome URL bar.
 
