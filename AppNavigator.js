@@ -48,6 +48,7 @@ import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
 import { installConnectionStateListener } from './utils/connectionState'
+import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 
 const onLayoutChange = layout => {
     const {
@@ -274,6 +275,7 @@ export class AppContainer extends React.Component {
         return (
             <React.Fragment key={id}>
                 {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
+                <ShellInsetPainter routeName={routeName} />
             </React.Fragment>
         )
     }
