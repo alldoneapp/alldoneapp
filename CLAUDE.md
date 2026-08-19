@@ -733,6 +733,41 @@ audio hardware. **An explicit choice is obeyed as written**: no probe, no second
 silent take is reported without overriding it. Pinned by `hooks/rambleMicCapture.test.js` and the
 `silent microphone (AT-2357)` block in `hooks/useRambleRecorder.test.js`.
 
+**The processing chain was only half of it: the browser also hands you a different microphone than
+macOS does.** The first fix shipped and the same user still failed — with an error naming
+"MacBook Pro Microphone" while macOS System Settings was set to his webcam, level meter healthy.
+A browser keeps its **own** microphone preference (Chrome: Settings → Site settings → Microphone,
+and an installed PWA gets a **separate** entry from the browser tab), and a device pinned there, or
+a stale cached `"default"`, outranks the system input source. No web API can read or change that
+preference — `enumerateDevices` will not tell you which entry the browser would pick, and
+`getUserMedia({audio: true})` just returns it. So switching the capture mode on that device could
+only ever produce silence more efficiently, which is exactly what the user saw. Two consequences:
+**every re-acquisition pins the device** (`deviceId: { exact }` — `ideal` is a preference the
+browser may silently ignore, and a silently ignored pin means the probe measured one mic and the
+recording used another), and when the acquired device is silent **both** ways the automatic path
+**walks the other audio inputs** (`findWorkingInputDevice`, capped at `MAX_FALLBACK_DEVICES`) and
+records from the first one that is alive, remembering it as `rambler.inputDevice`. Declining to
+record from a device that demonstrably produces nothing is the only lever the page actually has.
+Alias entries (`default`, `communications`) are never walk candidates — they point at the hardware
+we just measured — and neither are devices sharing its `groupId` or label; a candidate that cannot
+be opened is skipped rather than retried unpinned, because the unpinned retry would reopen the
+device we are escaping. The learned device retires exactly like the learned mode (devicechange,
+still-silent raw), and **an explicit device chosen in Settings → Customizations → "Dictation
+microphone" is never walked away from**, same rule as the mode. That row now lists the real devices
+(`rambler.micDevice`), which is the only thing that can overrule a browser pinned to the wrong mic;
+labels are empty until permission has been granted once, hence the opt-in "Show my microphones".
+The failure message had to change too: naming only the device we recorded from reads as an
+accusation to someone who picked a different one in macOS, and it sends them to the one place that
+cannot fix it — it now says the microphone is the **browser's** choice and points at the picker.
+The reporting user confirmed both halves: Chrome's site-settings microphone was pinned to
+"MacBook Pro Microphone", and he was in the **installed PWA**, whose entry is separate from the
+browser tab's. He also could not open DevTools — which is why `rambler.lastDevice` records the
+device each recording actually came from and the picker shows it under "System default": from
+inside a page there is otherwise no way to learn which microphone that resolves to, and a settings
+row reading "System default" teaches a mis-pinned user nothing.
+Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
+the three suites above.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
