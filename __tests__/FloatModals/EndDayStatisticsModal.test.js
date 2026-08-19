@@ -151,6 +151,25 @@ describe('EndDayStatisticsModal — "Start new day" (AT-2367)', () => {
         expect(deleteCacheAndRefresh).toHaveBeenCalledTimes(1)
     })
 
+    /**
+     * The reported symptom, verbatim: "stays open forever", on an installed
+     * iPhone PWA. There the reload path is taken (the PWA is resumed the next
+     * morning, so the midnight timer has fired) and `deleteCacheAndRefresh`
+     * could hang before ever calling `location.reload()` — its service worker
+     * update check is a network fetch. The popup used to close only after that
+     * call returned, so it never closed at all.
+     */
+    it('closes even when the app reload never happens', () => {
+        setUserStatisticsModalDate.mockResolvedValue(undefined)
+        deleteCacheAndRefresh.mockImplementation(() => new Promise(() => {}))
+        renderer.act(() => store.dispatch(setShowNewDayNotification(true)))
+        const tree = render()
+
+        pressStartNewDay(tree)
+
+        expect(tree.toJSON()).toBeNull()
+    })
+
     it('ignores a second tap landing in the same frame', () => {
         const tree = render()
         const button = tree.root.findByProps({ testID: 'startNewDayButton' })
