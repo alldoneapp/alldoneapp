@@ -37,30 +37,18 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
             alert(translate('No sound came from your microphone. Switched recording mode, please try again.'))
         } else if (code === 'silent-input') {
             const deviceLabel = details?.deviceLabel
-            // Naming only the device we used reads as an accusation when the user has already picked
-            // a different one in macOS — the browser keeps its OWN microphone choice, and that gap
-            // is the whole confusion in this failure, so the message has to name it and say where
-            // to override it. Listing what else was tried prevents "it didn't even look".
-            const triedLabels = (details?.triedDeviceLabels || []).filter(label => label !== deviceLabel)
-            if (triedLabels.length) {
-                alert(
-                    translate('No sound came from any microphone', {
-                        device: deviceLabel,
-                        devices: triedLabels.join(', '),
-                    })
-                )
-            } else if (deviceLabel) {
-                alert(translate('No sound came from the browser microphone', { device: deviceLabel }))
-            } else {
-                alert(translate('No sound came from your microphone. Check your system input device.'))
-            }
+            alert(
+                deviceLabel
+                    ? translate('No sound came from the microphone named', { device: deviceLabel })
+                    : translate('No sound came from your microphone. Check your system input device.')
+            )
         } else if (code !== 'not-supported') {
             alert(translate('Could not process dictation'))
         }
     }, [])
 
     const handleRecordingComplete = useCallback(
-        async ({ audioBase64, mimeType, durationSeconds, deviceLabel }) => {
+        async ({ audioBase64, mimeType, durationSeconds }) => {
             setProcessing(true)
             try {
                 const requestStartedAt = Date.now()
@@ -100,15 +88,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
                         })
                     )
                 } else if (error?.message?.includes('EMPTY_TRANSCRIPT')) {
-                    // A microphone can be alive and still be the WRONG one: it records the room
-                    // while the user talks into another device, which passes every local check and
-                    // only fails here. Naming the device we listened to is the difference between a
-                    // dead end and an obvious fix.
-                    alert(
-                        deviceLabel
-                            ? translate('No speech detected on the microphone', { device: deviceLabel })
-                            : translate('No speech detected')
-                    )
+                    alert(translate('No speech detected'))
                 } else {
                     alert(translate('Could not process dictation'))
                 }

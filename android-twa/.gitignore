@@ -1,0 +1,13 @@
+# Signing secrets — NEVER commit. Back these two up somewhere safe
+# (password manager + GitLab CI variables); losing the upload key means
+# a Play Console support request to reset it.
+android.keystore
+keystore.properties
+
+node_modules/
+build/
+app/build/
+.gradle/
+*.apk
+*.aab
+*.idsig

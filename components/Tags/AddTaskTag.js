@@ -93,11 +93,7 @@ function AddTaskTag({
         <AppPopover
             isOpen={isOpen}
             positions={['bottom', 'top', 'left', 'right']}
-            // AT-2364: the large call to action is itself centered on the
-            // screen, so an edge-aligned popup reads as off-center. Centering
-            // stays library-managed (no contentLocation), which keeps the
-            // vendored viewport nudge and the position-flip search working.
-            align={large ? 'center' : 'start'}
+            align="start"
             containerStyle={{ zIndex: 9999 }}
             padding={8}
             offsetY={5}
@@ -109,10 +105,7 @@ function AddTaskTag({
                         backgroundColor: 'var(--background-primary)',
                         borderRadius: '8px',
                         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-                        // The wide variant sizes itself from the modal system
-                        // (see createTaskPopupWidth); a hard 300px floor here
-                        // would only fight it on narrow windows.
-                        ...(large ? {} : { minWidth: '300px' }),
+                        minWidth: '300px',
                     }}
                 >
                     <RichCreateTaskModal
@@ -128,7 +121,6 @@ function AddTaskTag({
                         tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
                         showProjectSelector={showProjectSelector}
                         expandTaskListIfNeeded={expandTaskListIfNeeded}
-                        wide={large}
                     />
                 </div>
             }
