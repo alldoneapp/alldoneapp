@@ -14,12 +14,13 @@
     "enableNotifications": true,
     "startUrl": "/?utm_source=twa",
     "iconUrl": "https://my.alldone.app/pwa/chrome-icon/chrome-icon-512.png",
+    "maskableIconUrl": "https://my.alldone.app/pwa/chrome-icon/chrome-icon-maskable-512.png",
     "splashScreenFadeOutDuration": 300,
     "signingKey": {
         "path": "./android.keystore",
         "alias": "android"
     },
-    "appVersion": "1.0.1",
+    "appVersionName": "Y",
     "appVersionCode": 2,
     "shortcuts": [],
     "generatorApp": "bubblewrap-cli",
@@ -38,5 +39,6 @@
     "fingerprints": [],
     "additionalTrustedOrigins": [],
     "retainedBundles": [],
-    "maskableIconUrl": "https://my.alldone.app/pwa/chrome-icon/chrome-icon-maskable-512.png"
+    "displayOverride": [],
+    "appVersion": "1.0.1"
 }
