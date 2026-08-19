@@ -969,7 +969,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     }
 }
 
-// Handles archive / markRead / archiveAll / markAllRead / draftReply / createTask.
+// Handles archive / markRead / archiveAll / markAllRead / getMessageStates / draftReply /
+// createTask.
 async function performEmailLineAction(userId, projectId, params = {}) {
     const {
         action,
@@ -996,6 +997,15 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                 return await provider.archiveMessages(userId, projectId, messageIds)
             case 'markRead':
                 return await provider.markMessagesRead(userId, projectId, messageIds)
+            // Read-only: reports each message's CURRENT mailbox state so the client can mark the
+            // Alldone email comments of mails the user already read or archived in Gmail as read
+            // (AT-2376). It mutates nothing, which is why it is safe to run on a schedule/on view.
+            case 'getMessageStates': {
+                const ids = Array.isArray(messageIds) ? messageIds : messageIds ? [messageIds] : []
+                if (ids.length === 0) return { states: [] }
+                if (typeof provider.getMessageStates !== 'function') return { states: [] }
+                return await provider.getMessageStates(userId, projectId, ids)
+            }
             case 'archiveAll':
             case 'markAllRead': {
                 if (!labelId) throw new Error('labelId is required for sweep actions')

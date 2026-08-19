@@ -14,7 +14,12 @@ import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLine
 import { markMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 
-jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({
+    performEmailLineAction: jest.fn(),
+    // The provider reconciles previewed emails against the mailbox (AT-2376); it must not reach
+    // the real callable from a row test.
+    fetchEmailLineMessageStates: jest.fn(async () => []),
+}))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markMessagesAsRead: jest.fn(),

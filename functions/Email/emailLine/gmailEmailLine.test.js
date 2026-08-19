@@ -44,6 +44,7 @@ const {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    getMessageStates,
     invalidateResolvedThreadIds,
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
@@ -651,6 +652,68 @@ describe('gmailEmailLine', () => {
         mockThreadsModify.mockResolvedValue({})
         await archiveMessages('u', 'p', ['m1', 'm2', 'm3'])
         expect(mockThreadsModify).toHaveBeenCalledTimes(1)
+    })
+
+    // Gmail → Alldone read sync (AT-2376). The only way to learn that the user read or archived a
+    // mail in Gmail itself is to ask for the message's current labels.
+    describe('getMessageStates', () => {
+        test('reports unread/inbox membership per message from the labels', async () => {
+            mockMessagesGet.mockImplementation(async ({ id }) => {
+                const labelIds = {
+                    m_unread: ['INBOX', 'UNREAD', 'Label_ads'],
+                    m_read: ['INBOX', 'Label_ads'],
+                    m_archived_unread: ['UNREAD', 'Label_ads'],
+                }[id]
+                return { data: { id, labelIds } }
+            })
+
+            const { states } = await getMessageStates('u', 'p', ['m_unread', 'm_read', 'm_archived_unread'])
+
+            expect(states).toEqual([
+                { messageId: 'm_unread', exists: true, unread: true, inInbox: true },
+                { messageId: 'm_read', exists: true, unread: false, inInbox: true },
+                // Archived while Gmail still flags it unread — the case that must still count as
+                // handled on the Alldone side.
+                { messageId: 'm_archived_unread', exists: true, unread: true, inInbox: false },
+            ])
+            // format: 'minimal' — labels without the payload, one quota unit per message.
+            expect(mockMessagesGet).toHaveBeenCalledWith({ userId: 'me', id: 'm_unread', format: 'minimal' })
+        })
+
+        test('reports a message deleted in Gmail as gone instead of failing the whole lookup', async () => {
+            const notFound = new Error('Requested entity was not found.')
+            notFound.code = 404
+            mockMessagesGet.mockImplementation(async ({ id }) =>
+                id === 'm_gone' ? Promise.reject(notFound) : { data: { id, labelIds: ['INBOX', 'UNREAD'] } }
+            )
+
+            const { states } = await getMessageStates('u', 'p', ['m_gone', 'm_live'])
+
+            expect(states).toContainEqual({ messageId: 'm_gone', exists: false, unread: false, inInbox: false })
+            expect(states).toContainEqual({ messageId: 'm_live', exists: true, unread: true, inInbox: true })
+        })
+
+        test('omits a message whose state could not be read, so unknown never reads as handled', async () => {
+            const failure = new Error('Backend Error')
+            failure.code = 500
+            mockMessagesGet.mockImplementation(async ({ id }) =>
+                id === 'm_broken' ? Promise.reject(failure) : { data: { id, labelIds: [] } }
+            )
+
+            const { states } = await getMessageStates('u', 'p', ['m_broken', 'm_ok'])
+
+            expect(states.map(state => state.messageId)).toEqual(['m_ok'])
+        })
+
+        test('deduplicates ids and skips Gmail entirely for an empty list', async () => {
+            mockMessagesGet.mockResolvedValue({ data: { labelIds: ['INBOX'] } })
+            await getMessageStates('u', 'p', ['m1', 'm1', ''])
+            expect(mockMessagesGet).toHaveBeenCalledTimes(1)
+
+            mockMessagesGet.mockClear()
+            await expect(getMessageStates('u', 'p', [])).resolves.toEqual({ states: [] })
+            expect(mockMessagesGet).not.toHaveBeenCalled()
+        })
     })
 
     test('markMessagesRead removes UNREAD', async () => {
