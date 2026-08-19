@@ -125,11 +125,13 @@
                 flex-grow: 1;
                 display: flex;
                 flex: 1;
-                /* Paint the app shell through the home-indicator region while
-                   keeping its interactive content inside the safe area. Putting
-                   this inset on body would stop #root above that region and
-                   expose a detached page-background strip instead (AT-2321). */
-                padding-bottom: env(safe-area-inset-bottom) !important;
+                /* The home-indicator region is deliberately NOT reserved:
+                   content flows under the indicator like native iOS apps
+                   (the old #root padding painted a detached white strip there
+                   — AT-2321 history). Bottom-anchored interactive surfaces pad
+                   themselves instead (ChatInput via useHomeIndicatorLift, the
+                   BottomSheet already did); the top/left/right insets stay on
+                   body. */
             }
 
             /* Mobile virtual keyboard (AT-2248). See the identical block in
