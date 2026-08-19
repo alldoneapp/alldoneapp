@@ -31,10 +31,18 @@ export function getLinkedEmailFromMessage(message = {}, context = {}) {
               ]
             : []
 
+    // Carried for the Gmail read sync only (AT-2376): whether the labeling sync archived the email
+    // itself, and whether it is an outgoing message. In both cases the mail was never in the user's
+    // inbox to begin with, so "not in the inbox" says nothing about the user having handled it.
+    const archivedByLabeling = gmailData?.archivedByLabeling === true
+    const direction = typeof gmailData?.direction === 'string' ? gmailData.direction.trim() : ''
+
     return {
         key: `${connectionProjectId}:${messageId}`,
         connectionProjectId,
         messageId,
+        ...(archivedByLabeling ? { archivedByLabeling: true } : {}),
+        ...(direction ? { direction } : {}),
         ...(commentId ? { commentId } : {}),
         ...(projectId ? { projectId } : {}),
         ...(chatId ? { chatId } : {}),

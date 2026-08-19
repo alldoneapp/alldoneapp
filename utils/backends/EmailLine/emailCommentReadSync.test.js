@@ -39,6 +39,17 @@ describe('isEmailHandledInMailbox', () => {
         expect(isEmailHandledInMailbox(state('m', { exists: false }))).toBe(true)
     })
 
+    it('ignores inbox absence for mail that was never in the user inbox (AT-2376)', () => {
+        // The labeling sync auto-archived it itself, so the comment appeared already out of the
+        // inbox; and an outgoing message is never in the inbox at all. Only read/deleted counts.
+        const archived = state('m', { inInbox: false })
+        expect(isEmailHandledInMailbox(archived, { archivedByLabeling: true })).toBe(false)
+        expect(isEmailHandledInMailbox(archived, { direction: 'outgoing' })).toBe(false)
+        expect(
+            isEmailHandledInMailbox(state('m', { inInbox: false, unread: false }), { archivedByLabeling: true })
+        ).toBe(true)
+    })
+
     it('leaves an unread inbox mail alone, and never guesses from a missing state', () => {
         expect(isEmailHandledInMailbox(state('m'))).toBe(false)
         expect(isEmailHandledInMailbox(null)).toBe(false)
@@ -94,6 +105,17 @@ describe('syncEmailCommentsReadState', () => {
             { projectId: 'project-1', chatId: 'chat-1', commentId: 'c1' },
             { projectId: 'project-2', chatId: 'chat-2', commentId: 'c2' },
         ])
+    })
+
+    it('keeps an auto-archived email unread until it is actually read in Gmail', async () => {
+        fetchEmailLineMessageStates.mockResolvedValue([state('m_auto', { inInbox: false })])
+
+        const cleared = await syncEmailCommentsReadState([
+            { ...linkedEmail('conn-a', 'm_auto'), archivedByLabeling: true },
+        ])
+
+        expect(cleared).toBe(0)
+        expect(markChatCommentsAsRead).not.toHaveBeenCalled()
     })
 
     it('asks each mail connection separately', async () => {
