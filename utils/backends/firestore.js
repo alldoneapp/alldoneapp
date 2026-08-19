@@ -47,6 +47,7 @@ import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { isBrowserOffline } from '../connectionState'
+import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
 import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
@@ -849,6 +850,32 @@ export function isLocalDevHost() {
 // Mobile browsers use redirect because popup windows are frequently blocked on iOS. Redirect is
 // only selected when Firebase's auth handler is same-origin; other hosts keep the popup fallback.
 export async function signInWithGoogleRedirect() {
+    // Capacitor iOS shell: Google blocks OAuth inside WKWebView (both the
+    // popup and the redirect land on disallowed_useragent), so the shell signs
+    // in through the native Google Sign-In sheet and hands the resulting token
+    // to the same web Firebase Auth session used everywhere else.
+    const nativeAuth = getNativeGoogleAuthPlugin()
+    if (nativeAuth) {
+        if (__DEV__) console.log('🔐 Using native Google sign-in (Capacitor shell)...')
+        let nativeResult
+        try {
+            nativeResult = await nativeAuth.signInWithGoogle()
+        } catch (error) {
+            // Closing the native sheet is a normal outcome, not a failure.
+            if (/cancel/i.test(error?.message || '') || error?.code === 'USER_CANCELLED') return null
+            throw error
+        }
+        const idToken = nativeResult?.credential?.idToken
+        if (!idToken) throw new Error('Native Google sign-in returned no ID token')
+        const credentials = firebase.auth.GoogleAuthProvider.credential(idToken, nativeResult?.credential?.accessToken)
+        await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        const result = await firebase.auth().signInWithCredential(credentials)
+        if (result?.additionalUserInfo?.isNewUser) {
+            store.dispatch(setRegisteredNewUser(true))
+        }
+        return result?.user || null
+    }
+
     const provider = new firebase.auth.GoogleAuthProvider()
     provider.addScope('email')
     provider.addScope('profile')
