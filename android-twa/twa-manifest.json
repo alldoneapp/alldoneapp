@@ -1,0 +1,41 @@
+{
+    "packageId": "app.alldone.android",
+    "host": "my.alldone.app",
+    "name": "Alldone",
+    "launcherName": "Alldone",
+    "display": "standalone",
+    "themeColor": "#FFFFFF",
+    "themeColorDark": "#000000",
+    "navigationColor": "#FFFFFF",
+    "navigationColorDark": "#000000",
+    "navigationDividerColor": "#FFFFFF",
+    "navigationDividerColorDark": "#000000",
+    "backgroundColor": "#0A44A5",
+    "enableNotifications": true,
+    "startUrl": "/?utm_source=twa",
+    "iconUrl": "https://my.alldone.app/pwa/chrome-icon/chrome-icon-512.png",
+    "splashScreenFadeOutDuration": 300,
+    "signingKey": {
+        "path": "./android.keystore",
+        "alias": "android"
+    },
+    "appVersion": "1.0.0",
+    "appVersionCode": 1,
+    "shortcuts": [],
+    "generatorApp": "bubblewrap-cli",
+    "webManifestUrl": "https://my.alldone.app/manifest.json",
+    "fallbackType": "customtabs",
+    "features": {},
+    "alphaDependencies": {
+        "enabled": false
+    },
+    "enableSiteSettingsShortcut": true,
+    "isChromeOSOnly": false,
+    "isMetaQuest": false,
+    "fullScopeUrl": "https://my.alldone.app/",
+    "minSdkVersion": 21,
+    "orientation": "default",
+    "fingerprints": [],
+    "additionalTrustedOrigins": [],
+    "retainedBundles": []
+}

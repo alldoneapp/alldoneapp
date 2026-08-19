@@ -11,7 +11,6 @@ import SharedHelper from '../../utils/SharedHelper'
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
 import { getLinkedEmailsFromMessages, getNewEmailCommentIds } from './ChatDV/linkedEmailActions'
 import { useRegisterUnreadLinkedEmails, useUnreadEmailArchiveContext } from './unreadEmailArchiveContext'
-import { CHAT_AVATAR_COLUMN_TOTAL_WIDTH, CHAT_PREVIEW_MOBILE_GUTTER, CHAT_PREVIEW_RAIL_WIDTH } from './chatRowLayout'
 
 // How many unread messages a single row previews in full. A topic that has been running unattended
 // can hold dozens of long assistant answers, and "All Projects" stacks every project's rows on one
@@ -58,9 +57,6 @@ export const splitUnreadMessagesForPreview = (messages, limit = CHAT_ITEM_UNREAD
 export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds }) {
     const { messages } = useGetUnreadChatMessages(project.id, chat.id, chat.type, unreadCommentIds)
     const loggedUser = useSelector(state => state.loggedUser)
-    // Phone-width layout (AT-2361). Read once here and passed down rather than subscribed to per
-    // previewed message, so a resize costs one re-render per row instead of one per message.
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const chatNotifications = useSelector(state => state.projectChatNotifications?.[project.id]?.[chat.id])
     const [now, setNow] = useState(() => Date.now())
 
@@ -102,11 +98,10 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     if (visibleMessages.length === 0) return null
 
     return (
-        <View style={[localStyles.container, mobile && localStyles.containerMobile]}>
+        <View style={localStyles.container}>
             {visibleMessages.map(message => (
                 <ChatItemUnreadMessage
                     key={message.id}
-                    compact={mobile}
                     projectId={project.id}
                     chat={chat}
                     objectType={chat.type}
@@ -144,28 +139,10 @@ const localStyles = StyleSheet.create({
         marginTop: 4,
         // Aligns the preview with the topic title, which sits to the right of the row's avatar
         // column, and separates it from the title with a quiet rule rather than a box.
-        borderLeftWidth: CHAT_PREVIEW_RAIL_WIDTH,
+        borderLeftWidth: 2,
         borderLeftColor: colors.Gray300,
         paddingLeft: 12,
         marginLeft: 2,
-    },
-    containerMobile: {
-        // On a phone the row's avatar column is 64px of *empty* space for the whole height of the
-        // preview - the avatars themselves only occupy its first ~44px, next to the topic title -
-        // while the email comments underneath pay for it on every single line: sender, subject,
-        // body and the Email/Create task/Archive/Unsubscribe row all get ~26% less width than the
-        // screen has (AT-2361). The preview therefore steps back out of that column and starts at
-        // the row's own left edge, keeping the rail as the thread cue. The negative margin only
-        // grows the box to the left, so the right edge - and every other row in the list - is
-        // untouched, and the space it moves into is empty by construction.
-        marginLeft: -CHAT_AVATAR_COLUMN_TOTAL_WIDTH,
-        // The rail stays, so the messages still read as belonging to the topic above them; only
-        // its gutter changes, because there is no avatar column left to separate from. Stepping
-        // all the way out left the text 10px from the screen edge, which reads as flush rather
-        // than as part of the row (AT-2368): the gutter now puts the preview's first pixel of text
-        // on the list's own 16px margin, so it is balanced against the edge and against the rest
-        // of the row without giving back the width AT-2361 recovered.
-        paddingLeft: CHAT_PREVIEW_MOBILE_GUTTER,
     },
     hiddenCount: {
         ...styles.caption2,

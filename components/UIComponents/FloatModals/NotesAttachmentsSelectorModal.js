@@ -46,11 +46,6 @@ export default function NotesAttachmentsSelectorModal({ projectId, addAttachment
                             projectId={projectId}
                             closeModal={closeModal}
                             addAttachmentTag={addAttachmentTag}
-                            // The notes `addAttachmentTag` re-reads `editor.getSelection(true)`
-                            // on every call, and `insertAttachmentInsideEditor` moves the
-                            // selection past the embed it just wrote, so a multi-file
-                            // selection inserts in order (AT-2365).
-                            allowMultiple={true}
                         />
                     }
                     onClickOutside={closeClickingOutside}
