@@ -1,14 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
-import firebase from 'firebase/compat/app'
+import {
+    useRambleController,
+    formatRambleElapsed,
+    RAMBLE_PHASE_RECORDING,
+    RAMBLE_PHASE_PROCESSING,
+} from '../../../UIControls/RambleButton'
+import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
+import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Quill from 'quill'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
-import DragAndDropModule from 'quill-drag-and-drop-module'
+import './noteAttachmentDrop'
 import '../../../Feeds/CommentsTextInput/quill2Setup'
 import EditorsGroup from './EditorsGroup/EditorsGroup'
 import { useSelector } from 'react-redux'
@@ -34,11 +41,13 @@ import { shortcutNotePreviewMount, shortcutNotePreviewUnmount } from '../../../.
 import NotesAttachmentsSelectorModal from '../../../UIComponents/FloatModals/NotesAttachmentsSelectorModal'
 import {
     ATTACHMENTS_SELECTOR_MODAL_ID,
+    getEditorId,
     getPlaceholderData,
     insertAttachmentInsideEditor,
     LOADING_MODE,
     beforeUndoRedo,
     NOT_USER_MENTIONED,
+    placeDictationCaret,
 } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import store from '../../../../redux/store'
 import { setQuotedNoteText, storeOpenModal, setShowLimitedFeatureModal } from '../../../../redux/actions'
@@ -627,7 +636,7 @@ Font.whitelist = ['arial', 'comic-sans', 'courier-new', 'georgia', 'helvetica', 
 Quill.register(Font, true)
 Quill.register('modules/cursors', QuillCursors)
 // Quill.register('modules/imageDrop', ImageDrop)
-Quill.register('modules/dragAndDrop', DragAndDropModule, true)
+// `modules/noteAttachmentDrop` registers itself on import (see noteAttachmentDrop.js).
 Quill.register({
     'modules/autoformat': Autoformat,
     'formats/hashtag': Hashtag,
@@ -656,9 +665,6 @@ LinkFormat.sanitize = function customSanitizeLinkInput(linkValueInput) {
 
     return builtInFunc.call(this, val) // retain the built-in logic
 }
-
-const image_content_type_pattern = DragAndDropModule.image_content_type_pattern
-const getFileDataUrl = DragAndDropModule.utils.getFileDataUrl
 
 const convertContentToText = (projectId, deltaContent) => {
     let textExtended = ''
@@ -850,85 +856,16 @@ export const modules = {
             },
         },
     },
-    dragAndDrop: {
-        // draggables is an array containing the types of files that are allowed
-        // to be dragged onto the editor, and the type of html element & name of
-        // html attribute that will be added to the editor from this file
-        draggables: [
-            {
-                // string regex pattern used to match a dropped file's `type`
-                content_type_pattern: image_content_type_pattern,
-
-                // the type of html element that will be added when a file matching
-                // this draggable is dropped on the editor
-                tag: 'img',
-
-                // the attribute of the created html element that will be set based on
-                // the file's data & result of onDrop (see below)
-                attr: 'src',
-            },
-            {
-                content_type_pattern: '^video/',
-                tag: 'video',
-                attr: 'src',
-            },
-            {
-                content_type_pattern: '^text/',
-                tag: 'div',
-                attr: 'src',
-            },
-            {
-                content_type_pattern: '^audio/',
-                tag: 'div',
-                attr: 'src',
-            },
-            {
-                content_type_pattern: '^application/',
-                tag: 'div',
-                attr: 'src',
-            },
-        ],
-
-        // onDrop will be called any time a file with a type matching a
-        // content_type_pattern defined in draggables is dropped on the editor
-        // params:
-        //    file - the File object that was dropped
-        onDrop(file) {
-            return getFileDataUrl(file)
-                .then(base64_content => {
-                    // do something with the base64 content
-                    // e.g. save file to server, resize image, add a watermark, etc.
-
-                    const id = v4()
-                    const uri = URL.createObjectURL(file)
-                    const editor = exportRef.getEditor()
-                    const index = (editor.getSelection() || {}).index || editor.getLength()
-
-                    insertAttachmentInsideEditor(index, editor, file.name.replaceAll(/\s/g, '_'), uri, id, LOADING_MODE)
-                    updateNewAttachmentsDataInNotes(editor, id, file.name.replaceAll(/\s/g, '_'), uri, 'user')
-                })
-                .then(response_from_do_something => {
-                    // whatever you return (or promise) from `onDrop` will be used as the
-                    // value of the `attr` attribute for the new html element,
-                    // with a couple of exceptions:
-                    //   returning `false` from `onDrop` =>
-                    //     this file will be ignored; no new element will be added to the
-                    //     editor
-                    //   returning `null` from `onDrop` =>
-                    //     the file's data url (i.e. base64 representation) will be used
-                    //     it's the same as if you'd done:
-                    //       `onDrop: DragAndDropModule.utils.getFileDataUrl`
-                    //     This is the default behavior (i.e., it's what will happen if
-                    //     you don't define `onDrop`)
-                    return false
-                })
-                .catch(err => {
-                    console.log(err)
-                    // return false to tell Quill to ignore this dropped file
-                    return false
-                })
-        },
+    // AT-2365: multi-file drag & drop. Replaces `quill-drag-and-drop-module`, whose
+    // per-file `onDrop` ran in parallel behind an unused base64 read and therefore
+    // ordered the inserts by file size instead of by drop order. See noteAttachmentDrop.js.
+    noteAttachmentDrop: {
+        getProjectId: editor => quillTextInputProjectIds[getEditorId(editor)],
     },
+    // Quill 2's built-in uploader listens for `drop` on the same node and inserts png/jpeg
+    // a SECOND time as a base64 `image` embed, so every dropped screenshot was duplicated.
+    // Disabled here only: paste keeps going through the clipboard module untouched.
+    uploader: false,
     // imageDrop: true,
     history: {
         maxStack: 100,
@@ -1024,6 +961,36 @@ export const EditorToolbar = ({
 
     const barPointerEvents = readOnly || disabled ? 'none' : 'auto'
     const commentPointerEvents = connectionState === 'offline' || disabled ? 'none' : 'auto'
+
+    // DICTATION (rambler): one-shot mic recording cleaned up by the project assistant, inserted at
+    // the caret. Separate from the meeting Transcribe flow below, which live-appends raw chunks.
+    const insertDictatedNoteText = text => {
+        const trimmed = typeof text === 'string' ? text.trim() : ''
+        if (!trimmed) return
+        const editor = exportRef.getEditor()
+        if (!editor) return
+        // String source 'user': a LOCAL change for the y-quill binding (isRemoteEditorChange), so it
+        // lands in Yjs, syncs to collaborators, and runs the normal dirty-editor save path.
+        const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 }
+        if (range.length > 0) editor.deleteText(range.index, range.length, 'user')
+        editor.insertText(range.index, trimmed + ' ', 'user')
+        placeDictationCaret(editor, range.index + trimmed.length + 1, () => exportRef.getEditor?.() === editor)
+    }
+    const {
+        phase: ramblePhase,
+        elapsedSeconds: rambleElapsedSeconds,
+        toggle: toggleRamble,
+    } = useRambleController({
+        // The projectId prop arrived misspelled ('ptojectId') for years; keep the belt-and-braces
+        // fallback to the project doc so dictation cannot lose its project again.
+        projectId: projectId || project?.id,
+        targetKind: 'note',
+        getCurrentText: () => {
+            const editor = exportRef.getEditor?.()
+            return editor ? editor.getText(0, 2000) : ''
+        },
+        onTextReady: insertDictatedNoteText,
+    })
 
     const [isRecording, setIsRecording] = useState(false)
     const mediaRecorderRef = useRef(null)
@@ -1176,13 +1143,16 @@ export const EditorToolbar = ({
                         reader.onloadend = async () => {
                             const base64data = reader.result
                             try {
-                                const result = await firebase
-                                    .app()
-                                    .functions('europe-west1')
-                                    .httpsCallable('transcribeMeetingAudio')({
+                                // Routed through the offline-aware funnel
+                                // (AT-2340). Each chunk is an independent
+                                // request/response — not SDK streaming — so the
+                                // funnel applies cleanly, and offline the
+                                // recording stops instead of queueing chunks
+                                // against a ~70s timeout each.
+                                const result = await runHttpsCallableFunction('transcribeMeetingAudio', {
                                     audioChunk: base64data,
                                 })
-                                const text = result.data.text
+                                const text = result.text
                                 if (text && text.trim().length > 0) {
                                     const editor = exportRef.getEditor()
                                     const length = editor.getLength()
@@ -1191,7 +1161,15 @@ export const EditorToolbar = ({
                                 }
                             } catch (err) {
                                 console.error('Transcription error:', err)
-                                if (err.code === 'resource-exhausted' || err.message?.includes('Insufficient Gold')) {
+                                if (err.code === 'offline') {
+                                    // Transcription is server-side; there is
+                                    // nothing to queue. Stop rather than keep
+                                    // recording into a void (AT-2340).
+                                    stopRecording()
+                                } else if (
+                                    err.code === 'resource-exhausted' ||
+                                    err.message?.includes('Insufficient Gold')
+                                ) {
                                     store.dispatch(
                                         setShowLimitedFeatureModal({
                                             title: translate('Not enough Gold'),
@@ -1456,11 +1434,47 @@ export const EditorToolbar = ({
                         </EditorToolbarButton>
                     </span>
 
+                    {isDictationSupported() && (
+                        <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
+                            <EditorToolbarButton onClick={toggleRamble} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    {ramblePhase === RAMBLE_PHASE_PROCESSING ? (
+                                        <ActivityIndicator size={12} color={colors.Text03} />
+                                    ) : (
+                                        <Icon
+                                            name={'mic'}
+                                            size={18}
+                                            color={
+                                                ramblePhase === RAMBLE_PHASE_RECORDING ? colors.Red200 : colors.Text03
+                                            }
+                                        />
+                                    )}
+                                </View>
+                                {!tablet && (
+                                    <Text
+                                        style={[
+                                            styles.caption1,
+                                            localStyles.barIconText,
+                                            ramblePhase === RAMBLE_PHASE_RECORDING ? { color: colors.Red200 } : {},
+                                        ]}
+                                    >
+                                        {ramblePhase === RAMBLE_PHASE_RECORDING
+                                            ? formatRambleElapsed(rambleElapsedSeconds)
+                                            : translate('Dictate')}
+                                    </Text>
+                                )}
+                            </EditorToolbarButton>
+                        </span>
+                    )}
+
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                         <EditorToolbarButton onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
                             <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                {/* Meeting transcription records a screen-shared meeting, so it
+                                    carries the video-meeting glyph; the plain mic now means
+                                    Dictate, matching the mic overlay in every other input. */}
                                 <Icon
-                                    name={isRecording ? 'mic-off' : 'mic'}
+                                    name={'video-meeting'}
                                     size={18}
                                     color={isRecording ? colors.Red200 : colors.Text03}
                                 />

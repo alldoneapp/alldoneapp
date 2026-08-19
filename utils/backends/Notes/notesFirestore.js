@@ -8,7 +8,6 @@ import {
     deleteLinkedGuidesNotesIfProjectIsTemplate,
     deleteNoteFeedsChain,
     getDb,
-    getFirebaseTimestampDirectly,
     getId,
     getMentionedUsersIdsWhenEditText,
     getNoteData,
@@ -28,6 +27,10 @@ import {
 } from '../firestore'
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
+import { isBrowserOffline } from '../../connectionState'
+import { getServerNow } from '../../serverClock'
+import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
+import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
 import { createGenericTaskWhenMention, setTaskNote } from '../Tasks/tasksFirestore'
@@ -68,7 +71,12 @@ export const updateNoteEditionData = async (projectId, noteId, editorId) => {
 
 const updateEditionData = async data => {
     const { loggedUser } = store.getState()
-    data.lastEditionDate = await getFirebaseTimestampDirectly()
+    // No round trip in either branch since AT-2340: the online path used to
+    // write+read the global `/info/currentTime` singleton on every autosave, and
+    // the offline path could not do it at all (the ack only arrives on
+    // reconnect). Both now read the background-measured server-clock offset,
+    // falling back to the client clock — which is what `created` already uses.
+    data.lastEditionDate = isBrowserOffline() ? Date.now() : getServerNow()
     data.lastEditorId = loggedUser.uid
 }
 
@@ -104,8 +112,17 @@ export async function uploadNewNote(projectId, noteData) {
     try {
         await updateEditionData(noteData)
 
-        const noteDataCopy = { ...noteData }
+        // Creator-follows-own-note is stamped at creation so the note is
+        // immediately visible in the Followed notes tab — offline, the feeds
+        // chain that normally establishes it only completes on reconnect.
+        const noteDataCopy = stampCreatorAsFollower({ ...noteData })
         const noteId = noteDataCopy.id ? noteDataCopy.id : getId()
+
+        // Offline, every server ack in this function is deferred until reconnect,
+        // so awaiting one would hang note creation forever. Firestore applies the
+        // writes to the local cache instantly (and syncs them later), which is all
+        // the offline editor needs (OFFLINE_SUPPORT_PLAN.md notes follow-ups).
+        const browserIsOffline = isBrowserOffline()
 
         // Create an empty document first to ensure it exists
         const doc = new Uint8Array()
@@ -114,28 +131,43 @@ export async function uploadNewNote(projectId, noteData) {
         // Create an array to track all promises that need to complete
         const promises = []
 
-        // Add storage operation to promises
-        promises.push(storageRef.child(`notesData/${projectId}/${noteId}`).put(doc))
+        // The empty Storage object is best-effort: the editor tolerates its
+        // absence (a never-saved note opens empty via allowEmptyOpen), so a
+        // failed put — guaranteed offline — must not fail the note creation.
+        promises.push(
+            Promise.resolve(storageRef.child(`notesData/${projectId}/${noteId}`).put(doc)).catch(error =>
+                console.warn(`Empty note content upload failed for ${noteId} (tolerated):`, error)
+            )
+        )
 
         // Set the initial document data with a retry mechanism
-        const maxRetries = 3
-        let attempt = 0
-        let noteDocSet = false
+        const setNoteDoc = () =>
+            getDb()
+                .collection(`noteItems/${projectId}/notes`)
+                .doc(noteId)
+                .set(sanitizeForFirestore({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() }))
 
-        while (attempt < maxRetries && !noteDocSet) {
-            try {
-                await getDb()
-                    .collection(`noteItems/${projectId}/notes`)
-                    .doc(noteId)
-                    .set(sanitizeForFirestore({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() }))
-                noteDocSet = true
-            } catch (error) {
-                if (error.code === 'failed-precondition' && attempt < maxRetries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second before retry
-                    attempt++
-                    continue
+        if (browserIsOffline) {
+            // Fire without awaiting the server ack; the local cache applies it
+            // immediately and the queued write syncs on reconnect.
+            setNoteDoc().catch(error => console.warn(`Offline note doc write failed for ${noteId}:`, error))
+        } else {
+            const maxRetries = 3
+            let attempt = 0
+            let noteDocSet = false
+
+            while (attempt < maxRetries && !noteDocSet) {
+                try {
+                    await setNoteDoc()
+                    noteDocSet = true
+                } catch (error) {
+                    if (error.code === 'failed-precondition' && attempt < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second before retry
+                        attempt++
+                        continue
+                    }
+                    throw error
                 }
-                throw error
             }
         }
 
@@ -164,16 +196,25 @@ export async function uploadNewNote(projectId, noteData) {
             )
         )
 
-        // Wait for all operations to complete
-        await Promise.all(promises)
+        if (browserIsOffline) {
+            // The side-effect batches (feeds, sticky tracking, mention tasks) are
+            // queued locally and only ack on reconnect — resolve now so the UI can
+            // open the freshly created note.
+            Promise.all(promises).catch(error => console.warn(`Offline note side effects failed for ${noteId}:`, error))
+            logEvent('new_note', { id: noteId, uid: noteData.userId })
+        } else {
+            // Wait for all operations to complete
+            await Promise.all(promises)
 
-        // Log event after everything is complete
-        await logEvent('new_note', {
-            id: noteId,
-            uid: noteData.userId,
-        })
+            // Log event after everything is complete
+            await logEvent('new_note', {
+                id: noteId,
+                uid: noteData.userId,
+            })
+        }
 
-        // Verify the note exists in the database before returning
+        // Verify the note exists in the database before returning (offline this
+        // resolves from the local cache, which the write above just populated).
         const noteExists = await getDb().doc(`noteItems/${projectId}/notes/${noteId}`).get()
         if (!noteExists.exists) {
             throw new Error('Note creation verification failed')
@@ -315,20 +356,64 @@ export async function updateNoteHighlight(projectId, noteId, hasStar) {
     updateNoteHighlightFeedsChain(projectId, isHighlight, noteId)
 }
 
-export async function setNoteData(objectId, noteId, encodedStateData, preview, firstEditionRef, userCanEditNote) {
+/**
+ * Persist note content.
+ *
+ * `options.contentOnly` uploads the Yjs state and NOTHING else — no preview, no
+ * `lastEditionDate`/`lastEditorId`, no edited-today entry, no started-editing
+ * feed. It exists for content this client merely RECEIVED (a collaborator's
+ * edits arriving over the Yjs binding): persisting the merged document is a
+ * durability safety net, but recording the local user as its last editor is
+ * simply false, and it made every open client pay the full save fan-out for
+ * text somebody else typed (AT-2340).
+ */
+export async function setNoteData(
+    objectId,
+    noteId,
+    encodedStateData,
+    preview,
+    firstEditionRef,
+    userCanEditNote,
+    options = {}
+) {
+    const { contentOnly = false } = options
     const storageRef = notesStorage.ref()
-    storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
+    // Fire-and-forget on purpose, but an offline failure must not surface as an
+    // unhandled rejection: the content is durable in the editor's local
+    // IndexedDB copy and is re-uploaded on reconnect / next online open.
+    //
+    // Firebase Storage has no offline write queue (unlike Firestore) — a failed
+    // put is simply gone — so the note is recorded for the reconnect catch-up
+    // sweep, which is what makes an offline edit to a note the user then CLOSES
+    // reach the server without waiting for them to open it again (AT-2340).
+    const contentUploaded = Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData))
+        .then(() => {
+            clearPendingNoteUpload(noteId)
+            return true
+        })
+        .catch(error => {
+            console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
+            registerPendingNoteUpload(objectId, noteId)
+            return false
+        })
 
-    if (userCanEditNote) {
-        updateNoteData(objectId, noteId, { preview }, null)
+    if (!contentOnly) {
+        if (userCanEditNote) {
+            updateNoteData(objectId, noteId, { preview }, null)
+        }
+
+        updateNotesEditedDailyList(objectId, noteId)
+
+        if (firstEditionRef && firstEditionRef.current) {
+            firstEditionRef.current = false
+            userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
+        }
     }
 
-    updateNotesEditedDailyList(objectId, noteId)
-
-    if (firstEditionRef.current) {
-        firstEditionRef.current = false
-        userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
-    }
+    // Resolves to whether the canonical Storage copy actually received the
+    // content. Callers may ignore it (most do); the editor uses it to know a
+    // catch-up is outstanding without guessing from connectivity.
+    return contentUploaded
 }
 
 export const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCommentType) => {

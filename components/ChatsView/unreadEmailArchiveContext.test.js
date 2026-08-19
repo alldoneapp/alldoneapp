@@ -13,6 +13,7 @@ import {
 } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
+import { syncEmailCommentsReadState } from '../../utils/backends/EmailLine/emailCommentReadSync'
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
@@ -20,6 +21,9 @@ jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
 }))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
+jest.mock('../../utils/backends/EmailLine/emailCommentReadSync', () => ({
+    syncEmailCommentsReadState: jest.fn(),
+}))
 
 const email = (connectionProjectId, messageId) => ({
     key: `${connectionProjectId}:${messageId}`,
@@ -234,6 +238,43 @@ describe('UnreadEmailArchiveProvider', () => {
         expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
         expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([email('conn-a', 'm1')])
         expect(lastScope().archive.isArchivedEmail('conn-a:m1')).toBe(true)
+    })
+
+    // Gmail → Alldone read sync (AT-2376): the previewed emails are exactly the set worth
+    // reconciling against the mailbox, so the provider hands them to the sync as they change.
+    it('reconciles the previewed unread emails against the mailbox', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <UnreadEmailArchiveProvider>
+                    <PreviewRegistration
+                        sourceKey="project-1:chat-1"
+                        projectId="project-1"
+                        linkedEmails={[email('conn-a', 'm1')]}
+                    />
+                </UnreadEmailArchiveProvider>
+            )
+        })
+
+        expect(syncEmailCommentsReadState).toHaveBeenCalledWith([email('conn-a', 'm1')])
+
+        // Returning to the tab re-checks immediately: the user just handled the mail in Gmail,
+        // and nothing inside the app changed to trigger the effect above.
+        syncEmailCommentsReadState.mockClear()
+        await act(async () => {
+            document.dispatchEvent(new Event('visibilitychange'))
+        })
+        expect(syncEmailCommentsReadState).toHaveBeenCalledWith([email('conn-a', 'm1')], { force: true })
+
+        // Nothing previewed, nothing to ask about.
+        syncEmailCommentsReadState.mockClear()
+        await act(async () => {
+            tree.unmount()
+        })
+        await act(async () => {
+            renderer.create(<UnreadEmailArchiveProvider />)
+        })
+        expect(syncEmailCommentsReadState).not.toHaveBeenCalled()
     })
 
     it('gives no scope at all outside the provider, which is how the buttons stay hidden', () => {

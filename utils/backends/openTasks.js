@@ -2,6 +2,8 @@ import moment from 'moment'
 import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } from 'lodash'
 
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
+import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './Tasks/optimisticTaskCreate'
 import store from '../../redux/store'
 import {
     setGlobalDataByProject,
@@ -12,6 +14,7 @@ import {
     stopLoadingData,
     updateSubtaskByTask,
     setLaterTasksExpanded,
+    setTaskListSingleLoading,
     updateFilteredOpenTasks,
     updateThereAreHiddenNotMainTasks,
     updateInitialLoadingEndOpenTasks,
@@ -36,6 +39,7 @@ import {
 } from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
 import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
+import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
 
 export const TODAY_DATE = '0'
 
@@ -83,7 +87,7 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
     const { globalDataByProject } = store.getState()
     delete globalDataByProject[projectId]
 
-    store.dispatch(setGlobalDataByProject(globalDataByProject))
+    batchDispatch(setGlobalDataByProject(globalDataByProject))
 
     unwatch(projectId, currentUserId, userOpenTasks)
     unwatch(projectId, currentUserId, userObservedTasks)
@@ -93,6 +97,31 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
 }
 
 export const watchOpenTasks = (
+    projectId,
+    callback,
+    showLaterTasks,
+    showSomedayTasks,
+    keepMainDayData,
+    instanceKey,
+    assistantProfileMode = false
+) =>
+    // AT-2337: mounting "All projects" calls this once per project (~78x) and each
+    // call fired 4 separate store notifications before a single task had loaded.
+    // Firestore never delivers a snapshot synchronously from onSnapshot(), so the
+    // batch closes before any watcher callback can run.
+    runInDispatchBatch(() => {
+        watchOpenTasksInternal(
+            projectId,
+            callback,
+            showLaterTasks,
+            showSomedayTasks,
+            keepMainDayData,
+            instanceKey,
+            assistantProfileMode
+        )
+    })
+
+const watchOpenTasksInternal = (
     projectId,
     callback,
     showLaterTasks,
@@ -117,7 +146,7 @@ export const watchOpenTasks = (
     let subtasksMap = { observedSubtasksById: {}, userSubtasksById: {}, streamAndUserSubtasksById: {} }
 
     // Reset vars at the beginning
-    store.dispatch(
+    batchDispatch(
         setTaskListWatchersVars({
             ...taskListWatchersVars,
             storedTasks,
@@ -188,7 +217,7 @@ export const watchOpenTasks = (
     unwatchOpenTasks(projectId, currentUser.uid)
     const globalData = { storedTasks, estimationByDate, amountOfTasksByDate, tasksMap, goalsMap }
 
-    store.dispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
+    batchDispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
 
     watchUserOpenTasks(
         projectId,
@@ -245,7 +274,7 @@ export const watchOpenTasks = (
     )
 
     // Save vars at the end
-    store.dispatch(
+    batchDispatch(
         setTaskListWatchersVars({
             ...taskListWatchersVars,
             storedTasks,
@@ -256,6 +285,50 @@ export const watchOpenTasks = (
             subtasksMap,
         })
     )
+}
+
+/**
+ * AT-2342 - does this raw task document satisfy the SAME conditions as `getOpenTasksQuery`?
+ *
+ * An optimistically published task (`optimisticTaskCreate.js`) never passes through Firestore's
+ * matcher, so this is the only thing standing between it and a list it does not belong in. It
+ * has to mirror `getOpenTasksQuery` clause for clause: the pipeline below re-derives the day
+ * bucket and the goal grouping, but it does NOT re-check `inDone`, `currentReviewerId`,
+ * `observersIds` or `isPublicFor`, so a task that fails those would be inserted and then never
+ * be echoed back to correct it - it would sit in the list until the watcher restarts.
+ *
+ * Keep the two functions edited together; `openTasksOptimisticCreate.test.js` pins the pairs
+ * that actually differ (assignee, visibility, done, and each of the three date windows).
+ */
+export const matchesOpenTasksQuery = (
+    taskData,
+    { areObservedTasks, currentUserId, loggedUser, showLaterTasks, showSomedayTasks, endOfDay, endOfTomorrow }
+) => {
+    if (!taskData || taskData.inDone !== false) return false
+
+    if (areObservedTasks) {
+        return Array.isArray(taskData.observersIds) && taskData.observersIds.includes(currentUserId)
+    }
+
+    const { uid: loggedUserId, isAnonymous } = loggedUser
+    const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+
+    if (taskData.currentReviewerId !== currentUserId) return false
+    if (!Array.isArray(taskData.isPublicFor) || !taskData.isPublicFor.some(id => allowUserIds.includes(id))) {
+        return false
+    }
+
+    const { dueDate } = taskData
+    if (!Number.isFinite(dueDate)) return false
+
+    // The three expand states of getOpenTasksQuery, in the same order.
+    if (!showLaterTasks && !showSomedayTasks) return dueDate <= endOfDay
+    if (showLaterTasks && !showSomedayTasks) {
+        return endOfTomorrow
+            ? dueDate <= endOfTomorrow && dueDate < BACKLOG_DATE_NUMERIC
+            : dueDate < BACKLOG_DATE_NUMERIC
+    }
+    return true
 }
 
 const getOpenTasksQuery = (
@@ -340,16 +413,37 @@ const watchUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
+    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot)
+    function handleOpenTasksSnapshot(querySnapshot) {
         const changes = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-        if (querySnapshot.metadata.fromCache) {
+        if (gate.shouldBuffer(querySnapshot)) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
-            const mergedChanges = [...cacheChanges, ...changes]
+            deliverOpenTasksChanges(changes)
+        }
+    }
+
+    /**
+     * The delivery half of the snapshot handler, split out so AT-2342's optimistic insert can
+     * reach it without impersonating a Firestore snapshot.
+     *
+     * `optimistic` turns off the two things that belong to a real snapshot and only to it:
+     * flushing whatever `cachedSnapshotGate` has buffered (those changes are still waiting for
+     * a server snapshot to confirm them - a locally created task is no reason to render a
+     * half-synced list early), and `stopLoadingData()`, which decrements a *counter* and would
+     * corrupt the global spinner if called without a matching `startLoadingData()`.
+     */
+    function deliverOpenTasksChanges(changes, { optimistic = false } = {}) {
+        // AT-2337: one snapshot used to produce ~10 separate store notifications,
+        // and "All projects" runs this handler once per project (~78x on a heavy
+        // account). Collect them into a single array dispatch instead - same
+        // actions, same order, same resulting state, one subscriber pass.
+        runInDispatchBatch(() => {
+            const mergedChanges = optimistic ? changes : [...cacheChanges, ...changes]
 
             let subtasks = { ...subtasksByParentId }
 
@@ -375,17 +469,17 @@ const watchUserOpenTasks = (
                 )
                 subtasks = subtasksByTasks
                 callback(openTasksArray, !areObservedTasks)
-                store.dispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
+                batchDispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
                 callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
-                store.dispatch(setOpenTasksMap(projectId, {}))
+                batchDispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
-                store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+                batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
             }
 
-            store.dispatch(stopLoadingData())
+            if (!optimistic) batchDispatch(stopLoadingData())
 
-            store.dispatch(
+            batchDispatch(
                 setOpenSubtasksMap(projectId, {
                     ...subtasksMap.observedSubtasksById,
                     ...subtasksMap.userSubtasksById,
@@ -393,15 +487,50 @@ const watchUserOpenTasks = (
                 })
             )
 
-            store.dispatch(updateSubtaskByTask(instanceKey, subtasks))
+            batchDispatch(updateSubtaskByTask(instanceKey, subtasks))
 
-            cacheChanges = []
-        }
+            if (!optimistic) cacheChanges = []
+        })
+    }
+
+    // AT-2342 - render a task this user just created without waiting for it to come back from
+    // Firestore. `matchesOpenTasksQuery` is what keeps a task out of a list it does not belong
+    // in, since nothing else re-checks the query clauses.
+    const isTaskInThisView = taskData =>
+        matchesOpenTasksQuery(taskData, {
+            areObservedTasks,
+            currentUserId,
+            loggedUser,
+            showLaterTasks,
+            showSomedayTasks,
+            endOfDay,
+            endOfTomorrow,
+        }) && taskBelongsInOpenBoard(taskData, assistantOwner, areObservedTasks, assistantProfileMode)
+
+    const knownTaskIds = () => (areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById)
+
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+        const taskData = change.doc.data()
+        if (!isTaskInThisView(taskData)) return
+
+        // Removal must be idempotent: a rejected write is rolled back twice over - once by the
+        // explicit publication and once by Firestore reverting its own local mutation - and
+        // `deleteTask` decrements the per-day task count and estimation total every time it runs.
+        // A subtask lives in `subtasksMap`, not here, so let the pipeline judge that case itself.
+        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) return
+
+        deliverOpenTasksChanges([change], { optimistic: true })
     })
 
+    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
+    const unsubAll = () => {
+        unsubOptimistic()
+        unsub()
+    }
+
     areObservedTasks
-        ? (userObservedTasks[projectId] = { [currentUserId]: [unsub] })
-        : (userOpenTasks[projectId] = { [currentUserId]: [unsub] })
+        ? (userObservedTasks[projectId] = { [currentUserId]: [unsubAll] })
+        : (userOpenTasks[projectId] = { [currentUserId]: [unsubAll] })
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
@@ -1150,75 +1279,83 @@ const watchStreamAndUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
+    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot)
+    function handleStreamAndUserTasksSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (querySnapshot.metadata.fromCache) {
+        if (gate.shouldBuffer(querySnapshot)) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
-            const mergedChanges = [...cacheChanges, ...changes]
+            // AT-2337: see the note in watchUserOpenTasks - coalesce this snapshot's
+            // dispatches into one store notification.
+            runInDispatchBatch(() => {
+                const mergedChanges = [...cacheChanges, ...changes]
 
-            let subtasks = { ...subtasksByParentId }
+                let subtasks = { ...subtasksByParentId }
 
-            if (mergedChanges.length > 0) {
-                const { openTasksArray, subtasksByTasks } = processTaskChanges(
-                    projectId,
-                    mergedChanges,
-                    loggedUser,
-                    currentUserId,
-                    endOfDay,
-                    storedTasks,
-                    estimationByDate,
-                    amountOfTasksByDate,
-                    tasksMap,
-                    false,
-                    true,
-                    dayDateFormated,
-                    showLaterTasks,
-                    showSomedayTasks,
-                    subtasksByParentId,
-                    subtasksMap
-                )
-                subtasks = subtasksByTasks
-                callback(openTasksArray)
-                store.dispatch(
-                    setOpenTasksMap(projectId, {
-                        ...tasksMap.observedTasksById,
-                        ...tasksMap.userTasksById,
-                        ...tasksMap.streamAndUserTasksById,
+                if (mergedChanges.length > 0) {
+                    const { openTasksArray, subtasksByTasks } = processTaskChanges(
+                        projectId,
+                        mergedChanges,
+                        loggedUser,
+                        currentUserId,
+                        endOfDay,
+                        storedTasks,
+                        estimationByDate,
+                        amountOfTasksByDate,
+                        tasksMap,
+                        false,
+                        true,
+                        dayDateFormated,
+                        showLaterTasks,
+                        showSomedayTasks,
+                        subtasksByParentId,
+                        subtasksMap
+                    )
+                    subtasks = subtasksByTasks
+                    callback(openTasksArray)
+                    batchDispatch(
+                        setOpenTasksMap(projectId, {
+                            ...tasksMap.observedTasksById,
+                            ...tasksMap.userTasksById,
+                            ...tasksMap.streamAndUserTasksById,
+                        })
+                    )
+                } else if (Object.keys(storedTasks).length === 0) {
+                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
+                    batchDispatch(setOpenTasksMap(projectId, {}))
+                }
+
+                // Save vars at the end
+                batchDispatch(
+                    setTaskListWatchersVars({
+                        ...taskListWatchersVars,
+                        storedTasks,
+                        estimationByDate,
+                        amountOfTasksByDate,
+                        tasksMap,
+                        subtasksByParentId,
+                        subtasksMap,
                     })
                 )
-            } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
-                store.dispatch(setOpenTasksMap(projectId, {}))
-            }
 
-            // Save vars at the end
-            store.dispatch(
-                setTaskListWatchersVars({
-                    ...taskListWatchersVars,
-                    storedTasks,
-                    estimationByDate,
-                    amountOfTasksByDate,
-                    tasksMap,
-                    subtasksByParentId,
-                    subtasksMap,
-                })
-            )
+                batchDispatch(
+                    setOpenSubtasksMap(projectId, {
+                        ...subtasksMap.observedSubtasksById,
+                        ...subtasksMap.userSubtasksById,
+                        ...subtasksMap.streamAndUserSubtasksById,
+                    })
+                )
 
-            store.dispatch(
-                setOpenSubtasksMap(projectId, {
-                    ...subtasksMap.observedSubtasksById,
-                    ...subtasksMap.userSubtasksById,
-                    ...subtasksMap.streamAndUserSubtasksById,
-                })
-            )
+                const instanceKey = projectId + currentUserId
+                batchDispatch(updateSubtaskByTask(instanceKey, subtasks))
 
-            const instanceKey = projectId + currentUserId
-            store.dispatch(updateSubtaskByTask(instanceKey, subtasks))
-
-            cacheChanges = []
+                cacheChanges = []
+            })
         }
-    })
+    }
+    const unsub = gate.wrapUnsubscribe(
+        query.onSnapshot({ includeMetadataChanges: true }, handleStreamAndUserTasksSnapshot)
+    )
 
     setProperty(streamAndUserOpenTasks, [projectId, currentUserId, assigneeUserId], unsub)
 }
@@ -1271,10 +1408,18 @@ function watchEmptyGoals(
     estimationByDate,
     amountOfTasksByDate
 ) {
-    unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
-
+    // AT-2337: this used to read `currentUserId` one line ABOVE its own `const`
+    // declaration. Babel's block-scoping transform rewrites `const` to `var`, so
+    // instead of the ReferenceError you would get under real ES modules it quietly
+    // passed `undefined` and the unwatch matched nothing - `watcher[projectId][undefined]`
+    // is always falsy. It is currently harmless only because `watchOpenTasks` already
+    // unwatched this same watcher correctly a few lines earlier; hoist the read so the
+    // guard actually does what it says.
     const { currentUser } = store.getState()
     const currentUserId = currentUser.uid
+
+    unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
+
     const dayDateFormated = TODAY_DATE
 
     const date = moment()
@@ -1290,9 +1435,10 @@ function watchEmptyGoals(
         .where('assigneesIds', 'array-contains-any', [currentUserId])
         .where('ownerId', '==', ownerId)
 
-    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
+    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot)
+    function handleEmptyGoalsSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (querySnapshot.metadata.fromCache) {
+        if (gate.shouldBuffer(querySnapshot)) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -1324,7 +1470,8 @@ function watchEmptyGoals(
             }
             cacheChanges = []
         }
-    })
+    }
+    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleEmptyGoalsSnapshot))
 
     activeMilestoneEmptyGoals[projectId] = { [currentUserId]: unsub }
 }
@@ -1503,7 +1650,7 @@ export const filterOpTasks = (instanceKey, tasks, projectId) => {
             projectId
         )
     }
-    store.dispatch(updateFilteredOpenTasks(instanceKey, filteredOpenTasks))
+    batchDispatch(updateFilteredOpenTasks(instanceKey, filteredOpenTasks))
 }
 
 export const updateOpTasks = (
@@ -1514,31 +1661,48 @@ export const updateOpTasks = (
     setProjectsHaveTasksInFirstDay,
     inSelectedProject
 ) => {
-    const openTasks = inSelectedProject ? initialTasks : taskToShowInAllProjects(instanceKey, initialTasks)
+    // AT-2337: this whole body used to emit 5-7 individual store notifications and
+    // it runs once per project per snapshot. Batch it. When it is reached from a
+    // snapshot handler the batch is already open and this simply joins it, so the
+    // full snapshot still costs exactly one notification.
+    const openTasks = runInDispatchBatch(() => {
+        const openTasks = inSelectedProject ? initialTasks : taskToShowInAllProjects(instanceKey, initialTasks)
 
-    // Check if there are any visible tasks (main, email, calendar) or goals for the first day
-    const thereAreNotTasksInFirstDay =
-        openTasks.length === 0 ||
-        (openTasks[0][AMOUNT_TASKS_INDEX] === 0 && openTasks[0][ACTIVE_GOALS_INDEX].length === 0)
+        // Check if there are any visible tasks (main, email, calendar) or goals for the first day
+        const thereAreNotTasksInFirstDay =
+            openTasks.length === 0 ||
+            (openTasks[0][AMOUNT_TASKS_INDEX] === 0 && openTasks[0][ACTIVE_GOALS_INDEX].length === 0)
 
-    const todayEmptyGoalsAmount =
-        openTasks.length === 0 || openTasks[0][ACTIVE_GOALS_INDEX].length === 0
-            ? 0
-            : openTasks[0][ACTIVE_GOALS_INDEX].length
-    store.dispatch(setTodayEmptyGoalsTotalAmountInOpenTasksView(projectId, todayEmptyGoalsAmount))
+        const todayEmptyGoalsAmount =
+            openTasks.length === 0 || openTasks[0][ACTIVE_GOALS_INDEX].length === 0
+                ? 0
+                : openTasks[0][ACTIVE_GOALS_INDEX].length
+        batchDispatch(setTodayEmptyGoalsTotalAmountInOpenTasksView(projectId, todayEmptyGoalsAmount))
 
-    store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
+        batchDispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
-    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+        updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
 
-    // The two Firestore streams can finish on different renders. Publish the
-    // corresponding loaded flag only after the merged, filtered list is in the
-    // store so loading placeholders cannot disappear against stale task data.
-    if (initialLoadingInOpenTasks === true) {
-        store.dispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
-    } else if (initialLoadingInOpenTasks === false) {
-        store.dispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
-    }
+        // Expanding later/someday tasks keeps the rows already on screen and adds
+        // one task-shaped ghost until the replacement watcher resolves. Clear that
+        // incremental state only after the refreshed list has reached Redux.
+        // NOTE: read from the live store, not from a value written inside this
+        // batch - nothing buffered here touches `taskListSingleLoading`.
+        if (store.getState().taskListSingleLoading?.[instanceKey]) {
+            batchDispatch(setTaskListSingleLoading(instanceKey, false))
+        }
+
+        // The two Firestore streams can finish on different renders. Publish the
+        // corresponding loaded flag only after the merged, filtered list is in the
+        // store so loading placeholders cannot disappear against stale task data.
+        if (initialLoadingInOpenTasks === true) {
+            batchDispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
+        } else if (initialLoadingInOpenTasks === false) {
+            batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
+        }
+
+        return openTasks
+    })
 
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
@@ -1592,7 +1756,7 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
         if (hiddenTaskTypesExist) break // Found in this date, no need to check other dates
     }
 
-    store.dispatch(updateThereAreHiddenNotMainTasks(instanceKey, hiddenTaskTypesExist))
+    batchDispatch(updateThereAreHiddenNotMainTasks(instanceKey, hiddenTaskTypesExist))
 
     // Build taskToShow for display
     let taskToShow = []
@@ -1670,7 +1834,7 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
 }
 
 export const updateAndFilterTasksTasks = (instanceKey, tasks, projectId) => {
-    store.dispatch(updateOpenTasks(instanceKey, tasks))
+    batchDispatch(updateOpenTasks(instanceKey, tasks))
     filterOpTasks(instanceKey, tasks, projectId)
 }
 

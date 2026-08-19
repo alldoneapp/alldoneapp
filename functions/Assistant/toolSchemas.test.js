@@ -29,6 +29,14 @@ describe('Calendar assistant tool schemas', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('minFreeHoursPerDay')
     })
 
+    test('allows an explicit current-request override of the saved no-same-day setting', () => {
+        const property = toolSchemas.find_calendar_availability.function.parameters.properties.allowSameDayBooking
+
+        expect(property.type).toBe('boolean')
+        expect(property.description).toMatch(/current user message explicitly asks/i)
+        expect(toolSchemas.find_calendar_availability.function.parameters.required).not.toContain('allowSameDayBooking')
+    })
+
     test('defines required fields for calendar event writes', () => {
         expect(toolSchemas.find_calendar_availability.function.parameters.required).toEqual(['timeMin', 'timeMax'])
         expect(toolSchemas.create_calendar_event.function.parameters.required).toEqual(['summary', 'start', 'end'])
@@ -251,6 +259,18 @@ describe('User memory assistant tool schemas', () => {
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
+        expect(
+            toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.description
+        ).toContain('Each new visible heartbeat resets to chanceNoReplyPercent')
+        expect(
+            toolSchemas.update_heartbeat_settings.function.parameters.properties.chanceNoReplyPercent.description
+        ).toContain('in-app Heartbeat chat or WhatsApp daily chat')
+        expect(
+            toolSchemas.update_heartbeat_settings.function.parameters.properties.chanceNoReplyPercent.description
+        ).toContain('Messages before the latest heartbeat do not count')
+        expect(toolSchemas.update_heartbeat_settings.function.description).toContain(
+            'HEARTBEAT_OK does not reset reply state because it posts no message'
+        )
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeStartTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeEndTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.sendWhatsApp.type).toBe('boolean')

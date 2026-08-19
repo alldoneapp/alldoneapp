@@ -4,6 +4,7 @@ import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
+import { translate } from '../../i18n/TranslationService'
 import { MODAL_EDGE_GAP } from '../styles/modals'
 import useModalSizing from '../../hooks/useModalSizing'
 import store from '../../redux/store'
@@ -53,6 +54,7 @@ import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import BottomSheet from '../UIComponents/ModalShell/BottomSheet'
 import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
 import useEscapeKey from '../../hooks/useEscapeKey'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
@@ -64,6 +66,7 @@ export default function GlobalSearchModal() {
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
+    const [searchOfflineNotice, setSearchOfflineNotice] = useState(false)
     const [processing, setProcessing] = useState({
         [MENTION_MODAL_CONTACTS_TAB]: false,
         [MENTION_MODAL_GOALS_TAB]: false,
@@ -645,6 +648,7 @@ export default function GlobalSearchModal() {
         })
         if (searchableTabs.length === 0) return
 
+        setSearchOfflineNotice(false)
         try {
             const results = await multiSearchTypesense(
                 searchableTabs.map(({ indexPrefix, filterBy }) => ({
@@ -665,6 +669,9 @@ export default function GlobalSearchModal() {
             })
         } catch (error) {
             console.log('Typesense search failed:', error.message)
+            // Offline fast-fail from multiSearchTypesense (Stage 7): say so
+            // instead of silently showing zero results.
+            setSearchOfflineNotice(error.code === 'offline')
             setProcessing({
                 [MENTION_MODAL_CONTACTS_TAB]: false,
                 [MENTION_MODAL_GOALS_TAB]: false,
@@ -736,6 +743,14 @@ export default function GlobalSearchModal() {
     // results list needs a definite height to scroll internally) but follows
     // the sheet's keyboard-aware maxHeight.
     const { isSheet: isPhone, width: cardWidth, maxHeight: sheetMaxHeight } = useModalSizing({ size: 'L' })
+    // The overlay already pads MODAL_EDGE_GAP on every side; add the insets
+    // on top so the centered card clears the status bar and home indicator.
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding({
+        top: MODAL_EDGE_GAP,
+        bottom: MODAL_EDGE_GAP,
+        left: MODAL_EDGE_GAP,
+        right: MODAL_EDGE_GAP,
+    })
     const width = isPhone ? '100%' : cardWidth
     const sheetCardStyle = isPhone
         ? {
@@ -799,6 +814,11 @@ export default function GlobalSearchModal() {
                 onSubmitEditing={onSearch}
             />
 
+            {searchOfflineNotice && (
+                <Text style={[styles.body2, localStyles.offlineNotice]}>
+                    {translate('Search needs an internet connection')}
+                </Text>
+            )}
             <ResultLists
                 projects={projects}
                 processing={processing}
@@ -841,7 +861,7 @@ export default function GlobalSearchModal() {
     }
 
     return (
-        <View style={localStyles.container} ref={modalRef}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]} ref={modalRef}>
             <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
             {body}
         </View>
@@ -849,6 +869,10 @@ export default function GlobalSearchModal() {
 }
 
 const localStyles = StyleSheet.create({
+    offlineNotice: {
+        color: colors.Text02,
+        marginBottom: 12,
+    },
     container: {
         ...fixedModalOverlayStyle,
         zIndex: 10000,

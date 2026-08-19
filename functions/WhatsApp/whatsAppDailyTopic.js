@@ -18,11 +18,12 @@ const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1Q
  * @param {string} projectId - User's default project ID
  * @param {string} assistantId
  * @param {Object|null} userData
+ * @param {number} timestamp - Instant used to resolve the user's local-day topic
  * @returns {Promise<{ chatId: string, isNew: boolean }>}
  */
-async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId, userData = null) {
+async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId, userData = null, timestamp = Date.now()) {
     const user = userData || (await getUserData(userId))
-    const { dateKey, dateLabel } = getUserLocalDateContext(user)
+    const { dateKey, dateLabel } = getUserLocalDateContext(user, timestamp)
     const today = dateKey
     const chatId = `BotChat${today}${userId}`
     console.log('WhatsApp DailyTopic: Checking topic', { chatId, projectId, userId })

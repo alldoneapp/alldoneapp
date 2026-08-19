@@ -9,7 +9,7 @@ jest.mock('../../redux/store', () => ({
 }))
 jest.mock('./suggestedTaskBypass', () => ({
     canBypassSuggestedTaskWorkflow: jest.fn(),
-    getSuggestedTaskBypassLabel: jest.fn(() => 'Bypass workflow'),
+    getSuggestedTaskBypassLabel: jest.fn(() => 'Bypass workflow and mark done'),
     moveSuggestedTaskToDoneBypassingWorkflow: jest.fn(),
 }))
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({
@@ -92,7 +92,7 @@ const renderModal = () => {
 describe('SuggestedModal workflow bypass', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        getSuggestedTaskBypassLabel.mockReturnValue('Bypass workflow')
+        getSuggestedTaskBypassLabel.mockReturnValue('Bypass workflow and mark done')
         store.getState.mockReturnValue({
             smallScreenNavigation: false,
             loggedUser: { uid: 'owner-1' },

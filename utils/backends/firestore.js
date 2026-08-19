@@ -43,6 +43,13 @@ import {
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
+import { enableFirestorePersistence } from './firestorePersistence'
+import { installFirestoreNetworkGate } from './firestoreNetworkGate'
+import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { isBrowserOffline } from '../connectionState'
+import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
+import { getServerTimestampNow } from '../serverClock'
+import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -51,6 +58,7 @@ import { isProjectOwnedByUser } from '../defaultProjectAuthorization'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
+import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from '../webFirebaseAuth'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -336,6 +344,7 @@ let functions
 let messaging
 let db
 let firestoreSettingsApplied = false
+let firestorePersistenceRequested = false
 let firestoreNetworkRestartPromise = null
 let somePrefix = 'Offline'
 let someId = -1
@@ -372,17 +381,18 @@ const backlinksCounterUnsub = {}
 const unsubHastagsColors = {}
 let noteRevisionHistoryCopiesUnsub = () => {}
 
-// Firebase's redirect sign-in hands off through a cross-origin helper iframe on the auth domain,
-// and that gapi handshake never completes in embedded browsers — signInWithRedirect then hangs
-// with no navigation and no error. Pointing authDomain at the dev origin makes the handler
-// same-origin (the dev server proxies /__/auth/* to the real auth domain), removing the iframe.
-// Only when the dev server is actually serving https, because Firebase hardcodes that scheme
-// when it builds the handler URL; plain http://localhost keeps the normal auth domain.
-const useLocalAuthHandler = () => isLocalDevHost() && window.location.protocol === 'https:'
+// Safari 16.1+ partitions the storage used by Firebase's cross-origin redirect helper. Firebase
+// Hosting exposes /__/auth/* on the app's custom domain, so use that same-origin handler on the
+// configured HTTPS deployment. The local HTTPS dev server proxies the same reserved paths.
+const firebaseAuthDomain = resolveFirebaseAuthDomain({
+    location: typeof window === 'undefined' ? null : window.location,
+    hostingUrl: HOSTING_URL,
+    fallbackAuthDomain: GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+})
 
 const firebaseConfig = {
     apiKey: GOOGLE_FIREBASE_WEB_API_KEY,
-    authDomain: useLocalAuthHandler() ? window.location.host : GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+    authDomain: firebaseAuthDomain,
     databaseURL: GOOGLE_FIREBASE_WEB_DATABASE_URL,
     projectId: GOOGLE_FIREBASE_WEB_PROJECT_ID,
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
@@ -478,11 +488,34 @@ export async function initFirebase(onComplete) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
             // which resets host and logs "You are overriding the original host".
-            db.settings({ ignoreUndefinedProperties: true, merge: true })
+            // 100 MB cache with LRU GC: the feeds/chat collections are large, and
+            // unlimited would let the offline cache grow without bound.
+            db.settings({ ignoreUndefinedProperties: true, merge: true, cacheSizeBytes: 100 * 1024 * 1024 })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
         }
+    }
+    if (!firestorePersistenceRequested) {
+        firestorePersistenceRequested = true
+        // Deliberately not awaited: the compat SDK queues every later Firestore call
+        // behind the enable, so correctness needs no await and boot stays fast. Must
+        // stay between db.settings() and the first real Firestore operation — see
+        // firestorePersistence.js for the failure modes and the emulator skip.
+        enableFirestorePersistence(db, { useEmulator })
+        // Offline is a designed state now, not an error: silence the SDK's WARN
+        // chatter (the enablePersistence deprecation notice, `WebChannelConnection
+        // RPC 'Listen' transport errored` on every reconnect attempt, BloomFilter
+        // warnings). Real errors still log at 'error'.
+        try {
+            firebase.firestore.setLogLevel('error')
+        } catch (error) {
+            // Logging config must never affect boot.
+        }
+        // Park the SDK's transport entirely while the app is offline — no doomed
+        // reconnect attempts, no browser-level network error spam, no battery
+        // burn in airplane mode. See firestoreNetworkGate.js.
+        installFirestoreNetworkGate(db)
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -588,6 +621,15 @@ function loadDeferredFirebaseModules() {
         // Load storage
         require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
+        // The Storage SDK retries failed network requests internally — by default
+        // for up to 2 MINUTES per operation (and 10 minutes per upload). In
+        // airplane mode that turned every note-content download into a silent
+        // two-minute stall that read as an endless spinner: the app's own offline
+        // handling never ran because the code was stuck inside getDownloadURL.
+        // Bound the retries so offline/degraded requests fail into the app's
+        // fallbacks (local y-indexeddb state, catch-up uploads) quickly.
+        notesStorage.setMaxOperationRetryTime(15000)
+        notesStorage.setMaxUploadRetryTime(60000)
 
         // Load messaging
         require('firebase/compat/messaging')
@@ -805,31 +847,87 @@ export function isLocalDevHost() {
     return hostname === 'localhost' || hostname === '127.0.0.1'
 }
 
-// Sign in with Google using popup
-// Note: Redirect doesn't work on custom domains (my.alldone.app) because Firebase Auth
-// uses firebaseapp.com for the OAuth handler, and cookies don't transfer back properly.
-// Popup works because it handles everything in the popup window on the firebaseapp.com domain.
+// Mobile browsers use redirect because popup windows are frequently blocked on iOS. Redirect is
+// only selected when Firebase's auth handler is same-origin; other hosts keep the popup fallback.
 export async function signInWithGoogleRedirect() {
+    // Capacitor iOS shell: Google blocks OAuth inside WKWebView (both the
+    // popup and the redirect land on disallowed_useragent), so the shell signs
+    // in through the native Google Sign-In sheet and hands the resulting token
+    // to the same web Firebase Auth session used everywhere else.
+    const nativeAuth = getNativeGoogleAuthPlugin()
+    if (nativeAuth) {
+        if (__DEV__) console.log('🔐 Using native Google sign-in (Capacitor shell)...')
+        let nativeResult
+        try {
+            nativeResult = await nativeAuth.signInWithGoogle()
+        } catch (error) {
+            // Closing the native sheet is a normal outcome, not a failure.
+            if (/cancel/i.test(error?.message || '') || error?.code === 'USER_CANCELLED') return null
+            throw error
+        }
+        const idToken = nativeResult?.credential?.idToken
+        if (!idToken) throw new Error('Native Google sign-in returned no ID token')
+        const credentials = firebase.auth.GoogleAuthProvider.credential(idToken, nativeResult?.credential?.accessToken)
+        await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        const result = await firebase.auth().signInWithCredential(credentials)
+        if (result?.additionalUserInfo?.isNewUser) {
+            store.dispatch(setRegisteredNewUser(true))
+        }
+        return result?.user || null
+    }
+
     const provider = new firebase.auth.GoogleAuthProvider()
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    return signInWithGoogleRedirectWeb(provider)
+}
 
-    // The custom-domain problem above does not apply to the dev server: localhost is an
-    // authorized redirect origin for the firebaseapp.com auth domain. Redirect needs no
-    // popup, which is what makes sign-in usable in embedded/automated browsers that block
-    // window.open. getRedirectResult() already runs on boot and completes the sign-in.
-    if (isLocalDevHost()) {
-        console.log('🔐 Local dev host: using Google sign-in with redirect (no popup)...')
+// Sign in with Apple — only reachable from the Capacitor iOS shell (the
+// login screen gates the button on isCapacitorIosShell). The native plugin
+// runs the AuthenticationServices flow and hands back an ID token + nonce;
+// the web Firebase SDK owns the session exactly as for Google.
+export async function signInWithAppleNative() {
+    const nativeAuth = getNativeGoogleAuthPlugin()
+    if (!nativeAuth) throw new Error('Apple sign-in requires the Capacitor shell')
+    let nativeResult
+    try {
+        nativeResult = await nativeAuth.signInWithApple()
+    } catch (error) {
+        // Closing the native sheet is a normal outcome, not a failure.
+        if (/cancel/i.test(error?.message || '') || error?.code === 'USER_CANCELLED') return null
+        throw error
+    }
+    const idToken = nativeResult?.credential?.idToken
+    if (!idToken) throw new Error('Native Apple sign-in returned no ID token')
+    const appleProvider = new firebase.auth.OAuthProvider('apple.com')
+    const credentials = appleProvider.credential({ idToken, rawNonce: nativeResult?.credential?.nonce })
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    const result = await firebase.auth().signInWithCredential(credentials)
+    if (result?.additionalUserInfo?.isNewUser) {
+        store.dispatch(setRegisteredNewUser(true))
+    }
+    return result?.user || null
+}
+
+async function signInWithGoogleRedirectWeb(provider) {
+    const useRedirect = shouldUseGoogleRedirect({
+        isMobile: isMobileDevice(),
+        isLocalDev: isLocalDevHost(),
+        authDomain: firebaseAuthDomain,
+        location: typeof window === 'undefined' ? null : window.location,
+    })
+
+    if (useRedirect) {
+        if (__DEV__) console.log('🔐 Using Google sign-in with same-origin redirect...')
         await firebase.auth().signInWithRedirect(provider)
-        // The page navigates away; nothing after this runs on the outgoing document.
         return null
     }
 
     try {
-        console.log('🔐 Trying Google sign-in with popup...')
+        if (__DEV__) console.log('🔐 Trying Google sign-in with popup...')
         const result = await firebase.auth().signInWithPopup(provider)
-        console.log('✅ Popup sign-in successful:', result?.user?.email)
+        if (__DEV__) console.log('✅ Popup sign-in successful:', result?.user?.email)
         if (result && result.user) {
             if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
                 store.dispatch(setRegisteredNewUser(true))
@@ -1421,6 +1519,11 @@ const reloadApp = () => {
 export const watchForceReload = async (userId, deleteOldData) => {
     if (deleteOldData) await db.doc(`userForceReloads/${userId}`).delete()
     db.doc(`userForceReloads/${userId}`).onSnapshot(doc => {
+        // With IndexedDB persistence a stale `{reload: true}` doc can be served from
+        // cache on boot (e.g. the session that was told to reload never got to delete
+        // it). Reloading is only meaningful — and only safe against a reload loop —
+        // when the server actually says so right now.
+        if (doc.metadata && doc.metadata.fromCache) return
         const data = doc.data()
         if (data && data.reload) reloadApp()
     })
@@ -3743,6 +3846,12 @@ export function mapUserData(userId, user) {
             : null,
         mcpEnabled: user.mcpEnabled !== false,
         mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
+        // One-shot AI feature model choices (rambler, email draft reply, …). This mapping is an
+        // explicit whitelist — without this line the Settings pickers would never see the field.
+        featureModelPreferences:
+            user.featureModelPreferences && typeof user.featureModelPreferences === 'object'
+                ? user.featureModelPreferences
+                : {},
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],
@@ -3978,30 +4087,24 @@ export function mapWorkstreamData(wstreamId, workstreamData) {
     }
 }
 
+/**
+ * Server time in epoch milliseconds.
+ *
+ * Both of these used to write and then read the GLOBAL `/info/currentTime`
+ * singleton — a document every user of the app contends on, read back through
+ * an unbounded recursion, on the note-autosave critical path. They now read a
+ * background-measured client/server clock offset instead (`utils/serverClock.js`),
+ * so they cost no I/O, cannot hang offline, and contend with nothing (AT-2340).
+ *
+ * `getFirebaseTimestampDirectly` stays `async` so its existing `await` /
+ * `.then()` call sites are unchanged.
+ */
 export function getFirebaseTimestamp() {
-    firebase
-        .firestore()
-        .doc('/info/currentTime/')
-        .set({ time: firebase.firestore.FieldValue.serverTimestamp() })
-        .then(async () => {
-            const currentTime = (await db.doc('/info/currentTime/').get()).data()
-            return currentTime.time
-        })
-}
-
-async function getServerCurrentTime() {
-    const currentTime = (await db.doc('/info/currentTime/').get()).data()
-    if (currentTime.time) {
-        return currentTime.time.seconds * 1000
-    } else {
-        return await getServerCurrentTime()
-    }
+    return getServerTimestampNow()
 }
 
 export async function getFirebaseTimestampDirectly() {
-    await firebase.firestore().doc('/info/currentTime/').set({ time: firebase.firestore.FieldValue.serverTimestamp() })
-    const currentTime = await getServerCurrentTime()
-    return currentTime
+    return getServerTimestampNow()
 }
 
 /**
@@ -4918,149 +5021,154 @@ export async function getNotesByProject(projectId) {
 export async function watchFollowedTabNotesExpanded(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '==', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '==', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '==', 0)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '==', 0)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchFollowedTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
-    let cacheChanges = []
-    stickyNotesUnsubs = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
-        .where('stickyData.days', '>', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, true)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, true)
+    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('stickyData.days', '>', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesExpanded(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '==', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '==', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '==', 0)
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '==', 0)
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesExpandedInAllProjects(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    let cacheChanges = []
-    notesUnsubs2[projectId] = db
-        .collection(`noteItems/${projectId}/notes`)
-        .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .limit(maxNotesToRender)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, false)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .orderBy('lastEditionDate', 'desc')
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .limit(maxNotesToRender)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
 export async function watchAllTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
-    let cacheChanges = []
-    stickyNotesUnsubs = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .where('stickyData.days', '>', 0)
-        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-            cacheChanges = processNotesCacheResultsAndCallback(querySnapshot, cacheChanges, callback, true)
-        })
+    const noteSnapshots = createNotesSnapshotHandler(callback, true)
+    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+        db
+            .collection(`noteItems/${projectId}/notes`)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('stickyData.days', '>', 0)
+            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    )
 }
 
-const processNotesCacheResultsAndCallback = (querySnapshot, cacheChanges, callback, isStickyWatcher) => {
-    const changes = querySnapshot.docChanges()
-    if (querySnapshot.metadata.fromCache) {
-        return [...cacheChanges, ...changes]
-    } else {
+const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
+    let cacheChanges = []
+    const gate = createCachedSnapshotGate(() => handleSnapshot)
+    function handleSnapshot(querySnapshot) {
+        const changes = querySnapshot.docChanges()
+        if (gate.shouldBuffer(querySnapshot)) {
+            cacheChanges = [...cacheChanges, ...changes]
+            return
+        }
         const mergedChanges = [...cacheChanges, ...changes]
         callback(mergedChanges)
         if (!isStickyWatcher) {
             store.dispatch(stopLoadingData())
         }
-        return []
+        cacheChanges = []
     }
+    return { handleSnapshot, wrapUnsubscribe: gate.wrapUnsubscribe }
 }
 
 export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, callback) {
@@ -5276,7 +5384,7 @@ export async function getNoteMeta(objectId, noteId) {
     return noteData ? mapNoteData(noteId, noteData) : null
 }
 
-export function setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks) {
+export function setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options = {}) {
     const extractIdsInto = (destArr, sourceArr, idIndex) => {
         for (let url of sourceArr) {
             destArr.push(url.split('/')[idIndex])
@@ -5465,12 +5573,13 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         ]
     }
 
-    const actions = {
-        task: () => db.doc(`items/${projectId}/tasks/${linkedObject.id}`).update(updateObject),
-        note: () => db.doc(`noteItems/${projectId}/notes/${linkedObject.id}`).update(updateObject),
+    const refs = {
+        task: () => db.doc(`items/${projectId}/tasks/${linkedObject.id}`),
+        note: () => db.doc(`noteItems/${projectId}/notes/${linkedObject.id}`),
     }
 
-    actions[linkedObject.type]()
+    const ref = refs[linkedObject.type] ? refs[linkedObject.type]() : null
+    if (ref) writeLinkedParentsIfChanged(ref, updateObject, { force: !!options.forceWrite })
 
     // Commenting this by Customer request
     // logEvent('new_backlinks', {
@@ -5550,26 +5659,34 @@ export async function setNoteOwnerFeedsChain(projectId, note, newOwner, oldOwner
     batch.commit()
 }
 
+// These four historically returned the RAW callable envelope, and their callers
+// read `result.data`. Routing them through the offline-aware funnel (which
+// unwraps) would silently change that contract, so the envelope is rebuilt:
+// callers are untouched and only gain the fast offline failure (AT-2340).
+const asCallableEnvelope = async (functionName, payload) => ({
+    data: await runHttpsCallableFunction(functionName, payload),
+})
+
 export async function generateNTSToken() {
-    const generateNTSToken = functions.httpsCallable('generateNTSTokenSecondGen')
-    return generateNTSToken()
+    return asCallableEnvelope('generateNTSTokenSecondGen', undefined)
 }
 
 export async function mintMenubarAppToken() {
-    const mintToken = functions.httpsCallable('mintMenubarAppToken')
-    return mintToken()
+    return asCallableEnvelope('mintMenubarAppToken', undefined)
 }
 
 export async function listMenubarAppTokens() {
-    const listTokens = functions.httpsCallable('listMenubarAppTokens')
-    return listTokens()
+    return asCallableEnvelope('listMenubarAppTokens', undefined)
 }
 
 export async function revokeMenubarAppToken(tokenId) {
-    const revokeToken = functions.httpsCallable('revokeMenubarAppToken')
-    return revokeToken({ tokenId })
+    return asCallableEnvelope('revokeMenubarAppToken', { tokenId })
 }
 
+// Deliberately NOT routed through `runHttpsCallableFunction` (AT-2340): both use
+// the two-argument streaming-style callable signature, both return the raw
+// envelope that their callers destructure, and both are long-running background
+// jobs whose callers assume no throw propagates.
 export function connectToConverter(data, callback) {
     const convertVideos = functions.httpsCallable('convertVideosSecondGen')
     return convertVideos(data, callback)
@@ -6495,32 +6612,29 @@ export function getObjectFromUrl(objectType, url, callback) {
 }
 
 export async function sendPushNotification(data) {
-    const sendPushNotification = functions.httpsCallable('sendPushNotificationSecondGen')
-    sendPushNotification(data)
+    // Deliberately fire-and-forget: it is a side effect of feed writes, which DO
+    // work offline through the Firestore write queue. The rejection is swallowed
+    // so an offline feed write does not turn into an unhandled rejection; the
+    // server sends the notification when the queued feed write lands (AT-2340).
+    runHttpsCallableFunction('sendPushNotificationSecondGen', data).catch(() => {})
 }
 
 export async function callEnrichContactViaLinkedIn(data) {
-    const enrichFn = functions.httpsCallable('enrichContactViaLinkedIn')
-    return await enrichFn(data)
+    return asCallableEnvelope('enrichContactViaLinkedIn', data)
 }
 
 export async function callSearchLinkedInProfile(data) {
-    const searchFn = functions.httpsCallable('searchLinkedInProfile')
-    return await searchFn(data)
+    return asCallableEnvelope('searchLinkedInProfile', data)
 }
 
 // --- GitLab repo connection (per-project repo + per-user token, used by the VM coding flow) ---
 
 export async function connectGitlabRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGitlabRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGitlabRepo', data)
 }
 
 export async function disconnectGitlabRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGitlabRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGitlabRepo', data)
 }
 
 // Read whether the given user has linked their GitLab token for this project. Reads the
@@ -6547,31 +6661,23 @@ export async function getGitlabUserConnection(projectId, userId) {
 // --- GitHub repo connection (per-project repo + per-user token, used by the VM coding flow) ---
 
 export async function connectGithubRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGithubRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGithubRepo', data)
 }
 
 export async function disconnectGithubRepo(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGithubRepo')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGithubRepo', data)
 }
 
 // Refreshes the normalized status cached on a task. GitLab/GitHub credentials are
 // resolved and used only by the Cloud Function.
 export async function refreshTaskMergeStatus(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('refreshTaskMergeStatus')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('refreshTaskMergeStatus', data)
 }
 
 // Trigger an on-demand rebuild of the project's golden VM snapshot (repo + node_modules
 // pre-baked, so VM tasks skip the dependency install). Returns { success, buildId, alreadyBuilding }.
 export async function rebuildProjectVmGolden(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('rebuildProjectVmGolden')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('rebuildProjectVmGolden', data)
 }
 
 // Read whether the given user has linked their GitHub token for this project. Reads the
@@ -6599,15 +6705,11 @@ export async function getGithubUserConnection(projectId, userId) {
 // user's own Firestore / Cloud Logging via a short-lived read-only token. Mirrors GitHub/GitLab. ---
 
 export async function connectGcpProject(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGcpProject')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectGcpProject', data)
 }
 
 export async function disconnectGcpProject(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGcpProject')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectGcpProject', data)
 }
 
 // Read whether the given user has linked a Google Cloud service-account key for this project.
@@ -6632,81 +6734,55 @@ export async function getGcpConnection(projectId, userId) {
 // --- Personal Claude/Codex subscriptions for execute_task_in_vm ---
 
 export async function getVmAgentSettings() {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentSettings')
-    const result = await fn({})
-    return result.data
+    return runHttpsCallableFunction('getVmAgentSettings', {})
 }
 
 export async function setDefaultVmAgent(agent) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgent')
-    const result = await fn({ agent })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgent', { agent })
 }
 
 export async function setDefaultVmAgentReasoningEffort(effort) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentReasoningEffort')
-    const result = await fn({ effort })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgentReasoningEffort', { effort })
 }
 
 export async function setDefaultVmApprovalPolicy(policy) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmApprovalPolicy')
-    const result = await fn({ policy })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmApprovalPolicy', { policy })
 }
 
 export async function setDefaultVmAgentModel(agent, family) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentModel')
-    const result = await fn({ agent, family })
-    return result.data
+    return runHttpsCallableFunction('setDefaultVmAgentModel', { agent, family })
 }
 
 export async function getVmAgentModelOptions(forceRefresh = false) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentModelOptions')
-    const result = await fn({ forceRefresh })
-    return result.data
+    return runHttpsCallableFunction('getVmAgentModelOptions', { forceRefresh })
 }
 
 export async function getVmSubscriptionStatus() {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmSubscriptionStatus')
-    const result = await fn({})
-    return result.data
+    return runHttpsCallableFunction('getVmSubscriptionStatus', {})
 }
 
 export async function connectVmSubscription(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectVmSubscription')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectVmSubscription', data)
 }
 
 export async function disconnectVmSubscription(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectVmSubscription')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectVmSubscription', data)
 }
 
 export async function saveVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('saveVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('saveVmApiKey', data)
 }
 
 export async function testVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('testVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('testVmApiKey', data)
 }
 
 export async function removeVmApiKey(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('removeVmApiKey')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('removeVmApiKey', data)
 }
 
 export async function setVmCredentialMode(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setVmCredentialMode')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('setVmCredentialMode', data)
 }
 
 // --- Per-assistant MCP server connections ---
@@ -6715,27 +6791,19 @@ export async function setVmCredentialMode(data) {
 // (token / OAuth tokens) is connected/validated/stored server-side via these callables.
 
 export async function connectAssistantMcpServer(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('connectAssistantMcpServer')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('connectAssistantMcpServer', data)
 }
 
 export async function disconnectAssistantMcpServer(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectAssistantMcpServer')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('disconnectAssistantMcpServer', data)
 }
 
 export async function beginMcpOAuth(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('beginMcpOAuth')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('beginMcpOAuth', data)
 }
 
 export async function completeMcpOAuth(data) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('completeMcpOAuth')
-    const result = await fn(data)
-    return result.data
+    return runHttpsCallableFunction('completeMcpOAuth', data)
 }
 
 //MENTION ALL
@@ -7172,6 +7240,19 @@ export const inStagingEnvironment = () => {
 
 export function getTypesenseSearchKeys() {
     return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
+}
+
+// The region every callable/onRequest function in this project is deployed to. It is a
+// literal in the several `firebase.app().functions(...)` call sites above; exported here so
+// code that has to address an HTTP function by URL cannot drift from it.
+export const FUNCTIONS_REGION = 'europe-west1'
+
+export function getFunctionsRegion() {
+    return FUNCTIONS_REGION
+}
+
+export function getFirebaseProjectId() {
+    return GOOGLE_FIREBASE_WEB_PROJECT_ID
 }
 
 export function getSentryVariables() {
@@ -7677,8 +7758,7 @@ export async function checkIfGmailIsConnected(projectId) {
 
 export const duplicateProject = async (projectId, options) => {
     const user = store.getState().loggedUser
-    const moveTasksFn = functions.httpsCallable('onCopyProjectSecondGen')
-    await moveTasksFn({ projectId, user, options })
+    await runHttpsCallableFunction('onCopyProjectSecondGen', { projectId, user, options })
 }
 
 export const addToMarketingList = async (email, initialUrl) => {
@@ -7693,14 +7773,13 @@ export const addToMarketingList = async (email, initialUrl) => {
                 note: 'userId (EXT_ID) will be added automatically from auth context',
             })
 
-            const addToBrevoFn = functions.httpsCallable('addContactToBrevoMarketingList')
-            const result = await addToBrevoFn({
+            const result = await runHttpsCallableFunction('addContactToBrevoMarketingList', {
                 email,
                 initialUrl,
                 languageIndex,
             })
 
-            console.log('Successfully added contact to Brevo:', result.data)
+            console.log('Successfully added contact to Brevo:', result)
         } catch (error) {
             console.error('Failed to add contact to Brevo marketing list:', {
                 error: error.message,
@@ -7820,6 +7899,16 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
 }
 
 export async function runHttpsCallableFunction(functionName, data, options = {}) {
+    // Callables are server-side orchestration and can never work offline — fail
+    // fast with an identifiable error instead of letting the SDK hang into its
+    // 70s default timeout (OFFLINE_SUPPORT_PLAN.md Stage 7). Callers already
+    // handle callable failures; this only changes how quickly and clearly.
+    if (isBrowserOffline()) {
+        const offlineError = new Error(`"${functionName}" needs an internet connection`)
+        offlineError.code = 'offline'
+        throw offlineError
+    }
+
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)

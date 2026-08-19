@@ -947,6 +947,14 @@ export const setActiveChatData = (projectId, chatId, chatType) => {
     return action
 }
 
+export const setConnectionState = connectionState => {
+    const action = {
+        type: 'Set connection state',
+        connectionState,
+    }
+    return action
+}
+
 export const setShowNewDayNotification = show => {
     const action = {
         type: 'Set show new day notification',
@@ -1970,6 +1978,14 @@ export const setLaterTasksExpanded = laterTasksExpanded => {
         laterTasksExpanded,
     }
     return action
+}
+
+export const setTaskListSingleLoading = (instanceKey, loading) => {
+    return {
+        type: 'Set task list single loading',
+        instanceKey,
+        loading,
+    }
 }
 
 export const setSomedayTasksExpanded = somedayTasksExpanded => {

@@ -1,6 +1,9 @@
 import { StyleSheet } from 'react-native'
 
 export const taskPresentationLayout = StyleSheet.create({
+    listContainer: {
+        paddingHorizontal: 8,
+    },
     container: {
         justifyContent: 'center',
         marginLeft: -16,

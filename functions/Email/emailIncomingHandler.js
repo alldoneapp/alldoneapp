@@ -30,6 +30,22 @@ async function handleIncomingAnnaEmail(req, res) {
             return res.status(403).send('Forbidden')
         }
 
+        // A verified account owner can explicitly offer safe meeting slots to one external
+        // participant. Replies to that exact Anna message carry a one-purpose grant and must
+        // be resolved before ordinary account routing, even if the guest also has Alldone.
+        const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
+        const guestMeetingResult = await tryHandleGuestMeetingReply(payload)
+        if (guestMeetingResult.matched) {
+            await upsertAuditRecord(payload.messageId, {
+                status: guestMeetingResult.status,
+                userId: guestMeetingResult.ownerUserId || null,
+                fromEmail: payload.fromEmail,
+                guestMeetingGrantId: guestMeetingResult.grantId || null,
+                updatedAt: Date.now(),
+            })
+            return res.status(200).json({ ok: true, status: guestMeetingResult.status })
+        }
+
         const user = await findVerifiedUserByEmailIdentity(payload.fromEmail)
         if (!user) {
             await replySafely(payload, `I couldn't match this sender to a verified Alldone account email.`)

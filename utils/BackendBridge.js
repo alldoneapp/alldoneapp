@@ -220,6 +220,10 @@ export default class Backend {
         return bridge.signInWithGoogleRedirect()
     }
 
+    static signInWithApple() {
+        return bridge.signInWithAppleNative()
+    }
+
     static handleGoogleRedirectResult() {
         return bridge.handleGoogleRedirectResult()
     }
@@ -508,8 +512,8 @@ export default class Backend {
         return bridge.getNoteMeta(projectId, noteId)
     }
 
-    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks) {
-        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks)
+    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options) {
+        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options)
     }
 
     static watchNotesCollab(noteId, callback) {
@@ -859,6 +863,14 @@ export default class Backend {
 
     static getTypesenseSearchKeys() {
         return bridge.getTypesenseSearchKeys()
+    }
+
+    static getFunctionsRegion() {
+        return bridge.getFunctionsRegion()
+    }
+
+    static getFirebaseProjectId() {
+        return bridge.getFirebaseProjectId()
     }
 
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {

@@ -362,6 +362,28 @@ exports.oauthProtectedResource = onRequest(
     }
 )
 
+// Out-of-scope bounce used by the app's "Open view in new window" button so an installed
+// desktop PWA can hand the destination to a normal browser tab (AT-2345). It only 302s to an
+// allowlisted Alldone URL — see functions/WebApp/openInBrowserTab.js for why it must live on
+// a different origin than the hosting domain.
+exports.openInBrowserTab = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: {
+            origin: true,
+            methods: ['GET', 'HEAD', 'OPTIONS'],
+            allowedHeaders: ['*'],
+            credentials: false,
+        },
+    },
+    (req, res) => {
+        const { handleOpenInBrowserTab } = require('./WebApp/openInBrowserTab')
+        handleOpenInBrowserTab(req, res)
+    }
+)
+
 // Root-level OAuth endpoints that Claude Code expects
 // These proxy/redirect to the actual MCP server endpoints
 
@@ -1235,7 +1257,9 @@ exports.setVmCredentialMode = onCall(
 exports.connectAssistantMcpServer = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MiB',
+        // MCP SDK loading runs on top of the shared index.js cold-start footprint,
+        // which can exceed 256MiB before tools/list completes.
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1454,6 +1478,21 @@ exports.handleStripeWebhook = onRequest(
     async (req, res) => {
         const { handleStripeWebhook } = require('./Premium/stripePremiumChecker')
         return await handleStripeWebhook(req, res)
+    }
+)
+
+// Apple In-App Purchases (iOS Capacitor shell) — purchase lifecycle events
+// from RevenueCat. Grants premium status and Gold packs; see
+// Premium/revenueCatWebhook.js for the contract.
+exports.handleRevenueCatWebhook = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleRevenueCatWebhook } = require('./Premium/revenueCatWebhook')
+        return await handleRevenueCatWebhook(req, res)
     }
 )
 
@@ -5400,6 +5439,9 @@ exports.runGmailLabelingSyncSecondGen = onCall(
 )
 
 exports.transcribeMeetingAudio = require('./Notes/transcribeMeeting').transcribeMeetingAudio
+
+// RAMBLER DICTATION - audio → transcript → assistant-context LLM cleanup, returned to the input
+exports.processRambleSecondGen = require('./Assistant/processRamble').processRambleSecondGen
 
 // WHATSAPP INCOMING MESSAGE - Receives messages from Twilio WhatsApp webhook
 exports.whatsAppIncomingMessage = onRequest(

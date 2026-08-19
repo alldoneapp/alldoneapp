@@ -6,7 +6,7 @@ import { colors } from '../../../styles/global'
 import { MANAGE_TASK_MODAL_ID, removeModal } from '../../../ModalsManager/modalsManager'
 import Header from './Header'
 import TaskArea from './TaskArea'
-import { applyPopoverWidth, dismissPopupInBackground, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, dismissPopupInBackground } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
 import AddSubtask from './AddSubtask'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -17,6 +17,7 @@ import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 class ManageTaskModal extends Component {
     constructor(props) {
@@ -116,7 +117,7 @@ class ManageTaskModal extends Component {
             <CustomScrollView
                 style={[
                     localStyles.container,
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                     applyPopoverWidth(),
                     this.closed && { opacity: 0 },
                 ]}

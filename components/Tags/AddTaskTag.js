@@ -25,6 +25,10 @@ function AddTaskTag({
     forceShrink,
     expandTaskListIfNeeded,
     primary,
+    // The empty-inbox call to action (AT-2306) is the same control at a bigger
+    // size — sharing the component keeps one popup wiring (popover, float-popup
+    // bookkeeping, mention-modal-aware close) instead of a second copy of it.
+    large,
     openPopover,
     closePopover,
     isOpen,
@@ -46,12 +50,18 @@ function AddTaskTag({
         }
     }
 
+    // The large variant keeps its label at every width: it is the only call to
+    // action on the screen it lives on, so shrinking it to a bare icon would
+    // leave nothing to read.
+    const showLabel = large || (!smallScreenNavigation && !forceShrink)
+
     const trigger = (
         <TouchableOpacity
             style={[
                 localStyles.tag,
                 primary && localStyles.tagPrimary,
-                (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
+                !large && (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
+                large && localStyles.tagLarge,
                 style,
             ]}
             onPress={handleOpen}
@@ -61,11 +71,17 @@ function AddTaskTag({
             accessibilityState={{ disabled: !!disabled, expanded: isOpen }}
         >
             <View style={localStyles.icon}>
-                <Icon name={'check-square'} size={16} color={primary ? '#ffffff' : colors.Text03} />
+                <Icon name={'check-square'} size={large ? 20 : 16} color={primary ? '#ffffff' : colors.Text03} />
             </View>
-            {!smallScreenNavigation && !forceShrink && (
+            {showLabel && (
                 <Text
-                    style={[styles.subtitle2, localStyles.text, primary && localStyles.textPrimary, windowTagStyle()]}
+                    style={[
+                        large ? styles.subtitle1 : styles.subtitle2,
+                        localStyles.text,
+                        primary && localStyles.textPrimary,
+                        large && localStyles.textLarge,
+                        windowTagStyle(),
+                    ]}
                 >
                     {translate('Add task')}
                 </Text>
@@ -77,7 +93,11 @@ function AddTaskTag({
         <AppPopover
             isOpen={isOpen}
             positions={['bottom', 'top', 'left', 'right']}
-            align="start"
+            // AT-2364: the large call to action is itself centered on the
+            // screen, so an edge-aligned popup reads as off-center. Centering
+            // stays library-managed (no contentLocation), which keeps the
+            // vendored viewport nudge and the position-flip search working.
+            align={large ? 'center' : 'start'}
             containerStyle={{ zIndex: 9999 }}
             padding={8}
             offsetY={5}
@@ -89,7 +109,10 @@ function AddTaskTag({
                         backgroundColor: 'var(--background-primary)',
                         borderRadius: '8px',
                         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-                        minWidth: '300px',
+                        // The wide variant sizes itself from the modal system
+                        // (see createTaskPopupWidth); a hard 300px floor here
+                        // would only fight it on narrow windows.
+                        ...(large ? {} : { minWidth: '300px' }),
                     }}
                 >
                     <RichCreateTaskModal
@@ -105,6 +128,7 @@ function AddTaskTag({
                         tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
                         showProjectSelector={showProjectSelector}
                         expandTaskListIfNeeded={expandTaskListIfNeeded}
+                        wide={large}
                     />
                 </div>
             }
@@ -134,6 +158,11 @@ const localStyles = StyleSheet.create({
         width: 24,
         height: 24,
     },
+    tagLarge: {
+        height: 44,
+        paddingHorizontal: 20,
+        alignSelf: 'center',
+    },
     text: {
         color: colors.Text03,
         marginLeft: 6,
@@ -141,6 +170,10 @@ const localStyles = StyleSheet.create({
     },
     textPrimary: {
         color: '#ffffff',
+    },
+    textLarge: {
+        marginLeft: 10,
+        marginRight: 2,
     },
     icon: {
         flexDirection: 'row',

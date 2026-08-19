@@ -22,6 +22,7 @@ const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
 const { isTaskOnUserPlate } = require('./focusTaskEligibility')
 const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
+const { compareTasksByCalendarPlacement } = require('./calendarTaskOrder')
 
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
@@ -36,7 +37,13 @@ const getTaskPriorityRank = priority => TASK_PRIORITY_RANK[priority] || 0
 // focus would jump to a meeting that is nowhere near the top of the list the user is looking at.
 // (The deliberate imminent-meeting preference is a separate, explicit rule - see AT-2251.)
 const getComparableSortIndex = task => resolveTaskSortIndex(task.sortIndex, task.calendarData, task.created) || 0
+// AT-2351 - calendar placement is the strongest term, matching the rendered list where it is
+// applied last and therefore outranks priority. Without it the next focus could be a meeting the
+// user can see sitting at the bottom of the group.
 const compareTasksByPriorityThenSortIndex = (a, b) => {
+    const calendarDiff = compareTasksByCalendarPlacement(a, b)
+    if (calendarDiff !== 0) return calendarDiff
+
     const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
     return priorityDiff !== 0 ? priorityDiff : getComparableSortIndex(b) - getComparableSortIndex(a)
 }
@@ -893,16 +900,14 @@ class FocusTaskService {
                     )
                     const previousTaskSnap = await previousTaskRef.get()
                     if (previousTaskSnap.exists) {
-                        const previousTaskData = previousTaskSnap.data()
-                        let restoredSortIndex = generateSortIndex()
-                        const calendarStart = previousTaskData?.calendarData?.start
-                        if (calendarStart) {
-                            const startDateTime = calendarStart.dateTime || calendarStart.date
-                            if (startDateTime) {
-                                restoredSortIndex = this.options.moment(startDateTime).valueOf()
-                            }
-                        }
-                        previousTaskRestore = { ref: previousTaskRef, sortIndex: restoredSortIndex }
+                        // AT-2351 - a task leaving focus rejoins the list with a plain arrival
+                        // index, calendar task or not. This used to restore a calendar task's raw
+                        // EVENT START, which is the pre-AT-2259 encoding: a future timestamp that
+                        // re-pinned the meeting to the top of its group, undoing on the server what
+                        // the client had already stopped doing. A meeting's place among the other
+                        // meetings now comes from `calendarData.start` at render time, so there is
+                        // nothing to restore it to.
+                        previousTaskRestore = { ref: previousTaskRef, sortIndex: generateSortIndex() }
                     }
                 } catch (restoreError) {
                     console.warn(
@@ -983,7 +988,10 @@ class FocusTaskService {
                 }
             }
 
-            let restoreSortIndex = generateSortIndex()
+            // AT-2351 - see the note in the set-focus path above: a plain arrival index for every
+            // task. Restoring a calendar task's raw event start here was the pre-AT-2259 encoding
+            // and re-pinned the meeting to the top of its group.
+            const restoreSortIndex = generateSortIndex()
             let hasTaskSnapshot = false
             try {
                 const focusTaskRef = this.options.database.doc(
@@ -992,14 +1000,6 @@ class FocusTaskService {
                 const focusTaskSnap = await focusTaskRef.get()
                 if (focusTaskSnap.exists) {
                     hasTaskSnapshot = true
-                    const focusTaskData = focusTaskSnap.data()
-                    const calendarStart = focusTaskData?.calendarData?.start
-                    if (calendarStart) {
-                        const startDateTime = calendarStart.dateTime || calendarStart.date
-                        if (startDateTime) {
-                            restoreSortIndex = this.options.moment(startDateTime).valueOf()
-                        }
-                    }
                 }
             } catch (restoreError) {
                 console.warn(
@@ -1057,12 +1057,12 @@ class FocusTaskService {
     }
 
     /**
-     * Get focus task for user - returns current focus task or finds/sets new one
+     * Get the user's current focus task.
      * @param {string} userId - User ID
      * @param {string} projectId - Current project context (optional)
      * @param {Object} options - Options object
      * @param {boolean} options.selectMinimalFields - Return minimal task fields only
-     * @param {boolean} options.forceNew - Force finding a new/different focus task, skipping current one
+     * @param {boolean} options.forceNew - Explicitly find and set a new/different focus task
      * @param {number} options.timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @returns {Object} Focus task result
      */
@@ -1158,19 +1158,18 @@ class FocusTaskService {
                     message: 'No suitable focus task found',
                 }
             }
-        } else if (!currentFocusTask) {
-            // Normal flow: No current focus task, find and set a new one
-            currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId, null, null, timezoneOffset)
-            wasNewTaskSet = !!currentFocusTask
         }
 
+        // AT-2323: ordinary reads must stop here. Heartbeats call get_focus_task in the background;
+        // choosing a fallback when the user had no focus made whichever task arrived during that
+        // lookup become focused without any user action. Replacement after a real focus transition
+        // still uses findAndSetNewFocusTask directly, and an explicit request uses forceNew above.
         if (!currentFocusTask) {
             return {
                 success: true,
                 focusTask: null,
                 wasNewTaskSet: false,
-                message:
-                    'No focus task available for today. Congrats - you have reached empty inbox across all your projects.',
+                message: 'No focus task is set.',
             }
         }
 

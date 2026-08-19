@@ -979,7 +979,9 @@ class TasksHelper {
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
 
-        if (note !== null && !note.parentObject) {
+        // A note attached to a contact/goal/task opens in the note editor too (AT-2356) —
+        // the `!note.parentObject` guard used to drop those on the followed-notes list.
+        if (note !== null) {
             let data = {
                 noteId: note.id,
                 projectId: projectId,
@@ -1250,6 +1252,35 @@ class TasksHelper {
     }
 
     /**
+     * Resolves the user context a note's detailed view should be opened with (AT-2356).
+     *
+     * A note's `userId` is NOT necessarily a registered user: a note created by an
+     * assistant carries the assistant id, and a note can also belong to a contact or a
+     * workstream. `getUserDataByUidOrEmail` only ever looks in `users/`, so all of those
+     * resolved to `null` — and the note-details route treated that as "cannot open" and
+     * bounced to the followed-notes list, which is why clicking a note tag directly went
+     * to `/projects/{projectId}/user/{uid}/notes/followed` while opening the same note
+     * from inside the tag popup worked (that path never looks the owner up).
+     *
+     * Resolution mirrors `processURLTaskDetailsTab`: users, contacts, workstreams and
+     * project/global assistants through `getUserOrContactBy`, then the redux assistant
+     * lookup for assistants living in another project, and the DV renders the logged
+     * user's context for anything that is not a real person (assistants, recorders).
+     * It never returns null — an unresolvable owner must not block opening the note.
+     */
+    static getNoteDVUserContext = async (projectId, note) => {
+        const { loggedUser } = store.getState()
+
+        if (!note || !note.userId) return loggedUser
+
+        const owner = (await Backend.getUserOrContactBy(projectId, note.userId)) || getAssistant(note.userId)
+
+        if (!owner) return loggedUser
+
+        return owner.recorderUserId || !!owner.temperature ? loggedUser : owner
+    }
+
+    /**
      *
      * @param navigation
      * @param tab  ['Note', 'Properties']
@@ -1272,7 +1303,7 @@ class TasksHelper {
         const { loggedUser, selectedSidebarTab } = store.getState()
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
-        const user = note ? await Backend.getUserDataByUidOrEmail(note.userId) : null
+        const user = note ? await TasksHelper.getNoteDVUserContext(projectId, note) : null
         const backlinkSection = {
             index: filterConstant === URL_NOTE_DETAILS_BACKLINKS_TASKS ? 1 : 0,
             section: filterConstant === URL_NOTE_DETAILS_BACKLINKS_TASKS ? 'Tasks' : 'Notes',
@@ -1295,7 +1326,37 @@ class TasksHelper {
                 note?.parentObject
             )
         }
-        if (note && inSelectedProject && user != null && !note.parentObject) {
+        // A note attached to a TASK still opens inside its task's note tab: that is where the
+        // meeting-transcription deep links land (`autoStartTranscription`), and it already shows
+        // the note. Every other note — standalone, or attached to a contact/goal/… — opens the
+        // note editor itself, which is exactly what the tag popup does (AT-2356). Before, only
+        // a note with no `parentObject` at all took that path, so a tag pointing at a contact
+        // note dropped the user on the followed-notes list. An unreadable parent task falls
+        // through to the standalone editor rather than leaving the click doing nothing.
+        const parentTask =
+            note && inSelectedProject && note.parentObject?.type === 'tasks'
+                ? await Backend.getTaskData(projectId, note.parentObject.id)
+                : null
+
+        if (parentTask) {
+            const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+            if (__DEV__) {
+                console.log(
+                    '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                    autoStartTranscription
+                )
+            }
+            store.dispatch([
+                switchProject(projectIndex),
+                setSelectedNavItem(DV_TAB_TASK_NOTE),
+                setSelectedTypeOfProject(projectType),
+            ])
+            navigation.navigate('TaskDetailedView', {
+                task: parentTask,
+                projectId,
+                autoStartTranscription,
+            })
+        } else if (note && inSelectedProject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             let data = {
                 noteId: note.id,
@@ -1312,28 +1373,6 @@ class TasksHelper {
                 setSelectedNote(note),
             ])
             navigation.navigate('NotesDetailedView', data)
-        } else if (note && inSelectedProject && note.parentObject?.type === 'tasks') {
-            // Note is attached to a task - fetch the task and navigate to the task's note tab
-            const task = await Backend.getTaskData(projectId, note.parentObject.id)
-            if (task) {
-                const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-                if (__DEV__) {
-                    console.log(
-                        '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
-                        autoStartTranscription
-                    )
-                }
-                store.dispatch([
-                    switchProject(projectIndex),
-                    setSelectedNavItem(DV_TAB_TASK_NOTE),
-                    setSelectedTypeOfProject(projectType),
-                ])
-                navigation.navigate('TaskDetailedView', {
-                    task,
-                    projectId,
-                    autoStartTranscription,
-                })
-            }
         } else if (inSelectedProject) {
             const { loggedUser } = store.getState()
             let data = {

@@ -28,6 +28,7 @@ import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComme
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
+import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -53,6 +54,7 @@ export default function ChatInput({
     autoFocus = true,
 }) {
     const dispatch = useDispatch()
+    const homeIndicatorLift = useHomeIndicatorLift()
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
     const quotedNoteText = useSelector(state => state.quotedNoteText)
     const quotedText = useSelector(state => state.quotedText)
@@ -389,7 +391,14 @@ export default function ChatInput({
     return (
         <AttachmentDropZone
             testID="full-chat-image-drop-zone"
-            style={[localStyles.inputContainer, containerStyle]}
+            style={[
+                localStyles.inputContainer,
+                // Keep the floating composer clear of the iOS home indicator
+                // now that #root no longer reserves that region (0 elsewhere,
+                // and 0 while the keyboard is open — see useHomeIndicatorLift).
+                homeIndicatorLift > 0 && { bottom: 24 + homeIndicatorLift },
+                containerStyle,
+            ]}
             disabled={disabledEdition}
             editor={chatEditor}
             inputCursorIndex={inputCursorIndex}
@@ -416,6 +425,10 @@ export default function ChatInput({
                 setShowRunOutGoalModal={setShowRunOutGoalModal}
                 chatAssistantData={{ objectId, objectAssistantId: assistantId, objectType: chatType }}
                 setAssistantId={updateSelectedAssistant}
+                // Same as the assistant line: the mic is pinned on in the chat composer rather
+                // than revealed on hover/focus (AT-2355). The strip it sits in is reserved
+                // whenever dictation is enabled, so nothing reflows.
+                alwaysShowDictation={true}
             />
             <ChatInputButtons
                 projectId={projectId}
@@ -463,7 +476,10 @@ const localStyles = StyleSheet.create({
         borderTopRightRadius: 4,
         minHeight: 40, // 59 - (7 + 12)
         marginLeft: 17,
-        marginRight: 40,
+        // 8, not TaskInput's 40: that margin clears the assignee avatar in the task row, but the
+        // chat input has nothing on its right (its buttons live below), and the dictation mic
+        // anchors to the frame's right edge — 40 left it floating mid-row.
+        marginRight: 8,
     },
     textInputAlignment: {
         paddingLeft: 0,

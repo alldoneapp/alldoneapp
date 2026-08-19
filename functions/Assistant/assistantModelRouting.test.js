@@ -7,6 +7,7 @@ const {
     isOpenRouterAssistantModel,
     isPerplexityAssistantModel,
     getOpenRouterAssistantModelId,
+    assistantModelSupportsImageInput,
     resolveAssistantModelProvider,
 } = require('./assistantModelRouting')
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
@@ -70,6 +71,20 @@ describe('assistantModelRouting', () => {
         Object.keys(OPENROUTER_ASSISTANT_MODEL_IDS).forEach(key => {
             expect(selectableKeys).toContain(key)
         })
+    })
+
+    test('reports DeepSeek Flash as unable to read images', () => {
+        // The pinned release advertises `input_modalities: ['text']`. Answering `true` here would
+        // send an image_url part and fail the whole request; the transport strips it instead.
+        expect(assistantModelSupportsImageInput(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+    })
+
+    test('treats an unlisted OpenRouter model as text-only and OpenAI models as multimodal', () => {
+        // Fail safe: a stripped image degrades to a note the model can explain, while an image sent
+        // to a text-only model takes the entire request down.
+        expect(assistantModelSupportsImageInput('MODEL_SONAR_PRO')).toBe(false)
+        expect(assistantModelSupportsImageInput('MODEL_GPT5_6_LUNA')).toBe(true)
+        expect(assistantModelSupportsImageInput('MODEL_GPT5_6_SOL')).toBe(true)
     })
 
     test('every OpenRouter id is a legal vendor/model string', () => {

@@ -112,6 +112,7 @@ const {
     PROVIDER_OPENROUTER,
     resolveAssistantModelProvider,
     getOpenRouterAssistantModelId,
+    assistantModelSupportsImageInput,
 } = require('./assistantModelRouting')
 const { SELECTABLE_ASSISTANT_MODELS, getAssistantModelTokensPerGold } = require('./selectableAssistantModels')
 
@@ -134,7 +135,7 @@ const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
 const OPENAI_INPUT_TOKEN_ALERT_THRESHOLD = 180000
 const OPENAI_INPUT_TOKEN_TARGET_CEILING = 200000
-const OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT = 150000
+const OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT = OPENAI_INPUT_TOKEN_TARGET_CEILING
 
 const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
@@ -2342,6 +2343,7 @@ async function collectAssistantTextWithToolCalls({
     const executedToolNames = []
     const createdTaskResults = []
     const createdNoteResults = []
+    const createdChatCommentResults = []
     const startedVmJobResults = []
     let pendingAttachmentPayload = null
     const maxToolCallRounds = Math.max(
@@ -2425,6 +2427,17 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
+            // The Gmail labeling sync stamps these onto the message's audit record so its
+            // server-side read sync knows which chat comment belongs to which Gmail message
+            // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
+            // way, and whether it is still unread is decided from its notification doc, not here.
+            if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
+                createdChatCommentResults.push({
+                    projectId: toolResult.projectId || '',
+                    chatId: toolResult.chatId || '',
+                    commentId: toolResult.commentId,
+                })
+            }
             collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
@@ -2470,6 +2483,7 @@ async function collectAssistantTextWithToolCalls({
         executedToolNames,
         createdTaskResults,
         createdNoteResults,
+        createdChatCommentResults,
         startedVmJobResults,
         reachedMaxToolIterations,
         finalConversation: currentConversation,
@@ -2732,6 +2746,9 @@ async function interactWithChatStream(
             messages: formattedPrompt,
             tools: openRouterTools,
             temperature: modelSupportsCustomTemperature(modelKey) ? temperature : null,
+            // Modality is a per-model fact, not a per-provider one: a text-only model must have
+            // image parts replaced or the whole request fails, and a multimodal one must keep them.
+            supportsImages: assistantModelSupportsImageInput(modelKey),
             usageContext: {
                 route:
                     toolRuntimeContext?.promptCacheScope ||
@@ -3996,6 +4013,9 @@ async function addChatCommentFromAssistantTool({
             threadId: gmailContext.threadId || '',
             webUrl: gmailContext.webUrl || '',
             direction: gmailContext.direction || '',
+            // Set when the labeling sync auto-archived the email itself: the client-side read sync
+            // must not treat "not in the inbox" as the user having handled it (AT-2376).
+            archivedByLabeling: !!gmailContext.archivedByLabeling,
             targetContactEmail: gmailContext.targetContactEmail || '',
             targetContactName: gmailContext.targetContactName || '',
             // Parsed List-Unsubscribe metadata ({ httpsUrl, mailto }) so the chat UI can
@@ -9324,9 +9344,14 @@ async function executeToolNatively(
                     workingHoursStart: toolArgs.workingHoursStart,
                     workingHoursEnd: toolArgs.workingHoursEnd,
                     includeWeekends: toolArgs.includeWeekends,
+                    allowSameDayBooking: toolArgs.allowSameDayBooking === true,
                     // Undefined here means "use the user's saved minimum free hours per day"
                     // (AT-2278). Only an explicit tool argument overrides the setting.
                     minFreeHoursPerDay: toolArgs.minFreeHoursPerDay,
+                    // Email suggestions are externally shareable promises of availability.
+                    // Keep their defaults aligned with the public meeting-link policy, while
+                    // preserving explicit request-level overrides supported by the tool.
+                    respectPublicMeetingLinkSettings: toolRuntimeContext?.respectPublicMeetingLinkSettings === true,
                 })
 
                 console.log('📅 FIND_CALENDAR_AVAILABILITY TOOL: Search completed', {
@@ -11962,7 +11987,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
+            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
@@ -12400,6 +12425,42 @@ function scoreAttachmentCandidate(media = {}, lookupText = '', expectedFileName 
     return score
 }
 
+/**
+ * The media kinds `get_chat_attachment` can hand back as bytes.
+ *
+ * It used to accept only `kind === 'file'`, which made an image structurally unfetchable: WhatsApp
+ * and web uploads store a photo as `kind: 'image'`, `list_recent_chat_media` advertises it together
+ * with its messageId, and the fetch then answered "No file attachment was found" for a file sitting
+ * in Storage. A text-only model asking for the image it could not see spent three round trips on
+ * that contradiction before giving up. The bytes come from the same `storageUrl` whatever the kind,
+ * so the kind was never a real constraint on fetching — only on which media the tool admitted to.
+ */
+const FETCHABLE_CHAT_ATTACHMENT_KINDS = ['file', 'image', 'video']
+
+function isFetchableChatAttachment(media = {}) {
+    return !!media?.storageUrl && FETCHABLE_CHAT_ATTACHMENT_KINDS.includes(media?.kind || 'file')
+}
+
+/**
+ * Narrow several fetchable attachments on one message down to the one that was asked for.
+ *
+ * Only reached when a message carries more than one attachment. An explicit `expectedFileName`
+ * wins; otherwise a document is preferred over an image, because that is what a message carrying
+ * both resolved to before images were fetchable at all — widening the accepted kinds must not turn
+ * a call that used to work into "Multiple attachments were found".
+ */
+function selectRequestedChatAttachments(attachments, expectedFileName = '') {
+    if (attachments.length <= 1) return attachments
+
+    if (expectedFileName) {
+        const named = attachments.filter(media => media.fileName === expectedFileName)
+        if (named.length > 0) return named
+    }
+
+    const files = attachments.filter(media => (media.kind || 'file') === 'file')
+    return files.length > 0 ? files : attachments
+}
+
 async function findFallbackRecentChatAttachment({
     projectId,
     objectType,
@@ -12422,16 +12483,14 @@ async function findFallbackRecentChatAttachment({
         const messageData = doc.data() || {}
         if (messageData.fromAssistant) continue
         const mediaContext = await enrichCommentMediaContext(doc.ref, messageData)
-        mediaContext
-            .filter(media => media.kind === 'file')
-            .forEach(media => {
-                candidates.push({
-                    messageId: doc.id,
-                    created: Number(messageData.created) || 0,
-                    media,
-                    score: scoreAttachmentCandidate(media, userMessageText, expectedFileName),
-                })
+        mediaContext.filter(isFetchableChatAttachment).forEach(media => {
+            candidates.push({
+                messageId: doc.id,
+                created: Number(messageData.created) || 0,
+                media,
+                score: scoreAttachmentCandidate(media, userMessageText, expectedFileName),
             })
+        })
     }
 
     if (candidates.length === 0) return null
@@ -12573,7 +12632,10 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
-    let attachments = mediaContext.filter(media => media.kind === 'file')
+    let attachments = selectRequestedChatAttachments(
+        mediaContext.filter(isFetchableChatAttachment),
+        normalizedExpectedFileName
+    )
 
     if (attachments.length === 0 && !explicitMessageIdProvided) {
         const fallbackAttachment = await findFallbackRecentChatAttachment({
@@ -12608,10 +12670,12 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     if (attachments.length === 0) {
-        throw new Error('No file attachment was found on the requested chat message')
+        throw new Error('No file or image attachment was found on the requested chat message')
     }
     if (attachments.length > 1) {
-        throw new Error('Multiple file attachments were found on the requested chat message')
+        throw new Error(
+            'Multiple attachments were found on the requested chat message. Pass expectedFileName to choose one.'
+        )
     }
 
     const attachment = attachments[0]
@@ -12979,7 +13043,7 @@ function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', mo
         hardLimit: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT,
     })
     const error = new Error(
-        `OpenAI request blocked before dispatch because the estimated input size (${estimate.estimatedInputTokens} tokens) exceeds the ${OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT}-token safety limit.`
+        `OpenAI request blocked before dispatch because the estimated input size (${estimate.estimatedInputTokens} tokens) reaches or exceeds the ${OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT}-token safety limit.`
     )
     error.code = 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT'
     error.estimatedInputTokens = estimate.estimatedInputTokens
@@ -13676,9 +13740,13 @@ module.exports = {
     generateSearchSummary,
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
+    getModel, // Canonical model-key → OpenAI id mapper (see assistantModelRouting's header)
     getTokensPerGold,
     calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
+    // The one task-move implementation (chat + Updates feed travel with the task).
+    // Also used by automatic project routing (AT-2306, functions/Tasks/taskProjectRouting.js).
+    moveTaskToDifferentProject,
     isToolAllowedForExecution,
     filterAllowedToolsForRuntimeContext,
     getDynamicToolSchemasWithCache,
@@ -13728,6 +13796,8 @@ module.exports = {
     injectPendingAttachmentIntoToolArgs,
     getChatAttachmentForAssistantRequest,
     listRecentChatMediaForAssistantRequest,
+    isFetchableChatAttachment,
+    selectRequestedChatAttachments,
     normalizeCommentMediaContext,
     buildUserMessageContentFromComment,
     addTimestampToContextContent,
@@ -13746,6 +13816,7 @@ module.exports = {
     getAssistantThreadStateContextMessage,
     getAssistantThreadStateDocRef,
     getProjectDescriptionContextMessage,
+    getUserDescriptionContextMessage,
     getOpenTasksContextMessage,
     loadAssistantThreadState,
     buildCompactThreadContextMessage,

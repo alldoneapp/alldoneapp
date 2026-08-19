@@ -2,10 +2,13 @@ import React from 'react'
 import { StyleSheet, TouchableOpacity } from 'react-native'
 import { colors } from '../styles/global'
 import Icon from '../Icon'
+import { openViewInNewWindow } from '../../utils/openInNewWindow'
 
 export default function OpenInNewWindowButton({ disabled = false, style }) {
+    // Inside an installed desktop PWA a plain window.open would spawn a second app window
+    // instead of a browser tab — see utils/openInNewWindow.js (AT-2345).
     const openUrl = () => {
-        return window.open(window.location, '_blank')
+        return openViewInNewWindow()
     }
     return (
         <TouchableOpacity

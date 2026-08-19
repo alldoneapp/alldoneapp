@@ -46,7 +46,9 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             subject: options.subject || '',
             messageId: options.messageId || '',
         })
-        return responseText
+        return buildEmailAssistantResult(responseText, options, {
+            guestMeetingContext: null,
+        })
     }
 
     const allowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
@@ -74,6 +76,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         latestSafeActionContext: null,
         userTimezoneName,
         calendarOwnerName,
+        // Meeting options proposed over email must follow the same availability policy as
+        // the account owner's public meeting link. The calendar tool uses this server-only
+        // flag to load and enforce those saved settings before returning any options.
+        respectPublicMeetingLinkSettings: true,
     }
 
     await addBaseInstructions(
@@ -91,6 +97,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         'Email channel rules:\n' +
             '- This channel is action-only. Do not reveal private account, project, or message history data.\n' +
             '- Calendar availability tools may return free meeting options only. Never reveal event titles, participants, descriptions, locations, or other calendar details.\n' +
+            "- Meeting options automatically follow the account owner's saved public meeting-link availability settings. Only pass different working hours, weekend behavior, minimum free time, or allowSameDayBooking=true when the current email explicitly requests that override. A request for today or a same-day meeting may override the saved no-same-day setting.\n" +
             '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
@@ -136,6 +143,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         toolRuntimeContext
     )
     let responseText
+    let assistantRunSucceeded = true
     try {
         responseText = await collectStreamWithToolCalls(
             stream,
@@ -149,6 +157,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             toolRuntimeContext
         )
     } catch (error) {
+        assistantRunSucceeded = false
         console.error('Email Channel: Assistant response processing failed', {
             error: error.message,
             userId,
@@ -180,7 +189,30 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         console.error('Email Channel: Failed deducting gold', { error: error.message })
     }
 
-    return responseText
+    const calendarEventCalled = toolRuntimeContext.emailToolEvidence?.calendarEvent?.called === true
+    const calendarAvailabilitySucceeded = toolRuntimeContext.emailToolEvidence?.calendarAvailability?.succeeded === true
+    const guestMeetingContext =
+        assistantRunSucceeded &&
+        calendarAvailabilitySucceeded &&
+        !calendarEventCalled &&
+        toolRuntimeContext.emailToolFailed !== true
+            ? normalizeSafeEmailActionContext(toolRuntimeContext.latestSafeActionContext)
+            : null
+
+    return buildEmailAssistantResult(responseText, options, {
+        guestMeetingContext,
+        canCreateCalendarEvent: allowedTools.includes('create_calendar_event'),
+        calendarOwnerName,
+        language: user.language || '',
+    })
+}
+
+function buildEmailAssistantResult(responseText, options = {}, metadata = {}) {
+    if (options.returnExecutionMetadata !== true) return responseText
+    return {
+        responseText,
+        ...metadata,
+    }
 }
 
 function resolveInboundEmailModel(assistant = {}) {
@@ -209,6 +241,10 @@ async function collectStreamWithToolCalls(
             projectId: null,
         },
         calendarAvailability: {
+            called: false,
+            succeeded: false,
+        },
+        calendarEvent: {
             called: false,
             succeeded: false,
         },
@@ -245,6 +281,8 @@ async function collectStreamWithToolCalls(
                     throw new Error(`Tool not permitted: ${toolName}`)
                 }
 
+                if (toolName === 'create_calendar_event') toolEvidence.calendarEvent.called = true
+
                 let toolResult
                 try {
                     toolResult = await executeToolNatively(
@@ -265,11 +303,17 @@ async function collectStreamWithToolCalls(
                     toolRuntimeContext.latestSafeActionContext =
                         buildSafeActionContextFromToolResult(toolName, toolResult) ||
                         toolRuntimeContext.latestSafeActionContext
+                    if (toolResult?.success === false) toolRuntimeContext.emailToolFailed = true
 
                     if (toolName === 'find_calendar_availability') {
                         toolEvidence.calendarAvailability.called = true
                         toolEvidence.calendarAvailability.succeeded =
                             toolEvidence.calendarAvailability.succeeded || toolResult?.success === true
+                    }
+
+                    if (toolName === 'create_calendar_event') {
+                        toolEvidence.calendarEvent.succeeded =
+                            toolEvidence.calendarEvent.succeeded || toolResult?.success === true
                     }
 
                     if (toolName === 'create_task') {
@@ -287,6 +331,10 @@ async function collectStreamWithToolCalls(
                         }
                     }
                 } catch (error) {
+                    if (toolRuntimeContext) {
+                        toolRuntimeContext.emailToolEvidence = toolEvidence
+                        toolRuntimeContext.emailToolFailed = true
+                    }
                     return getUserFacingToolErrorMessage(toolName, error)
                 }
 
@@ -349,6 +397,7 @@ async function collectStreamWithToolCalls(
         if (chunk.content) responseText += chunk.content
     }
 
+    if (toolRuntimeContext) toolRuntimeContext.emailToolEvidence = toolEvidence
     const safeResponseText = enforceSafeTaskResponse(String(responseText || '').trim(), toolEvidence)
     return toolEvidence.calendarAvailability.succeeded
         ? enforceCalendarOwnershipResponse(safeResponseText, toolRuntimeContext?.calendarOwnerName)

@@ -10,10 +10,11 @@ import Hotkeys from 'react-hot-keys'
 import store from '../../../redux/store'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class ChangeNumberTodayTasks extends Component {
     constructor(props) {
@@ -83,7 +84,7 @@ class ChangeNumberTodayTasks extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>

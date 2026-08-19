@@ -33,6 +33,8 @@ import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelp
 import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
 import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
+import { getSafeAreaInsets } from './safeAreaInsets'
+import { getSafeAreaModalMaxWidth } from './modalSafeArea'
 
 class HelperFunctions {
     static isValidEmail = email => {
@@ -231,7 +233,16 @@ export const popoverToSafePosition = (
 ) => {
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const padding = 16 // Safe padding from screen edges
+    const basePadding = 16 // Safe padding from screen edges
+    // AT-2339: several of these call sites pass `disableReposition`, which
+    // skips the patched library's own safe-area nudge, so the edge padding has
+    // to absorb the iOS insets itself. Zero insets (desktop / Android) leave
+    // every number below exactly as it was.
+    const safeAreaInsets = getSafeAreaInsets()
+    const paddingTop = basePadding + safeAreaInsets.top
+    const paddingBottom = basePadding + safeAreaInsets.bottom
+    const paddingLeft = basePadding + safeAreaInsets.left
+    const paddingRight = basePadding + safeAreaInsets.right
     const viewportWidth = dim.width
     const viewportHeight = dim.height
 
@@ -241,13 +252,13 @@ export const popoverToSafePosition = (
         if (!targetRect || typeof targetRect.top !== 'number') {
             const centeredTop = clampToRange(
                 viewportHeight / 2 - popoverRect.height / 2,
-                padding,
-                viewportHeight - popoverRect.height - padding
+                paddingTop,
+                viewportHeight - popoverRect.height - paddingBottom
             )
             const centeredLeft = clampToRange(
                 viewportWidth / 2 - popoverRect.width / 2,
-                padding,
-                viewportWidth - popoverRect.width - padding
+                paddingLeft,
+                viewportWidth - popoverRect.width - paddingRight
             )
 
             return { top: centeredTop, left: centeredLeft }
@@ -261,26 +272,30 @@ export const popoverToSafePosition = (
 
         // Prefer showing the popover underneath the trigger, but flip when needed.
         let top = targetBottom + anchorGap
-        const maxTop = viewportHeight - popoverRect.height - padding
+        const maxTop = viewportHeight - popoverRect.height - paddingBottom
 
-        if (top + popoverRect.height > viewportHeight - padding) {
+        if (top + popoverRect.height > viewportHeight - paddingBottom) {
             const aboveTop = targetTop - popoverRect.height - anchorGap
-            if (aboveTop >= padding) {
+            if (aboveTop >= paddingTop) {
                 top = aboveTop
             } else {
-                top = clampToRange(top, padding, maxTop)
+                top = clampToRange(top, paddingTop, maxTop)
             }
         } else {
-            top = clampToRange(top, padding, maxTop)
+            top = clampToRange(top, paddingTop, maxTop)
         }
 
         const desiredLeft = targetRight - popoverRect.width
-        const minLeft = padding
-        const maxLeft = viewportWidth - popoverRect.width - padding
+        const minLeft = paddingLeft
+        const maxLeft = viewportWidth - popoverRect.width - paddingRight
         let left
 
-        if (popoverRect.width > viewportWidth - 2 * padding) {
-            left = clampToRange(viewportWidth / 2 - popoverRect.width / 2, minLeft, viewportWidth - popoverRect.width)
+        if (popoverRect.width > viewportWidth - paddingLeft - paddingRight) {
+            left = clampToRange(
+                viewportWidth / 2 - popoverRect.width / 2,
+                minLeft,
+                viewportWidth - popoverRect.width - safeAreaInsets.right
+            )
         } else {
             left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
@@ -293,8 +308,8 @@ export const popoverToSafePosition = (
     let top = viewportHeight / 2 - popoverRect.height / 2
     let left = viewportWidth / 2 - popoverRect.width / 2 + sidebarDiff
 
-    top = clampToRange(top, padding, Math.max(padding, viewportHeight - popoverRect.height - padding))
-    left = clampToRange(left, padding, Math.max(padding, viewportWidth - popoverRect.width - padding))
+    top = clampToRange(top, paddingTop, Math.max(paddingTop, viewportHeight - popoverRect.height - paddingBottom))
+    left = clampToRange(left, paddingLeft, Math.max(paddingLeft, viewportWidth - popoverRect.width - paddingRight))
 
     return { top, left }
 }
@@ -308,7 +323,20 @@ export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedL
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const left = dim.width / 2 - popoverRect.width / 2
-    return { top: FIXED_MODAL_TOP_OFFSET, left: left + sidebarDiff }
+    // AT-2339, minimum semantics: this is the comment popup's placement, the
+    // one surface already signed off as correct on a notched iPhone, and 80px
+    // clears every current inset — so on those devices it does not move. The
+    // floor only engages on a device whose status bar is taller than the
+    // offset. The horizontal clamp is new: it keeps the card out of the
+    // landscape cutout, which nothing here handled before. This helper is used
+    // with `disableReposition`, so the library never nudges it.
+    const safeAreaInsets = getSafeAreaInsets()
+    const maxLeft = Math.max(safeAreaInsets.left, dim.width - safeAreaInsets.right - popoverRect.width)
+
+    return {
+        top: Math.max(FIXED_MODAL_TOP_OFFSET, safeAreaInsets.top),
+        left: clampToRange(left + sidebarDiff, safeAreaInsets.left, maxLeft),
+    }
 }
 
 export const shortcutPreviewMount = () => {
@@ -442,8 +470,6 @@ export const calculateTimeDuration = secs => {
     return hr + ':' + min + ':' + sec
 }
 
-const POPOVER_EDGE_GUTTER = MODAL_EDGE_GAP * 2
-
 export const getPopoverWidth = () => {
     const { isMiddleScreen: tablet, smallScreenNavigation: mobile } = store.getState()
     if (!mobile) return tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
@@ -451,14 +477,18 @@ export const getPopoverWidth = () => {
     // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
     // the window width is not measurable yet.
     const { width: windowWidth } = Dimensions.get('window')
-    const fullWidth = windowWidth - POPOVER_EDGE_GUTTER
+    // AT-2339: the landscape cutout on a notched iPhone eats ~59px off ONE
+    // side, so "full window width minus the gutter" is wider than the space
+    // that actually exists and the card overhangs whichever edge the popover
+    // does not get clamped to. Zero insets give back `windowWidth - 32`.
+    const fullWidth = getSafeAreaModalMaxWidth(windowWidth)
     return fullWidth > 0 ? fullWidth : POPOVER_MOBILE_WIDTH
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
     const { width: windowWidth } = Dimensions.get('window')
-    const availableWidth = windowWidth - POPOVER_EDGE_GUTTER
+    const availableWidth = getSafeAreaModalMaxWidth(windowWidth)
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }
@@ -468,8 +498,9 @@ export const applyPopoverWidth = (setMin = true, setMax = true) => {
 }
 
 const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
+    const { left: safeLeft, right: safeRight } = getSafeAreaInsets()
     return smallScreenNavigation
-        ? windowWidth - 50
+        ? windowWidth - 50 - safeLeft - safeRight
         : isMiddleScreen
           ? POPOVER_TABLET_WIDTH_V2
           : POPOVER_DESKTOP_WIDTH_V2

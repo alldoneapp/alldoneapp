@@ -14,10 +14,20 @@ describe('MainButtons layout', () => {
         const container = tree.root.findByProps({ testID: 'workflow-main-buttons' })
 
         expect(StyleSheet.flatten(container.props.style)).toMatchObject({
-            height: 72,
+            minHeight: 72,
             paddingTop: 16,
             paddingBottom: 16,
         })
+    })
+
+    it('lets the row grow so a taller forward button cannot eat its own padding', () => {
+        const tree = renderer.create(<MainButtons currentStep={0} selectedCustomStep={false} onDonePress={jest.fn()} />)
+        const container = tree.root.findByProps({ testID: 'workflow-main-buttons' })
+        const style = StyleSheet.flatten(container.props.style)
+
+        // A fixed height clamped the 52px sub-labelled forward button and swallowed part
+        // of the 16px bottom padding that separates it from the bypass link (AT-2354).
+        expect(style.height).toBeUndefined()
     })
 
     it('uses a compact, equally sized button row when embedded in a comment popup', () => {

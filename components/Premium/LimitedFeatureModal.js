@@ -10,8 +10,10 @@ import { navigateToSettings, setShowLimitedFeatureModal } from '../../redux/acti
 import NavigationService from '../../utils/NavigationService'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../utils/TabNavigationConstants'
 import { translate } from '../../i18n/TranslationService'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function LimitedFeatureModal() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const modalState = useSelector(state => state.showLimitedFeatureModal)
 
@@ -36,7 +38,7 @@ export default function LimitedFeatureModal() {
               )
 
     return (
-        <View style={localStyles.parent}>
+        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
                 <View style={{ paddingHorizontal: 16 }}>
                     <Text style={[styles.title7, { color: 'white' }]}>{header}</Text>

@@ -11,8 +11,16 @@ import {
     getPublicBookingPage,
     getPublicBookingSlots,
 } from '../../utils/backends/Booking/bookingFirestore'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
+import useWindowSize from '../../utils/useWindowSize'
+import { getSafeAreaViewportHeightCap } from '../../utils/modalSafeArea'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
+
+// The timezone picker overlay's existing per-side gap, and the card's fixed
+// height cap. Both are now floors/ceilings resolved against the safe area.
+const TIMEZONE_PICKER_OVERLAY_GAP = { top: 24, right: 24, bottom: 24, left: 24 }
+const TIMEZONE_PICKER_MAX_HEIGHT = 520
 
 function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends, now = moment() }) {
     const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
@@ -446,6 +454,11 @@ function LanguageSelector({ language, onSelect }) {
 const MAX_TIMEZONE_RESULTS = 60
 
 function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostName, onSelect, onClose }) {
+    // AT-2339: the overlay's flat 24px padding is narrower than a 47-59px
+    // inset, so the card's edges sat under the status bar / landscape cutout.
+    // Minimum semantics keep the 24px gap everywhere it already cleared.
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding(TIMEZONE_PICKER_OVERLAY_GAP)
+    const [, windowHeight] = useWindowSize()
     const [query, setQuery] = useState('')
 
     const allZones = useMemo(() => moment.tz.names(), [])
@@ -488,9 +501,16 @@ function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostNam
     }
 
     return (
-        <View style={localStyles.pickerOverlay}>
+        <View style={[localStyles.pickerOverlay, safeAreaOverlayPadding]}>
             <TouchableOpacity style={localStyles.pickerBackdrop} activeOpacity={1} onPress={onClose} />
-            <View style={localStyles.pickerCard}>
+            <View
+                style={[
+                    localStyles.pickerCard,
+                    // A fixed 520 cap can still exceed a landscape phone
+                    // viewport, which the overlay padding alone cannot fix.
+                    { maxHeight: Math.min(TIMEZONE_PICKER_MAX_HEIGHT, getSafeAreaViewportHeightCap(windowHeight, 1)) },
+                ]}
+            >
                 <View style={localStyles.pickerHeader}>
                     <Text style={localStyles.pickerTitle}>{translate('Select timezone')}</Text>
                     <TouchableOpacity testID="booking-timezone-close" onPress={onClose} style={localStyles.pickerClose}>

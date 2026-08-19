@@ -6,10 +6,11 @@ import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
 import Hotkeys from 'react-hot-keys'
 import Icon from '../../Icon'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import ButtonsContainer from './ButtonsContainer'
 import useWindowSize from '../../../utils/useWindowSize'
 import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function AddTopicModal({
     projectId,
@@ -55,7 +56,7 @@ export default function AddTopicModal({
     }, [])
 
     return (
-        <View style={[localStyles.parent, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.parent, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.innerContainer2} showsVerticalScrollIndicator={false}>
                 <View>
                     <View style={{ marginBottom: 20 }}>

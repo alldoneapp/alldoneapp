@@ -642,24 +642,24 @@ const toolSchemas = {
         function: {
             name: 'get_focus_task',
             description:
-                'Retrieves the current focus task for the user. By default, searches across all projects to find the highest priority focus task. Can optionally filter to a specific project or force finding a different task.',
+                'Retrieves the current focus task without changing it. If no focus task is set, returns no focus task. Use forceNew only when the user explicitly asks Alldone to choose or switch to a task for them.',
             parameters: {
                 type: 'object',
                 properties: {
                     projectId: {
                         type: 'string',
                         description:
-                            'Optional: limit search to a specific project ID. If omitted, searches across all projects.',
+                            'Optional project in which to choose a new focus task when forceNew is true. It does not change how the current focus task is read.',
                     },
                     allProjects: {
                         type: 'boolean',
                         description:
-                            'Explicitly search across all projects (default behavior when projectId is not specified)',
+                            'When forceNew is true, search across all projects (the default when projectId is omitted).',
                     },
                     forceNew: {
                         type: 'boolean',
                         description:
-                            'Force finding a new/different focus task, skipping the currently set focus task. Useful for "what should I work on next?" If no alternative task exists, returns current focus task with a message.',
+                            'Find and persist a new/different focus task, skipping the currently set focus task. Only set this when the user explicitly asks Alldone to choose or switch their focus, such as "what should I work on next?" If no alternative task exists, returns the current focus task unchanged.',
                     },
                 },
                 required: [],
@@ -1026,7 +1026,7 @@ const toolSchemas = {
         function: {
             name: 'update_heartbeat_settings',
             description:
-                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, reasoning effort, interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
+                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, reasoning effort, interval, execution chance (separate values before vs. after the user replies to the latest visible heartbeat on their local day), awake window, WhatsApp delivery, or heartbeat prompt. Reply state resets after every new visible heartbeat. A later user message in either the in-app Heartbeat chat or WhatsApp daily chat enables the after-reply chance; messages before the latest heartbeat do not count, and HEARTBEAT_OK does not reset reply state because it posts no message. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1050,12 +1050,12 @@ const toolSchemas = {
                     chancePercent: {
                         type: 'number',
                         description:
-                            'Optional: heartbeat execution chance percent for days the user has already replied to the assistant. Clamped between 0 and 100.',
+                            'Optional: heartbeat execution chance percent after the user replies to the latest visible heartbeat that local day. A later user message in either the in-app Heartbeat chat or WhatsApp daily chat counts. Each new visible heartbeat resets to chanceNoReplyPercent until another later user message arrives. Clamped between 0 and 100.',
                     },
                     chanceNoReplyPercent: {
                         type: 'number',
                         description:
-                            'Optional: heartbeat execution chance percent for days the user has not replied to the assistant yet. Clamped between 0 and 100.',
+                            'Optional: heartbeat execution chance percent before the first visible heartbeat that local day and after every new visible heartbeat until the user sends a later message in the in-app Heartbeat chat or WhatsApp daily chat. Messages before the latest heartbeat do not count; HEARTBEAT_OK does not reset this state because it posts no message. Clamped between 0 and 100.',
                     },
                     awakeStartTime: {
                         type: 'string',
@@ -1498,7 +1498,7 @@ const toolSchemas = {
         function: {
             name: 'get_chat_attachment',
             description:
-                'Fetch the single file attached to a user chat message in the current thread. If messageId is omitted, it uses the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
+                'Fetch the single file, image, or video attached to a user chat message in the current thread. If messageId is omitted, it uses the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Note that fetching an image returns its bytes for passing on to another tool; it does not let you see the image when the running model cannot read images. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1510,7 +1510,7 @@ const toolSchemas = {
                     expectedFileName: {
                         type: 'string',
                         description:
-                            'Optional expected file name used for validation. If provided and it does not match the requested chat attachment, the tool returns an error.',
+                            'Optional expected file name. Used to pick the right one when a message carries several attachments, and to validate the match: if it does not match the requested chat attachment, the tool returns an error.',
                     },
                 },
                 required: [],
@@ -1916,6 +1916,11 @@ const toolSchemas = {
                     includeWeekends: {
                         type: 'boolean',
                         description: 'Optional: include Saturdays and Sundays. Defaults to false.',
+                    },
+                    allowSameDayBooking: {
+                        type: 'boolean',
+                        description:
+                            "Optional request-level override for the user's saved no-same-day setting. Pass true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it.",
                     },
                     minFreeHoursPerDay: {
                         type: 'number',

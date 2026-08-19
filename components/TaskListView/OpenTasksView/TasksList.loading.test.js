@@ -1,7 +1,9 @@
 import React from 'react'
+import { View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import TasksList from './TasksList'
+import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
 
 let mockState
 
@@ -39,6 +41,7 @@ describe('TasksList initial loading', () => {
             subtaskByTaskStore: { instance: {} },
             initialLoadingEndOpenTasks: { instance: true },
             initialLoadingEndObservedTasks: { instance: false },
+            taskListSingleLoading: {},
             optimisticFocusTaskId: null,
             optimisticFocusTaskProjectId: null,
             optimisticFocusActive: false,
@@ -69,8 +72,31 @@ describe('TasksList initial loading', () => {
         expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(0)
     })
 
+    it('uses the shared task-list gutter', () => {
+        let tree
+        act(() => {
+            tree = renderList()
+        })
+
+        expect(tree.root.findByType(TasksList).findByType(View).props.style).toEqual(
+            expect.arrayContaining([taskPresentationLayout.listContainer])
+        )
+    })
+
     it('shows real tasks once both streams are complete', () => {
         mockState.initialLoadingEndObservedTasks.instance = true
+
+        let tree
+        act(() => {
+            tree = renderList()
+        })
+
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(2)
+    })
+
+    it('keeps existing tasks visible during an incremental single-task load', () => {
+        mockState.taskListSingleLoading.instance = true
 
         let tree
         act(() => {

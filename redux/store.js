@@ -162,6 +162,9 @@ export const initialState = {
     chatsActiveTab: FOLLOWED_TAB,
     chatsUnreadOnly: false,
     screenDimensions: {},
+    // '' until the first observed transition, then 'offline' | 'online' ('online' only
+    // ever set as a recovery from 'offline' — see utils/connectionState.js)
+    connectionState: '',
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     noteChangedNotification: false,
@@ -284,6 +287,7 @@ export const initialState = {
     filteredOpenTasksStore: {},
     subtaskByTaskStore: {},
     thereAreNotTasksInFirstDay: {},
+    taskListSingleLoading: {},
     initialLoadingEndOpenTasks: false,
     initialLoadingEndObservedTasks: false,
     openMilestonesByProjectInTasks: {},
@@ -1058,6 +1062,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, contactsActiveTab: action.contactsActiveTab }
         case 'Set screen dimensions':
             return { ...state, screenDimensions: action.screenDimensions }
+        case 'Set connection state':
+            return { ...state, connectionState: action.connectionState }
         case 'Set show new day notification':
             return { ...state, showNewDayNotification: action.show }
         case 'Show note changed notification':
@@ -1717,6 +1723,16 @@ export const theReducer = (state = initialState, action) => {
                 ...state,
                 laterTasksExpanded: action.laterTasksExpanded,
             }
+        }
+
+        case 'Set task list single loading': {
+            const wasLoading = !!state.taskListSingleLoading?.[action.instanceKey]
+            if (wasLoading === !!action.loading) return state
+            const taskListSingleLoading = { ...(state.taskListSingleLoading || {}) }
+            action.loading
+                ? (taskListSingleLoading[action.instanceKey] = true)
+                : delete taskListSingleLoading[action.instanceKey]
+            return { ...state, taskListSingleLoading }
         }
 
         case 'Set someday tasks expanded': {

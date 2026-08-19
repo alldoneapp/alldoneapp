@@ -3,12 +3,13 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import { SELECTABLE_ASSISTANT_REASONING_EFFORTS } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const options = SELECTABLE_ASSISTANT_REASONING_EFFORTS.map((option, index) => ({
     text: option.labelKey,
@@ -26,7 +27,9 @@ export default function AssistantReasoningEffortModal({ closeModal, reasoningEff
 
     return (
         <View>
-            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+            <View
+                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
+            >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}

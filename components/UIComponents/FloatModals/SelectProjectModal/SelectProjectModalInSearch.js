@@ -24,7 +24,8 @@ export { ALL_PROJECTS_OPTION }
  *
  * - the `real*` id-set semantics (realGuideProjectIds etc. — deliberately NOT
  *   merged with SelectProjectModal's plain sets; callers own filtering),
- * - the ALL_PROJECTS_OPTION sentinel row on the Active tab,
+ * - the ALL_PROJECTS_OPTION sentinel row on the Active tab (or, for the add-task
+ *   flow, the AUTOMATIC_PROJECT_OPTION row — see AT-2306),
  * - the sidebar offset its fixed-overlay hosts expect.
  *
  * Escape lives on the LIFO escape stack via the shared modal's close button
@@ -42,6 +43,8 @@ export default function SelectProjectModalInSearch({
     showTemplateTab,
     showArchivedTab,
     showAllProjects,
+    showAutomaticProject,
+    widthStyle,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -109,12 +112,14 @@ export default function SelectProjectModalInSearch({
             tabs={tabs}
             initialTabIndex={initialTabIndex}
             leadingAllOption={!!showAllProjects}
+            leadingAutomaticOption={!!showAutomaticProject}
             title={headerText || translate('Select search scope')}
             description={subheaderText || translate('Select an option to define the search scope')}
             onSelectProject={project => {
                 setSelectedProjectId(project.id)
             }}
             selectedProjectId={projectId}
+            widthStyle={widthStyle}
             containerStyle={sidebarOpenStyle}
         />
     )

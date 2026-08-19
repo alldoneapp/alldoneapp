@@ -11,6 +11,10 @@ import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsCont
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
+import { isBrowserOffline } from './utils/connectionState'
+import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
+import { scheduleNotesOfflineCatchUp } from './utils/NotesOfflineCatchUp'
+import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
@@ -206,6 +210,20 @@ export default function AppContent() {
         }
 
         console.error('Initial data could not be loaded after several attempts. The user stays signed in.', details)
+
+        // Offline, the reload dialog is a dead end (reloading cannot make data
+        // appear); retry the whole initial load automatically when connectivity
+        // returns instead (OFFLINE_SUPPORT_PLAN.md Stage 5).
+        if (isBrowserOffline()) {
+            console.warn('Browser is offline - the initial load will retry when connectivity returns')
+            const retryWhenBackOnline = () => {
+                window.removeEventListener('online', retryWhenBackOnline)
+                tryLogIn(firebaseUser, 0, 0)
+            }
+            window.addEventListener('online', retryWhenBackOnline)
+            return
+        }
+
         const shouldReload = confirm(
             `The app could not finish loading your data: ${details.message}\n\n` +
                 'You are still signed in.\n\n' +
@@ -227,6 +245,19 @@ export default function AppContent() {
 
                 if (user) {
                     await loadInitialDataForLoggedUser(user)
+                    // Warm the offline note-content cache once the session is idle
+                    // (OFFLINE_SUPPORT_PLAN.md notes follow-ups); also re-runs on
+                    // reconnect. Fire-and-forget by design.
+                    scheduleNotesOfflinePrefetch()
+                    // The mirror image of the prefetch: push note content that was
+                    // edited offline and never reached Firebase Storage, which has
+                    // no offline write queue of its own (AT-2340). Also re-runs on
+                    // reconnect. Fire-and-forget by design.
+                    scheduleNotesOfflineCatchUp()
+                    // Measure the server-clock offset once the session is up, so
+                    // the first note save already has it. Fire-and-forget: every
+                    // caller falls back to the client clock (AT-2340).
+                    syncServerClock().catch(() => {})
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.

@@ -39,6 +39,7 @@ const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 const RECURRENCE_CUSTOM = 'custom'
 const ASSISTANT_WORKFLOW_FIRST_STEP_ID = 'assistant-start'
+const OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT_ERROR_CODE = 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT'
 
 function buildRecurringTaskAiSettings(task, assistant, assistantId) {
     const taskModelOverride = getPreConfigTaskModelOverride(task)
@@ -85,6 +86,57 @@ function getActivatedUserIdsForTask(task) {
         userId => userId && !completedOneOffUserIds.has(userId)
     )
     return [...new Set(fallbackIds)]
+}
+
+function buildAssistantTaskFailureUpdate({
+    error,
+    activatorUserId,
+    recurrence,
+    previousLastExecuted,
+    previousLastExecutedByUser,
+    attemptCompletedAt = Date.now(),
+}) {
+    const isTokenCeilingFailure = error?.code === OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT_ERROR_CODE
+    const updatePayload = {
+        executionStatus: 'failed',
+        lastExecutionCompleted: isTokenCeilingFailure ? attemptCompletedAt : null,
+        lastExecutionError: error.message,
+        [`executionByUser.${activatorUserId}`]: {
+            status: 'failed',
+            startedAt: attemptCompletedAt,
+            completedAt: isTokenCeilingFailure ? attemptCompletedAt : null,
+            error: error.message,
+        },
+    }
+
+    if (isTokenCeilingFailure) {
+        // The request cannot succeed without changing its context. Count this occurrence as
+        // attempted so the five-minute scheduler does not repeatedly run up the same cost.
+        updatePayload.lastExecuted = attemptCompletedAt
+        updatePayload[`lastExecutedByUser.${activatorUserId}`] = attemptCompletedAt
+
+        if (recurrence === RECURRENCE_ONCE) {
+            updatePayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
+            updatePayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
+            updatePayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
+        }
+
+        return { updatePayload, isTokenCeilingFailure }
+    }
+
+    if (previousLastExecuted) {
+        updatePayload.lastExecuted = previousLastExecuted
+    } else {
+        updatePayload.lastExecuted = FieldValue.delete()
+    }
+
+    if (typeof previousLastExecutedByUser === 'number') {
+        updatePayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
+    } else {
+        updatePayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
+    }
+
+    return { updatePayload, isTokenCeilingFailure }
 }
 
 async function shouldExecuteTask(task, projectId, userDataCache = null, options = {}) {
@@ -934,34 +986,33 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             remainingGold: activatorData.gold,
         })
     } catch (error) {
-        const revertPayload = {
-            executionStatus: 'failed',
-            lastExecutionCompleted: null,
-            lastExecutionError: error.message,
-            [`executionByUser.${activatorUserId}`]: {
-                status: 'failed',
-                startedAt: Date.now(),
-                completedAt: null,
-                error: error.message,
-            },
-        }
+        const attemptCompletedAt = Date.now()
+        const { updatePayload, isTokenCeilingFailure } = buildAssistantTaskFailureUpdate({
+            error,
+            activatorUserId,
+            recurrence: taskWithActivator.recurrence,
+            previousLastExecuted,
+            previousLastExecutedByUser,
+            attemptCompletedAt,
+        })
 
-        if (previousLastExecuted) {
-            revertPayload.lastExecuted = previousLastExecuted
-        } else {
-            revertPayload.lastExecuted = FieldValue.delete()
-        }
-
-        if (typeof previousLastExecutedByUser === 'number') {
-            revertPayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
-        } else {
-            revertPayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
+        if (isTokenCeilingFailure) {
+            console.warn('🚨 RECURRING ASSISTANT TOKEN CEILING: Retry deferred until next scheduled occurrence', {
+                projectId,
+                assistantId,
+                taskId: task.id,
+                taskName: task.name,
+                activatorUserId,
+                recurrence: taskWithActivator.recurrence,
+                estimatedInputTokens: error.estimatedInputTokens,
+                attemptCompletedAt,
+            })
         }
 
         try {
-            await taskDocRef.update(revertPayload)
+            await taskDocRef.update(updatePayload)
         } catch (restoreError) {
-            console.error('Failed to revert task execution metadata after error:', {
+            console.error('Failed to update task execution metadata after error:', {
                 projectId,
                 assistantId,
                 taskId: task.id,
@@ -1582,6 +1633,7 @@ module.exports = {
         finalizeGeneratedAssistantTask,
         getActivatedUserIdsForTask,
         buildRecurringTaskAiSettings,
+        buildAssistantTaskFailureUpdate,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>
             resolveTimezoneContext(task, userData, options, getNextExecutionTime),
         buildOriginalScheduledMoment,

@@ -5,12 +5,13 @@ import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import Button from '../../../UIControls/Button'
 import useWindowSize from '../../../../utils/useWindowSize'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { UpdateHourlyRatesAndCurrency } from '../../../../utils/backends/firestore'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
 import CurrencyArea from './CurrencyArea'
 import HourlyRateArea from './HourlyRateArea'
 import store from '../../../../redux/store'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function HourlyRateAndCurrencyModal({ projectId, closeModal, hourlyRatesData }) {
     const [currency, setCurrency] = useState(hourlyRatesData.currency)
@@ -43,7 +44,7 @@ export default function HourlyRateAndCurrencyModal({ projectId, closeModal, hour
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <ModalHeader
                 closeModal={closeModal}
                 title={translate('Hourly rate and currency')}

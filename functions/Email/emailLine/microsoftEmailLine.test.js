@@ -26,6 +26,7 @@ const {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    getMessageStates,
 } = require('./microsoftEmailLine')
 
 const ACCOUNT = {
@@ -163,6 +164,26 @@ describe('microsoftEmailLine', () => {
         const body = JSON.parse(batchCall[1].body)
         expect(body.requests[0].method).toBe('PATCH')
         expect(body.requests[0].body).toEqual({ isRead: true })
+    })
+
+    // Provider twin of the Gmail read-state lookup (AT-2376): Outlook has no INBOX label, so
+    // inbox membership is the message's parent FOLDER.
+    test('getMessageStates reports read state and inbox membership by folder', async () => {
+        getConnectedMicrosoftEmailAccounts.mockResolvedValue([ACCOUNT])
+        mockRequest.mockImplementation(async path => {
+            if (path.startsWith('/me/mailFolders/inbox')) return { id: 'f_inbox' }
+            if (path.includes('m_read')) return { id: 'm_read', isRead: true, parentFolderId: 'f_inbox' }
+            if (path.includes('m_archived')) return { id: 'm_archived', isRead: false, parentFolderId: 'f_archive' }
+            if (path.includes('m_gone')) throw new Error('The specified object was not found in the store.')
+            return { id: 'm_unread', isRead: false, parentFolderId: 'f_inbox' }
+        })
+
+        const { states } = await getMessageStates('u', 'proj1', ['m_unread', 'm_read', 'm_archived', 'm_gone'])
+
+        expect(states).toContainEqual({ messageId: 'm_unread', exists: true, unread: true, inInbox: true })
+        expect(states).toContainEqual({ messageId: 'm_read', exists: true, unread: false, inInbox: true })
+        expect(states).toContainEqual({ messageId: 'm_archived', exists: true, unread: true, inInbox: false })
+        expect(states).toContainEqual({ messageId: 'm_gone', exists: false, unread: false, inInbox: false })
     })
 
     test('sweepLabel markAllRead only targets unread and caps at 500', async () => {

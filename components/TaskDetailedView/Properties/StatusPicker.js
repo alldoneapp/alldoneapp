@@ -5,11 +5,12 @@ import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import StatusPickerStepItem from './StatusPickerStepItem'
 import TasksHelper, { DONE_STEP, NONE_STEP, OPEN_STEP } from '../../TaskListView/Utils/TasksHelper'
-import { applyPopoverWidth, chronoEntriesOrder, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, chronoEntriesOrder } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function StatusPicker({ projectId, workflow, task, hidePopover }) {
     const [width, height] = useWindowSize()
@@ -69,7 +70,7 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.innerContainer2} showsVerticalScrollIndicator={false}>
                 <View style={localStyles.innerContainer}>
                     <Hotkeys keyName={'up,down,enter'} onKeyDown={onKeyPress} filter={e => true}>

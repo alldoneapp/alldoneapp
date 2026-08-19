@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../ModalHeader'
 import NameArea from './NameArea'
 import ButtonsArea from './ButtonsArea'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function VariableModal({ disabled, closeModal, addVariable, updateVariable, variableIndex, variables }) {
     const variable = variables[variableIndex]
@@ -54,7 +55,7 @@ export default function VariableModal({ disabled, closeModal, addVariable, updat
     })
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     title={translate(adding ? 'Add new variable' : 'Update variable')}

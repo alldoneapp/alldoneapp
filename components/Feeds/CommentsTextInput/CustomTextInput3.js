@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Dimensions } from 'react-native'
+import { Dimensions, View } from 'react-native'
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
@@ -43,7 +43,13 @@ import {
     CREATE_PROJECT_THEME_MODERN,
     INVITE_THEME_MODERN,
     INVITE_THEME_DEFAULT,
+    normalizeDictatedText,
+    buildDictationDelta,
+    placeDictationCaret,
 } from './textInputHelper'
+import RambleButton from '../../UIControls/RambleButton'
+import { isDictationSupported } from '../../../hooks/useRambleRecorder'
+import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -134,6 +140,9 @@ function CustomTextInput3(
         scrollEnabled = true,
         showScrollIndicator = true,
         autoExpand = false,
+        hideDictation = false,
+        dictationTargetKind,
+        alwaysShowDictation = false,
     },
     ref
 ) {
@@ -206,6 +215,124 @@ function CustomTextInput3(
     const processPastedFn = keepBreakLines ? processPastedTextWithBreakLines : processPastedText
 
     const allowMentions = !disabledTags && !disabledMentions && !inMentionsEditionTag
+
+    //DICTATION (rambler)
+    const selectionTouchedRef = useRef(false)
+    const [dictationVisible, setDictationVisible] = useState(false)
+    const dictationEnabled =
+        !hideDictation &&
+        !disabledEdition &&
+        !inMentionsEditionTag &&
+        styleTheme !== SEARCH_THEME &&
+        !!innerProjectId &&
+        isDictationSupported()
+    // Task/goal-name editors are title inputs even though they are not `singleLine` — they accept
+    // breaklines only to convert them into the Enter action (i.e. submit), so dictated text must
+    // arrive as a single line there too or a stray '\n' would submit the task mid-insert.
+    const dictationIsTitleTarget =
+        singleLine ||
+        [
+            TASK_THEME,
+            SUBTASK_THEME,
+            GOAL_THEME,
+            CREATE_TASK_MODAL_THEME,
+            CREATE_SUBTASK_MODAL_THEME,
+            NEW_TOPIC_MODAL_THEME,
+        ].includes(styleTheme)
+    const dictationKind = dictationTargetKind || (dictationIsTitleTarget ? 'title' : 'generic')
+
+    useEffect(() => {
+        if (!dictationEnabled || !editorElement) return
+        // Reserve the mic strip in the text layout (see .ql-editorWithDictation in styles.css).
+        editorElement.classList.add('ql-editorWithDictation')
+        return () => editorElement.classList.remove('ql-editorWithDictation')
+    }, [dictationEnabled, editorElement])
+
+    // Composer inputs (assistant line, chat) pin the mic on: on touch there is no hover, so the
+    // activity rule below only reveals it once the field is already focused — AT-2355.
+    const dictationButtonVisible = isDictationButtonVisible({
+        alwaysShowDictation,
+        activityVisible: dictationVisible,
+    })
+
+    useEffect(() => {
+        if (!shouldTrackDictationActivity({ dictationEnabled, alwaysShowDictation }) || !containerElement) return
+        // The mic overlay lives in CustomScrollView's fixedChildren, OUTSIDE the Quill container —
+        // so visibility tracks the whole input frame (the scroll-boundary element), not
+        // ql-container: moving the pointer onto the overlay itself must not count as leaving.
+        const frameElement = document.getElementById(scrollBoundaryId)
+        if (!frameElement) return
+
+        const activate = () => setDictationVisible(true)
+        const onFocusOut = event => {
+            if (event.relatedTarget && frameElement.contains(event.relatedTarget)) return
+            setDictationVisible(false)
+        }
+        const onMouseLeave = () => {
+            if (frameElement.contains(document.activeElement)) return
+            setDictationVisible(false)
+        }
+        // The listeners attach AFTER the mount effect has already autofocused the editor, and the
+        // pointer that clicked the input is usually still inside the frame — so neither focusin
+        // nor mouseenter will fire until the user happens to leave and re-enter. Initialize from
+        // the current state or the mic stays invisible on exactly the surfaces that autofocus
+        // (add goal/contact/topic — AT: rambler QA).
+        const alreadyActive = (() => {
+            if (frameElement.contains(document.activeElement)) return true
+            try {
+                return frameElement.matches(':hover')
+            } catch (error) {
+                return false
+            }
+        })()
+        if (alreadyActive) setDictationVisible(true)
+        frameElement.addEventListener('focusin', activate)
+        frameElement.addEventListener('focusout', onFocusOut)
+        frameElement.addEventListener('mouseenter', activate)
+        frameElement.addEventListener('mouseleave', onMouseLeave)
+        return () => {
+            frameElement.removeEventListener('focusin', activate)
+            frameElement.removeEventListener('focusout', onFocusOut)
+            frameElement.removeEventListener('mouseenter', activate)
+            frameElement.removeEventListener('mouseleave', onMouseLeave)
+        }
+    }, [dictationEnabled, alwaysShowDictation, containerElement])
+
+    const insertDictatedText = text => {
+        const editor = quillRef.current
+        if (!editor) return
+        const cleaned = normalizeDictatedText(text, dictationIsTitleTarget)
+        if (!cleaned) return
+
+        const liveSelection = editor.hasFocus() ? editor.getSelection() : null
+        // With no live selection fall back to the last known caret; if the editor was never
+        // focused at all, append at the end rather than pushing dictation before existing text.
+        const fallback = selectionTouchedRef.current
+            ? selectionRef.current
+            : { index: Math.max(0, editor.getLength() - 1), length: 0 }
+        const { index, length } = liveSelection || fallback
+
+        const contentDelta = processPastedFn(
+            cleaned,
+            Delta,
+            innerProjectId,
+            editorId,
+            userEditingTagsId,
+            inGenericTask,
+            genericData,
+            editor,
+            false,
+            null,
+            false
+        )
+        const charBefore = index > 0 ? editor.getText(index - 1, 1) : ''
+        const needsLeadingSpace = !!charBefore && !/\s/.test(charBefore)
+        const { delta, caretIndex } = buildDictationDelta({ Delta, contentDelta, index, length, needsLeadingSpace })
+        // 'user' source: runs the normal onChange path (htmlRef stays in sync — AT-2178, and
+        // onChangeText reaches the parent's save flow) and lands in the undo history.
+        editor.updateContents(delta, 'user')
+        placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
+    }
 
     //MENTIONS
     const tryToOpenMentionModalBySelection = contentLength => {
@@ -533,6 +660,7 @@ function CustomTextInput3(
             onCustomSelectionChange?.(selection, quillRef)
             const { index, length } = selection
             selectionRef.current = { index, length }
+            selectionTouchedRef.current = true
         }
 
         if (!disabledTags && !disabledMentions && selection && editorElement) {
@@ -1268,6 +1396,19 @@ function CustomTextInput3(
             onContentSizeChange={autoExpand ? undefined : onContentSizeChange}
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
+            fixedChildren={
+                dictationEnabled ? (
+                    <View pointerEvents={'box-none'} style={localDictationWrapperStyle}>
+                        <RambleButton
+                            projectId={innerProjectId}
+                            targetKind={dictationKind}
+                            getCurrentText={() => textRef.current}
+                            onTextReady={insertDictatedText}
+                            visible={dictationButtonVisible}
+                        />
+                    </View>
+                ) : null
+            }
         >
             <ReactQuill
                 ref={el => {
@@ -1316,6 +1457,24 @@ function CustomTextInput3(
             )}
         </CustomScrollView>
     )
+}
+
+// Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
+// offset clears CustomScrollView's 4px scroll indicator. The mic centers on the FIRST text line,
+// which sits ~5px below the frame top (that offset is codified by the global placeholder rule
+// `.ql-textInputContainer > .ql-editor.ql-blank::before { top: 5px }` in styles.css) with a fixed
+// 24px line-height — so a 24px band at top:6 centers the icon on that line in every input, and in
+// the task row it lands level with the 24px assignee avatar (avatar top 8 in the outer row, this
+// frame at row y=2 → both centers at frame y=18). Frame-centering or bottom-anchoring both drift
+// below the text in inputs whose frame is taller than their content (the add-task row has
+// minHeight 45 with one line at the top). Box-none so the band never swallows input clicks.
+const localDictationWrapperStyle = {
+    position: 'absolute',
+    right: 8,
+    top: 6,
+    height: 24,
+    justifyContent: 'center',
+    zIndex: 10,
 }
 
 export default forwardRef(CustomTextInput3)

@@ -56,6 +56,21 @@ function withDeletedFields(patch, fields) {
     return patch
 }
 
+/**
+ * A sync that applies nothing because every changed field conflicted is still an
+ * event the user has to hear about: the review is the only thing standing between
+ * the template edit and the derived assistant. Wording it as "synced 0 settings"
+ * would be worse than silence, so a review-only sync gets its own sentence.
+ */
+function buildSyncActivityText(changedCount, conflictCount, subject) {
+    const changes = `${conflictCount} template change${conflictCount === 1 ? '' : 's'}`
+    // Feeds render as `${assistantName} ${entryText}`, so the review-only variant is
+    // phrased to follow a name rather than stand alone.
+    if (!changedCount) return `has ${changes} waiting for review — open the assistant to choose which version to keep`
+    const synced = `automatically synced ${changedCount} ${subject}${changedCount === 1 ? '' : 's'} from the template`
+    return conflictCount ? `${synced} • ${changes} need${conflictCount === 1 ? 's' : ''} review` : synced
+}
+
 async function writeSyncActivity(
     projectId,
     assistantId,
@@ -65,17 +80,13 @@ async function writeSyncActivity(
     timestamp,
     activityText
 ) {
-    if (!changedFields.length) return
+    // A conflict-only sync has no changed fields but is exactly the case the user
+    // never heard about before (AT-2358); staying silent there is the bug.
+    if (!changedFields.length && !conflictCount) return
     const db = admin.firestore()
     const feedId = db.collection('_ids').doc().id
     const creatorId = assistant.creatorId || assistant.lastEditorId || 'system'
-    const entryText =
-        activityText ||
-        `automatically synced ${changedFields.length} assistant setting${
-            changedFields.length === 1 ? '' : 's'
-        } from the template${
-            conflictCount ? ` • ${conflictCount} change${conflictCount === 1 ? '' : 's'} need review` : ''
-        }`
+    const entryText = activityText || buildSyncActivityText(changedFields.length, conflictCount, 'assistant setting')
     const feed = {
         id: feedId,
         type: SYNC_FEED_TYPE,
@@ -252,9 +263,7 @@ async function syncDerivedTask(assistantDoc, previousTask, currentTask, operatio
         changedFields,
         conflicts.length,
         timestamp,
-        `automatically synced ${changedFields.length} template task setting${changedFields.length === 1 ? '' : 's'}${
-            conflicts.length ? ` • ${conflicts.length} change${conflicts.length === 1 ? '' : 's'} need review` : ''
-        }`
+        buildSyncActivityText(changedFields.length, conflicts.length, 'template task setting')
     )
 }
 
@@ -288,6 +297,10 @@ async function backfillDerivedAssistant(doc, templateAssistant) {
         templateSyncedAt: timestamp,
         copiedFromTemplateAssistantDate: templateAssistant.lastEditionDate || timestamp,
     })
+    // The backfill is where most existing needs_review states came from, and it
+    // announced none of them (AT-2358).
+    if (conflicts.length)
+        await writeSyncActivity(projectId, assistantId, localAssistant, [], conflicts.length, timestamp)
 
     const [globalTasksSnapshot, localTasksSnapshot] = await Promise.all([
         admin
@@ -384,4 +397,5 @@ module.exports = {
     acceptTemplateConflicts,
     syncDerivedAssistant,
     runTemplateSyncBackfill,
+    buildSyncActivityText,
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
@@ -35,7 +35,8 @@ import './toolbar-styles.css'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import Backend from '../../../../utils/BackendBridge'
 import URLsNotes, { URL_NOTE_DETAILS_EDITOR } from '../../../../URLSystem/Notes/URLsNotes'
-import { getRandomCollabColor } from '../../../styles/global'
+import styles, { colors, getRandomCollabColor } from '../../../styles/global'
+import { translate } from '../../../../i18n/TranslationService'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import {
     resetLoadingData,
@@ -90,7 +91,10 @@ import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
-import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
+import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCollaborationRecovery'
+import { createNoteLocalPersistence } from './noteLocalPersistence'
+import { isBrowserOffline } from '../../../../utils/connectionState'
+import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -111,7 +115,26 @@ export let exportRef = null
 export let exportLoadingRef = null
 export let loadedNote = null
 const SAVE_INTERVAL = 3000
+// Content this client only RECEIVED (a collaborator typing) is persisted far
+// less eagerly than content the local user authored: the author's own client is
+// already saving it, so our upload is a safety net, not the primary write path.
+// See `isRemoteEditorChange` below (AT-2340).
+const REMOTE_SAVE_INTERVAL = 60000
 const NOTE_CONTENT_RETRY_DELAY = 5000
+
+/**
+ * Did this Quill change come from a collaborator rather than from this user?
+ *
+ * y-quill applies remote Yjs updates with `quill.updateContents(delta, this)` —
+ * the QuillBinding instance itself is the change source — while every local
+ * change carries a string source ('user' for typing, 'api' for the editor's own
+ * programmatic edits such as the image-format rewrite, which ARE local and must
+ * still be saved normally). Matching on the binding instance is therefore both
+ * precise and conservative: anything we cannot positively attribute to the
+ * binding is treated as local.
+ */
+export const isRemoteEditorChange = (source, bindingInstance) =>
+    !!bindingInstance && typeof source === 'object' && source === bindingInstance
 
 const NotesEditorView = ({
     project,
@@ -144,14 +167,25 @@ const NotesEditorView = ({
     const [synced, setSynced] = useState(false)
     const [editors, setEditors] = useState([])
     const [dataLoaded, setDataLoaded] = useState(false)
+    // The note's content could not be loaded AND the browser is offline — shown
+    // as an explanatory message instead of an endless spinner (notes follow-ups).
+    const [contentUnavailableOffline, setContentUnavailableOffline] = useState(false)
     // const [scrollEnabled, setScrollEnabled] = useState(false)
     const firstEditionRef = useRef(true)
+    // "This note holds local state we could not compare against the canonical
+    // Storage copy" — resolved on reconnect, never guessed (AT-2340).
+    const catchUpUnverifiedRef = useRef(false)
     let loadingRef = useRef(true)
     let provider = useRef(null)
     let ydoc = useRef(null)
     let binding = useRef(null)
+    let localPersistence = useRef(null)
     let dirtyEditor = useRef(false)
+    // Content received from a collaborator and not yet persisted by us. Kept
+    // apart from `dirtyEditor` so it can never stamp this user as the editor.
+    const remoteDirtyEditor = useRef(false)
     let saveTimeoutHandle = useRef(null)
+    const remoteSaveTimeoutHandle = useRef(null)
     const noteContentRetryTimeoutRef = useRef(null)
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
@@ -163,6 +197,12 @@ const NotesEditorView = ({
     const scrollRef = useRef()
     const scrollYPos = useRef(0)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
+    // `cleanup` is returned from a mount-only effect, so it closes over the first
+    // render's values. It used to hardcode `true` for userCanEditNote where
+    // autosave passes `accessGranted` — meaning a user without write access
+    // still wrote the note's preview and edition data on the way out (AT-2340).
+    const accessGrantedRef = useRef(accessGranted)
+    accessGrantedRef.current = accessGranted
     const needReplaceImageFormat = useRef(false)
     const readOnlyRef = useRef(readOnly)
     const timeoutRef = useRef(null)
@@ -219,7 +259,7 @@ const NotesEditorView = ({
         }
     }
 
-    const scanLinkedObjects = () => {
+    const scanLinkedObjects = ({ forceWrite = false } = {}) => {
         const ops = quillRef.current.getContents().ops
         const linkedParentNotesUrl = []
         const linkedParentTasksUrl = []
@@ -281,7 +321,11 @@ const NotesEditorView = ({
                 notePartEdited: 'content',
                 isUpdatingNotes: true,
             },
-            {}
+            {},
+            // On teardown the backlink write must be issued at once: the
+            // no-op comparison reads the local cache asynchronously, and a page
+            // being unloaded may never run that continuation (AT-2340).
+            { forceWrite }
         )
     }
 
@@ -298,11 +342,36 @@ const NotesEditorView = ({
         }
     }
 
+    /**
+     * Persist content this client only RECEIVED.
+     *
+     * Content only: no preview, no lastEditionDate/lastEditorId, no edited-today
+     * entry, no started-editing feed, no follower. The collaborator who typed it
+     * owns all of that on their own client; duplicating it here made two people
+     * typing cost both of them the full save fan-out, and made each of them look
+     * like the last editor of the other's text (AT-2340).
+     */
+    const persistRemoteContent = () => {
+        clearTimeout(remoteSaveTimeoutHandle.current)
+        remoteSaveTimeoutHandle.current = null
+        if (!remoteDirtyEditor.current) return
+        remoteDirtyEditor.current = false
+        if (!ydoc.current || loadingRef.current) return
+
+        const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
+        setNoteData(projectId, note.id, stateUpdate, null, null, accessGrantedRef.current, { contentOnly: true })
+    }
+
     const autosave = () => {
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
         if (dirtyEditor.current) {
             dirtyEditor.current = false
+            // A local save uploads the merged document, which already contains
+            // everything received from collaborators.
+            remoteDirtyEditor.current = false
+            clearTimeout(remoteSaveTimeoutHandle.current)
+            remoteSaveTimeoutHandle.current = null
 
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
             const preview = getNotePreviewText(projectId, quillRef.current)
@@ -374,14 +443,28 @@ const NotesEditorView = ({
     const handleChange = (_value, delta, source) => {
         handleTextChangeForMentions()
         if (dataLoaded) {
-            dirtyEditor.current = true
-            if (saveTimeoutHandle.current === null) {
-                // Commenting this by Customer request
-                // Backend.logEvent('started_editing_note', {
-                //     uid: loggedUser.uid,
-                //     id: note.id,
-                // })
-                saveTimeoutHandle.current = setTimeout(autosave, SAVE_INTERVAL)
+            // A collaborator's edits must not dirty THIS editor: they are not our
+            // edits, and marking them dirty ran the whole local save fan-out —
+            // lastEditionDate/lastEditorId stamped with our id, the edited-today
+            // list, the started-editing feed, the backlink write and
+            // tryAddFollower — for text we merely received (AT-2340). The merged
+            // document is still persisted, content-only and far more lazily, so
+            // nothing is lost if the collaborator's own upload never lands.
+            if (isRemoteEditorChange(source, binding.current)) {
+                remoteDirtyEditor.current = true
+                if (remoteSaveTimeoutHandle.current === null && !readOnlyRef.current) {
+                    remoteSaveTimeoutHandle.current = setTimeout(persistRemoteContent, REMOTE_SAVE_INTERVAL)
+                }
+            } else {
+                dirtyEditor.current = true
+                if (saveTimeoutHandle.current === null) {
+                    // Commenting this by Customer request
+                    // Backend.logEvent('started_editing_note', {
+                    //     uid: loggedUser.uid,
+                    //     id: note.id,
+                    // })
+                    saveTimeoutHandle.current = setTimeout(autosave, SAVE_INTERVAL)
+                }
             }
         }
         checkForInnerTasksChanges(delta.ops, source)
@@ -425,6 +508,53 @@ const NotesEditorView = ({
             noteUnmountedRef.current = true
         }
     }, [])
+
+    // Saves made offline reach only the local IndexedDB copy (the Firebase
+    // Storage put fails); when connectivity returns while the editor is still
+    // open, upload the current state so the canonical copy catches up
+    // (OFFLINE_SUPPORT_PLAN.md Stage 6).
+    //
+    // This used to force `dirtyEditor` and autosave UNCONDITIONALLY on every
+    // `online` event, so a Wi-Fi switch or a laptop wake re-uploaded the whole
+    // note and re-stamped lastEditionDate/lastEditorId, the edited-today list,
+    // the linked-parent write and the follower — for a note nobody had touched,
+    // which in turn made every other open client re-download it. Now the
+    // decision is measured against the canonical copy first, and a note the
+    // server already has costs one read and no writes (AT-2340).
+    useEffect(() => {
+        const uploadOnReconnect = async () => {
+            if (noteUnmountedRef.current || loadingRef.current || !ydoc.current || readOnly) return
+            // Real unsaved edits already have an autosave scheduled; letting it
+            // run avoids racing it with a second encode of the same document.
+            if (dirtyEditor.current) return
+            if (!catchUpUnverifiedRef.current && !hasPendingNoteUpload(note.id)) return
+
+            try {
+                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
+                    attemptTimeoutMs: 10000,
+                })
+                if (noteUnmountedRef.current || !ydoc.current) return
+                const storageUpdate = data ? new Uint8Array(data) : new Uint8Array(0)
+                catchUpUnverifiedRef.current = false
+                if (!storageIsMissingLocalState(ydoc.current, storageUpdate)) {
+                    clearPendingNoteUpload(note.id)
+                    return
+                }
+                // Merge the canonical copy in first so the upload is the CRDT
+                // union — an edit made elsewhere while we were offline must not
+                // be clobbered by our catch-up.
+                if (storageUpdate.length > 0) Y.applyUpdate(ydoc.current, storageUpdate, 'remote-storage-refresh')
+                dirtyEditor.current = true
+                autosave()
+            } catch (error) {
+                // Could not read the canonical copy: keep both flags so the next
+                // reconnect (or the next open) retries the comparison.
+                console.warn('Could not verify whether the note needs an offline catch-up upload', error)
+            }
+        }
+        window.addEventListener('online', uploadOnReconnect)
+        return () => window.removeEventListener('online', uploadOnReconnect)
+    }, [readOnly])
 
     useEffect(() => {
         dispatch(setQuillTextInputProjectIdsByEditorId(note.id, projectId))
@@ -512,18 +642,38 @@ const NotesEditorView = ({
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
+        clearTimeout(remoteSaveTimeoutHandle.current)
+        remoteSaveTimeoutHandle.current = null
         clearTimeout(noteContentRetryTimeoutRef.current)
         noteContentRetryTimeoutRef.current = null
 
         if (!loadingRef.current && dirtyEditor.current) {
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
-            scanLinkedObjects()
-            setNoteData(projectId, note.id, stateUpdate, quillRef.current.getText(0, 500), firstEditionRef, true)
+            // Same preview and same permission flag as `autosave` (AT-2340). This
+            // used to write a raw `getText(0, 500)` — which is not what the note
+            // list renders, so closing a note replaced its structured preview
+            // with a plain-text one — and to hardcode `true` for the permission
+            // flag, writing edition data for a user who may not have write access.
+            const preview = getNotePreviewText(projectId, quillRef.current)
+            scanLinkedObjects({ forceWrite: true })
+            setNoteData(projectId, note.id, stateUpdate, preview, firstEditionRef, accessGrantedRef.current)
+        } else if (!loadingRef.current && remoteDirtyEditor.current && !readOnlyRef.current) {
+            // Received-only content: persist the merged document without claiming
+            // authorship of it.
+            const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
+            setNoteData(projectId, note.id, stateUpdate, null, null, accessGrantedRef.current, { contentOnly: true })
         }
+        dirtyEditor.current = false
+        remoteDirtyEditor.current = false
 
         if (provider.current) {
             //provider.current.disconnect()
             provider.current.destroy()
+        }
+        // Closes the IndexedDB connection; the persisted note state itself stays,
+        // that is the whole point (destroy() ≠ clearData()).
+        if (localPersistence.current) {
+            localPersistence.current.destroy()
         }
         if (ydoc.current) {
             ydoc.current.destroy()
@@ -730,24 +880,61 @@ const NotesEditorView = ({
 
         const loadNoteContent = async () => {
             try {
-                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                // A failed Storage download is no longer fatal (OFFLINE_SUPPORT_PLAN.md
+                // Stage 6): the local IndexedDB copy can still open the note.
+                // prepareSyncedNoteDocument throws when there is truly nothing to
+                // show, which lands in the retry path below exactly as before.
+                // Offline the download is not even attempted — the Storage SDK
+                // retries network failures internally for up to 2 minutes, which
+                // held the spinner long before any offline fallback could run
+                // (the Pixel "loads forever" report). The per-attempt timeout
+                // bounds the degraded-but-"online" case the same way.
+                let data = null
+                if (isBrowserOffline()) {
+                    console.warn('Browser is offline; skipping the note content download')
+                } else {
+                    try {
+                        data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
+                            attemptTimeoutMs: 10000,
+                        })
+                    } catch (storageError) {
+                        console.warn(
+                            'Note content download failed; opening from local offline state if available',
+                            storageError
+                        )
+                    }
+                }
                 if (noteUnmountedRef.current) return
 
-                const collaboration = await prepareSyncedNoteDocument(data, document => {
-                    return new WebsocketProvider(
-                        getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                        note.id,
-                        document
-                    )
-                })
+                const collaboration = await prepareSyncedNoteDocument(
+                    data,
+                    document => {
+                        return new WebsocketProvider(
+                            getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                            note.id,
+                            document
+                        )
+                    },
+                    {
+                        createLocalPersistence: document => createNoteLocalPersistence(note.id, document),
+                        // A note whose content was never saved (no preview — the
+                        // preview is written on every content autosave) is CORRECT
+                        // when empty, so it may open offline with nothing anywhere:
+                        // the case of a note just created offline. CRDT merge keeps
+                        // this safe even against a false positive.
+                        allowEmptyOpen: !(note.preview && note.preview.trim()),
+                    }
+                )
                 if (noteUnmountedRef.current) {
                     collaboration.provider.destroy()
+                    collaboration.localPersistence?.destroy()
                     collaboration.document.destroy()
                     return
                 }
 
                 ydoc.current = collaboration.document
                 provider.current = collaboration.provider
+                localPersistence.current = collaboration.localPersistence
                 const type = ydoc.current.getText('quill')
                 provider.current.on('synced', synced => {
                     setSynced(synced)
@@ -785,6 +972,22 @@ const NotesEditorView = ({
                         noteId: note.id,
                     })
                 }
+                // Only set when the canonical copy was actually READ and found to
+                // be behind. When it could not be read (offline), the decision is
+                // deferred via storageCatchUpUnverified rather than guessed —
+                // guessing "yes" recorded every offline READ as an edit (AT-2340).
+                catchUpUnverifiedRef.current = !!collaboration.storageCatchUpUnverified
+                if (collaboration.storageNeedsLocalCatchUp && !readOnly) {
+                    // A previous offline session edited this note and its writes never
+                    // reached Firebase Storage. Upload the merged state now so the
+                    // canonical copy catches up even if the user never edits again.
+                    console.warn('Uploading offline note edits that had not reached Firebase Storage', {
+                        noteId: note.id,
+                    })
+                    dirtyEditor.current = true
+                    autosave()
+                }
+                setContentUnavailableOffline(false)
                 loadingRef.current = false
                 exportLoadingRef = false
                 dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
@@ -792,10 +995,22 @@ const NotesEditorView = ({
                 if (noteUnmountedRef.current) return
                 binding.current?.destroy()
                 provider.current?.destroy()
+                localPersistence.current?.destroy()
                 ydoc.current?.destroy()
                 binding.current = null
                 provider.current = null
+                localPersistence.current = null
                 ydoc.current = null
+                // Offline with no local copy: tell the user why the note cannot
+                // open instead of spinning forever; the retry below picks the
+                // content up as soon as connectivity returns. The LoadingNoteData
+                // spinner overlays the editor (zIndex 10000) and would cover the
+                // message, so the loading flag is cleared while the explanation is
+                // up — the editor stays locked through contentUnavailableOffline
+                // in the pointerEvents/readOnly/disabled gates below.
+                const unavailableOffline = isBrowserOffline()
+                setContentUnavailableOffline(unavailableOffline)
+                if (unavailableOffline) dispatch(setIsLoadingNoteData(false))
                 console.error('Failed to load note content; keeping the editor locked and retrying', error)
                 noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
@@ -855,6 +1070,9 @@ const NotesEditorView = ({
         if (provider.current) {
             //provider.current.disconnect()
             provider.current.destroy()
+        }
+        if (localPersistence.current) {
+            localPersistence.current.destroy()
         }
         if (ydoc.current) {
             ydoc.current.destroy()
@@ -1227,7 +1445,10 @@ const NotesEditorView = ({
     }
 
     return (
-        <View style={{ flexDirection: 'column', flex: 1 }} pointerEvents={isLoadingNoteData ? 'none' : 'auto'}>
+        <View
+            style={{ flexDirection: 'column', flex: 1 }}
+            pointerEvents={isLoadingNoteData || contentUnavailableOffline ? 'none' : 'auto'}
+        >
             {renderShortcuts()}
 
             <EditorToolbar
@@ -1242,9 +1463,9 @@ const NotesEditorView = ({
                 accessGranted={accessGranted}
                 isFullscreen={isFullscreen}
                 setFullscreen={switchScreenModes}
-                ptojectId={projectId}
+                projectId={projectId}
                 readOnly={readOnly}
-                disabled={timeoutModalIsOpen.current || isLoadingNoteData}
+                disabled={timeoutModalIsOpen.current || isLoadingNoteData || contentUnavailableOffline}
                 connectionState={connectionState}
                 scrollYPos={scrollYPos}
                 scrollRef={scrollRef}
@@ -1252,6 +1473,16 @@ const NotesEditorView = ({
                 onOpenSideChat={onOpenSideChat}
             />
 
+            {contentUnavailableOffline ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+                    <Text style={[styles.title6, { color: colors.Text02, textAlign: 'center' }]}>
+                        {translate('This note is not available offline yet')}
+                    </Text>
+                    <Text style={[styles.body1, { color: colors.Text03, textAlign: 'center', marginTop: 8 }]}>
+                        {translate('It will load automatically when you are back online')}
+                    </Text>
+                </View>
+            ) : null}
             <CustomScrollView
                 ref={scrollRef}
                 onScroll={e => {
@@ -1280,7 +1511,13 @@ const NotesEditorView = ({
                     placeholder={createPlaceholder('Type your note...', QUILL_EDITOR_NOTE_TYPE, note.id)}
                     modules={modules}
                     formats={formats}
-                    readOnly={timeoutModalIsOpen.current || isLoadingNoteData || !accessGranted || readOnly}
+                    readOnly={
+                        timeoutModalIsOpen.current ||
+                        isLoadingNoteData ||
+                        contentUnavailableOffline ||
+                        !accessGranted ||
+                        readOnly
+                    }
                     style={{ marginTop: clicked ? -34 : 0 }}
                     onChangeSelection={onChangeSelection}
                 />

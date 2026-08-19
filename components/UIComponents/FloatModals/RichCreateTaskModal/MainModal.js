@@ -10,6 +10,7 @@ import ModalHeader from '../ModalHeader'
 import AssigneeArea from './AssigneeArea'
 import { translate } from '../../../../i18n/TranslationService'
 import ProjectFilter from '../../../GlobalSearchAlgolia/Filter/ProjectFilter'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function MainModal({
     projectId,
@@ -27,6 +28,7 @@ export default function MainModal({
     setTask,
     showMoreOptions,
     selectedProject,
+    widthStyle,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
@@ -51,7 +53,10 @@ export default function MainModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
-                { maxHeight: screenDimensions.height - 32 },
+                { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
+                // AT-2364: last, so the wide variant overrides both the legacy
+                // popover width and the small-screen minimum above it.
+                widthStyle,
             ]}
         >
             <ModalHeader closeModal={closeModal} title={title} description="" />

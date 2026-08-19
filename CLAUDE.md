@@ -146,6 +146,45 @@ move from synchronous `ReactDOM.render` to asynchronous `createRoot`). Do not in
 new `ReactDOM.render`, `unmountComponentAtNode`, or `findDOMNode` call sites regardless;
 they are all React 19 removals and every one added now is future migration cost.
 
+**Never subscribe an all-projects view to a whole `xByProject` map (AT-2336).** Nearly
+every per-project slice in the store is a plain object that the reducer replaces
+wholesale (`{ ...state.boardMilestonesByProject }`), so writing **one** project's slice
+changes the identity of the map holding **all** of them. A component that selects the map
+therefore re-renders on every per-project write, and the all-projects views fan out one
+Firestore watcher **per project** — so the writes arrive in proportion to the project
+count and the settle cost is O(projects²). This is not theoretical at dogfooding scale:
+the reporting account has **78 active projects** (64 of them guides), and "All projects –
+Goals" settled with a measured **12,168** renders of `MilestonesListByProject` versus 233
+after the fix. Note the data was never the problem — those 78 `watchAllGoals` listeners
+return only ~363 documents / ~1.4 MB in total; it is pure render amplification. The
+pattern that fixes it, in `components/GoalsView/goalsBoardSelectors.js`: the parent
+selects a **flat map of primitives** carrying only what it needs for ordering and
+`canShowProject` (a `"<date>|<id>"` string, because objects allocate a fresh identity on
+every selector run and defeat `shallowEqual`), compares it with `shallowEqual`, and the
+per-project child reads its own slice with `useSelector(state => state.x[projectId])` and
+is wrapped in `React.memo`. The memo only pays off if the callbacks the parent passes down
+are `useCallback`-stable, which is why `GoalsView`'s dismissible handlers are.
+
+Two related traps in the same view, both worth copying elsewhere. A per-project effect
+whose **cleanup nulls the slices it is about to rewrite** turns every snapshot into a
+redundant write pair and defeats any equality guard — clearing belongs in an
+unmount/user-change effect, not in the recompute's cleanup. And an equality guard over
+recomputed redux slices should compare **element references**, not deep values:
+`mapGoalData`/`mapMilestoneData` rebuild every object per snapshot, so reference
+comparison can never swallow real data while still catching the recomputes triggered by
+mount, tab switches and unrelated store churn. Pinned by
+`components/GoalsView/GoalsViewAllProjectsPerformance.test.js`,
+`goalsBoardWrites.test.js` and `goalsBoardSelectors.test.js`.
+
+**Known remaining cost in the Goals board, not yet fixed:** `MilestoneStatistics` opens a
+live `items/{projectId}/tasks` listener per milestone header to render one
+`N Tasks · N Story Points` line, and the "Someday"/backlog header passes a milestone
+timestamp of **year 5000**, so its window is effectively unbounded. On the reporting
+account's main project that single line streams **1,165 task documents / ~5.7 MB**. It is
+always mounted in the single-project Goals view. Fixing it means either sharing one
+per-project task listener across milestone buckets or making the stats lazy — not a
+cosmetic change, so it was left out of AT-2336.
+
 ### Firebase Functions
 
 Located in `functions/`. Deploys to the **Node 22** runtime, and that is pinned in **two**
@@ -235,7 +274,26 @@ Responses-only**, so OpenRouter runs always send full function schemas (Flash's 
 it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
 extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
 (`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
-failing the whole request. Labeling was the cheap half — the Gmail and calendar classifiers already
+failing the whole request. Modality is answered per model by
+`assistantModelSupportsImageInput` in `assistantModelRouting.js` — it sits next to the pinned
+upstream id because it is a fact about that release, and an unlisted OpenRouter model is assumed
+text-only (a stripped image degrades to a note the model can explain; an image sent to a text-only
+model takes the whole request down). The transport counts the replacements and warns, because a
+dropped image is otherwise invisible: the request succeeds and the only symptom is an answer that
+ignores the attachment the user is looking at.
+
+**A chat image is fetchable, and `get_chat_attachment` used to say otherwise.** The tool and its
+fallback filtered `media.kind === 'file'`, while WhatsApp and web uploads store a photo as
+`kind: 'image'` — and `list_recent_chat_media` advertises those images together with their
+messageIds. So the discovery tool named an image the fetch tool then denied existed
+(`No file attachment was found on the requested chat message`), which is exactly the loop a
+text-only model falls into when it cannot see an attached photo: it asked three times and burned a
+minute of wall clock before answering. The bytes come from the same `storageUrl` whatever the kind,
+so `isFetchableChatAttachment` now accepts `file`/`image`/`video`. The one thing widening the kinds
+must not break is a message carrying an image **next to** a document: that used to resolve to the
+document, so `selectRequestedChatAttachments` keeps that preference rather than turning a working
+call into an ambiguity error, and an explicit `expectedFileName` outranks it. Base64 never enters
+the conversation either way — `buildConversationSafeToolResult` redacts it. Labeling was the cheap half — the Gmail and calendar classifiers already
 call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
 classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
 default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
@@ -275,6 +333,292 @@ navigation and the top bar off-screen (AT-2177), and popovers need scroll-offset
 `body { overflow-y: auto }` as the safety valve for a screen with no inner scroller, and keep
 `box-sizing: border-box` so the safe-area padding cannot push the shell past 100%.
 `__tests__/WebShellScrollContainers.test.js` guards the rule in both templates.
+
+**iOS standalone PWA safe areas (AT-2314)**: both HTML templates keep
+`viewport-fit=cover`, the Apple standalone metadata and a light/default status bar, and
+pad all four body edges with `env(safe-area-inset-*)`. Never reintroduce the old iOS-only
+black `body` background: it was exactly what painted the top and bottom PWA bars black.
+Fixed portal content does not inherit body padding. `hooks/useModalSizing.js` therefore
+subtracts the measured safe-area rectangle as well as the keyboard, the bottom sheet
+paints through the home-indicator region while padding its content above it, and the
+vendored `react-tiny-popover` clamps anchored/fixed portals inside the safe rectangle.
+The sheet's upward handle over-drag is limited by its remaining top clearance, so a
+full-height sheet cannot be pulled into the status/header safe area.
+Browsers without safe-area insets resolve every value to zero, preserving desktop,
+Android and ordinary mobile-browser geometry. Keep the deployed `web-bundler/` and legacy
+`web/` templates/manifests aligned; `__tests__/WebShellScrollContainers.test.js`,
+`utils/safeAreaInsets.test.js`, `hooks/useModalSizing.test.js`, and the modal/popover suites
+pin the contract.
+
+**Every other popup sizes itself through `utils/modalSafeArea.js` (AT-2339).** AT-2314
+above only reached the two surfaces built on `useModalSizing` — the bottom sheet and the
+comment popup — because it fixed **position**, not **height**. The vendored popover patch
+nudges a portal into the safe rectangle, but a card taller than that rectangle simply
+overflows the opposite edge once its top is clamped, and **~10 call sites pass
+`disableReposition`, which skips that nudge entirely** (the comment popup is one; it reads
+correctly only because `popoverToTop` pins it at a hard 80px). Everything else measured
+against the raw window: ~75 popover-content modals capped at `windowHeight -
+MODAL_MAX_HEIGHT_GAP`, and the centred `position: fixed` overlay family capped in percent
+— `maxHeight: '90%'` is a ~42px top gap on an 844pt iPhone against a 47px inset, which is
+how the "new day" popup (`EndDayStatisticsModal`) ended up under the Dynamic Island.
+
+The module is the single authority for popup geometry: `getSafeAreaModalMaxHeight`
+(the drop-in for `height - MODAL_MAX_HEIGHT_GAP`), `getSafeAreaModalMaxWidth` (now behind
+`applyPopoverWidth`, so the landscape cutout no longer makes a "full width" card overhang),
+`getSafeAreaModalMaxHeightBelow` (the mentions dropdown — its top offset is **already** a
+clamped viewport coordinate, so subtracting the top inset again would double-count it) and
+`getSafeAreaOverlayPadding` via `hooks/useSafeAreaOverlayPadding.js`.
+
+Two rules that are easy to get wrong. **Overlay padding goes on the overlay, never on the
+card** — a percentage `max-height` resolves against the containing block's CONTENT box, so
+padding the inset-0 centring parent is exactly what makes the family's existing
+`'90%'`/`'94%'` caps correct with no per-modal retuning; padding the card would instead
+shrink its content. And the padding uses **minimum semantics, `max(existingGap, inset)`,
+not additive** — that is what makes the sweep provably non-regressive: a dialog whose gap
+already clears the system UI does not move a pixel, so the comment popup's 80px offset is
+byte-identical to before and only gains a horizontal clamp. Additive would have shoved the
+one surface that was signed off as correct 47px down the screen.
+
+**Minimum semantics are for gaps measured from the SCREEN edge; an offset measured from
+the CONTENT area is additive instead.** The two header project switchers pin themselves at
+a literal `{ top: 60, left: 16 }` _and_ pass `disableReposition`, so nothing clamps them at
+all. But `60` was measured against the app header, and the shell already pads `body` with
+`env(safe-area-inset-*)` — so the header starts at `insets.top` while a `position: fixed`
+portal does not inherit that padding. `max(60, 59)` would leave one pixel of clearance
+under a Dynamic Island; `offsetPopoverInsideSafeArea` (`utils/popoverPositioning.js`)
+therefore ADDS the inset and then clamps, so the offset cannot push a tall popover off the
+bottom. Getting this backwards is silent — it looks fixed and is still one pixel wrong.
+
+A second sweep covered the spellings the first codemod could not see, and each needed its
+own ratchet: a cap re-derived from a local constant (`windowHeight - MODAL_VERTICAL_MARGIN
+
+- 2`, where that constant is exactly the 32 of `MODAL_SAFE_AREA_GAP`—`ConnectRepoModal`even called the inset-aware`useModalSizing`and then discarded its`maxHeight`), a raw
+`vh`unit (a fraction of the RAW viewport, blind to the insets — use`getSafeAreaViewportHeightCap`), and a literal `contentLocation` coordinate pair. Treat
+  "the guardrail is green" as meaning only "no file matches the idioms we already know";
+  the misses were found by auditing for the geometry, not by grepping for the pattern.
+
+The hook exists rather than a bare function call because these dialogs subscribe to redux,
+not to the viewport: without its `useWindowSize()` a rotation would leave a landscape
+overlay padded with the portrait insets. `__tests__/PopupSafeAreaGuardrails.test.js`
+ratchets the whole thing — no component may subtract the raw gap from a window height
+again, and every overlay-family member must apply the shared padding **last** in its style
+array (first would let the static `paddingTop` it is meant to override win). Note the
+`react-tiny-popover` ratchet in `__tests__/ModalSystemGuardrails.test.js` is a **substring**
+match over file sources, so even naming the package in a comment counts as a new importer.
+
+**"Open view in new window" cannot reach a browser tab from an installed PWA without an
+out-of-scope hop (AT-2345).** The top-right button in every detailed view
+(`OpenInNewWindowButton`, plus `OpenInNewWindowModalItem` in the more-menus) was a bare
+`window.open(window.location, '_blank')`. That is correct in a browser tab and wrong in an
+installed app window: Chromium and WebKit both keep a navigation whose target falls inside
+the app's **manifest scope** inside the app, so the click spawns a second PWA window. Neither
+manifest declares a `scope`, so it defaults to the `start_url` directory (`/`) — the whole
+origin — and every Alldone URL is in scope. Nothing changed in the button; the app only
+recently became a _genuinely installable_ desktop PWA (the web-bundler manifest became the
+deployed pipeline on 2026-08-04, then the workbox service worker landed with offline support),
+and before that a macOS "app" was a plain shortcut window that delegated `_blank` to the
+browser. **No web API overrides the scope decision** — the only lever the page has is making
+the destination out-of-scope. `utils/openInNewWindow.js` therefore opens the
+`openInBrowserTab` Cloud Function (`functions/WebApp/openInBrowserTab.js`, on
+`*.cloudfunctions.net`, a different origin and so unambiguously out of scope), which 302s to
+the real URL; the browser opens the out-of-scope target in a normal tab and follows the
+redirect there. Three carve-outs are deliberate and load-bearing: an ordinary browser tab
+keeps the direct `window.open` (no hop, no dependency on the redirector being reachable);
+**iOS/iPadOS home-screen apps keep it too** (`navigator.standalone === true` — there `_blank`
+already hands the URL to the browser, so the bounce would only add a failure mode); and every
+way of failing to build the bounce falls back to the direct call, so the button can never
+become a no-op. The redirector is an open-redirect by construction, hence the explicit host
+allowlist (`isAllowedRedirectTarget`) — anything not an Alldone origin is 400, never
+redirected to. `window.open` must stay **synchronous** in the click handler on every path or
+desktop popup blockers eat it. Pinned by `utils/openInNewWindow.test.js` and
+`functions/WebApp/openInBrowserTab.test.js`. Note the browser, not the app, has the last
+word: if a future Chromium re-captures redirect chains back into the app window, the result
+degrades to today's behaviour rather than breaking.
+
+### Offline support (OFFLINE_SUPPORT_PLAN.md — all 8 stages shipped 2026-08-17)
+
+- **Connectivity signal**: the `connectionState` redux slice (`'' | 'offline' | 'online'`,
+  `''` = never changed, `'online'` only ever set as a recovery from `'offline'`) is fed by
+  `utils/connectionState.js`, installed once from `AppNavigator`'s `AppContainer` like the
+  escape stack. For early-boot code that runs before the debounced slice settles, use the
+  synchronous `isBrowserOffline()` from the same module (UserDataCache expiry tolerance,
+  login retry short-circuits, the offline branch of `handleLoginFailure` all do).
+  Gate online-only features on `state.connectionState === 'offline'`; treat
+  `'offline'` as authoritative and `'online'` as a hint (captive portals lie). The
+  `ConnectionStateModal` toast + notes read-only gating consume it in
+  `NoteEditorContainer.js`. `@react-native-community/netinfo` was removed — it was never
+  imported and needs the retired native toolchain; use this module instead.
+- **Online-only surfaces fail fast, never hang**: `runHttpsCallableFunction` and
+  `multiSearchTypesense` both throw a typed `code: 'offline'` error immediately while
+  offline (a callable otherwise hangs into its 70s SDK timeout). New features must
+  either work from the Firestore cache or gate on `connectionState`/`isBrowserOffline`
+  and fail fast with that same error shape. Mentions degrade to redux project members
+  (`MentionsModal.getLocalContactsFallback`); `getMentions` must never throw —
+  `updateResults` has no catch and a rejection leaves the mentions spinner hanging.
+- **Notes offline (y-indexeddb)**: the LIVE notes editor attaches an
+  `IndexeddbPersistence` (`noteLocalPersistence.js`) alongside the `WebsocketProvider`;
+  the headless/virtual Quill path in `notesHelper.js` deliberately does not (online-only
+  operations, cleanup hazards). `prepareSyncedNoteDocument` opens from local state when
+  Storage and/or the collab server are unreachable, and flags
+  `storageNeedsLocalCatchUp` so offline edits get uploaded to Firebase Storage on the
+  next online open (detection compares merged encodings, NOT bare state vectors — a
+  state-vector diff over-reports on every open because it can't see delete-set equality,
+  and a false positive fires edit side effects like `startEditNoteFeedsChain`). Offline
+  no longer forces the notes editor read-only. Pinned by
+  `noteCollaborationRecovery.test.js` and `noteLocalPersistence.test.js`.
+  **Follow-ups (2026-08-17)**: (1) a note can be **created** offline end to end —
+  `uploadNewNote` stops awaiting server acks while offline (the awaited `.set()`, the
+  server-clock read in `updateEditionData`, and the side-effect `Promise.all` only
+  resolve on reconnect otherwise) and its empty Storage put is best-effort; the editor
+  then opens via `allowEmptyOpen`, passed when the note has no `preview` (previews are
+  written on every content autosave, so no preview ⇒ never-saved ⇒ empty is correct —
+  and CRDT merge makes even a false positive lossless). (2) `utils/NotesOfflinePrefetch.js`
+  warms the y-indexeddb stores with the most recently edited notes while online (top 5
+  per project, 30 per run, cooldown 10 min, marker-skips unchanged editions, never
+  touches the open note, scheduled post-login + on reconnect from `AppContent`). (3) a
+  note that still cannot load offline shows a translated explanation instead of an
+  endless spinner (`contentUnavailableOffline` in `NotesEditorView`). **The Firebase
+  Storage SDK retries failed network requests internally for up to 2 minutes per
+  operation (10 for uploads)** — offline, any unguarded notes-storage call stalls the
+  UI long before app-level offline handling can run. The notes storage client is
+  bounded (`setMaxOperationRetryTime(15000)` / `setMaxUploadRetryTime(60000)` at init),
+  the editor skips the download outright while `isBrowserOffline()`, and
+  `loadNoteContentWithRetry` bounds each attempt (`attemptTimeoutMs`). When testing
+  offline behavior, drive the REAL SDK offline — injecting a failed download result
+  fails fast and masks exactly this class of stall.
+- **Offline is quiet, not an error**: `initFirebase` sets
+  `firebase.firestore.setLogLevel('error')` (the SDK's WARN chatter — the
+  enablePersistence deprecation notice, per-reconnect `transport errored`, BloomFilter —
+  is steady-state noise for an offline-capable app), and
+  `utils/backends/firestoreNetworkGate.js` parks the SDK transport via
+  `disableNetwork()` while `connectionState === 'offline'`, resuming on the recovery
+  transition. That removes the browser-level `ERR_INTERNET_DISCONNECTED` spam AND the
+  battery cost of doomed reconnect attempts in airplane mode; cache reads and queued
+  writes are unaffected (`disableNetwork` only parks the transport). The gate is keyed
+  on the debounced slice, so it cannot flap, and the boot-integrity healer already
+  stands down offline so their disable/enable cycles cannot interleave.
+- **Firestore persistence**: `initFirebase` enables IndexedDB persistence
+  (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
+  multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
+  SDK queues later calls behind the enable; every failure degrades to the in-memory
+  cache). Skipped under the emulator, whose IndexedDB is wiped each boot. Consequences to
+  respect: `watchForceReload` only honors a **server** snapshot (a cached `{reload: true}`
+  would reload-loop offline — the guard is `doc.metadata.fromCache`), and
+  `bootIntegrityHealer` stands down while `connectionState === 'offline'` (cached-only
+  data is not an anomaly, and the bounded `disableNetwork`/`enableNetwork` cycles must
+  not be burned offline). A doc "missing" in a cache-only snapshot is **unknown, not
+  deleted** — the `firestoreDirectRead` verification paths already treat a failed direct
+  read as retryable, keep it that way.
+- **Cached-snapshot delivery (`utils/backends/cachedSnapshotGate.js`)**: the list
+  watchers (open/done/workflow tasks, the notes watchers via
+  `createNotesSnapshotHandler`) buffer `fromCache` snapshots online but must render them
+  offline — offline every snapshot is `fromCache` forever. Never test
+  `querySnapshot.metadata.fromCache` directly in a list watcher; use
+  `createCachedSnapshotGate` (`shouldBuffer` + `wrapUnsubscribe`). The gate delivers
+  cached data when `connectionState === 'offline'` **or** after a 4s only-cache grace
+  period — the grace exists because Firestore snapshots are edge-triggered and
+  `navigator.onLine` lies on captive portals; a level-check alone would leave lists
+  permanently blank when the offline transition lands after the initial cache snapshot.
+  Its flush re-invokes the watcher's handler with a synthetic snapshot whose
+  `docChanges()` is empty (buffered changes must not double-count) — pinned by
+  `cachedSnapshotGate.test.js`.
+- **Service worker**: production builds emit a **workbox** SW via `InjectManifest` in
+  `web-bundler/webpack.config.js` (source: `web-bundler/service-worker.js`; workbox deps
+  live in web-bundler's own package). It precaches the app shell (hashed chunks,
+  index.html, fonts) so an offline reload boots; navigations stay network-first;
+  cross-origin SDK traffic is untouched (workbox only intercepts registered routes). Dev
+  builds copy the no-op `service-worker.dev.js` to the same URL. The legacy
+  `web/service-worker.js` (which deleted **every** cache on activate — do not resurrect
+  it) is gone; `firebase-messaging-sw.js` stays separate and un-precached (sed-injected
+  env placeholders). `utils/Observers.js` `deleteCache()` must never delete
+  `workbox-precache*` caches — it clears runtime caches and triggers
+  `registration.update()` instead. `__tests__/ServiceWorkerPrecache.test.js` pins all of
+  this; `__tests__/utils/DailyAppReload.test.js` pins that the daily reload defers while
+  offline and catches up on the `online` event.
+
+**Never `await` a Firestore write when a server ack cannot arrive (AT-2340).** A write
+promise resolves on the **server** ack, not on the local cache write, so offline
+everything after `await ref.set(...)` is not slow — it is **unreachable**, while the
+mutation itself is already durable (with IndexedDB persistence the pending-write queue
+survives a tab close and flushes on the next boot). It is only the _continuation_ that is
+lost, which is why the symptom is never "the data didn't save": completing a task wrote
+the task but never awarded XP, never wrote the done feed and never added the follower
+(they all sit after `await taskBatch.commit()` in `setTaskStatus`); `updateTask`,
+`setTaskDueDate`, send-to-backlog and the three workflow movers armed a focus handoff
+_before_ their commit and ran it _after_, so the handoff stayed open forever with the
+optimistic focus already moved; and every comment-modal wrapper calls `closeModal()` after
+`await createObjectMessage(...)`, so posting a comment offline left the modal up on a
+comment that had in fact been stored. Use `awaitWriteAck(write, label)` from
+`utils/backends/offlineWriteAck.js`: online it returns the write promise unchanged (the
+online path's durability and ordering depend on that await — see the deliberate
+fire-and-forget → await change in `updateTaskInDone`), offline it issues the write and
+returns immediately, logging any rejection. Two things it deliberately does not do: cover
+**reads** (an offline `get()` resolves from the cache, so it does not block) and rescue a
+read that rejects because the document is not cached — `tryAddFollower` reads the followers
+doc, and that rejection used to discard the whole staged done feed, so `setTaskStatus` now
+commits `feedBatch` in a `finally`. Pinned by `utils/backends/offlineWriteAck.test.js` and
+the call-site contract in `__tests__/OfflineWriteAckCallSites.test.js`.
+
+**A collaborator's edits must not dirty YOUR editor (AT-2340).** `handleChange` in
+`NotesEditorView` set `dirtyEditor` for every Quill change, and y-quill applies remote Yjs
+updates through `quill.updateContents(delta, this)` — so two people typing meant both
+clients ran the **full local save fan-out** for text the other one wrote:
+`lastEditionDate`/`lastEditorId` stamped with the wrong user, the edited-today list, the
+started-editing feed, the backlink write and `tryAddFollower` — and each save bumped
+`lastEditionDate`, which makes every other open client re-download the note. The gate is
+`isRemoteEditorChange(source, binding.current)`: the change source **is** the QuillBinding
+instance for remote updates, while every local change carries a **string** source. Do not
+"simplify" this to `source === 'user'` — `'api'` is what Quill reports for the editor's own
+programmatic edits (the image-format rewrite, template application, mention insertion),
+which are local and must still save normally. Durability is kept by a separate
+`remoteDirtyEditor` latch that persists the merged document **content-only**
+(`setNoteData(..., { contentOnly: true })` — no preview, no edition data, no edited-today
+entry, no feed, no follower) on a much longer `REMOTE_SAVE_INTERVAL`, and at teardown. The
+author's own client is the primary writer; ours is a safety net.
+
+**One note save must produce one note-document write (AT-2340).** `setLinkedParentObjects`
+used to `update()` unconditionally, and it runs on every autosave through
+`scanLinkedObjects` — so a note whose links had not changed (i.e. typing prose) wrote the
+document **twice** per save: two versions, two `onUpdateNote` invocations, two full note
+downloads from Storage and two Typesense re-indexes. `utils/backends/linkedParentsWrite.js`
+compares against the **local cache** (`source: 'cache'` — no network, no billed read, works
+offline, and the object is under a live listener so the cached copy is current) and skips
+the no-op; every uncertain case (not cached, read error, no document) falls through to
+writing, because a redundant write is cheap and a skipped one silently loses backlinks. It
+takes `force` for the `beforeunload`/teardown path, where the async cache read may never
+run its continuation. Server-side, `functions/searchNoteUpdateGate.js` closes the same hole
+from the other end: `updateRecord`'s own `hasContentChanged` is **structurally true on every
+note update** (`objectBefore.content` is mapped from the document, which has no `content`
+field, so it is always `''`, while `objectAfter.content` is the real downloaded body), so
+every follower/sticky/backlink write paid for a Storage download plus a re-index. The gate
+requires either a content signal (`lastEditionDate`/`preview` moved — content is only ever
+written together with those) or a changed indexed field.
+
+**`getFirebaseTimestampDirectly` no longer touches `/info/currentTime` (AT-2340).** It used
+to write and then read that **global singleton** — contended by every user of the app, past
+Firestore's ~1 write/second per-document soft limit — through an unbounded read recursion,
+on the note-autosave critical path. `utils/serverClock.js` replaces it with a measured
+client/server clock offset: `getServerNow()` is synchronous and does no I/O, and the offset
+is measured in the background at most every 15 minutes against a **per-user**
+`users/{uid}/private/clockSync` document (owner-writable under the existing
+`users/{userId}/{document=**}` rule — no rules change), estimated NTP-style as
+`serverTime - (t0 + t1)/2` and read back with `source: 'server'` because a cached snapshot
+of a pending write resolves `serverTimestamp()` locally. Every failure path — offline, no
+signed-in user, a slow or failed round trip — falls back to the client clock, which is what
+`created` already uses everywhere. Seeded once per session from `AppContent`.
+
+**Callables fail fast offline; `runHttpsCallableFunction` is the funnel.** 36 of the 41
+direct `httpsCallable(` sites now route through it (AT-2340), including goal
+postpone-undo, the VM/MCP/GitLab/GitHub/GCP settings wrappers, gold changes from the
+embedded iframe surface and meeting transcription. Four are deliberate exceptions:
+`connectToConverter` and `connectToGmail` use the two-argument streaming-style signature
+and return the raw envelope; the emulator-bootstrap block only creates a reference; and the
+funnel itself. `reverseUndoAction` repeats the funnel's typed `code: 'offline'` error
+locally rather than importing it, because `utils/undo/undoActions.js` is a leaf module that
+the write paths import. Wrappers whose callers read `result.data` keep the envelope
+(`asCallableEnvelope`) instead of silently changing their contract, and any newly
+fail-fast call site needs a `catch` — an offline rejection where there was previously a
+70-second hang is an unhandled rejection otherwise.
 
 ### Modals and Popups
 
@@ -347,6 +691,83 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 **Nested `react-tiny-popover` dismisses its parent on tap (mobile tap/click timing)**: `react-tiny-popover` (v4) closes a popover by attaching a `window` `'click'` listener and calling `onClickOutside` whenever the click target is not inside **that** popover's own `document.body` portal. A nested popover (a dropdown/picker opened from inside a popover-based modal) renders in a **separate** portal, so tapping an item in the child is "outside" the parent — the parent's `onClickOutside` fires and the whole modal closes. This reproduces mainly on **mobile web**: a tap emits the touch press (`onPress`, which does the selection) and then a **synthesized `click` shortly after**, and it is that trailing click that reaches the parent's window listener — on desktop the RN-web press typically stops the click from bubbling to `window`, hiding the bug. The ordering is dependable: `onPress` (pointerup/touchend, or the click at the event target during bubbling) always runs before the trailing `click` reaches `window`, so a flag set in `onPress` is readable by the parent's `onClickOutside`. Fix (see `components/TaskListView/EmailLine/EmailLabelChip.js` + `EmailLabelModal/EmailRow.js` + `emailLineHelper.js`): on the child item's `onPress`, stamp a module-level interaction (`markEmailLabelPickerInteraction`); in the parent's `onClickOutside`, swallow the dismiss **once** (`shouldIgnoreEmailLabelModalDismiss` clears the stamp and returns true). Prefer this **consume-once** guard over a fixed time window so it does not depend on how far apart the tap and click land; keep a generous sanity cap (~2s) so a stamp whose dismiss never arrives (the desktop case) can't later swallow a genuine outside tap. Do not reach for `contentDestination` to re-parent the child into the modal DOM — it breaks the library's viewport-relative positioning math — and avoid an in-flow inline dropdown (it expands the modal) or an absolute in-modal overlay (it gets clipped by the modal's `CustomScrollView`).
 
+### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
+
+On macOS, `getUserMedia({ audio: true })` enables Chrome's default processing chain
+(echoCancellation/noiseSuppression/autoGainControl), which routes capture through the system
+**Voice-Processing I/O** audio unit. With some input/output device combinations — built-in mic
+while output goes somewhere else, virtual audio devices, mic modes — that unit hands the page a
+track of **literal digital silence**, while macOS' own input-level meter (which never goes near the
+browser) keeps showing a healthy level. It works with AirPods because input and output are then the
+same device. **The user-visible symptom is a server error**: MediaRecorder happily encodes the
+silence, the blob is non-empty (Opus compresses silence to a few hundred bytes/s) so the client size
+guard passes, the clip uploads, Gold is spent, and Deepgram correctly reports nothing —
+`EMPTY_TRANSCRIPT` → "No speech detected". The signature in the Cloud Run logs for
+`processramblesecondgen` is the **payload size**: the reported failures were 3.7–5.9 KB against
+~102 KB for working takes of the same length in the same session.
+
+`hooks/rambleMicCapture.js` therefore measures the captured signal in the browser, and
+`useRambleRecorder` acts on it twice. **Before** recording, `acquireDictationStream` probes (≤350ms,
+and a healthy mic clears it on the first read) and re-acquires the mic with the processing chain
+disabled when the device delivers bit-exact silence or the track is already `muted`; the aliveness
+test is `peak > 0`, so any energy at all — including inaudible self-noise — counts as a working
+microphone, which is what keeps a quiet room from being mistaken for a dead device. Because the
+rescue happens before `MediaRecorder` starts, the broken take never happens and no speech is lost.
+**After** recording, a peak below `SILENT_PEAK_THRESHOLD` (~-66 dBFS, three orders of magnitude
+under speech) means the take is never uploaded: no Gold, and a message that names the device instead
+of blaming the speech. Everything degrades to "unknown" without Web Audio, and **unknown never
+blocks an upload** — a false "silent" verdict would throw away a recording the user actually made.
+
+What is remembered, and what retires it, is the fiddly half. A capture that is silent processed
+**and** alive raw is the only proof that the processing path is the broken one, so only that
+combination writes the learned record (`rambler.captureMode`), and the record carries the
+**deviceId** it was learned on. It is retired three ways, because a workaround that outlives its
+hardware is the same bug in reverse: a `devicechange` event drops it (plugging in headphones or
+switching the system default does **not** change the `"default"` deviceId, so the event is the only
+signal there), a recording whose actual device differs from the learned one re-acquires with the
+normal defaults and gets a fresh verdict, and a raw capture that is silent too clears it rather than
+pinning a degraded mode forever. Above all that sits the user's own setting
+(`rambler.micMode`, Settings → Customizations → "Dictation microphone": Automatic / Standard /
+Compatibility) — deliberately localStorage and not the user doc, since it describes one machine's
+audio hardware. **An explicit choice is obeyed as written**: no probe, no second acquisition, and a
+silent take is reported without overriding it. Pinned by `hooks/rambleMicCapture.test.js` and the
+`silent microphone (AT-2357)` block in `hooks/useRambleRecorder.test.js`.
+
+**The processing chain was only half of it: the browser also hands you a different microphone than
+macOS does.** The first fix shipped and the same user still failed — with an error naming
+"MacBook Pro Microphone" while macOS System Settings was set to his webcam, level meter healthy.
+A browser keeps its **own** microphone preference (Chrome: Settings → Site settings → Microphone,
+and an installed PWA gets a **separate** entry from the browser tab), and a device pinned there, or
+a stale cached `"default"`, outranks the system input source. No web API can read or change that
+preference — `enumerateDevices` will not tell you which entry the browser would pick, and
+`getUserMedia({audio: true})` just returns it. So switching the capture mode on that device could
+only ever produce silence more efficiently, which is exactly what the user saw. Two consequences:
+**every re-acquisition pins the device** (`deviceId: { exact }` — `ideal` is a preference the
+browser may silently ignore, and a silently ignored pin means the probe measured one mic and the
+recording used another), and when the acquired device is silent **both** ways the automatic path
+**walks the other audio inputs** (`findWorkingInputDevice`, capped at `MAX_FALLBACK_DEVICES`) and
+records from the first one that is alive, remembering it as `rambler.inputDevice`. Declining to
+record from a device that demonstrably produces nothing is the only lever the page actually has.
+Alias entries (`default`, `communications`) are never walk candidates — they point at the hardware
+we just measured — and neither are devices sharing its `groupId` or label; a candidate that cannot
+be opened is skipped rather than retried unpinned, because the unpinned retry would reopen the
+device we are escaping. The learned device retires exactly like the learned mode (devicechange,
+still-silent raw), and **an explicit device chosen in Settings → Customizations → "Dictation
+microphone" is never walked away from**, same rule as the mode. That row now lists the real devices
+(`rambler.micDevice`), which is the only thing that can overrule a browser pinned to the wrong mic;
+labels are empty until permission has been granted once, hence the opt-in "Show my microphones".
+The failure message had to change too: naming only the device we recorded from reads as an
+accusation to someone who picked a different one in macOS, and it sends them to the one place that
+cannot fix it — it now says the microphone is the **browser's** choice and points at the picker.
+The reporting user confirmed both halves: Chrome's site-settings microphone was pinned to
+"MacBook Pro Microphone", and he was in the **installed PWA**, whose entry is separate from the
+browser tab's. He also could not open DevTools — which is why `rambler.lastDevice` records the
+device each recording actually came from and the picker shows it under "System default": from
+inside a page there is otherwise no way to learn which microphone that resolves to, and a settings
+row reading "System default" teaches a mis-pinned user nothing.
+Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
+the three suites above.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
@@ -367,6 +788,99 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 - Do not rewrite or sanitize the task title text for Gmail follow-up tasks. If the assistant-created title contains a Gmail link, leave it as-is.
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
+
+### An email handled in Gmail marks its Alldone email comment as read (AT-2376)
+
+The unread state of a chat comment is not a field — it is the existence of
+`chatNotifications/{projectId}/{userId}/{commentId}`, and clearing it is deleting that doc. Every
+path that did so was an action taken **inside Alldone** (opening the topic, "Mark as read", or the
+chat/email-line archive, which deliberately clears the comment while leaving the mailbox read state
+alone — AT-2298). Nothing ever looked the other way, so an email the user read or archived **in
+Gmail** kept its "Daily emails …" comment unread forever and had to be triaged twice.
+
+`utils/backends/EmailLine/emailCommentReadSync.js` closes that loop by **asking the mailbox**.
+There is no push channel for this: Gmail's `users.history.list` reports label changes against one
+mailbox-wide cursor already owned by the labeling sync, while the messages behind unread email
+comments are a small, exactly-known set — so the read-only `getMessageStates` action
+(`emailLineService` → `gmailEmailLine`/`microsoftEmailLine`, `format: 'minimal'`, 200 ids max,
+20 concurrent) reports `exists`/`unread`/`inInbox` per message and the client deletes the
+notification docs of the ones already handled. **Archived counts as read even when Gmail still
+flags the message UNREAD** — leaving the inbox is the user saying they are done — which is the
+whole reason the lookup returns both flags instead of a single boolean.
+
+Three rules keep it from clearing something the user has not seen. A state that could not be read
+is **omitted** by the server rather than defaulted (`isEmailHandledInMailbox` only ever answers true
+on positive evidence), every failure path — offline, `EMAIL_AUTH_EXPIRED`, a failed notification
+write — leaves the unread state untouched and never alerts, and a failed lookup is not remembered,
+so a reconnect takes effect immediately instead of waiting out the per-message cooldown
+(`EMAIL_COMMENT_READ_SYNC_COOLDOWN_MS`, 60s).
+
+It runs from `UnreadEmailArchiveProvider` (the chat list), which already holds the deduplicated set
+of emails behind the unread previews — no new data model, no index, no extra Firestore reads — plus
+a `visibilitychange` re-check, because "I archived it in Gmail and came back" changes nothing inside
+the app that could trigger an effect. Note the rows publish **two** sets: `linkedEmails` is what
+they preview and what the bulk archive buttons act on, `unreadLinkedEmails` is every unread email of
+the row. The sync uses the second on purpose — a "Daily emails" topic holds a whole day in one row,
+and reconciling only the previewed five would leave the older ones unread for good.
+
+Everything here is `require`d lazily (the `linkedEmailActions` pattern): the module is reached from
+a chat-list row, and a static import of `emailLineBackend` / `markChatCommentsAsRead` /
+`connectionState` pulls the redux store and the Firebase client into every test that renders a row.
+That is also why there is no `isBrowserOffline()` pre-check — the callable funnel already fails fast
+offline, which is the same "could not ask" path as any other failure.
+
+**The same reconciliation also runs server-side, inside the scheduled labeling sync**
+(`functions/Gmail/emailCommentReadSync.js`, called from `syncGmailLabeling`), so it no longer
+depends on anyone opening the chat list. It is a step of the existing 5-minute
+`pollGmailLabelingSecondGen` tick rather than a new schedule, because that sync already holds an
+authorized Gmail client for exactly the account whose comments it is reconciling — no second auth
+path, no second client. It runs on every tick, including ticks with no new mail to label: it is
+answering a question about OLD messages. It is wrapped in try/catch — labeling is that function's
+job, and failing to reconcile read state must never fail a run that labeled mail correctly.
+
+**Reconciling read state is not gated on `syncIntervalMinutes`, and must not be.** That interval
+(minimum and default **30**) exists to bound how often the **classifier** runs, because
+classification spends Gold per message; reconciliation spends none — one indexed Firestore query
+plus at most a handful of `messages.get` at `format: 'minimal'` (1 quota unit each, capped at 50 per
+run). Riding on the labeling interval therefore made a free, read-only operation wait up to half an
+hour, which is indistinguishable from the feature being broken: production logs for the reporting
+account show the reconciler firing correctly (`markedRead: 6`) **four minutes after** the user
+reported that Gmail-read mail was still unread in Alldone. `processEnabledGmailLabelingConfigs`
+therefore calls `reconcileEmailCommentReadStateOnPollTick` on the `interval_not_due` branch too, so
+the worst case is the poller's own 5 minutes instead of the connection's 30. Three properties make
+that affordable and safe, and all three are load-bearing: the Gmail client is passed as a **lazy
+`getGmail` factory** rather than a client (an idle tick — which is the overwhelming majority — costs
+one query and builds **no** authorized client, so no OAuth read/refresh per connection per tick);
+the pass **never writes `lastSyncAt`**, or it would starve the labeling sync it is standing in for;
+and it **stands down while the labeling lock is held** (respecting `GMAIL_LABELING_LOCK_TIMEOUT_MS`,
+so a dead run cannot block it forever) so the two never reconcile the same candidates concurrently.
+
+The mapping it needs (Gmail messageId → chat comment) is written by the sync itself: the post-label
+prompt's `add_chat_comment` result is collected in `collectAssistantTextWithToolCalls` as
+`createdChatCommentResults` and lands on the message's **audit record** as `emailComments` +
+`emailCommentReadPending`, inside the audit write that already happens. That is what keeps this a
+plain `where('emailCommentReadPending','==',true)` query on an existing per-user subcollection —
+**no collection-group index, no new collection, no migration** (a collection-group query over
+`chatComments` by `gmailData.messageId` would have needed an index deploy, which this repo does not
+do from CI). Comments created before this shipped carry no stamp and stay with the client fallback.
+
+Cost discipline, in order: one indexed query per run (capped at 50 candidates); then the
+**notification docs are read first**, so a comment the user already read costs ZERO Gmail calls and
+is retired on the spot; only what is still unread is looked up in Gmail (`format: 'minimal'`,
+concurrency 10, capped per run). Every candidate is retired by a terminal
+`emailCommentReadResolution` (`mailbox_handled` / `already_read` / `no_comment` / `expired`) so the
+pending pool drains and nothing is re-checked forever; an unknown state keeps the flag and is
+retried next tick. `expired` (30 days) stops the checking and **never** marks the comment read.
+
+**"Not in the inbox" is not always the user's doing.** Two cases where it says nothing, and where
+the server rule is stricter than the naive one: the labeling sync **auto-archived the mail itself**
+(`autoArchive`, the starter Newsletter label ships with it on), so the mail was already out of the
+inbox when the comment appeared; and an **outgoing (SENT)** message, which is never in the inbox at
+all. For both, only "read" or "deleted" counts — otherwise every auto-archived comment would be
+marked read the moment it appeared. The client half learns the same two facts from the comment's own
+`gmailData` (`archivedByLabeling`, stamped by `buildPostLabelGmailContext`, and `direction`), so the
+two rules match; `isEmailHandledInMailbox` exists once per side because Cloud Functions cannot import
+app code — keep them in step.
 
 ### Task reminders and the channel they come back on (AT-2211)
 
@@ -426,6 +940,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 - **A run that ends without doing the work lands back on a human (AT-2196)**: an agent question and a failure share one mechanism, the _reviewer hold_ in `functions/Assistant/vmWorkflowHold.js` (field `vmInteractionWorkflowStep` on the task, `reason: 'interaction' | 'failure'`). Open task lists are keyed by `currentReviewerId`, so a failed run that left the task on its assistant reviewer simply **disappeared from every human's list** — nothing else was ever going to move it, and the only trace was an unread comment in a thread nobody was watching. Now any settled-unfinished run (`failed` **or** `cancelled`, including timeout, gold exhaustion, missing credentials, a Cloud Run launch that failed or could never be confirmed, a queued job skipped for insufficient Gold, and an expired interaction) hands `currentReviewerId` to the requesting user and records the displaced reviewer. **The workflow step is deliberately untouched** — no `stepHistory` growth, no `done`/`completed` stamps, no subtask moves — for exactly the reasons in the `vmWorkflowHold.js` header comment; `finalizeWorkflowAiRun` already declines to advance a run that carries a `failureReason`, so a failed VM keeps its step and only changes hands. Applied through the single funnel in `writeStatusComment` → `applyVmCompletionMetadata` (same transaction as the comment metadata), so every failure branch is covered without duplicating logic. A hold is **never stolen** from another live job, is a no-op if the task is already the user's, and — because a run has five hours to fail and a question a full day to expire — is only taken when the task is **still parked where the job left it** (`claimableReviewerIds`: the reviewer observed at run start, or the invoking assistant). A human who took the task over meanwhile keeps it; it is visible to a person already, which is the whole point. Release is on **retry**: the next run gives the step back to the displaced reviewer right after it claims its lease (`prepareVmFailureHoldForRun`, which returns that reviewer in the same read), re-applying the hold if that run fails too. Only the hold's own user releases it, so a colleague's run in the same thread cannot clear a failure they never saw, and the thread-busy deferral — which re-queues with no comment and no settlement — puts back what it released (`restoreVmFailureWorkflowHold`). Successful and in-progress runs never touch the reviewer.
 - **VM output identity boundary**: the host runner is the only component that publishes VM progress, questions, and final output into the task thread; `writeStatusComment` stamps the frozen invoking `assistantId`. A personal Codex subscription can otherwise expose the user's connected ChatGPT apps inside the sandbox. Calling Alldone's `update_task(comment=...)` through that user-scoped MCP connection has no assistant context and therefore correctly looks like a human MCP comment — but it duplicates VM output under the wrong actor. Codex VM runs disable `features.apps` in both automatic and app-server/interactive modes, and the agent prompt explicitly forbids self-posting through Alldone MCP/API tools. Normal user MCP calls outside a VM remain user-authored.
 - **Interactive approval strictness (`strict` | `balanced` | `permissive`, AT-2199)**: only interactive Claude runs pause for approval, and `functions/Assistant/vmAgentApprovalPolicy.js` decides what pauses. It is copied verbatim into the sandbox as `approval-policy.cjs` by `prepareVmAgentBridge` and evaluated in the Agent SDK's `canUseTool` hook (`vm-agent-bridge/claude-agent-sdk.mjs`) — **there is no `~/.claude/settings.json` in the sandbox, so `permissions.allow` rules are not the lever here**; editing that file would change nothing. Resolution mirrors agent choice: an explicit `approvalPolicy` tool argument wins, then `users/{uid}.defaultVmApprovalPolicy` (Settings → Integrations, via `setDefaultVmApprovalPolicy`), then the system default **`balanced`**. The original policy was effectively `strict` and was noisy for two structural reasons worth remembering: it matched HTTP _mutation flags_, so the Firestore/Cloud-Logging reads **Alldone's own VM prompt instructs the agent to perform** looked like writes (they are reads that must be `POST`ed with a body — hence `READ_ONLY_ENDPOINT_PATTERNS`); and it matched `git push` as a raw substring with no target analysis, so the feature-branch push the platform prompt _mandates_ paused too (hence `analyzeGitPush`, which resolves `HEAD` against the live branch read from `GIT_DIR`/`.git/HEAD` on every call, because the agent creates its branch mid-run). `balanced` therefore auto-approves read-shaped HTTP and the push + MR/PR-create flow, while still pausing on the base branch, force/delete pushes, merges, deployments, secrets and destructive Git. `permissive` adds MR/PR merge and arbitrary outbound HTTP. **Regardless of level, `curl … | bash` (remote code execution) always pauses and can never be allowlisted.** **What counts as remote code execution is decided structurally, not by the pipe shape (AT-2235).** The rule used to match `curl|wget … | <interpreter>` as a substring, which condemned two things that are not RCE: piping a download into an interpreter that was handed **its own inline program** (`curl "…/pipelines/123" | python3 -c "…json.load(sys.stdin)…"` — the fetched bytes are stdin _data_, the program is local), and any command that merely _contained_ that text (a `grep` for it, a `node -e` diagnostic). Because the rule is always-escalate, `permissive` could not override it — a `permissive` production run paused on exactly that GitLab pipeline-status curl. `detectRemoteScriptExecution` now walks the pipeline and escalates only when the interpreter would actually read its program from stdin (bare `bash`/`python3`/`node`, `bash -s`, `python3 -`, an inline program that `exec`s stdin), following the data through pass-through stages (`… | tee x | bash`) and resetting at non-pipe separators (`… || bash`). It also now catches the substitution forms the pipe-only pattern never saw — `bash -c "$(curl …)"`, `eval $(curl …)`, `bash <(curl …)` — and classifies `… | sudo bash` as remote execution rather than the weaker (allowlistable) elevated-shell rule. The "Allow for this run" button is run-scoped only: the policy returns a stable `signature` for the operation _shape_ (e.g. `bash:http_write:api.example.com`), `answerVmInteractionRequest` appends it to `approvalAllowlist` on the job's `pendingWebhooks` doc (capped at 50, computed in-transaction rather than via `arrayUnion`), and nothing survives the job — a new job starts empty. An operation that must always pause reports an empty signature, which is how the UI hides the button — `assessClaudeToolApproval` enforces that at the exit, because the always-escalate branch used to return a real signature and the UI therefore offered a button whose grant the policy then refused to honour (the incident job's `approvalAllowlist` literally contains `bash:remote_execution`). Two deliberate limits: **Codex is unaffected** (it uses its own native `on-request` + `auto_review` in `codex-app-server.mjs`), and the levels are a **UX guardrail, not a sandbox boundary** — `node x.js` is auto-approved at `balanced` and can do anything, so the real containment stays the isolated E2B sandbox, the read-only GCP token and the repo-scoped git token.
+- **`permissive` is Auto-Mode, and the level actually has to reach the rules (AT-2343)**: for a long time only three rules consulted the level at all (`analyzeGitPush`, MR/PR merge, outbound HTTP) — every other escalation was level-independent, so picking `permissive` changed almost nothing and interactive runs kept pausing on their own housekeeping. Two things were wrong. First, **the risky-pattern matching ran over the raw command string**, so a heredoc body or a quoted argument was scanned as if it were code: production interaction records are full of `git commit -F - <<'EOF' …` escalating as `bash:secrets` because the commit MESSAGE mentioned `.env`, a `python3 - <<'PY'` block escalating because the documentation it wrote contains the word "secrets", and `git check-ignore -v .env` escalating for the same reason — `splitCommandPipeline` even chopped those bodies into fake command segments at every `|` and `;` they contained. A heredoc body is now stdin **data** unless the reader would execute stdin as a program (`bash <<'EOF'`, `python3 - <<'PY'`), which is the same structural test AT-2235 introduced for pipes, and quoted argument content is blanked before the risky-command rules run — except for interpreters given inline code (`bash -c "…"`) and for programs whose quoted argument IS the operation (`psql -c "delete …"`, `ssh host "…"`). Secret detection matches real **path operands** (`classifySecretPathAccess`) instead of any occurrence of the word anywhere on the line, so `grep -rn secrets functions/` is a search again while `cat "$HOME/.ssh/id_rsa"` is still caught. Second, every rule now carries an **`allowedFrom` level** and the whole product decision sits in one table of named constants at the top of the module. `permissive` therefore auto-approves everything that only touches the ephemeral sandbox: `rm -r` anywhere in the VM, force-pushing a **feature** branch, `sudo`, workspace env files (the repo's own suite needs `node ci/writeTestEnv.js` to write one), writes outside the checkout, MR/PR merge and close, and unrecognised or MCP tools. `balanced` additionally got local Git housekeeping (`reset --hard`, `clean -fd`, `branch -D`) — local-only, and the remote is still governed by the push rules. What pauses at **every** level is the hard-danger list: base-branch push/force/delete, deployments and cloud mutation, package publishing, external DB mutation, `mkfs`/`dd of=`, `ssh`/`scp`/`sftp` to another machine, `curl … | bash`, real credential stores (`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.codex/auth.json`, service-account keys, `*.pem`), deleting a protected root or the checkout itself, and writing into a system directory. Two smaller fixes ride along: the modern Claude Code tool surface (`BashOutput`, `KillShell`, `SlashCommand`, `Skill`, `NotebookRead`) was missing from `SAFE_CLAUDE_TOOLS` and therefore escalated on **every single call**, and the bridge now passes `additionalDirectories` as `writableRoots` so the relocated Git metadata does not read as a write "outside the working directory". `strict` is unchanged: it keeps its blanket wording for Git publishing and for any recursive delete. Remember this module ships in the **`vm-job-runner` Cloud Run image**, so the change is live only after `deploy:cloud:runner:*` rebuilds it.
 - **A per-run override only counts when the user asked for it (AT-2224)**: `agent`, `agentModel`, `agentReasoningEffort` and `approvalPolicy` outrank the saved Settings → Integrations defaults, and the assistant fills them in **on its own** — production workflow-step tool calls carried `agent: 'codex'` and `approvalPolicy: 'balanced'` for a user whose saved defaults were `claude` / `permissive`, with nothing in the request asking for either. It reads as "my default is ignored, sometimes", because it is a sampling decision. `functions/Assistant/vmRunOverrideGuard.js` therefore drops any of those four that the user's own words do not corroborate, before `startVmJob` resolves anything; the dropped value simply resolves from the saved preference instead. Evidence is deliberately **user-authored text only** (`userContext.message`, the workflow step prompt, recent user turns of the thread threaded through `toolRuntimeContext.userRequestText`) — the tool arguments, including `objective` and `deliverable`, are model-authored and can never corroborate themselves. Naming a model names its agent ("use opus" ⇒ Claude); an effort level needs effort/reasoning context next to it, because "high" is ordinary prose; an invalid value passes through untouched so `startVmJob`'s validation still rejects it normally. The schema descriptions in `toolSchemas.js` carry the other half of the fix and must stay agent-neutral — the original text said "consider codex for heavy coding / repository work", which is what generated the bug. Failure is safe by construction: an unrecognised phrasing costs the user their explicit override, never their saved default.
 - **Agent choice**: the tool takes optional `agent` (`claude` | `codex`) and `agentReasoningEffort` (`low` | `medium` | `high` | `xhigh`) params. Resolution happens once in `startVmJob`: a **corroborated** explicit tool argument wins (see above), otherwise `users/{uid}.defaultVmAgent` / `defaultVmAgentReasoningEffort` is used. Users without saved preferences receive the system defaults (`codex` + `medium`). Settings → Integrations persists the validated preferences through `getVmAgentSettings`, `setDefaultVmAgent`, and `setDefaultVmAgentReasoningEffort`; an explicit `null` effort preserves the user's "No default" choice and uses the selected provider's fallback. You can additionally pass `agentModel` (defaults: Claude → moving `opus` alias, Codex → `gpt-5.6-sol`); `opus` is persisted and passed unchanged so Claude Code automatically follows the latest Opus release. The minimum effort is `low`; legacy Codex `minimal` requests are still clamped to `low` because current Codex Responses requests may include tools that OpenAI rejects with minimal effort. Claude uses `--effort`; Codex uses `model_reasoning_effort`. Before Claude starts, status text says that the alias version is resolving; the worker then reads the concrete model ID from Claude CLI / Agent SDK's `system/init.model` event (and confirms/falls back via the primary assistant message's `message.model`), persists it as `resolvedAgentModel`, and force-refreshes the live header with a friendly version such as `Opus 4.8` or `Opus 5.0`. If Claude fails before emitting either event, no concrete runtime version is available. `vmJobRunner.js`'s `AGENT_CONFIGS` maps the agent to the matching E2B prebuilt template, credentials, and per-agent runtime: automatic Claude jobs call `claude -p … --model <id> --effort <level> --output-format stream-json`, interactive Claude jobs pass the same model ID to the Agent SDK bridge, and Codex calls `codex exec --model <id> -c model_reasoning_effort=medium --json`. Before each invocation the runner validates the active CLI against npm `latest`; only a missing, invalid, or older version is installed into `/home/user/.local`. Custom E2B template overrides are ignored.
 - **Default model family (AT-2221)**: the user picks a _family_ — "Opus"/"Sonnet"/"Haiku"/"Fable" for Claude, "Sol"/"Terra"/"Luna" for Codex — never a concrete version, and it is stored **per agent** at `users/{uid}.defaultVmAgentModel = { claude, codex }` (written with a dotted field path so saving one agent cannot clobber the other's choice). Precedence matches `agent`/`agentReasoningEffort`: a **corroborated** explicit `agentModel` tool argument wins (AT-2224 — an uncorroborated one is dropped and resolves from the saved family), then the saved family, then the per-agent constant — so a user who never chose one behaves exactly as before. **The family is resolved to a model id at launch, not at save time** (`resolveAgentModelForRun` in `vmJob.js`), which is what makes "always the latest version of that family" true. `functions/Assistant/vmAgentModelCatalog.js` discovers families live from the providers' own `GET /v1/models` endpoints with the platform keys, parsing `claude-<family>-<major>[-<minor>]` and `gpt-<gen>-<tier>`, and caches the result in `vmAgentModelCatalog/{provider}` for 12h shared across all users (server-write/no client read — the default-deny rule already covers it, no `firestore.rules` change). **The two providers resolve differently on purpose**: Claude Code accepts `opus`/`sonnet`/`haiku` as _moving aliases_, so those are passed through unchanged and the CLI picks the newest release itself (the concrete id still comes back via `resolvedAgentModel`); families with no alias (`fable`, `mythos`, anything new) and every Codex tier are pinned to the newest discovered id. Codex additionally keeps only tiers present at the **newest generation** (major _and_ minor — matching the major alone would resurrect the retired `gpt-5.4` `mini`/`nano` next to `gpt-5.6`); Claude deliberately does not filter this way, since Haiku 4.5 is a whole major behind Opus 5 and still current. Degradation is total and silent: live → cached → **stale cache** (a real-but-old catalog beats a hardcoded one) → static fallback, and every failure path falls back to the previous default rather than blocking Settings or a VM run. `formatAgentModelLabel` is family-aware for every tier now (`Sonnet 4.6`, `Sol 5.6`), not just Opus.
@@ -555,6 +1070,15 @@ browser before trusting a bigger change.
   pre-merge QA surface for a feature branch is the **manual `deploy:web-webpack-preview`
   job**, which publishes a Firebase hosting preview channel `webpack-<ref-slug>` on the
   staging project.
+- **Manual QA that involves signing in must run on staging live
+  (`deploy:web-staging-live` → https://alldonestaging.web.app), NOT on a preview
+  channel.** Preview channels get a fresh random origin
+  (`alldonestaging--webpack-<ref>-<hash>.web.app`) that is not in the Google OAuth
+  client's authorized JavaScript origins, so Google sign-in fails there and the app is
+  untestable past the login screen (hit 2026-08-17 QA-ing the offline-support branch).
+  Preview channels remain useful only for compile/render smoke checks of the
+  logged-out surface. Deploying a feature branch to staging live is last-writer-wins
+  over whatever was there — fine for QA, just say so if others are testing.
 - **Build process**: `ci/replace-envs.sh` injects environment variables during build
 - **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
 - **`resource_group` serializes deploys but does NOT order them — production deploy jobs

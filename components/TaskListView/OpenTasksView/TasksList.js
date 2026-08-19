@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { View } from 'react-native'
 import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../ParentTaskContainer'
@@ -15,6 +15,7 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
 import TaskListSkeleton from '../TaskListSkeleton'
+import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
 
 export default function TasksList({
     projectId,
@@ -36,6 +37,7 @@ export default function TasksList({
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
     const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
     const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
+    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
 
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
@@ -81,10 +83,11 @@ export default function TasksList({
     const visibleTasks = sortedTaskList.filter(
         (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
     )
-    const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
+    const initialTaskDataIsLoading =
+        !singleTaskIsLoading && (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
 
     return (
-        <View style={[localStyles.container, containerStyle]}>
+        <View style={[taskPresentationLayout.listContainer, containerStyle]}>
             {initialTaskDataIsLoading && visibleTasks.length > 0 ? (
                 <TaskListSkeleton
                     rowCount={visibleTasks.length}
@@ -122,9 +125,3 @@ export default function TasksList({
         </View>
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        paddingHorizontal: 8,
-    },
-})

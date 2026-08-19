@@ -22,6 +22,7 @@ const {
 } = require('../Assistant/assistantHelper')
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { deductGold, refundGold } = require('../Gold/goldHelper')
+const { buildEmailCommentAuditPatch, reconcileEmailCommentReadState } = require('./emailCommentReadSync')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
@@ -1060,6 +1061,7 @@ function buildPostLabelGmailContext({
     topicChatTitle = '',
     followUpType = 'informational',
     taskSuggestionComment = '',
+    archivedByLabeling = false,
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1083,6 +1085,10 @@ function buildPostLabelGmailContext({
         threadId,
         webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
         archiveOnComplete: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : true,
+        // The labeling sync archived this message itself (auto-archive), so it was already out of
+        // the inbox when the comment appeared. The read sync must not read that as "the user
+        // handled it" (AT-2376).
+        archivedByLabeling: !!archivedByLabeling,
         direction,
         targetContactEmail: resolvedTargetContactEmail,
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
@@ -1181,6 +1187,7 @@ async function executePostLabelPrompt({
     connectionProjectId = '',
     selectedProjectId = null,
     consistencyCheck = null,
+    archivedByLabeling = false,
 }) {
     const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
@@ -1272,6 +1279,7 @@ async function executePostLabelPrompt({
             topicChatTitle,
             followUpType,
             taskSuggestionComment: buildPostLabelTaskSuggestionComment(normalizedMessage),
+            archivedByLabeling,
         })
         const toolRuntimeContext = {
             projectId: assistantProjectId,
@@ -1347,6 +1355,12 @@ async function executePostLabelPrompt({
             executedToolNames: Array.isArray(result?.executedToolNames) ? result.executedToolNames : [],
             executedToolCallsCount: Number(result?.executedToolCallsCount) || 0,
             createdTaskResults: Array.isArray(result?.createdTaskResults) ? result.createdTaskResults : [],
+            // Which chat comment(s) this follow-up created, for the server-side read sync's
+            // messageId → comment mapping (AT-2376). Kept out of the persisted postLabelAction
+            // itself; processSingleMessage lifts it onto the audit record's own fields.
+            createdChatCommentResults: Array.isArray(result?.createdChatCommentResults)
+                ? result.createdChatCommentResults
+                : [],
             routingCommentResults,
             assistantResponse: result?.assistantResponse || '',
             status: 'completed',
@@ -1765,6 +1779,7 @@ async function processSingleMessage({
             connectionProjectId: goldProjectId,
             selectedProjectId,
             consistencyCheck: classifierResult.consistencyCheck || null,
+            archivedByLabeling: modifyResult.archived,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0
@@ -1792,6 +1807,13 @@ async function processSingleMessage({
         recipientEmails: targetContactEmails.filter(Boolean),
         postLabelAction: primaryPostLabelAction,
         postLabelActions,
+        // Mapping + work flag for the server-side email-comment read sync (AT-2376). Empty when the
+        // follow-up created no chat comment, so the reconciler's query only ever sees real work.
+        ...buildEmailCommentAuditPatch(
+            postLabelActions.flatMap(action =>
+                Array.isArray(action?.createdChatCommentResults) ? action.createdChatCommentResults : []
+            )
+        ),
     })
 
     return {
@@ -2081,6 +2103,31 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             }
         }
 
+        // Gmail → Alldone read sync (AT-2376). Runs on every sync tick, independent of whether
+        // this run had any new mail to label, because it is answering a question about OLD
+        // messages: did the user meanwhile read or archive an email whose Alldone chat comment is
+        // still unread. Best effort by design — labeling is this function's job, and a failure to
+        // reconcile read state must never fail (or roll back) a sync that labeled mail correctly.
+        let emailCommentReadSync = null
+        try {
+            emailCommentReadSync = await reconcileEmailCommentReadState({
+                gmail,
+                userId,
+                connectionKey: projectId,
+            })
+            if (emailCommentReadSync.candidates > 0) {
+                logSync('Reconciled Alldone email comments against the mailbox', {
+                    ...logContext,
+                    ...emailCommentReadSync,
+                })
+            }
+        } catch (error) {
+            console.warn('[gmailLabeling] Email comment read sync failed', {
+                ...logContext,
+                error: error.message,
+            })
+        }
+
         const latestHistoryId = await getCurrentProfileHistoryId(gmail)
         const now = Timestamp.now()
         const resolvedHistoryId = syncStartHistoryId || latestHistoryId || state.lastHistoryId || null
@@ -2129,6 +2176,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             skipped,
             goldSpent,
             estimatedNormalGoldSpent,
+            emailCommentReadSync,
             lastSyncAt: now,
             lastRunId: logContext.runId,
             recentAuditEntries: await loadRecentAuditEntries(userId, projectId),
@@ -2164,6 +2212,66 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
     }
 }
 
+/**
+ * Gmail → Alldone read sync on a tick where the LABELING sync is not yet due (AT-2376 follow-up).
+ *
+ * Reconciling read state and labeling mail are two different jobs with two different costs, and
+ * they were sharing one interval. `syncIntervalMinutes` (default and minimum 30) exists to bound
+ * how often the classifier runs, because classification spends GOLD per message. Reconciliation
+ * spends none: it is a Firestore equality query plus, at most, a handful of `messages.get` calls at
+ * `format: 'minimal'` (1 quota unit each, hard-capped per run). Bolting it onto the labeling
+ * interval therefore made a free, read-only operation wait up to 30 minutes — which is exactly what
+ * "I marked these read in Gmail and Alldone still shows them unread" looks like from the outside,
+ * with every stage in fact working. Running it on the poller's own five-minute cadence removes that
+ * coupling without a new schedule, a new client or a second auth path.
+ *
+ * Three properties keep this cheap and safe:
+ *   - an idle tick costs ONE indexed query and no Gmail call at all (the client is built lazily,
+ *     only once something is genuinely still unread);
+ *   - it never touches `lastSyncAt`, so it cannot starve or advance the labeling sync it is
+ *     standing in for;
+ *   - it stands down while a labeling sync holds the lock, so the two never reconcile the same
+ *     candidates concurrently.
+ *
+ * Best effort throughout: this is a side job of a poller whose contract is labeling, so every
+ * failure is logged and swallowed.
+ */
+async function reconcileEmailCommentReadStateOnPollTick(userId, connectionKey, state = {}, gmailEmail = '') {
+    const lockMillis = normalizeTimestampToMillis(state?.lockAcquiredAt)
+    const labelingSyncRunning =
+        state?.status === 'running' && lockMillis > 0 && Date.now() - lockMillis < GMAIL_LABELING_LOCK_TIMEOUT_MS
+    if (labelingSyncRunning) return null
+
+    const logContext = createSyncLogContext(userId, connectionKey, gmailEmail)
+
+    try {
+        let gmailClientPromise = null
+        const summary = await reconcileEmailCommentReadState({
+            // Deliberately a factory, not a client: see the note in reconcileEmailCommentReadState.
+            getGmail: () => {
+                if (!gmailClientPromise) gmailClientPromise = getGmailClient(userId, connectionKey)
+                return gmailClientPromise
+            },
+            userId,
+            connectionKey,
+        })
+        if (summary.candidates > 0) {
+            logSync('Reconciled Alldone email comments against the mailbox', {
+                ...logContext,
+                pollOnly: true,
+                ...summary,
+            })
+        }
+        return summary
+    } catch (error) {
+        console.warn('[gmailLabeling] Email comment read sync failed on poll tick', {
+            ...logContext,
+            error: error.message,
+        })
+        return null
+    }
+}
+
 async function processEnabledGmailLabelingConfigs(limit = 100) {
     const snapshot = await admin
         .firestore()
@@ -2189,12 +2297,21 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
         try {
             const { state } = await loadState(userId, syncKey, data.gmailEmail || '')
             if (!isScheduledSyncDue(state, data)) {
+                // Labeling waits for its interval; the read-state reconciliation does not — it
+                // costs no Gold and answers a question about mail the user has already handled.
+                const emailCommentReadSync = await reconcileEmailCommentReadStateOnPollTick(
+                    userId,
+                    syncKey,
+                    state,
+                    data.gmailEmail || ''
+                )
                 results.push({
                     success: true,
                     skippedReason: 'interval_not_due',
                     userId,
                     projectId: syncKey,
                     syncIntervalMinutes: getConfiguredSyncIntervalMinutes(data),
+                    emailCommentReadSync,
                 })
                 continue
             }
@@ -2264,6 +2381,7 @@ module.exports = {
     loadAuditEntry,
     loadConfig,
     processEnabledGmailLabelingConfigs,
+    reconcileEmailCommentReadStateOnPollTick,
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,

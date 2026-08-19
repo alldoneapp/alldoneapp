@@ -26,7 +26,8 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../ModalsManager/modalsManager'
 import CustomScrollView from '../../UIControls/CustomScrollView'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
@@ -89,7 +90,7 @@ export default function MentionsModal({
     const getInitValue = items => (items.length === 0 ? -1 : 0)
     const activeItemIndexRef = useRef(getInitValue(itemsRef.current))
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
-    const tmpHeight = height - (contentLocation?.top || 0) - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
     const loggedUser = useSelector(state => state.loggedUser)
 
@@ -275,16 +276,36 @@ export default function MentionsModal({
         return ''
     }
 
+    // Offline (or any search outage) the contacts tab degrades to the project
+    // members already in redux — the common @-mention target — filtered by the
+    // typed text; the other tabs degrade to empty (OFFLINE_SUPPORT_PLAN.md
+    // Stage 7). Also the reason getMentions must never throw: updateResults has
+    // no catch, so a rejection used to leave the spinner hanging forever.
+    const getLocalContactsFallback = () => {
+        const { projectUsers } = store.getState()
+        const users = projectUsers[projectId] || []
+        const lowerSearch = (mentionText || '').toLowerCase()
+        return users
+            .filter(user => !lowerSearch || (user.displayName || '').toLowerCase().includes(lowerSearch))
+            .map(user => ({ ...user, projectId }))
+    }
+
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
         const isGuide = !!parentTemplateId
 
-        const results = await searchTypesenseCollection(
-            indexPrefix,
-            mentionText,
-            getTypesenseMentionFilter(indexPrefix, isGuide)
-        )
+        let results
+        try {
+            results = await searchTypesenseCollection(
+                indexPrefix,
+                mentionText,
+                getTypesenseMentionFilter(indexPrefix, isGuide)
+            )
+        } catch (error) {
+            console.log('Mentions search unavailable:', error.message)
+            return indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? getLocalContactsFallback() : []
+        }
 
         let items = results.hits
 

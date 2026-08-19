@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import styles, { colors } from '../../styles/global'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import ContactItem from '../../UIComponents/FloatModals/AssigneeAndObserversModal/List/ContactItem'
@@ -10,13 +10,14 @@ import { useSelector } from 'react-redux'
 import useWindowSize from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
 import { updateStatisticsSelectedUsersIds } from '../../../utils/backends/Users/usersFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const FilterStatisticsModal = ({ projectIndex, filterByUsers, setIsOpen, projectId }) => {
     const usersInProject = useSelector(state => state.projectUsers[projectId])
     const itemsComponentsRefs = useRef({})
     const scrollRef = useRef()
     const [width, height] = useWindowSize()
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 400 ? tmpHeight : 400
     const [usersSelected, setUsersSelected] = useState(filterByUsers)
 

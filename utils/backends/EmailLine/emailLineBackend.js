@@ -268,6 +268,27 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
     return totalProcessed
 }
 
+// Reads the current mailbox state (exists / unread / inInbox) of specific messages. Read-only, so
+// unlike performEmailLineAction it never refreshes the summary — it is the lookup behind the
+// email-comment read sync (AT-2376), which runs in the background and must stay invisible.
+export async function fetchEmailLineMessageStates(projectId, messageIds = []) {
+    const ids = (messageIds || []).filter(Boolean)
+    if (!projectId || ids.length === 0) return []
+    try {
+        const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
+            ...buildConnectionKeyPayload(projectId),
+            action: 'getMessageStates',
+            messageIds: ids,
+        })
+        return Array.isArray(result?.states) ? result.states : []
+    } catch (error) {
+        // A dead connection must light up the same reconnect state the other calls use, but this
+        // caller is a background sync: it reports nothing rather than alerting.
+        if (isEmailAuthExpiredError(error)) markSummaryAuthExpired(projectId)
+        throw error
+    }
+}
+
 // action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
 // After a mutating action, force-refresh the summary so chip counts update; draftReply
 // and createTask don't change the inbox, so they skip the refresh.

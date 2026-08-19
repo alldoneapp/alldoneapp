@@ -23,8 +23,10 @@ import { translate } from '../../../i18n/TranslationService'
 import ProgressBar from './ProgressBar'
 import Line from '../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import ModalHeader from '../../UIComponents/FloatModals/ModalHeader'
+import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function LimitModal() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const quotaType = useSelector(state => state.limitQuotaModalData.quotaType)
     const monthlyXp = useSelector(state => state.limitQuotaModalData.monthlyXp)
@@ -62,7 +64,7 @@ export default function LimitModal() {
     const daysUntilNextMonth = moment().tz('Europe/Berlin').endOf('month').fromNow().split('in')[1].trimLeft()
 
     return (
-        <View style={localStyles.parent}>
+        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <ModalHeader

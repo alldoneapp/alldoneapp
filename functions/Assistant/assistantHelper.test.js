@@ -16,6 +16,7 @@ const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 const mockCreateAndPersistTask = jest.fn()
 const mockCreateAndPersistNote = jest.fn()
+const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
 const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     noteId,
@@ -42,6 +43,9 @@ jest.mock('../shared/NoteService', () => ({
         initialize: jest.fn().mockResolvedValue(undefined),
         createAndPersistNote: mockCreateAndPersistNote,
     })),
+}))
+jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
+    findCalendarAvailabilityForAssistantRequest: mockFindCalendarAvailabilityForAssistantRequest,
 }))
 jest.mock('../shared/UserHelper', () => ({
     UserHelper: {
@@ -365,8 +369,44 @@ const {
     modelSupportsToolSearch,
     modelSupportsAssistantReasoningEffort,
     modelSupportsExplicitPromptCaching,
+    isFetchableChatAttachment,
+    selectRequestedChatAttachments,
 } = require('./assistantHelper')
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+
+describe('chat attachment kinds', () => {
+    const image = { kind: 'image', fileName: 'photo.jpg', storageUrl: 'https://example.com/photo.jpg' }
+    const document = { kind: 'file', fileName: 'invoice.pdf', storageUrl: 'https://example.com/invoice.pdf' }
+
+    test('an image is fetchable, not just a file', () => {
+        // Only `kind === 'file'` was accepted, so a WhatsApp photo — stored as `kind: 'image'` and
+        // advertised by list_recent_chat_media with its messageId — answered "no attachment found".
+        expect(isFetchableChatAttachment(image)).toBe(true)
+        expect(isFetchableChatAttachment(document)).toBe(true)
+        expect(isFetchableChatAttachment({ kind: 'video', storageUrl: 'https://example.com/clip.mp4' })).toBe(true)
+    })
+
+    test('media with no storage URL is not fetchable', () => {
+        expect(isFetchableChatAttachment({ kind: 'image', fileName: 'photo.jpg' })).toBe(false)
+        expect(isFetchableChatAttachment({})).toBe(false)
+    })
+
+    test('a message carrying both a document and an image still resolves to the document', () => {
+        // Widening the accepted kinds must not turn a call that used to work into an ambiguity
+        // error: before images were fetchable this message resolved to the PDF.
+        expect(selectRequestedChatAttachments([image, document])).toEqual([document])
+    })
+
+    test('an explicit expected file name outranks the document preference', () => {
+        expect(selectRequestedChatAttachments([image, document], 'photo.jpg')).toEqual([image])
+    })
+
+    test('leaves a genuinely ambiguous set alone so the caller can report it', () => {
+        const second = { kind: 'image', fileName: 'other.jpg', storageUrl: 'https://example.com/other.jpg' }
+
+        expect(selectRequestedChatAttachments([image, second])).toEqual([image, second])
+    })
+})
 
 describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
     const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
@@ -779,6 +819,7 @@ describe('Responses API compatibility helpers', () => {
 
     test('blocks an oversized OpenAI request during preflight before dispatch', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        expect(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT).toBe(200000)
         mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT })
 
         expect(() =>
@@ -789,7 +830,7 @@ describe('Responses API compatibility helpers', () => {
                             type: 'function_call',
                             call_id: 'call-file',
                             name: 'external_tool_bookkeeping_attach_invoice',
-                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(160000) }),
+                            arguments: JSON.stringify({ fileBase64: 'x'.repeat(210000) }),
                         },
                     ],
                 },
@@ -1195,6 +1236,7 @@ describe('assistant attachment handoff helpers', () => {
         mockBatchDelete.mockClear()
         mockBatchCommit.mockClear()
         mockCreateAndPersistNote.mockReset()
+        mockFindCalendarAvailabilityForAssistantRequest.mockReset()
     })
 
     test('normalizes hour-based user timezone values into minutes', () => {
@@ -1224,6 +1266,35 @@ describe('assistant attachment handoff helpers', () => {
         expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_TERRA')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_LUNA')).toBe(400000)
+    })
+
+    test('passes the email meeting-link policy flag into availability execution', async () => {
+        mockFindCalendarAvailabilityForAssistantRequest.mockResolvedValue({
+            success: true,
+            options: [],
+        })
+
+        await executeToolNatively(
+            'find_calendar_availability',
+            {
+                timeMin: '2026-08-12T09:00:00+02:00',
+                timeMax: '2026-08-19T17:00:00+02:00',
+                allowSameDayBooking: true,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { respectPublicMeetingLinkSettings: true }
+        )
+
+        expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                allowSameDayBooking: true,
+                respectPublicMeetingLinkSettings: true,
+            })
+        )
     })
 
     test('returns the canonical URL when creating a note', async () => {

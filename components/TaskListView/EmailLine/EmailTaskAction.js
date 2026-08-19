@@ -25,6 +25,7 @@ export default function EmailTaskAction({
     iconColor = colors.Text03,
     borderColor = colors.Gray300,
     textColor = colors.Text03,
+    onTaskCreated,
     style,
 }) {
     const normalizedMessageIds = [...new Set((Array.isArray(messageIds) ? messageIds : [messageIds]).filter(Boolean))]
@@ -85,6 +86,15 @@ export default function EmailTaskAction({
             const task = normalizeTask(result)
             setCreatedTask(task)
             setTaskState(task ? 'done' : 'error')
+            if (task && typeof onTaskCreated === 'function') {
+                try {
+                    await onTaskCreated(task)
+                } catch (error) {
+                    // The task already exists at this point, so a secondary UI-side effect must
+                    // not turn the successful creation into a retryable Create button.
+                    if (__DEV__) console.warn('[EmailTaskAction] Post-create action failed:', error?.message || error)
+                }
+            }
         } catch (error) {
             setTaskState('error')
         } finally {

@@ -9,8 +9,10 @@ import { translate } from '../../../../i18n/TranslationService'
 import { deleteCacheAndRefresh } from '../../../../utils/Observers'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { fixedModalOverlayStyle } from '../../../../utils/fixedModalPosition'
+import { useFixedModalOverlayPadding } from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function EndCopyProjectNotification({}) {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const name = useSelector(state => state.endCopyProjectPopupData.name)
     const color = useSelector(state => state.endCopyProjectPopupData.color)
 
@@ -31,7 +33,7 @@ export default function EndCopyProjectNotification({}) {
     })
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
             <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.body}>
                     <View style={{ marginBottom: 20 }}>

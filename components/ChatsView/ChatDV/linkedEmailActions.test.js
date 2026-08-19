@@ -26,6 +26,32 @@ describe('linkedEmailActions', () => {
         })
     })
 
+    test('carries the read-sync context of an auto-archived or outgoing email (AT-2376)', () => {
+        // Both mean the email was never in the user's inbox, so "not in the inbox" must not read
+        // as the user having handled it.
+        expect(
+            getLinkedEmailFromMessage({
+                gmailData: {
+                    connectionProjectId: 'connection-1',
+                    messageId: 'message-1',
+                    archivedByLabeling: true,
+                    direction: 'outgoing',
+                },
+            })
+        ).toMatchObject({ archivedByLabeling: true, direction: 'outgoing' })
+
+        // An ordinary inbox email carries neither, so nothing changes for it.
+        expect(
+            getLinkedEmailFromMessage({
+                gmailData: { connectionProjectId: 'connection-1', messageId: 'message-1', archivedByLabeling: false },
+            })
+        ).toEqual({
+            key: 'connection-1:message-1',
+            connectionProjectId: 'connection-1',
+            messageId: 'message-1',
+        })
+    })
+
     test('keeps the Alldone chat comment so archive can mark that chat as read', () => {
         expect(
             getLinkedEmailFromMessage(

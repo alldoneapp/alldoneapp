@@ -35,7 +35,7 @@ function createGuard(startTime, options = {}) {
     let currentTime = new Date(startTime)
     let scheduledCallback
     const documentObject = createEventTarget({ visibilityState: 'visible' })
-    const windowObject = createEventTarget()
+    const windowObject = createEventTarget(options.windowProperties)
     const storage = options.storage || createStorage()
     const reload = jest.fn()
     const clearTimer = jest.fn()
@@ -190,5 +190,33 @@ describe('DailyAppReload', () => {
         expect(guard.documentObject.removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
         expect(guard.windowObject.removeEventListener).toHaveBeenCalledWith('focus', expect.any(Function))
         expect(guard.windowObject.removeEventListener).toHaveBeenCalledWith('pageshow', expect.any(Function))
+        expect(guard.windowObject.removeEventListener).toHaveBeenCalledWith('online', expect.any(Function))
+    })
+
+    it('defers the midnight reload while offline and catches up when connectivity returns', () => {
+        const guard = createGuard('2026-07-10T18:00:00', { windowProperties: { navigator: { onLine: false } } })
+        guard.setTime('2026-07-11T00:00:02')
+
+        guard.runTimer()
+        guard.windowObject.dispatch('focus')
+        expect(guard.reload).not.toHaveBeenCalled()
+
+        guard.windowObject.navigator.onLine = true
+        guard.windowObject.dispatch('online')
+        expect(guard.reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('defers a stale-marker startup reload while offline instead of reloading into a dead page', () => {
+        const storage = createStorage({ [DAILY_APP_LOAD_DATE_STORAGE_KEY]: '2026-07-09' })
+        const guard = createGuard('2026-07-10T09:00:00', {
+            storage,
+            windowProperties: { navigator: { onLine: false } },
+        })
+
+        expect(guard.reload).not.toHaveBeenCalled()
+
+        guard.windowObject.navigator.onLine = true
+        guard.windowObject.dispatch('online')
+        expect(guard.reload).toHaveBeenCalledTimes(1)
     })
 })

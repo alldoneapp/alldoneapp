@@ -4,7 +4,7 @@ import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
 import { loadMoreGoldTransactions, watchGoldTransactions } from '../../../../utils/backends/Users/usersFirestore'
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import useWindowSize from '../../../../utils/useWindowSize'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
@@ -12,6 +12,7 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Button from '../../../UIControls/Button'
 import styles from '../../../styles/global'
 import { getDateFormat, getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 function getTransactionTimestamp(entry) {
     const createdAt = entry?.createdAt
@@ -45,11 +46,14 @@ function getTransactionLabel(source) {
         gmail_labeling: 'Gmail labeling',
         gmail_label_follow_up: 'Gmail label follow-up',
         calendar_project_routing: 'Calendar project routing',
+        task_project_routing: 'Automatic project selection',
+        task_goal_routing: 'Automatic goal assignment',
         linkedin_enrichment: 'LinkedIn enrichment',
         linkedin_search: 'LinkedIn search',
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
         meeting_transcription: 'Meeting transcription',
+        rambler: 'Rambler dictation',
         email_draft_reply: 'Email reply draft',
         email_needs_reply: 'Email needs-reply scan',
         email_create_task: 'Task from email',
@@ -105,6 +109,17 @@ function getTransactionLink(entry) {
         return {
             label: translate('Open contact'),
             url: `${window.location.origin}/projects/${projectId}/contacts/${objectId}`,
+            external: false,
+        }
+    }
+
+    // Automatic task routing charges are always about one task, and the project
+    // recorded on the transaction is the one the task ended up in (AT-2306), so
+    // the link stays valid even when project routing moved it.
+    if ((source === 'task_project_routing' || source === 'task_goal_routing') && projectId && objectId) {
+        return {
+            label: translate('Open the task'),
+            url: `${window.location.origin}/projects/${projectId}/tasks/${objectId}`,
             external: false,
         }
     }
@@ -235,7 +250,7 @@ export default function GoldTransactionsModal({ userId, closeModal }) {
     let currentDay = ''
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     closeModal={closeModal}

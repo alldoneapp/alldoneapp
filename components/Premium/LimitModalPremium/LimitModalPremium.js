@@ -13,8 +13,10 @@ import ProgressPremiumBar from './ProgressPremiumBar'
 import Line from '../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import ModalHeader from '../../UIComponents/FloatModals/ModalHeader'
 import { setShowLimitPremiumQuotaModal } from '../../../redux/actions'
+import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function LimitModalPremium() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const monthlyXp = useSelector(state => state.loggedUser.monthlyXp)
     const monthlyTraffic = useSelector(state => state.loggedUser.monthlyTraffic)
@@ -24,7 +26,7 @@ export default function LimitModalPremium() {
     }
 
     return (
-        <View style={localStyles.parent}>
+        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <ModalHeader

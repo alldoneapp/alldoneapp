@@ -35,7 +35,7 @@ import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantS
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-export default function OpenTasksByProject({
+function OpenTasksByProject({
     firstProject,
     setProjectsHaveTasksInFirstDay,
     sortedLoggedUserProjectIds,
@@ -64,6 +64,7 @@ export default function OpenTasksByProject({
     const filteredOpenTasksDates = filteredOpenTasks.map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
     const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
     const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
+    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
     const assistantProfileTimelineDates = assistantProfileMode
         ? buildAssistantProfileTimelineDates(filteredOpenTasksDates, assistantScheduleOccurrences)
         : filteredOpenTasksDates.map((dateKey, dateIndex) => ({ dateKey, dateIndex, occurrences: [] }))
@@ -115,7 +116,9 @@ export default function OpenTasksByProject({
     const showInitialSkeleton =
         inSelectedProject &&
         filteredOpenTasksDates.length === 0 &&
+        !singleTaskIsLoading &&
         (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
+    const showSingleTaskSkeleton = singleTaskIsLoading && filteredOpenTasksDates.length === 0
 
     useEffect(() => {
         const watcherKey = v4()
@@ -204,6 +207,7 @@ export default function OpenTasksByProject({
                     {!assistantProfileMode && <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />}
                     {!assistantProfileMode && <UpcomingMilestoneRow projectId={projectId} />}
                     {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
+                    {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
                     {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
                         return timelineDate.dateIndex !== null ? (
                             <OpenTasksByDate
@@ -248,3 +252,16 @@ export default function OpenTasksByProject({
         </>
     )
 }
+
+/**
+ * AT-2337: "All projects" renders one of these per project - 78 on a heavy
+ * dogfooding account. The parent re-renders once per project as each project's
+ * first-day task count lands (`projectsHaveTasksInFirstDay`), which without
+ * memoisation re-rendered ALL 78 subtrees every time (~6,000 renders for one
+ * board load). Every prop below is now referentially stable (see the `useMemo`
+ * on `sortedLoggedUserProjectIds` in OpenTasksViewAllProjects), so the default
+ * shallow comparison lets a project block re-render only when its own props or
+ * its own `useSelector` slices actually change. This changes nothing about what
+ * is rendered - the component reads all of its data from the store itself.
+ */
+export default React.memo(OpenTasksByProject)

@@ -23,6 +23,18 @@ export const MODAL_WIDTHS = {
 // Per-side gap between a popup and the viewport edge.
 export const MODAL_EDGE_GAP = 16
 
+// Where the two header project switchers pin their popover on mobile: far
+// enough down to clear the app header, one edge gap in from the left. Measured
+// from the top-left of the CONTENT area, so the safe-area insets are ADDED to
+// it (see offsetPopoverInsideSafeArea in utils/popoverPositioning.js) rather
+// than max()'d against it like the overlay padding.
+export const HEADER_POPOVER_OFFSET = { top: 60, left: MODAL_EDGE_GAP }
+
+// The fraction of the viewport those anchored header popovers may occupy.
+// Previously expressed as a raw viewport-height unit, which is blind to the
+// safe-area insets; resolve it through getSafeAreaViewportHeightCap instead.
+export const HEADER_POPOVER_HEIGHT_FRACTION = 0.8
+
 // Presentation breakpoint for the modal system: below this window width popups
 // take the mobile presentation (full width now; bottom sheet from Phase 2).
 // Deliberately a pure window-width check — `smallScreenNavigation` flips at

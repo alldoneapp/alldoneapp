@@ -99,8 +99,14 @@ async function sendAnnaEmailReply({
     }
     if (normalizedCcEmails.length > 0) message.cc = normalizedCcEmails.map(email => ({ email }))
 
-    await transactionalApi.sendTransacEmail(message)
-    return { success: true, toEmails: normalizedToEmails, ccEmails: normalizedCcEmails }
+    const delivery = await transactionalApi.sendTransacEmail(message)
+    const messageId = String(delivery?.messageId || delivery?.messageIds?.[0] || '').trim()
+    return {
+        success: true,
+        toEmails: normalizedToEmails,
+        ccEmails: normalizedCcEmails,
+        messageId,
+    }
 }
 
 module.exports = {
