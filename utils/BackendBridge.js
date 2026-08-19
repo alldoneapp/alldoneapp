@@ -220,6 +220,10 @@ export default class Backend {
         return bridge.signInWithGoogleRedirect()
     }
 
+    static signInWithApple() {
+        return bridge.signInWithAppleNative()
+    }
+
     static handleGoogleRedirectResult() {
         return bridge.handleGoogleRedirectResult()
     }
