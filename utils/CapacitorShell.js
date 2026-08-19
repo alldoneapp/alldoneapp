@@ -31,3 +31,9 @@ export function isCapacitorIosShell() {
     const cap = window.Capacitor
     return typeof cap.getPlatform === 'function' && cap.getPlatform() === 'ios'
 }
+
+// @revenuecat/purchases-capacitor — StoreKit purchases for the iOS shell.
+// Null outside the shell or when the native plugin is missing from the build.
+export function getNativePurchasesPlugin() {
+    return getShellPlugin('Purchases')
+}
