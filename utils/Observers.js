@@ -11,7 +11,6 @@ import {
 } from '../redux/actions'
 import Backend from './BackendBridge'
 import { selectRandomSomedayTask } from './backends/Tasks/randomSomedayTask'
-import { settleWithinBudget } from './promiseBudget'
 
 const clickObvserversCallbacks = {}
 
@@ -150,39 +149,6 @@ export const deleteCache = async () => {
     }
 }
 
-const preReloadHousekeeping = async () => {
-    // Try to select a random Someday task before refreshing
-    const userId = store.getState().loggedUser?.uid
-    if (userId) {
-        try {
-            await selectRandomSomedayTask(userId)
-        } catch (error) {
-            console.error('Error selecting random Someday task:', error)
-            // Continue with refresh even if this fails
-        }
-    }
-
-    await deleteCache()
-}
-
-/**
- * How long the pre-reload housekeeping may hold up the reload the user asked
- * for (AT-2367).
- *
- * Everything in front of `appReloader.reload()` is best effort, but two parts
- * of it are unbounded network work: `selectRandomSomedayTask` runs ONE
- * sequential Firestore query per project (78 of them on the dogfooding
- * account) and `deleteCache` awaits `registration.update()`, which fetches the
- * service worker script. On a slow mobile connection that is the difference
- * between a reload that starts now and one that starts half a minute from now,
- * with the "Start new day" popup sitting on screen the whole time.
- *
- * Only the version marker stays outside the budget: skipping it would make the
- * replacement page reload a second time (AT-2234), and it is a local storage
- * write.
- */
-export const PRE_RELOAD_BUDGET_MS = 2000
-
 /**
  * Clears the caches and reloads, which is what every deliberate "reload the
  * app" affordance does: the version banner, the sidebar version chip, the
@@ -198,21 +164,26 @@ export const PRE_RELOAD_BUDGET_MS = 2000
  * previous behaviour applies.
  */
 export const deleteCacheAndRefresh = async reloadingToVersion => {
-    try {
-        const { alldoneNewVersion, alldoneVersion } = store.getState()
+    const { alldoneNewVersion, alldoneVersion } = store.getState()
 
-        // Most call sites are `onPress={deleteCacheAndRefresh}` and hand us a press
-        // event, so the argument is validated rather than trusted. An explicit
-        // version wins, then the pending release, then the running one.
-        const reloadedVersion = [reloadingToVersion, alldoneNewVersion, alldoneVersion].find(isUsableVersion)
-        if (reloadedVersion) await persistLocalVersion(reloadedVersion)
+    // Most call sites are `onPress={deleteCacheAndRefresh}` and hand us a press
+    // event, so the argument is validated rather than trusted. An explicit
+    // version wins, then the pending release, then the running one.
+    const reloadedVersion = [reloadingToVersion, alldoneNewVersion, alldoneVersion].find(isUsableVersion)
+    if (reloadedVersion) await persistLocalVersion(reloadedVersion)
 
-        await settleWithinBudget(preReloadHousekeeping(), PRE_RELOAD_BUDGET_MS)
-    } catch (error) {
-        // A reload the user explicitly asked for must happen no matter what.
-        console.warn('Pre-reload housekeeping failed', error)
+    // Try to select a random Someday task before refreshing
+    const userId = store.getState().loggedUser?.uid
+    if (userId) {
+        try {
+            await selectRandomSomedayTask(userId)
+        } catch (error) {
+            console.error('Error selecting random Someday task:', error)
+            // Continue with refresh even if this fails
+        }
     }
 
+    await deleteCache()
     appReloader.reload()
 }
 

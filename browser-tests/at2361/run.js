@@ -1,8 +1,11 @@
 /**
- * AT-2361 browser-level regression test.
+ * AT-2361 (+ AT-2368) browser-level regression test.
  *
  * "On mobile don't 'waste' so much space on the left side of the screen when you show the email
- *  comments."
+ *  comments." — and then, once it no longer did: "adjust the preview padding to a balanced
+ * amount" (AT-2368), because 10px from the screen edge reads as flush rather than as part of the
+ * row. The target is the list's own 16px margin: the width AT-2361 recovered, on the rhythm the
+ * rest of the row already uses.
  *
  * A chat-list row indents its unread email comments three times over: the row's 48px avatar stack
  * plus its 16px gutter, then the preview's 2px thread rail with its padding, then a 36px hanging
@@ -18,7 +21,8 @@
  * Asserted in real Chromium, on real `getBoundingClientRect()`, at a 390px phone viewport and at a
  * 1280px desktop viewport:
  *
- *   1. mobile: the email content starts within MAX_MOBILE_INDENT_PX of the list's own left edge.
+ *   1. mobile: the email content starts MOBILE_INDENT_PX from the list's own left edge — neither
+ *      nested inside the avatar column nor flush against the edge.
  *   2. mobile: the content column is at least MIN_MOBILE_CONTENT_RATIO of the list width.
  *   3. mobile: nothing overflows the list on either side — the negative margin must cancel the
  *      avatar column, not overshoot it, and must not widen the row to the right.
@@ -43,9 +47,14 @@ const ROOT = path.resolve(__dirname, '..', '..')
 const BUILD_DIR = path.join(__dirname, '.build')
 const ENTRY = path.join(__dirname, 'harness.entry.js')
 
-// What "does not waste space" has to mean in numbers. The rail plus its gutter is 10px; anything
-// beyond that on a phone is the indentation the report is about.
-const MAX_MOBILE_INDENT_PX = 16
+// What "does not waste space" has to mean in numbers: the preview must sit on the list's own 16px
+// margin (rail + gutter), not in the 116px of nested indentation the report is about. AT-2368
+// pinned this to an exact distance rather than an upper bound, because the failure mode has two
+// sides - too much indentation wastes the screen, too little (the 10px this shipped with first)
+// reads as flush against the edge and stops looking like part of the row above.
+const MOBILE_INDENT_PX = 16
+// Text metrics move a box by a fraction of a pixel; a real change to the gutter never does.
+const MOBILE_INDENT_TOLERANCE_PX = 2
 // Of the list's own width, how much the email text must be able to use.
 const MIN_MOBILE_CONTENT_RATIO = 0.9
 // Sub-pixel differences are text metrics, not layout.
@@ -248,8 +257,9 @@ async function main() {
 
             if (isMobile) {
                 check(
-                    indent <= MAX_MOBILE_INDENT_PX,
-                    `${label}: body starts ${round(indent)}px from the list edge (<= ${MAX_MOBILE_INDENT_PX})`
+                    Math.abs(indent - MOBILE_INDENT_PX) <= MOBILE_INDENT_TOLERANCE_PX,
+                    `${label}: body starts ${round(indent)}px from the list edge ` +
+                        `(expected ${MOBILE_INDENT_PX} ±${MOBILE_INDENT_TOLERANCE_PX})`
                 )
                 check(
                     contentWidth / measured.column.width >= MIN_MOBILE_CONTENT_RATIO,
