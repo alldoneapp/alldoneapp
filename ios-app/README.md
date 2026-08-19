@@ -51,12 +51,17 @@ in natively:
 The plist is referenced in `App.xcodeproj/project.pbxproj` as a bundled
 resource (ids `AB00DDEE...FF`).
 
-## Verified so far (2026-08-19, iPhone 17 Pro simulator, staging)
+## Verified so far (2026-08-19, simulators + iPad Air 5 device, staging)
 
 - Web bundle boots cleanly from `capacitor://localhost` (login screen pixel-correct)
 - Native Google sign-in end to end (system consent → accounts.google.com →
   logged-in workspace)
 - Session persists across app termination/relaunch (IndexedDB persistence)
+- Sign in with Apple end to end on a real device (needs `apple.com` in the
+  plugin's `providers` list — without it the sheet never opens; simulators
+  cannot verify this flow at all)
+- Content flows edge-to-edge under the home indicator (AT-2321 reservation
+  removed repo-wide; ChatInput lifts itself via useHomeIndicatorLift)
 
 ## Roadmap (in order)
 

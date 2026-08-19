@@ -49,21 +49,11 @@ const lastCheckedAt = new Map()
  * unexpected here answers false, so an unread comment can only ever be cleared on positive
  * evidence.
  */
-export function isEmailHandledInMailbox(state, { archivedByLabeling = false, direction = '' } = {}) {
+export function isEmailHandledInMailbox(state) {
     if (!state || !state.messageId) return false
     if (state.exists === false) return true
     if (state.unread === false) return true
-    if (state.inInbox === false) {
-        // Two cases where leaving the inbox says nothing about the USER: the labeling sync
-        // auto-archived the mail itself (it was already out of the inbox when the comment
-        // appeared), and an outgoing message, which is never in the inbox at all. For those, only
-        // "read" or "deleted" counts. Mirrors the server rule in
-        // functions/Gmail/emailCommentReadSync.js — keep the two in step.
-        if (archivedByLabeling) return false
-        if (String(direction || '').toLowerCase() === 'outgoing') return false
-        return true
-    }
-    return false
+    return state.inInbox === false
 }
 
 function getCommentRefs(linkedEmail = {}) {
@@ -107,17 +97,7 @@ function buildLookupPlan(linkedEmails, { force, now }) {
         const cooldownKey = `${connectionProjectId}:${messageId}`
         if (!force && now - (lastCheckedAt.get(cooldownKey) || 0) < EMAIL_COMMENT_READ_SYNC_COOLDOWN_MS) return
 
-        const connection = plan.get(connectionProjectId) || {
-            messageIds: [],
-            refsByMessageId: new Map(),
-            contextByMessageId: new Map(),
-        }
-        if (!connection.contextByMessageId.has(messageId)) {
-            connection.contextByMessageId.set(messageId, {
-                archivedByLabeling: linkedEmail?.archivedByLabeling === true,
-                direction: linkedEmail?.direction || '',
-            })
-        }
+        const connection = plan.get(connectionProjectId) || { messageIds: [], refsByMessageId: new Map() }
         const existingRefs = connection.refsByMessageId.get(messageId)
         if (existingRefs) {
             commentRefs.forEach(ref => {
@@ -163,7 +143,7 @@ export async function syncEmailCommentsReadState(linkedEmails = [], { force = fa
 
             messageIds.forEach(messageId => rememberChecked(`${connectionProjectId}:${messageId}`, now))
             ;(states || []).forEach(state => {
-                if (!isEmailHandledInMailbox(state, connection.contextByMessageId.get(state.messageId))) return
+                if (!isEmailHandledInMailbox(state)) return
                 const refs = connection.refsByMessageId.get(state.messageId)
                 if (refs) refsToClear.push(...refs)
             })
