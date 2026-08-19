@@ -169,9 +169,16 @@ function toMillis(value) {
  * Returns counters for the sync log. Never throws for a single bad candidate — the caller runs it
  * as a best-effort step of a sync whose primary job is labeling.
  */
-async function reconcileEmailCommentReadState({ gmail, userId, connectionKey, now = Date.now() }) {
+async function reconcileEmailCommentReadState({ gmail, getGmail, userId, connectionKey, now = Date.now() }) {
     const summary = { candidates: 0, alreadyRead: 0, looked: 0, markedRead: 0, expired: 0, stillUnread: 0 }
-    if (!gmail || !userId || !connectionKey) return summary
+    // `getGmail` is a LAZY factory, and that laziness is the point: on the poll-only pass
+    // (AT-2376 follow-up) this runs on every five-minute tick for every enabled connection, and
+    // the overwhelming majority of those ticks have nothing pending. Building an authorized Gmail
+    // client eagerly would cost an OAuth token read + refresh per connection per tick to answer a
+    // question the Firestore query below usually answers with "nothing to do". `gmail` stays
+    // supported for the in-sync caller, which already holds a client.
+    const resolveGmail = typeof getGmail === 'function' ? getGmail : gmail ? () => gmail : null
+    if (!resolveGmail || !userId || !connectionKey) return summary
 
     const snapshot = await getMessagesAuditCollectionRef(userId, connectionKey)
         .where('emailCommentReadPending', '==', true)
@@ -245,10 +252,12 @@ async function reconcileEmailCommentReadState({ gmail, userId, connectionKey, no
 
     const lookups = stillUnread.slice(0, MAX_MESSAGE_LOOKUPS_PER_RUN)
     summary.looked = lookups.length
+    // The only place a Gmail client is needed, and it is reached only when something is actually
+    // still unread — so an idle tick never builds one.
     const states =
         lookups.length > 0
             ? await readMessageStates(
-                  gmail,
+                  await resolveGmail(),
                   lookups.map(c => c.messageId)
               )
             : new Map()

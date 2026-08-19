@@ -7,13 +7,6 @@ import { revealElementInScrollParent } from '../utils/scrollUtils'
 // app scrolling on its own later on.
 const SETTLE_WINDOW_MS = 600
 
-// The mobile virtual keyboard arrives AFTER the editor opens, and on iPad
-// (especially landscape) its animation lands past the settle window. It
-// changes the VIEWPORT — not the editor node — so the ResizeObserver above
-// never fires for it; listen to the visual viewport directly and keep that
-// path open a little longer. A user gesture still cancels everything.
-const KEYBOARD_WINDOW_MS = 1800
-
 /**
  * Keep a just-opened inline editor fully visible in its scroll container.
  *
@@ -48,35 +41,17 @@ export default function useRevealEditorOnOpen(elementRef, padding = 8) {
         const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(reveal) : null
         if (observer) observer.observe(node)
 
-        const viewport = window.visualViewport
-        const onViewportResize = () => {
-            // The keyboard shrank (or grew) the visible area — re-run the
-            // minimal correction against the new geometry. Deferred a frame so
-            // the shell's keyboard-inset class (AT-2248) has applied first.
-            window.requestAnimationFrame(reveal)
-        }
-
-        const stopSettle = () => {
-            if (observer) observer.disconnect()
-        }
         const stop = () => {
             stopped = true
-            stopSettle()
-            if (viewport) viewport.removeEventListener('resize', onViewportResize)
-            window.removeEventListener('resize', onViewportResize)
+            if (observer) observer.disconnect()
         }
-
-        const settleTimer = setTimeout(stopSettle, SETTLE_WINDOW_MS)
-        const keyboardTimer = setTimeout(stop, KEYBOARD_WINDOW_MS)
-        if (viewport) viewport.addEventListener('resize', onViewportResize)
-        window.addEventListener('resize', onViewportResize)
+        const timer = setTimeout(stop, SETTLE_WINDOW_MS)
         window.addEventListener('wheel', stop, { passive: true })
         window.addEventListener('touchmove', stop, { passive: true })
 
         return () => {
             stop()
-            clearTimeout(settleTimer)
-            clearTimeout(keyboardTimer)
+            clearTimeout(timer)
             window.cancelAnimationFrame(frame)
             window.removeEventListener('wheel', stop)
             window.removeEventListener('touchmove', stop)

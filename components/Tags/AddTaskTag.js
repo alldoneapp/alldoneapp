@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import styles, { colors, windowTagStyle } from '../styles/global'
@@ -9,8 +9,6 @@ import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { translate } from '../../i18n/TranslationService'
 import withSafePopover from '../UIComponents/HOC/withSafePopover'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
-import useModalSizing from '../../hooks/useModalSizing'
-import useLiftAboveKeyboard from '../../hooks/useLiftAboveKeyboard'
 
 function AddTaskTag({
     projectId,
@@ -39,16 +37,6 @@ function AddTaskTag({
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const openModals = useSelector(state => state.openModals)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-
-    // Keyboard-aware popup geometry (AT-2220 follow-up, iPad): the popover
-    // portal is position: fixed, so when the on-screen keyboard arrives the
-    // card must cap its height to the visible area and lift itself clear of
-    // the keyboard — the shell shrink and the popover's viewport nudge cannot
-    // do either for it. Both resolve to no-ops on desktop, and in sheet mode
-    // (isSheet) the BottomSheet already rides the keyboard itself.
-    const popupCardRef = useRef(null)
-    const { maxHeight: popupMaxHeight, isSheet } = useModalSizing({ size: 'L' })
-    const keyboardLift = useLiftAboveKeyboard(popupCardRef)
 
     const handleOpen = () => {
         openPopover()
@@ -110,16 +98,12 @@ function AddTaskTag({
             // stays library-managed (no contentLocation), which keeps the
             // vendored viewport nudge and the position-flip search working.
             align={large ? 'center' : 'start'}
-            // overflow visible: the vendored popover hard-codes overflow:hidden
-            // on its container, which would clip the card when
-            // useLiftAboveKeyboard translates it above the keyboard.
-            containerStyle={{ zIndex: 9999, overflow: 'visible' }}
+            containerStyle={{ zIndex: 9999 }}
             padding={8}
             offsetY={5}
             onClickOutside={handleClose}
             content={
                 <div
-                    ref={popupCardRef}
                     style={{
                         position: 'relative',
                         backgroundColor: 'var(--background-primary)',
@@ -129,18 +113,6 @@ function AddTaskTag({
                         // (see createTaskPopupWidth); a hard 300px floor here
                         // would only fight it on narrow windows.
                         ...(large ? {} : { minWidth: '300px' }),
-                        ...(isSheet
-                            ? {}
-                            : {
-                                  // Keyboard-aware cap: taller content scrolls
-                                  // inside the modal's own CustomScrollView.
-                                  maxHeight: popupMaxHeight,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  overflow: 'hidden',
-                                  transform: keyboardLift ? `translateY(-${keyboardLift}px)` : undefined,
-                                  transition: 'transform 150ms ease-out',
-                              }),
                     }}
                 >
                     <RichCreateTaskModal
