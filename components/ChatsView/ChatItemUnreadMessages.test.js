@@ -16,7 +16,12 @@ import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { onOpenChat } from './Utils/ChatHelper'
-import { CHAT_AVATAR_COLUMN_TOTAL_WIDTH } from './chatRowLayout'
+import {
+    CHAT_AVATAR_COLUMN_GUTTER,
+    CHAT_AVATAR_COLUMN_TOTAL_WIDTH,
+    CHAT_PREVIEW_MOBILE_INDENT,
+    CHAT_PREVIEW_RAIL_WIDTH,
+} from './chatRowLayout'
 
 jest.mock('../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
 
@@ -243,9 +248,33 @@ describe('ChatItemUnreadMessages mobile width', () => {
         const tree = renderPreview(makeMessages(1), ['c1'])
         const style = flattenedContainerStyle(tree)
 
-        expect(style.borderLeftWidth).toBe(2)
+        expect(style.borderLeftWidth).toBe(CHAT_PREVIEW_RAIL_WIDTH)
         // Tightened, but never gone - the rail needs a gutter to read as one.
         expect(style.paddingLeft).toBeGreaterThan(0)
+    })
+
+    // AT-2368. Stepping out of the avatar column is right; landing 10px from the screen edge is
+    // not - the text then hugs the rail and stops reading as part of the row above it.
+    it('balances the preview against the row edge instead of sitting flush on it', () => {
+        mockMobile = true
+        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
+
+        // What the reader actually perceives is rail + gutter, so that is what is pinned. The
+        // avatar column is cancelled exactly (asserted above), so this IS the distance from the
+        // row's own left edge to the first pixel of text.
+        expect(style.borderLeftWidth + style.paddingLeft).toBe(CHAT_PREVIEW_MOBILE_INDENT)
+        // The same 16px the rest of the row is spaced by - balanced, not a hand-tuned number.
+        expect(CHAT_PREVIEW_MOBILE_INDENT).toBe(CHAT_AVATAR_COLUMN_GUTTER)
+    })
+
+    it('keeps the width AT-2361 recovered: the indent stays a rounding error on a phone', () => {
+        mockMobile = true
+        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
+
+        // A 390px phone, minus the list's own 16px margins. Anything over ~5% of that starts
+        // costing the email subject and the action-button row the lines AT-2361 gave back.
+        const listWidth = 390 - 2 * CHAT_AVATAR_COLUMN_GUTTER
+        expect((style.borderLeftWidth + style.paddingLeft) / listWidth).toBeLessThan(0.05)
     })
 
     it('drops the per-message avatar indent on mobile and keeps it on desktop', () => {
