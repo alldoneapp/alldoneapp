@@ -789,6 +789,46 @@ the three suites above.
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
 
+### An email handled in Gmail marks its Alldone email comment as read (AT-2376)
+
+The unread state of a chat comment is not a field — it is the existence of
+`chatNotifications/{projectId}/{userId}/{commentId}`, and clearing it is deleting that doc. Every
+path that did so was an action taken **inside Alldone** (opening the topic, "Mark as read", or the
+chat/email-line archive, which deliberately clears the comment while leaving the mailbox read state
+alone — AT-2298). Nothing ever looked the other way, so an email the user read or archived **in
+Gmail** kept its "Daily emails …" comment unread forever and had to be triaged twice.
+
+`utils/backends/EmailLine/emailCommentReadSync.js` closes that loop by **asking the mailbox**.
+There is no push channel for this: Gmail's `users.history.list` reports label changes against one
+mailbox-wide cursor already owned by the labeling sync, while the messages behind unread email
+comments are a small, exactly-known set — so the read-only `getMessageStates` action
+(`emailLineService` → `gmailEmailLine`/`microsoftEmailLine`, `format: 'minimal'`, 200 ids max,
+20 concurrent) reports `exists`/`unread`/`inInbox` per message and the client deletes the
+notification docs of the ones already handled. **Archived counts as read even when Gmail still
+flags the message UNREAD** — leaving the inbox is the user saying they are done — which is the
+whole reason the lookup returns both flags instead of a single boolean.
+
+Three rules keep it from clearing something the user has not seen. A state that could not be read
+is **omitted** by the server rather than defaulted (`isEmailHandledInMailbox` only ever answers true
+on positive evidence), every failure path — offline, `EMAIL_AUTH_EXPIRED`, a failed notification
+write — leaves the unread state untouched and never alerts, and a failed lookup is not remembered,
+so a reconnect takes effect immediately instead of waiting out the per-message cooldown
+(`EMAIL_COMMENT_READ_SYNC_COOLDOWN_MS`, 60s).
+
+It runs from `UnreadEmailArchiveProvider` (the chat list), which already holds the deduplicated set
+of emails behind the unread previews — no new data model, no index, no extra Firestore reads — plus
+a `visibilitychange` re-check, because "I archived it in Gmail and came back" changes nothing inside
+the app that could trigger an effect. Note the rows publish **two** sets: `linkedEmails` is what
+they preview and what the bulk archive buttons act on, `unreadLinkedEmails` is every unread email of
+the row. The sync uses the second on purpose — a "Daily emails" topic holds a whole day in one row,
+and reconciling only the previewed five would leave the older ones unread for good.
+
+Everything here is `require`d lazily (the `linkedEmailActions` pattern): the module is reached from
+a chat-list row, and a static import of `emailLineBackend` / `markChatCommentsAsRead` /
+`connectionState` pulls the redux store and the Firebase client into every test that renders a row.
+That is also why there is no `isBrowserOffline()` pre-check — the callable funnel already fails fast
+offline, which is the same "could not ask" path as any other failure.
+
 ### Task reminders and the channel they come back on (AT-2211)
 
 A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`

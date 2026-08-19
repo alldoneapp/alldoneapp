@@ -15,6 +15,7 @@ import { UnreadEmailArchiveProvider, useUnreadLinkedEmailsScope } from './unread
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
+import { syncEmailCommentsReadState } from '../../utils/backends/EmailLine/emailCommentReadSync'
 import { onOpenChat } from './Utils/ChatHelper'
 import {
     CHAT_AVATAR_COLUMN_GUTTER,
@@ -34,7 +35,15 @@ jest.mock('react-redux', () => ({
 
 jest.mock('../../utils/SharedHelper', () => ({ accessGranted: () => mockAccessGranted }))
 
-jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({
+    performEmailLineAction: jest.fn(),
+    // The provider reconciles previewed emails against the mailbox (AT-2376); it must not reach
+    // the real callable from a row test.
+    fetchEmailLineMessageStates: jest.fn(async () => []),
+}))
+jest.mock('../../utils/backends/EmailLine/emailCommentReadSync', () => ({
+    syncEmailCommentsReadState: jest.fn(),
+}))
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
     markAlldoneChatsReadForLinkedEmails: jest.fn(),
     markChatCommentsAsReadByMessageIds: jest.fn(),
@@ -421,6 +430,25 @@ describe('ChatItemUnreadMessages bulk archive registry', () => {
             'm5',
             'm6',
         ])
+    })
+
+    it('hands every unread email to the Gmail read sync, including the ones the cap hid', async () => {
+        // AT-2376: a "Daily emails" topic holds a whole day in one row, so reconciling only the
+        // previewed five against the mailbox would leave the older ones unread for good. The bulk
+        // archive buttons still act on the previewed set only (test above).
+        const messages = Array.from({ length: CHAT_ITEM_UNREAD_PREVIEW_LIMIT + 1 }, (unused, index) =>
+            gmailMessage(index + 1, `m${index + 1}`)
+        )
+        await act(async () => {
+            renderPreviewInList(
+                messages,
+                messages.map(message => message.id)
+            )
+        })
+
+        const syncedMessageIds = syncEmailCommentsReadState.mock.calls[0][0].map(linkedEmail => linkedEmail.messageId)
+        expect(syncedMessageIds).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'])
+        expect(observedScope.linkedEmails.map(linkedEmail => linkedEmail.messageId)).not.toContain('m1')
     })
 
     it('archives through the list-wide state, so a bulk archive updates the message buttons too', async () => {

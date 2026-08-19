@@ -25,6 +25,8 @@ const EXCLUDED_WELL_KNOWN_FOLDERS = new Set([
 ])
 
 const MAX_FOLDERS_TO_INSPECT = 25
+// Same bounds as the Gmail read-state lookup (AT-2376).
+const MESSAGE_STATE_LIMIT = 200
 
 function resolveAccountForProject(accounts, projectId) {
     if (!Array.isArray(accounts) || accounts.length === 0) return null
@@ -177,6 +179,58 @@ async function archiveMessages(userId, projectId, messageIds) {
     return { processed: messageIds.length }
 }
 
+// Provider twin of gmailEmailLine.getMessageStates (AT-2376). Outlook has no INBOX label: a
+// message is "in the inbox" while it still sits in the inbox FOLDER, so the folder id is read once
+// and compared per message. A message that was moved (archived) or deleted therefore reports
+// `inInbox: false` / `exists: false` exactly like the Gmail side.
+async function getMessageStates(userId, projectId, messageIds) {
+    const uniqueIds = [...new Set((messageIds || []).map(id => String(id || '').trim()).filter(Boolean))].slice(
+        0,
+        MESSAGE_STATE_LIMIT
+    )
+    if (uniqueIds.length === 0) return { states: [] }
+
+    const { client } = await getClientForProject(userId, projectId)
+    const inboxFolder = await client.request(`/me/mailFolders/inbox${buildQuery({ $select: 'id' })}`)
+    const inboxFolderId = inboxFolder?.id || ''
+    const states = []
+
+    for (const ids of chunk(uniqueIds, GRAPH_BATCH_CHUNK)) {
+        const results = await Promise.all(
+            ids.map(async id => {
+                try {
+                    const message = await client.request(
+                        `/me/messages/${encodePath(id)}${buildQuery({ $select: 'id,isRead,parentFolderId' })}`
+                    )
+                    return {
+                        messageId: id,
+                        exists: true,
+                        unread: message?.isRead === false,
+                        inInbox: !!inboxFolderId && message?.parentFolderId === inboxFolderId,
+                    }
+                } catch (error) {
+                    if (
+                        String(error?.message || '')
+                            .toLowerCase()
+                            .includes('not found')
+                    ) {
+                        return { messageId: id, exists: false, unread: false, inInbox: false }
+                    }
+                    // Unknown is never reported: the caller would read it as "handled".
+                    console.warn('[emailLine] Could not read Microsoft message state', {
+                        messageId: id,
+                        error: error?.message,
+                    })
+                    return null
+                }
+            })
+        )
+        results.filter(Boolean).forEach(state => states.push(state))
+    }
+
+    return { states }
+}
+
 async function markMessagesRead(userId, projectId, messageIds) {
     if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
     const { client } = await getClientForProject(userId, projectId)
@@ -266,6 +320,7 @@ module.exports = {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    getMessageStates,
     getMessageContext,
     getUnreadInboxMessages,
     resolveAccountForProject,
