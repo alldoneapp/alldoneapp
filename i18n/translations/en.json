@@ -2713,5 +2713,15 @@
     "Automatic project description": "Let Alldone pick the project for you",
     "Automatic project selection": "Automatic project selection",
     "Open the task": "Open task",
-    "Picks the project for tasks added with \"Automatic\".": "Picks the project for tasks added with \"Automatic\"."
+    "Picks the project for tasks added with \"Automatic\".": "Picks the project for tasks added with \"Automatic\".",
+    "You are on Premium": "You are on Premium",
+    "You are on the Free plan": "You are on the Free plan",
+    "Purchases unavailable": "In-app purchases are not available right now. Please try again later.",
+    "Purchase successful": "Purchase successful! Your account will update in a moment.",
+    "Purchase failed": "The purchase could not be completed. Please try again.",
+    "Purchases restored": "Purchases restored. Your account will update in a moment.",
+    "Restore purchases": "Restore purchases",
+    "Need more Gold?": "Need more Gold?",
+    "Buy 10000 Gold": "Buy 10,000 Gold",
+    "Manage subscription in App Store": "You can manage or cancel your subscription in your App Store account settings."
 }

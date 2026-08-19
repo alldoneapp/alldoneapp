@@ -1481,6 +1481,21 @@ exports.handleStripeWebhook = onRequest(
     }
 )
 
+// Apple In-App Purchases (iOS Capacitor shell) — purchase lifecycle events
+// from RevenueCat. Grants premium status and Gold packs; see
+// Premium/revenueCatWebhook.js for the contract.
+exports.handleRevenueCatWebhook = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleRevenueCatWebhook } = require('./Premium/revenueCatWebhook')
+        return await handleRevenueCatWebhook(req, res)
+    }
+)
+
 exports.dailyPremiumStatusCheck = onSchedule(
     {
         schedule: '0 2 * * *',

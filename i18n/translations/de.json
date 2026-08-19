@@ -2247,5 +2247,15 @@
     "Automatic project description": "Alldone wählt das Projekt für dich aus",
     "Automatic project selection": "Automatische Projektauswahl",
     "Open the task": "Aufgabe öffnen",
-    "Picks the project for tasks added with \"Automatic\".": "Wählt das Projekt für Aufgaben, die mit „Automatic“ hinzugefügt wurden."
+    "Picks the project for tasks added with \"Automatic\".": "Wählt das Projekt für Aufgaben, die mit „Automatic“ hinzugefügt wurden.",
+    "You are on Premium": "Du hast Premium",
+    "You are on the Free plan": "Du nutzt den Free-Plan",
+    "Purchases unavailable": "In-App-Käufe sind derzeit nicht verfügbar. Bitte versuche es später erneut.",
+    "Purchase successful": "Kauf erfolgreich! Dein Konto wird gleich aktualisiert.",
+    "Purchase failed": "Der Kauf konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+    "Purchases restored": "Käufe wiederhergestellt. Dein Konto wird gleich aktualisiert.",
+    "Restore purchases": "Käufe wiederherstellen",
+    "Need more Gold?": "Mehr Gold benötigt?",
+    "Buy 10000 Gold": "10.000 Gold kaufen",
+    "Manage subscription in App Store": "Du kannst dein Abo in den Kontoeinstellungen des App Store verwalten oder kündigen."
 }
