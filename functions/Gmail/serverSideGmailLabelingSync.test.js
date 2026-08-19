@@ -207,6 +207,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             threadId: 'thread-1',
             webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
             archiveOnComplete: true,
+            archivedByLabeling: false,
             direction: 'incoming',
             followUpType: 'informational',
             taskSuggestionComment: '',
@@ -214,6 +215,19 @@ describe('serverSideGmailLabelingSync helpers', () => {
             targetContactName: '',
             topicChatTitle: '',
         })
+    })
+
+    test('flags a context whose email the labeling sync archived itself (AT-2376)', () => {
+        // The read sync must not read "not in the inbox" as the user having handled an email that
+        // auto-archive took out of the inbox before the comment even existed.
+        expect(
+            buildPostLabelGmailContext({
+                normalizedMessage: { messageId: 'message-1', threadId: 'thread-1' },
+                gmailEmail: 'person@example.com',
+                assistantProjectId: 'project-1',
+                archivedByLabeling: true,
+            }).archivedByLabeling
+        ).toBe(true)
     })
 
     test('collects outgoing recipient emails from To only', () => {
@@ -571,6 +585,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         threadId: 'thread-1',
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
+                        archivedByLabeling: false,
                         direction: 'incoming',
                         followUpType: 'informational',
                         taskSuggestionComment:

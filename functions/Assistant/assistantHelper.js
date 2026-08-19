@@ -2343,6 +2343,7 @@ async function collectAssistantTextWithToolCalls({
     const executedToolNames = []
     const createdTaskResults = []
     const createdNoteResults = []
+    const createdChatCommentResults = []
     const startedVmJobResults = []
     let pendingAttachmentPayload = null
     const maxToolCallRounds = Math.max(
@@ -2426,6 +2427,17 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
+            // The Gmail labeling sync stamps these onto the message's audit record so its
+            // server-side read sync knows which chat comment belongs to which Gmail message
+            // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
+            // way, and whether it is still unread is decided from its notification doc, not here.
+            if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
+                createdChatCommentResults.push({
+                    projectId: toolResult.projectId || '',
+                    chatId: toolResult.chatId || '',
+                    commentId: toolResult.commentId,
+                })
+            }
             collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
@@ -2471,6 +2483,7 @@ async function collectAssistantTextWithToolCalls({
         executedToolNames,
         createdTaskResults,
         createdNoteResults,
+        createdChatCommentResults,
         startedVmJobResults,
         reachedMaxToolIterations,
         finalConversation: currentConversation,
@@ -4000,6 +4013,9 @@ async function addChatCommentFromAssistantTool({
             threadId: gmailContext.threadId || '',
             webUrl: gmailContext.webUrl || '',
             direction: gmailContext.direction || '',
+            // Set when the labeling sync auto-archived the email itself: the client-side read sync
+            // must not treat "not in the inbox" as the user having handled it (AT-2376).
+            archivedByLabeling: !!gmailContext.archivedByLabeling,
             targetContactEmail: gmailContext.targetContactEmail || '',
             targetContactName: gmailContext.targetContactName || '',
             // Parsed List-Unsubscribe metadata ({ httpsUrl, mailto }) so the chat UI can

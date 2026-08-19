@@ -829,6 +829,42 @@ a chat-list row, and a static import of `emailLineBackend` / `markChatCommentsAs
 That is also why there is no `isBrowserOffline()` pre-check — the callable funnel already fails fast
 offline, which is the same "could not ask" path as any other failure.
 
+**The same reconciliation also runs server-side, inside the scheduled labeling sync**
+(`functions/Gmail/emailCommentReadSync.js`, called from `syncGmailLabeling`), so it no longer
+depends on anyone opening the chat list. It is a step of the existing 5-minute
+`pollGmailLabelingSecondGen` tick rather than a new schedule, because that sync already holds an
+authorized Gmail client for exactly the account whose comments it is reconciling — no second auth
+path, no second client. It runs on every tick, including ticks with no new mail to label: it is
+answering a question about OLD messages. It is wrapped in try/catch — labeling is that function's
+job, and failing to reconcile read state must never fail a run that labeled mail correctly.
+
+The mapping it needs (Gmail messageId → chat comment) is written by the sync itself: the post-label
+prompt's `add_chat_comment` result is collected in `collectAssistantTextWithToolCalls` as
+`createdChatCommentResults` and lands on the message's **audit record** as `emailComments` +
+`emailCommentReadPending`, inside the audit write that already happens. That is what keeps this a
+plain `where('emailCommentReadPending','==',true)` query on an existing per-user subcollection —
+**no collection-group index, no new collection, no migration** (a collection-group query over
+`chatComments` by `gmailData.messageId` would have needed an index deploy, which this repo does not
+do from CI). Comments created before this shipped carry no stamp and stay with the client fallback.
+
+Cost discipline, in order: one indexed query per run (capped at 50 candidates); then the
+**notification docs are read first**, so a comment the user already read costs ZERO Gmail calls and
+is retired on the spot; only what is still unread is looked up in Gmail (`format: 'minimal'`,
+concurrency 10, capped per run). Every candidate is retired by a terminal
+`emailCommentReadResolution` (`mailbox_handled` / `already_read` / `no_comment` / `expired`) so the
+pending pool drains and nothing is re-checked forever; an unknown state keeps the flag and is
+retried next tick. `expired` (30 days) stops the checking and **never** marks the comment read.
+
+**"Not in the inbox" is not always the user's doing.** Two cases where it says nothing, and where
+the server rule is stricter than the naive one: the labeling sync **auto-archived the mail itself**
+(`autoArchive`, the starter Newsletter label ships with it on), so the mail was already out of the
+inbox when the comment appeared; and an **outgoing (SENT)** message, which is never in the inbox at
+all. For both, only "read" or "deleted" counts — otherwise every auto-archived comment would be
+marked read the moment it appeared. The client half learns the same two facts from the comment's own
+`gmailData` (`archivedByLabeling`, stamped by `buildPostLabelGmailContext`, and `direction`), so the
+two rules match; `isEmailHandledInMailbox` exists once per side because Cloud Functions cannot import
+app code — keep them in step.
+
 ### Task reminders and the channel they come back on (AT-2211)
 
 A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`

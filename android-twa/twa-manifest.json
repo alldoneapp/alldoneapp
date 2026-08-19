@@ -19,8 +19,8 @@
         "path": "./android.keystore",
         "alias": "android"
     },
-    "appVersion": "1.0.1",
-    "appVersionCode": 2,
+    "appVersion": "1.0.0",
+    "appVersionCode": 1,
     "shortcuts": [],
     "generatorApp": "bubblewrap-cli",
     "webManifestUrl": "https://my.alldone.app/manifest.json",
@@ -37,6 +37,5 @@
     "orientation": "default",
     "fingerprints": [],
     "additionalTrustedOrigins": [],
-    "retainedBundles": [],
-    "maskableIconUrl": "https://my.alldone.app/pwa/chrome-icon/chrome-icon-maskable-512.png"
+    "retainedBundles": []
 }

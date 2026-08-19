@@ -86,12 +86,6 @@
             "src": "icons/App-Icon(1024x).png",
             "sizes": "1024x1024",
             "type": "image/png"
-        },
-        {
-            "src": "/pwa/chrome-icon/chrome-icon-maskable-512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable"
         }
     ],
     "permissions": ["fullscreen"]
