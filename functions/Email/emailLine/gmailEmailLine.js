@@ -22,6 +22,11 @@ const HAS_USER_LABELS_SEARCH_QUERY = 'has:userlabels'
 // invocation touches.
 const SWEEP_LIMIT = 500
 const BATCH_MODIFY_CHUNK = 100
+// Bounds for the read-state lookup behind the email-comment read sync (AT-2376). Gmail has no
+// batch "get labels for these ids" call, so it is one get per message: cap how many a single call
+// may ask for, and how many run concurrently, so a large unread backlog cannot hammer the API.
+const MESSAGE_STATE_LIMIT = 200
+const MESSAGE_STATE_CHUNK = 20
 // threads.modify is one call per thread (unlike messages.batchModify); bound the
 // concurrent calls so a large sweep doesn't trip Gmail's per-user rate limits.
 const THREAD_MODIFY_CHUNK = 20
@@ -118,6 +123,14 @@ async function getGmailClient(userId, projectId, { forceRefresh = false } = {}) 
 // this never loops on a connection that genuinely needs reconnecting.
 function withGmailClient(userId, projectId, run) {
     return runWithGoogleAuthRetry(forceRefresh => getGmailClient(userId, projectId, { forceRefresh }), run)
+}
+
+// A Gmail message that no longer exists (deleted, or purged from Trash) answers 404. googleapis
+// surfaces that as `code`/`response.status` 404, and older wrappers only in the message text.
+function isMessageNotFoundError(error) {
+    if (error?.code === 404 || error?.response?.status === 404) return true
+    const message = String(error?.message || '')
+    return message.includes('Requested entity was not found') || message.includes('Not Found')
 }
 
 function stripLabelPrefix(name = '') {
@@ -713,6 +726,56 @@ async function getUnreadInboxMessagesImpl(gmail, userId, projectId, limit = 15) 
     return messages.filter(Boolean)
 }
 
+// Reads the CURRENT mailbox state of specific messages: is it still unread, is it still in the
+// inbox, does it still exist. This is the inbound half of the email-comment read sync (AT-2376) —
+// Alldone chat comments created from emails have to follow what the user does in Gmail itself, and
+// Gmail state is only ever discovered by asking for it (there is no push channel here).
+//
+// `format: 'minimal'` returns labelIds without the payload, which is the cheapest way to read both
+// flags at once (1 quota unit per message, same as a list call). A message the user deleted in
+// Gmail answers 404: that is reported as `exists: false` rather than swallowed, because "the mail
+// is gone" is a definite state the caller can act on. Any OTHER failure is left OUT of the result
+// entirely — an unknown state must never be mistaken for "handled", which would silently clear an
+// unread comment the user has not seen.
+async function getMessageStatesImpl(gmail, userId, projectId, messageIds) {
+    const uniqueIds = [...new Set((messageIds || []).map(id => String(id || '').trim()).filter(Boolean))].slice(
+        0,
+        MESSAGE_STATE_LIMIT
+    )
+    const states = []
+
+    for (const ids of chunk(uniqueIds, MESSAGE_STATE_CHUNK)) {
+        const results = await Promise.all(
+            ids.map(async id => {
+                try {
+                    const detail = await gmail.users.messages.get({ userId: 'me', id, format: 'minimal' })
+                    const labelIds = Array.isArray(detail?.data?.labelIds) ? detail.data.labelIds : []
+                    return {
+                        messageId: id,
+                        exists: true,
+                        unread: labelIds.includes('UNREAD'),
+                        inInbox: labelIds.includes('INBOX'),
+                    }
+                } catch (error) {
+                    if (isMessageNotFoundError(error)) {
+                        return { messageId: id, exists: false, unread: false, inInbox: false }
+                    }
+                    // Auth failures must still reach withGmailClient's one-shot retry (AT-2195).
+                    if (error?.code === 401 || error?.response?.status === 401) throw error
+                    console.warn('[emailLine] Could not read Gmail message state', {
+                        messageId: id,
+                        error: error?.message,
+                    })
+                    return null
+                }
+            })
+        )
+        results.filter(Boolean).forEach(state => states.push(state))
+    }
+
+    return { states }
+}
+
 async function batchModifyMessages(gmail, messageIds, requestBody) {
     for (const ids of chunk(messageIds, BATCH_MODIFY_CHUNK)) {
         await gmail.users.messages.batchModify({
@@ -975,6 +1038,11 @@ function sweepLabel(userId, projectId, labelId, action) {
     return withGmailClient(userId, projectId, gmail => sweepLabelImpl(gmail, userId, projectId, labelId, action))
 }
 
+function getMessageStates(userId, projectId, messageIds) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return Promise.resolve({ states: [] })
+    return withGmailClient(userId, projectId, gmail => getMessageStatesImpl(gmail, userId, projectId, messageIds))
+}
+
 module.exports = {
     getGmailClient,
     getGmailLabelSummary,
@@ -983,6 +1051,7 @@ module.exports = {
     markMessagesRead,
     sweepLabel,
     getMessageContext,
+    getMessageStates,
     getUnreadInboxMessageIds,
     getUnreadInboxMessages,
     stripLabelPrefix,

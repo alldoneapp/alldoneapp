@@ -87,10 +87,7 @@ describe('Web app shell scroll containers', () => {
         expect(bodyRule[1]).toMatch(/overflow-y:\s*auto\s*;/)
     })
 
-    test.each(TEMPLATES)('%s (%s) does not reserve the bottom safe area anywhere', relativePath => {
-        // Content deliberately flows under the iOS home indicator like native
-        // apps; bottom-anchored interactive surfaces lift themselves instead
-        // (useHomeIndicatorLift, BottomSheet). Only top/left/right stay on body.
+    test.each(TEMPLATES)('%s (%s) lets the app shell paint through the bottom safe area', relativePath => {
         const html = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
         const bodyRule = html.match(/\n\s*body\s*\{([^}]*)\}/)
         const rootRules = [...html.matchAll(/\n\s*#root\s*\{([^}]*)\}/g)].map(match => match[1])
@@ -101,7 +98,9 @@ describe('Web app shell scroll containers', () => {
             expect(bodyRule[1]).toMatch(new RegExp(`padding-${side}:\\s*env\\(safe-area-inset-${side}\\)`))
         }
         expect(bodyRule[1]).not.toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom\)/)
-        expect(rootRules.some(rule => /padding-bottom:\s*env\(safe-area-inset-bottom\)/.test(rule))).toBe(false)
+        expect(
+            rootRules.some(rule => /padding-bottom:\s*env\(safe-area-inset-bottom\)\s*!important\s*;/.test(rule))
+        ).toBe(true)
     })
 
     test.each(TEMPLATES)('%s (%s) configures a light standalone iOS status area', relativePath => {

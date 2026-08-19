@@ -87,6 +87,7 @@ jest.mock('./gmailEmailLine', () => ({
     markMessagesRead: jest.fn(),
     sweepLabel: jest.fn(),
     getMessageContext: jest.fn(),
+    getMessageStates: jest.fn(),
     getUnreadInboxMessageIds: jest.fn(),
     buildGmailMessageUrl: jest.fn(() => 'https://gmail/message'),
     stripLabelPrefix: jest.fn(name => (typeof name === 'string' ? name.split('/').pop() : '')),
@@ -126,6 +127,7 @@ jest.mock('./microsoftEmailLine', () => ({
     markMessagesRead: jest.fn(),
     sweepLabel: jest.fn(),
     getMessageContext: jest.fn(),
+    getMessageStates: jest.fn(),
 }))
 
 jest.mock('./replyComposer', () => ({
@@ -298,6 +300,28 @@ describe('emailLineService', () => {
 
         await performEmailLineAction('u', 'p1', { action: 'archiveAll', labelId: 'L', userData: googleUserData })
         expect(gmailEmailLine.sweepLabel).toHaveBeenCalledWith('u', 'p1', 'L', 'archiveAll')
+    })
+
+    // Gmail → Alldone read sync (AT-2376): read-only lookup of the current mailbox state.
+    test('performEmailLineAction routes getMessageStates and short-circuits an empty list', async () => {
+        gmailEmailLine.getMessageStates.mockResolvedValue({
+            states: [{ messageId: 'a', exists: true, unread: false, inInbox: true }],
+        })
+
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'getMessageStates',
+            messageIds: ['a'],
+            userData: googleUserData,
+        })
+
+        expect(gmailEmailLine.getMessageStates).toHaveBeenCalledWith('u', 'p1', ['a'])
+        expect(result.states[0].unread).toBe(false)
+
+        gmailEmailLine.getMessageStates.mockClear()
+        await expect(
+            performEmailLineAction('u', 'p1', { action: 'getMessageStates', messageIds: [], userData: googleUserData })
+        ).resolves.toEqual({ states: [] })
+        expect(gmailEmailLine.getMessageStates).not.toHaveBeenCalled()
     })
 
     test('performEmailLineAction rejects unknown and unconnected', async () => {

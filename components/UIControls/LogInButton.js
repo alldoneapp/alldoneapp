@@ -66,10 +66,7 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
             if (!user) setIsLoading(false) // sheet cancelled
         } catch (error) {
             console.error('Error during Apple sign-in:', error)
-            // TODO(temporary): surface the underlying error detail while Apple
-            // sign-in is being verified on real devices — remove before release.
-            const detail = [error?.code, error?.message].filter(Boolean).join(' — ')
-            setErrorMessage(`Apple sign-in could not be started. Please try again.${detail ? `\n(${detail})` : ''}`)
+            setErrorMessage('Apple sign-in could not be started. Please try again.')
             setIsLoading(false)
         }
     }

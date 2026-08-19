@@ -28,7 +28,6 @@ import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComme
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
-import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -54,7 +53,6 @@ export default function ChatInput({
     autoFocus = true,
 }) {
     const dispatch = useDispatch()
-    const homeIndicatorLift = useHomeIndicatorLift()
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
     const quotedNoteText = useSelector(state => state.quotedNoteText)
     const quotedText = useSelector(state => state.quotedText)
@@ -391,14 +389,7 @@ export default function ChatInput({
     return (
         <AttachmentDropZone
             testID="full-chat-image-drop-zone"
-            style={[
-                localStyles.inputContainer,
-                // Keep the floating composer clear of the iOS home indicator
-                // now that #root no longer reserves that region (0 elsewhere,
-                // and 0 while the keyboard is open — see useHomeIndicatorLift).
-                homeIndicatorLift > 0 && { bottom: 24 + homeIndicatorLift },
-                containerStyle,
-            ]}
+            style={[localStyles.inputContainer, containerStyle]}
             disabled={disabledEdition}
             editor={chatEditor}
             inputCursorIndex={inputCursorIndex}

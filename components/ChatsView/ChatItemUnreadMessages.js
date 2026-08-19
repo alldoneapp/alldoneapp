@@ -97,7 +97,14 @@ export default function ChatItemUnreadMessages({ project, chat, unreadCommentIds
     const previewedLinkedEmails = accessGranted
         ? getLinkedEmailsFromMessages(visibleMessages, { projectId: project.id, chatId: chat.id })
         : []
-    useRegisterUnreadLinkedEmails(`${project.id}:${chat.id}`, project.id, previewedLinkedEmails)
+    // Every unread email of the row, preview cap included, is published alongside it for the Gmail
+    // read sync (AT-2376) only. A "Daily emails" topic holds a whole day of emails in one row, so
+    // reconciling just the previewed five against the mailbox would leave the older ones unread for
+    // good. The bulk archive buttons keep acting on the previewed set above.
+    const unreadLinkedEmails = accessGranted
+        ? getLinkedEmailsFromMessages(messages, { projectId: project.id, chatId: chat.id })
+        : []
+    useRegisterUnreadLinkedEmails(`${project.id}:${chat.id}`, project.id, previewedLinkedEmails, unreadLinkedEmails)
 
     if (visibleMessages.length === 0) return null
 
