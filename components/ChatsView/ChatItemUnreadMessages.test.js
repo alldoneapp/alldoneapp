@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatItemUnreadMessages, {
@@ -16,10 +16,21 @@ import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { onOpenChat } from './Utils/ChatHelper'
+import {
+    CHAT_AVATAR_COLUMN_GUTTER,
+    CHAT_AVATAR_COLUMN_TOTAL_WIDTH,
+    CHAT_PREVIEW_MOBILE_INDENT,
+    CHAT_PREVIEW_RAIL_WIDTH,
+} from './chatRowLayout'
 
 jest.mock('../../hooks/Chats/useGetUnreadChatMessages', () => jest.fn())
 
-jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
+// `smallScreenNavigation` is merged in at selection time rather than baked into `mockState`, which
+// the notification helper rebuilds from scratch: the mobile layout tests (AT-2361) set the flag
+// after `beforeEach` has already reset the notifications.
+jest.mock('react-redux', () => ({
+    useSelector: selector => selector({ ...mockState, smallScreenNavigation: mockMobile }),
+}))
 
 jest.mock('../../utils/SharedHelper', () => ({ accessGranted: () => mockAccessGranted }))
 
@@ -74,6 +85,7 @@ const chat = { id: 'chat-1', type: 'topics' }
 
 let mockState = { loggedUser: { uid: 'user-1' }, projectChatNotifications: {} }
 let mockAccessGranted = true
+let mockMobile = false
 const mockRowProps = []
 
 const setNotifications = chatNotifications => {
@@ -108,6 +120,7 @@ describe('ChatItemUnreadMessages', () => {
         jest.clearAllMocks()
         mockRowProps.length = 0
         mockAccessGranted = true
+        mockMobile = false
         setNotifications(undefined)
     })
 
@@ -199,11 +212,98 @@ describe('ChatItemUnreadMessages', () => {
     })
 })
 
+// AT-2361. On a phone the row's 64px avatar column is empty for the whole height of the preview,
+// and every previewed line - sender, subject, body, and the email action buttons - paid for it.
+describe('ChatItemUnreadMessages mobile width', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockRowProps.length = 0
+        mockAccessGranted = true
+        mockMobile = false
+        setNotifications(undefined)
+    })
+
+    const flattenedContainerStyle = tree => {
+        const style = tree.root.findByType(View).props.style
+        return (Array.isArray(style) ? style : [style]).filter(Boolean).reduce(
+            (merged, entry) => ({
+                ...merged,
+                ...(typeof entry === 'number' ? StyleSheet.flatten(entry) : entry),
+            }),
+            {}
+        )
+    }
+
+    it('steps out of the row avatar column on mobile, cancelling it exactly', () => {
+        mockMobile = true
+        const tree = renderPreview(makeMessages(1), ['c1'])
+
+        // Exactly the column, not a hand-tuned number: anything else leaves the preview visibly
+        // off the row's own left edge.
+        expect(flattenedContainerStyle(tree).marginLeft).toBe(-CHAT_AVATAR_COLUMN_TOTAL_WIDTH)
+    })
+
+    it('keeps the thread rail on mobile so the messages still read as one topic', () => {
+        mockMobile = true
+        const tree = renderPreview(makeMessages(1), ['c1'])
+        const style = flattenedContainerStyle(tree)
+
+        expect(style.borderLeftWidth).toBe(CHAT_PREVIEW_RAIL_WIDTH)
+        // Tightened, but never gone - the rail needs a gutter to read as one.
+        expect(style.paddingLeft).toBeGreaterThan(0)
+    })
+
+    // AT-2368. Stepping out of the avatar column is right; landing 10px from the screen edge is
+    // not - the text then hugs the rail and stops reading as part of the row above it.
+    it('balances the preview against the row edge instead of sitting flush on it', () => {
+        mockMobile = true
+        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
+
+        // What the reader actually perceives is rail + gutter, so that is what is pinned. The
+        // avatar column is cancelled exactly (asserted above), so this IS the distance from the
+        // row's own left edge to the first pixel of text.
+        expect(style.borderLeftWidth + style.paddingLeft).toBe(CHAT_PREVIEW_MOBILE_INDENT)
+        // The same 16px the rest of the row is spaced by - balanced, not a hand-tuned number.
+        expect(CHAT_PREVIEW_MOBILE_INDENT).toBe(CHAT_AVATAR_COLUMN_GUTTER)
+    })
+
+    it('keeps the width AT-2361 recovered: the indent stays a rounding error on a phone', () => {
+        mockMobile = true
+        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
+
+        // A 390px phone, minus the list's own 16px margins. Anything over ~5% of that starts
+        // costing the email subject and the action-button row the lines AT-2361 gave back.
+        const listWidth = 390 - 2 * CHAT_AVATAR_COLUMN_GUTTER
+        expect((style.borderLeftWidth + style.paddingLeft) / listWidth).toBeLessThan(0.05)
+    })
+
+    it('drops the per-message avatar indent on mobile and keeps it on desktop', () => {
+        mockMobile = true
+        renderPreview(makeMessages(2), ['c1', 'c2'])
+        expect(mockRowProps.map(props => props.compact)).toEqual([true, true])
+
+        mockMobile = false
+        mockRowProps.length = 0
+        renderPreview(makeMessages(2), ['c1', 'c2'])
+        expect(mockRowProps.map(props => props.compact)).toEqual([false, false])
+    })
+
+    it('leaves the desktop layout exactly where it was', () => {
+        const style = flattenedContainerStyle(renderPreview(makeMessages(1), ['c1']))
+
+        // Desktop keeps the avatar column: the width is there, and the alignment with the topic
+        // title above is the whole point of the indent.
+        expect(style.marginLeft).toBe(2)
+        expect(style.paddingLeft).toBe(12)
+    })
+})
+
 describe('ChatItemUnreadMessages email actions', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         mockRowProps.length = 0
         mockAccessGranted = true
+        mockMobile = false
         setNotifications(undefined)
     })
 

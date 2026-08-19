@@ -33,7 +33,8 @@ import {
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
-import { needToAcknowledgeNewDay } from '../../../utils/NewDayModalHelper'
+import { needToAcknowledgeNewDay, startNewDay as runStartNewDay } from '../../../utils/NewDayModalHelper'
+import { awaitWriteAck } from '../../../utils/backends/offlineWriteAck'
 import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
@@ -95,10 +96,24 @@ export default function EndDayStatisticsModal() {
     const pendingCommentFocusProjectIdRef = useRef(null)
     const dirtyHappinessProjectIdsRef = useRef(new Set())
     const happinessDraftsRef = useRef({})
+    // Signature (`rating|comment`) of the last value written for a project, so
+    // the same happiness entry is never written twice. Rating taps persist
+    // immediately AND used to be re-persisted by "Start new day", and every
+    // `setProjectHappiness` writes a fresh feed entry plus a feed-count bump —
+    // so one rating produced two identical feed entries (AT-2367).
+    const persistedHappinessRef = useRef({})
 
     const needToShowYesterdayStats = () => needToAcknowledgeNewDay(statisticsModalDate)
 
-    const resetModalState = () => {
+    /**
+     * @param {{ keepStartNewDayGuard?: boolean }} options when the reset comes
+     * from the "Start new day" flow itself the double-press guard must survive
+     * it: the flow closes the popup synchronously, so clearing the guard here
+     * would let a second tap landing in the same frame start a second
+     * acknowledgement (and a second reload). It is cleared again by the
+     * data-loading effect, i.e. the next time a day actually needs confirming.
+     */
+    const resetModalState = ({ keepStartNewDayGuard = false } = {}) => {
         setDoneTasks(0)
         setXp(0)
         setDonePoints(0)
@@ -107,83 +122,121 @@ export default function EndDayStatisticsModal() {
         setStatisticsByProject({})
         setShowEmptyInbox(true)
         setDataLoaded(null)
-        setStatsDate(statisticsModalDate)
+        // Read from the store rather than the render closure: the "Start new
+        // day" flow dispatches the new acknowledgement first, so the closure
+        // value here is one day stale by the time it resets.
+        setStatsDate(store.getState().loggedUser.statisticsModalDate)
         setHappinessRatings({})
         setHappinessComments({})
         setVisibleComments({})
         pendingCommentFocusProjectIdRef.current = null
         dirtyHappinessProjectIdsRef.current.clear()
         happinessDraftsRef.current = {}
+        persistedHappinessRef.current = {}
         isOfflineRef.current = false
         isLoading.current = false
-        isSavingStartNewDay.current = false
+        if (!keepStartNewDayGuard) isSavingStartNewDay.current = false
         setStartNewDayIsLoading(false)
     }
 
-    const saveDirtyHappinessEntries = async () => {
+    const reportNewDayError = (error, label) => {
+        // Never rethrow: by the time these run the popup is already closed and
+        // the state is already local. Logging with the failing step is what
+        // makes a real failure diagnosable instead of a silent `console.log`.
+        console.warn(`[NewDay] "${label}" failed`, error)
+    }
+
+    /**
+     * Single write path for a project's happiness entry.
+     *
+     * Deduplicated on the last written value, because the same entry is
+     * reachable from three places (rating tap, comment blur, "Start new day"
+     * flush) and each `setProjectHappiness` writes a new feed entry.
+     */
+    const persistHappiness = (project, rating, comment) => {
+        dirtyHappinessProjectIdsRef.current.delete(project.id)
+        if (!rating) return Promise.resolve()
+
+        const cleanComment = comment || ''
+        const signature = `${rating}|${cleanComment}`
+        if (persistedHappinessRef.current[project.id] === signature) return Promise.resolve()
+        persistedHappinessRef.current[project.id] = signature
+
+        return awaitWriteAck(
+            Backend.setProjectHappiness(project.id, loggedUserId, statsDate, rating, cleanComment, project),
+            'project happiness'
+        ).catch(error => {
+            // Let a retry through: the value was not stored after all.
+            if (persistedHappinessRef.current[project.id] === signature)
+                delete persistedHappinessRef.current[project.id]
+            reportNewDayError(error, 'setProjectHappiness')
+        })
+    }
+
+    const saveDirtyHappinessEntries = () => {
         const dirtyProjectIds = dirtyHappinessProjectIdsRef.current
-        if (dirtyProjectIds.size === 0) return
+        if (dirtyProjectIds.size === 0) return Promise.resolve()
 
         const promises = getHappinessProjects().reduce((promises, project) => {
             if (!dirtyProjectIds.has(project.id)) return promises
 
             const draft = happinessDraftsRef.current[project.id] || {}
             const rating = draft.rating || happinessRatings[project.id]
-            if (rating) {
-                promises.push(
-                    Backend.setProjectHappiness(
-                        project.id,
-                        loggedUserId,
-                        statsDate,
-                        rating,
-                        draft.comment != null ? draft.comment : happinessComments[project.id] || '',
-                        project
-                    )
-                )
-            }
+            const comment = draft.comment != null ? draft.comment : happinessComments[project.id] || ''
+            promises.push(persistHappiness(project, rating, comment))
             return promises
         }, [])
 
-        await Promise.all(promises)
         dirtyProjectIds.clear()
+        return Promise.all(promises)
     }
 
-    const startNewDay = async e => {
-        e.preventDefault()
-        e.stopPropagation()
+    /**
+     * "Start new day" (AT-2367).
+     *
+     * The popup closes on the tap itself — see `startNewDay` in
+     * `NewDayModalHelper` for why every await used to sit in front of that.
+     * The full app reload is kept, but only for the device that actually
+     * crossed midnight while open (the one whose date-scoped watchers are on
+     * yesterday), and it can no longer be delayed by a pending write.
+     */
+    const onPressStartNewDay = e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
         if (isSavingStartNewDay.current) return
 
         isSavingStartNewDay.current = true
         setStartNewDayIsLoading(true)
 
-        try {
-            if (!isOfflineRef.current) {
-                const newStatisticsModalDate = Date.now()
+        const acknowledgedStatsDate = statsDate
+        const crossedMidnightWhileOpen = showNewDayNotification
+
+        return runStartNewDay({
+            applyLocalAcknowledgement: statisticsModalDate => {
                 const { loggedUser } = store.getState()
                 const updatedLoggedUser = {
                     ...loggedUser,
-                    statisticsModalDate: newStatisticsModalDate,
-                    previousStatisticsModalDate: statsDate,
+                    statisticsModalDate,
+                    previousStatisticsModalDate: acknowledgedStatsDate,
                 }
-                await saveDirtyHappinessEntries()
-                await setUserStatisticsModalDate(statsDate, newStatisticsModalDate)
                 store.dispatch(storeLoggedUser(updatedLoggedUser))
                 UserDataCache.setCachedUserData(updatedLoggedUser)
                 store.dispatch(setShowNewDayNotification(false))
-            }
-
-            if (showNewDayNotification) {
-                await deleteCacheAndRefresh()
-            } else {
-                resetModalState()
-                isSavingStartNewDay.current = false
-                setStartNewDayIsLoading(false)
-            }
-        } catch (error) {
-            console.log(error)
-            isSavingStartNewDay.current = false
-            setStartNewDayIsLoading(false)
-        }
+            },
+            closePopup: () => resetModalState({ keepStartNewDayGuard: true }),
+            persistHappinessDrafts: saveDirtyHappinessEntries,
+            // Acknowledge the day even when the statistics could not be read
+            // (offline). The write lands in the persisted mutation queue and
+            // flushes on reconnect; skipping it is what made the popup come
+            // back after every offline "Start new day".
+            persistAcknowledgement: statisticsModalDate =>
+                awaitWriteAck(
+                    setUserStatisticsModalDate(acknowledgedStatsDate, statisticsModalDate),
+                    'new day statisticsModalDate'
+                ),
+            reloadApp: crossedMidnightWhileOpen ? () => deleteCacheAndRefresh() : undefined,
+            onError: reportNewDayError,
+        })
     }
 
     const updateStatistics = (projectId, statistics = {}) => {
@@ -250,6 +303,9 @@ export default function EndDayStatisticsModal() {
             needToShowYesterdayStats()
         ) {
             isLoading.current = true
+            // A day is being confirmed again, so the previous confirmation's
+            // double-press guard (kept across its own close) is released here.
+            isSavingStartNewDay.current = false
             const endDayStatisticsDate = moment(statisticsModalDate)
             const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
             const dataLoaded = {}
@@ -322,6 +378,8 @@ export default function EndDayStatisticsModal() {
                             rating: entry.rating,
                             comment: entry.comment || '',
                         }
+                        // Already stored server-side: never re-write it.
+                        persistedHappinessRef.current[projectId] = `${entry.rating}|${entry.comment || ''}`
                         setHappinessRatings(state => ({ ...state, [projectId]: entry.rating }))
                         setHappinessComments(state => ({ ...state, [projectId]: entry.comment || '' }))
                     }
@@ -356,14 +414,7 @@ export default function EndDayStatisticsModal() {
             comment: happinessComments[project.id] || happinessDraftsRef.current[project.id]?.comment || '',
         }
         setHappinessRatings(state => ({ ...state, [project.id]: rating }))
-        Backend.setProjectHappiness(
-            project.id,
-            loggedUserId,
-            statsDate,
-            rating,
-            happinessComments[project.id] || '',
-            project
-        )
+        persistHappiness(project, rating, happinessComments[project.id] || '')
     }
 
     const updateHappinessComment = (project, comment) => {
@@ -377,16 +428,7 @@ export default function EndDayStatisticsModal() {
     }
 
     const saveHappinessComment = project => {
-        const rating = happinessRatings[project.id]
-        if (rating)
-            Backend.setProjectHappiness(
-                project.id,
-                loggedUserId,
-                statsDate,
-                rating,
-                happinessComments[project.id] || '',
-                project
-            )
+        persistHappiness(project, happinessRatings[project.id], happinessComments[project.id] || '')
     }
 
     const toggleHappinessComment = projectId => {
@@ -650,7 +692,8 @@ export default function EndDayStatisticsModal() {
                                 compactModalLayout && localStyles.mobileRefresh,
                                 startNewDayIsLoading && localStyles.refreshDisabled,
                             ]}
-                            onPress={startNewDay}
+                            testID="startNewDayButton"
+                            onPress={onPressStartNewDay}
                             disabled={startNewDayIsLoading}
                         >
                             <View style={localStyles.refreshContent}>

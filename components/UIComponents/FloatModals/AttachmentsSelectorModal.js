@@ -11,25 +11,32 @@ import NotAvailableScreenRecording from '../../MediaBar/ScreenRecording/NotAvail
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
-import { addFilesAsAttachments } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
+import { addFilesAsAttachments, openAttachmentFilePicker } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
-export default function AttachmentsSelectorModal({ projectId, closeModal, addAttachmentTag, style }) {
+export default function AttachmentsSelectorModal({
+    projectId,
+    closeModal,
+    addAttachmentTag,
+    style,
+    allowMultiple = false,
+}) {
     const [width, height] = useWindowSize()
     const [showVideoRecorder, setShowVideoRecorder] = useState(false)
     const [showScreenRecorder, setShowScreenRecorder] = useState(false)
     const [showMessage, setShowMessage] = useState(false)
     const chooseAttachments = () => {
         if (Platform.OS === 'web') {
-            let fileInput = document.getElementById('file-input')
-
-            fileInput.onchange = event => {
-                addFilesAsAttachments(event.target.files, addAttachmentTag)
-                setTimeout(() => {
-                    closeModal()
-                }, 100)
-            }
-            fileInput.click()
+            // `allowMultiple` is opt-in per surface — see openAttachmentFilePicker.
+            openAttachmentFilePicker({
+                multiple: allowMultiple,
+                onFiles: files => {
+                    addFilesAsAttachments(files, addAttachmentTag)
+                    setTimeout(() => {
+                        closeModal()
+                    }, 100)
+                },
+            })
         }
     }
 
