@@ -18,7 +18,6 @@ import useWindowSize from '../../utils/useWindowSize'
 // The login screen's background is web/images/illustrations/LoginBg.svg, a
 // vertical radial gradient; these are its edge colors.
 const LOGIN_TOP_COLOR = '#ADCCFF'
-const LOGIN_BOTTOM_COLOR = '#EBF5FF'
 
 const LOGIN_LIKE_ROUTES = new Set(['LoginScreen', 'Onboarding', 'WhatsAppOnboarding'])
 
@@ -30,27 +29,20 @@ export default function ShellInsetPainter({ routeName }) {
     if (!isCapacitorShell()) return null
 
     const insets = getSafeAreaInsets()
-    if (!insets.top && !insets.bottom) return null
+    // Only the TOP inset is painted (behind the status bar, matching the
+    // header). The bottom home-indicator region is not reserved at all
+    // anymore — content flows under it (see the #root comment in the HTML
+    // templates), so painting it would cover real content.
+    if (!insets.top) return null
 
     const isLoginLike = LOGIN_LIKE_ROUTES.has(routeName)
     const topColor = isLoginLike ? LOGIN_TOP_COLOR : getTheme(Themes, themeName, 'TopBar').container.backgroundColor
-    const bottomColor = isLoginLike ? LOGIN_BOTTOM_COLOR : '#ffffff'
 
     return (
-        <>
-            {insets.top > 0 && (
-                <View
-                    pointerEvents="none"
-                    style={[localStyles.strip, { top: 0, height: insets.top, backgroundColor: topColor }]}
-                />
-            )}
-            {insets.bottom > 0 && (
-                <View
-                    pointerEvents="none"
-                    style={[localStyles.strip, { bottom: 0, height: insets.bottom, backgroundColor: bottomColor }]}
-                />
-            )}
-        </>
+        <View
+            pointerEvents="none"
+            style={[localStyles.strip, { top: 0, height: insets.top, backgroundColor: topColor }]}
+        />
     )
 }
 
