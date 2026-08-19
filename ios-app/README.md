@@ -39,16 +39,14 @@ in natively:
   then calls `signInWithCredential` — same session, persistence, and
   `isNewUser` handling as the web popup path. Cancelling the native sheet
   resolves to `null` (not an error).
-- Native side needs two per-environment pieces:
-    1. `ios/App/App/GoogleService-Info.plist` — copied from
-       `firebase/GoogleService-Info.{staging,production}.plist` (staging is the
-       committed default; these are client configs, same publicness class as the
-       web bundle's Firebase config).
-    2. The matching `REVERSED_CLIENT_ID` as a URL scheme in
-       `ios/App/App/Info.plist` (`CFBundleURLTypes`). Staging's is committed;
-       production's is
-       `com.googleusercontent.apps.432871424856-9chat3jb95e11snr7cf2f1vnkj2msdmq`.
-       A production build must swap BOTH (a `set-env.sh` is a planned follow-up).
+- Native side needs two per-environment pieces, switched together by
+  **`./set-env.sh staging|production`**: the bundled
+  `ios/App/App/GoogleService-Info.plist` (from `firebase/`, client configs —
+  same publicness class as the web Firebase config) and the matching
+  `REVERSED_CLIENT_ID` URL scheme in `Info.plist`. Staging is the committed
+  default. Note the web bundle is switched separately: a production shell
+  build needs the CI-built production web bundle, not a local
+  `build-web-webpack` (which uses the root `.env` = staging).
 
 The plist is referenced in `App.xcodeproj/project.pbxproj` as a bundled
 resource (ids `AB00DDEE...FF`).
