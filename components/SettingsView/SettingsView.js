@@ -40,6 +40,8 @@ import {
     DV_TAB_SETTINGS_SKILLS,
 } from '../../utils/TabNavigationConstants'
 import StripePremiumTab from '../Premium/PremiumTab/StripePremiumTab'
+import IapPremiumTab from '../Premium/PremiumTab/IapPremiumTab'
+import { isCapacitorIosShell } from '../../utils/CapacitorShell'
 import ExportTab from './Export/ExportTab'
 import MCPSettings from './MCP/MCPSettings'
 import IntegrationsSettings from './Integrations/IntegrationsSettings'
@@ -159,7 +161,9 @@ const SettingsView = ({ navigation }) => {
                                 case DV_TAB_SETTINGS_SHORTCUTS:
                                     return <ShortcutsSection />
                                 case DV_TAB_SETTINGS_PREMIUM:
-                                    return <StripePremiumTab />
+                                    // iOS shell: digital goods must go through Apple IAP
+                                    // (guideline 3.1.1) — same tab, StoreKit instead of Stripe.
+                                    return isCapacitorIosShell() ? <IapPremiumTab /> : <StripePremiumTab />
                                 case DV_TAB_SETTINGS_EXPORT:
                                     return <ExportTab />
                                 case DV_TAB_SETTINGS_MCP:
