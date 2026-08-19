@@ -11,7 +11,7 @@ import SharedHelper from '../../utils/SharedHelper'
 import useLinkedEmailArchive from './ChatDV/useLinkedEmailArchive'
 import { getLinkedEmailsFromMessages, getNewEmailCommentIds } from './ChatDV/linkedEmailActions'
 import { useRegisterUnreadLinkedEmails, useUnreadEmailArchiveContext } from './unreadEmailArchiveContext'
-import { CHAT_AVATAR_COLUMN_TOTAL_WIDTH } from './chatRowLayout'
+import { CHAT_AVATAR_COLUMN_TOTAL_WIDTH, CHAT_PREVIEW_MOBILE_GUTTER, CHAT_PREVIEW_RAIL_WIDTH } from './chatRowLayout'
 
 // How many unread messages a single row previews in full. A topic that has been running unattended
 // can hold dozens of long assistant answers, and "All Projects" stacks every project's rows on one
@@ -144,7 +144,7 @@ const localStyles = StyleSheet.create({
         marginTop: 4,
         // Aligns the preview with the topic title, which sits to the right of the row's avatar
         // column, and separates it from the title with a quiet rule rather than a box.
-        borderLeftWidth: 2,
+        borderLeftWidth: CHAT_PREVIEW_RAIL_WIDTH,
         borderLeftColor: colors.Gray300,
         paddingLeft: 12,
         marginLeft: 2,
@@ -160,8 +160,12 @@ const localStyles = StyleSheet.create({
         // untouched, and the space it moves into is empty by construction.
         marginLeft: -CHAT_AVATAR_COLUMN_TOTAL_WIDTH,
         // The rail stays, so the messages still read as belonging to the topic above them; only
-        // its gutter tightens, because there is no avatar column left to separate from.
-        paddingLeft: 8,
+        // its gutter changes, because there is no avatar column left to separate from. Stepping
+        // all the way out left the text 10px from the screen edge, which reads as flush rather
+        // than as part of the row (AT-2368): the gutter now puts the preview's first pixel of text
+        // on the list's own 16px margin, so it is balanced against the edge and against the rest
+        // of the row without giving back the width AT-2361 recovered.
+        paddingLeft: CHAT_PREVIEW_MOBILE_GUTTER,
     },
     hiddenCount: {
         ...styles.caption2,

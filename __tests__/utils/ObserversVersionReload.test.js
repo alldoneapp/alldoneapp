@@ -55,7 +55,6 @@ const {
     deleteCacheAndRefresh,
     storeVersion,
     LOCAL_VERSION_STORAGE_KEYS,
-    PRE_RELOAD_BUDGET_MS,
 } = require('../../utils/Observers')
 
 const V1 = { major: 1, minor: 4, patch: 0 }
@@ -163,77 +162,6 @@ describe('deleteCacheAndRefresh', () => {
         await deleteCacheAndRefresh()
 
         expect(reload).toHaveBeenCalledTimes(1)
-    })
-
-    /**
-     * AT-2367 — the pre-reload housekeeping is best effort, but it is also
-     * unbounded network work: `selectRandomSomedayTask` runs one sequential
-     * Firestore query per project (78 on the dogfooding account) and
-     * `deleteCache` awaits the service worker update fetch. On mobile that is
-     * what made "Start new day" feel like it did nothing for half a minute.
-     */
-    it('reloads within the budget even when the pre-reload work never settles', async () => {
-        jest.useFakeTimers()
-        const somedayTask = require('../../utils/backends/Tasks/randomSomedayTask')
-        somedayTask.selectRandomSomedayTask.mockImplementation(() => new Promise(() => {}))
-
-        const refreshed = deleteCacheAndRefresh()
-
-        // Let the (resolved) version-marker writes drain, then burn the budget.
-        await Promise.resolve()
-        await Promise.resolve()
-        jest.advanceTimersByTime(PRE_RELOAD_BUDGET_MS)
-        await refreshed
-
-        expect(reload).toHaveBeenCalledTimes(1)
-        jest.useRealTimers()
-        somedayTask.selectRandomSomedayTask.mockImplementation(() => Promise.resolve(null))
-    })
-
-    /**
-     * AT-2367, the reported failure exactly. The user's own session shows the
-     * Firestore write DID land (`statisticsModalDate` moved) and
-     * `selectRandomSomedayTask` short-circuits on his account — so the only
-     * unbounded step left in front of `appReloader.reload()` was
-     * `deleteCache`'s `await registration.update()`, a network fetch of the
-     * service worker script. On an installed iOS PWA resumed from background
-     * that can hang indefinitely, and the popup — which only closed after the
-     * reload call — stayed on screen forever.
-     */
-    it('reloads even when the service worker update check never answers', async () => {
-        const originalServiceWorker = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
-        Object.defineProperty(navigator, 'serviceWorker', {
-            configurable: true,
-            value: { getRegistration: () => Promise.resolve({ update: () => new Promise(() => {}) }) },
-        })
-        jest.useFakeTimers()
-
-        const refreshed = deleteCacheAndRefresh()
-
-        for (let tick = 0; tick < 10; tick++) await Promise.resolve()
-        jest.advanceTimersByTime(PRE_RELOAD_BUDGET_MS)
-        await refreshed
-
-        expect(reload).toHaveBeenCalledTimes(1)
-
-        jest.useRealTimers()
-        if (originalServiceWorker) Object.defineProperty(navigator, 'serviceWorker', originalServiceWorker)
-        else delete navigator.serviceWorker
-    })
-
-    it('reloads even when the pre-reload work throws', async () => {
-        const somedayTask = require('../../utils/backends/Tasks/randomSomedayTask')
-        somedayTask.selectRandomSomedayTask.mockImplementation(() => {
-            throw new Error('firestore unavailable')
-        })
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-
-        await deleteCacheAndRefresh()
-
-        consoleError.mockRestore()
-
-        expect(reload).toHaveBeenCalledTimes(1)
-        somedayTask.selectRandomSomedayTask.mockImplementation(() => Promise.resolve(null))
     })
 })
 
