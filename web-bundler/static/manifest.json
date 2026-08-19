@@ -22,6 +22,12 @@
             "src": "/pwa/chrome-icon/chrome-icon-512.png",
             "sizes": "512x512",
             "type": "image/png"
+        },
+        {
+            "src": "/pwa/chrome-icon/chrome-icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }
