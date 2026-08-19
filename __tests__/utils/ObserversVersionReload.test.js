@@ -190,6 +190,37 @@ describe('deleteCacheAndRefresh', () => {
         somedayTask.selectRandomSomedayTask.mockImplementation(() => Promise.resolve(null))
     })
 
+    /**
+     * AT-2367, the reported failure exactly. The user's own session shows the
+     * Firestore write DID land (`statisticsModalDate` moved) and
+     * `selectRandomSomedayTask` short-circuits on his account — so the only
+     * unbounded step left in front of `appReloader.reload()` was
+     * `deleteCache`'s `await registration.update()`, a network fetch of the
+     * service worker script. On an installed iOS PWA resumed from background
+     * that can hang indefinitely, and the popup — which only closed after the
+     * reload call — stayed on screen forever.
+     */
+    it('reloads even when the service worker update check never answers', async () => {
+        const originalServiceWorker = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
+        Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            value: { getRegistration: () => Promise.resolve({ update: () => new Promise(() => {}) }) },
+        })
+        jest.useFakeTimers()
+
+        const refreshed = deleteCacheAndRefresh()
+
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve()
+        jest.advanceTimersByTime(PRE_RELOAD_BUDGET_MS)
+        await refreshed
+
+        expect(reload).toHaveBeenCalledTimes(1)
+
+        jest.useRealTimers()
+        if (originalServiceWorker) Object.defineProperty(navigator, 'serviceWorker', originalServiceWorker)
+        else delete navigator.serviceWorker
+    })
+
     it('reloads even when the pre-reload work throws', async () => {
         const somedayTask = require('../../utils/backends/Tasks/randomSomedayTask')
         somedayTask.selectRandomSomedayTask.mockImplementation(() => {
