@@ -23,3 +23,11 @@ function getShellPlugin(name) {
 export function getNativeGoogleAuthPlugin() {
     return getShellPlugin('FirebaseAuthentication')
 }
+
+// Sign in with Apple is only offered on the iOS shell (App Store guideline
+// 4.8 requires it there; nowhere else does it make sense).
+export function isCapacitorIosShell() {
+    if (!isCapacitorShell()) return false
+    const cap = window.Capacitor
+    return typeof cap.getPlatform === 'function' && cap.getPlatform() === 'ios'
+}

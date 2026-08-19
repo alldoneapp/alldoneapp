@@ -880,7 +880,37 @@ export async function signInWithGoogleRedirect() {
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    return signInWithGoogleRedirectWeb(provider)
+}
 
+// Sign in with Apple — only reachable from the Capacitor iOS shell (the
+// login screen gates the button on isCapacitorIosShell). The native plugin
+// runs the AuthenticationServices flow and hands back an ID token + nonce;
+// the web Firebase SDK owns the session exactly as for Google.
+export async function signInWithAppleNative() {
+    const nativeAuth = getNativeGoogleAuthPlugin()
+    if (!nativeAuth) throw new Error('Apple sign-in requires the Capacitor shell')
+    let nativeResult
+    try {
+        nativeResult = await nativeAuth.signInWithApple()
+    } catch (error) {
+        // Closing the native sheet is a normal outcome, not a failure.
+        if (/cancel/i.test(error?.message || '') || error?.code === 'USER_CANCELLED') return null
+        throw error
+    }
+    const idToken = nativeResult?.credential?.idToken
+    if (!idToken) throw new Error('Native Apple sign-in returned no ID token')
+    const appleProvider = new firebase.auth.OAuthProvider('apple.com')
+    const credentials = appleProvider.credential({ idToken, rawNonce: nativeResult?.credential?.nonce })
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    const result = await firebase.auth().signInWithCredential(credentials)
+    if (result?.additionalUserInfo?.isNewUser) {
+        store.dispatch(setRegisteredNewUser(true))
+    }
+    return result?.user || null
+}
+
+async function signInWithGoogleRedirectWeb(provider) {
     const useRedirect = shouldUseGoogleRedirect({
         isMobile: isMobileDevice(),
         isLocalDev: isLocalDevHost(),
