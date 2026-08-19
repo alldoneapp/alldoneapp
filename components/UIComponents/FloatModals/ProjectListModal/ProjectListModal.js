@@ -58,7 +58,6 @@ export default function ProjectListModal({
     selectedProjectId,
     containerStyle,
     emptyText,
-    widthStyle,
 }) {
     const dispatch = useDispatch()
     const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
@@ -177,10 +176,6 @@ export default function ProjectListModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 { maxHeight: getSafeAreaModalMaxHeight(height) },
-                // AT-2364: an optional width override for callers that host this
-                // picker inside a popup of their own width (the wide add-task
-                // popup), so switching to the picker cannot resize the popup.
-                widthStyle,
                 containerStyle,
             ]}
         >

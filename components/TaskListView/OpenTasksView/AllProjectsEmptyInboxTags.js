@@ -5,6 +5,7 @@ import { useSelector, shallowEqual } from 'react-redux'
 import ProjectTag from '../../Tags/ProjectTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { PROJECT_TYPE_ACTIVE, PROJECT_TYPE_GUIDE } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
+import AllProjectsEmptyInboxSelectProjectText from './AllProjectsEmptyInboxSelectProjectText'
 
 export default function AllProjectsEmptyInboxTags() {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -23,14 +24,17 @@ export default function AllProjectsEmptyInboxTags() {
     ]
 
     return (
-        <View style={localStyles.projectsTags}>
-            {sortedActiveProjects.map(project => {
-                const loggedUserIsAdmin = ProjectHelper.checkIfLoggedUserIsAdminUserInGuide(project)
-                return loggedUserIsAdmin ? null : (
-                    <ProjectTag key={project.id} project={project} style={localStyles.projectTag} />
-                )
-            })}
-        </View>
+        <>
+            <AllProjectsEmptyInboxSelectProjectText />
+            <View style={localStyles.projectsTags}>
+                {sortedActiveProjects.map(project => {
+                    const loggedUserIsAdmin = ProjectHelper.checkIfLoggedUserIsAdminUserInGuide(project)
+                    return loggedUserIsAdmin ? null : (
+                        <ProjectTag key={project.id} project={project} style={localStyles.projectTag} />
+                    )
+                })}
+            </View>
+        </>
     )
 }
 

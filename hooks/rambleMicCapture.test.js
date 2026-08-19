@@ -9,7 +9,6 @@
 import {
     CAPTURE_MODE_PROCESSED,
     CAPTURE_MODE_RAW,
-    MAX_FALLBACK_DEVICES,
     MIC_MODE_AUTO,
     MIC_MODE_COMPATIBILITY,
     MIC_MODE_STANDARD,
@@ -24,34 +23,27 @@ import {
     isSilentCapture,
     isTrackMuted,
     isWorkaroundActive,
-    listAudioInputDevices,
     readLearnedCaptureMode,
-    readLearnedInputDevice,
     readMicModeSetting,
-    readPreferredInputDevice,
     rememberLearnedCaptureMode,
-    rememberLearnedInputDevice,
     waitForInputSignal,
     writeMicModeSetting,
-    writePreferredInputDevice,
 } from './rambleMicCapture'
 
 const buildStream = (overrides = {}) => {
-    const { deviceId = 'default', groupId = '', ...trackOverrides } = overrides
+    const { deviceId = 'default', ...trackOverrides } = overrides
     return {
         getAudioTracks: () => [
             {
                 label: 'MacBook Pro Microphone',
                 muted: false,
-                getSettings: () => ({ deviceId, groupId }),
+                getSettings: () => ({ deviceId }),
                 ...trackOverrides,
             },
         ],
         getTracks: () => [{ stop: jest.fn() }],
     }
 }
-
-const RAW_CONSTRAINTS = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
 
 // Minimal Web Audio stand-in: `samples` is what the analyser hands back on each read.
 const installAudioContext = samples => {
@@ -88,18 +80,10 @@ afterEach(() => {
 describe('buildAudioConstraints', () => {
     test('processed keeps the browser defaults, raw disables the processing chain', () => {
         expect(buildAudioConstraints(CAPTURE_MODE_PROCESSED)).toBe(true)
-        expect(buildAudioConstraints(CAPTURE_MODE_RAW)).toEqual(RAW_CONSTRAINTS)
-    })
-
-    test('a device is pinned with `exact`, never merely preferred', () => {
-        // `ideal` would let the browser silently substitute another microphone, which is the exact
-        // failure this constraint exists to prevent.
-        expect(buildAudioConstraints(CAPTURE_MODE_PROCESSED, 'webcam-1')).toEqual({
-            deviceId: { exact: 'webcam-1' },
-        })
-        expect(buildAudioConstraints(CAPTURE_MODE_RAW, 'webcam-1')).toEqual({
-            deviceId: { exact: 'webcam-1' },
-            ...RAW_CONSTRAINTS,
+        expect(buildAudioConstraints(CAPTURE_MODE_RAW)).toEqual({
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
         })
     })
 })
@@ -160,76 +144,6 @@ describe('mic mode setting and the learned workaround', () => {
     })
 })
 
-describe('input device preference', () => {
-    test('the chosen device round-trips and clears back to the browser default', () => {
-        expect(readPreferredInputDevice()).toBeNull()
-        writePreferredInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
-        expect(readPreferredInputDevice()).toEqual({ deviceId: 'webcam-1', label: 'HD Webcam' })
-        writePreferredInputDevice(null)
-        expect(readPreferredInputDevice()).toBeNull()
-    })
-
-    test('choosing a device by hand discards everything automatic had learned', () => {
-        rememberLearnedCaptureMode({ deviceId: 'builtin-1' })
-        rememberLearnedInputDevice({ deviceId: 'builtin-1', label: 'Built-in' })
-
-        writePreferredInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
-
-        expect(readLearnedCaptureMode()).toBeNull()
-        expect(readLearnedInputDevice()).toBeNull()
-    })
-
-    test('a record without a device id is not a selection', () => {
-        localStorage.setItem('rambler.micDevice', JSON.stringify({ label: 'Ghost' }))
-        expect(readPreferredInputDevice()).toBeNull()
-        localStorage.setItem('rambler.inputDevice', '{not json')
-        expect(readLearnedInputDevice()).toBeNull()
-    })
-})
-
-describe('listAudioInputDevices', () => {
-    const withMediaDevices = async (mediaDevices, assertion) => {
-        const original = navigator.mediaDevices
-        Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: mediaDevices })
-        try {
-            await assertion()
-        } finally {
-            Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
-        }
-    }
-
-    test('returns only audio inputs, and an empty list rather than throwing', async () => {
-        await withMediaDevices(
-            {
-                enumerateDevices: async () => [
-                    { kind: 'audioinput', deviceId: 'mic-1', label: 'Mic', groupId: 'g1' },
-                    { kind: 'videoinput', deviceId: 'cam-1', label: 'Cam', groupId: 'g2' },
-                    { kind: 'audiooutput', deviceId: 'out-1', label: 'Speakers', groupId: 'g3' },
-                ],
-            },
-            async () => {
-                await expect(listAudioInputDevices()).resolves.toEqual([
-                    { deviceId: 'mic-1', label: 'Mic', groupId: 'g1' },
-                ])
-            }
-        )
-
-        await withMediaDevices(
-            {
-                enumerateDevices: async () => {
-                    throw new Error('not allowed')
-                },
-            },
-            async () => {
-                await expect(listAudioInputDevices()).resolves.toEqual([])
-            }
-        )
-
-        // No mediaDevices at all (jsdom, insecure origin) must not throw either.
-        await expect(listAudioInputDevices()).resolves.toEqual([])
-    })
-})
-
 describe('installDeviceChangeInvalidation', () => {
     test('a device change retires the learned workaround', () => {
         const listeners = {}
@@ -244,12 +158,8 @@ describe('installDeviceChangeInvalidation', () => {
 
         const uninstall = installDeviceChangeInvalidation()
         rememberLearnedCaptureMode({ deviceId: 'webcam-1' })
-        rememberLearnedInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
         listeners.devicechange()
         expect(readLearnedCaptureMode()).toBeNull()
-        // The learned DEVICE has to go too: plugging in headphones is exactly when "record from the
-        // webcam instead" stops being the right answer.
-        expect(readLearnedInputDevice()).toBeNull()
 
         uninstall()
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: original })
@@ -384,22 +294,7 @@ describe('acquireDictationStream', () => {
             resume() {}
             close() {}
         }
-        // `streams` (when given) maps 1:1 onto the acquisitions, so a case can hand back a different
-        // device per call — which is what the walk across inputs is made of.
-        let call = -1
-        const requestStream = jest.fn(async constraints => {
-            call += 1
-            const requestedId = constraints?.deviceId?.exact
-            if (options.unavailableDeviceIds?.includes(requestedId)) {
-                const error = new Error('device gone')
-                error.name = 'OverconstrainedError'
-                throw error
-            }
-            const overrides = options.streams
-                ? options.streams[Math.min(call, options.streams.length - 1)]
-                : options.streamOverrides
-            return buildStream(overrides)
-        })
+        const requestStream = jest.fn(async () => buildStream(options.streamOverrides))
         return { requestStream, run: () => acquireDictationStream({ requestStream, ...options.args }) }
     }
 
@@ -418,10 +313,11 @@ describe('acquireDictationStream', () => {
         const result = await run()
 
         expect(requestStream).toHaveBeenCalledTimes(2)
-        // PINNED to the device we just measured: an unconstrained second call is free to resolve to
-        // different hardware, which would make the probe's verdict about one mic and the recording
-        // about another.
-        expect(requestStream).toHaveBeenNthCalledWith(2, { deviceId: { exact: 'webcam-1' }, ...RAW_CONSTRAINTS })
+        expect(requestStream).toHaveBeenNthCalledWith(2, {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+        })
         expect(result.captureMode).toBe(CAPTURE_MODE_RAW)
         expect(readLearnedCaptureMode()).toEqual(
             expect.objectContaining({ mode: CAPTURE_MODE_RAW, deviceId: 'webcam-1' })
@@ -429,13 +325,12 @@ describe('acquireDictationStream', () => {
     })
 
     test('silent processed AND silent raw is not attributed to the processing path', async () => {
-        const { run } = acquire([0, 0], { args: { enumerateDevices: async () => [] } })
+        const { run } = acquire([0, 0])
         const result = await run()
 
         expect(result.captureMode).toBe(CAPTURE_MODE_RAW)
         // Nothing proved the workaround helps, so nothing is remembered for next time.
         expect(readLearnedCaptureMode()).toBeNull()
-        expect(result.switchedDevice).toBe(false)
     })
 
     test('a remembered workaround is reused without probing while the device is the same', async () => {
@@ -485,116 +380,6 @@ describe('acquireDictationStream', () => {
 
         expect(requestStream).toHaveBeenCalledTimes(2)
         expect(result.captureMode).toBe(CAPTURE_MODE_RAW)
-    })
-
-    test('a dead device is escaped by recording from another input, which is remembered', async () => {
-        // The reported failure: the browser hands us the built-in mic (silent both ways) while the
-        // microphone the user actually selected sits right next to it in the device list.
-        const { requestStream, run } = acquire([0, 0, 0.3], {
-            streams: [
-                { deviceId: 'builtin-1', groupId: 'g-builtin' },
-                { deviceId: 'builtin-1', groupId: 'g-builtin' },
-                { deviceId: 'webcam-1', groupId: 'g-webcam', label: 'HD Webcam' },
-            ],
-            args: {
-                enumerateDevices: async () => [
-                    { deviceId: 'default', label: 'Default - MacBook Pro Microphone', groupId: 'g-builtin' },
-                    { deviceId: 'builtin-1', label: 'MacBook Pro Microphone', groupId: 'g-builtin' },
-                    { deviceId: 'webcam-1', label: 'HD Webcam', groupId: 'g-webcam' },
-                ],
-            },
-        })
-        const result = await run()
-
-        // The alias entry and the device we already measured are not re-tested; only the webcam is.
-        expect(requestStream).toHaveBeenCalledTimes(3)
-        expect(requestStream).toHaveBeenNthCalledWith(3, { deviceId: { exact: 'webcam-1' }, ...RAW_CONSTRAINTS })
-        expect(result.switchedDevice).toBe(true)
-        expect(result.deviceId).toBe('webcam-1')
-        expect(readLearnedInputDevice()).toEqual({ deviceId: 'webcam-1', label: 'HD Webcam' })
-        // Next recording starts on the working device instead of paying the walk again.
-        expect(readLearnedCaptureMode()).toEqual(expect.objectContaining({ deviceId: 'webcam-1' }))
-        expect(result.triedDevices.map(device => device.deviceId)).toEqual(['builtin-1', 'webcam-1'])
-    })
-
-    test('a device that cannot be opened only costs its own turn in the walk', async () => {
-        const { requestStream, run } = acquire([0, 0, 0.3], {
-            unavailableDeviceIds: ['busy-1'],
-            streams: [{ deviceId: 'builtin-1' }, { deviceId: 'builtin-1' }, { deviceId: 'webcam-1', label: 'Webcam' }],
-            args: {
-                enumerateDevices: async () => [
-                    { deviceId: 'busy-1', label: 'Busy mic', groupId: 'g-busy' },
-                    { deviceId: 'webcam-1', label: 'Webcam', groupId: 'g-webcam' },
-                ],
-            },
-        })
-        const result = await run()
-
-        // The busy device raised OverconstrainedError; the walk moved on rather than aborting, and
-        // the pinned retry that would have re-measured the built-in mic never happened.
-        expect(result.switchedDevice).toBe(true)
-        expect(result.deviceId).toBe('webcam-1')
-        expect(requestStream).toHaveBeenCalledTimes(4)
-    })
-
-    test('the walk stops after MAX_FALLBACK_DEVICES so a broken machine cannot stall the user', async () => {
-        const { requestStream, run } = acquire([0], {
-            streams: [{ deviceId: 'builtin-1' }],
-            args: {
-                enumerateDevices: async () =>
-                    Array.from({ length: 8 }, (unused, index) => ({
-                        deviceId: `mic-${index}`,
-                        label: `Mic ${index}`,
-                        groupId: `g-${index}`,
-                    })),
-            },
-        })
-        const result = await run()
-
-        // processed + pinned raw on the original device, then at most three candidates.
-        expect(requestStream).toHaveBeenCalledTimes(2 + MAX_FALLBACK_DEVICES)
-        expect(result.switchedDevice).toBe(false)
-        expect(readLearnedInputDevice()).toBeNull()
-    })
-
-    test('a device chosen by hand is used, and never walked away from', async () => {
-        writePreferredInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
-        const enumerateDevices = jest.fn(async () => [{ deviceId: 'builtin-1', label: 'Built-in', groupId: 'g-b' }])
-        const { requestStream, run } = acquire([0, 0], {
-            streams: [{ deviceId: 'webcam-1' }],
-            args: { enumerateDevices },
-        })
-        const result = await run()
-
-        expect(requestStream).toHaveBeenNthCalledWith(1, { deviceId: { exact: 'webcam-1' } })
-        // Silent both ways, but an explicit choice is obeyed as written: no other device is opened.
-        expect(enumerateDevices).not.toHaveBeenCalled()
-        expect(result.switchedDevice).toBe(false)
-        expect(result.captureMode).toBe(CAPTURE_MODE_RAW)
-    })
-
-    test('a remembered device that is gone falls back instead of failing the recording', async () => {
-        rememberLearnedInputDevice({ deviceId: 'webcam-1', label: 'HD Webcam' })
-        const { requestStream, run } = acquire([0.3], {
-            unavailableDeviceIds: ['webcam-1'],
-            streams: [{ deviceId: 'builtin-1' }],
-        })
-        const result = await run()
-
-        expect(requestStream).toHaveBeenNthCalledWith(1, { deviceId: { exact: 'webcam-1' } })
-        expect(requestStream).toHaveBeenNthCalledWith(2, true)
-        expect(result.deviceId).toBe('builtin-1')
-        // The unplugged device is not remembered any longer.
-        expect(readLearnedInputDevice()).toBeNull()
-    })
-
-    test('a getUserMedia rejection that is not about the device still reaches the caller', async () => {
-        const requestStream = jest.fn(async () => {
-            const error = new Error('denied')
-            error.name = 'NotAllowedError'
-            throw error
-        })
-        await expect(acquireDictationStream({ requestStream })).rejects.toThrow('denied')
     })
 
     test('without Web Audio the capture is treated as healthy and left alone', async () => {
