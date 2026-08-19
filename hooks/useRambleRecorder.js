@@ -4,9 +4,10 @@ import {
     CAPTURE_MODE_PROCESSED,
     MIC_MODE_AUTO,
     acquireDictationStream,
-    forgetLearnedCaptureMode,
+    forgetLearnedCapture,
     installDeviceChangeInvalidation,
     isSilentCapture,
+    rememberLastUsedInputDevice,
     rememberLearnedCaptureMode,
 } from './rambleMicCapture'
 
@@ -47,11 +48,13 @@ export function isDictationSupported() {
 
 /**
  * @param {{
- *   onComplete: (audio: { audioBase64: string, mimeType: string, durationSeconds: number }) => void,
+ *   onComplete: (
+ *     audio: { audioBase64: string, mimeType: string, durationSeconds: number, deviceLabel?: string },
+ *   ) => void,
  *   onError: (
  *     code: 'permission-denied' | 'too-large' | 'not-supported' | 'recorder-error'
  *         | 'silent-input-retry' | 'silent-input',
- *     details?: { deviceLabel?: string, captureMode?: string, peak?: number },
+ *     details?: { deviceLabel?: string, captureMode?: string, peak?: number, triedDeviceLabels?: string[] },
  *   ) => void,
  * }} options
  */
@@ -72,6 +75,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const micModeSettingRef = useRef(MIC_MODE_AUTO)
     const deviceIdRef = useRef('')
     const deviceLabelRef = useRef('')
+    const triedDevicesRef = useRef([])
 
     const onCompleteRef = useRef(onComplete)
     onCompleteRef.current = onComplete
@@ -140,7 +144,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
             onErrorRef.current?.('permission-denied')
             return
         }
-        const { stream, monitor, captureMode, setting, deviceId, deviceLabel } = acquired
+        const { stream, monitor, captureMode, setting, deviceId, deviceLabel, triedDevices, switchedDevice } = acquired
 
         const mimeType = pickSupportedMimeType()
         let recorder
@@ -158,6 +162,16 @@ export default function useRambleRecorder({ onComplete, onError }) {
         micModeSettingRef.current = setting
         deviceIdRef.current = deviceId
         deviceLabelRef.current = deviceLabel
+        triedDevicesRef.current = triedDevices || []
+        // Diagnostic only: the Settings picker shows this so "System default" is not a black box.
+        // Which microphone the browser hands us is otherwise only visible in the DevTools console.
+        rememberLastUsedInputDevice({ deviceId, label: deviceLabel })
+        if (switchedDevice) {
+            // Worth a line of its own: from here on the recording is NOT coming from the microphone
+            // the browser would have chosen, which is the single most confusing thing about this
+            // failure class when it is reported.
+            console.log('[rambler] switched input device', { deviceLabel, deviceId, tried: triedDevices })
+        }
         cancelledRef.current = false
         chunksRef.current = []
         mimeTypeRef.current = recorder.mimeType || mimeType || 'audio/webm'
@@ -186,6 +200,7 @@ export default function useRambleRecorder({ onComplete, onError }) {
             const usedMicModeSetting = micModeSettingRef.current
             const usedDeviceId = deviceIdRef.current
             const deviceLabel = deviceLabelRef.current
+            const triedDeviceLabels = (triedDevicesRef.current || []).map(device => device.label).filter(Boolean)
             cleanup()
             if (wasCancelled) return
 
@@ -201,12 +216,14 @@ export default function useRambleRecorder({ onComplete, onError }) {
                 captureMode: usedCaptureMode,
                 peak,
                 deviceLabel,
+                deviceId: usedDeviceId,
+                triedDeviceLabels,
                 blobBytes: blob.size,
                 durationSeconds,
             })
             if (isSilentCapture(peak)) {
                 // Never upload silence: it costs Gold and comes back as "No speech detected".
-                const details = { deviceLabel, captureMode: usedCaptureMode, peak }
+                const details = { deviceLabel, captureMode: usedCaptureMode, peak, triedDeviceLabels }
                 // An explicit user setting is reported, never overridden — the whole point of the
                 // setting is that the automatic path stops making decisions for them.
                 if (usedMicModeSetting !== MIC_MODE_AUTO) {
@@ -217,9 +234,10 @@ export default function useRambleRecorder({ onComplete, onError }) {
                     rememberLearnedCaptureMode({ deviceId: usedDeviceId, deviceLabel })
                     onErrorRef.current?.('silent-input-retry', details)
                 } else {
-                    // Raw capture is silent too, so the remembered workaround is not the answer
-                    // here — drop it rather than keeping a degraded mode forever.
-                    forgetLearnedCaptureMode()
+                    // Raw capture is silent too, so neither the remembered mode nor the remembered
+                    // device is the answer here — drop both rather than keeping a degraded, wrong
+                    // configuration forever. The next recording starts from a clean slate.
+                    forgetLearnedCapture()
                     onErrorRef.current?.('silent-input', details)
                 }
                 return
@@ -235,6 +253,10 @@ export default function useRambleRecorder({ onComplete, onError }) {
                         audioBase64: reader.result,
                         mimeType: recordedMimeType,
                         durationSeconds,
+                        // Carried through so a server-side "no speech" can name the microphone it
+                        // actually listened to: a device that is alive but WRONG passes every local
+                        // check — it records the room while the user talks into another mic.
+                        deviceLabel,
                     })
                 } else {
                     onErrorRef.current?.('recorder-error')

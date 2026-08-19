@@ -6,6 +6,7 @@ import styles, { colors } from '../../../styles/global'
 import { resolveAssistantTemplateConflicts } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
+import { getAssistantTemplateReviewLabelKey } from './templateReview'
 
 const FIELD_LABEL_KEYS = {
     displayName: 'Name',
@@ -73,10 +74,7 @@ export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
                 <View style={localStyles.statusCopy}>
                     {!!conflicts.length && (
                         <Text style={localStyles.reviewCount}>
-                            {conflicts.length}{' '}
-                            {translate(
-                                conflicts.length === 1 ? 'template change needs review' : 'template changes need review'
-                            )}
+                            {conflicts.length} {translate(getAssistantTemplateReviewLabelKey(conflicts.length))}
                         </Text>
                     )}
                     <Text style={localStyles.status}>{syncedLabel}</Text>
