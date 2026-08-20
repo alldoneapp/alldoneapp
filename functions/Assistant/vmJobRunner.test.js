@@ -2732,6 +2732,7 @@ describe('VM runner origin-conversation completion note', () => {
                 sourceProjectId: 'project-1',
                 sourceObjectId: 'host-task-1',
                 sourceObjectType: 'tasks',
+                sourceLabel: 'From your VM task',
                 // Stable across runner retries and the reconciliation pass.
                 sourceCommentId: 'vmJob:correlation-1:completed',
             })

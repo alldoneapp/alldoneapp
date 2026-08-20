@@ -928,6 +928,19 @@ verbatim into the daily topic via the canonical `getOrCreateWhatsAppDailyTopic` 
 one comment, the same shape a live WhatsApp reply writes, which is why `getConversationHistory`
 picks it up with no change.
 
+**The comment leads with a source header the model never sees.** A mirrored result lands in a
+thread the user never opened, so it needs to say where it came from: one line naming the task
+(`📋 From your recurring task "Daily Market Analysis"`) plus a link back to its own thread, in the
+plain-text-and-emoji house style of the other server-authored notices. But a recognisable prefix
+on a **previous assistant turn** is exactly the pattern the next answer copies — the AT-2241
+mimicry that is already why `getConversationHistory` refuses to timestamp assistant turns — and
+here the user would read that mimicry on WhatsApp. So the mirror stores the bare result alongside
+the headed text as `contextCommentText`, and `getConversationHistory` prefers that field for
+assistant turns. Nothing is lost: the header describes where the answer came from, not what it
+says. The Chats-list preview (`previewText`) also stays on the answer rather than the header's
+URL, which reads badly in one line. A mirror written without a `sourceLabel` gets neither field —
+`contextCommentText` is only set when there is a header to strip.
+
 Four things are load-bearing. **The destination project is the user's `defaultProjectId`, not the
 project the task ran in** — mirroring into the task's project would recreate the bug in a topic
 nobody reads. **The mirror is silent**: it never touches `lastAssistantCommentData` and creates no
