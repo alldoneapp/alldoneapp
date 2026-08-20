@@ -955,6 +955,14 @@ export const setConnectionState = connectionState => {
     return action
 }
 
+export const setConnectionHealth = connectionHealth => {
+    const action = {
+        type: 'Set connection health',
+        connectionHealth,
+    }
+    return action
+}
+
 export const setShowNewDayNotification = show => {
     const action = {
         type: 'Set show new day notification',

@@ -2262,5 +2262,12 @@
     "Restore purchases": "Käufe wiederherstellen",
     "Need more Gold?": "Mehr Gold benötigt?",
     "Buy 10000 Gold": "10.000 Gold kaufen",
-    "Manage subscription in App Store": "Du kannst dein Abo in den Kontoeinstellungen des App Store verwalten oder kündigen."
+    "Manage subscription in App Store": "Du kannst dein Abo in den Kontoeinstellungen des App Store verwalten oder kündigen.",
+    "Reconnecting": "Verbinde neu",
+    "Not up to date": "Nicht aktuell",
+    "Offline": "Offline",
+    "Reconnect now": "Jetzt neu verbinden",
+    "Alldone is checking the connection to the server. This usually takes a few seconds.": "Alldone prüft die Verbindung zum Server. Das dauert normalerweise ein paar Sekunden.",
+    "Alldone cannot reach the server right now, so what you see may be out of date. You can keep working — your changes are saved and will sync as soon as the connection is back.": "Alldone erreicht den Server gerade nicht, daher können die angezeigten Daten veraltet sein. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald die Verbindung wieder steht.",
+    "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Dein Gerät hat keine Internetverbindung. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald du wieder online bist."
 }

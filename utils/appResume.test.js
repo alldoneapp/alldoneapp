@@ -1,0 +1,178 @@
+/** @jest-environment jsdom */
+
+import { installAppResumeListener } from './appResume'
+
+const createEventTarget = (extra = {}) => {
+    const listeners = {}
+    return {
+        ...extra,
+        addEventListener: (type, fn) => {
+            listeners[type] = listeners[type] || []
+            listeners[type].push(fn)
+        },
+        removeEventListener: (type, fn) => {
+            listeners[type] = (listeners[type] || []).filter(listener => listener !== fn)
+        },
+        emit: type => (listeners[type] || []).forEach(fn => fn()),
+        listenerCount: type => (listeners[type] || []).length,
+    }
+}
+
+const setup = ({ startAt = 100000 } = {}) => {
+    let clock = startAt
+    const windowObject = createEventTarget()
+    const documentObject = createEventTarget({ visibilityState: 'visible' })
+    const resumes = []
+    const calls = { connection: [], integrity: 0, serviceWorker: 0 }
+
+    const stop = installAppResumeListener({
+        windowObject,
+        documentObject,
+        navigatorObject: {},
+        now: () => clock,
+        onResume: event => resumes.push(event),
+        evaluateConnection: hiddenMs => calls.connection.push(hiddenMs),
+        runIntegrityCheck: () => calls.integrity++,
+        updateServiceWorker: () => calls.serviceWorker++,
+    })
+
+    return {
+        windowObject,
+        documentObject,
+        resumes,
+        calls,
+        stop,
+        advance: ms => {
+            clock += ms
+        },
+        hide: () => {
+            documentObject.visibilityState = 'hidden'
+            documentObject.emit('visibilitychange')
+        },
+        show: () => {
+            documentObject.visibilityState = 'visible'
+            documentObject.emit('visibilitychange')
+        },
+    }
+}
+
+describe('installAppResumeListener', () => {
+    it('does nothing and returns a noop without a window', () => {
+        const stop = installAppResumeListener({ windowObject: undefined })
+        expect(typeof stop).toBe('function')
+        stop()
+    })
+
+    it('reports ONE resume when all three browser signals fire for the same return', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+
+        // A bfcache restore genuinely emits these together.
+        harness.show()
+        harness.windowObject.emit('pageshow')
+        harness.windowObject.emit('focus')
+
+        expect(harness.resumes).toHaveLength(1)
+        expect(harness.calls.connection).toHaveLength(1)
+        harness.stop()
+    })
+
+    it('treats two genuinely separate returns as two resumes', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+        harness.show()
+
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+        harness.show()
+
+        expect(harness.resumes).toHaveLength(2)
+        harness.stop()
+    })
+
+    it('does nothing at all for a short absence', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(5000)
+        harness.show()
+
+        expect(harness.resumes).toHaveLength(0)
+        expect(harness.calls.connection).toHaveLength(0)
+        expect(harness.calls.integrity).toBe(0)
+        expect(harness.calls.serviceWorker).toBe(0)
+        harness.stop()
+    })
+
+    it('probes the connection but skips the integrity check for a medium absence', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(2 * 60 * 1000)
+        harness.show()
+
+        expect(harness.calls.connection).toEqual([2 * 60 * 1000])
+        expect(harness.calls.integrity).toBe(0)
+        expect(harness.calls.serviceWorker).toBe(0)
+        harness.stop()
+    })
+
+    it('also re-runs the integrity check after a long absence', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+        harness.show()
+
+        expect(harness.calls.connection).toHaveLength(1)
+        expect(harness.calls.integrity).toBe(1)
+        expect(harness.calls.serviceWorker).toBe(0)
+        harness.stop()
+    })
+
+    it('also asks the service worker for a new build after a very long absence', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(3 * 60 * 60 * 1000)
+        harness.show()
+
+        expect(harness.calls.connection).toHaveLength(1)
+        expect(harness.calls.integrity).toBe(1)
+        expect(harness.calls.serviceWorker).toBe(1)
+        harness.stop()
+    })
+
+    it('starts the clock when the app goes away, not when it was last used', () => {
+        const harness = setup()
+        // Time passes while the app is visible and in use — that is not an absence.
+        harness.advance(10 * 60 * 1000)
+        harness.hide()
+        harness.advance(1000)
+        harness.show()
+
+        expect(harness.resumes).toHaveLength(0)
+        harness.stop()
+    })
+
+    it('reports the absence duration to its observers', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(7 * 60 * 1000)
+        harness.show()
+
+        expect(harness.resumes[0].hiddenMs).toBe(7 * 60 * 1000)
+        harness.stop()
+    })
+
+    it('removes every listener on uninstall', () => {
+        const harness = setup()
+        expect(harness.documentObject.listenerCount('visibilitychange')).toBe(1)
+        expect(harness.windowObject.listenerCount('pageshow')).toBe(1)
+        expect(harness.windowObject.listenerCount('focus')).toBe(1)
+
+        harness.stop()
+
+        expect(harness.documentObject.listenerCount('visibilitychange')).toBe(0)
+        expect(harness.windowObject.listenerCount('pageshow')).toBe(0)
+        expect(harness.windowObject.listenerCount('focus')).toBe(0)
+    })
+})

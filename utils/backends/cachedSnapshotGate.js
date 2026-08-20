@@ -32,6 +32,7 @@
  */
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
+import { markServerContact } from '../connectionHealth'
 
 export const CACHED_SNAPSHOT_GRACE_MS = 4000
 
@@ -91,6 +92,12 @@ export const createCachedSnapshotGate = (
         // not re-arm the timer.
         if (metadata.isGateFlush) return false
         if (!metadata.fromCache) {
+            // A non-cached snapshot is the app's only positive proof that the
+            // Firestore transport is alive right now — the gate is the one place
+            // that already distinguishes server from cache, so connection health
+            // reads its evidence from here rather than adding a second listener
+            // (PT-4660).
+            markServerContact('snapshot')
             clearGraceTimer()
             latestSnapshot = null
             return false
