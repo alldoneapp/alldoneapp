@@ -48,6 +48,8 @@ import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
 import { installConnectionStateListener } from './utils/connectionState'
+import { installConnectionHealthMonitor } from './utils/connectionHealth'
+import { installAppResumeListener } from './utils/appResume'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 
 const onLayoutChange = layout => {
@@ -226,6 +228,13 @@ export class AppContainer extends React.Component {
         // `connectionState` redux slice from the browser online/offline events.
         // Installed here for the same reason as the listeners above.
         this.stopConnectionStateListener = installConnectionStateListener()
+        // Connection health (PT-4660): `connectionState` above only reports what the
+        // BROWSER believes. These two add what the app can actually prove — a resume
+        // signal that coalesces visibilitychange/pageshow/focus into one event, and a
+        // monitor that probes the server when the connection looks suspect. Installed
+        // here for the same reason as the listeners above.
+        this.stopConnectionHealthMonitor = installConnectionHealthMonitor()
+        this.stopAppResumeListener = installAppResumeListener()
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -245,6 +254,8 @@ export class AppContainer extends React.Component {
         this.stopVirtualKeyboardViewport && this.stopVirtualKeyboardViewport()
         this.stopEscapeStack && this.stopEscapeStack()
         this.stopConnectionStateListener && this.stopConnectionStateListener()
+        this.stopConnectionHealthMonitor && this.stopConnectionHealthMonitor()
+        this.stopAppResumeListener && this.stopAppResumeListener()
     }
 
     // Feeds every press on the page into the dismissible-modal system with the

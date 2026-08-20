@@ -38,6 +38,12 @@ const ALLOWED_EVENTS = new Set([
     'quota_threshold_reached',
     'focus_changed',
     'account_deleted',
+    // Connection health (PT-4660). This Set is an ALLOWLIST — normalizeAnalyticsEvent
+    // returns null by default, so an event missing here is silently dropped rather
+    // than reported, with nothing failing anywhere to reveal it.
+    'connection_health_change',
+    'connection_stale_detected',
+    'connection_manual_reconnect',
 ])
 
 const ALLOWED_PARAMETERS = new Set([
@@ -64,6 +70,14 @@ const ALLOWED_PARAMETERS = new Set([
     'page_title',
     'page_path',
     'page_location',
+    // Connection health (PT-4660) — sanitizeAnalyticsParameters drops any key not
+    // listed here, so the events above would arrive empty without them.
+    'state_from',
+    'state_to',
+    'trigger',
+    'duration_ms',
+    'browser_online',
+    'outcome',
 ])
 
 const OBJECT_EVENT_TYPES = {

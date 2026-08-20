@@ -165,6 +165,10 @@ export const initialState = {
     // '' until the first observed transition, then 'offline' | 'online' ('online' only
     // ever set as a recovery from 'offline' — see utils/connectionState.js)
     connectionState: '',
+    // 'live' | 'reconnecting' | 'stale' | 'offline' — what the app can PROVE about
+    // the server connection, as opposed to what the browser claims (PT-4660).
+    // Starts 'live': every uncertain path resolves to live, including boot.
+    connectionHealth: 'live',
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     noteChangedNotification: false,
@@ -1064,6 +1068,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, screenDimensions: action.screenDimensions }
         case 'Set connection state':
             return { ...state, connectionState: action.connectionState }
+        case 'Set connection health':
+            return { ...state, connectionHealth: action.connectionHealth }
         case 'Set show new day notification':
             return { ...state, showNewDayNotification: action.show }
         case 'Show note changed notification':

@@ -1,4 +1,5 @@
 // Config file
+import { runExclusiveFirestoreRestart } from './firestoreRestartLease'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import * as Y from 'yjs'
@@ -978,7 +979,14 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
     if (!db) return Promise.reject(new Error('Firebase db is not initialized'))
     if (firestoreNetworkRestartPromise) return firestoreNetworkRestartPromise
 
-    firestoreNetworkRestartPromise = (async () => {
+    // Mutual exclusion is delegated to the shared lease (PT-4660): the boot integrity
+    // healer and connection health restart this same transport, and interleaved
+    // disable/enable pairs resolve in SDK call order — one ordering parks the network
+    // for the rest of the session while every caller believes it restored it. A restart
+    // already in flight is joined rather than duplicated, which is what the local
+    // coalescing promise below still does for repeat callers of THIS function.
+    let capturedError = null
+    firestoreNetworkRestartPromise = runExclusiveFirestoreRestart(async () => {
         let networkDisabled = false
         try {
             await db.disableNetwork()
@@ -987,6 +995,7 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
             networkDisabled = false
             console.warn(`[Firestore] Restarted the realtime connection to ${reason}`)
         } catch (error) {
+            capturedError = error
             // Never leave the whole app intentionally offline just because the restart failed
             // halfway through. A second enable is harmless if the first one partially succeeded.
             if (networkDisabled) {
@@ -998,9 +1007,16 @@ export function restartFirestoreNetwork(reason = 'recover inconsistent reads') {
             }
             throw error
         }
-    })().finally(() => {
-        firestoreNetworkRestartPromise = null
     })
+        .then(succeeded => {
+            // The lease resolves `false` instead of rejecting, because most of its
+            // callers treat a restart as best-effort. This one has always rejected and
+            // its caller logs the reason, so re-raise the original error.
+            if (!succeeded) throw capturedError || new Error(`Failed to restart the realtime connection to ${reason}`)
+        })
+        .finally(() => {
+            firestoreNetworkRestartPromise = null
+        })
 
     return firestoreNetworkRestartPromise
 }
