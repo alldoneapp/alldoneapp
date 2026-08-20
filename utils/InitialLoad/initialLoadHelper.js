@@ -1,10 +1,10 @@
 import { difference } from 'lodash'
 
 import store from '../../redux/store'
-import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
-import { getProjectContacts, watchProjectContacts } from '../backends/Contacts/contactsFirestore'
-import { getProjectUsers, removeCopyProjectIdFromUser, watchProjectUsers } from '../backends/Users/usersFirestore'
-import { getProjectWorkstreams, watchProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
+import { getGlobalAssistants, getProjectAssistants } from '../backends/Assistants/assistantsFirestore'
+import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
+import { getProjectUsers, removeCopyProjectIdFromUser } from '../backends/Users/usersFirestore'
+import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
 import {
     getAdministratorUser,
     getProjectData,
@@ -17,12 +17,8 @@ import {
     removeProjectData,
     setAdministratorAndGlobalAssistants,
     setAdministratorUser,
-    setAssistantsInProject,
-    setContactsInProject,
     setGlobalAssistants,
     setInvitationsInProject,
-    setUsersInProject,
-    setWorkstreamsInProject,
     setShowEndCopyProjectPopup,
     storeLoggedUser,
     updateUserProject,
@@ -38,6 +34,7 @@ import NavigationService from '../NavigationService'
 import { watchChatNotifications } from '../backends/Chats/chatsComments'
 import { pruneStaleProjectIds } from './staleProjectSelfHeal'
 import { recoverDroppedProject } from './projectRecovery'
+import { forgetProjectData } from './projectDataLoader'
 
 export async function getInitialProjectData(projectId) {
     const promises = []
@@ -87,24 +84,15 @@ export function watchProjectData(projectId, likeProjectMember, watchChatNotifica
             )
         }
     }
-    const updateUsers = users => {
-        if (users.length > 0) store.dispatch(setUsersInProject(projectId, users))
-    }
-    const updateContacts = contacts => {
-        store.dispatch(setContactsInProject(projectId, contacts))
-    }
-    const updateWorkstreams = workstreams => {
-        store.dispatch(setWorkstreamsInProject(projectId, workstreams))
-    }
-    const updateAssistants = assistants => {
-        store.dispatch(setAssistantsInProject(projectId, assistants))
-    }
-
+    // AT-2386: only the project DOCUMENT is watched here now. Users, contacts, workstreams and
+    // assistants are armed by `projectDataLoader` - awaited for the priority projects, warmed in
+    // the background for the rest, and pulled on demand by whatever renders them. Arming them here
+    // as well would defeat that entirely, since this runs for every project at login.
+    //
+    // `watchProjectData` is still the right place to keep the project doc: it is what feeds the
+    // sidebar name/colour and the dropped-project recovery below, it is one document rather than a
+    // collection, and nothing renders a project row without it.
     watchProject(projectId, updateProject, `${projectId}Project`)
-    watchProjectUsers(projectId, updateUsers, `${projectId}Users`)
-    watchProjectContacts(projectId, updateContacts, `${projectId}Contacts`)
-    watchAssistants(projectId, `${projectId}Assistants`, updateAssistants)
-    watchProjectWorkstreams(projectId, updateWorkstreams, `${projectId}Workstreams`)
 
     if (likeProjectMember) watchProjectDataThatIsOnlyForProjectMembers(projectId, watchChatNotifications)
 }
@@ -256,6 +244,11 @@ export const loadGlobalData = async (retryCount = 0) => {
 }
 
 export const unwatchProjectData = projectId => {
+    // The four collection watchers below are armed by `projectDataLoader`, which keeps its own
+    // record of what it armed. Unwatching without forgetting would leave it convinced the project
+    // is still loaded, so nothing would ever re-arm it.
+    forgetProjectData(projectId)
+
     unwatch(`${projectId}Project`)
     unwatch(`${projectId}Users`)
     unwatch(`${projectId}Contacts`)

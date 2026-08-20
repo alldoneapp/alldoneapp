@@ -28,11 +28,10 @@ import {
     watchProjectsChatNotifications,
 } from './initialLoadHelper'
 import { getProjectDataResult } from '../backends/firestore'
-import { getProjectUsers } from '../backends/Users/usersFirestore'
-import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
-import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
-import { getProjectAssistants } from '../backends/Assistants/assistantsFirestore'
 import { storeVersion } from '../Observers'
+import { checkIfUrlBelongsToProjectInTheList } from '../LinkingHelper'
+import { orderProjectsForDataWarmUp } from './projectDataPriority'
+import { ensureProjectsDataLoaded, forgetAllProjectData, warmProjectsData } from './projectDataLoader'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
@@ -108,16 +107,16 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     const MAX_RETRIES = 5
     const RETRY_DELAY_MS = 5000
 
-    // Create batched promises for all projects to load data in parallel
+    // AT-2386: only the project DOCUMENT is loaded here. Its four per-project collections
+    // (users, contacts, workstreams, assistants) used to be awaited in this same `Promise.all`
+    // for every project - 56 collection reads on the reporting account, 523 contact documents
+    // among them - before login could finish. They are now loaded by `projectDataLoader`:
+    // awaited for the priority projects, warmed in the background for the rest, and pulled on
+    // demand by whatever renders them. `sanitizeProjectsInitialData` normalizes the absent
+    // fields to `[]`, which is the invariant the unguarded consumers rely on.
     const allPromises = projectIds.map(projectId =>
-        Promise.all([
-            getProjectDataResult(projectId),
-            getProjectUsers(projectId, false),
-            getProjectContacts(projectId),
-            getProjectWorkstreams(projectId),
-            getProjectAssistants(projectId),
-        ])
-            .then(([projectResult, users, contacts, workstreams, assistants]) => {
+        getProjectDataResult(projectId)
+            .then(projectResult => {
                 const { project, missingFromCache } = projectResult
                 if (!project) {
                     if (missingFromCache) {
@@ -139,14 +138,7 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
                         `[InitialLoad] Project ${projectId} has no data (deleted or not accessible), skipping it`
                     )
                 }
-                return {
-                    projectId,
-                    project,
-                    users,
-                    contacts,
-                    workstreams,
-                    assistants,
-                }
+                return { projectId, project }
             })
             .catch(error => {
                 console.error(`Failed to load project ${projectId}:`, error)
@@ -189,6 +181,17 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     return results
 }
 
+/**
+ * The URL login is about to route to. Extracted so `loadInitialData` can prioritise that project's
+ * data and `loadInitialDataForLoggedUser` can route with it - reading `window.location.pathname`
+ * in one place and `initialUrl` in the other would prioritise a different project than the one the
+ * user actually lands on.
+ */
+function getInitialRoutingUrl() {
+    const { initialUrl } = store.getState()
+    return initialUrl && initialUrl !== '/' ? initialUrl : window.location.pathname
+}
+
 async function loadInitialData() {
     const { loggedUser } = store.getState()
     const projectIds = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds : []
@@ -211,6 +214,11 @@ async function loadInitialData() {
     const projectWorkstreams = {}
     const projectAssistants = {}
 
+    // AT-2386: since `loadProjectsDataFromFirebase` stopped fetching the four per-project
+    // collections, `sanitizeProjectsInitialData` normalizes them to `[]` here. That empty seed is
+    // load-bearing, not incidental: ~a dozen consumers read `projectUsers[projectId].length`,
+    // `projectContacts[projectId].map(...)` and friends WITHOUT a guard, so the key must exist for
+    // every project from the first frame. Only the content is deferred.
     validEntries.forEach(({ project, users, contacts, workstreams, assistants }) => {
         projects.push(project)
         projectsMap[project.id] = project
@@ -230,6 +238,10 @@ async function loadInitialData() {
     )
 
     unwatchProjectsData(projectIds)
+    // The watchers above are gone, so the loader must forget that it ever armed them - otherwise a
+    // re-login (or an anonymous -> logged transition) would consider every project already loaded
+    // and never re-arm anything.
+    forgetAllProjectData()
 
     store.dispatch(updateLoadingStep(4, getProgressLoadingMessage()))
     store.dispatch(
@@ -244,6 +256,28 @@ async function loadInitialData() {
     )
 
     watchLoggedUserData(loggedUser)
+
+    // AT-2386: the per-project collections start here instead of inside the login bundle.
+    //
+    // The app boots into "All projects", so there is no current project to prefer; the priority
+    // list resolves one anyway (URL project -> in-focus project -> default project -> first). Those
+    // few are AWAITED because two boot decisions read them synchronously right after this:
+    // `TasksHelper.processURLProjectsUserTasks` resolves a `/projects/<id>/user/<uid>/tasks` deep
+    // link out of `projectUsers[projectId]`, and `getDefaultAssistant` reads
+    // `projectAssistants[defaultProjectId]`. Everything else is warmed in the background, and
+    // whatever renders first pulls what it needs through the loader anyway.
+    const loadedProjectIds = projects.map(project => project.id)
+    const { priorityProjectIds, warmUpProjectIds } = orderProjectsForDataWarmUp({
+        urlProjectId: checkIfUrlBelongsToProjectInTheList(getInitialRoutingUrl(), loadedProjectIds),
+        loggedUser,
+        projectIds: loadedProjectIds,
+    })
+
+    // Bounded inside the loader, so a wedged stream delays login by at most one snapshot budget
+    // instead of hanging it.
+    await ensureProjectsDataLoaded(priorityProjectIds)
+
+    warmProjectsData(warmUpProjectIds)
 
     // Defer non-critical watchers to improve initial load time
     setTimeout(() => {
@@ -338,9 +372,7 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     //handleCookies()
 
-    const { initialUrl } = store.getState()
-    const url = initialUrl !== '/' ? initialUrl : window.location.pathname
-    URLTrigger.processUrl(NavigationService, url)
+    URLTrigger.processUrl(NavigationService, getInitialRoutingUrl())
 }
 
 /**

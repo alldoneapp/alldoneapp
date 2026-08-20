@@ -23,6 +23,8 @@ import { watchFollowedPeople } from '../../utils/backends/Contacts/followedPeopl
 import { createFollowedPeopleBatcher, getProjectsForFollowedPeopleWatch } from './followedPeopleBatcher'
 import { buildContactsViewData } from './contactsViewData'
 import { getProjectsForContactsView } from './contactsViewProjectScope'
+import { useProjectsData } from '../../hooks/useProjectData'
+import { PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader'
 
 export default function ContactsView() {
     const dispatch = useDispatch()
@@ -42,6 +44,17 @@ export default function ContactsView() {
         () => getProjectsForContactsView(inAllProjects, loggedUserProjects, loggedUser),
         [inAllProjects, loggedUserProjects, loggedUser]
     )
+
+    // AT-2386: this is THE view that enumerates contacts across projects, so it is the one place
+    // that has to ask for all of them up front - a lookup-miss heal cannot help a list that is
+    // built by iterating whatever happens to be in redux. Scope is already narrowed for us:
+    // `getProjectsForContactsView` returns `getActiveProjects2(...)` in all-projects mode, so
+    // guides, templates and archived projects are not pulled in by opening this board.
+    const contactsViewProjectIds = useMemo(
+        () => projectsForContactsView.map(project => project.id),
+        [projectsForContactsView]
+    )
+    useProjectsData(contactsViewProjectIds, PROJECT_DATA_CONTACTS)
 
     const writeBrowserURL = () => {
         if (inAllProjects) {

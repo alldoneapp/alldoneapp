@@ -4,6 +4,7 @@ import NavigationService from '../../../utils/NavigationService'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DEFAULT_ALLOWED_TOOLS } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
+import { PROJECT_DATA_ASSISTANTS, requestProjectDataOnLookupMiss } from '../../../utils/InitialLoad/projectDataLoader'
 
 export const TYPE_PROMPT_BASED = 'TYPE_PROMPT_BASED'
 export const TYPE_3RD_PARTY = 'TYPE_3RD_PARTY'
@@ -106,7 +107,7 @@ const getNormalAssistant = assistantId => {
     const assistantsByProject = Object.keys(projectAssistants)
 
     for (let i = 0; i < assistantsByProject.length; i++) {
-        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId)
+        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId, false)
         if (assistant) return assistant
     }
 
@@ -122,7 +123,7 @@ export const openAssistantDv = (projectId, assistant) => {
     store.dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
 }
 
-const getNormalAssistantInProject = (projectId, assistantId) => {
+const getNormalAssistantInProject = (projectId, assistantId, reportMiss = true) => {
     const { projectAssistants } = store.getState()
 
     const assistants = projectAssistants[projectId] || []
@@ -130,6 +131,16 @@ const getNormalAssistantInProject = (projectId, assistantId) => {
     for (let n = 0; n < assistants.length; n++) {
         if (assistants[n].uid === assistantId) return assistants[n]
     }
+
+    // AT-2386: project assistants are no longer loaded for every project at login, so a miss can
+    // mean "not requested yet" rather than "no such assistant". Reported from this single lookup
+    // funnel; the caller keeps its existing null contract and the answer improves on re-render.
+    //
+    // `reportMiss` exists for `getNormalAssistant`, which SWEEPS every project looking for one id.
+    // Every project it walks past is a miss by construction, so reporting from inside that loop
+    // would arm every project's assistant watcher the first time any id failed to resolve - the
+    // exact eager fan-out this change removes.
+    if (reportMiss) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_ASSISTANTS)
 
     return null
 }
@@ -268,7 +279,7 @@ export const getAssistantProjectId = (assistantId, currentProjectId) => {
     const assistantsByProject = Object.keys(projectAssistants)
 
     for (let i = 0; i < assistantsByProject.length; i++) {
-        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId)
+        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId, false)
         if (assistant) return assistantsByProject[i]
     }
 
