@@ -838,23 +838,6 @@ path, no second client. It runs on every tick, including ticks with no new mail 
 answering a question about OLD messages. It is wrapped in try/catch — labeling is that function's
 job, and failing to reconcile read state must never fail a run that labeled mail correctly.
 
-**Reconciling read state is not gated on `syncIntervalMinutes`, and must not be.** That interval
-(minimum and default **30**) exists to bound how often the **classifier** runs, because
-classification spends Gold per message; reconciliation spends none — one indexed Firestore query
-plus at most a handful of `messages.get` at `format: 'minimal'` (1 quota unit each, capped at 50 per
-run). Riding on the labeling interval therefore made a free, read-only operation wait up to half an
-hour, which is indistinguishable from the feature being broken: production logs for the reporting
-account show the reconciler firing correctly (`markedRead: 6`) **four minutes after** the user
-reported that Gmail-read mail was still unread in Alldone. `processEnabledGmailLabelingConfigs`
-therefore calls `reconcileEmailCommentReadStateOnPollTick` on the `interval_not_due` branch too, so
-the worst case is the poller's own 5 minutes instead of the connection's 30. Three properties make
-that affordable and safe, and all three are load-bearing: the Gmail client is passed as a **lazy
-`getGmail` factory** rather than a client (an idle tick — which is the overwhelming majority — costs
-one query and builds **no** authorized client, so no OAuth read/refresh per connection per tick);
-the pass **never writes `lastSyncAt`**, or it would starve the labeling sync it is standing in for;
-and it **stands down while the labeling lock is held** (respecting `GMAIL_LABELING_LOCK_TIMEOUT_MS`,
-so a dead run cannot block it forever) so the two never reconcile the same candidates concurrently.
-
 The mapping it needs (Gmail messageId → chat comment) is written by the sync itself: the post-label
 prompt's `add_chat_comment` result is collected in `collectAssistantTextWithToolCalls` as
 `createdChatCommentResults` and lands on the message's **audit record** as `emailComments` +
