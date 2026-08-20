@@ -4229,9 +4229,21 @@ async function findAndSetNewFocusedTask(
     // Declare Redux state variables once at a higher scope
     const { projectUsers, loggedUserProjects, loggedUser } = store.getState() // Added loggedUser here
 
+    // AT-2386: `projectUsers[pid]` is loaded on demand now, so an EMPTY slice means "not requested
+    // yet", not "the user is not a member". Deciding membership from it alone would silently drop
+    // projects from the focus-task hunt for as long as their members had not arrived. The project
+    // DOCUMENT carries the same membership list and is always loaded at login, so it is the
+    // authority whenever the members slice is not populated.
+    const isMemberOfProject = pid => {
+        const members = projectUsers[pid]
+        if (members && members.length > 0) return members.some(member => member.uid === userId)
+        const project = loggedUserProjects.find(p => p.id === pid)
+        return Array.isArray(project?.userIds) && project.userIds.includes(userId)
+    }
+
     // --- NEW PRE-PRIORITIZATION: Check for upcoming calendar tasks across ALL projects ---
     const allUserProjectIds = Object.keys(projectUsers)
-        .filter(pid => projectUsers[pid]?.some(member => member.uid === userId)) // Projects user is a member of
+        .filter(isMemberOfProject) // Projects user is a member of
         .map(pid => loggedUserProjects.find(p => p.id === pid))
         .filter(project => project) // Ensure project exists
         .map(p => p.id)
@@ -4446,10 +4458,7 @@ async function findAndSetNewFocusedTask(
     // const { projectUsers, loggedUserProjects } = store.getState(); // This line will be removed as it's declared above
     const userProjects = Object.keys(projectUsers)
         .filter(pid => pid !== currentProjectId) // Exclude current project
-        .filter(pid => {
-            const projectMembers = projectUsers[pid] || []
-            return projectMembers.some(member => member.uid === userId)
-        })
+        .filter(isMemberOfProject) // AT-2386: falls back to the project doc while members load
 
     // Sort projects by sortIndexByUser (descending)
     const projectsBeforeFilter = userProjects.map(pid => loggedUserProjects.find(p => p.id === pid))

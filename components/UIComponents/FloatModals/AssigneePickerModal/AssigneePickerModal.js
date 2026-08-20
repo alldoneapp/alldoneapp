@@ -15,7 +15,12 @@ import { translate } from '../../../../i18n/TranslationService'
 import { DV_TAB_ROOT_GOALS } from '../../../../utils/TabNavigationConstants'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import useProjectData from '../../../../hooks/useProjectData'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+
+// AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
+// array on every render.
+const EMPTY_LIST = []
 
 export default function AssigneePickerModal({
     projectIndex,
@@ -31,11 +36,14 @@ export default function AssigneePickerModal({
     const project = ProjectHelper.getProjectByIndex(projectIndex)
 
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
-    const users = useSelector(state => state.projectUsers[project.id])
+    // AT-2386: the picker lists everyone in the project, so it asks for the data instead of
+    // assuming login fetched it, and reads every slice defensively while it arrives.
+    useProjectData(project.id)
+    const users = useSelector(state => state.projectUsers[project.id]) || EMPTY_LIST
     const globalAssistants = useSelector(state => state.globalAssistants)
     const assistants = useSelector(state => state.projectAssistants)
-    const workstreams = useSelector(state => state.projectWorkstreams[project.id])
-    const contacts = useSelector(state => state.projectContacts[project.id])
+    const workstreams = useSelector(state => state.projectWorkstreams[project.id]) || EMPTY_LIST
+    const contacts = useSelector(state => state.projectContacts[project.id]) || EMPTY_LIST
     const parentTemplateId = useSelector(
         state => projectIndex && state.loggedUserProjects[projectIndex].parentTemplateId
     )
@@ -51,7 +59,7 @@ export default function AssigneePickerModal({
     if (showAssistants) {
         const assistantsToShow = [
             ...globalAssistants.filter(assistant => project.globalAssistantIds.includes(assistant.uid)),
-            ...assistants[project.id],
+            ...(assistants[project.id] || EMPTY_LIST),
         ]
         usersList.push(...assistantsToShow)
     }

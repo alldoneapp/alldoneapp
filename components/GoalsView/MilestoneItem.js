@@ -30,9 +30,11 @@ export default function MilestoneItem({
     const userWorkstreamsIdsInProject = useSelector(state =>
         state.currentUser.workstreams ? state.currentUser.workstreams[projectId] : null
     )
-    const projectUsersAmount = useSelector(state => state.projectUsers[projectId].length)
-    const projectWorkstreamsAmount = useSelector(state => state.projectWorkstreams[projectId].length)
-    const projectContactsAmount = useSelector(state => state.projectContacts[projectId].length)
+    // AT-2386: filled on demand now - read defensively. These are useMemo dependencies, so the
+    // memo recomputes by itself once the real lengths arrive.
+    const projectUsersAmount = useSelector(state => (state.projectUsers[projectId] || []).length)
+    const projectWorkstreamsAmount = useSelector(state => (state.projectWorkstreams[projectId] || []).length)
+    const projectContactsAmount = useSelector(state => (state.projectContacts[projectId] || []).length)
     const boardGoals = useSelector(state => state.boardGoalsByMilestoneByProject[projectId][milestone.id])
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
 

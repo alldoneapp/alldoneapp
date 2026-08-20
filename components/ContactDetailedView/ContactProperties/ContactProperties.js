@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import store from '../../../redux/store'
+import { ensureProjectDataLoaded, PROJECT_DATA_CONTACTS } from '../../../utils/InitialLoad/projectDataLoader'
 import PropTypes from 'prop-types'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
@@ -69,6 +70,10 @@ class ContactProperties extends Component {
 
     componentDidMount() {
         this.writeBrowserURL()
+        // AT-2386: the contact detailed view reads its contact out of `projectContacts[projectId]`,
+        // which is filled on demand now. Ask for it; the store subscription above re-renders once
+        // the first snapshot lands.
+        ensureProjectDataLoaded(this.props.projectId, PROJECT_DATA_CONTACTS)
     }
 
     componentWillUnmount() {
@@ -99,7 +104,10 @@ class ContactProperties extends Component {
         const { projectContacts } = this.state
         const { projectIndex, user, projectId } = this.props
 
-        const contact = projectContacts[projectId].find(contact => contact.uid === user.uid)
+        const contact = (projectContacts[projectId] || []).find(contact => contact.uid === user.uid)
+        // The project's contacts may not have arrived yet; every branch below dereferences
+        // `contact`, and the property editors re-render as soon as they do.
+        if (!contact) return
 
         switch (property) {
             case 'info':
@@ -172,7 +180,7 @@ class ContactProperties extends Component {
     enrichContact = async () => {
         const { projectContacts, loggedUser } = this.state
         const { projectId, user: userProp } = this.props
-        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
+        const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
 
         if (!contact?.linkedInUrl) return
 
@@ -206,7 +214,7 @@ class ContactProperties extends Component {
     searchLinkedIn = async () => {
         const { projectContacts, loggedUser } = this.state
         const { projectId, user: userProp } = this.props
-        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
+        const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
 
         if (loggedUser.gold < 20) {
             store.dispatch(

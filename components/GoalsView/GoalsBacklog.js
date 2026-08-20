@@ -26,9 +26,11 @@ export default function GoalsBacklog({
     const userWorkstreamsIdsInProject = useSelector(state =>
         state.currentUser.workstreams ? state.currentUser.workstreams[projectId] : null
     )
-    const projectUsersAmount = useSelector(state => state.projectUsers[projectId].length)
-    const projectWorkstreamsAmount = useSelector(state => state.projectWorkstreams[projectId].length)
-    const projectContactsAmount = useSelector(state => state.projectContacts[projectId].length)
+    // AT-2386: these slices are filled on demand now, so read them defensively. They are only
+    // useMemo dependencies - when the data lands the length changes and the memo recomputes.
+    const projectUsersAmount = useSelector(state => (state.projectUsers[projectId] || []).length)
+    const projectWorkstreamsAmount = useSelector(state => (state.projectWorkstreams[projectId] || []).length)
+    const projectContactsAmount = useSelector(state => (state.projectContacts[projectId] || []).length)
     const boardGoals = useSelector(state => state.boardGoalsByMilestoneByProject[projectId][milestoneId])
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
 

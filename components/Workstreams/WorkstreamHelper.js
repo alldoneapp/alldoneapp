@@ -6,6 +6,7 @@ import { exitsOpenModals } from '../ModalsManager/modalsManager'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { removeWatchersForOneStreamAndUser, STREAM_AND_USER_TASKS_INDEX } from '../../utils/backends/openTasks'
 import { updateWorkstreamLastVisitedBoardDate } from '../../utils/backends/Workstreams/workstreamsFirestore'
+import { PROJECT_DATA_WORKSTREAMS, requestProjectDataOnLookupMiss } from '../../utils/InitialLoad/projectDataLoader'
 
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from './WorkstreamConstants'
 
@@ -53,10 +54,18 @@ export const setWorkstreamLastVisitedBoardDate = (projectId, workstream, lastVis
         },
     }
 
-    const workstreamsInProject = [...projectWorkstreams[projectId]]
-    const index = workstreamsInProject.findIndex(ws => ws.uid === workstream.uid)
-    workstreamsInProject[index] = updatedWorkstream
-    store.dispatch(setWorkstreamsInProject(projectId, workstreamsInProject))
+    // AT-2386: the slice is filled on demand, so skip the optimistic update when it cannot be
+    // applied faithfully instead of spreading `undefined` or writing to the key "-1".
+    const workstreamsInProject = projectWorkstreams[projectId]
+    const index = Array.isArray(workstreamsInProject)
+        ? workstreamsInProject.findIndex(ws => ws.uid === workstream.uid)
+        : -1
+
+    if (index !== -1) {
+        const updatedWorkstreams = [...workstreamsInProject]
+        updatedWorkstreams[index] = updatedWorkstream
+        store.dispatch(setWorkstreamsInProject(projectId, updatedWorkstreams))
+    }
 
     updateWorkstreamLastVisitedBoardDate(projectId, workstream.uid, lastVisitBoardProperty)
 }
@@ -64,7 +73,12 @@ export const setWorkstreamLastVisitedBoardDate = (projectId, workstream, lastVis
 export const getWorkstreamById = (projectId, wstreamId) => {
     const { projectWorkstreams } = store.getState()
     const streamIndex = findIndex(projectWorkstreams[projectId] || [], ['uid', wstreamId])
-    return streamIndex !== -1 ? projectWorkstreams[projectId]?.[streamIndex] || null : null
+    const workstream = streamIndex !== -1 ? projectWorkstreams[projectId]?.[streamIndex] || null : null
+    // AT-2386: workstreams are no longer loaded for every project at login, so a miss can mean
+    // "not requested yet". Reported here, in the single lookup funnel, so the rest of the app is
+    // unchanged; the row fills in once the watcher's first snapshot lands.
+    if (!workstream) requestProjectDataOnLookupMiss(projectId, PROJECT_DATA_WORKSTREAMS)
+    return workstream
 }
 
 export const isWorkstream = id => {
@@ -73,7 +87,9 @@ export const isWorkstream = id => {
 
 export const getWorkstreamUserIds = (projectId, wstreamId) => {
     const workstream = getWorkstreamById(projectId, wstreamId)
-    return workstream.userIds
+    // AT-2386: `getWorkstreamById` could always return null (deleted workstream) and this
+    // dereferenced it; with on-demand loading a not-yet-loaded project reaches it too.
+    return workstream?.userIds || []
 }
 
 export const getWorkstreamMembers = (projectId, wstreamId, withData = false) => {
