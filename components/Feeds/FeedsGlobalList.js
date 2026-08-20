@@ -22,6 +22,9 @@ import {
     removeFeedObjectFromFeedsByDate,
     updateFeedsState,
 } from './Utils/FeedsHelper'
+import useLoadingMore from '../../hooks/useLoadingMore'
+import FeedsListSkeleton from './FeedsListSkeleton'
+import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
 
 export default function FeedsGlobalList({
     projectId,
@@ -48,6 +51,20 @@ export default function FeedsGlobalList({
     const [feedsOrderedArray, setFeedsOrderedArray] = useState([])
     const [activeMode, setActiveMode] = useState(LOADING_MODE)
     const [expandRequested, setExpandRequested] = useState(false)
+
+    // AT-2382 - the widened listener replaces this array on delivery, so its identity is
+    // the "the extra feeds arrived" edge that retires the ghosts. Deliberately NOT keyed on
+    // `expandRequested`: the top-up effect calls `expandFeedList` again, which re-arms that
+    // flag, so it stays true until the list is contracted and would ghost forever.
+    const feedsForActiveTab = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
+    const [loadingMoreFeeds, startLoadingMoreFeeds] = useLoadingMore(feedsForActiveTab)
+
+    // The button's handler, as opposed to the top-up effect's. Only a real press arms the
+    // ghosts; the effect re-enters `expandFeedList` and must not restart them.
+    const onPressShowMore = () => {
+        startLoadingMoreFeeds()
+        expandFeedList()
+    }
 
     const contractFeedList = () => {
         setMaxAmountOfFeedToDisplay(getLimitFeedAmountToDisplay())
@@ -296,8 +313,12 @@ export default function FeedsGlobalList({
                 )
             })}
 
+            {loadingMoreFeeds && <FeedsListSkeleton rowCount={resolveGhostRowCount(MAX_FEEDS_AMOUNT_TO_DISPLAY)} />}
+
             <View style={localStyles.buttonsContainer}>
-                {showShowMoreButton ? <ShowMoreButton forExpand={true} onPress={expandFeedList} /> : null}
+                {showShowMoreButton ? (
+                    <ShowMoreButton forExpand={true} onPress={onPressShowMore} loading={loadingMoreFeeds} />
+                ) : null}
                 {showShowLessButton ? (
                     <ShowMoreButton style={localStyles.lessButton} forExpand={false} onPress={contractFeedList} />
                 ) : null}
