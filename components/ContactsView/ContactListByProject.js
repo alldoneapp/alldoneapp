@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
+import React, { memo, useEffect, useMemo, useRef } from 'react'
 import { View } from 'react-native'
 
 import store from '../../redux/store'
@@ -20,11 +20,13 @@ import NewContactSection from './NewContactSection'
 import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Contacts/ContactMoreButton'
 import ContactsHeader from './ContactsHeader'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
+import ContactsListSkeleton from './ContactsListSkeleton'
+import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
+import usePagedReveal from '../../hooks/usePagedReveal'
 
 const EMPTY_PROJECT_CONTACTS = {}
 
 function ContactListByProject({ members, contacts, onlyMembers, projectIndex, firstProject, maxContactsToRender }) {
-    const [pressedShowMore, setPressedShowMore] = useState(false)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const handlesAddContactShortcut = inSelectedProject || firstProject
@@ -74,6 +76,18 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
         return list.sort((a, b) => ContactsHelper.sortContactsFn(a, b, project.id))
     }, [filtersArray, contactStatusFilter, members, contacts, onlyMembers, project.id])
 
+    // AT-2385 - the whole project contact set is already in redux, so "show more" never
+    // waited on the network; it flipped a boolean that mounted EVERY remaining contact in
+    // one press. Each of those rows opens its own backlinks watcher and subscribes to the
+    // store, so that press was the expensive operation. Reveal one page at a time instead,
+    // and ghost the page while it mounts - the same affordance the other lists got in
+    // AT-2382, driven by a signal that fits an in-memory list. See hooks/usePagedReveal.js.
+    const { visibleAmount, incomingCount, loadingMore, expanded, canExpand, expand, collapse } = usePagedReveal(
+        contactsList.length,
+        maxContactsToRender,
+        { initialAmount: maxContactsToRender }
+    )
+
     const onKeyDown = e => {
         if (!store.getState().blockShortcuts) {
             const { projectId: lastPId } = lastAddNewContact ? lastAddNewContact : { projectId: null }
@@ -115,7 +129,7 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
                 contactsList.map((contact, index) => {
                     return (
                         contact &&
-                        (pressedShowMore || index < maxContactsToRender) && (
+                        index < visibleAmount && (
                             <DismissibleItem
                                 key={contact.uid}
                                 ref={ref => {
@@ -157,12 +171,15 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
                     )
                 })}
 
-            {maxContactsToRender < contactsList.length && (
-                <ShowMoreButton
-                    expanded={pressedShowMore}
-                    contract={() => setPressedShowMore(false)}
-                    expand={() => setPressedShowMore(true)}
+            {loadingMore && (
+                <ContactsListSkeleton
+                    rowCount={resolveGhostRowCount(incomingCount)}
+                    contactKeys={contactsList.slice(visibleAmount, visibleAmount + incomingCount).map(c => c.uid)}
                 />
+            )}
+
+            {(canExpand || expanded) && (
+                <ShowMoreButton expanded={expanded} contract={collapse} expand={expand} loading={loadingMore} />
             )}
         </View>
     ) : null
