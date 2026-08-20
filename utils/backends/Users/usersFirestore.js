@@ -793,20 +793,25 @@ export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey,
 
     const { projectUsers } = store.getState()
 
-    const usersInProject = [...projectUsers[projectId]]
+    // AT-2386: `projectUsers[projectId]` is filled on demand now, so guard the read-modify-write.
+    // The unlocked-keys update below is purely an optimistic local mirror of a server write, so
+    // skipping it when the slice is not loaded costs nothing - the live watcher brings it back.
+    const usersInProject = Array.isArray(projectUsers[projectId]) ? [...projectUsers[projectId]] : []
 
     const index = usersInProject.findIndex(user => user.uid === goalOwnerId)
     const user = usersInProject[index]
 
-    const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides)
-    if (unlockedKeysByGuides[projectId]) {
-        unlockedKeysByGuides[projectId].push(lockKey)
-    } else {
-        unlockedKeysByGuides[projectId] = [lockKey]
-    }
+    if (user) {
+        const unlockedKeysByGuides = cloneDeep(user.unlockedKeysByGuides)
+        if (unlockedKeysByGuides[projectId]) {
+            unlockedKeysByGuides[projectId].push(lockKey)
+        } else {
+            unlockedKeysByGuides[projectId] = [lockKey]
+        }
 
-    usersInProject[index] = { ...user, unlockedKeysByGuides }
-    store.dispatch(setUsersInProject(projectId, usersInProject))
+        usersInProject[index] = { ...user, unlockedKeysByGuides }
+        store.dispatch(setUsersInProject(projectId, usersInProject))
+    }
 
     return goldResult
 }

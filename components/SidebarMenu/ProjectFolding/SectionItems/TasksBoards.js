@@ -14,6 +14,10 @@ import InvitePeopleWrapper from '../InvitePeople/InvitePeopleWrapper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ContactItem from '../../Items/ContactItem'
 import AssistantItem from '../../Items/AssistantItem'
+import useProjectData from '../../../../hooks/useProjectData'
+
+// Shared identity so a missing slice does not hand `useSelector` a new array on every render.
+const EMPTY_LIST = []
 
 export default function TasksBoards({
     projectId,
@@ -27,13 +31,19 @@ export default function TasksBoards({
     const themeName = useSelector(state => state.loggedUser.themeName)
     const numberUsersSidebar = useSelector(state => state.loggedUser.numberUsersSidebar)
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const usersInProject = useSelector(state => state.projectUsers[projectId])
-    const contactsInProject = useSelector(state => state.projectContacts[projectId])
-    const workstreamsInProject = useSelector(state => state.projectWorkstreams[projectId])
+    // AT-2386: this sidebar section lists the project's people, so it is one of the views that
+    // genuinely needs all four slices - it asks for them rather than relying on login having
+    // fetched them. It only ever renders for the SELECTED project (`ProjectItem` gates it on
+    // `highlight && checkIfSelectedProject`), so this is one project, not a fan-out.
+    useProjectData(projectId)
+
+    const usersInProject = useSelector(state => state.projectUsers[projectId]) || EMPTY_LIST
+    const contactsInProject = useSelector(state => state.projectContacts[projectId]) || EMPTY_LIST
+    const workstreamsInProject = useSelector(state => state.projectWorkstreams[projectId]) || EMPTY_LIST
 
     const contactsWithOpenTasks = contactsInProject.filter(contact => contact.openTasksAmount > 0)
 
-    const assistantsInProject = useSelector(state => state.projectAssistants[projectId])
+    const assistantsInProject = useSelector(state => state.projectAssistants[projectId]) || EMPTY_LIST
     const globalAssistants = useSelector(state => state.globalAssistants)
 
     const [pressedShowMore, setPressedShowMore] = useState(false)

@@ -23,6 +23,8 @@ import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFilte
 import ContactsListSkeleton from './ContactsListSkeleton'
 import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
 import usePagedReveal from '../../hooks/usePagedReveal'
+import useProjectData from '../../hooks/useProjectData'
+import { PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader'
 
 const EMPTY_PROJECT_CONTACTS = {}
 
@@ -38,6 +40,11 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
     const dispatch = useDispatch()
 
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
+
+    // AT-2386: belt and braces next to `ContactsView`'s sweep - this block also renders standalone
+    // (single-project mode), where nothing else would have asked for the project's contacts.
+    // Loading is idempotent inside the loader, so the two callers cost one watcher.
+    useProjectData(project?.id, PROJECT_DATA_CONTACTS)
 
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef({}).current

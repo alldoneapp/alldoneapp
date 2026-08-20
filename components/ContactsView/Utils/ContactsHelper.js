@@ -537,10 +537,17 @@ class ContactsHelper {
             },
         }
 
-        const usersInProject = [...projectUsers[projectId]]
-        const index = usersInProject.findIndex(item => item.uid === user.uid)
-        usersInProject[index] = updatedUser
-        store.dispatch(setUsersInProject(projectId, usersInProject))
+        // AT-2386: same read-modify-write hazard as `updateContactLastVisitedBoardDate` below -
+        // the slice is filled on demand, so skip the optimistic update rather than spreading
+        // `undefined` or writing to the key "-1". The Firestore write below still lands.
+        const usersInProject = projectUsers[projectId]
+        const index = Array.isArray(usersInProject) ? usersInProject.findIndex(item => item.uid === user.uid) : -1
+
+        if (index !== -1) {
+            const updatedUsers = [...usersInProject]
+            updatedUsers[index] = updatedUser
+            store.dispatch(setUsersInProject(projectId, updatedUsers))
+        }
 
         updateUserLastVisitedBoardDate(projectId, user.uid, lastVisitBoardProperty)
     }
@@ -559,10 +566,23 @@ class ContactsHelper {
             },
         }
 
-        const contactsInProject = [...projectContacts[projectId]]
-        const index = contactsInProject.findIndex(item => item.uid === contact.uid)
-        contactsInProject[index] = updatedContact
-        store.dispatch(setContactsInProject(projectId, contactsInProject))
+        // AT-2386: this is a read-modify-write of the WHOLE per-project contact array, and that
+        // array is now filled on demand. Two failure modes to avoid, both silent: `[...undefined]`
+        // throws when the project has not been loaded, and writing a partial array back would
+        // clobber the real list with it. A missing contact is also `findIndex === -1`, which used
+        // to write to the key "-1". So the optimistic redux update is skipped whenever the local
+        // list cannot be updated faithfully - the Firestore write below is the source of truth and
+        // the live watcher brings the change back anyway.
+        const contactsInProject = projectContacts[projectId]
+        const index = Array.isArray(contactsInProject)
+            ? contactsInProject.findIndex(item => item.uid === contact.uid)
+            : -1
+
+        if (index !== -1) {
+            const updatedContacts = [...contactsInProject]
+            updatedContacts[index] = updatedContact
+            store.dispatch(setContactsInProject(projectId, updatedContacts))
+        }
 
         setContactLastVisitedBoardDate(projectId, contact.uid, lastVisitBoardProperty)
     }
