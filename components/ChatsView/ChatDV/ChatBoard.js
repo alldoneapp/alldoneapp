@@ -53,6 +53,9 @@ import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import useNewEmailCommentIds from './useNewEmailCommentIds'
+import useLoadingMore from '../../../hooks/useLoadingMore'
+import MessagesSkeleton from './MessagesSkeleton'
+import { resolveGhostRowCount } from '../../UIComponents/Ghosts/ghostRowCount'
 import shouldAutoFocusChatInput from '../Utils/shouldAutoFocusChatInput'
 import {
     CHAT_EDGE_TOP,
@@ -114,6 +117,13 @@ export default function ChatBoard({
     setFullscreenRef.current = setFullscreen
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
+    // AT-2382 - the "a page arrived" edge for the ghosts. Note this canNOT be `messages`
+    // itself: `useGetMessages` returns `[...state.messages]`, a brand-new array on EVERY
+    // render, so keying on its identity would retire the ghosts on the very next render and
+    // flash them for a single frame. "show earlier" prepends older comments, so the oldest
+    // id is what actually moves when the page lands; the length covers the rest.
+    const olderMessagesSignal = `${messages.length}:${messages[0]?.id || ''}`
+    const [loadingMoreMessages, startLoadingMoreMessages] = useLoadingMore(olderMessagesSignal)
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${chat.id}`, chatNotifications)
     const linkedEmails = getLinkedEmailsFromMessages(messages, { projectId, chatId: chat.id })
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
@@ -151,6 +161,10 @@ export default function ChatBoard({
 
     const showEarlier = () => {
         setShowingEarlier(true)
+        // AT-2382 - `toRender` re-subscribes `watchComments` with a bigger limit, so the
+        // older messages are a round trip away. Ghosts hold the top of the thread until
+        // they land, which also keeps the scrollTo below landing on stable content.
+        startLoadingMoreMessages()
         if (page < chatPagesAmount) {
             setPage(page + 1)
             setToRender(toRender + LIMIT_SHOW_EARLIER)
@@ -404,8 +418,9 @@ export default function ChatBoard({
                 scrollEventThrottle={16}
             >
                 {page < chatPagesAmount && messages.length > 0 && (
-                    <ShowMoreButton expand={showEarlier} expandText={'show earlier'} />
+                    <ShowMoreButton expand={showEarlier} expandText={'show earlier'} loading={loadingMoreMessages} />
                 )}
+                {loadingMoreMessages && <MessagesSkeleton rowCount={resolveGhostRowCount(LIMIT_SHOW_EARLIER)} />}
                 {accessGranted && linkedEmails.length > 0 && (
                     <View style={localStyles.emailActionsBar}>
                         <TouchableOpacity
