@@ -74,6 +74,10 @@ function AddTaskTag({
                 primary && localStyles.tagPrimary,
                 !large && (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
                 large && localStyles.tagLarge,
+                // Must stay after `tagPrimary` so it wins the background and
+                // border it overrides, and before `style` so a caller-supplied
+                // override still has the last word (unchanged precedence).
+                primary && large && localStyles.tagLargePrimary,
                 style,
             ]}
             onPress={handleOpen}
@@ -190,6 +194,18 @@ const localStyles = StyleSheet.create({
         height: 44,
         paddingHorizontal: 20,
         alignSelf: 'center',
+    },
+    // AT-2389: the big call to action is the primary action of the screen it
+    // lives on, so it takes the app's primary blue instead of the lighter tint
+    // the small pills share with the assistant Search button
+    // (AssistantTaskSearchButtonWrapper) — that pairing is deliberate and stays
+    // as it is, which is why this is a `large`-only variant rather than an edit
+    // to `tagPrimary`. Border matches the fill so the pill reads as one solid
+    // primary button; keeping the 1px border (rather than dropping it) leaves
+    // the button's measured height and padding byte-identical.
+    tagLargePrimary: {
+        backgroundColor: colors.Primary100,
+        borderColor: colors.Primary100,
     },
     text: {
         color: colors.Text03,
