@@ -25,7 +25,6 @@ export default function ShowMoreButtonsArea({
     projectId,
     projectIndex,
     completedDateToCheck,
-    loading,
 }) {
     const dispatch = useDispatch()
     const amountDoneTasksExpanded = useSelector(state => state.amountDoneTasksExpanded)
@@ -73,7 +72,6 @@ export default function ShowMoreButtonsArea({
                     expand={expandTasks}
                     expandText={'earlier tasks'}
                     style={{ flex: 0, marginRight: 16 }}
-                    loading={loading}
                 />
             )}
             {amountDoneTasksExpanded > 0 && (

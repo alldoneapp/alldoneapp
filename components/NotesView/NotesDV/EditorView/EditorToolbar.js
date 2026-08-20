@@ -8,6 +8,11 @@ import {
     RAMBLE_PHASE_PROCESSING,
 } from '../../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
+import {
+    canAutoStartNoteTranscription,
+    isNoteDictationVisible,
+    isNoteTranscriptionVisible,
+} from './noteRecordingControls'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Quill from 'quill'
 import moment from 'moment'
@@ -1212,7 +1217,15 @@ export const EditorToolbar = ({
 
     useEffect(() => {
         // Only start when peersSynced is true (Yjs data has loaded)
-        if (autoStartTranscription && peersSynced && !hasAutoStartedRef.current && !isRecording) {
+        // A shared link can carry the auto-start flag, so hiding the button is not enough: without
+        // this guard a not-logged-in visitor would still get a microphone/screen-capture prompt for
+        // a transcript that has nowhere to go (AT-2384).
+        if (
+            canAutoStartNoteTranscription({ accessGranted, autoStartTranscription }) &&
+            peersSynced &&
+            !hasAutoStartedRef.current &&
+            !isRecording
+        ) {
             hasAutoStartedRef.current = true
 
             // Retry function to wait for editor to be ready
@@ -1233,7 +1246,7 @@ export const EditorToolbar = ({
             // Initial delay to let the component mount
             setTimeout(() => tryStartTranscription(), 500)
         }
-    }, [autoStartTranscription, peersSynced])
+    }, [autoStartTranscription, peersSynced, accessGranted])
 
     const takeScreenshot = async () => {
         const stream = systemStreamRef.current
@@ -1434,7 +1447,7 @@ export const EditorToolbar = ({
                         </EditorToolbarButton>
                     </span>
 
-                    {isDictationSupported() && (
+                    {isNoteDictationVisible({ accessGranted, dictationSupported: isDictationSupported() }) && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             <EditorToolbarButton onClick={toggleRamble} style={{ paddingLeft: 6, paddingRight: 6 }}>
                                 <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
@@ -1467,31 +1480,36 @@ export const EditorToolbar = ({
                         </span>
                     )}
 
-                    <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
-                        <EditorToolbarButton onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
-                            <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-                                {/* Meeting transcription records a screen-shared meeting, so it
-                                    carries the video-meeting glyph; the plain mic now means
-                                    Dictate, matching the mic overlay in every other input. */}
-                                <Icon
-                                    name={'video-meeting'}
-                                    size={18}
-                                    color={isRecording ? colors.Red200 : colors.Text03}
-                                />
-                            </View>
-                            {!tablet && (
-                                <Text
-                                    style={[
-                                        styles.caption1,
-                                        localStyles.barIconText,
-                                        isRecording ? { color: colors.Red200 } : {},
-                                    ]}
-                                >
-                                    {isRecording ? translate('Stop') : translate('Transcribe')}
-                                </Text>
-                            )}
-                        </EditorToolbarButton>
-                    </span>
+                    {isNoteTranscriptionVisible({ accessGranted }) && (
+                        <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
+                            <EditorToolbarButton
+                                onClick={toggleTranscription}
+                                style={{ paddingLeft: 6, paddingRight: 6 }}
+                            >
+                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    {/* Meeting transcription records a screen-shared meeting, so it
+                                        carries the video-meeting glyph; the plain mic now means
+                                        Dictate, matching the mic overlay in every other input. */}
+                                    <Icon
+                                        name={'video-meeting'}
+                                        size={18}
+                                        color={isRecording ? colors.Red200 : colors.Text03}
+                                    />
+                                </View>
+                                {!tablet && (
+                                    <Text
+                                        style={[
+                                            styles.caption1,
+                                            localStyles.barIconText,
+                                            isRecording ? { color: colors.Red200 } : {},
+                                        ]}
+                                    >
+                                        {isRecording ? translate('Stop') : translate('Transcribe')}
+                                    </Text>
+                                )}
+                            </EditorToolbarButton>
+                        </span>
+                    )}
                 </span>
 
                 {accessGranted && <div style={localStyles.separator} />}

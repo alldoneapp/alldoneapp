@@ -1,30 +1,81 @@
-import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from 'react-native'
 
 import { translate } from '../../i18n/TranslationService'
-import GhostBlock from '../UIComponents/Ghosts/GhostBlock'
-import { useGhostPulse } from '../UIComponents/Ghosts/ghostAnimation'
-import { GHOST_DEFAULT_ROWS } from '../UIComponents/Ghosts/ghostRowCount'
+import { colors } from '../styles/global'
 
+const DEFAULT_ROW_COUNT = 3
 const TITLE_WIDTHS = ['58%', '74%', '46%', '66%']
+
+const useReducedMotion = () => {
+    const [reducedMotion, setReducedMotion] = useState(false)
+
+    useEffect(() => {
+        let mounted = true
+        const updatePreference = value => {
+            if (mounted) setReducedMotion(!!value)
+        }
+
+        if (AccessibilityInfo.isReduceMotionEnabled) {
+            Promise.resolve(AccessibilityInfo.isReduceMotionEnabled()).then(updatePreference)
+        }
+
+        const subscription = AccessibilityInfo.addEventListener
+            ? AccessibilityInfo.addEventListener('reduceMotionChanged', updatePreference)
+            : null
+
+        return () => {
+            mounted = false
+            if (subscription?.remove) subscription.remove()
+            else if (AccessibilityInfo.removeEventListener) {
+                AccessibilityInfo.removeEventListener('reduceMotionChanged', updatePreference)
+            }
+        }
+    }, [])
+
+    return reducedMotion
+}
 
 /**
  * Loading rows shaped like the normal 34px task presentation. Keeping the
  * checkbox, title and trailing tag footprints aligned with a real task makes
  * the final replacement visually quiet instead of inserting a generic spinner.
- *
- * AT-2382 moved the animation onto the shared ghost primitive
- * (`components/UIComponents/Ghosts/`), so this now shimmers like every other loading
- * placeholder in the app; the row geometry below is unchanged and still mirrors
- * `TaskPresentationLayout` + `TitleContainer`'s derived 34px row.
  */
 export default function TaskListSkeleton({
-    rowCount = GHOST_DEFAULT_ROWS,
+    rowCount = DEFAULT_ROW_COUNT,
     showDateHeader = false,
     taskKeys = [],
     embedded = false,
 }) {
-    const { pulse, reducedMotion } = useGhostPulse()
+    const pulse = useRef(new Animated.Value(0.55)).current
+    const reducedMotion = useReducedMotion()
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test' || reducedMotion) {
+            pulse.setValue(0.7)
+            return undefined
+        }
+
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, {
+                    toValue: 1,
+                    duration: 750,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulse, {
+                    toValue: 0.55,
+                    duration: 750,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+            ])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [pulse, reducedMotion])
+
     const rows = Array.from({ length: Math.max(0, rowCount) })
 
     return (
@@ -36,7 +87,7 @@ export default function TaskListSkeleton({
         >
             {showDateHeader && (
                 <View style={localStyles.dateHeaderContainer}>
-                    <GhostBlock style={localStyles.dateHeader} pulse={pulse} reducedMotion={reducedMotion} soft />
+                    <Animated.View style={[localStyles.dateHeader, { opacity: pulse }]} />
                 </View>
             )}
             {rows.map((_, index) => (
@@ -46,15 +97,16 @@ export default function TaskListSkeleton({
                     style={localStyles.taskContainer}
                 >
                     <View style={localStyles.taskRow}>
-                        <GhostBlock style={localStyles.checkbox} pulse={pulse} reducedMotion={reducedMotion} />
+                        <Animated.View style={[localStyles.checkbox, { opacity: pulse }]} />
                         <View style={localStyles.titleContainer}>
-                            <GhostBlock
-                                style={[localStyles.title, { width: TITLE_WIDTHS[index % TITLE_WIDTHS.length] }]}
-                                pulse={pulse}
-                                reducedMotion={reducedMotion}
+                            <Animated.View
+                                style={[
+                                    localStyles.title,
+                                    { width: TITLE_WIDTHS[index % TITLE_WIDTHS.length], opacity: pulse },
+                                ]}
                             />
                         </View>
-                        <GhostBlock style={localStyles.tag} pulse={pulse} reducedMotion={reducedMotion} soft />
+                        <Animated.View style={[localStyles.tag, { opacity: pulse }]} />
                     </View>
                 </View>
             ))}
@@ -73,6 +125,7 @@ const localStyles = StyleSheet.create({
     dateHeader: {
         height: 24,
         borderRadius: 4,
+        backgroundColor: colors.Grey200,
     },
     taskContainer: {
         justifyContent: 'center',
@@ -92,6 +145,7 @@ const localStyles = StyleSheet.create({
         height: 24,
         marginTop: 8,
         borderRadius: 4,
+        backgroundColor: colors.Grey300,
     },
     titleContainer: {
         flex: 1,
@@ -101,6 +155,7 @@ const localStyles = StyleSheet.create({
         height: 12,
         marginTop: 11,
         borderRadius: 6,
+        backgroundColor: colors.Grey300,
     },
     tag: {
         width: 48,
@@ -108,5 +163,6 @@ const localStyles = StyleSheet.create({
         marginTop: 9,
         marginRight: 8,
         borderRadius: 8,
+        backgroundColor: colors.Grey200,
     },
 })
