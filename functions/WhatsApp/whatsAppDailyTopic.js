@@ -327,6 +327,9 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
  * @param {string} params.assistantId
  * @param {string} params.responseText
  * @param {string} params.commentId - Deterministic, derived from the source delivery
+ * @param {string} [params.previewText] - Text for the Chats-list preview when it should
+ *        differ from the stored comment (a mirrored result leads with a source header
+ *        whose URL reads badly in a one-line preview). Defaults to the comment text.
  * @param {string} [params.userId] - Only needed when updating the AssistantLine pointer
  * @param {boolean} [params.updateAssistantLine=false]
  * @param {Object} [params.extraCommentFields] - Provenance fields
@@ -339,12 +342,14 @@ async function storeAssistantMessageInTopicOnce({
     assistantId,
     responseText,
     commentId,
+    previewText = '',
     userId = '',
     updateAssistantLine = false,
     extraCommentFields = null,
 }) {
     const normalizedText = String(responseText || '').trim()
     if (!normalizedText) return { commentId, stored: false }
+    const normalizedPreview = String(previewText || '').trim() || normalizedText
 
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
@@ -356,7 +361,7 @@ async function storeAssistantMessageInTopicOnce({
         if (existing.exists) return
 
         transaction.set(commentRef, buildAssistantTopicComment(assistantId, normalizedText, now, extraCommentFields))
-        transaction.update(chatRef, buildTopicChatUpdate(assistantId, normalizedText, now))
+        transaction.update(chatRef, buildTopicChatUpdate(assistantId, normalizedPreview, now))
         stored = true
     })
 
@@ -441,11 +446,15 @@ async function getConversationHistory(
                 continue
             }
             // Assistant turns are the assistant's own prior output; timestamping them
-            // invites the model to copy the bracket tag into the reply (AT-2241).
+            // invites the model to copy the bracket tag into the reply (AT-2241). For the
+            // same reason a mirrored result publishes a header-free `contextCommentText`:
+            // the "📋 From your recurring task …" line is for the reader, and a
+            // recognisable prefix on a prior assistant turn is a pattern the next answer
+            // copies (AT-2387).
             messages.push([
                 role,
                 data.fromAssistant
-                    ? data.commentText
+                    ? data.contextCommentText || data.commentText
                     : addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset),
             ])
         }

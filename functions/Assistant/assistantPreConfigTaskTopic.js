@@ -102,6 +102,19 @@ async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData 
     return !!(await getLatestUserMessageOnUserLocalDay(projectId, chatId, userId, userData, timestamp))
 }
 
+/**
+ * Header line for a result mirrored into the daily WhatsApp topic (AT-2387): the user is
+ * reading it in a thread they never opened, so it has to say which task produced it.
+ * English like every other server-authored notice (the VM origin note, the heartbeat
+ * gold notice).
+ */
+function buildScheduledTaskSourceLabel(taskMetadata) {
+    const name = String(taskMetadata?.name || '').trim()
+    const recurrence = String(taskMetadata?.recurrence || '').trim()
+    const kind = recurrence && recurrence !== 'never' ? 'recurring task' : 'assistant task'
+    return name ? `From your ${kind} "${name}"` : `From your ${kind}`
+}
+
 async function generatePreConfigTaskResult(
     userId,
     projectId,
@@ -607,6 +620,7 @@ async function generatePreConfigTaskResult(
                             sourceProjectId: projectId,
                             sourceObjectId: objectId,
                             sourceObjectType: objectType,
+                            sourceLabel: buildScheduledTaskSourceLabel(taskMetadata),
                             sourceCommentId: streamOutput.commentId || null,
                             // The full user doc read above, not the `user` from
                             // getUserDataOptimized — that one only carries gold + timezone
@@ -721,4 +735,5 @@ module.exports = {
     executeWebhookTask,
     getLatestUserMessageOnUserLocalDay,
     hasUserMessageOnUserLocalDay,
+    buildScheduledTaskSourceLabel,
 }

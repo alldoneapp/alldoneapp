@@ -130,6 +130,7 @@ jest.mock('firebase-functions/params', () => ({ defineString: jest.fn(() => ({ v
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'all',
     STAYWARD_COMMENT: 'comment',
+    getBaseUrl: () => 'https://my.alldone.app',
 }))
 
 const mockGetUserData = jest.fn()
@@ -158,13 +159,19 @@ const listDailyComments = () =>
         .filter(([key]) => key.startsWith(`${DAILY_COMMENTS_PATH}/`))
         .map(([key, value]) => ({ id: key.split('/').pop(), ...value }))
 
+const RESULT_TEXT = 'Tech is up 2.3% today. AAPL +1.8%, GOOGL +2.1%.'
+const SOURCE_HEADER =
+    '📋 From your recurring task "Daily Market Analysis"\n' +
+    'https://my.alldone.app/projects/work-project/tasks/generated-task-1/chat'
+
 const scheduledTaskDelivery = (overrides = {}) => ({
     userId: 'user-1',
     assistantId: 'assistant-1',
-    resultText: 'Tech is up 2.3% today. AAPL +1.8%, GOOGL +2.1%.',
+    resultText: RESULT_TEXT,
     sourceProjectId: 'work-project',
     sourceObjectId: 'generated-task-1',
     sourceObjectType: 'tasks',
+    sourceLabel: 'From your recurring task "Daily Market Analysis"',
     sourceCommentId: 'comment-1',
     userData: USER,
     timestamp: RUN_AT,
@@ -197,7 +204,7 @@ describe('mirrorAssistantResultToWhatsAppDailyTopic', () => {
 
         // And the follow-up context builder sees the result as an assistant turn.
         const history = await getConversationHistory('whatsapp-project', DAILY_TOPIC_ID, 20, 0)
-        expect(history).toEqual([['assistant', 'Tech is up 2.3% today. AAPL +1.8%, GOOGL +2.1%.']])
+        expect(history).toEqual([['assistant', RESULT_TEXT]])
     })
 
     test('stores exactly one comment, credited to the assistant, tagged with its origin', async () => {
@@ -220,6 +227,69 @@ describe('mirrorAssistantResultToWhatsAppDailyTopic', () => {
             })
         )
         expect(store.get(DAILY_TOPIC_PATH).commentsData.amount).toBe(1)
+    })
+
+    describe('source header', () => {
+        test('leads with the task name and a link back to the originating thread', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery())
+
+            expect(listDailyComments()[0].commentText).toBe(`${SOURCE_HEADER}\n\n${RESULT_TEXT}`)
+        })
+
+        test('links a topic-hosted source to its chat URL, not a task URL', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(
+                scheduledTaskDelivery({ sourceObjectType: 'topics', sourceObjectId: 'topic-1' })
+            )
+
+            expect(listDailyComments()[0].commentText).toContain(
+                'https://my.alldone.app/projects/work-project/chats/topic-1/chat'
+            )
+        })
+
+        // AT-2241: a recognisable prefix on a prior assistant turn is a pattern the next
+        // answer copies, and the user reads that mimicry on WhatsApp.
+        test('is kept out of the model context', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery())
+
+            expect(listDailyComments()[0].contextCommentText).toBe(RESULT_TEXT)
+
+            const history = await getConversationHistory('whatsapp-project', DAILY_TOPIC_ID, 20, 0)
+            expect(history).toEqual([['assistant', RESULT_TEXT]])
+            expect(history[0][1]).not.toContain('📋')
+            expect(history[0][1]).not.toContain('my.alldone.app')
+        })
+
+        test('keeps the Chats-list preview on the answer rather than the header URL', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery())
+
+            expect(store.get(DAILY_TOPIC_PATH).commentsData.lastComment).toBe(RESULT_TEXT)
+        })
+
+        test('stores the bare result and no context override when there is no label', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery({ sourceLabel: '' }))
+
+            const comment = listDailyComments()[0]
+            expect(comment.commentText).toBe(RESULT_TEXT)
+            expect(comment.contextCommentText).toBeUndefined()
+        })
+
+        test('drops the link when the source thread cannot be addressed', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery({ sourceObjectId: '' }))
+
+            expect(listDailyComments()[0].commentText).toBe(
+                '📋 From your recurring task "Daily Market Analysis"\n\n' + RESULT_TEXT
+            )
+        })
+
+        test('changing only the header does not create a second message', async () => {
+            await mirrorAssistantResultToWhatsAppDailyTopic(scheduledTaskDelivery())
+            const second = await mirrorAssistantResultToWhatsAppDailyTopic(
+                scheduledTaskDelivery({ sourceLabel: 'From your assistant task "Renamed"' })
+            )
+
+            expect(second.mirrored).toBe(false)
+            expect(listDailyComments()).toHaveLength(1)
+        })
     })
 
     test('a redelivered result does not post a second topic message', async () => {

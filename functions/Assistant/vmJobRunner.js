@@ -3803,6 +3803,7 @@ async function mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notif
             sourceProjectId: pendingWebhook.projectId,
             sourceObjectId: pendingWebhook.objectId,
             sourceObjectType: pendingWebhook.objectType || 'tasks',
+            sourceLabel: 'From your VM task',
             sourceCommentId: `vmJob:${pendingWebhook.correlationId}:${notificationType}`,
             alreadyDeliveredTo: [
                 {

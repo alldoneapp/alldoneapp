@@ -116,6 +116,7 @@ const {
     generatePreConfigTaskResult,
     getLatestUserMessageOnUserLocalDay,
     hasUserMessageOnUserLocalDay,
+    buildScheduledTaskSourceLabel,
 } = require('./assistantPreConfigTaskTopic')
 
 test('exports the local-day user-message lookup used by heartbeats', () => {
@@ -470,6 +471,7 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
                 sourceProjectId: 'project-1',
                 sourceObjectId: 'generated-task-1',
                 sourceObjectType: 'tasks',
+                sourceLabel: 'From your recurring task "Daily Market Analysis"',
                 sourceCommentId: 'comment-1',
                 userData: expect.objectContaining({ uid: 'user-1', defaultProjectId: 'whatsapp-project' }),
             })
@@ -522,6 +524,18 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
 
             const { userData } = mockMirrorAssistantResultToWhatsAppDailyTopic.mock.calls[0][0]
             expect(userData.defaultProjectId).toBe('whatsapp-project')
+        })
+
+        test('names the task in the header so the daily topic says where the result came from', () => {
+            expect(buildScheduledTaskSourceLabel({ name: 'Daily Market Analysis', recurrence: 'every_day' })).toBe(
+                'From your recurring task "Daily Market Analysis"'
+            )
+            expect(buildScheduledTaskSourceLabel({ name: 'One-off research', recurrence: 'never' })).toBe(
+                'From your assistant task "One-off research"'
+            )
+            // An unnamed task still gets a header; it just cannot name itself.
+            expect(buildScheduledTaskSourceLabel({})).toBe('From your assistant task')
+            expect(buildScheduledTaskSourceLabel(null)).toBe('From your assistant task')
         })
 
         test('a failing mirror never breaks the run', async () => {
