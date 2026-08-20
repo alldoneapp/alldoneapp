@@ -15,6 +15,8 @@ import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
+import TaskListSkeleton from '../TaskListSkeleton'
+import { resolveGhostRowCount } from '../../UIComponents/Ghosts/ghostRowCount'
 
 export default function DoneTasksByProject({ project, inSelectedProject }) {
     const dispatch = useDispatch()
@@ -48,14 +50,18 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
-    const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck } = useEarlierTasks(
-        project,
-        doneTasksAmount + amountDoneTasksExpanded
-    )
+    const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck, loadingEarlierTasks } =
+        useEarlierTasks(project, doneTasksAmount + amountDoneTasksExpanded)
 
     const completedDateToCheck =
         amountDoneTasksExpanded > 0 ? earlierCompletedDateToCheck : moment().startOf('day').valueOf()
     const earlierSubtasksByTask = useEarlierSubtasks(project, completedDateToCheck)
+
+    // AT-2382 - the first "earlier tasks" press is the harsh one: `tasksByDate` switches
+    // from today's list to `earlierTasksByDate`, which is still `[]` until Firestore
+    // answers, so the section previously went completely blank. Later presses keep the
+    // rows they already have, so the ghosts then simply extend the list downwards.
+    const showEarlierTasksGhosts = amountDoneTasksExpanded > 0 && loadingEarlierTasks
 
     const tasksByDate = amountDoneTasksExpanded > 0 ? earlierTasksByDate : todayTasksByDate
     const estimationByDate = amountDoneTasksExpanded > 0 ? earlierEstimationByDate : todayEstimationByDate
@@ -124,11 +130,19 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
                 )
             })}
 
+            {showEarlierTasksGhosts && (
+                <TaskListSkeleton
+                    rowCount={resolveGhostRowCount(AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON)}
+                    showDateHeader={filteredTasksByDate.length === 0}
+                />
+            )}
+
             <ShowMoreButtonsArea
                 filteredTasksByDateAmount={filteredTasksByDate.length}
                 projectId={project.id}
                 projectIndex={project.index}
                 completedDateToCheck={completedDateToCheck}
+                loading={showEarlierTasksGhosts}
             />
         </View>
     ) : null

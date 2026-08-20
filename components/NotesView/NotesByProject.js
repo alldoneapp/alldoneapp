@@ -19,6 +19,8 @@ import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/No
 import NoteOwnerFiltersLine from './NoteFilters/NoteOwnerFiltersLine'
 import { filterNotesByOwner, filterStickyNotesByOwner } from './NoteFilters/noteOwnerFilterHelper'
 import { getNoteFilterStateUpdate } from './noteFilterSubscription'
+import NotesListSkeleton from './NotesListSkeleton'
+import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
 
 export default class NotesByProject extends PureComponent {
     constructor(props) {
@@ -33,6 +35,13 @@ export default class NotesByProject extends PureComponent {
             hashtagFilteredNotes: {},
             hashtagFilteredStickyNotes: [],
             pressedShowMore: false,
+            // AT-2382 - drives the note-shaped ghosts under the list while an expansion is
+            // in flight. It has to be local component state: the global `isLoadingData`
+            // refcount is not usable as a per-list signal, because an expand dispatches
+            // `startLoadingData()` once (watchUserNotes) but `stopLoadingData()` twice (the
+            // snapshot handler in firestore.js AND the updateNotes callback below), so the
+            // refcount clamps at 0 and the flag drops before the notes have arrived.
+            loadingMoreNotes: false,
             needShowMoreButton: false,
             hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
             noteOwnerFilters: storeState.noteOwnerFilters,
@@ -63,7 +72,7 @@ export default class NotesByProject extends PureComponent {
             this.datesForNotes = {}
             this.stickyCounter = 0
             this.notesCounter = 0
-            this.setState({ notes: {}, stickyNotes: [] })
+            this.setState({ notes: {}, stickyNotes: [], loadingMoreNotes: false })
             this.watchUserNotes(pressedShowMore, true)
             this.watchNotesNeedShowMoreButton()
         }
@@ -199,7 +208,9 @@ export default class NotesByProject extends PureComponent {
                         finalLastEditedDate = lastEditedDate
                     }
 
-                    return { notes }
+                    // AT-2382 - the ghosts are retired by the same state update that puts the
+                    // real rows in, so there is never a frame with both (or with neither).
+                    return { notes, loadingMoreNotes: false }
                 },
                 () => {
                     // Side-effects moved out of updater to avoid React warning about updates inside update functions
@@ -369,7 +380,11 @@ export default class NotesByProject extends PureComponent {
     }
 
     expandShowMore = () => {
-        this.setState({ pressedShowMore: true })
+        // Guarded because the expanded watcher is unbounded and re-entrant: a second press
+        // while the first snapshot is still buffered would tear the listener down and start
+        // the wait over, with the ghosts already on screen making it look like progress.
+        if (this.state.loadingMoreNotes) return
+        this.setState({ pressedShowMore: true, loadingMoreNotes: true })
         this.watchUserNotes(true, false)
     }
 
@@ -384,6 +399,7 @@ export default class NotesByProject extends PureComponent {
             hashtagFilteredStickyNotes,
             pressedShowMore,
             needShowMoreButton,
+            loadingMoreNotes,
         } = this.state
 
         const notesArr = Object.entries(filteredNotes).sort((a, b) => b[0] - a[0])
@@ -451,11 +467,13 @@ export default class NotesByProject extends PureComponent {
                         )
                     }
                 })}
+                {loadingMoreNotes && <NotesListSkeleton rowCount={resolveGhostRowCount(this.props.maxNotesToRender)} />}
                 {showShowMoreButton && (
                     <ShowMoreButton
                         expanded={pressedShowMore}
                         contract={this.contractShowMore}
                         expand={this.expandShowMore}
+                        loading={loadingMoreNotes}
                     />
                 )}
             </View>
