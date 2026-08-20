@@ -4,6 +4,7 @@ const os = require('os')
 const path = require('path')
 
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+const mockMirrorAssistantResultToWhatsAppDailyTopic = jest.fn(async () => ({ mirrored: true, reason: 'stored' }))
 const originalCloudRunJob = process.env.CLOUD_RUN_JOB
 process.env.CLOUD_RUN_JOB = 'vm-job-runner'
 const mockDeductGold = jest.fn()
@@ -81,6 +82,10 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
         sendWhatsAppMessageWithConversationLink: mockSendWhatsAppMessageWithConversationLink,
     }))
 )
+
+jest.mock('../WhatsApp/whatsAppResultMirror', () => ({
+    mirrorAssistantResultToWhatsAppDailyTopic: (...args) => mockMirrorAssistantResultToWhatsAppDailyTopic(...args),
+}))
 
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: mockDeductGold,
@@ -2698,6 +2703,105 @@ describe('VM runner origin-conversation completion note', () => {
         )
         expect(result).toBeNull()
         expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
+    })
+
+    // AT-2387: the result lands in the host task thread, but a WhatsApp follow-up is
+    // answered out of the daily WhatsApp topic — mirror it there too.
+    test('mirrors the delivered result into the daily WhatsApp topic', async () => {
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                assistantId: 'assistant-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            { notificationType: 'completed' }
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                assistantId: 'assistant-1',
+                // The exact text that went out over WhatsApp, artifact links included.
+                resultText: 'Final VM result',
+                sourceProjectId: 'project-1',
+                sourceObjectId: 'host-task-1',
+                sourceObjectType: 'tasks',
+                // Stable across runner retries and the reconciliation pass.
+                sourceCommentId: 'vmJob:correlation-1:completed',
+            })
+        )
+    })
+
+    test('does not mirror when the WhatsApp send failed', async () => {
+        mockSendWhatsAppMessageWithConversationLink.mockResolvedValueOnce({ success: false, error: 'twilio down' })
+
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            {}
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
+    })
+
+    test('lets the mirror stand down where the origin note already posts the outcome', async () => {
+        await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-X',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectType: 'topics',
+                originObjectId: 'BotChat20260820user-1',
+                originAssistantId: 'anna-assistant',
+            },
+            'All done.',
+            { notificationType: 'completed' }
+        )
+
+        expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alreadyDeliveredTo: [{ projectId: 'project-anna', objectId: 'BotChat20260820user-1' }],
+            })
+        )
+    })
+
+    test('a failing mirror never fails the notification that already went out', async () => {
+        mockMirrorAssistantResultToWhatsAppDailyTopic.mockRejectedValueOnce(new Error('firestore down'))
+
+        const result = await __private__.sendWhatsAppVmResultNotification(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+            },
+            'Final VM result',
+            {}
+        )
+
+        expect(result.success).toBe(true)
     })
 
     test('notifyVmResultChannels fans out to both WhatsApp and the origin note', async () => {
