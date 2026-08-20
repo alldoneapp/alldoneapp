@@ -13,7 +13,20 @@
 // suite already takes ~4.8s on a developer machine and 33-35s on a CI runner, so the first test —
 // which also carries the module-loading cost — blew the default and failed `test:web:changed` on
 // every branch whose diff reached the app-boot import graph, regardless of what that branch changed.
-jest.setTimeout(30000)
+//
+// The first raise of this budget set it to 30s while its own commit message recorded the CI cost as
+// "33-35s", i.e. the budget was pinned BELOW the number it was derived from and had no headroom at
+// all. What that leaves is a suite that passes only when it happens to run first in the in-band
+// worker: measured on a CI runner it takes 18.9s as the first suite of the job and 36.3s as the
+// third, and the branch that trips the difference is simply whichever one adds a couple of suites
+// ahead of it — again regardless of what that branch changed (AT-2385 added three Contacts suites
+// and turned it red twice in a row; boot itself is unchanged, 29.3s on this branch vs 30.6s on
+// master for the same cold-cache run).
+//
+// So the budget is now derived from the worst observed CI cost with real headroom rather than from
+// the best one. Nothing else changes: the assertions, the mocks and the boot path are untouched, the
+// suite still runs in full, and the CI job's own timeout remains the outer bound.
+jest.setTimeout(120000)
 
 jest.mock('../utils/backends/firestore', () => ({
     ...jest.createMockFromModule('../utils/backends/firestore'),
