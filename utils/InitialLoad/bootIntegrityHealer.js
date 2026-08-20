@@ -3,6 +3,7 @@ import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
 import { loadGlobalData, watchProjectData } from './initialLoadHelper'
 import { isBrowserOffline } from '../connectionState'
+import { runExclusiveFirestoreRestart } from '../backends/firestoreRestartLease'
 
 /**
  * Post-boot integrity check for data a degraded initial load left behind.
@@ -128,21 +129,28 @@ const repairAnomalies = async ({ missingProjectIds, administratorMissing }) => {
 const cycleFirestoreNetwork = async () => {
     if (networkCyclesUsed >= MAX_NETWORK_CYCLES_PER_SESSION) return false
     networkCyclesUsed++
-    const db = getDb()
-    try {
-        await db.disableNetwork()
-        await db.enableNetwork()
-        console.warn('[BootIntegrity] Cycled the Firestore network connection to recover missing data')
-        return true
-    } catch (error) {
-        console.warn('[BootIntegrity] Failed to cycle the Firestore network:', error)
+    // Through the shared lease (PT-4660): connection health restarts the same
+    // transport when a probe fails, and interleaved disable/enable pairs resolve in
+    // SDK call order — one ordering leaves the network parked for the rest of the
+    // session while both callers believe they restored it.
+    return runExclusiveFirestoreRestart(async () => {
+        const db = getDb()
         try {
+            await db.disableNetwork()
             await db.enableNetwork()
-        } catch (enableError) {
-            // Nothing else to do — the SDK keeps its previous state.
+            console.warn('[BootIntegrity] Cycled the Firestore network connection to recover missing data')
+        } catch (error) {
+            console.warn('[BootIntegrity] Failed to cycle the Firestore network:', error)
+            try {
+                await db.enableNetwork()
+            } catch (enableError) {
+                // Nothing else to do — the SDK keeps its previous state.
+            }
+            // Reported as a failed cycle to the caller, which is what the `false`
+            // return of runExclusiveFirestoreRestart means.
+            throw error
         }
-        return false
-    }
+    })
 }
 
 export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {

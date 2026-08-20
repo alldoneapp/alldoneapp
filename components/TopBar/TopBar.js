@@ -8,6 +8,7 @@ import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
 import HomeButton from './HomeButton'
+import ConnectionStatusChip from './ConnectionStatusChip'
 
 export default function TopBar() {
     const dispatch = useDispatch()
@@ -45,7 +46,12 @@ export default function TopBar() {
                 <HomeButton color={theme.homeIcon} style={localStyles.homeButton} />
                 {userIsAnonymous ? <View style={{ flex: 1 }} /> : <TopBarStatisticArea />}
             </View>
-            <NotificationArea />
+            <View style={localStyles.rightArea}>
+                {/* Renders nothing while the connection is live (PT-4660), so this
+                    row collapses to exactly the previous layout in the normal case. */}
+                <ConnectionStatusChip />
+                <NotificationArea />
+            </View>
         </View>
     )
 }
@@ -64,6 +70,11 @@ const localStyles = StyleSheet.create({
     leftArea: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    rightArea: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
     },
     homeButton: {
         marginRight: 16,
