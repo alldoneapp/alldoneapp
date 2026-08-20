@@ -1,4 +1,7 @@
 const mockGet = jest.fn()
+const mockDocSet = jest.fn(async () => {})
+const mockDocUpdate = jest.fn(async () => {})
+const mockDocPaths = []
 
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
@@ -12,6 +15,14 @@ jest.mock('firebase-admin', () => ({
                 })),
             })),
         })),
+        doc: jest.fn(path => {
+            mockDocPaths.push(path)
+            return {
+                path,
+                set: (...args) => mockDocSet(path, ...args),
+                update: (...args) => mockDocUpdate(path, ...args),
+            }
+        }),
     })),
 }))
 
@@ -52,7 +63,63 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     STAYWARD_COMMENT: 'comment',
 }))
 
-const { getConversationHistory } = require('./whatsAppDailyTopic')
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { increment: value => ({ __increment: value }) },
+    Timestamp: { now: () => ({ __timestamp: true }) },
+}))
+
+const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
+
+// The live WhatsApp reply path. Its comment id is random and its writes are best-effort
+// on purpose — the inbound queue's own dedupe is what keeps it single-shot. Pinned here
+// because AT-2387 factored the comment/chat payloads out of it to share them with the
+// idempotent mirror writer; the shape it writes must not have moved.
+describe('storeAssistantMessageInTopic', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocPaths.length = 0
+    })
+
+    test('writes the comment, refreshes the chat preview and moves the AssistantLine pointer', async () => {
+        const commentId = await storeAssistantMessageInTopic('project-1', 'chat-1', 'assistant-1', 'Hi there', 'user-1')
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+            `chatComments/project-1/topics/chat-1/comments/${commentId}`,
+            expect.objectContaining({
+                commentText: 'Hi there',
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+                source: 'whatsapp',
+            })
+        )
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            'chatObjects/project-1/chats/chat-1',
+            expect.objectContaining({
+                lastEditorId: 'assistant-1',
+                'commentsData.lastComment': 'Hi there',
+                'commentsData.lastCommentType': 'comment',
+                'commentsData.amount': { __increment: 1 },
+            })
+        )
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            'users/user-1',
+            expect.objectContaining({
+                'lastAssistantCommentData.project-1': expect.objectContaining({
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                    creatorId: 'assistant-1',
+                }),
+            })
+        )
+    })
+
+    test('leaves the AssistantLine pointer alone when there is no user', async () => {
+        await storeAssistantMessageInTopic('project-1', 'chat-1', 'assistant-1', 'Hi there', '')
+
+        expect(mockDocPaths).not.toContain('users/')
+        expect(mockDocUpdate).toHaveBeenCalledTimes(1)
+    })
+})
 
 describe('WhatsApp daily topic media history', () => {
     beforeEach(() => {

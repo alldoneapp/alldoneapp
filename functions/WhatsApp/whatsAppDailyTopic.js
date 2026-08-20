@@ -192,6 +192,65 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
 }
 
 /**
+ * Build the assistant comment payload written into a daily topic. Shared by the live
+ * WhatsApp reply path and the idempotent mirror path so both produce the same record
+ * shape — a mirrored result must be indistinguishable from a reply for the reader
+ * (the app's message list) and for `getConversationHistory`.
+ *
+ * @param {string} assistantId
+ * @param {string} responseText
+ * @param {number} createdAt
+ * @param {Object|null} extraFields - Provenance fields for mirrored results
+ */
+function buildAssistantTopicComment(assistantId, responseText, createdAt, extraFields = null) {
+    return {
+        commentText: responseText,
+        lastChangeDate: Timestamp.now(),
+        created: createdAt,
+        creatorId: assistantId,
+        fromAssistant: true,
+        source: 'whatsapp',
+        ...(extraFields || {}),
+    }
+}
+
+/** The chat-doc preview/counter update that accompanies every topic comment. */
+function buildTopicChatUpdate(creatorId, commentText, createdAt) {
+    return {
+        lastEditionDate: createdAt,
+        lastEditorId: creatorId,
+        'commentsData.lastComment': commentText.substring(0, 200),
+        'commentsData.lastCommentOwnerId': creatorId,
+        'commentsData.lastCommentType': STAYWARD_COMMENT,
+        'commentsData.amount': FieldValue.increment(1),
+    }
+}
+
+/**
+ * Point the user's AssistantLine "Last comment" bubble at this topic. The chat-doc
+ * commentsData update only feeds the Chats-list preview; MyDay reads this instead.
+ */
+async function updateLastAssistantCommentData(projectId, chatId, assistantId, userId, date) {
+    const updateData = {
+        objectType: 'topics',
+        objectId: chatId,
+        creatorId: assistantId,
+        creatorType: 'user',
+        date,
+    }
+    await admin
+        .firestore()
+        .doc(`users/${userId}`)
+        .update({
+            [`lastAssistantCommentData.${projectId}`]: updateData,
+            ['lastAssistantCommentData.allProjects']: {
+                ...updateData,
+                projectId,
+            },
+        })
+}
+
+/**
  * Store an assistant response in the daily topic.
  *
  * @param {string} projectId
@@ -211,14 +270,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
     const commentId = uuidv4()
     const now = Date.now()
 
-    const comment = {
-        commentText: responseText,
-        lastChangeDate: Timestamp.now(),
-        created: now,
-        creatorId: assistantId,
-        fromAssistant: true,
-        source: 'whatsapp',
-    }
+    const comment = buildAssistantTopicComment(assistantId, responseText, now)
 
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
 
@@ -227,14 +279,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
     try {
         await Promise.all([
             commentRef.set(comment),
-            chatRef.update({
-                lastEditionDate: now,
-                lastEditorId: assistantId,
-                'commentsData.lastComment': responseText.substring(0, 200),
-                'commentsData.lastCommentOwnerId': assistantId,
-                'commentsData.lastCommentType': STAYWARD_COMMENT,
-                'commentsData.amount': FieldValue.increment(1),
-            }),
+            chatRef.update(buildTopicChatUpdate(assistantId, responseText, now)),
         ])
         console.log('WhatsApp DailyTopic: Assistant message stored successfully', { commentId })
     } catch (error) {
@@ -254,23 +299,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
     // Update lastAssistantCommentData on the user doc so the AssistantLine shows this topic
     if (userId) {
         try {
-            const updateData = {
-                objectType: 'topics',
-                objectId: chatId,
-                creatorId: assistantId,
-                creatorType: 'user',
-                date: now,
-            }
-            await admin
-                .firestore()
-                .doc(`users/${userId}`)
-                .update({
-                    [`lastAssistantCommentData.${projectId}`]: updateData,
-                    ['lastAssistantCommentData.allProjects']: {
-                        ...updateData,
-                        projectId,
-                    },
-                })
+            await updateLastAssistantCommentData(projectId, chatId, assistantId, userId, now)
             console.log('WhatsApp DailyTopic: Updated lastAssistantCommentData for user', { userId })
         } catch (error) {
             console.error('WhatsApp DailyTopic: Failed to update lastAssistantCommentData', { error: error.message })
@@ -278,6 +307,70 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
     }
 
     return commentId
+}
+
+/**
+ * Store an assistant message in the daily topic under a caller-supplied comment ID,
+ * exactly once.
+ *
+ * `storeAssistantMessageInTopic` is a pure append with a random UUID: correct for the
+ * live reply path, where the queue's own dedupe guarantees a single call. Anything
+ * driven by a retryable producer (a scheduled task rerun, a Cloud Tasks redelivery, a
+ * VM job reconciliation) needs the comment ID to be derived from the source delivery
+ * instead, so a second attempt is a no-op rather than a duplicate message plus a
+ * double `commentsData.amount` increment. Same transaction shape as
+ * `whatsAppCallTranscript.storeCallTranscriptTurn`.
+ *
+ * @param {Object} params
+ * @param {string} params.projectId
+ * @param {string} params.chatId
+ * @param {string} params.assistantId
+ * @param {string} params.responseText
+ * @param {string} params.commentId - Deterministic, derived from the source delivery
+ * @param {string} [params.userId] - Only needed when updating the AssistantLine pointer
+ * @param {boolean} [params.updateAssistantLine=false]
+ * @param {Object} [params.extraCommentFields] - Provenance fields
+ * @returns {Promise<{ commentId: string, stored: boolean }>} `stored` is false when the
+ *          comment already existed (a retry).
+ */
+async function storeAssistantMessageInTopicOnce({
+    projectId,
+    chatId,
+    assistantId,
+    responseText,
+    commentId,
+    userId = '',
+    updateAssistantLine = false,
+    extraCommentFields = null,
+}) {
+    const normalizedText = String(responseText || '').trim()
+    if (!normalizedText) return { commentId, stored: false }
+
+    const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
+    const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
+    const now = Date.now()
+    let stored = false
+
+    await admin.firestore().runTransaction(async transaction => {
+        const existing = await transaction.get(commentRef)
+        if (existing.exists) return
+
+        transaction.set(commentRef, buildAssistantTopicComment(assistantId, normalizedText, now, extraCommentFields))
+        transaction.update(chatRef, buildTopicChatUpdate(assistantId, normalizedText, now))
+        stored = true
+    })
+
+    // Only on a newly stored comment, so a retry cannot move the AssistantLine pointer a
+    // second time. Best-effort: never fail the write because the user-doc update failed.
+    if (stored && updateAssistantLine && userId) {
+        await updateLastAssistantCommentData(projectId, chatId, assistantId, userId, now).catch(error => {
+            console.warn('WhatsApp DailyTopic: Failed to update lastAssistantCommentData', {
+                error: error?.message || String(error),
+            })
+        })
+    }
+
+    return { commentId, stored }
 }
 
 /**
@@ -475,6 +568,7 @@ module.exports = {
     getOrCreateWhatsAppDailyTopic,
     storeUserMessageInTopic,
     storeAssistantMessageInTopic,
+    storeAssistantMessageInTopicOnce,
     getConversationHistory,
     __private__: {
         getUserLocalDateContext,
