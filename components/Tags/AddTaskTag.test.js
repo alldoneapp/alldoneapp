@@ -75,9 +75,13 @@ describe('AddTaskTag', () => {
         const icon = tree.root.findByType(Icon)
         const label = tree.root.find(node => node.type === Text && node.props.children === 'Add task')
 
+        // Asserted as a literal too, not only via the token: a token compared
+        // against itself would still pass if it were renamed out of existence
+        // and both sides became undefined.
+        expect(colors.Primary100).toBe('#007FFF')
         expect(StyleSheet.flatten(button.props.style)).toMatchObject({
-            backgroundColor: colors.Primary100,
-            borderColor: colors.Primary100,
+            backgroundColor: '#007FFF',
+            borderColor: '#007FFF',
         })
         // White on the primary blue, same as before the recolor.
         expect(icon.props.color).toBe('#ffffff')
@@ -100,6 +104,7 @@ describe('AddTaskTag', () => {
         const button = tree.root.findByType(TouchableOpacity)
 
         expect(StyleSheet.flatten(button.props.style).backgroundColor).toBe(colors.UtilityBlue200)
+        expect(colors.UtilityBlue200).toBe('#5AACFF')
         expect(StyleSheet.flatten(button.props.style).backgroundColor).not.toBe(colors.Primary100)
     })
 
