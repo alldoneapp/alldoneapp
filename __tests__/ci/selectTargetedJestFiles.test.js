@@ -14,12 +14,46 @@ const SELECTOR = path.resolve(__dirname, '../../ci/selectTargetedJestFiles.js')
 const EXIT_UNRESOLVED_REF = 3
 const EXIT_NO_MERGE_BASE = 4
 
+// `cwd` alone does NOT decide which repository a git command talks to: the pointer variables win
+// over it. If `GIT_DIR`/`GIT_WORK_TREE` are exported by the surrounding environment, `git init`
+// in a scratch directory silently succeeds WITHOUT creating a repository there, and every command
+// after it - `git config user.email`, `git add -A`, `git commit` - operates on the inherited
+// repository instead. This suite would then rewrite the checkout it is running inside: observed
+// in an Alldone VM agent job (whose sandbox exports both, see the Codex git-metadata note in
+// CLAUDE.md), where a full `npx jest` run committed the agent's uncommitted work as "base".
+//
+// So the fixtures run with the whole pointer family stripped. `--quiet` is also dropped from
+// `init` deliberately - see `createRepo`.
+const GIT_POINTER_VARS = [
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_INDEX_FILE',
+    'GIT_COMMON_DIR',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_CEILING_DIRECTORIES',
+]
+
+const scratchEnv = () => {
+    const env = { ...process.env }
+    GIT_POINTER_VARS.forEach(name => delete env[name])
+    return env
+}
+
 const git = (cwd, args) =>
-    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    execFileSync('git', args, { cwd, env: scratchEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
 const createRepo = () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'targeted-jest-')))
-    git(dir, ['init', '--quiet'])
+    git(dir, ['init'])
+    // Assert the scratch repo is really the scratch repo before anything writes to it. Without
+    // this, a future environment that reintroduces a pointer variable would not fail here - it
+    // would quietly commit into whatever repository the suite happens to be running inside, and
+    // the only symptom would be a mystery commit.
+    const toplevel = git(dir, ['rev-parse', '--show-toplevel'])
+    if (fs.realpathSync(toplevel) !== dir) {
+        throw new Error(`Refusing to run: scratch repo resolved to ${toplevel} instead of ${dir}`)
+    }
     git(dir, ['config', 'user.email', 'ci@example.com'])
     git(dir, ['config', 'user.name', 'CI'])
     git(dir, ['config', 'commit.gpgsign', 'false'])
@@ -41,7 +75,12 @@ const commit = (dir, message) => {
 }
 
 const runSelector = (dir, args) => {
-    const result = spawnSync(process.execPath, [SELECTOR, ...args], { cwd: dir, encoding: 'utf8' })
+    // The selector shells out to git itself, so it needs the same pointer-free environment.
+    const result = spawnSync(process.execPath, [SELECTOR, ...args], {
+        cwd: dir,
+        env: scratchEnv(),
+        encoding: 'utf8',
+    })
     return {
         status: result.status,
         files: String(result.stdout || '')
