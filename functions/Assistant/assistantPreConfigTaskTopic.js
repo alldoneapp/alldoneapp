@@ -540,7 +540,8 @@ async function generatePreConfigTaskResult(
             try {
                 const admin = require('firebase-admin')
                 const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-                const userPhone = userDoc.data()?.phone
+                const whatsappUserData = userDoc.data() || null
+                const userPhone = whatsappUserData?.phone
 
                 if (userPhone) {
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
@@ -589,6 +590,29 @@ async function generatePreConfigTaskResult(
 
                     if (whatsappResult.success && streamOutput.commentId) {
                         await removeSingleChatNotification(projectId, userId, streamOutput.commentId)
+                    }
+
+                    // The answer went out over WhatsApp but lives in this task's own thread,
+                    // while a WhatsApp follow-up is answered from the daily topic. Mirror it
+                    // there so the next message has it in context (AT-2387). No-op for the
+                    // heartbeat, which already runs inside the daily topic. Never throws.
+                    if (whatsappResult.success) {
+                        const {
+                            mirrorAssistantResultToWhatsAppDailyTopic,
+                        } = require('../WhatsApp/whatsAppResultMirror')
+                        await mirrorAssistantResultToWhatsAppDailyTopic({
+                            userId,
+                            assistantId: settings.uid || assistantId,
+                            resultText: aiCommentText,
+                            sourceProjectId: projectId,
+                            sourceObjectId: objectId,
+                            sourceObjectType: objectType,
+                            sourceCommentId: streamOutput.commentId || null,
+                            // The full user doc read above, not the `user` from
+                            // getUserDataOptimized — that one only carries gold + timezone
+                            // fields, and the daily topic needs defaultProjectId.
+                            userData: whatsappUserData ? { uid: userId, ...whatsappUserData } : null,
+                        })
                     }
                 } else {
                     console.log('No phone number found for WhatsApp notification:', { userId })

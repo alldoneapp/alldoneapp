@@ -3787,6 +3787,38 @@ function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
     return `${heading}\n${links}\n\n${message}`
 }
 
+// Mirror a WhatsApp-delivered VM result into the user's daily WhatsApp topic, so the next
+// WhatsApp message ("did it open the MR?") is answered by an assistant that can see the
+// result the user just read (AT-2387). The host task thread is a different conversation
+// from the one WhatsApp follow-ups land in. Idempotent on the correlationId + notification
+// type, so a runner retry or a reconciliation pass cannot post it twice, and skipped when
+// postVmOriginConversationNote is already going to write into that same topic.
+async function mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notificationType) {
+    try {
+        const { mirrorAssistantResultToWhatsAppDailyTopic } = require('../WhatsApp/whatsAppResultMirror')
+        await mirrorAssistantResultToWhatsAppDailyTopic({
+            userId: pendingWebhook.userId,
+            assistantId: pendingWebhook.assistantId || pendingWebhook.originAssistantId || '',
+            resultText: message,
+            sourceProjectId: pendingWebhook.projectId,
+            sourceObjectId: pendingWebhook.objectId,
+            sourceObjectType: pendingWebhook.objectType || 'tasks',
+            sourceCommentId: `vmJob:${pendingWebhook.correlationId}:${notificationType}`,
+            alreadyDeliveredTo: [
+                {
+                    projectId: pendingWebhook.originProjectId || '',
+                    objectId: pendingWebhook.originObjectId || '',
+                },
+            ],
+        })
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed mirroring WhatsApp result into the daily topic', {
+            correlationId: pendingWebhook?.correlationId,
+            error: error?.message || String(error),
+        })
+    }
+}
+
 async function sendWhatsAppVmResultNotification(
     pendingWebhook,
     output,
@@ -3834,6 +3866,7 @@ async function sendWhatsAppVmResultNotification(
                 ...baseLog,
                 sid: notificationData.sid,
             })
+            await mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notificationType)
         } else {
             console.warn('🖥️ VM JOB: WhatsApp result notification failed', {
                 ...baseLog,
