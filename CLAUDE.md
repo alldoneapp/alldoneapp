@@ -905,63 +905,6 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
-### An assistant result sent over WhatsApp must also land in the Daily WhatsApp Topic (AT-2387)
-
-**A WhatsApp follow-up is answered out of exactly one thread**, the daily topic
-`BotChat<userLocalDate><userId>` in the user's `defaultProjectId`: `whatsAppIncomingHandler`
-resolves it, `whatsAppInboundQueueProcessor` stores the user turn there, and
-`whatsAppAssistantBridge` builds the model context from `getConversationHistory` of that single
-chat. Nothing else is read. So an assistant result pushed to WhatsApp from **anywhere else** is
-invisible to the next message: a recurring / pre-configured task writes its answer into its own
-generated task thread (`generatePreConfigTaskResult` with `objectType: 'tasks'`, often in a
-different project than the WhatsApp one), and a VM job writes into its host task. The user reads
-the answer on their phone, replies "and the second point?", and the assistant has never seen it.
-The failure is silent and reads as amnesia, not as a bug — the message was delivered, the answer
-is in the app, and every stage logged success.
-
-The heartbeat never had the problem because it is the one producer that already **runs inside**
-the daily topic (`assistantHeartbeat` picks `getOrCreateWhatsAppDailyTopic` over its own
-`Heartbeat…` topic whenever it will send WhatsApp). `functions/WhatsApp/whatsAppResultMirror.js`
-makes the other producers behave the same way: after a **successful** send it writes the result
-verbatim into the daily topic via the canonical `getOrCreateWhatsAppDailyTopic` +
-`storeAssistantMessageInTopicOnce`. There is no separate context store and no second record —
-one comment, the same shape a live WhatsApp reply writes, which is why `getConversationHistory`
-picks it up with no change.
-
-**The comment leads with a source header the model never sees.** A mirrored result lands in a
-thread the user never opened, so it needs to say where it came from: one line naming the task
-(`📋 From your recurring task "Daily Market Analysis"`) plus a link back to its own thread, in the
-plain-text-and-emoji house style of the other server-authored notices. But a recognisable prefix
-on a **previous assistant turn** is exactly the pattern the next answer copies — the AT-2241
-mimicry that is already why `getConversationHistory` refuses to timestamp assistant turns — and
-here the user would read that mimicry on WhatsApp. So the mirror stores the bare result alongside
-the headed text as `contextCommentText`, and `getConversationHistory` prefers that field for
-assistant turns. Nothing is lost: the header describes where the answer came from, not what it
-says. The Chats-list preview (`previewText`) also stays on the answer rather than the header's
-URL, which reads badly in one line. A mirror written without a `sourceLabel` gets neither field —
-`contextCommentText` is only set when there is a header to strip.
-
-Four things are load-bearing. **The destination project is the user's `defaultProjectId`, not the
-project the task ran in** — mirroring into the task's project would recreate the bug in a topic
-nobody reads. **The mirror is silent**: it never touches `lastAssistantCommentData` and creates no
-`chatNotifications` doc, so the originating thread keeps the MyDay AssistantLine pointer and
-notification behaviour is unchanged (the chat-list preview does move, which is correct — the daily
-topic should show what the assistant last said on WhatsApp). **Comment IDs are deterministic**
-(`wa-mirror-<sha256(destination|source delivery)>`, the `whatsAppCallTranscript` convention) and
-written in a transaction that returns early if the doc exists, because the producers are all
-retryable — a rerun scheduled task, a Cloud Tasks redelivery, `vmJobReconciliation` — and
-`storeAssistantMessageInTopic`'s random UUID would duplicate the message _and_ double-count
-`commentsData.amount`. **It never throws**: the WhatsApp message has already gone out, so a failed
-mirror must not fail or retry the delivery.
-
-Two deliberate skips. A source thread that already **is** today's daily topic (the heartbeat) is a
-no-op, and a VM job whose `postVmOriginConversationNote` is about to post into that same topic is
-skipped via `alreadyDeliveredTo` — otherwise a WhatsApp-triggered delegated job would post both the
-full result and its 600-char origin note. Deliberately **out of scope**: `pushNotifications.js`'s
-`sendWhatsAppForNotifications`, which mirrors FCM pushes as templated `project / object / update`
-summaries with a link. Those are notification summaries of arbitrary threads, not an assistant
-delivering its result, and folding them in would fill the daily topic with truncated noise.
-
 ### IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. `functions/firebaseConfig.js` initializes admin with `admin.credential.cert(serviceAccountKey.json)` (in CI, `serv_account_key_<env>.json` is copied to `serviceAccountKey.json` by `service_accounts/setup_functions.sh`). Because of that explicit cert credential, **every firebase-admin call that hits a Google Cloud API authenticates as the `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account — NOT the Cloud Run / `<projectNumber>-compute@developer.gserviceaccount.com` runtime SA** that `gcloud run services describe` reports. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing (cost us ~an hour of "still denied" past propagation). IAM changes also take up to ~7 min to propagate — wait before re-testing.
