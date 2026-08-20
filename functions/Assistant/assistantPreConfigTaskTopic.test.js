@@ -10,7 +10,6 @@ const mockRemoveSingleChatNotification = jest.fn(async () => {})
 const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockGetUserLocalDayBounds = jest.fn(() => ({ startOfDay: 100, endOfDay: 200 }))
-const mockMirrorAssistantResultToWhatsAppDailyTopic = jest.fn(async () => ({ mirrored: true, reason: 'stored' }))
 const mockCommentQueryWhere = jest.fn()
 const mockCommentQueryGet = jest.fn(async () => mockBuildEmptyQuerySnapshot())
 
@@ -55,10 +54,6 @@ jest.mock('../Chats/chatsFirestoreCloud', () => ({
     removeSingleChatNotification: (...args) => mockRemoveSingleChatNotification(...args),
 }))
 
-jest.mock('../WhatsApp/whatsAppResultMirror', () => ({
-    mirrorAssistantResultToWhatsAppDailyTopic: (...args) => mockMirrorAssistantResultToWhatsAppDailyTopic(...args),
-}))
-
 jest.mock('../Services/TwilioWhatsAppService', () =>
     jest.fn().mockImplementation(() => ({
         sendTaskCompletionNotification: (...args) => mockSendTaskCompletionNotification(...args),
@@ -68,10 +63,7 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
 
 jest.mock('firebase-admin', () => {
     const docGet = jest.fn(async path => ({
-        data: () =>
-            path === 'users/user-1'
-                ? { phone: '+1234567890', defaultProjectId: 'whatsapp-project', displayName: 'Karsten' }
-                : {},
+        data: () => (path === 'users/user-1' ? { phone: '+1234567890' } : {}),
     }))
 
     const query = {
@@ -116,7 +108,6 @@ const {
     generatePreConfigTaskResult,
     getLatestUserMessageOnUserLocalDay,
     hasUserMessageOnUserLocalDay,
-    buildScheduledTaskSourceLabel,
 } = require('./assistantPreConfigTaskTopic')
 
 test('exports the local-day user-message lookup used by heartbeats', () => {
@@ -424,127 +415,6 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             message: 'Execute this task in a VM',
             content: 'Execute this task in a VM',
             currentMessageImageUrls: [],
-        })
-    })
-
-    // AT-2387: the answer is written into this task's own thread, but a WhatsApp
-    // follow-up is answered out of the daily WhatsApp topic. Without the mirror the
-    // user reads the result on their phone and the assistant has never seen it.
-    describe('daily WhatsApp topic mirror (AT-2387)', () => {
-        beforeEach(() => {
-            // Default to a closed 24h window (template path). jest.clearAllMocks() does not
-            // undo a mockResolvedValue, so each test has to state which path it exercises.
-            mockCommentQueryGet.mockResolvedValue({ empty: true })
-        })
-
-        const runRecurringTask = () =>
-            generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'generated-task-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Summarize the market',
-                'en',
-                aiSettings,
-                { sendWhatsApp: true, name: 'Daily Market Analysis', recurrence: 'every_day' },
-                null,
-                'tasks'
-            )
-
-        test('mirrors the result after a plain WhatsApp delivery', async () => {
-            // A user message earlier today means the 24h window is open, so the plain path runs.
-            mockCommentQueryGet.mockResolvedValue({
-                empty: false,
-                docs: [{ id: 'user-message', data: () => ({ created: 150 }) }],
-            })
-            mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalled()
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith({
-                userId: 'user-1',
-                assistantId: 'assistant-1',
-                resultText: 'AI reply',
-                sourceProjectId: 'project-1',
-                sourceObjectId: 'generated-task-1',
-                sourceObjectType: 'tasks',
-                sourceLabel: 'From your recurring task "Daily Market Analysis"',
-                sourceCommentId: 'comment-1',
-                userData: expect.objectContaining({ uid: 'user-1', defaultProjectId: 'whatsapp-project' }),
-            })
-        })
-
-        test('mirrors the result after a template WhatsApp delivery too', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            expect(mockSendTaskCompletionNotification).toHaveBeenCalled()
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
-                expect.objectContaining({ resultText: 'AI reply', sourceObjectId: 'generated-task-1' })
-            )
-        })
-
-        test('does not mirror when the WhatsApp delivery failed', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: false })
-
-            await runRecurringTask()
-
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
-        })
-
-        test('does not mirror when the task does not send WhatsApp at all', async () => {
-            await generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'generated-task-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Summarize the market',
-                'en',
-                aiSettings,
-                { sendWhatsApp: false, name: 'Daily Market Analysis' },
-                null,
-                'tasks'
-            )
-
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
-        })
-
-        test('passes the full user doc, not the gold/timezone-only optimized user', async () => {
-            // getUserDataOptimized deliberately returns only gold + timezone fields, so the
-            // mirror cannot resolve defaultProjectId from it.
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            const { userData } = mockMirrorAssistantResultToWhatsAppDailyTopic.mock.calls[0][0]
-            expect(userData.defaultProjectId).toBe('whatsapp-project')
-        })
-
-        test('names the task in the header so the daily topic says where the result came from', () => {
-            expect(buildScheduledTaskSourceLabel({ name: 'Daily Market Analysis', recurrence: 'every_day' })).toBe(
-                'From your recurring task "Daily Market Analysis"'
-            )
-            expect(buildScheduledTaskSourceLabel({ name: 'One-off research', recurrence: 'never' })).toBe(
-                'From your assistant task "One-off research"'
-            )
-            // An unnamed task still gets a header; it just cannot name itself.
-            expect(buildScheduledTaskSourceLabel({})).toBe('From your assistant task')
-            expect(buildScheduledTaskSourceLabel(null)).toBe('From your assistant task')
-        })
-
-        test('a failing mirror never breaks the run', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-            mockMirrorAssistantResultToWhatsAppDailyTopic.mockRejectedValueOnce(new Error('firestore down'))
-
-            const result = await runRecurringTask()
-
-            expect(result.success).toBe(true)
         })
     })
 
