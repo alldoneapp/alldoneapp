@@ -1,4 +1,7 @@
 const mockGet = jest.fn()
+const mockDocSet = jest.fn(async () => {})
+const mockDocUpdate = jest.fn(async () => {})
+const mockDocPaths = []
 
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
@@ -12,6 +15,14 @@ jest.mock('firebase-admin', () => ({
                 })),
             })),
         })),
+        doc: jest.fn(path => {
+            mockDocPaths.push(path)
+            return {
+                path,
+                set: (...args) => mockDocSet(path, ...args),
+                update: (...args) => mockDocUpdate(path, ...args),
+            }
+        }),
     })),
 }))
 
@@ -52,7 +63,63 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     STAYWARD_COMMENT: 'comment',
 }))
 
-const { getConversationHistory } = require('./whatsAppDailyTopic')
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { increment: value => ({ __increment: value }) },
+    Timestamp: { now: () => ({ __timestamp: true }) },
+}))
+
+const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
+
+// The live WhatsApp reply path. Its comment id is random and its writes are best-effort
+// on purpose — the inbound queue's own dedupe is what keeps it single-shot. Pinned here
+// because AT-2387 factored the comment/chat payloads out of it to share them with the
+// idempotent mirror writer; the shape it writes must not have moved.
+describe('storeAssistantMessageInTopic', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocPaths.length = 0
+    })
+
+    test('writes the comment, refreshes the chat preview and moves the AssistantLine pointer', async () => {
+        const commentId = await storeAssistantMessageInTopic('project-1', 'chat-1', 'assistant-1', 'Hi there', 'user-1')
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+            `chatComments/project-1/topics/chat-1/comments/${commentId}`,
+            expect.objectContaining({
+                commentText: 'Hi there',
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+                source: 'whatsapp',
+            })
+        )
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            'chatObjects/project-1/chats/chat-1',
+            expect.objectContaining({
+                lastEditorId: 'assistant-1',
+                'commentsData.lastComment': 'Hi there',
+                'commentsData.lastCommentType': 'comment',
+                'commentsData.amount': { __increment: 1 },
+            })
+        )
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            'users/user-1',
+            expect.objectContaining({
+                'lastAssistantCommentData.project-1': expect.objectContaining({
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                    creatorId: 'assistant-1',
+                }),
+            })
+        )
+    })
+
+    test('leaves the AssistantLine pointer alone when there is no user', async () => {
+        await storeAssistantMessageInTopic('project-1', 'chat-1', 'assistant-1', 'Hi there', '')
+
+        expect(mockDocPaths).not.toContain('users/')
+        expect(mockDocUpdate).toHaveBeenCalledTimes(1)
+    })
+})
 
 describe('WhatsApp daily topic media history', () => {
     beforeEach(() => {
@@ -143,6 +210,34 @@ describe('WhatsApp daily topic media history', () => {
                 image_url: { url: storageUrl },
             },
         ])
+    })
+
+    // AT-2387: a mirrored result leads with a "📋 From your recurring task …" header for
+    // the reader. The model gets the header-free `contextCommentText` for the same reason
+    // assistant turns are never timestamped — a recognisable prefix on a prior assistant
+    // turn is a pattern the next answer copies, and the user reads it on WhatsApp.
+    test('feeds the model the header-free text of a mirrored result', async () => {
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'mirrored-result',
+                    data: () => ({
+                        fromAssistant: true,
+                        created: Date.UTC(2026, 7, 20, 9, 0, 0),
+                        commentText:
+                            '📋 From your recurring task "Daily Market Analysis"\n' +
+                            'https://my.alldone.app/projects/p1/tasks/t1/chat\n\n' +
+                            'Tech is up 2.3% today.',
+                        contextCommentText: 'Tech is up 2.3% today.',
+                        isWhatsAppResultMirror: true,
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 60)
+
+        expect(history).toEqual([['assistant', 'Tech is up 2.3% today.']])
     })
 
     test('leaves assistant turns untouched so the model cannot mimic [Sent at ...]', async () => {
