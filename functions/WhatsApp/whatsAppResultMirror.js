@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 const { getOrCreateWhatsAppDailyTopic, storeAssistantMessageInTopicOnce } = require('./whatsAppDailyTopic')
 
@@ -29,6 +30,34 @@ const { getOrCreateWhatsAppDailyTopic, storeAssistantMessageInTopicOnce } = requ
  */
 
 const MIRROR_ID_PREFIX = 'wa-mirror'
+const SOURCE_HEADER_ICON = '📋'
+
+/**
+ * A mirrored result arrives in a thread the user never opened, next to whatever else the
+ * assistant said on WhatsApp that day, so it carries a one-line header naming the task it
+ * came from and linking back to its own thread.
+ *
+ * The header is a UI affordance only — `mirrorAssistantResultToWhatsAppDailyTopic` stores
+ * the bare result alongside it as `contextCommentText`, and `getConversationHistory` feeds
+ * *that* to the model. Same reasoning as AT-2241, which stopped stamping `[Sent at …]` on
+ * turns the model can see: a recognisable prefix on a previous assistant turn is a pattern
+ * the next answer copies, and the user would read the mimicry on WhatsApp. Nothing is lost
+ * by stripping it — the header describes where the answer came from, not what it says.
+ */
+function buildSourceHeader({ sourceLabel, sourceProjectId, sourceObjectType, sourceObjectId }) {
+    const label = String(sourceLabel || '').trim()
+    if (!label) return ''
+
+    const link = buildThreadUrl(sourceProjectId, sourceObjectType, sourceObjectId)
+    return link ? `${SOURCE_HEADER_ICON} ${label}\n${link}` : `${SOURCE_HEADER_ICON} ${label}`
+}
+
+/** Same path shape as the WhatsApp "read full message" deep link (`buildConversationUrl`). */
+function buildThreadUrl(projectId, objectType, objectId) {
+    if (!projectId || !objectId) return ''
+    const segment = objectType === 'topics' ? 'chats' : 'tasks'
+    return `${getBaseUrl()}/projects/${projectId}/${segment}/${objectId}/chat`
+}
 
 /**
  * Deterministic comment ID for a mirrored result, so a redelivered scheduled task, a
@@ -64,6 +93,9 @@ function buildMirrorCommentId({
  * @param {string} params.sourceProjectId - Project the result was produced in
  * @param {string} params.sourceObjectId - Task/topic the result was produced in
  * @param {string} [params.sourceObjectType='tasks']
+ * @param {string} [params.sourceLabel] - Short human description of where the result came
+ *        from, e.g. `From your recurring task "Daily Market Analysis"`. Rendered as a
+ *        header above the result; omitted from the model context. No header without it.
  * @param {string} [params.sourceCommentId] - The result's own comment ID, when known
  * @param {Object} [params.userData] - Already-loaded user doc (avoids a re-read)
  * @param {number} [params.timestamp] - Instant used to resolve the user's local-day topic
@@ -79,6 +111,7 @@ async function mirrorAssistantResultToWhatsAppDailyTopic({
     sourceProjectId,
     sourceObjectId,
     sourceObjectType = 'tasks',
+    sourceLabel = '',
     sourceCommentId = null,
     userData = null,
     timestamp = Date.now(),
@@ -124,17 +157,24 @@ async function mirrorAssistantResultToWhatsAppDailyTopic({
             resultText: normalizedText,
         })
 
+        const header = buildSourceHeader({ sourceLabel, sourceProjectId, sourceObjectType, sourceObjectId })
+        const commentText = header ? `${header}\n\n${normalizedText}` : normalizedText
+
         const { stored } = await storeAssistantMessageInTopicOnce({
             projectId,
             chatId,
             assistantId,
-            responseText: normalizedText,
+            responseText: commentText,
+            // The chat-list preview should scan as the answer, not as the header's URL.
+            previewText: normalizedText,
             commentId,
             userId,
             // Silent on purpose: the originating thread keeps the AssistantLine pointer.
             updateAssistantLine: false,
             extraCommentFields: {
                 isWhatsAppResultMirror: true,
+                // What the model is given instead of commentText — see buildSourceHeader.
+                ...(header ? { contextCommentText: normalizedText } : {}),
                 mirroredFrom: {
                     projectId: sourceProjectId || '',
                     objectType: sourceObjectType || '',

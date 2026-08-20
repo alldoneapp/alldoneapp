@@ -212,6 +212,34 @@ describe('WhatsApp daily topic media history', () => {
         ])
     })
 
+    // AT-2387: a mirrored result leads with a "📋 From your recurring task …" header for
+    // the reader. The model gets the header-free `contextCommentText` for the same reason
+    // assistant turns are never timestamped — a recognisable prefix on a prior assistant
+    // turn is a pattern the next answer copies, and the user reads it on WhatsApp.
+    test('feeds the model the header-free text of a mirrored result', async () => {
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'mirrored-result',
+                    data: () => ({
+                        fromAssistant: true,
+                        created: Date.UTC(2026, 7, 20, 9, 0, 0),
+                        commentText:
+                            '📋 From your recurring task "Daily Market Analysis"\n' +
+                            'https://my.alldone.app/projects/p1/tasks/t1/chat\n\n' +
+                            'Tech is up 2.3% today.',
+                        contextCommentText: 'Tech is up 2.3% today.',
+                        isWhatsAppResultMirror: true,
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 60)
+
+        expect(history).toEqual([['assistant', 'Tech is up 2.3% today.']])
+    })
+
     test('leaves assistant turns untouched so the model cannot mimic [Sent at ...]', async () => {
         mockGet.mockResolvedValue({
             docs: [
