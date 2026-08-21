@@ -4,7 +4,7 @@ import renderer, { act } from 'react-test-renderer'
 import { StyleSheet as WebStyleSheet } from 'react-native-web'
 import { createSheet } from 'react-native-web/dist/exports/StyleSheet/dom'
 
-import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
+import TaskRoutingActivityOverlay, { SWEEP_FROM, SWEEP_TO } from './TaskRoutingActivityOverlay'
 
 const render = async element => {
     let tree
@@ -97,18 +97,51 @@ describe('routing sweep stylesheet', () => {
         await render(<TaskRoutingActivityOverlay processing={{ subject: 'project' }} confirmation={null} />)
     })
 
+    // The overlay's own gradient, isolated from the loading ghosts' (which register an almost
+    // identically shaped rule in the same sheet).
+    const sweepGradient = () => {
+        const gradients = compiledCss().match(/background-image: linear-gradient\([^;}]+\)/g) || []
+        return gradients.find(rule => rule.includes('163,209,255'))
+    }
+
     it('emits a real gradient rather than dropping the property', () => {
         expect(compiledCss()).toContain('background-image: linear-gradient')
+        expect(sweepGradient()).toBeTruthy()
     })
 
     it('emits keyframes that actually move the band across the row', () => {
         const css = compiledCss()
 
         // The regression this pins: the ordinary react-native transform form
-        // `[{ translateX: '-160%' }]` serializes to the literal "[object Object]" inside a
+        // `[{ translateX: '-190%' }]` serializes to the literal "[object Object]" inside a
         // keyframe step, which the browser discards.
-        expect(css).toContain('transform: translateX(-160%)')
-        expect(css).toContain('transform: translateX(360%)')
+        expect(css).toContain(`transform: translateX(${SWEEP_FROM})`)
+        expect(css).toContain(`transform: translateX(${SWEEP_TO})`)
         expect(css).not.toContain('transform: [object Object]')
+    })
+
+    it('fades the band out at both ends instead of ending it on an opaque colour', () => {
+        // THE regression that made the first version of this read as an aggressive blue stripe:
+        // `hexColorToRGBa(colour, 0)` returns the OPAQUE `rgb(…)` form, because its alpha branch
+        // is `if (alpha)` and `0` is falsy. The gradient therefore ran opaque → 12% → opaque: a
+        // solid band with a pale middle, the exact inverse of a shimmer. It is invisible in the
+        // source (the constant is literally named "transparent") and produces no warning, so it
+        // can only be caught here, against the colour that was actually compiled.
+        const gradient = sweepGradient()
+
+        expect(gradient).not.toMatch(/rgb\(/)
+        expect(gradient).toMatch(/rgba\(163,209,255,0\)\s+0%/)
+        expect(gradient).toMatch(/rgba\(163,209,255,0\)\s+100%/)
+    })
+
+    it('keeps the band faint enough to stay behind the text it passes over', () => {
+        // A ratchet, not a snapshot. The row stays readable and the task stays the subject of the
+        // row only while the tint is a wash; this is the number that decides that, and it has
+        // already been raised past comfort once.
+        const alphas = (sweepGradient().match(/rgba\([^)]*\)/g) || []).map(stop =>
+            Number(stop.replace(/rgba\(|\)/g, '').split(',')[3])
+        )
+
+        expect(Math.max(...alphas)).toBeLessThanOrEqual(0.3)
     })
 })
