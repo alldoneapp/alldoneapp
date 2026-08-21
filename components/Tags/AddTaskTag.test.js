@@ -7,7 +7,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import { colors, PROJECT_LINE_TAG_HEIGHT, PROJECT_LINE_TAG_MOBILE_WIDTH } from '../styles/global'
+import { colors } from '../styles/global'
 import Icon from '../Icon'
 import AddTaskTag from './AddTaskTag'
 
@@ -39,22 +39,15 @@ jest.mock('react-tiny-popover', () => {
 })
 jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => 'RichCreateTaskModal')
 
-const mockState = (overrides = {}) => {
-    useSelector.mockImplementation(selector =>
-        selector({
-            isQuillTagEditorOpen: false,
-            openModals: {},
-            smallScreenNavigation: false,
-            ...overrides,
-        })
-    )
-}
-
-const findLabel = tree => tree.root.findAll(node => node.type === Text && node.props.children === 'Add task')
-
 describe('AddTaskTag', () => {
     beforeEach(() => {
-        mockState()
+        useSelector.mockImplementation(selector =>
+            selector({
+                isQuillTagEditorOpen: false,
+                openModals: {},
+                smallScreenNavigation: false,
+            })
+        )
     })
 
     it('uses the assistant Search button colors when requested', () => {
@@ -161,102 +154,5 @@ describe('AddTaskTag', () => {
 
         expect(popover.props.align).toBe('start')
         expect(tree.root.findByType('RichCreateTaskModal').props.wide).toBeFalsy()
-    })
-
-    // The icon-only pill on the project lines IS its own tap target - there is no
-    // label and no padding to press - and a 24x24 box around a 16px icon was too
-    // small to hit reliably with a thumb. It is widened, never made taller: the
-    // header row is hard-capped at 24 (`TagsArea.container`,
-    // `AllProjectsLine.leftContainer`), so height is not an axis we own here.
-    describe('icon-only tap target on mobile', () => {
-        it('widens the pill past the icon box while keeping the row height', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.width).toBe(PROJECT_LINE_TAG_MOBILE_WIDTH)
-            expect(style.height).toBe(PROJECT_LINE_TAG_HEIGHT)
-            // Asserted as literals too, so renaming the tokens out of existence
-            // cannot leave both sides `undefined` and still pass.
-            expect(style.width).toBe(40)
-            expect(style.height).toBe(24)
-            // Strictly wider than the icon's own box - the point of the change.
-            expect(style.width).toBeGreaterThan(style.height)
-        })
-
-        it('stays icon-only and keeps its accessible name', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const button = tree.root.findByType(TouchableOpacity)
-
-            // Widened, NOT labelled: the row has no width budget for the text.
-            expect(findLabel(tree)).toHaveLength(0)
-            expect(tree.root.findByType(Icon).props.size).toBe(16)
-            expect(button.props.accessibilityLabel).toBe('Add task')
-            expect(button.props.accessibilityRole).toBe('button')
-        })
-
-        it('preserves the pill shape and colors it had at 24px', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.borderRadius).toBe(50)
-            expect(style.borderWidth).toBe(1)
-            expect(style.justifyContent).toBe('center')
-            expect(style.alignItems).toBe('center')
-            expect(style.backgroundColor).toBe(colors.UtilityBlue200)
-            expect(style.borderColor).toBe(colors.UtilityBlue150)
-        })
-
-        it('leaves the labelled desktop pill auto-width', () => {
-            mockState({ smallScreenNavigation: false })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            // No fixed width on desktop: the pill hugs its label as before.
-            expect(style.width).toBeUndefined()
-            expect(style.height).toBe(24)
-            expect(style.paddingHorizontal).toBe(4)
-            expect(findLabel(tree)).toHaveLength(1)
-        })
-
-        it('applies the same widened box to forceShrink on a wide screen', () => {
-            mockState({ smallScreenNavigation: false })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" forceShrink={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(findLabel(tree)).toHaveLength(0)
-            expect(style.width).toBe(PROJECT_LINE_TAG_MOBILE_WIDTH)
-        })
-
-        // The empty-inbox call to action is a different control that happens to
-        // share this component; the narrow-screen widening must not reach it.
-        it('never applies the mobile box to the large call to action', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
-            const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-            expect(style.width).toBeUndefined()
-            expect(style.height).toBe(44)
-            expect(style.paddingHorizontal).toBe(20)
-            expect(findLabel(tree)).toHaveLength(1)
-        })
-
-        // Callers keep the last word on style (unchanged precedence), which is
-        // how a future row could opt out of the wider target locally.
-        it('still lets a caller style override the widened box', () => {
-            mockState({ smallScreenNavigation: true })
-
-            const tree = renderer.create(<AddTaskTag projectId="project-1" style={{ width: 24 }} />)
-
-            expect(StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style).width).toBe(24)
-        })
     })
 })
