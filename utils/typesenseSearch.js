@@ -86,16 +86,12 @@ export const multiSearchTypesense = async searches => {
     }
 
     const body = {
-        searches: searches.map(({ collection, query, filterBy, queryBy }) => {
+        searches: searches.map(({ collection, query, filterBy }) => {
             const config = TYPESENSE_QUERY_CONFIG[collection]
             return {
                 collection,
                 q: query,
-                // `queryBy` narrows the searched fields for one call without moving the
-                // collection default. A picker can be stricter than global search about
-                // what counts as a match — the @-mention contact picker is (AT-2393) —
-                // while global search keeps the full field list.
-                query_by: queryBy || config.query_by,
+                query_by: config.query_by,
                 num_typos: config.num_typos,
                 sort_by: config.sort_by,
                 filter_by: filterBy,
@@ -130,8 +126,7 @@ export const multiSearchTypesense = async searches => {
 }
 
 // Drop-in analogue of algoliaIndex.search(query, { filters }) for one collection.
-// `options.queryBy` overrides the collection's default searchable fields for this call.
-export const searchTypesenseCollection = async (collection, query, filterBy, options = {}) => {
-    const [result] = await multiSearchTypesense([{ collection, query, filterBy, queryBy: options.queryBy }])
+export const searchTypesenseCollection = async (collection, query, filterBy) => {
+    const [result] = await multiSearchTypesense([{ collection, query, filterBy }])
     return result
 }

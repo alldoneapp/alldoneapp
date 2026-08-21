@@ -2269,5 +2269,6 @@
     "Reconnect now": "Jetzt neu verbinden",
     "Alldone is checking the connection to the server. This usually takes a few seconds.": "Alldone prüft die Verbindung zum Server. Das dauert normalerweise ein paar Sekunden.",
     "Alldone cannot reach the server right now, so what you see may be out of date. You can keep working — your changes are saved and will sync as soon as the connection is back.": "Alldone erreicht den Server gerade nicht, daher können die angezeigten Daten veraltet sein. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald die Verbindung wieder steht.",
-    "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Dein Gerät hat keine Internetverbindung. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald du wieder online bist."
+    "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Dein Gerät hat keine Internetverbindung. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald du wieder online bist.",
+    "Still no connection. You can start the day anyway, your data will sync later": "Immer noch keine Verbindung. Du kannst den Tag trotzdem starten, deine Daten werden später synchronisiert"
 }
