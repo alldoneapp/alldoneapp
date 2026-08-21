@@ -267,3 +267,68 @@ describe('normalizeTargetKind', () => {
         expect(normalizeTargetKind(undefined)).toBe('generic')
     })
 })
+
+// PT-4648: without this, there is no way to tell whether Deepgram's keyterm prompting or the LLM
+// cleanup fixed a brand spelling — or whether the cleanup introduced the mirror-image error.
+describe('dictation vocabulary observability', () => {
+    let logSpy
+
+    beforeEach(() => {
+        logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        logSpy.mockRestore()
+    })
+
+    const loggedPayload = () => logSpy.mock.calls.find(call => call[0] === '[processRamble] timing')?.[1]
+
+    test('reports a brand the cleanup repaired, separating the two layers', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'add this to all done', durationSeconds: 5 })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Add this to Alldone.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT5_6_SOL',
+        })
+
+        await callHandler()
+
+        const payload = loggedPayload()
+        // Absent from the raw transcript, present after cleanup => the LLM did the work.
+        expect(payload.vocabularyTerms.Alldone).toEqual({ raw: 0, cleaned: 1 })
+        expect(payload.vocabularyConfusable['all done']).toEqual({ raw: 1, cleaned: 0 })
+    })
+
+    test('reports a brand Deepgram already got right', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'add this to Alldone', durationSeconds: 5 })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Add this to Alldone.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT5_6_SOL',
+        })
+
+        await callHandler()
+
+        expect(loggedPayload().vocabularyTerms.Alldone).toEqual({ raw: 1, cleaned: 1 })
+    })
+
+    test('never logs the dictated content itself', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({
+            transcript: 'salary negotiation with Daniela',
+            durationSeconds: 5,
+        })
+        mockCleanupRamble.mockResolvedValue({
+            text: 'Salary negotiation with Daniela.',
+            totalTokens: 10,
+            modelKey: 'MODEL_GPT5_6_SOL',
+        })
+
+        await callHandler()
+
+        const serialized = JSON.stringify(loggedPayload())
+        expect(serialized).not.toContain('salary')
+        expect(serialized).not.toContain('Daniela')
+        // Lengths are fine — they are not content.
+        expect(loggedPayload().transcriptChars).toBe('salary negotiation with Daniela'.length)
+    })
+})

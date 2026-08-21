@@ -183,17 +183,38 @@ const processRambleSecondGen = onCall(
         timings.billingMs = Date.now() - billingStartedAt
         timings.totalMs = Date.now() - startedAt
 
+        // Raw-vs-cleaned comparison for the dictation vocabulary (PT-4648). This logs COUNTS ONLY —
+        // never a word the user dictated — so it is safe to leave on in production. It is the only
+        // way to tell the two layers apart: a brand hit already present in `raw` means Deepgram's
+        // keyterm prompting caught it, a hit that appears only in `cleaned` means the LLM fixed it,
+        // and a confusable form that grows from raw to cleaned means the cleanup introduced the
+        // mirror-image error ("all done" rewritten to the brand where it did not belong).
+        const { summarizeVocabularyUsage } = require('../shared/transcriptionVocabulary')
+        const vocabulary = summarizeVocabularyUsage(transcript, text)
+
         console.log('[processRamble] timing', {
             ...timings,
             audioSeconds: transcription.durationSeconds,
             payloadChars: audio.length,
             transcriptChars: transcript.length,
+            cleanedChars: text.length,
             totalTokens,
             modelKey,
             targetKind: normalizedTargetKind,
             projectId,
             assistantId: context.assistant?.uid || null,
             assistantModel: context.assistant?.model || null,
+            // How many keyterms Deepgram actually accepted. A `keytermFallback: true` means the
+            // request was rejected and retried without them — the transcript is fine, but the
+            // acoustic half of the vocabulary silently did nothing, which is otherwise invisible.
+            keytermCount: transcription.keytermCount ?? 0,
+            keytermFallback: transcription.keytermFallback === true,
+            // Which languages the Nova-3 multilingual model actually detected. `language: 'multi'`
+            // covers ten languages; this is how a user dictating outside them becomes visible
+            // instead of just quietly getting a worse transcript. Tags only, never content.
+            detectedLanguages: transcription.detectedLanguages || [],
+            vocabularyTerms: vocabulary.terms,
+            vocabularyConfusable: vocabulary.confusable,
         })
 
         return {

@@ -768,6 +768,69 @@ row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 
+### Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
+
+Transcription biases towards a curated product glossary in **two** places, and both are required.
+`functions/shared/transcriptionVocabulary.js` is the single source: `getTranscriptionKeyterms()`
+feeds Deepgram's Nova-3 `keyterm` parameter (the acoustic layer, in
+`functions/Notes/deepgramTranscribe.js`), and `buildVocabularyPromptSection()` is embedded in the
+rambler cleanup **system** prompt (the semantic layer, `functions/Assistant/ramblerCleanup.js` — it
+sits in the system message because it never varies, so it belongs in the prefix `prompt_cache_key`
+caches).
+
+**One layer is not enough, and the reason is the brand itself.** "Alldone" is pronounced exactly
+like the ordinary English phrase "all done", so boosting it acoustically trades one error for its
+mirror image: _"are we all done here?"_ starts coming back as _"are we Alldone here?"_. Only the
+cleanup LLM has the surrounding sentence and can tell the product from the adjective, which is why
+the prompt rule is deliberately **two-sided** — it protects the ordinary phrase as explicitly as it
+pushes the brand. This is also why Deepgram's `replace` (find & replace) is **not** used here: a
+blind `all done` → `Alldone` rewrite would clobber every legitimate use of the phrase.
+
+**`language: 'multi'`, never `detect_language`.** `keyterm` requires an explicit language, and
+`detect_language` is the one mode the docs never bless alongside it. Worse, detection **silently
+downgrades the model**: it covers 35 languages, Nova-3 does not, and when the detected language is
+missing from the requested model Deepgram walks down Nova-3 → Nova-2 → Nova-1 → Enhanced → Base on
+its own. **Nova-2 does not support `keyterm` at all**, so keyterms would have died on exactly the
+requests nobody can see. `multi` is Nova-3 multilingual (en, es, fr, de, hi, ru, pt, ja, it, nl)
+with **word-level** code-switching, which also fits dictation better than per-clip detection — a
+mixed-language sentence cannot be represented by picking one language. Detection would _override_
+`language`, so the two must never both be set. The accepted trade-off is that a language outside
+those ten transcribes worse than it did under detection; the logged `detectedLanguages` is what
+makes that visible if it ever happens.
+
+**Failure is absorbed, not predicted.** Keyterm support per detected language is not documented, and
+a rejected parameter would take down dictation for whoever speaks that language — far worse than
+losing a spelling boost. So a 4xx-shaped rejection retries **once** without keyterms and sets
+`keytermFallback`; a transport/5xx failure is _not_ retried (it would just fail twice and double the
+latency of an outage). A silently degraded configuration therefore shows up in the logs instead of
+only in transcript quality.
+
+**Adding terms:** distinctive proper nouns only. Deepgram explicitly warns that generic common words
+dilute the prompt and cause false boosts, so no `task`/`goal`/`note`/`assistant` — they are
+transcribed correctly already and would only cost accuracy elsewhere. Budget is 500 tokens per
+request (Deepgram errors past it; the docs recommend 20–50 terms). Casing is preserved, so write
+each term exactly as it should appear. **Never use the legacy `keywords` weight syntax**
+(`keyterm=Alldone:2`): Deepgram does _not_ error on it — it accepts the whole string as one literal
+keyterm and boosts nothing, so it fails silently and looks like keyterm simply not working.
+
+The glossary is deliberately **static and workspace-independent**. Do not put a per-user/per-project
+workspace scan on the transcription critical path (~1s today); if dynamic terms are ever wanted,
+precompute them into a per-user document and merge behind one cached read.
+
+**Observability:** `[processRamble] timing` carries `keytermCount`, `keytermFallback`,
+`detectedLanguages` and `summarizeVocabularyUsage`'s raw-vs-cleaned **counts** — never the dictated
+content, so it is safe to leave on. That is the only way to tell the layers apart: a brand hit
+already in `raw` means keyterm caught it, a hit appearing only in `cleaned` means the LLM fixed it,
+and a confusable form shrinking from raw to cleaned while the brand grows is the mirror-image error.
+Pinned by `functions/shared/transcriptionVocabulary.test.js` and
+`functions/Notes/deepgramTranscribe.test.js` — the latter drives the **real** `@deepgram/sdk`
+against a mocked `fetch`, because the wire format is the thing that breaks and a mocked SDK would
+green-light a comma-joined keyterm that boosts nothing in production.
+
+**Meeting transcription shares the same helper.** `functions/Notes/transcribeMeeting.js` used to
+repeat the Deepgram call inline with its own copy of the options; it now calls
+`transcribeAudioBase64`, so the model, formatting and vocabulary cannot drift between the two paths.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
