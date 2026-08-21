@@ -125,27 +125,70 @@ const processRambleSecondGen = onCall(
         // common path — the workspace is never scanned here; see `userVoiceVocabulary.js` for why.
         // It has to resolve BEFORE the Deepgram call, because keyterms are a request parameter.
         // It never rejects: any failure returns an empty dynamic list and the static glossary alone.
+        // The whole block is guarded, INCLUDING the requires. `loadCleanupContext` above carries the
+        // same wrapper for a reason recorded in its comment: a missing export threw synchronously at
+        // module load, escaped the per-call catches, and reached the user as "Failed to transcribe
+        // audio". A bare require of three modules is exactly that shape, and the contract here is
+        // that the vocabulary can never fail a dictation.
         const vocabularyStartedAt = Date.now()
-        const { getUserVocabularyTerms } = require('../shared/userVoiceVocabulary')
-        const { getTranscriptionKeyterms, PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
-        const userVocabulary = await getUserVocabularyTerms({
-            db: admin.firestore(),
-            userId: auth.uid,
-            userData,
-            excludeTerms: PRODUCT_KEYTERMS,
-        })
+        let userVocabulary = { terms: [], cacheState: 'unavailable', pendingRebuild: null }
+        let keyterms = []
+        try {
+            const { getUserVocabularyTerms } = require('../shared/userVoiceVocabulary')
+            const { getTranscriptionKeyterms, PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
+            userVocabulary = await getUserVocabularyTerms({
+                db: admin.firestore(),
+                userId: auth.uid,
+                userData,
+                excludeTerms: PRODUCT_KEYTERMS,
+            })
+            // The single final list, shared verbatim by the acoustic layer and the cleanup layer.
+            keyterms = getTranscriptionKeyterms(userVocabulary.terms)
+        } catch (error) {
+            console.error('[processRamble] Vocabulary unavailable, dictating without it:', error)
+        }
         timings.vocabularyMs = Date.now() - vocabularyStartedAt
-        // The single final list, shared verbatim by the acoustic layer and the cleanup layer.
-        const vocabularyTerms = getTranscriptionKeyterms(userVocabulary.terms)
+
+        // A stale or cold rebuild runs alongside transcription and cleanup, so by the time this is
+        // called it is almost always already done. It still has to be AWAITED: Cloud Run may freeze
+        // the container once the response is returned, and a rebuild that never finishes is a cache
+        // that stays cold forever — the user would get the static glossary on every dictation and
+        // nothing would ever say why. Bounded, because finishing the response matters more.
+        //
+        // Idempotent, and reached from the failure paths too. The one that matters is
+        // EMPTY_TRANSCRIPT: per AT-2357 that is the documented symptom of a silent microphone, so
+        // it repeats for the same user many times in a row — and each attempt would otherwise pay
+        // for a full workspace scan, have it killed by the freeze, and re-pay the cold-build wait
+        // on the next try, indefinitely.
+        let rebuildDrained = false
+        const drainVocabularyRebuild = async () => {
+            if (rebuildDrained || !userVocabulary.pendingRebuild) return
+            rebuildDrained = true
+            const rebuildStartedAt = Date.now()
+            await Promise.race([
+                userVocabulary.pendingRebuild,
+                new Promise(resolve => setTimeout(resolve, VOCABULARY_REBUILD_DRAIN_MS)),
+            ])
+            timings.vocabularyRebuildWaitMs = Date.now() - rebuildStartedAt
+        }
+        const failAfterDraining = async (code, message) => {
+            await drainVocabularyRebuild()
+            throw new HttpsError(code, message)
+        }
 
         let transcription
+        // Measured from here, so the vocabulary lookup above is not billed to Deepgram. Sharing
+        // `startedAt` made `transcriptionMs` silently include `vocabularyMs` — up to a four-second
+        // cold build attributed to the wrong subsystem, with `vocabularyMs` sitting next to it
+        // looking like an independent measurement.
+        const transcriptionStartedAt = Date.now()
         try {
-            transcription = await transcribeAudioBase64(audio, { keyterms: vocabularyTerms })
+            transcription = await transcribeAudioBase64(audio, keyterms.length ? { keyterms } : undefined)
         } catch (error) {
             console.error('[processRamble] Transcription failed:', error)
-            throw new HttpsError('internal', 'Failed to transcribe audio')
+            await failAfterDraining('internal', 'Failed to transcribe audio')
         }
-        timings.transcriptionMs = Date.now() - startedAt
+        timings.transcriptionMs = Date.now() - transcriptionStartedAt
         const contextWaitStartedAt = Date.now()
         const context = await contextPromise
         // Context loads in parallel with transcription; this is only the tail not hidden behind it.
@@ -153,7 +196,7 @@ const processRambleSecondGen = onCall(
 
         const transcript = transcription.transcript
         if (!transcript) {
-            throw new HttpsError('failed-precondition', 'EMPTY_TRANSCRIPT')
+            await failAfterDraining('failed-precondition', 'EMPTY_TRANSCRIPT')
         }
 
         const { cleanupRamble } = require('./ramblerCleanup')
@@ -173,7 +216,7 @@ const processRambleSecondGen = onCall(
                 currentText: typeof currentText === 'string' ? currentText : '',
                 appLanguage: typeof language === 'string' ? language : userData.language || '',
                 cacheScope: `${auth.uid}:${projectId}`,
-                vocabularyTerms,
+                vocabularyTerms: keyterms,
             })
             if (cleaned.text) {
                 text = cleaned.text
@@ -203,7 +246,7 @@ const processRambleSecondGen = onCall(
             projectId,
         })
         if (!goldResult?.success) {
-            throw new HttpsError('resource-exhausted', 'Insufficient Gold to process dictation.')
+            await failAfterDraining('resource-exhausted', 'Insufficient Gold to process dictation.')
         }
         timings.billingMs = Date.now() - billingStartedAt
         timings.totalMs = Date.now() - startedAt
@@ -214,22 +257,19 @@ const processRambleSecondGen = onCall(
         // keyterm prompting caught it, a hit that appears only in `cleaned` means the LLM fixed it,
         // and a confusable form that grows from raw to cleaned means the cleanup introduced the
         // mirror-image error ("all done" rewritten to the brand where it did not belong).
-        const { summarizeVocabularyUsage } = require('../shared/transcriptionVocabulary')
-        const vocabulary = summarizeVocabularyUsage(transcript, text, vocabularyTerms)
-
-        // A stale or cold vocabulary rebuild runs alongside transcription and cleanup, so by now it
-        // is almost always already done. It still has to be AWAITED: Cloud Run may freeze the
-        // container once the response is returned, and a rebuild that never finishes is a cache
-        // that stays cold forever — the user would get the static glossary on every dictation and
-        // nothing would ever say why. Bounded, because finishing the response matters more.
-        if (userVocabulary.pendingRebuild) {
-            const rebuildStartedAt = Date.now()
-            await Promise.race([
-                userVocabulary.pendingRebuild,
-                new Promise(resolve => setTimeout(resolve, VOCABULARY_REBUILD_DRAIN_MS)),
-            ])
-            timings.vocabularyRebuildWaitMs = Date.now() - rebuildStartedAt
+        //
+        // Guarded, and the guard matters more here than anywhere else in this file: this runs AFTER
+        // `deductGold`, so an exception would charge the user and then hand them an `internal` error
+        // instead of the text they just paid for.
+        let vocabulary = { terms: {}, confusable: {}, dynamic: null }
+        try {
+            const { summarizeVocabularyUsage } = require('../shared/transcriptionVocabulary')
+            vocabulary = summarizeVocabularyUsage(transcript, text, keyterms)
+        } catch (error) {
+            console.error('[processRamble] Vocabulary summary failed:', error)
         }
+
+        await drainVocabularyRebuild()
 
         console.log('[processRamble] timing', {
             ...timings,

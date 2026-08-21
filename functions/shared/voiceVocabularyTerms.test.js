@@ -333,3 +333,30 @@ describe('buildDynamicTerms', () => {
         })
     })
 })
+
+// `toUpperCase()` is the identity for caseless scripts, so the original shape check classified every
+// CJK/Arabic/Thai word as an "acronym" and admitted all of them — silently disabling the structural
+// filter for half the languages `language: 'multi'` covers.
+describe('caseless scripts', () => {
+    const { hasLetterCase } = require('./voiceVocabularyTerms')
+
+    test('knows which scripts carry a case signal', () => {
+        expect(hasLetterCase('Somova')).toBe(true)
+        expect(hasLetterCase('Иванов')).toBe(true)
+        expect(hasLetterCase('山田太郎')).toBe(false)
+        expect(hasLetterCase('مشروع')).toBe(false)
+        expect(hasLetterCase('ทดสอบ')).toBe(false)
+    })
+
+    test('still admits caseless names, since there is no shape signal to judge them by', () => {
+        // Rejecting these would remove the feature entirely for Japanese, Arabic and Thai users.
+        expect(isDistinctiveTerm('山田太郎')).toBe(true)
+        expect(isDistinctiveTerm('مشروع')).toBe(true)
+    })
+
+    test('keeps rejecting lowercase words in scripts that DO have case', () => {
+        // The regression this guards: an over-broad "acronym" rule would admit these too.
+        expect(isDistinctiveTerm('проект')).toBe(false)
+        expect(isDistinctiveTerm('somova')).toBe(false)
+    })
+})

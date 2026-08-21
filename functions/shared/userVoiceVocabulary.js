@@ -35,7 +35,19 @@
  * broken feature. That is why `getUserVocabularyTerms` has no rejecting path at all.
  */
 
-const { buildDynamicTerms, extractCandidatesFromProject } = require('./voiceVocabularyTerms')
+const {
+    buildDynamicTerms,
+    extractCandidatesFromProject,
+    normalizeCandidateTerm,
+    isDistinctiveTerm,
+    MAX_DYNAMIC_TERMS,
+} = require('./voiceVocabularyTerms')
+
+/**
+ * The ceiling on terms accepted FROM the cache document. Matches the build cap, so a hand-written
+ * document cannot be larger than one this code would have produced.
+ */
+const MAX_STORED_TERMS = MAX_DYNAMIC_TERMS
 
 /** Contacts marked public for everyone use this sentinel in `isPublicFor`. */
 const FEED_PUBLIC_FOR_ALL = 0
@@ -90,9 +102,36 @@ function isFresh(updatedAt, now, ttlMs = VOCABULARY_TTL_MS) {
     return age < ttlMs
 }
 
+/**
+ * Re-applies the build path's constraints to terms READ BACK from the cache.
+ *
+ * This is not paranoia about our own writes: `users/{uid}/private/voiceVocabulary` sits under
+ * `match /users/{userId}/{document=**} { allow read, write: if request.auth.uid == userId }`, so
+ * its owner can write it directly from a client. Whatever lands there flows into two places that
+ * assume short, single-line tokens — the Deepgram query string and, more sharply, the rambler
+ * SYSTEM prompt, where a term containing a newline escapes the `- <term>` bullet structure
+ * entirely and the rest of the line reads as prompt text.
+ *
+ * The blast radius is the user's own dictation and their own Gold, so this is hardening rather than
+ * a cross-tenant hole — but the whole design assumes these are names, and nothing else on the read
+ * path was enforcing it. Running the same normalizer and distinctiveness gate the builder uses
+ * means a hand-edited document can only ever contain things the builder could have produced.
+ */
 function sanitizeStoredTerms(value) {
     if (!Array.isArray(value)) return []
-    return value.filter(term => typeof term === 'string' && term.trim()).map(term => term.trim())
+    const sanitized = []
+    for (const term of value) {
+        if (typeof term !== 'string') continue
+        // `normalizeCandidateTerm` collapses all whitespace (newlines included) and strips the
+        // characters that would break the wire format; `isDistinctiveTerm` re-imposes the length
+        // and word-count limits.
+        const normalized = normalizeCandidateTerm(term)
+        if (!normalized || !isDistinctiveTerm(normalized)) continue
+        if (sanitized.some(existing => existing.toLowerCase() === normalized.toLowerCase())) continue
+        sanitized.push(normalized)
+        if (sanitized.length >= MAX_STORED_TERMS) break
+    }
+    return sanitized
 }
 
 /**
@@ -162,15 +201,45 @@ async function mapWithConcurrency(items, limit, mapper) {
  * A project that fails to read contributes nothing and does not fail the build: a vocabulary
  * missing one project's names is still far better than no vocabulary.
  */
+/**
+ * The contacts query, newest first.
+ *
+ * The ordering is load-bearing, not cosmetic. `.limit()` with no `orderBy` returns the lowest
+ * `__name__` values, and contact ids are Firebase push ids — timestamp-prefixed and lexicographically
+ * sortable — so an unordered cap deterministically returns the OLDEST contacts in the project. In a
+ * project with more than `MAX_CONTACTS_PER_PROJECT` visible contacts that silently discards exactly
+ * the newest colleagues, who are the names a speech model is least likely to know, while the recency
+ * multiplier downstream spends its whole budget ranking the survivors by freshness. The cap and the
+ * ranking would be pulling in opposite directions.
+ *
+ * Ordering by document id descending approximates newest-first without needing a composite index
+ * (`lastEditionDate` alongside `array-contains-any` would require one, and index deploys are manual
+ * in this repo). It orders by CREATION rather than last edit, which is the accepted approximation.
+ *
+ * The ordered query is attempted first and falls back to the unordered one if Firestore rejects it,
+ * because a missing index here would otherwise make the project contribute nothing at all — a
+ * silent, total degradation for every user, traded for an ordering nicety.
+ */
+async function fetchProjectContacts(db, userId, projectId) {
+    const base = db
+        .collection(`projectsContacts/${projectId}/contacts`)
+        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, userId])
+    try {
+        return await base.orderBy('__name__', 'desc').limit(MAX_CONTACTS_PER_PROJECT).get()
+    } catch (error) {
+        console.warn(
+            `[voiceVocabulary] Ordered contacts query rejected for ${projectId}, falling back to unordered:`,
+            error?.message || error
+        )
+        return base.limit(MAX_CONTACTS_PER_PROJECT).get()
+    }
+}
+
 async function scanProject(db, userId, projectId) {
     try {
         const [projectDoc, contactsSnapshot, assistantsSnapshot] = await Promise.all([
             db.doc(`projects/${projectId}`).get(),
-            db
-                .collection(`projectsContacts/${projectId}/contacts`)
-                .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, userId])
-                .limit(MAX_CONTACTS_PER_PROJECT)
-                .get(),
+            fetchProjectContacts(db, userId, projectId),
             db.collection(`assistants/${projectId}/items`).limit(MAX_ASSISTANTS_PER_PROJECT).get(),
         ])
 
@@ -230,8 +299,37 @@ async function buildUserVocabulary({ db, userId, userData, now = Date.now(), exc
  * Builds and persists. The write is best-effort: a vocabulary we could not store is still perfectly
  * usable for the dictation in flight, it just gets rebuilt next time.
  */
-async function rebuildAndStoreVocabulary({ db, userId, userData, now = Date.now(), excludeTerms = [] }) {
+async function rebuildAndStoreVocabulary({
+    db,
+    userId,
+    userData,
+    now = Date.now(),
+    excludeTerms = [],
+    hasExistingCache = false,
+}) {
     const built = await buildUserVocabulary({ db, userId, userData, now, excludeTerms })
+
+    // NEVER cache the result of an incomplete scan over a vocabulary that is already there.
+    //
+    // `scanProject` swallows per-project errors and contributes nothing for a project it could not
+    // read, so a transient Firestore blip produces a SHORTER list — possibly empty — that is
+    // otherwise indistinguishable from a genuinely smaller workspace. Persisting it would stamp
+    // `updatedAt: now`, i.e. mark it FRESH: one blip during a background rebuild would destroy the
+    // user's accumulated vocabulary and then serve the empty result confidently for 24 hours, with
+    // `vocabularyCacheState: 'fresh'` in the logs saying everything is fine.
+    //
+    // Keeping the previous document is strictly better: it is real data, and the rebuild is retried
+    // on the next dictation. The one case where a partial result IS written is a cold cache, where
+    // some terms beat none and the alternative is paying the cold-build wait on every dictation
+    // until the failing project recovers.
+    if (built.stats.failedProjectCount > 0 && hasExistingCache) {
+        console.warn('[voiceVocabulary] Incomplete scan, keeping the previous vocabulary', {
+            failedProjectCount: built.stats.failedProjectCount,
+            scannedProjectCount: built.stats.scannedProjectCount,
+        })
+        return { ...built, persisted: false }
+    }
+
     try {
         await db.doc(VOICE_VOCABULARY_DOC_PATH(userId)).set(
             {
@@ -246,8 +344,9 @@ async function rebuildAndStoreVocabulary({ db, userId, userData, now = Date.now(
         )
     } catch (error) {
         console.warn('[voiceVocabulary] Failed to persist the rebuilt vocabulary:', error?.message || error)
+        return { ...built, persisted: false }
     }
-    return built
+    return { ...built, persisted: true }
 }
 
 /** Sentinel so a timeout is distinguishable from a legitimate `null` result. */
@@ -312,17 +411,32 @@ async function getUserVocabularyTerms({ db, userId, userData, now = Date.now(), 
         if (cached) {
             // Stale: serve it now, refresh for next time. The user's contact list did not change
             // enough in a day to be worth delaying their audio for.
-            const pendingRebuild = rebuildAndStoreVocabulary({ db, userId, userData, now, excludeTerms }).catch(
-                error => {
-                    console.warn('[voiceVocabulary] Background rebuild failed:', error?.message || error)
-                    return null
-                }
-            )
+            const pendingRebuild = rebuildAndStoreVocabulary({
+                db,
+                userId,
+                userData,
+                now,
+                excludeTerms,
+                // There IS something to lose here, so an incomplete scan must not overwrite it.
+                hasExistingCache: true,
+            }).catch(error => {
+                console.warn('[voiceVocabulary] Background rebuild failed:', error?.message || error)
+                return null
+            })
             return { terms: cached.terms, cacheState: 'stale', pendingRebuild }
         }
 
         // Cold: no document at all. Wait for the build, but only briefly — see COLD_BUILD_TIMEOUT_MS.
-        const build = rebuildAndStoreVocabulary({ db, userId, userData, now, excludeTerms }).catch(error => {
+        // Cold: nothing to lose, so a partial result is written rather than leaving the user paying
+        // the cold-build wait on every dictation until a failing project recovers.
+        const build = rebuildAndStoreVocabulary({
+            db,
+            userId,
+            userData,
+            now,
+            excludeTerms,
+            hasExistingCache: false,
+        }).catch(error => {
             console.warn('[voiceVocabulary] Cold build failed:', error?.message || error)
             return null
         })

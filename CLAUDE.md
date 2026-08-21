@@ -866,10 +866,51 @@ legal forms are stripped ("Heyflow GmbH" → "Heyflow"). Score is source weight 
 cross-project repetition, and ties break alphabetically so an unchanged workspace always produces
 an identical list — non-determinism there would churn the `prompt_cache_key`.
 
+**The cap is on TOKENS, not on terms — a term count silently fails for non-Latin workspaces.**
+Deepgram's limit is 500 tokens, and 40 Latin names cost ~110 while 40 Japanese organisation names
+cost ~750. The failure is invisible: Deepgram 4xx → the keyterm-free retry re-uploads the whole
+audio buffer, so that user's acoustic vocabulary (including "Alldone") is permanently dead AND
+every dictation pays a doubled round trip, with `keytermFallback: true` as the only symptom.
+`mergeVocabulary` therefore spends a `MAX_KEYTERM_TOKENS` budget using `estimateKeytermTokens`,
+which deliberately OVER-counts (2 tokens per non-ASCII character, one per two ASCII characters) —
+verified never to under-count across Latin, Cyrillic, CJK, Arabic and Thai, since under-counting is
+the only direction that breaks the request. A realistic Latin list scores 217 of 450, so the
+ordinary case loses nothing. Related and deliberate: `isDistinctiveTerm`'s proper-noun shape check
+only means anything for scripts that HAVE case — `toUpperCase()` is the identity for CJK/Arabic/Thai,
+which is why the naive `word === word.toUpperCase()` acronym test admitted **every** caseless word.
+Those are now admitted on length alone via `hasLetterCase`, with the token budget (not the shape
+check) bounding the damage. **Known gap:** `GENERIC_WORDS` is Latin/Cyrillic-only, so a generic
+caseless word (「テスト」 = "test") is not filtered.
+
+**An incomplete scan must never overwrite a good vocabulary.** `scanProject` swallows per-project
+errors and contributes nothing for a project it could not read, so a transient blip produces a
+shorter — possibly empty — list that is indistinguishable from a genuinely smaller workspace.
+Persisting it would stamp `updatedAt: now`, i.e. mark it **fresh**: one blip during a background
+rebuild would destroy the user's vocabulary and then serve the empty result confidently for 24
+hours, with `vocabularyCacheState: 'fresh'` in the logs saying everything was fine. So a rebuild
+with `failedProjectCount > 0` is discarded when a cached document already exists (`hasExistingCache`),
+and written only on a cold cache, where some terms beat none.
+
 **Every failure degrades to the static glossary and nothing throws into the rambler.** Losing the
 personalized boost is a bad day; losing the dictation is a broken feature. `getUserVocabularyTerms`
 has no rejecting path at all, a failing project contributes nothing rather than failing the build,
-and a failed cache write still returns usable terms for the dictation in flight.
+and a failed cache write still returns usable terms for the dictation in flight. In `processRamble`
+even the `require`s are inside the try/catch — the same shape as the `loadCleanupContext` incident,
+where a module-level throw surfaced to the user as "Failed to transcribe audio" — and the
+post-billing summary call is guarded too, since a throw there would charge the user and then return
+an error instead of their text. The rebuild is drained on the failure paths as well as the success
+one (`failAfterDraining`), because `EMPTY_TRANSCRIPT` is the documented silent-microphone symptom
+(AT-2357) and repeats: each attempt would otherwise pay for a full scan and have it killed by the
+container freeze.
+
+**Two smaller traps.** The contacts query orders by `__name__` **descending**: contact ids are
+timestamp-prefixed push ids, so an unordered `.limit()` returns the OLDEST contacts, dropping
+exactly the newest colleagues while the recency multiplier ranks the survivors by freshness. It
+falls back to the unordered query if Firestore rejects the ordering, because a missing index would
+otherwise make the project contribute nothing at all. And `sanitizeStoredTerms` re-applies the
+build path's normalizer and limits to terms read BACK from the cache — that document is writable by
+its owner under `users/{userId}/{document=**}`, and a stored term containing a newline would escape
+the `- <term>` bullet structure of the cleanup **system** prompt.
 
 **Observability:** `[processRamble] timing` carries `keytermCount`, `keytermFallback`,
 `detectedLanguages` and `summarizeVocabularyUsage`'s raw-vs-cleaned **counts** — never the dictated

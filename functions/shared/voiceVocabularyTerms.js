@@ -289,6 +289,19 @@ function isNumericLike(word) {
 }
 
 /**
+ * Does this word belong to a script that distinguishes upper and lower case?
+ *
+ * A word is cased if ANY of its letters changes under case mapping. Latin, Greek and Cyrillic do;
+ * CJK, Kana, Hangul, Arabic, Hebrew, Thai and Devanagari do not.
+ */
+function hasLetterCase(word) {
+    for (const character of word) {
+        if (character.toUpperCase() !== character.toLowerCase()) return true
+    }
+    return false
+}
+
+/**
  * Is this candidate worth spending a keyterm slot on?
  *
  * The checks are structural rather than dictionary-based on purpose — there is no offline
@@ -328,6 +341,20 @@ function isDistinctiveTerm(term) {
         if (word.replace(/[^\p{L}\p{N}]/gu, '').length < MIN_TERM_LENGTH) return false
         const firstLetter = word.match(/\p{L}/u)?.[0]
         if (!firstLetter) return false
+
+        // CAVEAT, and it is a real one: this test only means anything for scripts that HAVE case.
+        // Japanese, Chinese, Korean, Arabic, Hebrew, Thai and Devanagari are caseless, so
+        // `toUpperCase()` is the identity there — the original form of this check classified every
+        // CJK word as an "acronym" and admitted all of them, which silently disabled the structural
+        // filter for half the languages `language: 'multi'` covers.
+        //
+        // There is no shape signal to use in a caseless script, and rejecting them all would remove
+        // the feature for those users entirely, so they are admitted on length alone. What bounds
+        // the damage is the token budget in `mergeVocabulary`, not this function. KNOWN GAP:
+        // `GENERIC_WORDS` is Latin/Cyrillic-only, so a generic caseless word (「テスト」 = "test")
+        // is not filtered. Extending the stoplist per script is the fix if it ever matters.
+        if (!hasLetterCase(word)) return true
+
         const isCapitalized = firstLetter === firstLetter.toUpperCase() && firstLetter !== firstLetter.toLowerCase()
         const isAcronym = word === word.toUpperCase() && /\p{L}{2,}/u.test(word)
         return isCapitalized || isAcronym
@@ -557,6 +584,7 @@ module.exports = {
     SOURCE_WEIGHTS,
     GENERIC_WORDS,
     normalizeCandidateTerm,
+    hasLetterCase,
     stripCompanyLegalForm,
     isDistinctiveTerm,
     extractNameParts,
