@@ -18,6 +18,21 @@ import {
 import useWindowSize from '../../../utils/useWindowSize'
 import { MENTION_MODAL_MIN_HEIGHT, popoverToCenter } from '../../../utils/HelperFunctions'
 import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { MODAL_Z_AUTOCOMPLETE } from '../../styles/modals'
+
+// AT-2397. The mention list is portaled to `document.body`, so it is a SIBLING
+// of whatever popup hosts the input, not a descendant of it — being nested in
+// the React tree buys it nothing in the stacking order. Without a z-index of
+// its own the vendored container is left at `z-index: auto` and loses to any
+// host that sets one, which is why typing "@" inside the "Add task" popup
+// (`zIndex: 9999`) opened the list *behind* the card: positioned, painted,
+// clickable in principle, and completely invisible.
+//
+// Kept module-level because react-tiny-popover applies `containerStyle` once,
+// when it creates the portal container — a fresh object literal per render
+// would be silently ignored after mount anyway, and a stable reference makes
+// that explicit.
+const MENTIONS_POPOVER_CONTAINER_STYLE = { zIndex: MODAL_Z_AUTOCOMPLETE }
 
 export default function WrapperMentionsModal({
     mentionText,
@@ -74,6 +89,7 @@ export default function WrapperMentionsModal({
             position={['top', 'right', 'bottom', 'left']}
             padding={4}
             align={'start'}
+            containerStyle={MENTIONS_POPOVER_CONTAINER_STYLE}
             onClickOutside={onClickOutside}
             contentLocation={finalLocation ? finalLocation : args => popoverToCenter(args, mobile)}
         >

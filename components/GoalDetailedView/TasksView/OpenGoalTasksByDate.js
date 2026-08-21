@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import OpenDateHeader from './OpenDateHeader'
 import {
     AMOUNT_TASKS_INDEX,
+    CALENDAR_TASK_INDEX,
     DATE_TASK_INDEX,
     ESTIMATION_TASKS_INDEX,
 } from '../../../utils/backends/Tasks/openGoalTasks'
@@ -58,6 +59,7 @@ export default function OpenGoalTasksByDate({
                 ownerId={goal.ownerId}
                 isFirstDay={dateIndex === 0}
                 dateIndex={dateIndex}
+                hasCalendarSection={(tasksData[CALENDAR_TASK_INDEX] || []).length > 0}
             />
             <GoalOpenTasksSections tasksData={tasksData} projectId={projectId} dateIndex={dateIndex} goal={goal} />
             <View style={{ flexDirection: 'row', justifyContent: 'center' }}>

@@ -6,6 +6,7 @@ const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     executeToolNatively,
+    getExternalIntegrationToolName,
     getAssistantForChat,
     getMessageTextForTokenCounting,
     injectPendingAttachmentIntoToolArgs,
@@ -72,6 +73,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         // creation merely because the bookkeeping integration was deferred behind tool search.
         disableToolSearch: true,
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
+        autoAttachInvoice: options.autoAttachInvoice === true,
         currentEmailParticipants,
         latestSafeActionContext: null,
         userTimezoneName,
@@ -233,6 +235,7 @@ async function collectStreamWithToolCalls(
     let responseText = ''
     let currentConversation = conversationHistory
     let pendingAttachmentPayload = toolRuntimeContext?.initialPendingAttachmentPayload || null
+    const executedToolNames = new Set()
     const toolEvidence = {
         createTask: {
             called: false,
@@ -260,6 +263,7 @@ async function collectStreamWithToolCalls(
                 const toolCall = currentToolCalls[0]
                 const toolName = toolCall.function.name
                 const toolCallId = toolCall.id
+                executedToolNames.add(toolName)
 
                 let toolArgs = {}
                 try {
@@ -397,11 +401,150 @@ async function collectStreamWithToolCalls(
         if (chunk.content) responseText += chunk.content
     }
 
+    if (pendingAttachmentPayload && toolRuntimeContext?.autoAttachInvoice === true) {
+        const invoiceToolName = await getExternalIntegrationToolName({
+            projectId,
+            assistantId,
+            requestUserId,
+            integrationId: 'bookkeeping_assistant',
+            toolKey: 'attach_invoice',
+        })
+        if (invoiceToolName && !executedToolNames.has(invoiceToolName)) {
+            responseText = await attachPendingInvoiceWithFollowUp({
+                invoiceToolName,
+                pendingAttachmentPayload,
+                conversationHistory: currentConversation,
+                modelKey,
+                temperatureKey,
+                allowedTools,
+                projectId,
+                assistantId,
+                requestUserId,
+                toolRuntimeContext,
+            })
+        } else if (!invoiceToolName) {
+            console.warn('Email Channel: Invoice auto-attach skipped because bookkeeping tool is unavailable', {
+                projectId,
+                assistantId,
+                messageId: pendingAttachmentPayload.messageId || '',
+            })
+        }
+    }
+
     if (toolRuntimeContext) toolRuntimeContext.emailToolEvidence = toolEvidence
     const safeResponseText = enforceSafeTaskResponse(String(responseText || '').trim(), toolEvidence)
     return toolEvidence.calendarAvailability.succeeded
         ? enforceCalendarOwnershipResponse(safeResponseText, toolRuntimeContext?.calendarOwnerName)
         : safeResponseText
+}
+
+async function attachPendingInvoiceWithFollowUp({
+    invoiceToolName,
+    pendingAttachmentPayload,
+    conversationHistory,
+    modelKey,
+    temperatureKey,
+    allowedTools,
+    projectId,
+    assistantId,
+    requestUserId,
+    toolRuntimeContext,
+}) {
+    const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+        invoiceToolName,
+        {
+            fileName: pendingAttachmentPayload.fileName || '',
+            mimeType: pendingAttachmentPayload.fileMimeType || '',
+        },
+        pendingAttachmentPayload
+    )
+    const toolArgs = enrichedToolArgs.toolArgs
+    const allowed = await isToolAllowedForExecution(allowedTools, invoiceToolName, toolRuntimeContext)
+    if (!allowed) return getUserFacingToolErrorMessage(invoiceToolName, new Error('Tool not permitted'))
+
+    console.warn('Email Channel: Auto-attaching invoice after assistant skipped bookkeeping tool', {
+        projectId,
+        assistantId,
+        fileName: pendingAttachmentPayload.fileName || '',
+        messageId: pendingAttachmentPayload.messageId || '',
+    })
+
+    const triggeringUserMessage = conversationHistory.find(entry =>
+        Array.isArray(entry) ? entry[0] === 'user' : entry?.role === 'user'
+    )
+    let toolResult
+    try {
+        toolResult = await executeToolNatively(
+            invoiceToolName,
+            toolArgs,
+            projectId,
+            assistantId,
+            requestUserId,
+            {
+                message: getMessageTextForTokenCounting(
+                    Array.isArray(triggeringUserMessage)
+                        ? triggeringUserMessage[1]
+                        : triggeringUserMessage?.content || ''
+                ),
+            },
+            toolRuntimeContext
+        )
+        if (toolResult?.success === false) toolRuntimeContext.emailToolFailed = true
+    } catch (error) {
+        toolRuntimeContext.emailToolFailed = true
+        return getUserFacingToolErrorMessage(invoiceToolName, error)
+    }
+
+    const toolCallId = `call_email_invoice_${Date.now()}`
+    const followUpConversation = [
+        ...conversationHistory,
+        {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+                {
+                    id: toolCallId,
+                    type: 'function',
+                    function: {
+                        name: invoiceToolName,
+                        arguments: JSON.stringify(
+                            buildConversationSafeToolArgs(invoiceToolName, toolArgs, pendingAttachmentPayload)
+                        ),
+                    },
+                },
+            ],
+        },
+        {
+            role: 'tool',
+            content: JSON.stringify(buildConversationSafeToolResult(invoiceToolName, toolResult)),
+            tool_call_id: toolCallId,
+        },
+        {
+            role: 'user',
+            content: buildEmailToolResultFollowUpPrompt(invoiceToolName, toolRuntimeContext),
+        },
+    ]
+
+    toolRuntimeContext.autoAttachInvoice = false
+    toolRuntimeContext.initialPendingAttachmentPayload = null
+    const followUpStream = await interactWithChatStream(
+        followUpConversation,
+        modelKey,
+        temperatureKey,
+        allowedTools,
+        toolRuntimeContext
+    )
+    return collectStreamWithToolCalls(
+        followUpStream,
+        followUpConversation,
+        modelKey,
+        temperatureKey,
+        allowedTools,
+        projectId,
+        assistantId,
+        requestUserId,
+        toolRuntimeContext
+    )
 }
 
 function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}) {
