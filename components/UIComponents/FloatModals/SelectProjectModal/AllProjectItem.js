@@ -7,7 +7,13 @@ import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { ALL_PROJECTS_OPTION } from './projectPickerConstants'
 
-export default function AllProjectItem({ selectedProjectId, onProjectSelect, active }) {
+/**
+ * `label` (AT-2390) lets one caller rename this row without renaming it
+ * everywhere: the search scope picker calls it "All active" (symmetric with its
+ * "All archived" row and accurate about what it searches), while the
+ * "Switch project" pickers built on the same shared row keep "All projects".
+ */
+export default function AllProjectItem({ selectedProjectId, onProjectSelect, active, label }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
 
     const onPress = () => {
@@ -27,7 +33,7 @@ export default function AllProjectItem({ selectedProjectId, onProjectSelect, act
                                 active && localStyles.projectNameSelected,
                             ]}
                         >
-                            {translate('All projects')}
+                            {translate(label || 'All projects')}
                         </Text>
                     </View>
 

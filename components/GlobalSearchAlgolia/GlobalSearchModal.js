@@ -45,8 +45,10 @@ import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './se
 import SearchFilterChips from './Filter/SearchFilterChips'
 import Line from '../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import SelectProjectModalInSearch, {
+    ALL_ARCHIVED_PROJECTS_OPTION,
     ALL_PROJECTS_OPTION,
 } from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
+import { isProjectPickerSentinel } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { getAllUserProjects } from '../../utils/backends/firestore'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
@@ -56,10 +58,19 @@ import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDi
 import useEscapeKey from '../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
+// The `real*` id sets are written by `updateInactiveProjectsData` (redux/store.js)
+// and are the unmasked truth; the plain sets next to them are trimmed by the
+// sidebar's "archived mode". Fall back to the plain set only when the real one is
+// genuinely absent (a partially-populated user: boot, anonymous, tests), never
+// when it is merely empty.
+const realIdSet = (realIds, maskedIds) => (Array.isArray(realIds) ? realIds : maskedIds || [])
+
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
 
-    const realTemplateProjectsAmount = useSelector(state => state.loggedUser.realTemplateProjectIds.length)
+    const realArchivedProjectsAmount = useSelector(
+        state => realIdSet(state.loggedUser.realArchivedProjectIds, state.loggedUser.archivedProjectIds).length
+    )
     const searchText = useSelector(state => state.searchText)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [projects, setProjects] = useState([])
@@ -117,7 +128,13 @@ export default function GlobalSearchModal() {
     // cannot dismiss it (AT-2236) — see onBackdropPress below.
     const openedAtRef = useRef(highResNow())
 
-    const inSelectedProject = selectedProject.id !== ALL_PROJECTS_OPTION
+    // Three scopes, not two (AT-2390): every active project, every archived
+    // project, or one specific project. `inSelectedProject` keeps its old
+    // meaning — "the scope is a single, concrete project" — because the result
+    // grouping in applySearchHits branches on it, and an all-archived search
+    // spans many projects exactly like an all-active one does.
+    const isAllArchivedScope = selectedProject.id === ALL_ARCHIVED_PROJECTS_OPTION
+    const inSelectedProject = selectedProject.id !== ALL_PROJECTS_OPTION && !isAllArchivedScope
 
     const onKeyDownShortcuts = event => {
         if (event.altKey && !showShortcuts) {
@@ -134,32 +151,37 @@ export default function GlobalSearchModal() {
     }
 
     const updateTemporaryProjectsAndUsers = async () => {
-        const {
-            loggedUser,
-            areArchivedActive,
-            activeGuideId,
-            activeTemplateId,
-            loggedUserProjects,
-            selectedProjectIndex,
-        } = store.getState()
-        const { realGuideProjectIds, realTemplateProjectIds, realArchivedProjectIds } = loggedUser
-
-        const inactiveGuideIds = realGuideProjectIds.filter(id => id !== activeGuideId)
-        const inactiveTemplateIds = realTemplateProjectIds.filter(id => id !== activeTemplateId)
-
-        const inactiveProjectIds = []
-        inactiveProjectIds.push(...inactiveGuideIds)
-        inactiveProjectIds.push(...inactiveTemplateIds)
-        if (!areArchivedActive) inactiveProjectIds.push(...realArchivedProjectIds)
+        const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
+        const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
+        const realTemplateProjectIds = realIdSet(loggedUser.realTemplateProjectIds, loggedUser.templateProjectIds)
+        const realArchivedProjectIds = realIdSet(loggedUser.realArchivedProjectIds, loggedUser.archivedProjectIds)
+        const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
 
         dispatch(startLoadingData())
         const projectsList = await getAllUserProjects(loggedUser.uid)
         dispatch(stopLoadingData())
 
-        const activeProjects = ProjectHelper.getActiveProjects2(projectsList, loggedUser)
-        const guides = ProjectHelper.getGuideProjects(projectsList, loggedUser)
-        const templates = ProjectHelper.getTemplateProjects(projectsList, loggedUser)
-        const archived = ProjectHelper.getArchivedProjects2(projectsList, loggedUser)
+        // AT-2390: bucket against the REAL id sets, never the masked ones on
+        // `loggedUser`. `updateInactiveProjectsData` (redux/store.js) empties
+        // `archivedProjectIds` whenever `areArchivedActive` is false — which is
+        // the default — so `getArchivedProjects2` returned [] for almost every
+        // user. That is why the picker's Archived tab was empty: archived
+        // projects never entered `projects` at all, and the tab filters that
+        // same list by `realArchivedProjectIds`. The masked guide/template sets
+        // are trimmed the same way for template owners, so they are read from
+        // the real sets too rather than leaving the same bug in place one tab
+        // over. Search scope is an explicit choice here; it must not silently
+        // inherit the sidebar's "archived mode" switch.
+        const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
+        const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
+        const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
+        const activeProjects = ProjectHelper.getActiveProjectsInList(
+            projectsList,
+            realProjectIds,
+            realArchivedProjectIds,
+            realTemplateProjectIds,
+            realGuideProjectIds
+        )
 
         setProjectBuckets({
             activeIds: activeProjects.map(project => project.id),
@@ -509,6 +531,7 @@ export default function GlobalSearchModal() {
     // way to search them (the "Include templates & guides" toggle was removed).
     const getProjectsInSearchScope = () => {
         if (inSelectedProject) return [selectedProject]
+        if (isAllArchivedScope) return projects.filter(project => projectBuckets.archivedIds.includes(project.id))
         return projects.filter(project => {
             if (projectBuckets.activeIds.includes(project.id)) return true
             if (includeArchived && projectBuckets.archivedIds.includes(project.id)) return true
@@ -763,10 +786,9 @@ export default function GlobalSearchModal() {
         : null
 
     const updateSelectedProject = projectId => {
-        const project =
-            projectId === ALL_PROJECTS_OPTION
-                ? { id: ALL_PROJECTS_OPTION }
-                : projects.find(project => project.id === projectId)
+        const project = isProjectPickerSentinel(projectId)
+            ? { id: projectId }
+            : projects.find(project => project.id === projectId)
         setSelectedProject(project)
     }
 
@@ -778,10 +800,15 @@ export default function GlobalSearchModal() {
             }}
             projects={projects}
             setSelectedProjectId={updateSelectedProject}
-            showGuideTab={true}
-            showTemplateTab={realTemplateProjectsAmount > 0}
-            showArchivedTab={true}
+            // AT-2390: the search scope has exactly two groups, Active and
+            // Archived. The Community/Template tabs are gated off HERE rather
+            // than removed from the shared picker, because the "Switch project"
+            // and add-task pickers still need them.
+            showGuideTab={false}
+            showTemplateTab={false}
+            showArchivedTab={realArchivedProjectsAmount > 0}
             showAllProjects={true}
+            showAllArchivedProjects={true}
         />
     ) : (
         <View style={[localStyles.popup, { width: width }, sheetCardStyle]}>
