@@ -12,12 +12,14 @@ const {
     computeWebhookSignature,
     getEmailParticipantDisplayName,
     getEmailSafeAllowedTools,
+    isInvoiceLikeAttachment,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
     normalizeEmailAddressList,
     normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
     pickActionableAttachment,
+    shouldAutoAttachInvoice,
     splitQuotedReplyText,
     stripHtmlToText,
     trimQuotedReplyText,
@@ -379,6 +381,33 @@ describe('emailChannelHelpers', () => {
 
         expect(selection.status).toBe('ok')
         expect(selection.attachment.fileName).toBe('document.pdf')
+    })
+
+    test('identifies an invoice from extracted accounting content even when the filename is opaque', () => {
+        const attachment = {
+            fileName: 'INV00615071_A00120057_08212026.pdf',
+            contentType: 'application/pdf',
+            extractedText: 'RECEIPT\nInvoice: INV00615071\nVAT number DE316393998\nTotal (USD): $10.00',
+        }
+
+        expect(isInvoiceLikeAttachment(attachment)).toBe(true)
+        expect(shouldAutoAttachInvoice(attachment, 'Subject: Your payment was successfully processed')).toBe(true)
+    })
+
+    test('does not auto-attach an ordinary document or an invoice with an explicit opt-out', () => {
+        const ordinaryDocument = {
+            fileName: 'meeting-notes.pdf',
+            contentType: 'application/pdf',
+            extractedText: 'Meeting summary and next steps',
+        }
+        const invoice = {
+            fileName: 'invoice.pdf',
+            contentType: 'application/pdf',
+        }
+
+        expect(shouldAutoAttachInvoice(ordinaryDocument, 'Please summarize this')).toBe(false)
+        expect(shouldAutoAttachInvoice(invoice, 'Do not forward this invoice to bookkeeping.')).toBe(false)
+        expect(shouldAutoAttachInvoice(invoice, 'Bitte nicht an die Buchhaltung weiterleiten.')).toBe(false)
     })
 
     test('breaks equally relevant ties by file type priority, then original order', () => {
