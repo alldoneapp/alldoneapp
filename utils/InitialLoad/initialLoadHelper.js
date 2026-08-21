@@ -1,7 +1,7 @@
 import { difference } from 'lodash'
 
 import store from '../../redux/store'
-import { getGlobalAssistants, getProjectAssistants } from '../backends/Assistants/assistantsFirestore'
+import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
 import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
 import { getProjectUsers, removeCopyProjectIdFromUser } from '../backends/Users/usersFirestore'
 import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'

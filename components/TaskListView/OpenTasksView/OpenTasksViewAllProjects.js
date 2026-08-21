@@ -12,6 +12,12 @@ import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskFiltersLine from '../PriorityFilters/TaskFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
 import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
+import useProgressiveReveal from '../../../hooks/useProgressiveReveal'
+
+// Each project block mounts a sizeable UI tree plus its task/milestone/goal watchers.
+// Keep the tab-switch commit to one project, then yield a paint between later projects.
+export const INITIAL_PROJECTS_TO_RENDER = 1
+export const PROJECT_RENDER_BATCH_SIZE = 1
 
 export default function OpenTasksViewAllProjects() {
     const dispatch = useDispatch()
@@ -58,6 +64,17 @@ export default function OpenTasksViewAllProjects() {
             inFocusTaskProjectId,
         ]
     )
+    const { visibleAmount: visibleProjectCount, complete: projectRenderComplete } = useProgressiveReveal(
+        sortedLoggedUserProjectIds.length,
+        {
+            initialAmount: INITIAL_PROJECTS_TO_RENDER,
+            batchSize: PROJECT_RENDER_BATCH_SIZE,
+            // The project map can get a new object identity while watcher snapshots arrive.
+            // Reset only when the ordered ids really changed, not on those unrelated updates.
+            resetKey: sortedLoggedUserProjectIds.join('\u001f'),
+        }
+    )
+    const visibleProjectIds = sortedLoggedUserProjectIds.slice(0, visibleProjectCount)
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -95,7 +112,7 @@ export default function OpenTasksViewAllProjects() {
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
-            {sortedLoggedUserProjectIds.map(projectId => {
+            {visibleProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {
                     areFirstProject = true
@@ -113,10 +130,12 @@ export default function OpenTasksViewAllProjects() {
                 )
             })}
 
-            <AllProjectsShowMoreButtonContainer
-                projectIds={sortedLoggedUserProjectIds}
-                setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-            />
+            {projectRenderComplete && (
+                <AllProjectsShowMoreButtonContainer
+                    projectIds={sortedLoggedUserProjectIds}
+                    setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                />
+            )}
         </View>
     )
 }
