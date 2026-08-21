@@ -65,7 +65,6 @@ import useCommentPopupAutoFocus, {
     resolveCommentPopupFocusAction,
 } from './commentPopupAutoFocus'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
-import DeferredCommentComposer from './DeferredCommentComposer'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
@@ -527,57 +526,52 @@ export default function RichCommentModal({
                             </View>
                         )}
 
-                        <DeferredCommentComposer
-                            defer={!smallScreenNavigation}
-                            resetKey={`${projectId}:${objectType}:${objectId}`}
+                        <AttachmentDropZone
+                            testID="modal-chat-image-drop-zone"
+                            disabled={loggedUser.isAnonymous}
+                            editor={editor}
+                            inputCursorIndex={inputCursorIndex}
+                            projectId={projectId}
+                            setInputCursorIndex={setInputCursorIndex}
                         >
-                            <AttachmentDropZone
-                                testID="modal-chat-image-drop-zone"
-                                disabled={loggedUser.isAnonymous}
-                                editor={editor}
-                                inputCursorIndex={inputCursorIndex}
+                            <EditForm
+                                ref={editForm}
                                 projectId={projectId}
+                                containerStyle={{ marginBottom: comments && comments.length > 0 ? 16 : 0 }}
+                                onSuccess={done}
+                                currentComment={initialComment}
+                                currentMentions={currentMentions}
+                                currentPrivacy={currentPrivacy}
+                                currentKarma={currentKarma}
+                                toggleShowFileSelector={toggleShowFileSelector}
+                                setEditor={setEditor}
+                                editor={editor}
                                 setInputCursorIndex={setInputCursorIndex}
-                            >
-                                <EditForm
-                                    ref={editForm}
-                                    projectId={projectId}
-                                    containerStyle={{ marginBottom: comments && comments.length > 0 ? 16 : 0 }}
-                                    onSuccess={done}
-                                    currentComment={initialComment}
-                                    currentMentions={currentMentions}
-                                    currentPrivacy={currentPrivacy}
-                                    currentKarma={currentKarma}
-                                    toggleShowFileSelector={toggleShowFileSelector}
-                                    setEditor={setEditor}
-                                    editor={editor}
-                                    setInputCursorIndex={setInputCursorIndex}
-                                    initialCursorIndex={inputCursorIndex}
-                                    initialDeltaOps={editorOpsRef.current.length > 0 ? editorOpsRef.current : null}
-                                    setInitialComment={setInitialComment}
-                                    loggedUserId={loggedUser.uid}
-                                    userGettingKarmaId={userGettingKarmaId}
-                                    objectType={objectType}
-                                    userIsAnonymous={loggedUser.isAnonymous}
-                                    showBotButton={showBotButton}
-                                    setShowRunOutGoalModal={setShowRunOutGoalModal}
-                                    showRunOutGoalModal={showRunOutGoalModal}
-                                    objectId={objectId}
-                                    characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
-                                    disableDoneButton={disableDoneButton}
-                                    assistantId={assistantId}
-                                    setAssistantId={setAssistantId}
-                                    chatAssistantData={{
-                                        objectId,
-                                        objectAssistantId: assistantId,
-                                        objectType: objectType,
-                                    }}
-                                    isAssistantEnabled={isThreadAssistantEnabled}
-                                    updateObjectState={updateObjectState}
-                                    autoFocus={shouldAutoFocusInput}
-                                />
-                            </AttachmentDropZone>
-                        </DeferredCommentComposer>
+                                initialCursorIndex={inputCursorIndex}
+                                initialDeltaOps={editorOpsRef.current.length > 0 ? editorOpsRef.current : null}
+                                setInitialComment={setInitialComment}
+                                loggedUserId={loggedUser.uid}
+                                userGettingKarmaId={userGettingKarmaId}
+                                objectType={objectType}
+                                userIsAnonymous={loggedUser.isAnonymous}
+                                showBotButton={showBotButton}
+                                setShowRunOutGoalModal={setShowRunOutGoalModal}
+                                showRunOutGoalModal={showRunOutGoalModal}
+                                objectId={objectId}
+                                characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
+                                disableDoneButton={disableDoneButton}
+                                assistantId={assistantId}
+                                setAssistantId={setAssistantId}
+                                chatAssistantData={{
+                                    objectId,
+                                    objectAssistantId: assistantId,
+                                    objectType: objectType,
+                                }}
+                                isAssistantEnabled={isThreadAssistantEnabled}
+                                updateObjectState={updateObjectState}
+                                autoFocus={shouldAutoFocusInput}
+                            />
+                        </AttachmentDropZone>
                         {waitingForBotAnswer && !hasNewAssistantMessage && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                         )}

@@ -13,25 +13,4 @@ export const ALL_PROJECTS_OPTION = 'ALL_PROJECTS'
 // Firebase project id.
 export const AUTOMATIC_PROJECT_OPTION = 'AUTOMATIC_PROJECT'
 
-// Sentinel id for the "All archived" row of the search scope picker (AT-2390).
-// The Archived tab needs its own leading row rather than reusing
-// ALL_PROJECTS_OPTION: the two mean different scopes ("every active project" vs
-// "every archived project"), they are simultaneously visible as the two tabs'
-// leading rows, and the scope chip has to be able to tell them apart.
-export const ALL_ARCHIVED_PROJECTS_OPTION = 'ALL_ARCHIVED_PROJECTS'
-
-// i18n keys for the leading rows, kept next to the sentinels they belong to so
-// the rows and the search popup's scope chip cannot drift apart.
-export const ALL_PROJECTS_LABEL = 'All projects'
-export const ALL_ARCHIVED_SCOPE_LABEL = 'All archived'
-
 export const isAutomaticProjectOption = projectId => projectId === AUTOMATIC_PROJECT_OPTION
-
-export const isAllArchivedProjectsOption = projectId => projectId === ALL_ARCHIVED_PROJECTS_OPTION
-
-// The leading rows are sentinels, never real Firebase project ids — anything
-// that resolves a scope to a concrete project list must exclude them.
-export const isProjectPickerSentinel = projectId =>
-    projectId === ALL_PROJECTS_OPTION ||
-    projectId === AUTOMATIC_PROJECT_OPTION ||
-    projectId === ALL_ARCHIVED_PROJECTS_OPTION
