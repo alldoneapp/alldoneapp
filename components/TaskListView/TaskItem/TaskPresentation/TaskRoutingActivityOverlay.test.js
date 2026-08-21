@@ -4,7 +4,20 @@ import renderer, { act } from 'react-test-renderer'
 import { StyleSheet as WebStyleSheet } from 'react-native-web'
 import { createSheet } from 'react-native-web/dist/exports/StyleSheet/dom'
 
-import TaskRoutingActivityOverlay, { SWEEP_FROM, SWEEP_TO } from './TaskRoutingActivityOverlay'
+import TaskRoutingActivityOverlay, {
+    SWEEP_FROM,
+    SWEEP_TINT,
+    SWEEP_TO,
+    SWEEP_TRANSPARENT,
+} from './TaskRoutingActivityOverlay'
+
+// "163,209,255" — the channels of whatever tint the overlay currently uses. Derived rather than
+// written out so re-tinting the sweep does not silently stop these assertions from finding the
+// rule they are meant to police.
+const SWEEP_CHANNELS = SWEEP_TINT.replace(/rgba\(|\)/g, '')
+    .split(',')
+    .slice(0, 3)
+    .join(',')
 
 const render = async element => {
     let tree
@@ -101,7 +114,7 @@ describe('routing sweep stylesheet', () => {
     // identically shaped rule in the same sheet).
     const sweepGradient = () => {
         const gradients = compiledCss().match(/background-image: linear-gradient\([^;}]+\)/g) || []
-        return gradients.find(rule => rule.includes('163,209,255'))
+        return gradients.find(rule => rule.includes(SWEEP_CHANNELS))
     }
 
     it('emits a real gradient rather than dropping the property', () => {
@@ -129,9 +142,10 @@ describe('routing sweep stylesheet', () => {
         // can only be caught here, against the colour that was actually compiled.
         const gradient = sweepGradient()
 
+        expect(SWEEP_TRANSPARENT).toBe(`rgba(${SWEEP_CHANNELS},0)`)
         expect(gradient).not.toMatch(/rgb\(/)
-        expect(gradient).toMatch(/rgba\(163,209,255,0\)\s+0%/)
-        expect(gradient).toMatch(/rgba\(163,209,255,0\)\s+100%/)
+        expect(gradient).toContain(`${SWEEP_TRANSPARENT} 0%`)
+        expect(gradient).toContain(`${SWEEP_TRANSPARENT} 100%`)
     })
 
     it('keeps the band faint enough to stay behind the text it passes over', () => {

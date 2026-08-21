@@ -79,8 +79,8 @@ const sweepStop = alpha => {
     return `rgba(${r},${g},${b},${alpha})`
 }
 
-const SWEEP_TINT = sweepStop(SWEEP_PEAK_ALPHA)
-const SWEEP_TRANSPARENT = sweepStop(0)
+export const SWEEP_TINT = sweepStop(SWEEP_PEAK_ALPHA)
+export const SWEEP_TRANSPARENT = sweepStop(0)
 
 // Placed to radiate from the leading slot, where the sparkle badge sits — so the burst reads as
 // coming FROM the badge that was just spinning rather than from nowhere.
