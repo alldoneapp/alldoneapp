@@ -830,7 +830,10 @@ dictation pays exactly **one document read** for them. `functions/shared/userVoi
 implements a **stale-while-revalidate** cache: fresh (< 24h) is used as-is; **stale is used anyway**
 for the dictation in flight while a rebuild runs alongside it; only a **cold** miss waits, bounded
 by `COLD_BUILD_TIMEOUT_MS`, so a user's first-ever dictation already benefits without a slow
-workspace costing them their text. Triggers on contact/project/assistant writes were rejected as
+workspace costing them their text. The cache read itself is bounded too
+(`CACHE_READ_TIMEOUT_MS`) — it sits directly in front of the Deepgram call on every dictation, and
+a timed-out read deliberately does **not** fall through to a build, because a degraded Firestore
+would only compound the delay. Triggers on contact/project/assistant writes were rejected as
 the refresh mechanism (they pay on every contact edit, for every member, to keep a list fresh that
 is only consumed when somebody dictates), as was a scheduled rebuild (it scans the workspaces of
 users who never touch the microphone). The lazy cache is self-limiting: a user who never dictates

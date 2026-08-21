@@ -12,6 +12,7 @@
 const {
     VOICE_VOCABULARY_DOC_PATH,
     VOCABULARY_TTL_MS,
+    CACHE_READ_TIMEOUT_MS,
     MAX_PROJECTS_SCANNED,
     MAX_CONTACTS_PER_PROJECT,
     FEED_PUBLIC_FOR_ALL,
@@ -359,6 +360,21 @@ describe('getUserVocabularyTerms', () => {
         })
         expect(result.terms).toEqual([])
         expect(result.cacheState).toBe('cold')
+    })
+
+    test('does not let a slow cache read delay the dictation', async () => {
+        // This one read sits directly in front of the Deepgram call. An unbounded read means a
+        // degraded Firestore delays the user's audio — the exact failure this module exists to
+        // avoid. It must NOT fall through to a build either; Firestore is evidently slow.
+        jest.useFakeTimers()
+        try {
+            const db = { doc: () => ({ get: () => new Promise(() => {}) }) }
+            const pending = getUserVocabularyTerms({ db, userId: 'u1', userData: USER_DATA, now: NOW })
+            await jest.advanceTimersByTimeAsync(CACHE_READ_TIMEOUT_MS + 10)
+            await expect(pending).resolves.toEqual({ terms: [], cacheState: 'unavailable', pendingRebuild: null })
+        } finally {
+            jest.useRealTimers()
+        }
     })
 
     test('degrades when called without a database or user', async () => {
