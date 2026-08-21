@@ -22,6 +22,7 @@ export default function OpenDateHeader({
     projectId,
     ownerId,
     dateIndex,
+    hasCalendarSection = false,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
 
@@ -76,8 +77,11 @@ export default function OpenDateHeader({
                         {text}
                     </Text>
                 </View>
-                {/* AT-2252: the calendar re-sync moved here from the removed calendar section. */}
-                {dateIsToday && <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />}
+                {/* AT-2377: the Calendar section owns this control when it renders; this is the
+                    stand-in for a connected calendar with no events to show. */}
+                {dateIsToday && !hasCalendarSection && (
+                    <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />
+                )}
                 {accessGranted && loggedUserCanUpdateObject && (
                     <GoalTaskDateBarMoreButton projectId={projectId} dateIndex={dateIndex} />
                 )}
