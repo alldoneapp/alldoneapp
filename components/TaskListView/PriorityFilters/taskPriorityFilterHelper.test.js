@@ -27,7 +27,8 @@ beforeAll(() => {
         OBSERVED_TASKS_INDEX: 7,
         STREAM_AND_USER_TASKS_INDEX: 8,
         ACTIVE_GOALS_INDEX: 9,
-        EMPTY_SECTION_INDEX: 10,
+        CALENDAR_TASK_INDEX: 10,
+        EMPTY_SECTION_INDEX: 11,
     })
 })
 
@@ -64,7 +65,10 @@ const makePersistedTask = (id, priority, estimation = 0) => {
     return task
 }
 
-const makeSection = (date, { mainTasks = [], observedTasks = [], emptyGoals = [], activeGoals = [] } = {}) => {
+const makeSection = (
+    date,
+    { mainTasks = [], observedTasks = [], emptyGoals = [], activeGoals = [], calendarTasks = [] } = {}
+) => {
     const section = []
     section[0] = date // DATE_TASK_INDEX
     section[1] = 0 // AMOUNT_TASKS_INDEX
@@ -76,7 +80,8 @@ const makeSection = (date, { mainTasks = [], observedTasks = [], emptyGoals = []
     section[7] = observedTasks // OBSERVED_TASKS_INDEX
     section[8] = [] // STREAM_AND_USER_TASKS_INDEX
     section[9] = activeGoals // ACTIVE_GOALS_INDEX
-    section[10] = emptyGoals // EMPTY_SECTION_INDEX
+    section[10] = calendarTasks // CALENDAR_TASK_INDEX
+    section[11] = emptyGoals // EMPTY_SECTION_INDEX
     return section
 }
 
@@ -161,6 +166,44 @@ describe('filterOpenTasksSectionsByPriority', () => {
         expect(filtered[0][7]).toEqual([['user-2', [['goal-1', [expect.objectContaining({ id: 'obs' })]]]]])
         expect(filtered[0][1]).toBe(1)
         expect(filtered[0][2]).toBe(45)
+    })
+})
+
+// AT-2377 - the Calendar section is grouped by goal exactly like the main list. It feeds the same
+// counters, so leaving it out would make the day header disagree with what the day renders.
+describe('calendar tasks in the priority filters', () => {
+    beforeEach(() => {
+        mockGetState.mockReturnValue({ currentUser: { uid: 'user-1' }, selectedProjectIndex: 0 })
+    })
+
+    test('counts calendar tasks alongside main tasks', () => {
+        const instance = {
+            sections: [
+                makeSection('0', {
+                    mainTasks: [['goal-1', [makeTask('a', 'must_do')]]],
+                    calendarTasks: [['goal-1', [makeTask('meeting-1', 'must_do'), makeTask('meeting-2', undefined)]]],
+                }),
+            ],
+        }
+
+        const { counts, total } = collectTaskPriorityCounts([instance])
+        expect(counts).toEqual({ must_do: 2, none: 1 })
+        expect(total).toBe(3)
+    })
+
+    test('filters the calendar bucket and folds it into the recalculated day amount', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [['goal-1', [makeTask('a', 'must_do', 5)]]],
+                calendarTasks: [['goal-1', [makeTask('meeting-1', 'must_do', 30), makeTask('meeting-2', 'do_later')]]],
+            }),
+        ]
+
+        const [day] = filterOpenTasksSectionsByPriority(sections, ['must_do'])
+
+        expect(day[10]).toEqual([['goal-1', [expect.objectContaining({ id: 'meeting-1' })]]])
+        expect(day[1]).toBe(2)
+        expect(day[2]).toBe(35)
     })
 })
 
