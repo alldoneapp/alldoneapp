@@ -20,11 +20,21 @@ const path = require('path')
  *   - two write paths for one happiness entry: a rating tap persists
  *     immediately and "Start new day" re-persisted the same value, and every
  *     `setProjectHappiness` writes a fresh feed entry plus a feed-count bump.
+ *
+ * The happiness half of that contract MOVED in AT-2392: Settings → Happiness
+ * grew a "Rate happiness" button that reuses these rows, so the state, the
+ * watchers and the deduplicated write live in `useProjectHappinessEditor` and
+ * are asserted there. Sharing the module is what keeps the second surface from
+ * re-introducing AT-2367's duplicate feed entries with its own copy.
  */
 
 const MODAL = 'components/UIComponents/FloatModals/EndDayStatisticsModal.js'
+const EDITOR = 'components/ProjectHappiness/useProjectHappinessEditor.js'
 
-const source = fs.readFileSync(path.resolve(__dirname, '..', '..', MODAL), 'utf8')
+const read = file => fs.readFileSync(path.resolve(__dirname, '..', '..', file), 'utf8')
+
+const source = read(MODAL)
+const editorSource = read(EDITOR)
 
 describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
     it('runs the flow through the shared, tested orchestration helper', () => {
@@ -35,8 +45,21 @@ describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
     it('never parks the press handler on a server ack', () => {
         expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/\.\.\/\.\.\/utils\/backends\/offlineWriteAck'/)
         expect(source).not.toMatch(/await setUserStatisticsModalDate\(/)
-        expect(source).not.toMatch(/await saveDirtyHappinessEntries\(/)
+        expect(source).not.toMatch(/await happinessEditor\.(save|take)DirtyEntries\(/)
         expect(source).toMatch(/awaitWriteAck\(\s*\n?\s*setUserStatisticsModalDate\(/)
+    })
+
+    it('snapshots the happiness drafts before the close that clears them', () => {
+        // `startNewDay` closes the popup (which resets the editor) BEFORE it
+        // issues any write, so reading the drafts inside the flow would flush
+        // an already-empty set — a comment typed but never blurred would be
+        // silently dropped.
+        const snapshot = source.indexOf('happinessEditor.takeDirtyEntries(acknowledgedStatsDate)')
+        const flow = source.indexOf('return runStartNewDay({')
+
+        expect(snapshot).toBeGreaterThan(-1)
+        expect(snapshot).toBeLessThan(flow)
+        expect(source).toMatch(/persistHappinessDrafts,/)
     })
 
     it('acknowledges the day regardless of whether the statistics could be read', () => {
@@ -50,13 +73,30 @@ describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
     })
 
     it('writes a happiness entry through one deduplicated path', () => {
-        // Exactly one call site for the backend write.
-        const writes = source.match(/Backend\.setProjectHappiness\(/g) || []
-        expect(writes).toHaveLength(1)
-        expect(source).toMatch(/persistedHappinessRef/)
+        // The popup owns no write of its own: it drives the shared editor.
+        expect(source).not.toMatch(/Backend\.setProjectHappiness\(/)
         expect(source).toMatch(
+            /import useProjectHappinessEditor from '\.\.\/\.\.\/ProjectHappiness\/useProjectHappinessEditor'/
+        )
+
+        // Exactly one call site for the backend write, in the shared editor.
+        const writes = editorSource.match(/Backend\.setProjectHappiness\(/g) || []
+        expect(writes).toHaveLength(1)
+        expect(editorSource).toMatch(/persistedHappinessRef/)
+        expect(editorSource).toMatch(
             /if \(persistedHappinessRef\.current\[project\.id\] === signature\) return Promise\.resolve\(\)/
         )
+    })
+
+    it('keeps the rating rows themselves shared, not copied', () => {
+        // A second copy of these rows would drift from the deduped write path
+        // above, which is exactly how AT-2367 would come back in the new
+        // surface. Both hosts must render the same component.
+        const hosts = [MODAL, 'components/ProjectHappiness/HappinessRatingModal.js']
+
+        hosts.forEach(host => {
+            expect(read(host)).toMatch(/<ProjectHappinessRatingList/)
+        })
     })
 
     it('keeps the double-press guard on the button', () => {

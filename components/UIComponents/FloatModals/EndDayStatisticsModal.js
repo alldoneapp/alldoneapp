@@ -1,14 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import {
-    ActivityIndicator,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native'
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
 import moment from 'moment'
@@ -39,10 +30,10 @@ import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
 } from '../../../utils/DayRateTimeLogHelper'
-import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
-import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
+import ProjectHappinessRatingList from '../../ProjectHappiness/ProjectHappinessRatingList'
+import useProjectHappinessEditor from '../../ProjectHappiness/useProjectHappinessEditor'
+import { getHappinessProjects } from '../../ProjectHappiness/happinessProjects'
+import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 import {
@@ -76,18 +67,6 @@ const RECONNECT_PROBING = 'probing'
 const RECONNECT_RELOADING = 'reloading'
 const RECONNECT_FAILED = 'failed'
 
-const getActiveProjectsInSidebarOrder = (projects, user) =>
-    ProjectHelper.sortProjects(
-        ProjectHelper.getActiveProjectsInList(
-            projects,
-            user.projectIds,
-            user.archivedProjectIds,
-            user.templateProjectIds,
-            user.guideProjectIds
-        ),
-        user.uid
-    )
-
 export default function EndDayStatisticsModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
@@ -120,9 +99,6 @@ export default function EndDayStatisticsModal() {
     const [statsDate, setStatsDate] = useState(statisticsModalDate)
     const [doneTasksByProject, setDoneTasksByProject] = useState({})
     const [statisticsByProject, setStatisticsByProject] = useState({})
-    const [happinessRatings, setHappinessRatings] = useState({})
-    const [happinessComments, setHappinessComments] = useState({})
-    const [visibleComments, setVisibleComments] = useState({})
     const [startNewDayIsLoading, setStartNewDayIsLoading] = useState(false)
     // Render mirror of `isOfflineRef`, which is a ref because the statistics
     // callbacks below need to read it synchronously, plus the stage of a manual
@@ -135,16 +111,6 @@ export default function EndDayStatisticsModal() {
     const isLoading = useRef(false)
     const isSavingStartNewDay = useRef(false)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
-    const commentInputRefs = useRef({})
-    const pendingCommentFocusProjectIdRef = useRef(null)
-    const dirtyHappinessProjectIdsRef = useRef(new Set())
-    const happinessDraftsRef = useRef({})
-    // Signature (`rating|comment`) of the last value written for a project, so
-    // the same happiness entry is never written twice. Rating taps persist
-    // immediately AND used to be re-persisted by "Start new day", and every
-    // `setProjectHappiness` writes a fresh feed entry plus a feed-count bump —
-    // so one rating produced two identical feed entries (AT-2367).
-    const persistedHappinessRef = useRef({})
 
     const isReconnecting = reconnectStatus === RECONNECT_PROBING || reconnectStatus === RECONNECT_RELOADING
     // RELOADING and not `isReconnecting`: the re-read only ever runs from the
@@ -177,6 +143,43 @@ export default function EndDayStatisticsModal() {
         }
     }
 
+    const checkIfDataIsLoaded = () => {
+        if (!dataLoaded) return false
+        if (isOfflineRef.current) return true
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const { templateProjectIds } = loggedUser
+        for (let i = 0; i < loggedUserProjects.length; i++) {
+            const project = loggedUserProjects[i]
+            if (!dataLoaded[project.id] && !templateProjectIds.includes(project.id)) return false
+        }
+        return true
+    }
+
+    const reportNewDayError = (error, label) => {
+        // Never rethrow: by the time these run the popup is already closed and
+        // the state is already local. Logging with the failing step is what
+        // makes a real failure diagnosable instead of a silent `console.log`.
+        console.warn(`[NewDay] "${label}" failed`, error)
+    }
+
+    const happinessProjects = getHappinessProjects(loggedUserProjects, loggedUser)
+
+    /**
+     * The rating rows are shared with Settings → Happiness (AT-2392): the
+     * state, the per-day watchers and the one deduplicated write path all live
+     * in `useProjectHappinessEditor` now. The watchers stay detached until the
+     * statistics have loaded — offline there is nothing to read, and an
+     * anonymous user has no ratings.
+     */
+    const happinessEditor = useProjectHappinessEditor({
+        projects: happinessProjects,
+        userId: loggedUserId,
+        date: statsDate,
+        watchEnabled: checkIfDataIsLoaded() && !isOfflineRef.current && !isAnonymous,
+        watcherKeyPrefix: happinessWatcherKeyRef.current,
+        onError: reportNewDayError,
+    })
+
     /**
      * @param {{ keepStartNewDayGuard?: boolean }} options when the reset comes
      * from the "Start new day" flow itself the double-press guard must survive
@@ -198,13 +201,7 @@ export default function EndDayStatisticsModal() {
         // day" flow dispatches the new acknowledgement first, so the closure
         // value here is one day stale by the time it resets.
         setStatsDate(store.getState().loggedUser.statisticsModalDate)
-        setHappinessRatings({})
-        setHappinessComments({})
-        setVisibleComments({})
-        pendingCommentFocusProjectIdRef.current = null
-        dirtyHappinessProjectIdsRef.current.clear()
-        happinessDraftsRef.current = {}
-        persistedHappinessRef.current = {}
+        happinessEditor.reset()
         isOfflineRef.current = false
         setIsOffline(false)
         clearReconnectTimeout()
@@ -212,58 +209,6 @@ export default function EndDayStatisticsModal() {
         isLoading.current = false
         if (!keepStartNewDayGuard) isSavingStartNewDay.current = false
         setStartNewDayIsLoading(false)
-    }
-
-    const reportNewDayError = (error, label) => {
-        // Never rethrow: by the time these run the popup is already closed and
-        // the state is already local. Logging with the failing step is what
-        // makes a real failure diagnosable instead of a silent `console.log`.
-        console.warn(`[NewDay] "${label}" failed`, error)
-    }
-
-    /**
-     * Single write path for a project's happiness entry.
-     *
-     * Deduplicated on the last written value, because the same entry is
-     * reachable from three places (rating tap, comment blur, "Start new day"
-     * flush) and each `setProjectHappiness` writes a new feed entry.
-     */
-    const persistHappiness = (project, rating, comment) => {
-        dirtyHappinessProjectIdsRef.current.delete(project.id)
-        if (!rating) return Promise.resolve()
-
-        const cleanComment = comment || ''
-        const signature = `${rating}|${cleanComment}`
-        if (persistedHappinessRef.current[project.id] === signature) return Promise.resolve()
-        persistedHappinessRef.current[project.id] = signature
-
-        return awaitWriteAck(
-            Backend.setProjectHappiness(project.id, loggedUserId, statsDate, rating, cleanComment, project),
-            'project happiness'
-        ).catch(error => {
-            // Let a retry through: the value was not stored after all.
-            if (persistedHappinessRef.current[project.id] === signature)
-                delete persistedHappinessRef.current[project.id]
-            reportNewDayError(error, 'setProjectHappiness')
-        })
-    }
-
-    const saveDirtyHappinessEntries = () => {
-        const dirtyProjectIds = dirtyHappinessProjectIdsRef.current
-        if (dirtyProjectIds.size === 0) return Promise.resolve()
-
-        const promises = getHappinessProjects().reduce((promises, project) => {
-            if (!dirtyProjectIds.has(project.id)) return promises
-
-            const draft = happinessDraftsRef.current[project.id] || {}
-            const rating = draft.rating || happinessRatings[project.id]
-            const comment = draft.comment != null ? draft.comment : happinessComments[project.id] || ''
-            promises.push(persistHappiness(project, rating, comment))
-            return promises
-        }, [])
-
-        dirtyProjectIds.clear()
-        return Promise.all(promises)
     }
 
     /**
@@ -285,6 +230,10 @@ export default function EndDayStatisticsModal() {
 
         const acknowledgedStatsDate = statsDate
         const crossedMidnightWhileOpen = showNewDayNotification
+        // Snapshot the unsaved drafts here, not inside the flow: the flow
+        // closes the popup (which resets this editor) before it issues any
+        // write, so a flush read after the close would find nothing.
+        const persistHappinessDrafts = happinessEditor.takeDirtyEntries(acknowledgedStatsDate)
 
         return runStartNewDay({
             applyLocalAcknowledgement: statisticsModalDate => {
@@ -299,7 +248,7 @@ export default function EndDayStatisticsModal() {
                 store.dispatch(setShowNewDayNotification(false))
             },
             closePopup: () => resetModalState({ keepStartNewDayGuard: true }),
-            persistHappinessDrafts: saveDirtyHappinessEntries,
+            persistHappinessDrafts,
             // Acknowledge the day even when the statistics could not be read
             // (offline). The write lands in the persisted mutation queue and
             // flushes on reconnect; skipping it is what made the popup come
@@ -549,87 +498,6 @@ export default function EndDayStatisticsModal() {
 
     useEffect(() => clearReconnectTimeout, [])
 
-    useEffect(() => {
-        if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
-
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const activeProjects = getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
-        const watcherKeys = activeProjects.map(project => `${happinessWatcherKeyRef.current}_${project.id}`)
-        activeProjects.forEach(project => {
-            Backend.watchProjectHappinessByRange(
-                project.id,
-                loggedUserId,
-                statsDate,
-                statsDate,
-                `${happinessWatcherKeyRef.current}_${project.id}`,
-                (projectId, entries) => {
-                    const entry = entries[0]
-                    if (entry) {
-                        happinessDraftsRef.current[projectId] = {
-                            rating: entry.rating,
-                            comment: entry.comment || '',
-                        }
-                        // Already stored server-side: never re-write it.
-                        persistedHappinessRef.current[projectId] = `${entry.rating}|${entry.comment || ''}`
-                        setHappinessRatings(state => ({ ...state, [projectId]: entry.rating }))
-                        setHappinessComments(state => ({ ...state, [projectId]: entry.comment || '' }))
-                    }
-                }
-            )
-        })
-
-        return () => {
-            watcherKeys.forEach(key => Backend.unwatch(key))
-        }
-    }, [JSON.stringify(dataLoaded), statsDate, loggedUserId, isAnonymous])
-
-    useEffect(() => {
-        const projectId = pendingCommentFocusProjectIdRef.current
-        if (!projectId || !visibleComments[projectId]) return
-
-        const timeoutId = setTimeout(() => {
-            commentInputRefs.current[projectId]?.focus?.()
-            pendingCommentFocusProjectIdRef.current = null
-        })
-
-        return () => clearTimeout(timeoutId)
-    }, [visibleComments])
-
-    const getHappinessProjects = () => getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
-
-    const updateHappinessRating = (project, rating) => {
-        dirtyHappinessProjectIdsRef.current.add(project.id)
-        happinessDraftsRef.current[project.id] = {
-            ...happinessDraftsRef.current[project.id],
-            rating,
-            comment: happinessComments[project.id] || happinessDraftsRef.current[project.id]?.comment || '',
-        }
-        setHappinessRatings(state => ({ ...state, [project.id]: rating }))
-        persistHappiness(project, rating, happinessComments[project.id] || '')
-    }
-
-    const updateHappinessComment = (project, comment) => {
-        dirtyHappinessProjectIdsRef.current.add(project.id)
-        happinessDraftsRef.current[project.id] = {
-            ...happinessDraftsRef.current[project.id],
-            rating: happinessRatings[project.id] || happinessDraftsRef.current[project.id]?.rating,
-            comment,
-        }
-        setHappinessComments(state => ({ ...state, [project.id]: comment }))
-    }
-
-    const saveHappinessComment = project => {
-        persistHappiness(project, happinessRatings[project.id], happinessComments[project.id] || '')
-    }
-
-    const toggleHappinessComment = projectId => {
-        setVisibleComments(state => {
-            const willShow = !state[projectId]
-            pendingCommentFocusProjectIdRef.current = willShow ? projectId : null
-            return { ...state, [projectId]: willShow }
-        })
-    }
-
     const getAnimationSegment = () => {
         if (showEmptyInbox) return [0, 180]
         if (doneTasks > 3) return [0, 120]
@@ -681,21 +549,8 @@ export default function EndDayStatisticsModal() {
         return { dayName, dateFormated }
     }
 
-    const checkIfDataIsLoaded = () => {
-        if (!dataLoaded) return false
-        if (isOfflineRef.current) return true
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const { templateProjectIds } = loggedUser
-        for (let i = 0; i < loggedUserProjects.length; i++) {
-            const project = loggedUserProjects[i]
-            if (!dataLoaded[project.id] && !templateProjectIds.includes(project.id)) return false
-        }
-        return true
-    }
-
     const { dayName, dateFormated } = getDate()
     const { rewardTitle, rewardDescription } = getRewardTexts()
-    const happinessProjects = getHappinessProjects()
     const moneyEarnedSummary = getEndDayMoneyEarnedSummary(
         loggedUserProjects,
         statisticsByProject,
@@ -713,6 +568,31 @@ export default function EndDayStatisticsModal() {
         if (projectDoneTasks <= 0 || maxProjectDoneTasks <= 0) return 0
         return `${Math.max(8, Math.round((projectDoneTasks / maxProjectDoneTasks) * 100))}%`
     }
+    /**
+     * The one thing the shared rating list does not know about: how busy the
+     * day being acknowledged was in this project. It is meaningful only for
+     * the day the popup is about, which is why it is injected here rather than
+     * living in `ProjectHappinessRatingList`.
+     */
+    const renderProjectDayActivity = project => (
+        <>
+            <View style={localStyles.happinessProjectStats}>
+                <Icon name="check-square" size={16} color={colors.Text04} />
+                <Text style={localStyles.happinessProjectStatsText}>
+                    {translate('Tasks done:')} {getProjectDoneTasks(project.id)}
+                </Text>
+            </View>
+            <View style={localStyles.projectActivityTrack}>
+                <View
+                    style={[
+                        localStyles.projectActivityFill,
+                        { width: getProjectActivityWidth(project.id) },
+                        getProjectDoneTasks(project.id) === 0 && localStyles.projectActivityFillEmpty,
+                    ]}
+                />
+            </View>
+        </>
+    )
     const renderStatItem = (key, icon, label, value) => (
         <View style={[localStyles.statItem, compactModalLayout && localStyles.mobileStatItem]} key={key}>
             <View style={localStyles.statIcon}>{icon}</View>
@@ -790,91 +670,13 @@ export default function EndDayStatisticsModal() {
                                 {statItems}
                             </View>
                         )}
-                        {!showOfflineView && happinessProjects.length > 0 && (
-                            <View style={localStyles.happinessSection}>
-                                <Text style={localStyles.happinessTitle}>{translate('Project happiness')}</Text>
-                                <Text style={localStyles.happinessPrivacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
-                                {happinessProjects.map(project => (
-                                    <View
-                                        key={project.id}
-                                        style={[
-                                            localStyles.happinessProject,
-                                            compactModalLayout && localStyles.mobileHappinessProject,
-                                        ]}
-                                    >
-                                        <View
-                                            style={[
-                                                localStyles.happinessProjectHeader,
-                                                compactModalLayout && localStyles.mobileHappinessProjectHeader,
-                                            ]}
-                                        >
-                                            <View
-                                                style={[
-                                                    localStyles.happinessProjectInfo,
-                                                    compactModalLayout && localStyles.mobileHappinessProjectInfo,
-                                                ]}
-                                            >
-                                                <Text style={localStyles.happinessProjectName} numberOfLines={1}>
-                                                    {getSafeTextValue(project.name, translate('Project'))}
-                                                </Text>
-                                                <View style={localStyles.happinessProjectStats}>
-                                                    <Icon name="check-square" size={16} color={colors.Text04} />
-                                                    <Text style={localStyles.happinessProjectStatsText}>
-                                                        {translate('Tasks done:')} {getProjectDoneTasks(project.id)}
-                                                    </Text>
-                                                </View>
-                                                <View style={localStyles.projectActivityTrack}>
-                                                    <View
-                                                        style={[
-                                                            localStyles.projectActivityFill,
-                                                            { width: getProjectActivityWidth(project.id) },
-                                                            getProjectDoneTasks(project.id) === 0 &&
-                                                                localStyles.projectActivityFillEmpty,
-                                                        ]}
-                                                    />
-                                                </View>
-                                            </View>
-                                            <View
-                                                style={[
-                                                    localStyles.happinessActions,
-                                                    compactModalLayout && localStyles.mobileHappinessActions,
-                                                ]}
-                                            >
-                                                <TouchableOpacity
-                                                    style={localStyles.commentButton}
-                                                    onPress={() => toggleHappinessComment(project.id)}
-                                                >
-                                                    <Icon name="message-circle" size={20} color="#ffffff" />
-                                                </TouchableOpacity>
-                                                <HappinessRatingPicker
-                                                    value={happinessRatings[project.id]}
-                                                    onChange={rating => updateHappinessRating(project, rating)}
-                                                    compact
-                                                    light
-                                                />
-                                            </View>
-                                        </View>
-                                        {visibleComments[project.id] && (
-                                            <TextInput
-                                                ref={ref => {
-                                                    if (ref) {
-                                                        commentInputRefs.current[project.id] = ref
-                                                    } else {
-                                                        delete commentInputRefs.current[project.id]
-                                                    }
-                                                }}
-                                                style={localStyles.happinessComment}
-                                                multiline
-                                                value={happinessComments[project.id] || ''}
-                                                placeholder={translate('Add comment')}
-                                                placeholderTextColor={colors.Text03}
-                                                onChangeText={comment => updateHappinessComment(project, comment)}
-                                                onBlur={() => saveHappinessComment(project)}
-                                            />
-                                        )}
-                                    </View>
-                                ))}
-                            </View>
+                        {!showOfflineView && (
+                            <ProjectHappinessRatingList
+                                projects={happinessProjects}
+                                editor={happinessEditor}
+                                compact={compactModalLayout}
+                                renderProjectMeta={renderProjectDayActivity}
+                            />
                         )}
                         {reconnectStatus === RECONNECT_FAILED && (
                             <Text style={localStyles.reconnectFailedNotice}>
@@ -1143,50 +945,6 @@ const localStyles = StyleSheet.create({
         marginTop: 2,
         textAlign: 'center',
     },
-    happinessSection: {
-        marginTop: 12,
-    },
-    happinessTitle: {
-        ...styles.subtitle1,
-        color: '#ffffff',
-        marginBottom: 4,
-    },
-    happinessPrivacy: {
-        ...styles.body2,
-        color: colors.Text04,
-        marginBottom: 8,
-    },
-    happinessProject: {
-        borderTopWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        paddingVertical: 16,
-    },
-    mobileHappinessProject: {
-        paddingVertical: 14,
-    },
-    happinessProjectHeader: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-    },
-    mobileHappinessProjectHeader: {
-        flexDirection: 'column',
-        alignItems: 'stretch',
-    },
-    happinessProjectInfo: {
-        flex: 1,
-        marginRight: 16,
-        minWidth: 0,
-    },
-    mobileHappinessProjectInfo: {
-        marginRight: 0,
-        marginBottom: 10,
-    },
-    happinessProjectName: {
-        ...styles.subtitle2,
-        color: '#ffffff',
-        flexShrink: 1,
-    },
     happinessProjectStats: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1211,36 +969,5 @@ const localStyles = StyleSheet.create({
     },
     projectActivityFillEmpty: {
         width: 0,
-    },
-    happinessActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
-    },
-    mobileHappinessActions: {
-        alignSelf: 'stretch',
-        justifyContent: 'space-between',
-    },
-    commentButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 4,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-    },
-    happinessComment: {
-        ...styles.body2,
-        color: '#ffffff',
-        minHeight: 72,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        borderRadius: 4,
-        padding: 8,
-        marginTop: 8,
-        textAlignVertical: 'top',
     },
 })

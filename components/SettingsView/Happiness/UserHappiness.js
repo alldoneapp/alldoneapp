@@ -11,6 +11,8 @@ import {
     getStatisticsFilterData,
 } from '../../StatisticsView/statisticsHelper'
 import HappinessStatsPanel from '../../ProjectHappiness/HappinessStatsPanel'
+import HappinessRatingModal from '../../ProjectHappiness/HappinessRatingModal'
+import Button from '../../UIControls/Button'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { updateUserStatisticsFilter } from '../../../utils/backends/Users/usersFirestore'
@@ -22,6 +24,7 @@ export default function UserHappiness() {
     const filterData = useSelector(state => state.loggedUser.statisticsData)
     const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData, true)
     const [happinessByProject, setHappinessByProject] = useState({})
+    const [showRatingModal, setShowRatingModal] = useState(false)
 
     const writeBrowserURL = () => {
         URLsSettings.push(URL_SETTINGS_HAPPINESS)
@@ -62,7 +65,16 @@ export default function UserHappiness() {
         <View style={localStyles.container}>
             <View style={localStyles.header}>
                 <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('Happiness')}</Text>
-                <View style={localStyles.filterContainer}>
+                <View style={localStyles.actionsContainer}>
+                    {/* The on-demand twin of the "new day" popup (AT-2392): the
+                        same rating rows, for a day you pick. */}
+                    <Button
+                        title={translate('Rate happiness')}
+                        type="primary"
+                        icon="smile"
+                        onPress={() => setShowRatingModal(true)}
+                        buttonStyle={localStyles.rateButton}
+                    />
                     <FilterBy
                         updateFilterData={updateHappinessFilter}
                         statisticsFilter={getFilterOption(filterData)}
@@ -73,6 +85,8 @@ export default function UserHappiness() {
             </View>
 
             <HappinessStatsPanel happinessByProject={happinessByProject} showTitle={false} />
+
+            {showRatingModal && <HappinessRatingModal onClose={() => setShowRatingModal(false)} />}
         </View>
     )
 }
@@ -88,7 +102,12 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         flexDirection: 'row',
     },
-    filterContainer: {
+    actionsContainer: {
         marginLeft: 'auto',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    rateButton: {
+        marginRight: 8,
     },
 })
