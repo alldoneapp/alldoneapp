@@ -3,12 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
-import styles, {
-    colors,
-    PROJECT_LINE_TAG_HEIGHT,
-    PROJECT_LINE_TAG_MOBILE_WIDTH,
-    windowTagStyle,
-} from '../styles/global'
+import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCreateGoalModal from '../UIComponents/FloatModals/RichCreateGoalModal/RichCreateGoalModal'
@@ -71,11 +66,9 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Text03,
         paddingHorizontal: 4,
     },
-    // Same tap target as the `AddTaskTag` pill it sits beside on the project
-    // lines - the two share the token so widening one cannot desync the pair.
     tagMobile: {
-        width: PROJECT_LINE_TAG_MOBILE_WIDTH,
-        height: PROJECT_LINE_TAG_HEIGHT,
+        width: 24,
+        height: 24,
     },
     text: {
         color: colors.Text03,
