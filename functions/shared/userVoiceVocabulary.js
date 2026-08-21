@@ -35,7 +35,7 @@
  * broken feature. That is why `getUserVocabularyTerms` has no rejecting path at all.
  */
 
-const { buildDynamicTerms } = require('./voiceVocabularyTerms')
+const { buildDynamicTerms, extractCandidatesFromProject } = require('./voiceVocabularyTerms')
 
 /** Contacts marked public for everyone use this sentinel in `isPublicFor`. */
 const FEED_PUBLIC_FOR_ALL = 0
@@ -195,8 +195,6 @@ async function scanProject(db, userId, projectId) {
  * of this user's slots.
  */
 async function buildUserVocabulary({ db, userId, userData, now = Date.now(), excludeTerms = [] }) {
-    const { extractCandidatesFromProject } = require('./voiceVocabularyTerms')
-
     const scopeProjectIds = resolveScopeProjectIds(userData)
     const scannedProjectIds = scopeProjectIds.slice(0, MAX_PROJECTS_SCANNED)
     const skippedProjectCount = scopeProjectIds.length - scannedProjectIds.length

@@ -109,6 +109,39 @@ describe('wire format', () => {
         expect(queryOf(requestUrls[0]).getAll('keyterm')).toEqual(['Karsten Wysk'])
     })
 
+    // PT-4648 (per-user vocabulary): the earlier cases prove the SHAPE on two or three terms. A real
+    // request now carries the static glossary plus up to 30 workspace terms — multi-word names with
+    // non-ASCII letters among them — and that is the payload that actually goes out.
+    test('serializes a full static + per-user vocabulary without dropping or mangling a term', async () => {
+        const dynamic = [
+            'Anna Somova',
+            'Ralf Lämmel',
+            "O'Brien",
+            'Signal Iduna',
+            'JTL Project Juno',
+            ...Array.from({ length: 25 }, (_, index) => `Distinctname${index}`),
+        ]
+        const keyterms = getTranscriptionKeyterms(dynamic)
+        await transcribeAudioBase64('AAAA', { keyterms })
+
+        // Every term survives the round trip, in order, decoded back to exactly what was sent.
+        expect(queryOf(requestUrls[0]).getAll('keyterm')).toEqual(keyterms)
+        // Non-ASCII letters must be percent-encoded rather than sent raw or transliterated.
+        expect(requestUrls[0]).toContain('keyterm=Ralf%20L%C3%A4mmel')
+    })
+
+    test('keeps a full vocabulary request well inside practical URL limits', async () => {
+        // Keyterms ride in the query string, so an unbounded list would eventually produce a URL
+        // servers reject (~8KB is the usual ceiling). The caps exist partly for this reason; this
+        // pins that the realistic worst case is nowhere near it.
+        const keyterms = getTranscriptionKeyterms(
+            Array.from({ length: 30 }, (_, index) => `Verylongworkspacename Number${index}`)
+        )
+        await transcribeAudioBase64('AAAA', { keyterms })
+
+        expect(requestUrls[0].length).toBeLessThan(4000)
+    })
+
     test('sends the curated product vocabulary by default', async () => {
         await transcribeAudioBase64('AAAA')
 
