@@ -3785,13 +3785,6 @@ export function mapTaskData(taskId, task) {
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
         parentGoalIsPublicFor: task.parentGoalIsPublicFor ? task.parentGoalIsPublicFor : null,
         goalSuggestion: task.goalSuggestion ? task.goalSuggestion : null,
-        // AT-2381 — the "Automatic" project router's state machine (see
-        // `utils/automaticProjectRouting.js` and `functions/Tasks/taskProjectRouting.js`). It was
-        // write-only until now: the create popup stamped it and nothing on the client ever read it
-        // back. The task row needs it to show that classification is still running, and — because
-        // the router settles this map BEFORE moving the task — to recognise a task that has just
-        // arrived in a new project.
-        projectRouting: task.projectRouting ? task.projectRouting : null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
