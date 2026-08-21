@@ -2735,5 +2735,6 @@
     "Reconnect now": "Reconnect now",
     "Alldone is checking the connection to the server. This usually takes a few seconds.": "Alldone is checking the connection to the server. This usually takes a few seconds.",
     "Alldone cannot reach the server right now, so what you see may be out of date. You can keep working — your changes are saved and will sync as soon as the connection is back.": "Alldone cannot reach the server right now, so what you see may be out of date. You can keep working — your changes are saved and will sync as soon as the connection is back.",
-    "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online."
+    "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.",
+    "Still no connection. You can start the day anyway, your data will sync later": "Still no connection. You can start the day anyway, your data will sync later"
 }
