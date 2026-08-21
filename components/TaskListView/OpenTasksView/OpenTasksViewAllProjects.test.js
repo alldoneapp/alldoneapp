@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
+import useProgressiveReveal from '../../../hooks/useProgressiveReveal'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -17,6 +18,7 @@ jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
 jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
+jest.mock('../../../hooks/useProgressiveReveal', () => jest.fn())
 jest.mock('./openTasksViewProjectScope', () => ({
     getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
 }))
@@ -54,6 +56,10 @@ describe('OpenTasksViewAllProjects', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         useDispatch.mockReturnValue(jest.fn())
+        useProgressiveReveal.mockImplementation(totalCount => ({
+            visibleAmount: totalCount,
+            complete: true,
+        }))
     })
 
     it('AT-2262: puts the empty-inbox congrats right under the assistant line', () => {
@@ -169,6 +175,28 @@ describe('OpenTasksViewAllProjects', () => {
             })
 
             expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(2)
+        })
+    })
+
+    describe('progressive project mounting', () => {
+        it('keeps the tab-switch render to the first project block', () => {
+            useProgressiveReveal.mockReturnValue({ visibleAmount: 1, complete: false })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
+
+            expect(projectBlocks).toHaveLength(1)
+            expect(projectBlocks[0].props.projectId).toBe('project-1')
+            expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(0)
+        })
+
+        it('mounts the global show-more controls only after every project block is present', () => {
+            useProgressiveReveal.mockReturnValue({ visibleAmount: 2, complete: true })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByType('OpenTasksByProject')).toHaveLength(2)
+            expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(1)
         })
     })
 })
