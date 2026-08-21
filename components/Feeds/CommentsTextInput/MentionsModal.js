@@ -30,7 +30,6 @@ import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
-import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY } from './MentionsModal/mentionSearch'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
 import Header from './MentionsModal/Header'
@@ -259,12 +258,8 @@ export default function MentionsModal({
                 : `${projectScope} && ${publicScope}`
         }
         if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-            // Search notes across all projects the user has access to. "Has access to" is
-            // the active-projects map the hits are filtered against below — asking the
-            // engine for the same set stops archived/guide/template records consuming the
-            // page and being discarded on arrival (AT-2393).
-            const visibleProjectsScope = buildMentionProjectsScope(Object.keys(store.getState().loggedUserProjectsMap))
-            return visibleProjectsScope ? `${visibleProjectsScope} && ${publicScope}` : publicScope
+            // Search notes across all projects the user has access to
+            return publicScope
         }
         if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
             return isGuide
@@ -272,14 +267,8 @@ export default function MentionsModal({
                 : `${projectScope} && ${publicScope}`
         }
         if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            // Search contacts across all projects the user has access to, scoped to the
-            // same active-projects map the hits are filtered against below. GLOBAL_PROJECT_ID
-            // is allowed through because global assistants live there and stay mentionable.
-            const visibleProjectsScope = buildMentionProjectsScope(
-                Object.keys(store.getState().loggedUserProjectsMap),
-                [GLOBAL_PROJECT_ID]
-            )
-            return visibleProjectsScope ? `${visibleProjectsScope} && ${publicScope}` : publicScope
+            // Search contacts across all projects the user has access to
+            return publicScope
         }
         if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
             return `${projectScope} && ${publicScope}`
@@ -311,10 +300,7 @@ export default function MentionsModal({
             results = await searchTypesenseCollection(
                 indexPrefix,
                 mentionText,
-                getTypesenseMentionFilter(indexPrefix, isGuide),
-                // An @-mention is a name picker, not global search: it must not match the
-                // contact's free-text description (AT-2393 — see mentionSearch.js).
-                indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? { queryBy: MENTION_CONTACTS_QUERY_BY } : undefined
+                getTypesenseMentionFilter(indexPrefix, isGuide)
             )
         } catch (error) {
             console.log('Mentions search unavailable:', error.message)
