@@ -57,6 +57,14 @@ const VOCABULARY_TTL_MS = 24 * 60 * 60 * 1000
 const COLD_BUILD_TIMEOUT_MS = 4000
 
 /**
+ * The bound on the single cached document read, which sits directly in front of the Deepgram call
+ * on EVERY dictation. Short on purpose: this read is normally tens of milliseconds, and anything
+ * near this bound means Firestore is degraded, in which case the static glossary now beats the
+ * personalized one later.
+ */
+const CACHE_READ_TIMEOUT_MS = 1500
+
+/**
  * Scan caps. These exist because workspace size is unbounded in practice: the reporting account has
  * 78 projects, and an all-projects scan there is exactly the O(projects) cost this feature must not
  * introduce. Guides, templates and archived projects are already excluded by the ACTIVE-project
@@ -244,13 +252,16 @@ async function rebuildAndStoreVocabulary({ db, userId, userData, now = Date.now(
     return built
 }
 
-function withTimeout(promise, timeoutMs) {
+/** Sentinel so a timeout is distinguishable from a legitimate `null` result. */
+const TIMED_OUT = Symbol('voiceVocabularyTimedOut')
+
+function withTimeout(promise, timeoutMs, timeoutValue = null) {
     return new Promise(resolve => {
         let settled = false
         const timer = setTimeout(() => {
             if (settled) return
             settled = true
-            resolve(null)
+            resolve(timeoutValue)
         }, timeoutMs)
         promise
             .then(value => {
@@ -285,7 +296,16 @@ async function getUserVocabularyTerms({ db, userId, userData, now = Date.now(), 
     try {
         if (!db || !userId) return { terms: [], cacheState: 'unavailable', pendingRebuild: null }
 
-        const cached = await readCachedVocabulary(db, userId)
+        // The cache read is bounded too, not just the cold build. This one document read sits
+        // directly in front of the Deepgram call, so an unbounded read means a slow or degraded
+        // Firestore delays the user's dictation — the exact failure this whole module exists to
+        // avoid. A read we could not complete in time is reported as an outage and we do NOT then
+        // attempt a build: Firestore is evidently slow, and a build would only compound the delay.
+        const cached = await withTimeout(readCachedVocabulary(db, userId), CACHE_READ_TIMEOUT_MS, TIMED_OUT)
+        if (cached === TIMED_OUT) {
+            console.warn('[voiceVocabulary] Cached read timed out, using the static glossary')
+            return { terms: [], cacheState: 'unavailable', pendingRebuild: null }
+        }
 
         if (cached && isFresh(cached.updatedAt, now)) {
             return { terms: cached.terms, cacheState: 'fresh', pendingRebuild: null }
@@ -331,6 +351,7 @@ module.exports = {
     VOICE_VOCABULARY_DOC_PATH,
     VOCABULARY_TTL_MS,
     COLD_BUILD_TIMEOUT_MS,
+    CACHE_READ_TIMEOUT_MS,
     MAX_PROJECTS_SCANNED,
     MAX_CONTACTS_PER_PROJECT,
     MAX_ASSISTANTS_PER_PROJECT,
