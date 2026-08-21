@@ -93,6 +93,8 @@ describe('AT-2339: the fixed-overlay dialog family pads for the safe area', () =
     // that was reported.
     const OVERLAY_FAMILY = [
         'components/UIComponents/FloatModals/EndDayStatisticsModal.js',
+        // Same card, same overlay, on demand from Settings → Happiness (AT-2392).
+        'components/ProjectHappiness/HappinessRatingModal.js',
         'components/UIComponents/FloatModals/LevelUpModal/LevelUpModal.js',
         'components/UIComponents/FloatModals/ChangeContactInfoModalContainerForNewGuideUsers.js',
         'components/UIComponents/FloatModals/IframeModal/IframeModal.js',
