@@ -58,8 +58,11 @@ jest.mock('../../utils/DayRateTimeLogHelper', () => ({
     reconcileProjectDayRateTimeLogsBackfill: jest.fn(() => Promise.resolve()),
 }))
 
+// Only `reconnectNow` is replaced; the state constants keep their real values
+// so a rename upstream shows up here as a failure rather than as a silently
+// `undefined` comparison that quietly stops matching.
 jest.mock('../../utils/connectionHealth', () => ({
-    CONNECTION_HEALTH_LIVE: 'live',
+    ...jest.requireActual('../../utils/connectionHealth'),
     reconnectNow: jest.fn(),
 }))
 
@@ -68,6 +71,8 @@ import EndDayStatisticsModal, {
 } from '../../components/UIComponents/FloatModals/EndDayStatisticsModal'
 import store from '../../redux/store'
 import {
+    setConnectionHealth,
+    setConnectionState,
     setProjectsInitialData,
     setShowNewDayNotification,
     setSidebarNumbers,
@@ -161,6 +166,9 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         readsOffline()
         renderer.act(() => {
             store.dispatch(setShowNewDayNotification(false))
+            // Both connection slices are app-wide and survive between tests.
+            store.dispatch(setConnectionState(''))
+            store.dispatch(setConnectionHealth('live'))
             signIn()
         })
     })
@@ -181,7 +189,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         expect(text(tree)).toContain('Reconnect now')
     })
 
-    it('does not offer it when the statistics loaded normally', async () => {
+    it('does not offer it when the statistics loaded and the connection is live', async () => {
         readsStatistics({ doneTasks: 4, donePoints: 7, xp: 30, gold: 2 })
 
         const tree = await render()
@@ -268,6 +276,72 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         expect(text(tree)).not.toContain('Reconnecting')
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
         expect(has(tree, 'startNewDayButton')).toBe(true)
+    })
+
+    /**
+     * The second half of the feature: yesterday's numbers can come out of the
+     * local Firestore cache while the app is not talking to the server at all,
+     * so a complete-looking summary is no proof of a working connection. The
+     * button belongs there too — but it must not touch the summary.
+     */
+    describe('with a complete summary on screen', () => {
+        const summary = { doneTasks: 4, donePoints: 7, xp: 30, gold: 2 }
+
+        const renderCachedSummary = async signal => {
+            readsStatistics(summary)
+            renderer.act(() => store.dispatch(signal))
+            return render()
+        }
+
+        it('offers the button when the browser reports offline', async () => {
+            const tree = await renderCachedSummary(setConnectionState('offline'))
+
+            expect(has(tree, 'newDayReconnectButton')).toBe(true)
+            // Still the summary, not the offline card.
+            expect(text(tree)).toContain('Tasks done:')
+            expect(text(tree)).not.toContain('offline right now')
+        })
+
+        it('offers the button when the app is showing data of unknown age', async () => {
+            const tree = await renderCachedSummary(setConnectionHealth('stale'))
+
+            expect(has(tree, 'newDayReconnectButton')).toBe(true)
+            expect(text(tree)).toContain('Tasks done:')
+        })
+
+        it('is already busy while the app-wide monitor is probing', async () => {
+            const tree = await renderCachedSummary(setConnectionHealth('reconnecting'))
+
+            expect(tree.root.findByProps({ testID: 'newDayReconnectButton' }).props.disabled).toBe(true)
+            expect(text(tree)).toContain('Reconnecting')
+        })
+
+        it('reconnects without re-reading a closed day', async () => {
+            const tree = await renderCachedSummary(setConnectionState('offline'))
+            const readsBefore = Backend.getUserStatistics.mock.calls.length
+
+            await pressReconnect(tree)
+
+            expect(reconnectNow).toHaveBeenCalledTimes(1)
+            // Yesterday is over: the numbers cannot have changed, so re-reading
+            // them would only flash the card through zeroes.
+            expect(Backend.getUserStatistics).toHaveBeenCalledTimes(readsBefore)
+            expect(text(tree)).toContain('Tasks done:')
+            expect(text(tree)).toContain('"4"')
+        })
+
+        it('never replaces a good summary with the offline card when the reconnect fails', async () => {
+            reconnectNow.mockResolvedValue('offline')
+            const tree = await renderCachedSummary(setConnectionState('offline'))
+
+            await pressReconnect(tree)
+
+            expect(text(tree)).toContain('Tasks done:')
+            expect(text(tree)).toContain('"4"')
+            expect(text(tree)).not.toContain('offline right now')
+            expect(text(tree)).toContain('Still no connection')
+            expect(has(tree, 'newDayReconnectButton')).toBe(true)
+        })
     })
 
     it('does not double count a project that answered before the retry', async () => {

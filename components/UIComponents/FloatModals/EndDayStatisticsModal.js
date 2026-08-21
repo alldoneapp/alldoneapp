@@ -45,7 +45,13 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
-import { CONNECTION_HEALTH_LIVE, reconnectNow } from '../../../utils/connectionHealth'
+import {
+    CONNECTION_HEALTH_LIVE,
+    CONNECTION_HEALTH_OFFLINE,
+    CONNECTION_HEALTH_RECONNECTING,
+    CONNECTION_HEALTH_STALE,
+    reconnectNow,
+} from '../../../utils/connectionHealth'
 
 /**
  * Ceiling for the statistics re-read that follows a successful reconnect
@@ -97,6 +103,13 @@ export default function EndDayStatisticsModal() {
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const loggedUser = useSelector(state => state.loggedUser)
+    // Both connection signals, because they answer different questions and the
+    // popup is reachable in either state: `connectionState` is what the BROWSER
+    // reports, `connectionHealth` is whether the app is actually talking to the
+    // server (PT-4660) — the transport can be dead while the browser still says
+    // online. Primitives, so this cannot amplify renders (AT-2336).
+    const connectionState = useSelector(state => state.connectionState)
+    const connectionHealth = useSelector(state => state.connectionHealth)
 
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
@@ -133,12 +146,27 @@ export default function EndDayStatisticsModal() {
     // so one rating produced two identical feed entries (AT-2367).
     const persistedHappinessRef = useRef({})
 
-    // A reconnect in flight keeps rendering the offline card: the statistics are
-    // not back yet, and flipping to the summary layout with everything at zero
-    // (or unmounting the popup entirely, which is what `checkIfDataIsLoaded`
-    // would do mid-reload) would read as data rather than as progress.
     const isReconnecting = reconnectStatus === RECONNECT_PROBING || reconnectStatus === RECONNECT_RELOADING
-    const showOfflineView = isOffline || isReconnecting
+    // RELOADING and not `isReconnecting`: the re-read only ever runs from the
+    // offline card, and for its duration `checkIfDataIsLoaded()` is false —
+    // which on its own would unmount the whole popup. PROBING is deliberately
+    // absent, so a reconnect pressed while the SUMMARY is on screen never
+    // downgrades it to the offline card just to show a spinner.
+    const showOfflineView = isOffline || reconnectStatus === RECONNECT_RELOADING
+    // The button is offered whenever there is something to reconnect: either
+    // the popup itself could not read the statistics, or the app as a whole is
+    // not talking to the server. The second case is real even with a complete
+    // summary on screen — yesterday's numbers can be served from the local
+    // cache while the connection is down.
+    const connectionNeedsAttention =
+        connectionState === 'offline' ||
+        connectionHealth === CONNECTION_HEALTH_OFFLINE ||
+        connectionHealth === CONNECTION_HEALTH_STALE ||
+        connectionHealth === CONNECTION_HEALTH_RECONNECTING
+    const showReconnectButton = showOfflineView || connectionNeedsAttention
+    // Also disabled while the app-wide monitor is mid-probe, so the popup and
+    // the top-bar chip can never disagree about whether a reconnect is running.
+    const reconnectDisabled = isReconnecting || connectionHealth === CONNECTION_HEALTH_RECONNECTING
 
     const needToShowYesterdayStats = () => needToAcknowledgeNewDay(statisticsModalDate)
 
@@ -373,7 +401,7 @@ export default function EndDayStatisticsModal() {
     }
 
     /**
-     * "Reconnect now" on the offline card (AT-2391).
+     * "Reconnect now" (AT-2391).
      *
      * The popup used to be a dead end while offline: it said it could not read
      * yesterday's numbers and offered no way to ask again, so the only route to
@@ -388,12 +416,20 @@ export default function EndDayStatisticsModal() {
      * the transport and *proves* the server is reachable before we re-read —
      * which is what keeps this button bounded instead of hanging on a read that
      * can never answer.
+     *
+     * Only a popup that is MISSING the statistics re-reads them. With a summary
+     * already on screen the button restores the connection and nothing else:
+     * yesterday's statistics are a closed day and do not change, so re-reading
+     * them would buy nothing and would flash the card through zeroes — and a
+     * re-read that then failed would replace a perfectly good summary with the
+     * offline card, which is a worse popup than the one the user started with.
      */
     const onPressReconnect = async e => {
         e?.preventDefault?.()
         e?.stopPropagation?.()
-        if (isReconnecting) return
+        if (reconnectDisabled) return
 
+        const statisticsAreMissing = isOfflineRef.current
         clearReconnectTimeout()
         setReconnectStatus(RECONNECT_PROBING)
 
@@ -408,8 +444,12 @@ export default function EndDayStatisticsModal() {
             // Still unreachable. Say so and leave the day startable — the
             // acknowledgement works offline (AT-2340), so a failed reconnect
             // must never look like a blocked popup.
-            activeOfflineMode()
             setReconnectStatus(RECONNECT_FAILED)
+            return
+        }
+
+        if (!statisticsAreMissing) {
+            setReconnectStatus(RECONNECT_IDLE)
             return
         }
 
@@ -848,19 +888,19 @@ export default function EndDayStatisticsModal() {
                             {/* Offline, the popup used to be a dead end: it said it could
                                 not read yesterday's numbers and offered no way to ask
                                 again (AT-2391). */}
-                            {showOfflineView && (
+                            {showReconnectButton && (
                                 <TouchableOpacity
                                     style={[
                                         localStyles.reconnect,
                                         compactModalLayout && localStyles.mobileReconnect,
-                                        isReconnecting && localStyles.refreshDisabled,
+                                        reconnectDisabled && localStyles.refreshDisabled,
                                     ]}
                                     testID="newDayReconnectButton"
                                     onPress={onPressReconnect}
-                                    disabled={isReconnecting}
+                                    disabled={reconnectDisabled}
                                 >
                                     <View style={localStyles.refreshContent}>
-                                        {isReconnecting ? (
+                                        {reconnectDisabled ? (
                                             <ActivityIndicator
                                                 size="small"
                                                 color="#FFFFFF"
@@ -872,7 +912,7 @@ export default function EndDayStatisticsModal() {
                                             </View>
                                         )}
                                         <Text style={localStyles.buttonText}>
-                                            {translate(isReconnecting ? 'Reconnecting' : 'Reconnect now')}
+                                            {translate(reconnectDisabled ? 'Reconnecting' : 'Reconnect now')}
                                         </Text>
                                     </View>
                                 </TouchableOpacity>
