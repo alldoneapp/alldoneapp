@@ -18,7 +18,6 @@ const {
     buildReplyAllRecipients,
     buildEmailCommentText,
     pickActionableAttachment,
-    shouldAutoAttachInvoice,
     summarizeAttachments,
 } = require('./emailChannelHelpers')
 const { FieldValue } = require('firebase-admin/firestore')
@@ -107,7 +106,6 @@ async function processQueueItem(userId, item) {
                 subject: buildReplySubject(data.subject),
                 messageId,
                 initialPendingAttachmentPayload,
-                autoAttachInvoice: shouldAutoAttachInvoice(actionableAttachment, messageText),
                 hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
                 isParticipantScopedTopic,
                 skipCurrentMessageAppend: true,
