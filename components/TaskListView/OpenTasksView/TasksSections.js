@@ -7,7 +7,6 @@ import MainSection from './MainSection'
 import { onBeforeCapture, onDragEnd } from '../../DragSystem/DragHelper'
 import store from '../../../redux/store'
 import {
-    CALENDAR_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
@@ -18,7 +17,6 @@ import SuggestedSectionList from './SuggestedSectionList'
 import OriginallyFromSectionList from './OriginallyFromSectionList'
 import ObservedFromSectionList from './ObservedFromSectionList'
 import StreamAndUserTasksSectionList from './StreamAndUserTasksSectionList'
-import CalendarSectionContainer from './CalendarSectionContainer'
 
 export default function TasksSections({
     projectId,
@@ -45,10 +43,6 @@ export default function TasksSections({
     const observedTasksSectionsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][OBSERVED_TASKS_INDEX].length
     )
-    const calendarTasksAmount = useSelector(
-        state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length
-    )
-
     const beforeCapture = dragData => {
         const { subtaskByTaskStore } = store.getState()
         const subtaskByTask = subtaskByTaskStore[instanceKey] ? subtaskByTaskStore[instanceKey] : {}
@@ -94,15 +88,6 @@ export default function TasksSections({
 
             {receivedFromTasksSectionsAmount > 0 && (
                 <OriginallyFromSectionList
-                    projectId={projectId}
-                    dateIndex={dateIndex}
-                    instanceKey={instanceKey}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                />
-            )}
-
-            {!assistantProfileMode && calendarTasksAmount > 0 && (
-                <CalendarSectionContainer
                     projectId={projectId}
                     dateIndex={dateIndex}
                     instanceKey={instanceKey}
