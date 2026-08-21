@@ -1,30 +1,28 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native'
-import { useSelector } from 'react-redux'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { ALL_PROJECTS_OPTION } from './projectPickerConstants'
+import { ALL_ARCHIVED_PROJECTS_OPTION } from './projectPickerConstants'
 
 /**
- * `label` (AT-2390) lets one caller rename this row without renaming it
- * everywhere: the search scope picker calls it "All active" (symmetric with its
- * "All archived" row and accurate about what it searches), while the
- * "Switch project" pickers built on the same shared row keep "All projects".
+ * The leading "All archived" row of the search scope picker's Archived tab
+ * (AT-2390) — the sibling of AllProjectItem/AutomaticProjectItem, kept in the
+ * same shape so ProjectListModal can render any of them at index -1 without
+ * special-casing the layout or the keyboard cycle.
  */
-export default function AllProjectItem({ selectedProjectId, onProjectSelect, active, label }) {
-    const photoURL = useSelector(state => state.loggedUser.photoURL)
-
+export default function AllArchivedProjectItem({ selectedProjectId, onProjectSelect, active, label }) {
     const onPress = () => {
-        onProjectSelect(null, null, { id: ALL_PROJECTS_OPTION })
+        onProjectSelect(null, null, { id: ALL_ARCHIVED_PROJECTS_OPTION })
     }
+
     return (
         <View>
-            <TouchableOpacity onPress={onPress}>
+            <TouchableOpacity onPress={onPress} accessibilityRole="button" testID={'all-archived-projects-option'}>
                 <View style={[localStyles.container, active && localStyles.containerSelected]}>
                     <View style={localStyles.headerContainer}>
-                        <Image style={localStyles.avatar} source={{ uri: photoURL }} />
+                        <Icon name="archive" size={24} color={colors.Text03} style={localStyles.icon} />
                         <Text
                             numberOfLines={1}
                             style={[
@@ -33,12 +31,12 @@ export default function AllProjectItem({ selectedProjectId, onProjectSelect, act
                                 active && localStyles.projectNameSelected,
                             ]}
                         >
-                            {translate(label || 'All projects')}
+                            {translate(label || 'All archived')}
                         </Text>
                     </View>
 
-                    {selectedProjectId === ALL_PROJECTS_OPTION && (
-                        <View style={[localStyles.checkContainer]}>
+                    {selectedProjectId === ALL_ARCHIVED_PROJECTS_OPTION && (
+                        <View style={localStyles.checkContainer}>
                             <Icon name="check" size={24} color="white" />
                         </View>
                     )}
@@ -66,10 +64,7 @@ const localStyles = StyleSheet.create({
         paddingLeft: 4,
         paddingVertical: 16,
     },
-    avatar: {
-        width: 24,
-        height: 24,
-        borderRadius: 100,
+    icon: {
         marginRight: 8,
     },
     checkContainer: {
