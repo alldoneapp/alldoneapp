@@ -12,6 +12,7 @@ import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 import CalendarSyncButton from '../../UIComponents/CalendarSyncButton'
 import {
     AMOUNT_TASKS_INDEX,
+    CALENDAR_TASK_INDEX,
     DATE_TASK_INDEX,
     ESTIMATION_TASKS_INDEX,
     TODAY_DATE,
@@ -22,6 +23,12 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][ESTIMATION_TASKS_INDEX]
+    )
+    // AT-2377: the Calendar section carries the re-sync control in its own header again. Showing it
+    // here as well would put two refresh icons on the same day, so this one only stands in when the
+    // day renders no Calendar section - which is exactly the case the section could never cover.
+    const dayHasCalendarSection = useSelector(
+        state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length > 0
     )
     const weekdays = [
         translate('Monday'),
@@ -77,9 +84,9 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
                         {text}
                     </Text>
                 </View>
-                {/* AT-2252: the calendar re-sync lived in the removed "Google Calendar" section. It is
-                    kept here on today's header, and only when this project has a calendar connected. */}
-                {isMainDay && <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />}
+                {isMainDay && !dayHasCalendarSection && (
+                    <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />
+                )}
             </View>
         </View>
     )
