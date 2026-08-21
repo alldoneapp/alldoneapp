@@ -1397,6 +1397,8 @@
     "Email account": "Email account",
     "Email account description": "Connect a Google or Microsoft email account for this project.",
     "Google calendar account": "Google calendar account",
+    "Google Calendar": "Google Calendar",
+    "Outlook Calendar": "Outlook Calendar",
     "Google calendar account description": "This account is being used to sync events from Google calendar and create task accordingly in Alldone app",
     "Calendar account": "Calendar account",
     "Calendar account description": "Connect a Google or Microsoft calendar account for this project.",

@@ -37,6 +37,8 @@ jest.mock('../EstimationHelper', () => ({
 
 import {
     AMOUNT_TASKS_INDEX,
+    CALENDAR_TASK_INDEX,
+    EMPTY_SECTION_INDEX,
     getTaskTypeIndex,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
@@ -76,18 +78,24 @@ describe('assistant profile open task selection', () => {
     })
 })
 
-// AT-2252 - calendar and email tasks used to be routed into their own buckets, which is what put
-// them into their own sections in the task list. They must now land in the normal list.
-describe('calendar and email tasks in the normal task list', () => {
+// AT-2377 - a calendar task is routed into its own bucket again, which is what gives it its own
+// section in the task list. An inbox-summary email task deliberately stays in the main list: its
+// old bucket rendered nowhere on the open-tasks board, so restoring it would hide those tasks.
+describe('calendar tasks in their own section', () => {
     const baseTask = { genericData: null, suggestedBy: null, userIds: ['user-1'] }
 
-    it('puts a calendar task in the main task list', () => {
+    it('routes a calendar task into the calendar bucket', () => {
         const calendarTask = {
             ...baseTask,
             calendarData: { eventId: 'event-1', start: { dateTime: '2026-08-11T09:00:00Z' } },
         }
 
-        expect(getTaskTypeIndex(calendarTask, false, false)).toBe(MAIN_TASK_INDEX)
+        expect(getTaskTypeIndex(calendarTask, false, false)).toBe(CALENDAR_TASK_INDEX)
+    })
+
+    it('does not give the calendar bucket the slot the empty-goals section uses', () => {
+        expect(CALENDAR_TASK_INDEX).not.toBe(EMPTY_SECTION_INDEX)
+        expect(CALENDAR_TASK_INDEX).not.toBe(MAIN_TASK_INDEX)
     })
 
     it('puts an inbox summary email task in the main task list', () => {
@@ -135,6 +143,47 @@ describe('All Projects open task selection', () => {
             instanceKey,
             thereAreHiddenNotMainTasks: false,
         })
+    })
+
+    // AT-2377 - calendar tasks left MAIN_TASK_INDEX, so All projects needs its own count for them
+    // or a project whose day holds nothing but meetings drops out of the list entirely.
+    it('keeps a day that holds nothing but calendar tasks', () => {
+        const calendarTask = { id: 'calendar-task-1' }
+        const tasksByDate = Array.from({ length: 12 }, () => [])
+        tasksByDate[0] = '0'
+        tasksByDate[CALENDAR_TASK_INDEX] = [['0', [calendarTask]]]
+
+        const result = taskToShowInAllProjects(instanceKey, [tasksByDate])
+
+        expect(result).toHaveLength(1)
+        expect(result[0][CALENDAR_TASK_INDEX]).toEqual(tasksByDate[CALENDAR_TASK_INDEX])
+        expect(result[0][AMOUNT_TASKS_INDEX]).toBe(1)
+    })
+
+    // The show-more arrow promises "there is more below". A calendar-only day always renders every
+    // meeting it has, so the arrow would expand to nothing.
+    it('marks a calendar-only day so the show-more arrow stays hidden', () => {
+        const tasksByDate = Array.from({ length: 12 }, () => [])
+        tasksByDate[0] = '0'
+        tasksByDate[CALENDAR_TASK_INDEX] = [['0', [{ id: 'calendar-task-1' }]]]
+
+        const [day] = taskToShowInAllProjects(instanceKey, [tasksByDate])
+
+        expect(day.hasCalendarTasks).toBe(true)
+        expect(day.nonCalendarTasksCount).toBe(0)
+    })
+
+    it('does not mark a day that also holds ordinary tasks', () => {
+        const tasksByDate = Array.from({ length: 12 }, () => [])
+        tasksByDate[0] = '0'
+        tasksByDate[MAIN_TASK_INDEX] = [['0', [{ id: 'main-task-1' }]]]
+        tasksByDate[CALENDAR_TASK_INDEX] = [['0', [{ id: 'calendar-task-1' }]]]
+
+        const [day] = taskToShowInAllProjects(instanceKey, [tasksByDate])
+
+        expect(day.hasCalendarTasks).toBe(true)
+        expect(day.nonCalendarTasksCount).toBe(1)
+        expect(day[AMOUNT_TASKS_INDEX]).toBe(2)
     })
 
     it('continues hiding mentions, observed tasks, and stream tasks', () => {
