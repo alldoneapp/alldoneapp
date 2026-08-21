@@ -1,7 +1,12 @@
 import React, { useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import styles, { colors, windowTagStyle } from '../styles/global'
+import styles, {
+    colors,
+    PROJECT_LINE_TAG_HEIGHT,
+    PROJECT_LINE_TAG_MOBILE_WIDTH,
+    windowTagStyle,
+} from '../styles/global'
 import Icon from '../Icon'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCreateTaskModal from '../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
@@ -186,9 +191,13 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.UtilityBlue200,
         borderColor: colors.UtilityBlue150,
     },
+    // Icon-only, so the pill is the whole tap target: it is widened past the
+    // icon's own 24px box to stay comfortably pressable with a thumb. Height is
+    // unchanged because the header row caps it - see the tokens' comment in
+    // styles/global for why width is the only axis available here.
     tagMobile: {
-        width: 24,
-        height: 24,
+        width: PROJECT_LINE_TAG_MOBILE_WIDTH,
+        height: PROJECT_LINE_TAG_HEIGHT,
     },
     tagLarge: {
         height: 44,
