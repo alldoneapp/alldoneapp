@@ -41,6 +41,9 @@ import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
 import { taskPresentationLayout } from './TaskPresentationLayout'
 import TaskFileDropZone from './TaskFileDropZone'
 import { canDropFilesOnTaskRow } from './taskFileDropHelper'
+import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
+import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
+import useTaskRoutingActivity from './useTaskRoutingActivity'
 
 function TaskPresentation(
     {
@@ -114,6 +117,13 @@ function TaskPresentation(
     const hasStar = task.hasStar.toUpperCase() === '#FFFFFF' && inMyDayAndNotSubtask ? colors.Grey500 : task.hasStar
 
     const lastAddedTaskBackgroundColor = useLastAddedTaskColor(task.id, lastTaskAddedId, hasStar)
+
+    // AT-2381 — "the server is still deciding where this task belongs", and the one-shot
+    // confirmation when that decision actually changed the task. Null for the overwhelming
+    // majority of rows; the badge and the motion layer are mounted only when it is not, so a
+    // long list pays nothing for a feature that concerns a handful of freshly created tasks.
+    const { processing: routingProcessing, confirmation: routingConfirmation } = useTaskRoutingActivity(task, projectId)
+    const hasRoutingActivity = !!(routingProcessing || routingConfirmation)
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -283,6 +293,14 @@ function TaskPresentation(
         <>
             <AssistantWorkflowRunTag projectId={projectId} task={task} />
             <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
+            {hasRoutingActivity && (
+                <TaskRoutingTag
+                    processing={routingProcessing}
+                    confirmation={routingConfirmation}
+                    projectName={ProjectHelper.getProjectNameById(projectId, '')}
+                    style={{ marginRight: 8 }}
+                />
+            )}
         </>
     )
 
@@ -336,6 +354,16 @@ function TaskPresentation(
                                 onLayout={onLayoutChange}
                                 nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
                             >
+                                {/* AT-2381 — decoration only, and deliberately a sibling rather than
+                                    a wrapper: it fills the row absolutely with `pointerEvents="none"`,
+                                    so it can never change the row's height or swallow a tap. The task
+                                    stays completable, draggable and editable while it sparkles. */}
+                                {hasRoutingActivity && (
+                                    <TaskRoutingActivityOverlay
+                                        processing={routingProcessing}
+                                        confirmation={routingConfirmation}
+                                    />
+                                )}
                                 <View
                                     pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
                                     style={[

@@ -16,7 +16,9 @@ export const ESTIMATION_TASKS_INDEX = 2
 export const MAIN_TASK_INDEX = 3
 export const MENTION_TASK_INDEX = 4
 export const SUGGESTED_TASK_INDEX = 5
-// AT-2252: calendar (6) and email (7) buckets were removed — those tasks are ordinary main tasks now.
+// AT-2377: the calendar bucket is back, which is what gives a goal its own Calendar section.
+// The old email bucket (7) stays retired - it rendered nowhere on the open-tasks board.
+export const CALENDAR_TASK_INDEX = 6
 
 /**
  * AT-2342 - mirrors the `watchOpenGoalTasks` query for an optimistically published task.
@@ -100,11 +102,9 @@ const processTasks = (projectId, docs) => {
 
         const taskTypeIndex = getTaskTypeIndex(task)
 
-        // A goal only ever lists today's calendar events. This used to be keyed off the calendar
-        // bucket; since AT-2252 merged calendar tasks into the main list it is keyed off the
-        // calendar payload itself so the rule survives the merge unchanged.
+        // A goal only ever lists today's calendar events.
         if (
-            calendarData &&
+            taskTypeIndex === CALENDAR_TASK_INDEX &&
             moment(calendarData.start.dateTime || calendarData.start.date).format('DDMMYYYY') !==
                 moment().format('DDMMYYYY')
         ) {
@@ -142,7 +142,9 @@ const processTasks = (projectId, docs) => {
     Object.keys(tasksByDate).forEach(date => {
         Object.keys(tasksByDate[date]).forEach(taskTypeIndex => {
             const taskList = orderBy(tasksByDate[date][taskTypeIndex], 'sortIndex', 'desc')
-            tasksByDate[date][taskTypeIndex] = sortTasksByPriority(taskList)
+            // AT-2377: the Calendar section sorts chronologically; priority must not reorder it.
+            tasksByDate[date][taskTypeIndex] =
+                Number(taskTypeIndex) === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         })
     })
 
@@ -152,10 +154,12 @@ const processTasks = (projectId, docs) => {
 }
 
 const getTaskTypeIndex = task => {
-    const { genericData, suggestedBy } = task
+    const { genericData, suggestedBy, calendarData } = task
     if (genericData) return MENTION_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    // AT-2252: calendar and inbox-summary email tasks fall through to the main list.
+    // AT-2377: meetings render in the goal's own Calendar section.
+    if (calendarData) return CALENDAR_TASK_INDEX
+    // Inbox-summary email tasks deliberately stay in the main list.
     return MAIN_TASK_INDEX
 }
 
@@ -171,8 +175,17 @@ const generateOpenTasksArray = (tasksByDate, amountOfTasksByDate, estimationByDa
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? taskByType[MAIN_TASK_INDEX] : []
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? taskByType[MENTION_TASK_INDEX] : []
         const suggestedTasks = taskByType[SUGGESTED_TASK_INDEX] ? taskByType[SUGGESTED_TASK_INDEX] : []
+        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? taskByType[CALENDAR_TASK_INDEX] : []
 
-        openTasksArray.push([date, amountTasks, estimationTasks, mainTasks, mentionTasks, suggestedTasks])
+        openTasksArray.push([
+            date,
+            amountTasks,
+            estimationTasks,
+            mainTasks,
+            mentionTasks,
+            suggestedTasks,
+            calendarTasks,
+        ])
     }
 
     return openTasksArray
