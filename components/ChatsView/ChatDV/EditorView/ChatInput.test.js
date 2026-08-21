@@ -481,6 +481,20 @@ describe('ChatInput auto focus', () => {
 describe('ChatInput dictation mic', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        // `mockState` is module-level and the preceding describe leaves `disableAutoFocusInChat`
+        // at `false`, so this block used to mount ChatInput with auto-focus ENABLED — which
+        // schedules a real focus timeout on mount, because this describe (unlike the one above
+        // it) never installs fake timers. The `not.toHaveBeenCalled()` below was therefore racing
+        // that timeout rather than asserting anything: green on a fast machine, red on a loaded
+        // CI runner, and reproducible on demand by allowing ~50ms of wall clock to pass before
+        // the assertion. Auto-focus has to be OFF for "the mic is visible without focusing the
+        // composer" to be what is actually measured.
+        mockState.disableAutoFocusInChat = true
+        mockState.quotedText = null
+    })
+
+    afterEach(() => {
+        mockState.disableAutoFocusInChat = false
     })
 
     it('shows the mic without focusing or hovering the composer', async () => {
