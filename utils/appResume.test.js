@@ -63,7 +63,7 @@ describe('installAppResumeListener', () => {
         stop()
     })
 
-    it('reports ONE resume when all three browser signals fire for the same return', () => {
+    it('reports ONE resume when the ordinary browser signals fire for the same return', () => {
         const harness = setup()
         harness.hide()
         harness.advance(10 * 60 * 1000)
@@ -74,6 +74,34 @@ describe('installAppResumeListener', () => {
         harness.windowObject.emit('focus')
 
         expect(harness.resumes).toHaveLength(1)
+        expect(harness.calls.connection).toHaveLength(1)
+        harness.stop()
+    })
+
+    it('keeps the real absence when focus arrives before visibility becomes visible', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+
+        // Android Chrome/TWA can wake and focus its surface before updating the
+        // document visibility state. This early signal must not reset the clock.
+        harness.windowObject.emit('focus')
+        harness.show()
+
+        expect(harness.resumes).toEqual([{ hiddenMs: 10 * 60 * 1000 }])
+        expect(harness.calls.connection).toEqual([10 * 60 * 1000])
+        harness.stop()
+    })
+
+    it('recognises Chrome Page Lifecycle resume after a frozen Android page thaws', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+
+        harness.documentObject.visibilityState = 'visible'
+        harness.documentObject.emit('resume')
+
+        expect(harness.resumes).toEqual([{ hiddenMs: 10 * 60 * 1000 }])
         expect(harness.calls.connection).toHaveLength(1)
         harness.stop()
     })
@@ -166,12 +194,14 @@ describe('installAppResumeListener', () => {
     it('removes every listener on uninstall', () => {
         const harness = setup()
         expect(harness.documentObject.listenerCount('visibilitychange')).toBe(1)
+        expect(harness.documentObject.listenerCount('resume')).toBe(1)
         expect(harness.windowObject.listenerCount('pageshow')).toBe(1)
         expect(harness.windowObject.listenerCount('focus')).toBe(1)
 
         harness.stop()
 
         expect(harness.documentObject.listenerCount('visibilitychange')).toBe(0)
+        expect(harness.documentObject.listenerCount('resume')).toBe(0)
         expect(harness.windowObject.listenerCount('pageshow')).toBe(0)
         expect(harness.windowObject.listenerCount('focus')).toBe(0)
     })
