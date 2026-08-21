@@ -224,6 +224,29 @@ export const SCREEN_BREAKPOINT_NAV = 818
 export const SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED = 611
 export const SCREEN_SMALL_BREAKPOINT_NAV = 459
 
+// Geometry of the icon-only action pills on the project lines (`AddTaskTag`,
+// `AddGoalTag`) once `smallScreenNavigation` drops their labels.
+//
+// The height is fixed by the row, not by the pill: `TagsArea.container` and
+// `AllProjectsLine.leftContainer` are both `height: 24, maxHeight: 24` inside a
+// 56px header row that has only 25px of slack under its `paddingTop`, so a
+// taller pill is clipped and misaligns the whole cluster. Width is therefore the
+// only axis available, and a bare 24x24 box around a 16px icon was a genuinely
+// hard-to-hit target on a phone. 40px keeps the capsule compact while making the
+// tap area ~67% bigger; the clusters are `flexShrink: 0` and the title block on
+// their left is the one that gives way (AT-2263), so the extra width is paid for
+// in the project title's truncation point rather than in overflow.
+//
+// Shared rather than duplicated because the two pills sit side by side on the
+// same rows: widening one without the other visibly desyncs the pair.
+//
+// NB: `hitSlop` is NOT an alternative here. react-native-web >= 0.19 rebuilt
+// `TouchableOpacity` on `usePressEvents`, which never reads it, and it is absent
+// from `modules/forwardedProps` so it is dropped before the DOM node exists -
+// the same dead-prop trap as `title`, documented in `ProjectLineActionButton`.
+export const PROJECT_LINE_TAG_HEIGHT = 24
+export const PROJECT_LINE_TAG_MOBILE_WIDTH = 40
+
 export const isSmallScreen = () => Dimensions.get('window').width < SCREEN_BREAKPOINT
 export const getRandomCollabColor = () => collabColors[Math.floor(Math.random() * (collabColors.length - 1))]
 
