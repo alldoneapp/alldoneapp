@@ -66,6 +66,7 @@ describe('PT-4660: resume signals have ONE owner', () => {
     it('appResume is the module that declares the resume signals', () => {
         const source = read(path.join(ROOT, 'utils/appResume.js'))
         expect(source).toContain("type: 'visibilitychange'")
+        expect(source).toContain("type: 'resume'")
         expect(source).toContain("type: 'pageshow'")
         expect(source).toContain("type: 'focus'")
     })
