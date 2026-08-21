@@ -39,7 +39,6 @@
     "MCP tool call": "MCP-Tool-Aufruf",
     "Use connected MCP servers": "Verbundene MCP-Server nutzen",
     "All projects": "Alle Projekte",
-    "All archived": "Alle archivierten",
     "Language": "Sprache",
     "English": "Englisch",
     "Spanish": "Spanisch",
@@ -2274,5 +2273,10 @@
     "Alldone is checking the connection to the server. This usually takes a few seconds.": "Alldone prüft die Verbindung zum Server. Das dauert normalerweise ein paar Sekunden.",
     "Alldone cannot reach the server right now, so what you see may be out of date. You can keep working — your changes are saved and will sync as soon as the connection is back.": "Alldone erreicht den Server gerade nicht, daher können die angezeigten Daten veraltet sein. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald die Verbindung wieder steht.",
     "Your device has no internet connection. You can keep working — your changes are saved and will sync as soon as you are back online.": "Dein Gerät hat keine Internetverbindung. Du kannst weiterarbeiten – deine Änderungen werden gespeichert und synchronisiert, sobald du wieder online bist.",
-    "Still no connection. You can start the day anyway, your data will sync later": "Immer noch keine Verbindung. Du kannst den Tag trotzdem starten, deine Daten werden später synchronisiert"
+    "Still no connection. You can start the day anyway, your data will sync later": "Immer noch keine Verbindung. Du kannst den Tag trotzdem starten, deine Daten werden später synchronisiert",
+    "Finding the right project": "Passendes Projekt wird gesucht",
+    "Finding a matching goal": "Passendes Ziel wird gesucht",
+    "Added to goal": "Zum Ziel hinzugefügt",
+    "Moved to project": "Verschoben nach {{project}}",
+    "this project": "dieses Projekt"
 }

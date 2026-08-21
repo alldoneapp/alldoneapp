@@ -5,13 +5,8 @@ import { useDispatch } from 'react-redux'
 import ProjectModalItem from '../SelectProjectModal/ProjectModalItem'
 import AllProjectItem from '../SelectProjectModal/AllProjectItem'
 import AutomaticProjectItem from '../SelectProjectModal/AutomaticProjectItem'
-import AllArchivedProjectItem from '../SelectProjectModal/AllArchivedProjectItem'
 import HeaderInSearch from '../SelectProjectModal/HeaderInSearch'
-import {
-    ALL_ARCHIVED_PROJECTS_OPTION,
-    ALL_PROJECTS_OPTION,
-    AUTOMATIC_PROJECT_OPTION,
-} from '../SelectProjectModal/projectPickerConstants'
+import { ALL_PROJECTS_OPTION, AUTOMATIC_PROJECT_OPTION } from '../SelectProjectModal/projectPickerConstants'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import Button from '../../../UIControls/Button'
 import ModalHeader from '../ModalHeader'
@@ -25,15 +20,6 @@ import { colors } from '../../../styles/global'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 const ROW_HEIGHT = 48
-
-// Every leading row renders the same shape at index -1, so which sentinel is
-// active is the only thing that changes. A table rather than a ternary chain
-// keeps adding one (AT-2390's "All archived") a single-line change.
-const LEADING_ROW_BY_OPTION_ID = {
-    [ALL_PROJECTS_OPTION]: AllProjectItem,
-    [AUTOMATIC_PROJECT_OPTION]: AutomaticProjectItem,
-    [ALL_ARCHIVED_PROJECTS_OPTION]: AllArchivedProjectItem,
-}
 
 /**
  * The unified flat project pick-list (MODAL_IMPROVEMENT_PLAN.md, Phase 4/5).
@@ -56,14 +42,6 @@ const LEADING_ROW_BY_OPTION_ID = {
  * keyboard cycle in moveSelection() is built on that single slot — so the two
  * props are mutually exclusive and "All projects" wins if a caller ever passes
  * both. No caller does: search scopes offer All, task creation offers Automatic.
- *
- * PER-TAB leading rows (AT-2390): a tab may instead carry its own
- * `leadingOptionId`, which is what lets the search scope picker offer
- * "All projects" on Active and "All archived" on Archived. It is still ONE row
- * at index -1 — only which sentinel sits there changes with the tab. The two
- * mechanisms do not mix: as soon as ANY tab declares a `leadingOptionId` the
- * per-tab mechanism owns the slot entirely, so a tab that declares none shows
- * no leading row rather than silently inheriting the first-tab prop.
  */
 export default function ProjectListModal({
     closeModal,
@@ -85,18 +63,12 @@ export default function ProjectListModal({
     const dispatch = useDispatch()
     const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
     const currentProjects = tabs ? tabs[activeTabIndex]?.projects || [] : projects
-    const callerLeadingOptionId = leadingAllOption
+    const leadingOptionId = leadingAllOption
         ? ALL_PROJECTS_OPTION
         : leadingAutomaticOption
           ? AUTOMATIC_PROJECT_OPTION
           : null
-    const tabsOwnLeadingOptions = !!tabs && tabs.some(tab => !!tab.leadingOptionId)
-    const leadingOptionId = tabsOwnLeadingOptions
-        ? tabs[activeTabIndex]?.leadingOptionId || null
-        : !tabs || activeTabIndex === 0
-          ? callerLeadingOptionId
-          : null
-    const leadingOptionVisible = !!leadingOptionId
+    const leadingOptionVisible = !!leadingOptionId && (!tabs || activeTabIndex === 0)
     const [activeOptionIndex, setActiveOptionIndex] = useState(() => {
         const selectedIndex = selectedProjectId
             ? (tabs ? tabs[initialTabIndex]?.projects || [] : projects).findIndex(
@@ -234,11 +206,19 @@ export default function ProjectListModal({
                     }}
                 >
                     {leadingOptionVisible &&
-                        React.createElement(LEADING_ROW_BY_OPTION_ID[leadingOptionId] || AllProjectItem, {
-                            selectedProjectId,
-                            onProjectSelect: () => commit(-1),
-                            active: activeOptionIndex === -1,
-                        })}
+                        (leadingOptionId === AUTOMATIC_PROJECT_OPTION ? (
+                            <AutomaticProjectItem
+                                selectedProjectId={selectedProjectId}
+                                onProjectSelect={() => commit(-1)}
+                                active={activeOptionIndex === -1}
+                            />
+                        ) : (
+                            <AllProjectItem
+                                selectedProjectId={selectedProjectId}
+                                onProjectSelect={() => commit(-1)}
+                                active={activeOptionIndex === -1}
+                            />
+                        ))}
 
                     {currentProjects.length > 0 ? (
                         currentProjects.map((projectItem, index) => (

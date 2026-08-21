@@ -158,10 +158,6 @@ export default function TaskCommentsWrapper({
             padding={4}
             align={'end'}
             disableReposition={true}
-            // This popup is fixed at popoverToTop and never follows its task-row
-            // target. Polling that moving row every 10ms only forces layout work
-            // while the task board is still mounting/reordering projects.
-            disableTargetPositionListener={true}
             contentLocation={popoverToTop}
             containerStyle={popoverToTopContainerStyle}
         >
