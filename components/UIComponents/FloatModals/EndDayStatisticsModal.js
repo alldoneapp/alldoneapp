@@ -45,6 +45,30 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
+import { CONNECTION_HEALTH_LIVE, reconnectNow } from '../../../utils/connectionHealth'
+
+/**
+ * Ceiling for the statistics re-read that follows a successful reconnect
+ * (AT-2391). `getUserStatistics` is callback-based and reports nothing when it
+ * neither resolves nor rejects, so without a bound the button could spin
+ * forever on a connection that came back and died again mid-read — the
+ * "spinner that never goes away" failure this codebase keeps re-learning.
+ * Generous, because by this point the transport has been *proven* alive: it is
+ * a backstop, not the normal path.
+ */
+export const RECONNECT_STATISTICS_TIMEOUT_MS = 15000
+
+/**
+ * Stages of a manual reconnect, kept apart because the offline latch means
+ * opposite things in each: while PROBING the card is still legitimately
+ * offline, so a completion check must not read that latch as "the retry
+ * failed"; while RELOADING the latch has been cleared and setting it again IS
+ * the retry failing.
+ */
+const RECONNECT_IDLE = ''
+const RECONNECT_PROBING = 'probing'
+const RECONNECT_RELOADING = 'reloading'
+const RECONNECT_FAILED = 'failed'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -87,8 +111,14 @@ export default function EndDayStatisticsModal() {
     const [happinessComments, setHappinessComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
     const [startNewDayIsLoading, setStartNewDayIsLoading] = useState(false)
+    // Render mirror of `isOfflineRef`, which is a ref because the statistics
+    // callbacks below need to read it synchronously, plus the stage of a manual
+    // reconnect attempt (AT-2391).
+    const [isOffline, setIsOffline] = useState(false)
+    const [reconnectStatus, setReconnectStatus] = useState(RECONNECT_IDLE)
 
     const isOfflineRef = useRef(false)
+    const reconnectTimeoutRef = useRef(undefined)
     const isLoading = useRef(false)
     const isSavingStartNewDay = useRef(false)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
@@ -103,7 +133,21 @@ export default function EndDayStatisticsModal() {
     // so one rating produced two identical feed entries (AT-2367).
     const persistedHappinessRef = useRef({})
 
+    // A reconnect in flight keeps rendering the offline card: the statistics are
+    // not back yet, and flipping to the summary layout with everything at zero
+    // (or unmounting the popup entirely, which is what `checkIfDataIsLoaded`
+    // would do mid-reload) would read as data rather than as progress.
+    const isReconnecting = reconnectStatus === RECONNECT_PROBING || reconnectStatus === RECONNECT_RELOADING
+    const showOfflineView = isOffline || isReconnecting
+
     const needToShowYesterdayStats = () => needToAcknowledgeNewDay(statisticsModalDate)
+
+    const clearReconnectTimeout = () => {
+        if (reconnectTimeoutRef.current !== undefined) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = undefined
+        }
+    }
 
     /**
      * @param {{ keepStartNewDayGuard?: boolean }} options when the reset comes
@@ -134,6 +178,9 @@ export default function EndDayStatisticsModal() {
         happinessDraftsRef.current = {}
         persistedHappinessRef.current = {}
         isOfflineRef.current = false
+        setIsOffline(false)
+        clearReconnectTimeout()
+        setReconnectStatus(RECONNECT_IDLE)
         isLoading.current = false
         if (!keepStartNewDayGuard) isSavingStartNewDay.current = false
         setStartNewDayIsLoading(false)
@@ -273,7 +320,112 @@ export default function EndDayStatisticsModal() {
 
     const activeOfflineMode = () => {
         isOfflineRef.current = true
+        setIsOffline(true)
         setDataLoaded({})
+    }
+
+    /**
+     * Reads yesterday's per-project statistics.
+     *
+     * Extracted from the mount effect so the offline card's reconnect button
+     * can run the very same load again (AT-2391) — a retry that read a
+     * different way could report a different answer than the one the popup was
+     * already showing, and the offline fallback (`activeOfflineMode`) has to
+     * stay reachable on the second attempt exactly as on the first.
+     *
+     * The accumulators are reset here rather than by the caller: a retry that
+     * kept them would double-count every project that had already answered
+     * before another one failed the first attempt.
+     */
+    const loadYesterdayStatistics = () => {
+        // Read from the store, not the render closure: a retry runs from an
+        // event handler whose closure can be a render behind.
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const { templateProjectIds } = loggedUser
+        const endDayStatisticsDate = moment(loggedUser.statisticsModalDate)
+        const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
+        const dataLoaded = {}
+
+        setDoneTasks(0)
+        setXp(0)
+        setDonePoints(0)
+        setGold(0)
+        setDoneTasksByProject({})
+        setStatisticsByProject({})
+
+        for (let i = 0; i < loggedUserProjects.length; i++) {
+            const project = loggedUserProjects[i]
+            if (!templateProjectIds.includes(project.id)) {
+                dataLoaded[project.id] = false
+                reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
+                    Backend.getUserStatistics(
+                        project.id,
+                        loggedUserId,
+                        statisticsDate,
+                        updateStatistics,
+                        activeOfflineMode
+                    )
+                })
+            }
+        }
+
+        setDataLoaded(dataLoaded)
+    }
+
+    /**
+     * "Reconnect now" on the offline card (AT-2391).
+     *
+     * The popup used to be a dead end while offline: it said it could not read
+     * yesterday's numbers and offered no way to ask again, so the only route to
+     * the summary was to reload the whole app (losing the session) or to start
+     * the day blind.
+     *
+     * It runs through the app's single manual-reconnect path
+     * (`reconnectNow`, PT-4660) rather than just re-issuing the read, because
+     * the read is not what is broken: offline the Firestore transport has been
+     * parked by the network gate, and after a suspend/captive portal it can be
+     * dead while the browser still claims to be online. `reconnectNow` rebuilds
+     * the transport and *proves* the server is reachable before we re-read —
+     * which is what keeps this button bounded instead of hanging on a read that
+     * can never answer.
+     */
+    const onPressReconnect = async e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
+        if (isReconnecting) return
+
+        clearReconnectTimeout()
+        setReconnectStatus(RECONNECT_PROBING)
+
+        let outcome
+        try {
+            outcome = await reconnectNow()
+        } catch (error) {
+            reportNewDayError(error, 'reconnectNow')
+        }
+
+        if (outcome !== CONNECTION_HEALTH_LIVE) {
+            // Still unreachable. Say so and leave the day startable — the
+            // acknowledgement works offline (AT-2340), so a failed reconnect
+            // must never look like a blocked popup.
+            activeOfflineMode()
+            setReconnectStatus(RECONNECT_FAILED)
+            return
+        }
+
+        // Proven alive: drop the offline latch so the statistics callbacks are
+        // accepted again, and read once more. The card keeps rendering while
+        // the reconnect is in flight, so the popup cannot flicker out between
+        // the reset and the fresh data.
+        isOfflineRef.current = false
+        setIsOffline(false)
+        setReconnectStatus(RECONNECT_RELOADING)
+        loadYesterdayStatistics()
+        reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = undefined
+            activeOfflineMode()
+            setReconnectStatus(RECONNECT_FAILED)
+        }, RECONNECT_STATISTICS_TIMEOUT_MS)
     }
 
     const reconcileDayRateTimeLogBeforeStats = async (project, startTimestamp) => {
@@ -306,30 +458,7 @@ export default function EndDayStatisticsModal() {
             // A day is being confirmed again, so the previous confirmation's
             // double-press guard (kept across its own close) is released here.
             isSavingStartNewDay.current = false
-            const endDayStatisticsDate = moment(statisticsModalDate)
-            const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
-            const dataLoaded = {}
-            setDoneTasksByProject({})
-            setStatisticsByProject({})
-            const { loggedUserProjects, loggedUser } = store.getState()
-            const { templateProjectIds } = loggedUser
-            for (let i = 0; i < loggedUserProjects.length; i++) {
-                const project = loggedUserProjects[i]
-                if (!templateProjectIds.includes(project.id)) {
-                    dataLoaded[project.id] = false
-                    reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
-                        Backend.getUserStatistics(
-                            project.id,
-                            loggedUserId,
-                            statisticsDate,
-                            updateStatistics,
-                            activeOfflineMode
-                        )
-                    })
-                }
-            }
-
-            setDataLoaded(dataLoaded)
+            loadYesterdayStatistics()
         }
     }, [
         showNewDayNotification,
@@ -357,6 +486,28 @@ export default function EndDayStatisticsModal() {
         if (showNewDayNotification) store.dispatch(setShowNewDayNotification(false))
         if (dataLoaded || isLoading.current) resetModalState()
     }, [statisticsModalDate, showNewDayNotification, isAnonymous, dataLoaded])
+
+    // Closes out a reconnect attempt (AT-2391). `getUserStatistics` is
+    // callback-based, so the only honest "the retry finished" signal is the
+    // same one the first load uses: every project has reported, or one of them
+    // fell back to offline.
+    useEffect(() => {
+        // Only the RELOADING stage: while the probe is still running the card is
+        // legitimately still offline, and reading that latch as a verdict would
+        // fail the attempt before it had a chance.
+        if (reconnectStatus !== RECONNECT_RELOADING) return
+        if (isOffline) {
+            clearReconnectTimeout()
+            setReconnectStatus(RECONNECT_FAILED)
+            return
+        }
+        if (checkIfDataIsLoaded()) {
+            clearReconnectTimeout()
+            setReconnectStatus(RECONNECT_IDLE)
+        }
+    }, [reconnectStatus, isOffline, dataLoaded])
+
+    useEffect(() => clearReconnectTimeout, [])
 
     useEffect(() => {
         if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
@@ -447,7 +598,7 @@ export default function EndDayStatisticsModal() {
     }
 
     const getRewardTexts = () => {
-        if (isOfflineRef.current) {
+        if (showOfflineView) {
             return {
                 rewardTitle: translate('You surely did well:'),
                 rewardDescription: translate('but since we are offline right now we don’t know'),
@@ -562,7 +713,7 @@ export default function EndDayStatisticsModal() {
 
     return (
         !showNewVersionMandtoryNotifcation &&
-        checkIfDataIsLoaded() && (
+        (checkIfDataIsLoaded() || isReconnecting) && (
             <View style={[localStyles.parent, safeAreaOverlayPadding]}>
                 <View
                     style={[
@@ -583,9 +734,9 @@ export default function EndDayStatisticsModal() {
                             </Text>
                             <View style={localStyles.animationContainer}>
                                 <Lottie
-                                    animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
+                                    animationData={showOfflineView ? cloudAnimation : starsAnimation}
                                     autoplay={true}
-                                    initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
+                                    initialSegment={showOfflineView ? [0, 144] : getAnimationSegment()}
                                     style={{ width: 132, height: 86 }}
                                 />
                             </View>
@@ -594,12 +745,12 @@ export default function EndDayStatisticsModal() {
                             <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
                         </View>
 
-                        {!isOfflineRef.current && (
+                        {!showOfflineView && (
                             <View style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}>
                                 {statItems}
                             </View>
                         )}
-                        {!isOfflineRef.current && happinessProjects.length > 0 && (
+                        {!showOfflineView && happinessProjects.length > 0 && (
                             <View style={localStyles.happinessSection}>
                                 <Text style={localStyles.happinessTitle}>{translate('Project happiness')}</Text>
                                 <Text style={localStyles.happinessPrivacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
@@ -685,28 +836,69 @@ export default function EndDayStatisticsModal() {
                                 ))}
                             </View>
                         )}
-                        <View style={localStyles.line} />
-                        <TouchableOpacity
-                            style={[
-                                localStyles.refresh,
-                                compactModalLayout && localStyles.mobileRefresh,
-                                startNewDayIsLoading && localStyles.refreshDisabled,
-                            ]}
-                            testID="startNewDayButton"
-                            onPress={onPressStartNewDay}
-                            disabled={startNewDayIsLoading}
-                        >
-                            <View style={localStyles.refreshContent}>
-                                {startNewDayIsLoading && (
-                                    <ActivityIndicator
-                                        size="small"
-                                        color="#FFFFFF"
-                                        style={localStyles.refreshSpinner}
-                                    />
+                        {reconnectStatus === RECONNECT_FAILED && (
+                            <Text style={localStyles.reconnectFailedNotice}>
+                                {translate(
+                                    'Still no connection. You can start the day anyway, your data will sync later'
                                 )}
-                                <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
-                            </View>
-                        </TouchableOpacity>
+                            </Text>
+                        )}
+                        <View style={localStyles.line} />
+                        <View style={[localStyles.actions, compactModalLayout && localStyles.mobileActions]}>
+                            {/* Offline, the popup used to be a dead end: it said it could
+                                not read yesterday's numbers and offered no way to ask
+                                again (AT-2391). */}
+                            {showOfflineView && (
+                                <TouchableOpacity
+                                    style={[
+                                        localStyles.reconnect,
+                                        compactModalLayout && localStyles.mobileReconnect,
+                                        isReconnecting && localStyles.refreshDisabled,
+                                    ]}
+                                    testID="newDayReconnectButton"
+                                    onPress={onPressReconnect}
+                                    disabled={isReconnecting}
+                                >
+                                    <View style={localStyles.refreshContent}>
+                                        {isReconnecting ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color="#FFFFFF"
+                                                style={localStyles.refreshSpinner}
+                                            />
+                                        ) : (
+                                            <View style={localStyles.refreshSpinner}>
+                                                <Icon name="refresh-cw" size={16} color="#ffffff" />
+                                            </View>
+                                        )}
+                                        <Text style={localStyles.buttonText}>
+                                            {translate(isReconnecting ? 'Reconnecting' : 'Reconnect now')}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                                style={[
+                                    localStyles.refresh,
+                                    compactModalLayout && localStyles.mobileRefresh,
+                                    startNewDayIsLoading && localStyles.refreshDisabled,
+                                ]}
+                                testID="startNewDayButton"
+                                onPress={onPressStartNewDay}
+                                disabled={startNewDayIsLoading}
+                            >
+                                <View style={localStyles.refreshContent}>
+                                    {startNewDayIsLoading && (
+                                        <ActivityIndicator
+                                            size="small"
+                                            color="#FFFFFF"
+                                            style={localStyles.refreshSpinner}
+                                        />
+                                    )}
+                                    <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        </View>
                     </ScrollView>
                 </View>
             </View>
@@ -814,6 +1006,44 @@ const localStyles = StyleSheet.create({
         alignSelf: 'stretch',
         alignItems: 'center',
         marginHorizontal: 4,
+    },
+    // Side by side on desktop, stacked on phones — the same compact-layout
+    // switch the stats grid and the happiness rows already use, so the offline
+    // card never puts two buttons on a line too narrow for them.
+    actions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    mobileActions: {
+        flexDirection: 'column',
+        alignItems: 'stretch',
+    },
+    // Secondary treatment: reconnecting is the optional escape hatch, starting
+    // the day stays the primary action (offline it works regardless — the
+    // acknowledgement is queued locally).
+    reconnect: {
+        borderRadius: 4,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        alignSelf: 'center',
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    mobileReconnect: {
+        alignSelf: 'stretch',
+        alignItems: 'center',
+        marginRight: 0,
+        marginBottom: 8,
+        marginHorizontal: 4,
+    },
+    reconnectFailedNotice: {
+        ...styles.body2,
+        color: colors.Text04,
+        textAlign: 'center',
+        marginTop: 12,
     },
     buttonText: {
         fontFamily: 'Roboto-Regular',
