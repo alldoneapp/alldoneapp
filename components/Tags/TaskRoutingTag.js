@@ -32,8 +32,16 @@ const SPARKLE_POINTS = [
     { size: 3.5, left: 12, top: 2, delay: 520 },
 ]
 
-const TWINKLE_DURATION_MS = 780
-const SPARKLE_REST_OPACITY = 0.75
+// The badge is the one part of this feature that has to stay legible — it is the message, and it
+// is what survives `prefers-reduced-motion` — so it is toned down rather than faded out. Two
+// changes, both aimed at "gentle" rather than "quiet": the points are `UtilityBlue200` instead of
+// the saturated `Primary100` action blue, and the twinkle floor is lifted well off zero. A point
+// that dips to 0.25 blinks; one that dips to 0.45 breathes. The badge is small and stationary, so
+// unlike the sweep it was never the thing dominating the row.
+const TWINKLE_DURATION_MS = 900
+const TWINKLE_MIN_OPACITY = 0.45
+const TWINKLE_MAX_OPACITY = 0.95
+const SPARKLE_REST_OPACITY = 0.7
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
@@ -54,13 +62,13 @@ function SparklePoint({ point, animate }) {
             Animated.sequence([
                 Animated.delay(point.delay),
                 Animated.timing(twinkle, {
-                    toValue: 1,
+                    toValue: TWINKLE_MAX_OPACITY,
                     duration: TWINKLE_DURATION_MS / 2,
                     easing: Easing.inOut(Easing.ease),
                     useNativeDriver: true,
                 }),
                 Animated.timing(twinkle, {
-                    toValue: 0.25,
+                    toValue: TWINKLE_MIN_OPACITY,
                     duration: TWINKLE_DURATION_MS / 2,
                     easing: Easing.inOut(Easing.ease),
                     useNativeDriver: true,
@@ -72,8 +80,13 @@ function SparklePoint({ point, animate }) {
     }, [animate, point.delay, twinkle])
 
     // Scale rides the same value as opacity so a dimming point also shrinks — that is what makes
-    // it read as a sparkle catching the light rather than a status LED fading.
-    const scale = twinkle.interpolate({ inputRange: [0.25, 1], outputRange: [0.6, 1] })
+    // it read as a sparkle catching the light rather than a status LED fading. The range is
+    // shallower than it was (0.75→1 rather than 0.6→1) for the same reason the opacity floor was
+    // lifted: less travel per beat is what separates "gentle" from "insistent".
+    const scale = twinkle.interpolate({
+        inputRange: [TWINKLE_MIN_OPACITY, TWINKLE_MAX_OPACITY],
+        outputRange: [0.75, 1],
+    })
 
     return (
         <Animated.View
@@ -193,6 +206,6 @@ const localStyles = StyleSheet.create({
     },
     sparklePoint: {
         position: 'absolute',
-        backgroundColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue200,
     },
 })
