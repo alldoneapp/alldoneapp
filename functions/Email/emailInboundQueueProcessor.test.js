@@ -156,7 +156,6 @@ describe('emailInboundQueueProcessor', () => {
                     source: 'email',
                     messageId: 'msg-1',
                 }),
-                autoAttachInvoice: true,
                 fromEmail: 'sender@example.com',
                 toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
                 ccEmails: ['observer@example.com'],
@@ -207,7 +206,6 @@ describe('emailInboundQueueProcessor', () => {
             'assistant-1',
             expect.objectContaining({
                 initialPendingAttachmentPayload: null,
-                autoAttachInvoice: false,
             })
         )
     })
