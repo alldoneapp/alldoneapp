@@ -6,12 +6,16 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/ColoredCircleSmall'
-import { ALL_PROJECTS_OPTION } from '../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
+import {
+    ALL_ARCHIVED_PROJECTS_OPTION,
+    ALL_ARCHIVED_SCOPE_LABEL,
+    ALL_PROJECTS_LABEL,
+    ALL_PROJECTS_OPTION,
+} from '../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 import { translate } from '../../../i18n/TranslationService'
 
 export const CREATED_BY_ME_CHIP_LABEL = 'Created by me'
-export const ARCHIVED_CHIP_LABEL = 'Archived'
 
 /**
  * The search popup's filter row as chips, matching the task list's
@@ -23,19 +27,21 @@ export const ARCHIVED_CHIP_LABEL = 'Archived'
  * template/guide projects are only searched when one is explicitly picked as
  * the scope.
  *
- * The scope chip is a PICKER (opens SelectProjectModalInSearch, alt+1), the
- * other chips are toggles. The archived chip hides while a specific project
- * is the scope, exactly like the toggle rows it replaces — a picked project
- * is always searched, archived or not.
+ * The scope chip is a PICKER (opens SelectProjectModalInSearch, alt+1); the
+ * only remaining toggle is "Created by me".
+ *
+ * There is deliberately NO archived toggle any more (AT-2390). Archived used to
+ * be a second, independent control that widened an all-projects search, which
+ * left two overlapping ways to express the same thing once the scope picker
+ * grew an "All archived" group. The scope is now the single place archived is
+ * chosen. The cost is real and accepted: active and archived can no longer be
+ * searched together in one query.
  */
 export default function SearchFilterChips({
     selectedProject,
     onOpenScope,
     createdByMeOnly,
     onToggleCreatedByMe,
-    includeArchived,
-    onToggleArchived,
-    showArchivedChip,
     disabled,
 }) {
     return (
@@ -53,26 +59,25 @@ export default function SearchFilterChips({
                     disabled={disabled}
                     testID={'search-filter-created-by-me'}
                 />
-                {showArchivedChip && (
-                    <ToggleChip
-                        label={ARCHIVED_CHIP_LABEL}
-                        selected={includeArchived}
-                        onPress={onToggleArchived}
-                        disabled={disabled}
-                        testID={'search-filter-archived'}
-                    />
-                )}
             </ScrollView>
         </View>
     )
+}
+
+// The two group scopes the picker offers (AT-2390). Kept as one table so the
+// chip and the picker's leading rows cannot drift apart.
+export const GROUP_SCOPE_LABELS = {
+    [ALL_PROJECTS_OPTION]: ALL_PROJECTS_LABEL,
+    [ALL_ARCHIVED_PROJECTS_OPTION]: ALL_ARCHIVED_SCOPE_LABEL,
 }
 
 export function ScopeChip({ selectedProject, onPress, disabled }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    const project = selectedProject.id === ALL_PROJECTS_OPTION ? null : selectedProject
-    const label = shrinkTagText(project ? project.name : translate('All projects'), smallScreenNavigation ? 15 : 25)
+    const groupScopeLabel = GROUP_SCOPE_LABELS[selectedProject.id]
+    const project = groupScopeLabel ? null : selectedProject
+    const label = shrinkTagText(project ? project.name : translate(groupScopeLabel), smallScreenNavigation ? 15 : 25)
 
     return (
         <TouchableOpacity
@@ -90,6 +95,8 @@ export function ScopeChip({ selectedProject, onPress, disabled }) {
                     containerStyle={localStyles.chipLeading}
                     projectId={project.id}
                 />
+            ) : selectedProject.id === ALL_ARCHIVED_PROJECTS_OPTION ? (
+                <Icon name="archive" size={12} color={colors.Text03} style={localStyles.chipLeading} />
             ) : (
                 <Image style={[localStyles.avatar, localStyles.chipLeading]} source={{ uri: photoURL }} />
             )}
