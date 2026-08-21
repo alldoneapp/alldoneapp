@@ -768,6 +768,135 @@ row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 
+### Dictation vocabulary — "Alldone" is a homophone of "all done" (PT-4648)
+
+Transcription biases towards a curated product glossary in **two** places, and both are required.
+`functions/shared/transcriptionVocabulary.js` is the single source: `getTranscriptionKeyterms()`
+feeds Deepgram's Nova-3 `keyterm` parameter (the acoustic layer, in
+`functions/Notes/deepgramTranscribe.js`), and `buildVocabularyPromptSection()` is embedded in the
+rambler cleanup **system** prompt (the semantic layer, `functions/Assistant/ramblerCleanup.js` — it
+sits in the system message because it never varies, so it belongs in the prefix `prompt_cache_key`
+caches).
+
+**One layer is not enough, and the reason is the brand itself.** "Alldone" is pronounced exactly
+like the ordinary English phrase "all done", so boosting it acoustically trades one error for its
+mirror image: _"are we all done here?"_ starts coming back as _"are we Alldone here?"_. Only the
+cleanup LLM has the surrounding sentence and can tell the product from the adjective, which is why
+the prompt rule is deliberately **two-sided** — it protects the ordinary phrase as explicitly as it
+pushes the brand. This is also why Deepgram's `replace` (find & replace) is **not** used here: a
+blind `all done` → `Alldone` rewrite would clobber every legitimate use of the phrase.
+
+**`language: 'multi'`, never `detect_language`.** `keyterm` requires an explicit language, and
+`detect_language` is the one mode the docs never bless alongside it. Worse, detection **silently
+downgrades the model**: it covers 35 languages, Nova-3 does not, and when the detected language is
+missing from the requested model Deepgram walks down Nova-3 → Nova-2 → Nova-1 → Enhanced → Base on
+its own. **Nova-2 does not support `keyterm` at all**, so keyterms would have died on exactly the
+requests nobody can see. `multi` is Nova-3 multilingual (en, es, fr, de, hi, ru, pt, ja, it, nl)
+with **word-level** code-switching, which also fits dictation better than per-clip detection — a
+mixed-language sentence cannot be represented by picking one language. Detection would _override_
+`language`, so the two must never both be set. The accepted trade-off is that a language outside
+those ten transcribes worse than it did under detection; the logged `detectedLanguages` is what
+makes that visible if it ever happens.
+
+**Failure is absorbed, not predicted.** Keyterm support per detected language is not documented, and
+a rejected parameter would take down dictation for whoever speaks that language — far worse than
+losing a spelling boost. So a 4xx-shaped rejection retries **once** without keyterms and sets
+`keytermFallback`; a transport/5xx failure is _not_ retried (it would just fail twice and double the
+latency of an outage). A silently degraded configuration therefore shows up in the logs instead of
+only in transcript quality.
+
+**Adding terms:** distinctive proper nouns only. Deepgram explicitly warns that generic common words
+dilute the prompt and cause false boosts, so no `task`/`goal`/`note`/`assistant` — they are
+transcribed correctly already and would only cost accuracy elsewhere. Budget is 500 tokens per
+request (Deepgram errors past it; the docs recommend 20–50 terms). Casing is preserved, so write
+each term exactly as it should appear. **Never use the legacy `keywords` weight syntax**
+(`keyterm=Alldone:2`): Deepgram does _not_ error on it — it accepts the whole string as one literal
+keyterm and boosts nothing, so it fails silently and looks like keyterm simply not working.
+
+**The static glossary is the floor; a per-user list is merged on top of it.** A workspace's own
+proper nouns — colleagues' names, their employers, project and assistant names — are exactly the
+words a speech model cannot guess, and they are per-user by definition. `mergeVocabulary` in
+`transcriptionVocabulary.js` is the **only** place the final list is decided, and both
+`getTranscriptionKeyterms()` and `buildVocabularyPromptSection()` are thin wrappers over it: if the
+acoustic and cleanup layers were allowed to hold different lists, the cleanup could "correct" a
+spelling Deepgram was told to emit and the two halves would fight. The static glossary is placed
+first and can never be displaced by a workspace term — combined cap 40 (`MAX_TOTAL_KEYTERMS`),
+dynamic cap 30.
+
+**Do not put a workspace scan on the transcription critical path (~1s today).** The per-user terms
+are precomputed into `users/{uid}/private/voiceVocabulary` (owner read/write under the existing
+`users/{userId}/{document=**}` rule — **no rules change**, and the Admin SDK writes it), and a
+dictation pays exactly **one document read** for them. `functions/shared/userVoiceVocabulary.js`
+implements a **stale-while-revalidate** cache: fresh (< 24h) is used as-is; **stale is used anyway**
+for the dictation in flight while a rebuild runs alongside it; only a **cold** miss waits, bounded
+by `COLD_BUILD_TIMEOUT_MS`, so a user's first-ever dictation already benefits without a slow
+workspace costing them their text. The cache read itself is bounded too
+(`CACHE_READ_TIMEOUT_MS`) — it sits directly in front of the Deepgram call on every dictation, and
+a timed-out read deliberately does **not** fall through to a build, because a degraded Firestore
+would only compound the delay. Triggers on contact/project/assistant writes were rejected as
+the refresh mechanism (they pay on every contact edit, for every member, to keep a list fresh that
+is only consumed when somebody dictates), as was a scheduled rebuild (it scans the workspaces of
+users who never touch the microphone). The lazy cache is self-limiting: a user who never dictates
+costs nothing, one who dictates fifty times a day rebuilds once.
+
+**The rebuild must be awaited before the response returns.** Cloud Run may freeze the container once
+a response is sent, so an un-awaited rebuild is a cache that never fills — the user would silently
+get the static glossary forever and nothing would say why. It started before transcription, so by
+the time `processRamble` drains it (`VOCABULARY_REBUILD_DRAIN_MS`) it has already had the whole
+transcription + cleanup window and costs no wall clock in practice.
+
+**Two things the scan must not do.** It must filter contacts by `isPublicFor` — this runs through
+the Admin SDK, which **bypasses security rules**, so without the filter a colleague's private
+contact leaks into another user's keyterm list through a spelling hint. And it must stay on
+**active** projects (`resolveScopeProjectIds`): on the reporting account that removes 64 guide
+projects full of other people's names, which is also the difference between a bounded scan and an
+O(projects) one. Caps are `MAX_PROJECTS_SCANNED` 25 / `MAX_CONTACTS_PER_PROJECT` 200, and what was
+skipped is reported rather than silently truncated.
+
+**Ranking is written to reject, not to collect** (`functions/shared/voiceVocabularyTerms.js`, pure
+functions). A generic keyterm is not neutral — Deepgram warns it dilutes the prompt and costs
+accuracy on every other word — so a candidate must clear a stoplist (Alldone's own domain nouns,
+organisational filler, role titles, legal-form suffixes, function words in all ten `multi`
+languages) **and** a structural check: at least one meaningful word shaped like a proper noun.
+The structural check is what generalizes, since no stoplist can enumerate every generic phrase
+("my project" is rejected by shape, not by list). Contact given names are deliberately dropped
+while surnames are kept as separate terms — a phrase keyterm does not boost its parts, and
+"Somova" is the word a model cannot guess whereas "Anna" collides across a contact list. Company
+legal forms are stripped ("Heyflow GmbH" → "Heyflow"). Score is source weight × recency ×
+cross-project repetition, and ties break alphabetically so an unchanged workspace always produces
+an identical list — non-determinism there would churn the `prompt_cache_key`.
+
+**Every failure degrades to the static glossary and nothing throws into the rambler.** Losing the
+personalized boost is a bad day; losing the dictation is a broken feature. `getUserVocabularyTerms`
+has no rejecting path at all, a failing project contributes nothing rather than failing the build,
+and a failed cache write still returns usable terms for the dictation in flight.
+
+**Observability:** `[processRamble] timing` carries `keytermCount`, `keytermFallback`,
+`detectedLanguages` and `summarizeVocabularyUsage`'s raw-vs-cleaned **counts** — never the dictated
+content, so it is safe to leave on. That is the only way to tell the layers apart: a brand hit
+already in `raw` means keyterm caught it, a hit appearing only in `cleaned` means the LLM fixed it,
+and a confusable form shrinking from raw to cleaned while the brand grows is the mirror-image error.
+Pinned by `functions/shared/transcriptionVocabulary.test.js` and
+`functions/Notes/deepgramTranscribe.test.js` — the latter drives the **real** `@deepgram/sdk`
+against a mocked `fetch`, because the wire format is the thing that breaks and a mocked SDK would
+green-light a comma-joined keyterm that boosts nothing in production.
+
+**The per-user terms are counted in aggregate and NEVER named.** The static glossary is Alldone's
+own vocabulary, so `Alldone: 2` in Cloud Logging is fine; the dynamic list is made of contact names
+and employers, and `Somova: 1` would put a colleague's surname — plus the fact that this user
+dictated it — into the logs. `summarizeVocabularyUsage`'s third argument therefore produces only
+`vocabularyDynamic` totals, alongside `vocabularyCacheState` (`fresh` | `stale` | `cold` |
+`unavailable`) and `vocabularyDynamicCount`. `cacheState` is the one to watch: a persistent `cold`
+or `unavailable` means the rebuild never lands and the personalization is silently doing nothing.
+Note `unavailable` is reported — rather than `cold` — when every project in a build failed to read,
+because "an outage" and "a cold build of an empty workspace" are exactly the two states that log
+line exists to tell apart. Pinned by `functions/shared/voiceVocabularyTerms.test.js` and
+`functions/shared/userVoiceVocabulary.test.js`.
+
+**Meeting transcription shares the same helper.** `functions/Notes/transcribeMeeting.js` used to
+repeat the Deepgram call inline with its own copy of the options; it now calls
+`transcribeAudioBase64`, so the model, formatting and vocabulary cannot drift between the two paths.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.

@@ -53,16 +53,10 @@ export const WORKFLOW_TASK_INDEX = 6
 export const OBSERVED_TASKS_INDEX = 7
 export const STREAM_AND_USER_TASKS_INDEX = 8
 export const ACTIVE_GOALS_INDEX = 9
-// AT-2377: calendar-derived tasks own a bucket again, which is what gives them their own
-// "Calendar" section in the task list. AT-2252 had merged them into MAIN_TASK_INDEX; three
-// follow-up tickets (AT-2259, AT-2270, AT-2351) then fought to place a meeting sensibly inside
-// a priority-sorted list, so the merge is reverted for calendar tasks.
-//
-// Inbox-summary EMAIL tasks are deliberately NOT restored to a bucket of their own: their old
-// bucket (11) rendered nowhere on the open-tasks board, so they were invisible outside a goal.
-// They stay in MAIN_TASK_INDEX.
-export const CALENDAR_TASK_INDEX = 10
-export const EMPTY_SECTION_INDEX = 11
+// AT-2252: calendar-derived and email-derived tasks used to own buckets 10 and 11 here, which is
+// what gave them their own sections in the task list. They now land in MAIN_TASK_INDEX like any
+// other task, so the buckets are gone and the day tuple is two slots shorter.
+export const EMPTY_SECTION_INDEX = 10
 
 export const NOT_PARENT_GOAL_INDEX = '0'
 
@@ -477,7 +471,7 @@ const watchUserOpenTasks = (
                 callback(openTasksArray, !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]], !areObservedTasks)
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]], !areObservedTasks)
                 batchDispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
                 batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
@@ -540,7 +534,7 @@ const watchUserOpenTasks = (
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
-    const { genericData, suggestedBy, userIds, calendarData } = task
+    const { genericData, suggestedBy, userIds } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
     // The assistant page intentionally has one timeline. A workflow task that is currently being
@@ -550,9 +544,9 @@ export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, 
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
-    // AT-2377: a synced meeting belongs in the Calendar section, not in the priority-sorted list.
-    if (calendarData) return CALENDAR_TASK_INDEX
-    // Inbox-summary email tasks stay here on purpose - see the EMAIL note by the constants.
+    // AT-2252: calendar events and inbox-summary emails are ordinary tasks. They deliberately fall
+    // through to MAIN_TASK_INDEX so they are grouped by goal, priority-sorted, draggable and
+    // filterable exactly like everything else instead of being pushed into their own section.
     return MAIN_TASK_INDEX
 }
 
@@ -861,19 +855,14 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
                 taskTypeIndex === WORKFLOW_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         } else {
             const taskList = orderBy(storedTasks[date][taskTypeIndex][taskParentGoalId], 'sortIndex', 'desc')
-            // AT-2377: the Calendar section orders its own tasks chronologically by event start, so
-            // priority must not reshuffle them here.
-            storedTasks[date][taskTypeIndex][taskParentGoalId] =
-                taskTypeIndex === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
+            storedTasks[date][taskTypeIndex][taskParentGoalId] = sortTasksByPriority(taskList)
         }
     }
 }
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
-    const openTasksArray = storedTasks[dayDateFormated]
-        ? []
-        : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]]
+    const openTasksArray = storedTasks[dayDateFormated] ? [] : [[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]]
 
     for (let i = 0; i < tasksByDateAndStep.length; i++) {
         const dateElement = tasksByDateAndStep[i]
@@ -923,13 +912,7 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             }
         }
 
-        const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
-
-        // A goal counts as empty only when NOTHING renders under it. Calendar tasks are grouped by
-        // goal inside the Calendar section, so a goal holding only meetings has visible content and
-        // must not also be listed as an empty goal - it would render its header twice.
-        const goalIdsWithTasks = new Set([...mainTasks, ...calendarTasks].map(data => data[0]))
-        const emptyGoals = activeGoals.filter(goal => !goalIdsWithTasks.has(goal.id))
+        const emptyGoals = activeGoals.filter(goal => !mainTasks.map(data => data[0]).includes(goal.id))
 
         openTasksArray.push([
             date,
@@ -942,7 +925,6 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
             observedTasks,
             streamAndUserTasks,
             activeGoals,
-            calendarTasks,
             emptyGoals,
         ])
     }
@@ -1339,7 +1321,7 @@ const watchStreamAndUserOpenTasks = (
                         })
                     )
                 } else if (Object.keys(storedTasks).length === 0) {
-                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
+                    callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
                     batchDispatch(setOpenTasksMap(projectId, {}))
                 }
 
@@ -1484,7 +1466,7 @@ function watchEmptyGoals(
                     if (progress === DYNAMIC_PERCENT && dynamicProgress === 100) return
                 })
             } else if (Object.keys(storedTasks).length === 0) {
-                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], [], []]])
+                callback([[dayDateFormated, 0, 0, [], [], [], [], [], [], [], []]])
             }
             cacheChanges = []
         }
@@ -1810,22 +1792,10 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             ? originalTasksByDate[EMPTY_SECTION_INDEX].length
             : 0
 
-        // AT-2377: calendar tasks live in their own bucket again, so they need their own count -
-        // a day holding nothing but meetings must still show up in All projects.
-        let currentCalendarTasksCount = 0
-        if (originalTasksByDate[CALENDAR_TASK_INDEX]) {
-            originalTasksByDate[CALENDAR_TASK_INDEX].forEach(tasksByGoal => {
-                if (tasksByGoal && Array.isArray(tasksByGoal[1])) {
-                    currentCalendarTasksCount += tasksByGoal[1].length
-                }
-            })
-        }
-
         // Check if this date should be included in the output
         const shouldInclude =
             currentMainTasksCount > 0 ||
             currentSuggestedTasksCount > 0 ||
-            currentCalendarTasksCount > 0 ||
             currentWorkflowTasksCount > 0 ||
             currentEmptyGoalsCount > 0
 
@@ -1834,22 +1804,13 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             const newTasksByDateEntry = [...originalTasksByDate] // Start with a shallow copy
 
             // Count every visible task type so projects containing only one of these sections remain visible.
-            // Inbox-summary email tasks are part of MAIN_TASK_INDEX and need no separate count.
+            // AT-2252: calendar and email tasks are part of MAIN_TASK_INDEX now, so they are already
+            // included in currentMainTasksCount and need no separate count or flag.
             newTasksByDateEntry[AMOUNT_TASKS_INDEX] =
-                currentMainTasksCount +
-                currentSuggestedTasksCount +
-                currentCalendarTasksCount +
-                currentWorkflowTasksCount
-
-            // AT-2377: the show-more arrow must not appear on a day that hides nothing but meetings,
-            // which always render in full inside the Calendar section.
-            newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount > 0
-            newTasksByDateEntry.nonCalendarTasksCount =
                 currentMainTasksCount + currentSuggestedTasksCount + currentWorkflowTasksCount
 
             // Preserve task types that should be VISIBLE in "All Projects" view
             newTasksByDateEntry[MAIN_TASK_INDEX] = originalTasksByDate[MAIN_TASK_INDEX] || []
-            newTasksByDateEntry[CALENDAR_TASK_INDEX] = originalTasksByDate[CALENDAR_TASK_INDEX] || []
             newTasksByDateEntry[SUGGESTED_TASK_INDEX] = originalTasksByDate[SUGGESTED_TASK_INDEX] || [] // Display suggested tasks
             newTasksByDateEntry[WORKFLOW_TASK_INDEX] = originalTasksByDate[WORKFLOW_TASK_INDEX] || [] // Display workflow tasks
 

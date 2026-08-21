@@ -7,7 +7,6 @@ const mockGetAssistantForChat = jest.fn()
 const mockInteractWithChatStream = jest.fn()
 const mockReduceGoldWhenChatWithAI = jest.fn().mockResolvedValue(undefined)
 const mockExecuteToolNatively = jest.fn()
-const mockGetExternalIntegrationToolName = jest.fn()
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: mockAddBaseInstructions,
@@ -17,11 +16,12 @@ jest.mock('../Assistant/assistantHelper', () => ({
     buildPendingAttachmentPayload: jest.fn(() => null),
     executeToolNatively: mockExecuteToolNatively,
     getAssistantForChat: mockGetAssistantForChat,
-    getExternalIntegrationToolName: mockGetExternalIntegrationToolName,
     getMessageTextForTokenCounting: jest.fn(value => value),
     getToolResultFollowUpPrompt: jest.fn(() => 'Continue'),
-    injectPendingAttachmentIntoToolArgs: jest.requireActual('../Assistant/attachmentToolHandoff')
-        .injectPendingAttachmentIntoToolArgs,
+    injectPendingAttachmentIntoToolArgs: jest.fn((toolName, toolArgs) => ({
+        toolArgs,
+        usedPendingAttachment: false,
+    })),
     interactWithChatStream: mockInteractWithChatStream,
     isToolAllowedForExecution: jest.fn().mockResolvedValue(true),
     normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_6_SOL'),
@@ -94,7 +94,6 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             model: 'MODEL_GPT5_5',
             temperature: 'TEMPERATURE_NORMAL',
         })
-        mockGetExternalIntegrationToolName.mockResolvedValue(null)
         getConversationHistory.mockResolvedValue([['user', 'Create the 13:30 meeting with the person in CC']])
         getLatestSafeEmailActionContext.mockResolvedValue({
             type: 'calendar_availability',
@@ -322,7 +321,6 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             temperature: 'TEMPERATURE_NORMAL',
         })
         const fileBase64 = Buffer.alloc(4096, 23).toString('base64')
-        mockGetExternalIntegrationToolName.mockResolvedValue('external_tool_bookkeeping_attach_invoice')
         mockExecuteToolNatively.mockResolvedValue({ success: true, status: 'matched' })
         mockInteractWithChatStream
             .mockReturnValueOnce([
@@ -350,17 +348,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             'project-1',
             'chat-1',
             'Please attach this invoice',
-            'assistant-1',
-            {
-                initialPendingAttachmentPayload: {
-                    fileName: 'invoice.pdf',
-                    fileBase64,
-                    fileMimeType: 'application/pdf',
-                    source: 'email',
-                    messageId: 'message-1',
-                },
-                autoAttachInvoice: true,
-            }
+            'assistant-1'
         )
 
         const followUpMessages = mockInteractWithChatStream.mock.calls[1][0]
@@ -369,68 +357,6 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(safeArgs.fileBase64).toBe('[omitted from conversation; preserved for the next external tool call]')
         expect(safeArgs.fileBase64Length).toBe(fileBase64.length)
         expect(completedToolCall.function.arguments).not.toContain(fileBase64)
-        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
-    })
-
-    test('auto-attaches a confirmed invoice when the assistant skips the bookkeeping tool', async () => {
-        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
-        const fileBase64 = Buffer.from('invoice-pdf-bytes').toString('base64')
-        mockGetAssistantForChat.mockResolvedValue({
-            uid: 'assistant-1',
-            displayName: 'Anna',
-            allowedTools: ['external_tools'],
-            instructions: '',
-            model: 'MODEL_GPT5_6_LUNA',
-            temperature: 'TEMPERATURE_NORMAL',
-        })
-        getConversationHistory.mockResolvedValue([['user', 'Subject: Fwd: GitLab receipt']])
-        mockGetExternalIntegrationToolName.mockResolvedValue(invoiceToolName)
-        mockExecuteToolNatively.mockResolvedValue({ success: true, status: 'matched' })
-        mockInteractWithChatStream
-            .mockReturnValueOnce([{ content: 'The PDF is not available to transfer.' }])
-            .mockReturnValueOnce([{ content: 'Invoice attached successfully.' }])
-
-        const responseText = await processAnnaEmailAssistantMessage(
-            'user-1',
-            'project-1',
-            'chat-1',
-            'Subject: Fwd: GitLab receipt',
-            'assistant-1',
-            {
-                initialPendingAttachmentPayload: {
-                    fileName: 'INV00615071.pdf',
-                    fileBase64,
-                    fileMimeType: 'application/pdf',
-                    fileSizeBytes: 17,
-                    source: 'email',
-                    messageId: 'message-1',
-                },
-                autoAttachInvoice: true,
-                skipCurrentMessageAppend: true,
-            }
-        )
-
-        expect(responseText).toBe('Invoice attached successfully.')
-        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
-        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
-            invoiceToolName,
-            expect.objectContaining({
-                fileName: 'INV00615071.pdf',
-                fileBase64,
-                mimeType: 'application/pdf',
-            }),
-            'project-1',
-            'assistant-1',
-            'user-1',
-            expect.any(Object),
-            expect.objectContaining({ channel: 'email' })
-        )
-
-        const followUpMessages = mockInteractWithChatStream.mock.calls[1][0]
-        const forcedToolCall = followUpMessages.find(message => message.role === 'assistant').tool_calls[0]
-        const safeArgs = JSON.parse(forcedToolCall.function.arguments)
-        expect(safeArgs.fileBase64).toBe('[omitted from conversation; preserved for the next external tool call]')
-        expect(forcedToolCall.function.arguments).not.toContain(fileBase64)
     })
 
     test('attributes calendar availability to the account owner instead of Anna', async () => {

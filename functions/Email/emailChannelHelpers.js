@@ -483,31 +483,6 @@ const NON_ACTIONABLE_PATTERNS = [
     /\bscan\d*\b/i,
 ]
 
-const INVOICE_AUTO_ATTACH_OPT_OUT_PATTERNS = [
-    /\b(?:do not|don't|dont|never)\b.{0,80}\b(?:attach|forward|process|send|submit|upload)\b/i,
-    /\b(?:attach|forward|process|send|submit|upload)\b.{0,80}\b(?:do not|don't|dont|never)\b/i,
-    /\b(?:nicht|niemals|keinesfalls)\b.{0,80}\b(?:anh[aä]ngen|hochladen|senden|verarbeiten|weiterleiten)\b/i,
-    /\b(?:anh[aä]ngen|hochladen|senden|verarbeiten|weiterleiten)\b.{0,80}\b(?:nicht|niemals|keinesfalls)\b/i,
-]
-
-function isInvoiceLikeAttachment(attachment = {}) {
-    const normalizedAttachment = attachment && typeof attachment === 'object' ? attachment : {}
-    const fileName = String(normalizedAttachment.fileName || '').trim()
-    const extractedText = String(normalizedAttachment.extractedText || '').trim()
-    if (getSupportedAttachmentPriority(normalizedAttachment) <= 0) return false
-
-    const hasInvoiceLikeFileName = INVOICE_LIKE_PATTERNS.some(pattern => pattern.test(fileName))
-    const hasExplicitInvoiceContent = INVOICE_LIKE_PATTERNS.some(pattern => pattern.test(extractedText))
-    const accountingSignalCount = INVOICE_CONTENT_PATTERNS.filter(pattern => pattern.test(extractedText)).length
-
-    return hasInvoiceLikeFileName || hasExplicitInvoiceContent || accountingSignalCount >= 2
-}
-
-function shouldAutoAttachInvoice(attachment = {}, messageText = '') {
-    if (!isInvoiceLikeAttachment(attachment)) return false
-    return !INVOICE_AUTO_ATTACH_OPT_OUT_PATTERNS.some(pattern => pattern.test(String(messageText || '')))
-}
-
 function getAttachmentRelevanceScore(attachment = {}) {
     const fileName = String(attachment.fileName || '').trim()
     const extractedText = String(attachment.extractedText || '').trim()
@@ -645,10 +620,8 @@ module.exports = {
     normalizeEmailDisplayName,
     normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
-    isInvoiceLikeAttachment,
     pickActionableAttachment,
     looksLikeForwardedEmail,
-    shouldAutoAttachInvoice,
     splitEmailHeaderEntries,
     splitQuotedReplyText,
     stripHtmlToText,

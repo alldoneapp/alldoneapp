@@ -77,13 +77,6 @@ export default function MainSection({
     const thereAreHiddenNotMainTasks = useSelector(state =>
         state.thereAreHiddenNotMainTasks[instanceKey] ? state.thereAreHiddenNotMainTasks[instanceKey] : false
     )
-    // AT-2377: a day whose only tasks are meetings hides nothing - the Calendar section always
-    // renders them in full - so the "show more" arrow must not appear for it.
-    const hasOnlyCalendarTasks = useSelector(state => {
-        const day = state.filteredOpenTasksStore[instanceKey]?.[dateIndex]
-        if (!day) return false
-        return Boolean(day.hasCalendarTasks) && !day.nonCalendarTasksCount
-    })
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
@@ -578,7 +571,7 @@ export default function MainSection({
                 )}
 
             {/* Only show the down arrow if we have more tasks to show or there are hidden tasks */}
-            {(showMainListShowMore || (thereAreHiddenNotMainTasks && !hasOnlyCalendarTasks)) && (
+            {(showMainListShowMore || thereAreHiddenNotMainTasks) && (
                 <ShowMoreButton
                     expanded={pressedShowMoreMainSection}
                     contract={contractTasks}
