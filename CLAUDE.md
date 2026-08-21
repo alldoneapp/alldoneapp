@@ -813,9 +813,60 @@ each term exactly as it should appear. **Never use the legacy `keywords` weight 
 (`keyterm=Alldone:2`): Deepgram does _not_ error on it — it accepts the whole string as one literal
 keyterm and boosts nothing, so it fails silently and looks like keyterm simply not working.
 
-The glossary is deliberately **static and workspace-independent**. Do not put a per-user/per-project
-workspace scan on the transcription critical path (~1s today); if dynamic terms are ever wanted,
-precompute them into a per-user document and merge behind one cached read.
+**The static glossary is the floor; a per-user list is merged on top of it.** A workspace's own
+proper nouns — colleagues' names, their employers, project and assistant names — are exactly the
+words a speech model cannot guess, and they are per-user by definition. `mergeVocabulary` in
+`transcriptionVocabulary.js` is the **only** place the final list is decided, and both
+`getTranscriptionKeyterms()` and `buildVocabularyPromptSection()` are thin wrappers over it: if the
+acoustic and cleanup layers were allowed to hold different lists, the cleanup could "correct" a
+spelling Deepgram was told to emit and the two halves would fight. The static glossary is placed
+first and can never be displaced by a workspace term — combined cap 40 (`MAX_TOTAL_KEYTERMS`),
+dynamic cap 30.
+
+**Do not put a workspace scan on the transcription critical path (~1s today).** The per-user terms
+are precomputed into `users/{uid}/private/voiceVocabulary` (owner read/write under the existing
+`users/{userId}/{document=**}` rule — **no rules change**, and the Admin SDK writes it), and a
+dictation pays exactly **one document read** for them. `functions/shared/userVoiceVocabulary.js`
+implements a **stale-while-revalidate** cache: fresh (< 24h) is used as-is; **stale is used anyway**
+for the dictation in flight while a rebuild runs alongside it; only a **cold** miss waits, bounded
+by `COLD_BUILD_TIMEOUT_MS`, so a user's first-ever dictation already benefits without a slow
+workspace costing them their text. Triggers on contact/project/assistant writes were rejected as
+the refresh mechanism (they pay on every contact edit, for every member, to keep a list fresh that
+is only consumed when somebody dictates), as was a scheduled rebuild (it scans the workspaces of
+users who never touch the microphone). The lazy cache is self-limiting: a user who never dictates
+costs nothing, one who dictates fifty times a day rebuilds once.
+
+**The rebuild must be awaited before the response returns.** Cloud Run may freeze the container once
+a response is sent, so an un-awaited rebuild is a cache that never fills — the user would silently
+get the static glossary forever and nothing would say why. It started before transcription, so by
+the time `processRamble` drains it (`VOCABULARY_REBUILD_DRAIN_MS`) it has already had the whole
+transcription + cleanup window and costs no wall clock in practice.
+
+**Two things the scan must not do.** It must filter contacts by `isPublicFor` — this runs through
+the Admin SDK, which **bypasses security rules**, so without the filter a colleague's private
+contact leaks into another user's keyterm list through a spelling hint. And it must stay on
+**active** projects (`resolveScopeProjectIds`): on the reporting account that removes 64 guide
+projects full of other people's names, which is also the difference between a bounded scan and an
+O(projects) one. Caps are `MAX_PROJECTS_SCANNED` 25 / `MAX_CONTACTS_PER_PROJECT` 200, and what was
+skipped is reported rather than silently truncated.
+
+**Ranking is written to reject, not to collect** (`functions/shared/voiceVocabularyTerms.js`, pure
+functions). A generic keyterm is not neutral — Deepgram warns it dilutes the prompt and costs
+accuracy on every other word — so a candidate must clear a stoplist (Alldone's own domain nouns,
+organisational filler, role titles, legal-form suffixes, function words in all ten `multi`
+languages) **and** a structural check: at least one meaningful word shaped like a proper noun.
+The structural check is what generalizes, since no stoplist can enumerate every generic phrase
+("my project" is rejected by shape, not by list). Contact given names are deliberately dropped
+while surnames are kept as separate terms — a phrase keyterm does not boost its parts, and
+"Somova" is the word a model cannot guess whereas "Anna" collides across a contact list. Company
+legal forms are stripped ("Heyflow GmbH" → "Heyflow"). Score is source weight × recency ×
+cross-project repetition, and ties break alphabetically so an unchanged workspace always produces
+an identical list — non-determinism there would churn the `prompt_cache_key`.
+
+**Every failure degrades to the static glossary and nothing throws into the rambler.** Losing the
+personalized boost is a bad day; losing the dictation is a broken feature. `getUserVocabularyTerms`
+has no rejecting path at all, a failing project contributes nothing rather than failing the build,
+and a failed cache write still returns usable terms for the dictation in flight.
 
 **Observability:** `[processRamble] timing` carries `keytermCount`, `keytermFallback`,
 `detectedLanguages` and `summarizeVocabularyUsage`'s raw-vs-cleaned **counts** — never the dictated
@@ -826,6 +877,18 @@ Pinned by `functions/shared/transcriptionVocabulary.test.js` and
 `functions/Notes/deepgramTranscribe.test.js` — the latter drives the **real** `@deepgram/sdk`
 against a mocked `fetch`, because the wire format is the thing that breaks and a mocked SDK would
 green-light a comma-joined keyterm that boosts nothing in production.
+
+**The per-user terms are counted in aggregate and NEVER named.** The static glossary is Alldone's
+own vocabulary, so `Alldone: 2` in Cloud Logging is fine; the dynamic list is made of contact names
+and employers, and `Somova: 1` would put a colleague's surname — plus the fact that this user
+dictated it — into the logs. `summarizeVocabularyUsage`'s third argument therefore produces only
+`vocabularyDynamic` totals, alongside `vocabularyCacheState` (`fresh` | `stale` | `cold` |
+`unavailable`) and `vocabularyDynamicCount`. `cacheState` is the one to watch: a persistent `cold`
+or `unavailable` means the rebuild never lands and the personalization is silently doing nothing.
+Note `unavailable` is reported — rather than `cold` — when every project in a build failed to read,
+because "an outage" and "a cold build of an empty workspace" are exactly the two states that log
+line exists to tell apart. Pinned by `functions/shared/voiceVocabularyTerms.test.js` and
+`functions/shared/userVoiceVocabulary.test.js`.
 
 **Meeting transcription shares the same helper.** `functions/Notes/transcribeMeeting.js` used to
 repeat the Deepgram call inline with its own copy of the options; it now calls

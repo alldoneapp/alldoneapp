@@ -28,6 +28,12 @@ const VALID_TARGET_KINDS = ['title', 'description', 'comment', 'note', 'generic'
 
 const RAMBLER_GOLD_SOURCE = 'rambler'
 
+// How long the response will wait for an in-flight vocabulary rebuild to land in the cache. The
+// rebuild started before transcription, so it has already had the whole transcription + cleanup
+// window to finish; this is only the tail. Bounded because a slow workspace must delay the cache,
+// never the user's text.
+const VOCABULARY_REBUILD_DRAIN_MS = 2000
+
 function normalizeTargetKind(targetKind) {
     return VALID_TARGET_KINDS.includes(targetKind) ? targetKind : 'generic'
 }
@@ -114,9 +120,27 @@ const processRambleSecondGen = onCall(
         const { transcribeAudioBase64 } = require('../Notes/deepgramTranscribe')
         // Context loading never rejects (see loadCleanupContext), so a failure here is transcription.
         const contextPromise = loadCleanupContext({ userData, projectId, userId: auth.uid })
+
+        // The per-user dictation vocabulary (PT-4648). This is ONE cached document read on the
+        // common path — the workspace is never scanned here; see `userVoiceVocabulary.js` for why.
+        // It has to resolve BEFORE the Deepgram call, because keyterms are a request parameter.
+        // It never rejects: any failure returns an empty dynamic list and the static glossary alone.
+        const vocabularyStartedAt = Date.now()
+        const { getUserVocabularyTerms } = require('../shared/userVoiceVocabulary')
+        const { getTranscriptionKeyterms, PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
+        const userVocabulary = await getUserVocabularyTerms({
+            db: admin.firestore(),
+            userId: auth.uid,
+            userData,
+            excludeTerms: PRODUCT_KEYTERMS,
+        })
+        timings.vocabularyMs = Date.now() - vocabularyStartedAt
+        // The single final list, shared verbatim by the acoustic layer and the cleanup layer.
+        const vocabularyTerms = getTranscriptionKeyterms(userVocabulary.terms)
+
         let transcription
         try {
-            transcription = await transcribeAudioBase64(audio)
+            transcription = await transcribeAudioBase64(audio, { keyterms: vocabularyTerms })
         } catch (error) {
             console.error('[processRamble] Transcription failed:', error)
             throw new HttpsError('internal', 'Failed to transcribe audio')
@@ -149,6 +173,7 @@ const processRambleSecondGen = onCall(
                 currentText: typeof currentText === 'string' ? currentText : '',
                 appLanguage: typeof language === 'string' ? language : userData.language || '',
                 cacheScope: `${auth.uid}:${projectId}`,
+                vocabularyTerms,
             })
             if (cleaned.text) {
                 text = cleaned.text
@@ -190,7 +215,21 @@ const processRambleSecondGen = onCall(
         // and a confusable form that grows from raw to cleaned means the cleanup introduced the
         // mirror-image error ("all done" rewritten to the brand where it did not belong).
         const { summarizeVocabularyUsage } = require('../shared/transcriptionVocabulary')
-        const vocabulary = summarizeVocabularyUsage(transcript, text)
+        const vocabulary = summarizeVocabularyUsage(transcript, text, vocabularyTerms)
+
+        // A stale or cold vocabulary rebuild runs alongside transcription and cleanup, so by now it
+        // is almost always already done. It still has to be AWAITED: Cloud Run may freeze the
+        // container once the response is returned, and a rebuild that never finishes is a cache
+        // that stays cold forever — the user would get the static glossary on every dictation and
+        // nothing would ever say why. Bounded, because finishing the response matters more.
+        if (userVocabulary.pendingRebuild) {
+            const rebuildStartedAt = Date.now()
+            await Promise.race([
+                userVocabulary.pendingRebuild,
+                new Promise(resolve => setTimeout(resolve, VOCABULARY_REBUILD_DRAIN_MS)),
+            ])
+            timings.vocabularyRebuildWaitMs = Date.now() - rebuildStartedAt
+        }
 
         console.log('[processRamble] timing', {
             ...timings,
@@ -215,6 +254,13 @@ const processRambleSecondGen = onCall(
             detectedLanguages: transcription.detectedLanguages || [],
             vocabularyTerms: vocabulary.terms,
             vocabularyConfusable: vocabulary.confusable,
+            // The per-user half (PT-4648). `cacheState` says which path this dictation took —
+            // `fresh` is the steady state, a persistent `cold`/`unavailable` means the rebuild
+            // never lands and the personalization is silently doing nothing. `dynamic` is COUNTS
+            // ONLY: these terms are contact names and must never be logged by name.
+            vocabularyCacheState: userVocabulary.cacheState,
+            vocabularyDynamicCount: userVocabulary.terms.length,
+            vocabularyDynamic: vocabulary.dynamic,
         })
 
         return {

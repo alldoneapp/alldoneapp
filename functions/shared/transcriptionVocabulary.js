@@ -17,11 +17,17 @@
  * is also why Deepgram's `replace` (find & replace) is deliberately NOT used for this: a blind
  * "all done" -> "Alldone" rewrite would clobber every legitimate use of the phrase.
  *
- * SCOPE: this is a deliberately small, static, workspace-independent glossary of Alldone's own
- * product and platform vocabulary. It is NOT per-user or per-project. Adding a dynamic vocabulary
- * (contact names, project names, goal titles) would mean a workspace scan on the transcription
- * critical path, which currently runs in ~1s — do not put one there. If dynamic terms are ever
- * wanted, precompute them into a per-user document and merge them here behind one cached read.
+ * SCOPE: the glossary below is Alldone's own product and platform vocabulary — static, identical
+ * for every user, and the floor that every dictation gets. On top of it, a PER-USER list of
+ * distinctive workspace terms (contact names, companies, project and assistant names) is merged in
+ * by `mergeVocabulary`. Those are precomputed into `users/{uid}/private/voiceVocabulary` and reach
+ * this module behind ONE cached document read — see `userVoiceVocabulary.js`. The workspace is
+ * never scanned on the transcription critical path, which runs in ~1s and must stay there.
+ *
+ * ONE LIST, BOTH LAYERS. `mergeVocabulary` is the only place the final vocabulary is decided, and
+ * both `getTranscriptionKeyterms` and `buildVocabularyPromptSection` are thin wrappers over it. If
+ * the acoustic layer and the cleanup layer were allowed to disagree about the term list, the
+ * cleanup could "correct" a spelling Deepgram was told to produce, and the two halves would fight.
  *
  * WHAT BELONGS HERE: distinctive proper nouns — product, company and platform names that a speech
  * model plausibly gets wrong. Deepgram explicitly warns against generic common words: they dilute
@@ -65,11 +71,52 @@ const PRODUCT_KEYTERMS = [
 const BRAND_CONFUSABLE_FORMS = ['all done', 'alldon', 'aldon', 'all-done', 'olldone']
 
 /**
- * The `keyterm` values for a Deepgram request. Returns a copy so a caller cannot mutate the module
- * state, and so it can be safely spread into request options.
+ * The ceiling on the COMBINED list. Deepgram errors past 500 tokens across all keyterms and its
+ * docs recommend 20-50 terms; this sits inside that band with the static glossary's ~9 included, so
+ * the request can never grow into the silent-rejection zone as a workspace grows.
  */
-function getTranscriptionKeyterms() {
-    return [...PRODUCT_KEYTERMS]
+const MAX_TOTAL_KEYTERMS = 40
+
+/**
+ * THE final vocabulary for one dictation: the static glossary plus this user's terms.
+ *
+ * The static glossary is placed first and can never be displaced. It is the vocabulary the product
+ * itself depends on — "Alldone" is the entire reason this feature exists — whereas a dynamic term
+ * is a per-user nicety. If a workspace ever produces enough high-ranking terms to fill the budget,
+ * it is the dynamic tail that must lose, never the brand.
+ *
+ * Deduplication is case-insensitive, and the STATIC spelling wins a collision: a user whose project
+ * is called "alldone" must not lowercase the brand for their own transcripts.
+ */
+function mergeVocabulary(dynamicTerms = []) {
+    const merged = []
+    const seen = new Set()
+
+    const add = term => {
+        if (typeof term !== 'string') return
+        const trimmed = term.trim()
+        if (!trimmed) return
+        const key = trimmed.toLowerCase()
+        if (seen.has(key)) return
+        seen.add(key)
+        merged.push(trimmed)
+    }
+
+    for (const term of PRODUCT_KEYTERMS) add(term)
+    if (Array.isArray(dynamicTerms)) for (const term of dynamicTerms) add(term)
+
+    return merged.slice(0, MAX_TOTAL_KEYTERMS)
+}
+
+/**
+ * The `keyterm` values for a Deepgram request. Returns a fresh array so a caller cannot mutate the
+ * module state, and so it can be safely spread into request options.
+ *
+ * With no argument this is the static glossary alone, which is what every caller that has no user
+ * context (and every existing test) gets.
+ */
+function getTranscriptionKeyterms(dynamicTerms = []) {
+    return mergeVocabulary(dynamicTerms)
 }
 
 /**
@@ -79,10 +126,12 @@ function getTranscriptionKeyterms() {
  * telling it to protect the ordinary phrase "all done" trades one error for its mirror image —
  * which is exactly the failure mode keyterm prompting introduces on the acoustic side.
  */
-function buildVocabularyPromptSection() {
+function buildVocabularyPromptSection(dynamicTerms = []) {
     return [
         'Known product vocabulary for this workspace. When a word or phrase in the transcript is acoustically close to one of these, prefer the known spelling — but only when the sentence actually supports it. Never insert one of these names into a sentence that does not call for it.',
-        PRODUCT_KEYTERMS.map(term => `- ${term}`).join('\n'),
+        mergeVocabulary(dynamicTerms)
+            .map(term => `- ${term}`)
+            .join('\n'),
         '"Alldone" is the product name and is pronounced exactly like the ordinary English phrase "all done". Write "Alldone" when the speaker means the product, the app or the workspace (e.g. "add this to Alldone"). Keep the ordinary phrase "all done" when the speaker means finished (e.g. "we are all done here"). Decide from the sentence, not from the spelling the transcript happens to use.',
     ].join('\n')
 }
@@ -109,7 +158,7 @@ function countOccurrences(haystack, needle) {
  * Matching is case-insensitive on purpose: a transcript containing "alldone" is an acoustic hit
  * that the cleanup still has to capitalize, and both facts are worth seeing separately.
  */
-function summarizeVocabularyUsage(rawTranscript, cleanedText) {
+function summarizeVocabularyUsage(rawTranscript, cleanedText, dynamicTerms = []) {
     const raw = typeof rawTranscript === 'string' ? rawTranscript.toLowerCase() : ''
     const cleaned = typeof cleanedText === 'string' ? cleanedText.toLowerCase() : ''
 
@@ -128,12 +177,37 @@ function summarizeVocabularyUsage(rawTranscript, cleanedText) {
         if (rawCount || cleanedCount) confusable[form] = { raw: rawCount, cleaned: cleanedCount }
     }
 
-    return { terms, confusable }
+    // The per-user terms are counted in AGGREGATE and never named.
+    //
+    // The static glossary is Alldone's own product vocabulary, so logging "Alldone: 2" is safe. The
+    // dynamic list is the opposite: it is made of contact names, employers and project names, and a
+    // log line reading `Somova: 1` would put a colleague's surname — and the fact that this user
+    // dictated it — into Cloud Logging. Totals answer the only question the log needs to answer
+    // ("is the personalized half doing anything?") without carrying any of that.
+    const dynamic = { termCount: 0, raw: 0, cleaned: 0, matchedTerms: 0 }
+    if (Array.isArray(dynamicTerms)) {
+        const staticKeys = new Set(PRODUCT_KEYTERMS.map(term => term.toLowerCase()))
+        for (const term of dynamicTerms) {
+            if (typeof term !== 'string' || !term.trim()) continue
+            const key = term.trim().toLowerCase()
+            if (staticKeys.has(key)) continue // already reported by name above
+            dynamic.termCount += 1
+            const rawCount = countOccurrences(raw, key)
+            const cleanedCount = countOccurrences(cleaned, key)
+            dynamic.raw += rawCount
+            dynamic.cleaned += cleanedCount
+            if (rawCount || cleanedCount) dynamic.matchedTerms += 1
+        }
+    }
+
+    return { terms, confusable, dynamic }
 }
 
 module.exports = {
     PRODUCT_KEYTERMS,
     BRAND_CONFUSABLE_FORMS,
+    MAX_TOTAL_KEYTERMS,
+    mergeVocabulary,
     getTranscriptionKeyterms,
     buildVocabularyPromptSection,
     summarizeVocabularyUsage,

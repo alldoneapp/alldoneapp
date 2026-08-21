@@ -11,10 +11,56 @@
 const {
     PRODUCT_KEYTERMS,
     BRAND_CONFUSABLE_FORMS,
+    MAX_TOTAL_KEYTERMS,
+    mergeVocabulary,
     getTranscriptionKeyterms,
     buildVocabularyPromptSection,
     summarizeVocabularyUsage,
 } = require('./transcriptionVocabulary')
+
+describe('mergeVocabulary', () => {
+    test('keeps the static glossary first, so a workspace can never displace the brand', () => {
+        const merged = mergeVocabulary(['Somova', 'Heyflow'])
+        expect(merged.slice(0, PRODUCT_KEYTERMS.length)).toEqual(PRODUCT_KEYTERMS)
+        expect(merged).toContain('Somova')
+    })
+
+    test('deduplicates case-insensitively and keeps the static spelling', () => {
+        // A user whose project is called "alldone" must not lowercase the brand for their own
+        // transcripts.
+        const merged = mergeVocabulary(['alldone'])
+        expect(merged).toContain('Alldone')
+        expect(merged).not.toContain('alldone')
+        expect(merged.filter(term => term.toLowerCase() === 'alldone')).toHaveLength(1)
+    })
+
+    test('caps the combined list inside Deepgram’s recommended band', () => {
+        const many = Array.from({ length: 200 }, (_, index) => `Dynamicterm${index}`)
+        const merged = mergeVocabulary(many)
+        expect(merged).toHaveLength(MAX_TOTAL_KEYTERMS)
+        // The static glossary survives the cap; the dynamic tail is what loses.
+        for (const term of PRODUCT_KEYTERMS) expect(merged).toContain(term)
+    })
+
+    test('drops empty and non-string entries rather than putting them on the wire', () => {
+        expect(mergeVocabulary(['', '   ', null, undefined, 7, 'Valid'])).toEqual([...PRODUCT_KEYTERMS, 'Valid'])
+    })
+
+    test('tolerates a missing or malformed dynamic list', () => {
+        expect(mergeVocabulary()).toEqual(PRODUCT_KEYTERMS)
+        expect(mergeVocabulary(null)).toEqual(PRODUCT_KEYTERMS)
+        expect(mergeVocabulary('not an array')).toEqual(PRODUCT_KEYTERMS)
+    })
+
+    test('is the single source both layers read, so they cannot disagree', () => {
+        // If the acoustic and cleanup layers held different lists, the cleanup could "correct" a
+        // spelling Deepgram was told to produce.
+        const dynamic = ['Somova', 'Project Juno']
+        const keyterms = getTranscriptionKeyterms(dynamic)
+        const section = buildVocabularyPromptSection(dynamic)
+        for (const term of keyterms) expect(section).toContain(term)
+    })
+})
 
 describe('PRODUCT_KEYTERMS', () => {
     test('contains the brand that motivated the feature', () => {
@@ -146,8 +192,38 @@ describe('summarizeVocabularyUsage', () => {
     })
 
     test('tolerates missing or non-string input', () => {
-        expect(summarizeVocabularyUsage(undefined, undefined)).toEqual({ terms: {}, confusable: {} })
-        expect(summarizeVocabularyUsage(null, 42)).toEqual({ terms: {}, confusable: {} })
+        const empty = { terms: {}, confusable: {}, dynamic: { termCount: 0, raw: 0, cleaned: 0, matchedTerms: 0 } }
+        expect(summarizeVocabularyUsage(undefined, undefined)).toEqual(empty)
+        expect(summarizeVocabularyUsage(null, 42)).toEqual(empty)
+        expect(summarizeVocabularyUsage('x', 'y', null)).toEqual(empty)
+    })
+
+    describe('per-user terms', () => {
+        test('counts them in aggregate without ever naming them', () => {
+            // A log line reading `Somova: 1` would put a colleague's surname, and the fact that this
+            // user dictated it, into Cloud Logging. Totals answer the same question safely.
+            const summary = summarizeVocabularyUsage('Call Somova about Heyflow', 'Call Somova about Heyflow.', [
+                'Somova',
+                'Heyflow',
+                'Unused Name',
+            ])
+            expect(summary.dynamic).toEqual({ termCount: 3, raw: 2, cleaned: 2, matchedTerms: 2 })
+            expect(JSON.stringify(summary)).not.toContain('Somova')
+            expect(JSON.stringify(summary)).not.toContain('Heyflow')
+        })
+
+        test('shows the cleanup repairing a per-user term', () => {
+            // Absent from raw, present after cleanup => the LLM half did the work.
+            const summary = summarizeVocabularyUsage('Call so mova', 'Call Somova.', ['Somova'])
+            expect(summary.dynamic.raw).toBe(0)
+            expect(summary.dynamic.cleaned).toBe(1)
+        })
+
+        test('does not double-count a term the static glossary already reports by name', () => {
+            const summary = summarizeVocabularyUsage('Alldone', 'Alldone', ['Alldone', 'Somova'])
+            expect(summary.terms.Alldone).toEqual({ raw: 1, cleaned: 1 })
+            expect(summary.dynamic.termCount).toBe(1)
+        })
     })
 
     test('tracks every documented confusable brand form', () => {
