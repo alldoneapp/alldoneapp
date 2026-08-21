@@ -1661,18 +1661,6 @@ async function getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext = 
     return targets.map(buildExternalIntegrationToolSchema)
 }
 
-async function getExternalIntegrationToolName({ projectId, assistantId, requestUserId, integrationId, toolKey }) {
-    const normalizedIntegrationId = normalizeToolNameToken(integrationId)
-    const normalizedToolKey = normalizeToolNameToken(toolKey)
-    const targets = await getReachableExternalIntegrationTools({ projectId, assistantId, requestUserId })
-    const target = targets.find(
-        item =>
-            normalizeToolNameToken(item.integrationId) === normalizedIntegrationId &&
-            normalizeToolNameToken(item.toolKey) === normalizedToolKey
-    )
-    return target?.toolName || null
-}
-
 async function resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeContext = null) {
     if (!isExternalIntegrationToolName(toolName)) return null
 
@@ -13762,7 +13750,6 @@ module.exports = {
     isToolAllowedForExecution,
     filterAllowedToolsForRuntimeContext,
     getDynamicToolSchemasWithCache,
-    getExternalIntegrationToolName,
     getSilentModeFinalResponseText,
     // Optimized functions with caching
     getCachedEnvFunctions,

@@ -54,6 +54,30 @@ describe('system prompt contract', () => {
         expect(RAMBLER_SYSTEM_PROMPT).toContain('Detect the language of the dictation')
         expect(RAMBLER_SYSTEM_PROMPT).toContain('Do not default to the user app language')
     })
+
+    // PT-4648: the semantic half of the dictation vocabulary. Deepgram's keyterm prompting biases
+    // the acoustics towards the brand; only this prompt has the sentence and can tell the product
+    // "Alldone" from the ordinary phrase "all done".
+    test('carries the product glossary', () => {
+        const { PRODUCT_KEYTERMS } = require('../shared/transcriptionVocabulary')
+        for (const term of PRODUCT_KEYTERMS) {
+            expect(RAMBLER_SYSTEM_PROMPT).toContain(term)
+        }
+    })
+
+    test('disambiguates the brand from the ordinary phrase in BOTH directions', () => {
+        // Pushing "Alldone" without protecting "all done" just trades one error for its mirror.
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Alldone')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('all done')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Decide from the sentence')
+    })
+
+    test('keeps the glossary in the SYSTEM prompt, which is the cached prefix', () => {
+        // The glossary never varies, so it must not ride along in the per-request user content
+        // where it would defeat prompt caching on every single dictation.
+        const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'generic' })
+        expect(content).not.toContain('Known product vocabulary')
+    })
 })
 
 describe('buildRamblerUserContent', () => {
