@@ -211,6 +211,39 @@ installed but no component converted, the untouched 2021 handler works again and
 nested cases fail, which is what demonstrates the legacy bridge repairs the other ~116 popups
 without editing them. With the full fix, all 16 pass.
 
+### `at2397/` — the @-mention popup must paint above the popup that hosts its input
+
+> "If I do at-mention in the 'Add task' popup, the at-mention popup is rendered below the
+> 'Add task' popup but should be rendered above it"
+
+Why a browser test: this is a CSS **stacking-order** defect, and jsdom has no paint order at
+all — it will report two overlapping elements and has no opinion about which one the user can
+see. A Jest test can assert the z-index _values_ and reason about the rest, but it cannot
+verify the claim the fix actually makes, which is "the mention list is the element under the
+cursor". Only a real browser answers that.
+
+The vendored popover library portals every popover to `document.body`, so the mention list and
+the popup hosting its input are **siblings in the root stacking context** — being nested
+inside that popup's React tree decides nothing. `createContainer` sets only
+overflow/position/top/left, so a popover that passes no `containerStyle` is left at
+`z-index: auto` and loses to any sibling that sets one. The "Add task" popup sets
+`zIndex: 9999` (`components/Tags/AddTaskTag.js`), so the list opened behind the card:
+correctly positioned, fully painted, and invisible.
+
+`run.js` renders a popover host carrying AddTaskTag's **real** container style together with
+the real `WrapperMentionsModal`, overlapping, and then asks the browser
+`document.elementFromPoint()` over the overlap. It asserts the two really do overlap (else the
+run proves nothing), that the hit lands inside the mention portal, and that the mention portal's
+z-index is strictly above the host's — the last one so a pass can never be an accident of DOM
+order. Desktop and mobile viewports both run.
+
+The host popup is deliberately a plain popover carrying AddTaskTag's container style rather
+than AddTaskTag itself: the harness must run against the **pre-fix** code to prove it catches
+the defect, and mounting the whole create-task popup would drag in project/user fixtures that
+have nothing to do with stacking. Verified both ways — against the pre-fix code both viewports
+fail on the reported symptom (`hit HOST popup`, `mention z-index=""`), and both pass with the
+fix.
+
 ### `offline/` — offline support end-to-end machinery (OFFLINE_SUPPORT_PLAN.md Stage 8)
 
 Drives the real offline composition through Playwright's `context.setOffline()`, which
