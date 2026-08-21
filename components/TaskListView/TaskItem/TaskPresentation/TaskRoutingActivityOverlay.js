@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, View } from 'react-native'
 
-import { colors, hexColorToRGBa } from '../../../styles/global'
+import { colors } from '../../../styles/global'
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
 import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRoutingActivity'
 
@@ -28,18 +28,59 @@ import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRo
  * overlay is decoration, and `TaskRoutingTag` is the message.
  */
 
-// Slower than the ghost shimmer (1.4s). A loading ghost is covering nothing and wants to look
-// busy; this band sweeps across a task the user can read and act on, so it has to stay in the
-// background of attention rather than pull at it.
-const SWEEP_DURATION = '2.2s'
-const SWEEP_WIDTH = '45%'
-const SWEEP_FROM = '-160%'
-const SWEEP_TO = '360%'
+/**
+ * The sweep is deliberately quiet, and the numbers below are the whole of that decision.
+ *
+ * The first version of this overlay read as an aggressive dark-blue stripe crossing the row, for
+ * two compounding reasons that are worth writing down because neither is visible in the source:
+ *
+ *   1. `hexColorToRGBa(hex, 0)` does NOT return a transparent colour. Its alpha branch is
+ *      `if (alpha)`, so a zero alpha is falsy and it falls through to the OPAQUE `rgb(…)` form.
+ *      The gradient therefore compiled to
+ *      `linear-gradient(90deg, rgb(0,127,255) 0%, rgba(0,127,255,0.12) 50%, rgb(0,127,255) 100%)`
+ *      — a solid #007FFF band with a pale stripe down its middle, i.e. the exact inverse of the
+ *      intended shimmer. Nothing warns about this: the value is a valid colour, the gradient
+ *      renders, and the code reads as if it says "transparent". `sweepStop` below builds the
+ *      stops itself so a zero alpha can never silently become opaque again.
+ *   2. Even discounting that, `Primary100` (#007FFF) is the app's saturated action blue. A band
+ *      of it passing over a title the user is mid-read competes with the text for attention.
+ *
+ * So the tint is now taken from `UtilityBlue150`, a colour that is already pale before any alpha
+ * is applied — the failure mode of a compositing mistake is then a slightly-too-visible pastel
+ * rather than a saturated slab. At `SWEEP_PEAK_ALPHA` it composites over a white row to roughly
+ * #E3F1FF: lighter than `UtilityBlue112`, the palette's own quietest informational surface, and
+ * well under the `UtilityBlue125` flash `useLastAddedTaskColor` already gives a freshly added
+ * task. That ordering is the point — routing can last seconds, so it must sit below an
+ * affordance that lasts 600ms.
+ */
+const SWEEP_TINT_COLOR = colors.UtilityBlue150
+const SWEEP_PEAK_ALPHA = 0.3
 
-// A tint rather than the ghost's near-opaque white: it passes over live text, and washing the
-// title out mid-read would be worse than showing nothing.
-const SWEEP_TINT = hexColorToRGBa(colors.Primary100, 0.12)
-const SWEEP_TRANSPARENT = hexColorToRGBa(colors.Primary100, 0)
+// Wider, slower and linear, all three for the same reason. A narrow fast band reads as a stripe
+// travelling across the row; a wide one drifting at constant speed reads as light moving over it.
+// `ease-in-out` — what the loading ghosts use — is actively wrong here: it is slow at the ends of
+// the travel, which are OFF the row, and fastest across the middle, which is the part the user
+// sees. The travel range parks the band fully clear of both edges, so a little under half of each
+// cycle leaves the row completely untouched: the rest between passes is what keeps a
+// several-second wait from feeling insistent.
+const SWEEP_DURATION = '3.2s'
+const SWEEP_TIMING = 'linear'
+const SWEEP_WIDTH = '55%'
+export const SWEEP_FROM = '-190%'
+export const SWEEP_TO = '420%'
+
+/**
+ * Builds one gradient colour stop. Deliberately does not go through `hexColorToRGBa` — see the
+ * note above; `alpha: 0` there means "opaque".
+ */
+const sweepStop = alpha => {
+    const hex = SWEEP_TINT_COLOR.replace('#', '')
+    const [r, g, b] = [0, 2, 4].map(offset => parseInt(hex.slice(offset, offset + 2), 16))
+    return `rgba(${r},${g},${b},${alpha})`
+}
+
+const SWEEP_TINT = sweepStop(SWEEP_PEAK_ALPHA)
+const SWEEP_TRANSPARENT = sweepStop(0)
 
 // Placed to radiate from the leading slot, where the sparkle badge sits — so the burst reads as
 // coming FROM the badge that was just spinning rather than from nowhere.
@@ -188,7 +229,7 @@ const localStyles = StyleSheet.create({
         ],
         animationDuration: SWEEP_DURATION,
         animationIterationCount: 'infinite',
-        animationTimingFunction: 'ease-in-out',
+        animationTimingFunction: SWEEP_TIMING,
     },
     glow: {
         ...StyleSheet.absoluteFillObject,
