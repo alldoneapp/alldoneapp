@@ -97,7 +97,7 @@ describe('ProjectListModal leading option', () => {
 
 /**
  * AT-2390: the search scope picker needs a DIFFERENT leading row per tab —
- * "All active" on Active, "All archived" on Archived. Before this, the single
+ * "All projects" on Active, "All archived" on Archived. Before this, the single
  * leading row was hard-wired to the FIRST tab, so the Archived tab could only
  * ever list individual projects.
  */
@@ -108,14 +108,12 @@ describe('ProjectListModal per-tab leading option', () => {
             name: 'Active',
             projects: [{ id: 'project-a', name: 'Personal' }],
             leadingOptionId: ALL_PROJECTS_OPTION,
-            leadingOptionLabel: 'All active',
         },
         {
             key: 'archived',
             name: 'Archived',
             projects: [{ id: 'project-z', name: 'Old thing' }],
             leadingOptionId: ALL_ARCHIVED_PROJECTS_OPTION,
-            leadingOptionLabel: 'All archived',
         },
     ]
 
@@ -127,10 +125,9 @@ describe('ProjectListModal per-tab leading option', () => {
     it('renders each tab’s own leading row and commits that tab’s sentinel', async () => {
         const { tree, onSelectProject } = renderModal({ tabs })
 
-        // Active tab: the All-projects row, relabelled by the caller.
+        // Active tab: the All-projects row.
         const activeRow = tree.root.findByType('AllProjectItem')
         expect(tree.root.findAllByType('AllArchivedProjectItem')).toHaveLength(0)
-        expect(activeRow.props.label).toBe('All active')
         await act(async () => activeRow.props.onProjectSelect())
         expect(onSelectProject).toHaveBeenCalledWith({ id: ALL_PROJECTS_OPTION }, -1)
 
@@ -141,7 +138,6 @@ describe('ProjectListModal per-tab leading option', () => {
         // lingering as a second way to commit the wrong sentinel.
         const archivedRow = tree.root.findByType('AllArchivedProjectItem')
         expect(tree.root.findAllByType('AllProjectItem')).toHaveLength(0)
-        expect(archivedRow.props.label).toBe('All archived')
         await act(async () => archivedRow.props.onProjectSelect())
         expect(onSelectProject).toHaveBeenCalledWith({ id: ALL_ARCHIVED_PROJECTS_OPTION }, -1)
     })

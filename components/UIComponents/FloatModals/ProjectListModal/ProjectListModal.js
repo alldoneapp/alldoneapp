@@ -238,7 +238,6 @@ export default function ProjectListModal({
                             selectedProjectId,
                             onProjectSelect: () => commit(-1),
                             active: activeOptionIndex === -1,
-                            label: tabs?.[activeTabIndex]?.leadingOptionLabel,
                         })}
 
                     {currentProjects.length > 0 ? (

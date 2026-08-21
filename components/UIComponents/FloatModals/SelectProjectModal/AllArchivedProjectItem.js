@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { ALL_ARCHIVED_PROJECTS_OPTION } from './projectPickerConstants'
+import { ALL_ARCHIVED_PROJECTS_OPTION, ALL_ARCHIVED_SCOPE_LABEL } from './projectPickerConstants'
 
 /**
  * The leading "All archived" row of the search scope picker's Archived tab
@@ -12,7 +12,7 @@ import { ALL_ARCHIVED_PROJECTS_OPTION } from './projectPickerConstants'
  * same shape so ProjectListModal can render any of them at index -1 without
  * special-casing the layout or the keyboard cycle.
  */
-export default function AllArchivedProjectItem({ selectedProjectId, onProjectSelect, active, label }) {
+export default function AllArchivedProjectItem({ selectedProjectId, onProjectSelect, active }) {
     const onPress = () => {
         onProjectSelect(null, null, { id: ALL_ARCHIVED_PROJECTS_OPTION })
     }
@@ -31,7 +31,7 @@ export default function AllArchivedProjectItem({ selectedProjectId, onProjectSel
                                 active && localStyles.projectNameSelected,
                             ]}
                         >
-                            {translate(label || 'All archived')}
+                            {translate(ALL_ARCHIVED_SCOPE_LABEL)}
                         </Text>
                     </View>
 

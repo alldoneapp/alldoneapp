@@ -104,12 +104,6 @@ export default function GlobalSearchModal() {
     // resets to off every time Search is opened and the default search
     // behaviour is unchanged.
     const [createdByMeOnly, setCreatedByMeOnly] = useState(false)
-    // Search scope (TYPESENSE_MIGRATION.md Phase 3): an all-projects search covers only
-    // ACTIVE projects unless these are switched on. Typesense indexes everything, so what
-    // used to be hidden by index absence (archived/template/guide records simply not
-    // existing in Algolia) must now be an explicit scope choice. Component state for the
-    // same reset-on-open reason as createdByMeOnly.
-    const [includeArchived, setIncludeArchived] = useState(false)
     // Which bucket each project belongs to, from updateTemporaryProjectsAndUsers — the
     // per-user categorization (archived is per-user!) that scope filtering needs.
     const [projectBuckets, setProjectBuckets] = useState({
@@ -523,20 +517,20 @@ export default function GlobalSearchModal() {
         hidePopup(event)
     }
 
-    // Projects an all-projects search runs against. Archived projects are excluded
-    // unless their chip is on: their records EXIST in the index (Typesense indexes
-    // everything), so scope must be an explicit filter choice rather than the index
-    // absence that used to hide them. Template/guide projects are NEVER part of an
-    // all-projects search — picking one explicitly in the scope picker is the only
-    // way to search them (the "Include templates & guides" toggle was removed).
+    // The projects the chosen scope resolves to. Every record EXISTS in the index
+    // (Typesense indexes archived, template and guide projects too), so what is
+    // searched is decided here and nowhere else — unlike the Algolia era, where
+    // absence from the index did the filtering.
+    //
+    // AT-2390: the scope is the ONLY archived control now. "All projects" means
+    // the active ones, exactly as it always did; archived projects are reached by
+    // picking "All archived" or one of them by name. Template/guide projects are
+    // never part of a group scope — picking one explicitly is the only way to
+    // search them.
     const getProjectsInSearchScope = () => {
         if (inSelectedProject) return [selectedProject]
-        if (isAllArchivedScope) return projects.filter(project => projectBuckets.archivedIds.includes(project.id))
-        return projects.filter(project => {
-            if (projectBuckets.activeIds.includes(project.id)) return true
-            if (includeArchived && projectBuckets.archivedIds.includes(project.id)) return true
-            return false
-        })
+        const groupIds = isAllArchivedScope ? projectBuckets.archivedIds : projectBuckets.activeIds
+        return projects.filter(project => groupIds.includes(project.id))
     }
 
     // Shared result processing for both engines: groups hits by project, applies the
@@ -750,13 +744,17 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [createdByMeOnly])
 
-    // Same immediate re-run for the archived-scope chip.
-    const scopeAppliedRef = useRef(includeArchived)
+    // Same immediate re-run when the SCOPE changes. This used to watch the
+    // archived chip, which was the only scope control that re-ran anything —
+    // changing the picked project left the old results on screen until the user
+    // pressed Search again. With the chip gone (AT-2390) the picker is the only
+    // way to reach archived results, so it has to be the thing that re-runs.
+    const scopeAppliedRef = useRef(selectedProject.id)
     useEffect(() => {
-        if (scopeAppliedRef.current === includeArchived) return
-        scopeAppliedRef.current = includeArchived
+        if (scopeAppliedRef.current === selectedProject.id) return
+        scopeAppliedRef.current = selectedProject.id
         if (localText.trim() !== '') onSearch()
-    }, [includeArchived])
+    }, [selectedProject.id])
 
     // Desktop: a window-centered card at the L token width (round-3 centering
     // policy; the old marginLeft sidebar offset pushed it right of center).
@@ -822,9 +820,6 @@ export default function GlobalSearchModal() {
                 }}
                 createdByMeOnly={createdByMeOnly}
                 onToggleCreatedByMe={() => setCreatedByMeOnly(!createdByMeOnly)}
-                includeArchived={includeArchived}
-                onToggleArchived={() => setIncludeArchived(!includeArchived)}
-                showArchivedChip={!inSelectedProject}
                 disabled={projects.length === 0}
             />
 

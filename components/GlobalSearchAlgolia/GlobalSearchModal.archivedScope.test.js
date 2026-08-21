@@ -275,6 +275,40 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         expect(component.root.findByType(SelectProjectModalInSearch).props.showTemplateTab).toBe(false)
     })
 
+    it('re-runs an existing search immediately when the scope changes', async () => {
+        // The archived TOGGLE used to be the only scope control that re-ran the
+        // query; changing the picked project left stale results on screen until
+        // the user pressed Search again. With the toggle gone the picker is the
+        // only way to reach archived results, so it has to re-run.
+        await mount()
+        await search('venture')
+        expect(searchedProjectIds()).toEqual(['project-active', 'project-active-2'])
+
+        searchCalls.length = 0
+        await chooseScope(ALL_ARCHIVED_PROJECTS_OPTION)
+
+        expect(searchCalls).toHaveLength(5)
+        expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
+    })
+
+    it('does not fire a search when the scope changes with an empty term', async () => {
+        await mount()
+        await chooseScope(ALL_ARCHIVED_PROJECTS_OPTION)
+
+        expect(searchCalls).toHaveLength(0)
+    })
+
+    it('offers no archived toggle beside the scope chip', async () => {
+        // Archived is a scope now. Leaving the old toggle in place would be two
+        // controls for one idea, one of which could contradict the other.
+        await mount()
+
+        const archivedToggle = component.root
+            .findAllByType(ToggleChip)
+            .find(toggle => toggle.props.testID === 'search-filter-archived')
+        expect(archivedToggle).toBeUndefined()
+    })
+
     it('leaves the created-by-me chip working', async () => {
         // Sanity check that reworking the filter row did not disturb its sibling.
         await mount()

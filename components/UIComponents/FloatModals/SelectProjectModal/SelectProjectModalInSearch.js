@@ -11,12 +11,7 @@ import {
 } from '../../../SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ProjectListModal from '../ProjectListModal/ProjectListModal'
-import {
-    ALL_ACTIVE_SCOPE_LABEL,
-    ALL_ARCHIVED_PROJECTS_OPTION,
-    ALL_ARCHIVED_SCOPE_LABEL,
-    ALL_PROJECTS_OPTION,
-} from './projectPickerConstants'
+import { ALL_ARCHIVED_PROJECTS_OPTION, ALL_PROJECTS_OPTION } from './projectPickerConstants'
 import { translate } from '../../../../i18n/TranslationService'
 
 export { ALL_PROJECTS_OPTION, ALL_ARCHIVED_PROJECTS_OPTION }
@@ -83,7 +78,6 @@ export default function SelectProjectModalInSearch({
                 name: 'Active',
                 projects: ProjectHelper.sortProjects(byType[PROJECT_TYPE_ACTIVE], loggedUser.uid),
                 leadingOptionId: activeTabLeadingOptionId,
-                leadingOptionLabel: activeTabLeadingOptionId ? ALL_ACTIVE_SCOPE_LABEL : undefined,
             },
         ]
         if (showGuideTab)
@@ -104,7 +98,6 @@ export default function SelectProjectModalInSearch({
                 name: 'Archived',
                 projects: ProjectHelper.sortProjects(byType[PROJECT_TYPE_ARCHIVED], loggedUser.uid),
                 leadingOptionId: showAllArchivedProjects ? ALL_ARCHIVED_PROJECTS_OPTION : undefined,
-                leadingOptionLabel: showAllArchivedProjects ? ALL_ARCHIVED_SCOPE_LABEL : undefined,
             })
 
         const selectedType =

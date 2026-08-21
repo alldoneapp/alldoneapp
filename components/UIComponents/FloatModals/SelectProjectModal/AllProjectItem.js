@@ -5,15 +5,9 @@ import { useSelector } from 'react-redux'
 import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { ALL_PROJECTS_OPTION } from './projectPickerConstants'
+import { ALL_PROJECTS_LABEL, ALL_PROJECTS_OPTION } from './projectPickerConstants'
 
-/**
- * `label` (AT-2390) lets one caller rename this row without renaming it
- * everywhere: the search scope picker calls it "All active" (symmetric with its
- * "All archived" row and accurate about what it searches), while the
- * "Switch project" pickers built on the same shared row keep "All projects".
- */
-export default function AllProjectItem({ selectedProjectId, onProjectSelect, active, label }) {
+export default function AllProjectItem({ selectedProjectId, onProjectSelect, active }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
 
     const onPress = () => {
@@ -33,7 +27,7 @@ export default function AllProjectItem({ selectedProjectId, onProjectSelect, act
                                 active && localStyles.projectNameSelected,
                             ]}
                         >
-                            {translate(label || 'All projects')}
+                            {translate(ALL_PROJECTS_LABEL)}
                         </Text>
                     </View>
 

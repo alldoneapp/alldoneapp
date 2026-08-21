@@ -20,12 +20,9 @@ export const AUTOMATIC_PROJECT_OPTION = 'AUTOMATIC_PROJECT'
 // leading rows, and the scope chip has to be able to tell them apart.
 export const ALL_ARCHIVED_PROJECTS_OPTION = 'ALL_ARCHIVED_PROJECTS'
 
-// i18n keys for the leading rows. The search scope picker renames its
-// all-active row to "All active" (symmetric with "All archived", and accurate:
-// it never covered archived projects); the "Switch project" pickers built on
-// the same shared row keep "All projects".
+// i18n keys for the leading rows, kept next to the sentinels they belong to so
+// the rows and the search popup's scope chip cannot drift apart.
 export const ALL_PROJECTS_LABEL = 'All projects'
-export const ALL_ACTIVE_SCOPE_LABEL = 'All active'
 export const ALL_ARCHIVED_SCOPE_LABEL = 'All archived'
 
 export const isAutomaticProjectOption = projectId => projectId === AUTOMATIC_PROJECT_OPTION
