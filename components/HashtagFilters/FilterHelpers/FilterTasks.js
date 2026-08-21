@@ -1,7 +1,6 @@
 import store from '../../../redux/store'
 import { matchSearch } from '../HashtagFiltersHelper'
 import {
-    CALENDAR_TASK_INDEX,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
@@ -36,7 +35,6 @@ export const filterOpenTasks = openTasks => {
     for (let dateIndex in filteredTasks) {
         const mainTasks = filteredTasks[dateIndex][MAIN_TASK_INDEX]
         const mentionTasks = filteredTasks[dateIndex][MENTION_TASK_INDEX]
-        const calendarTasks = filteredTasks[dateIndex][CALENDAR_TASK_INDEX]
         const suggestedTasks = filteredTasks[dateIndex][SUGGESTED_TASK_INDEX]
         const workflowTasks = filteredTasks[dateIndex][WORKFLOW_TASK_INDEX]
         const observedTasks = filteredTasks[dateIndex][OBSERVED_TASKS_INDEX]
@@ -44,7 +42,6 @@ export const filterOpenTasks = openTasks => {
 
         filteredTasks[dateIndex][MAIN_TASK_INDEX] = filterTasksListByGoals(mainTasks)
         filteredTasks[dateIndex][MENTION_TASK_INDEX] = filterTasksListByGoals(mentionTasks)
-        filteredTasks[dateIndex][CALENDAR_TASK_INDEX] = filterTasksListByGoals(calendarTasks)
         filteredTasks[dateIndex][SUGGESTED_TASK_INDEX] = filterTasksByUsers(suggestedTasks)
         filteredTasks[dateIndex][WORKFLOW_TASK_INDEX] = filterTasksByUsers(workflowTasks)
         filteredTasks[dateIndex][OBSERVED_TASKS_INDEX] = filterTasksByUsers(observedTasks)
