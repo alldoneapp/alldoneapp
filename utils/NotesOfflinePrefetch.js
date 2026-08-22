@@ -10,8 +10,8 @@
  *
  * Deliberate bounds: NOTES_PER_PROJECT newest per project, MAX_NOTES_PER_RUN
  * overall (newest across projects win), one run per RUN_COOLDOWN_MS, sequential
- * downloads with a small gap so the warm-up never competes with the user. A
- * localStorage marker (noteId → lastEditionDate) skips notes whose content the
+ * downloads gated by real browser idle windows so warm-up never competes with
+ * navigation or typing. A localStorage marker (noteId → lastEditionDate) skips notes whose content the
  * store already has at that edition, so steady-state runs are nearly free.
  *
  * Never touches a note that is currently open (the live editor owns that
@@ -28,12 +28,14 @@ import { createNoteLocalPersistence } from '../components/NotesView/NotesDV/Edit
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { getPerformanceDiagnostics } from './performance/performanceDiagnostics'
 import { logPerformanceMeasurement, performanceNow, startPerformanceTrace } from './performance/performanceLogger'
+import { isUserEditing } from './editingGuard'
 
 export const NOTES_PER_PROJECT = 5
 export const MAX_NOTES_PER_RUN = 30
 const PREFETCH_DELAY_AFTER_LOGIN_MS = 15000
 const RUN_COOLDOWN_MS = 10 * 60 * 1000
-const DELAY_BETWEEN_NOTES_MS = 250
+export const PREFETCH_IDLE_RETRY_MS = 1000
+export const PREFETCH_IDLE_MIN_BUDGET_MS = 10
 // Above this size the y-indexeddb write itself gets heavy; the note is still
 // available offline once the user opens it normally.
 const MAX_NOTE_CONTENT_BYTES = 2 * 1024 * 1024
@@ -46,6 +48,48 @@ let listenersInstalled = false
 let diagnosticSkipLogged = false
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+const defaultScheduleIdle = callback => {
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        return window.requestIdleCallback(callback, { timeout: 5000 })
+    }
+    return setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0)
+}
+
+export const isNotesPrefetchBusy = () => {
+    const state = store.getState()
+    if ((state.isLoadingData || 0) > 0 || isUserEditing(state)) return true
+    try {
+        return typeof navigator !== 'undefined' && !!navigator.scheduling?.isInputPending?.()
+    } catch (error) {
+        return false
+    }
+}
+
+/**
+ * Wait for an actual idle budget, not merely a fixed delay. A timed-out idle
+ * callback has no budget and is rescheduled, so note downloads/IndexedDB writes
+ * never win a scheduling race against navigation or typing.
+ */
+export const waitForNotesPrefetchIdle = ({
+    scheduleIdle = defaultScheduleIdle,
+    isBusy = isNotesPrefetchBusy,
+    retryMs = PREFETCH_IDLE_RETRY_MS,
+} = {}) => {
+    return new Promise(resolve => {
+        const attempt = () => {
+            scheduleIdle(deadline => {
+                const timeRemaining = typeof deadline?.timeRemaining === 'function' ? deadline.timeRemaining() : 0
+                if (!isBusy() && !deadline?.didTimeout && timeRemaining >= PREFETCH_IDLE_MIN_BUDGET_MS) {
+                    resolve()
+                } else {
+                    setTimeout(attempt, retryMs)
+                }
+            })
+        }
+        attempt()
+    })
+}
 
 export const readPrefetchMarkers = () => {
     try {
@@ -155,12 +199,18 @@ export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
     running = true
     lastRunAt = Date.now()
     const projectCount = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds.length : 0
+    const scheduledUserId = loggedUser.uid
     const trace = startPerformanceTrace('notes_offline_prefetch', { project_count: projectCount })
     let networkDurationMs = 0
     let indexedDbDurationMs = 0
     let byteCount = 0
     let errorCount = 0
     try {
+        await waitForNotesPrefetchIdle()
+        if (store.getState().loggedUser?.uid !== scheduledUserId) {
+            trace.end('user_changed', { outcome: 'cancelled' })
+            return
+        }
         const listingStartedAt = performanceNow()
         const candidates = await fetchRecentNoteCandidates()
         networkDurationMs += performanceNow() - listingStartedAt
@@ -179,7 +229,9 @@ export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
 
         let warmed = 0
         for (const { projectId, noteId, lastEditionDate } of toPrefetch) {
+            await waitForNotesPrefetchIdle()
             if (isBrowserOffline()) break
+            if (store.getState().loggedUser?.uid !== scheduledUserId) break
             if (store.getState().activeNoteId === noteId) continue
             try {
                 const downloadStartedAt = performanceNow()
@@ -208,7 +260,6 @@ export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
                 errorCount++
                 console.warn(`[NotesPrefetch] Warming note ${noteId} failed:`, error)
             }
-            await wait(DELAY_BETWEEN_NOTES_MS)
         }
         writePrefetchMarkers(markers)
         if (warmed > 0) console.log(`[NotesPrefetch] Warmed ${warmed} note(s) for offline use`)
