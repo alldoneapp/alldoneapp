@@ -44,6 +44,9 @@ const ALLOWED_EVENTS = new Set([
     'connection_health_change',
     'connection_stale_detected',
     'connection_manual_reconnect',
+    // Sampled client performance measurements. Values are deliberately limited
+    // to aggregate counts, timings and stable route names — never object ids.
+    'performance_trace',
 ])
 
 const ALLOWED_PARAMETERS = new Set([
@@ -78,6 +81,30 @@ const ALLOWED_PARAMETERS = new Set([
     'duration_ms',
     'browser_online',
     'outcome',
+    // Sampled performance telemetry.
+    'trace_name',
+    'trace_id',
+    'phase',
+    'step_duration_ms',
+    'project_count',
+    'watcher_count',
+    'document_count',
+    'task_count',
+    'subtask_count',
+    'write_count',
+    'batch_count',
+    'candidate_count',
+    'note_count',
+    'byte_count',
+    'error_count',
+    'network_duration_ms',
+    'indexeddb_duration_ms',
+    'max_duration_ms',
+    'from_cache',
+    'diagnostic_mode',
+    'dom_interactive_ms',
+    'dom_content_loaded_ms',
+    'load_event_ms',
 ])
 
 const OBJECT_EVENT_TYPES = {
@@ -385,6 +412,8 @@ const getPageDefinition = pageKey => {
 
     return { path, title }
 }
+
+export const getAnalyticsPagePath = pageKey => getPageDefinition(pageKey).path
 
 export function trackPageView(pageKey) {
     if (!initializeAnalytics()) return false

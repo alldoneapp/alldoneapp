@@ -47,6 +47,8 @@ import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
+import { startPerformanceTrace } from '../performance/performanceLogger'
 import { isBrowserOffline } from '../connectionState'
 import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
@@ -2190,6 +2192,11 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
 }
 
 export async function setTaskParentGoalMultiple(tasks, goal) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'parent_goal',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(db)
     const goalId = goal ? goal.id : null
     const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
@@ -2202,8 +2209,10 @@ export async function setTaskParentGoalMultiple(tasks, goal) {
         task.lockKey = lockKey
     }
     await Promise.all(promises)
+    performanceTrace.mark('task_data_prepared')
     store.dispatch(updateAllSelectedTasks(tasks))
     await batch.commit()
+    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 export const setTaskParentGoalFeedsChain = async (projectId, taskId, newParentGoalId, oldParentGoalId, task) => {
@@ -2271,6 +2280,12 @@ export const setTaskAlertFeedsChain = async (projectId, taskId, alertEnabled, al
 }
 
 export async function setTaskDueDateMultiple(tasks, dueDate) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'due_date',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
     const batch = new BatchWrapper(db)
     const promises = []
@@ -2279,7 +2294,9 @@ export async function setTaskDueDateMultiple(tasks, dueDate) {
         promises.push(setTaskDueDate(task.projectId, task.id, newDueDate, task, task.isObservedTask, batch))
     }
     await Promise.all(promises)
+    performanceTrace.mark('task_data_prepared')
     await batch.commit()
+    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObservedTask, didResetPriority = false) => {
@@ -2311,13 +2328,21 @@ export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObse
 }
 
 export async function setTaskToBacklogMultiple(tasks) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'backlog',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const batch = new BatchWrapper(db)
     const promises = []
     for (let task of tasks) {
         promises.push(setTaskToBacklog(task.projectId, task.id, task, task.isObservedTask, batch))
     }
     await Promise.all(promises)
+    performanceTrace.mark('task_data_prepared')
     await batch.commit()
+    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 /**
@@ -2690,6 +2715,11 @@ export async function offOnUserChange() {
 }
 
 export async function setFutureEstimationsMultiple(tasks, estimation) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'estimation',
+        task_count: tasks.length,
+    })
     const taskBatch = new BatchWrapper(db)
 
     for (const task of tasks) {
@@ -2701,6 +2731,7 @@ export async function setFutureEstimationsMultiple(tasks, estimation) {
             })
     }
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     const batch = new BatchWrapper(db)
     for (const task of tasks) {
@@ -2717,6 +2748,7 @@ export async function setFutureEstimationsMultiple(tasks, estimation) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export function addUniqueInstanceTypeToArray(array, element) {
@@ -3213,6 +3245,12 @@ export async function deleteTask(task, projectId) {
 }
 
 export async function deleteTaskMultiple(tasks) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'delete',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const deleteBatch = new BatchWrapper(db)
     const batch = new BatchWrapper(db)
 
@@ -3241,6 +3279,7 @@ export async function deleteTaskMultiple(tasks) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function deleteSubTaskFromParent(projectId, subtaskId, subtask, batch) {
@@ -5178,9 +5217,19 @@ export async function watchAllTabStickyNotes(projectId, callback) {
 const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
     let cacheChanges = []
     const gate = createCachedSnapshotGate(() => handleSnapshot)
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        {
+            object_type: isStickyWatcher ? 'sticky_notes' : 'notes',
+            scope: 'project',
+            source: 'notes_board',
+        },
+        { sampleRate: 0.02 }
+    )
     function handleSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
             return
         }

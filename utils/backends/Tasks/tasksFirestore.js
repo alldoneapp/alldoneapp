@@ -48,6 +48,7 @@ import {
 } from '../firestore'
 import store from '../../../redux/store'
 import { awaitWriteAck } from '../offlineWriteAck'
+import { startPerformanceTrace } from '../../performance/performanceLogger'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
     createSubtaskPromotedFeed,
@@ -1344,6 +1345,11 @@ export async function setTaskHighlight(projectId, taskId, highlightColor, task) 
 }
 
 export async function setTaskHighlightMultiple(highlightColor, tasks) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'highlight',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(getDb())
     const taskBatch = new BatchWrapper(getDb())
     const isHighlight = highlightColor.toLowerCase() !== '#ffffff'
@@ -1366,6 +1372,7 @@ export async function setTaskHighlightMultiple(highlightColor, tasks) {
         updateTaskData(task.projectId, task.id, { hasStar: highlightColor }, taskBatch)
     }
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     for (let task of tasks) {
         await createTaskHighlightedChangedFeed(task.projectId, task, task.id, isHighlight, batch)
@@ -1378,6 +1385,7 @@ export async function setTaskHighlightMultiple(highlightColor, tasks) {
         await tryAddFollower(task.projectId, followTaskData, batch)
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function setTaskObserverEstimations(projectId, taskId, oldEstimation, newEstimation, observerId) {
@@ -1589,11 +1597,17 @@ export async function setTaskAutoEstimation(projectId, task, autoEstimation, bat
 }
 
 export async function setTaskAutoEstimationMultiple(tasks, autoEstimation) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'auto_estimation',
+        task_count: tasks.length,
+    })
     const batch = new BatchWrapper(getDb())
     for (const task of tasks) {
         setTaskAutoEstimation(task.projectId, task, autoEstimation, batch)
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export function unfocusTaskInUsers(projectId, unfocusData, externalBatch) {
@@ -2021,6 +2035,12 @@ export async function setTaskAssigneeAndObservers(
 }
 
 export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'assignee',
+        task_count: tasks.length,
+        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    })
     const batch = new BatchWrapper(getDb())
     const taskBatch = new BatchWrapper(getDb())
 
@@ -2097,7 +2117,9 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
     }
 
     await Promise.all(promises)
+    performanceTrace.mark('parent_reads_complete')
     taskBatch.commit()
+    performanceTrace.mark('task_writes_queued')
 
     for (let task of tasks) {
         const { loggedUser: feedCreator } = store.getState()
@@ -2120,9 +2142,15 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
         }
     }
     batch.commit()
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function setTaskProject(currentProject, newProject, task, oldAssignee, newAssignee) {
+    const performanceTrace = startPerformanceTrace('move_task_project', {
+        object_type: 'task',
+        task_count: 1,
+        subtask_count: task.subtaskIds?.length || 0,
+    })
     const { loggedUser, projectUsers, route } = store.getState()
 
     const newProjectUsers = projectUsers[newProject.id]
@@ -2176,6 +2204,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     delete taskCopy.time
     delete taskCopy.projectId
     await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
+    performanceTrace.mark('target_task_created')
 
     if (route === 'TaskDetailedView') {
         NavigationService.navigate('TaskDetailedView', {
@@ -2199,6 +2228,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
         getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
     )
     await Promise.all(promises)
+    performanceTrace.mark('subtasks_copied')
 
     batch = new BatchWrapper(getDb())
     updateTaskData(currentProject.id, task.id, {}, batch)
@@ -2206,6 +2236,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     batch.commit()
 
     setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
+    performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
 export async function setTaskProjectWithGoal(currentProject, newProject, task, goal) {
@@ -3870,7 +3901,23 @@ export async function autoPostponeMultipleTasks(
     targetUserId = store.getState().currentUser.uid,
     { background = false } = {}
 ) {
-    return callAutoPostponeTasks(tasks, targetUserId, true, background)
+    const performanceTrace = startPerformanceTrace('bulk_task_update', {
+        object_type: 'task',
+        source: 'auto_postpone',
+        task_count: tasks.length,
+        batch_count: Math.ceil(tasks.length / 500),
+    })
+    try {
+        const result = await callAutoPostponeTasks(tasks, targetUserId, true, background)
+        performanceTrace.end('server_acked', {
+            outcome: 'success',
+            document_count: result.updatedCount || 0,
+        })
+        return result
+    } catch (error) {
+        performanceTrace.fail('operation_failed')
+        throw error
+    }
 }
 
 export async function autoPostponeTask(projectId, task, isObservedTask, targetUserId, { background = false } = {}) {
