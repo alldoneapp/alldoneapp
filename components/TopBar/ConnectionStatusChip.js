@@ -10,6 +10,7 @@ import {
     CONNECTION_HEALTH_LIVE,
     CONNECTION_HEALTH_OFFLINE,
     CONNECTION_HEALTH_RECONNECTING,
+    CONNECTION_HEALTH_SLOW,
     CONNECTION_HEALTH_STALE,
 } from '../../utils/connectionHealth'
 import { translate } from '../../i18n/TranslationService'
@@ -27,6 +28,11 @@ import { translate } from '../../i18n/TranslationService'
  * and modal in the session.
  */
 export const CONNECTION_CHIP_PRESENTATION = {
+    [CONNECTION_HEALTH_SLOW]: {
+        icon: 'clock',
+        color: colors.UtilityYellow200,
+        label: 'Slow connection',
+    },
     [CONNECTION_HEALTH_RECONNECTING]: {
         icon: 'refresh-cw',
         color: colors.UtilityYellow200,

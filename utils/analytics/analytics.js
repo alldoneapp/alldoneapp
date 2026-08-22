@@ -42,6 +42,7 @@ const ALLOWED_EVENTS = new Set([
     // returns null by default, so an event missing here is silently dropped rather
     // than reported, with nothing failing anywhere to reveal it.
     'connection_health_change',
+    'connection_slow_detected',
     'connection_stale_detected',
     'connection_manual_reconnect',
     'connection_manual_offline',

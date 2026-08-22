@@ -71,10 +71,11 @@ describe('offline write-ack call sites', () => {
     })
 
     it('keeps the online path awaiting — durability there depends on it', () => {
-        // `awaitWriteAck` returns the write promise unchanged when online, so
-        // these call sites still await the real ack. Guarded here so a future
-        // "simplification" to a plain fire-and-forget is caught.
+        // `awaitWriteAck` settles from the real write acknowledgement while
+        // online. The wrapper only releases early if health later becomes
+        // stale/offline, so a plain fire-and-forget remains forbidden.
         const helper = read('utils/backends/offlineWriteAck.js')
-        expect(helper).toMatch(/if \(!isAppOffline\(\)\) return settled/)
+        expect(helper).toMatch(/if \(isAppOffline\(\)\) return continueWithoutServerAck\(settled, label\)/)
+        expect(helper).toMatch(/settled\.then\(/)
     })
 })

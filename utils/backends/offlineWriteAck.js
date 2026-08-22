@@ -1,5 +1,6 @@
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
+import { markServerContact, startConnectionLatencySample, subscribeConnectionHealth } from '../connectionHealth'
 
 /**
  * Offline-aware write-acknowledgement helpers (AT-2340).
@@ -60,7 +61,61 @@ export const isAppOffline = () => {
  */
 export const awaitWriteAck = (write, label = 'firestore write') => {
     const settled = Promise.resolve(write)
-    if (!isAppOffline()) return settled
+    if (isAppOffline()) return continueWithoutServerAck(settled, label)
+
+    const finishLatencySample = startConnectionLatencySample('write_ack')
+    return new Promise((resolve, reject) => {
+        let finished = false
+        let releasedOffline = false
+        let unsubscribe = () => {}
+
+        const cleanup = () => {
+            finishLatencySample()
+            unsubscribe()
+        }
+
+        const releaseForOfflineWork = () => {
+            if (finished) return
+            finished = true
+            releasedOffline = true
+            cleanup()
+            resolve()
+        }
+
+        settled.then(
+            value => {
+                if (finished) return
+                finished = true
+                markServerContact('write_ack')
+                cleanup()
+                resolve(value)
+            },
+            error => {
+                if (finished) {
+                    if (releasedOffline) {
+                        console.warn(
+                            `Offline write "${label}" did not reach the server; it stays queued locally.`,
+                            error
+                        )
+                    }
+                    return
+                }
+                finished = true
+                cleanup()
+                reject(error)
+            }
+        )
+
+        unsubscribe = subscribeConnectionHealth(nextHealth => {
+            if (nextHealth === 'stale' || nextHealth === 'offline') releaseForOfflineWork()
+        })
+
+        // Cover the narrow race between the initial level check and listener setup.
+        if (isAppOffline()) releaseForOfflineWork()
+    })
+}
+
+const continueWithoutServerAck = (settled, label) => {
     settled.catch(error => {
         console.warn(`Offline write "${label}" did not reach the server; it stays queued locally.`, error)
     })
