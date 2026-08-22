@@ -70,6 +70,27 @@ describe('ConnectionStatusChip', () => {
         act(() => tree.unmount())
     })
 
+    it('offers offline work when the server is reachable but slow', async () => {
+        const workOffline = jest.spyOn(connectionHealth, 'continueOffline').mockResolvedValue('offline')
+        const tree = renderChip()
+        setHealth('slow')
+
+        expect(treeText(tree)).toContain('Slow connection')
+        const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
+        act(() => {
+            chip.props.onPress()
+        })
+
+        expect(treeText(tree)).toContain('Stay online')
+        const button = tree.root.findByProps({ testID: 'connection-status-work-offline' })
+        await act(async () => {
+            await button.props.onPress()
+        })
+
+        expect(workOffline).toHaveBeenCalledTimes(1)
+        act(() => tree.unmount())
+    })
+
     it('offers offline work as soon as the first probe enters reconnecting', async () => {
         const workOffline = jest.spyOn(connectionHealth, 'continueOffline').mockResolvedValue('offline')
         const tree = renderChip()

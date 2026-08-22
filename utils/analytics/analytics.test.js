@@ -122,6 +122,28 @@ describe('analytics', () => {
         expect(JSON.stringify(eventCall)).not.toContain('private-project-id')
     })
 
+    test('allows slow-connection telemetry with aggregate timing only', () => {
+        setAnalyticsConsent(ANALYTICS_CONSENT_GRANTED)
+
+        expect(
+            trackEvent('connection_slow_detected', {
+                duration_ms: 5000,
+                browser_online: true,
+                source: 'write_ack',
+                object_id: 'private-task-id',
+            })
+        ).toBe(true)
+
+        const eventCall = getDataLayerCalls().find(
+            call => call[0] === 'event' && call[1] === 'connection_slow_detected'
+        )
+        expect(eventCall[2]).toEqual({
+            duration_ms: 5000,
+            browser_online: true,
+            source: 'write_ack',
+        })
+    })
+
     test('denial disables analytics and prevents later events', () => {
         setAnalyticsConsent(ANALYTICS_CONSENT_GRANTED)
         document.cookie = '_ga=test-client-id; path=/'

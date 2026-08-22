@@ -32,7 +32,7 @@
  */
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
-import { markServerContact } from '../connectionHealth'
+import { markServerContact, startConnectionLatencySample } from '../connectionHealth'
 
 // Give a healthy server snapshot one short paint-sized head start, then render
 // the durable IndexedDB result. Four seconds made an online-but-reconnecting
@@ -74,6 +74,17 @@ export const createCachedSnapshotGate = (
     let graceTimer
     let latestSnapshot = null
     let disposed = false
+    let finishServerLatencySample = startConnectionLatencySample('server_snapshot')
+
+    const finishLatencySample = () => {
+        if (!finishServerLatencySample) return
+        finishServerLatencySample()
+        finishServerLatencySample = null
+    }
+
+    const ensureLatencySample = () => {
+        if (!finishServerLatencySample) finishServerLatencySample = startConnectionLatencySample('server_snapshot')
+    }
 
     const clearGraceTimer = () => {
         if (graceTimer !== undefined) {
@@ -100,6 +111,7 @@ export const createCachedSnapshotGate = (
             // that already distinguishes server from cache, so connection health
             // reads its evidence from here rather than adding a second listener
             // (PT-4660).
+            finishLatencySample()
             markServerContact('snapshot')
             clearGraceTimer()
             latestSnapshot = null
@@ -107,15 +119,18 @@ export const createCachedSnapshotGate = (
         }
         latestSnapshot = querySnapshot
         if (isOffline()) {
+            finishLatencySample()
             clearGraceTimer()
             return false
         }
+        ensureLatencySample()
         if (graceTimer === undefined && !disposed) graceTimer = setTimeout(flush, graceMs)
         return true
     }
 
     const dispose = () => {
         disposed = true
+        finishLatencySample()
         clearGraceTimer()
         latestSnapshot = null
     }
