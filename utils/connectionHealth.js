@@ -74,9 +74,11 @@ const HEALTH_STATES = new Set([
 ])
 
 let health = CONNECTION_HEALTH_LIVE
+let manualOffline = false
 let lastServerContactAt = null
 let lastChangeAt = null
 let probeInFlight = null
+let probeCycleId = 0
 let retryTimer
 let retryDelayMs = STALE_RETRY_BASE_MS
 
@@ -136,6 +138,9 @@ const documentIsHidden = () => !!documentRef && documentRef.visibilityState === 
 
 export const getConnectionHealth = () => health
 
+/** The user explicitly parked the transport to keep working from the local cache. */
+export const isManualOfflineMode = () => manualOffline
+
 export const getMillisSinceServerContact = () => (lastServerContactAt === null ? null : now() - lastServerContactAt)
 
 const clearRetryTimer = () => {
@@ -180,6 +185,9 @@ const setHealth = (nextHealth, trigger) => {
  */
 export const markServerContact = (trigger = 'snapshot') => {
     lastServerContactAt = now()
+    // A late server snapshot from the connection we just parked must not undo an
+    // explicit user choice. Reconnect now is the only exit from manual offline.
+    if (manualOffline) return
     if (health !== CONNECTION_HEALTH_LIVE) setHealth(CONNECTION_HEALTH_LIVE, trigger)
 }
 
@@ -241,13 +249,15 @@ const scheduleStaleRetry = () => {
     }, delay)
 }
 
-const runProbeCycle = async trigger => {
+const runProbeCycle = async (trigger, cycleId) => {
+    if (manualOffline) return health
     if (browserIsOffline()) {
         setHealth(CONNECTION_HEALTH_OFFLINE, trigger)
         return health
     }
 
     const first = await probeServer()
+    if (cycleId !== probeCycleId || manualOffline) return health
     if (first === 'ok') {
         markServerContact(trigger)
         return health
@@ -270,7 +280,13 @@ const runProbeCycle = async trigger => {
     setHealth(CONNECTION_HEALTH_RECONNECTING, trigger)
     await restartTransport()
 
+    // The offline action is offered as soon as reconnecting appears. The user can
+    // therefore choose it while the restart is in flight; do not start a second
+    // probe after that explicit choice.
+    if (cycleId !== probeCycleId || manualOffline) return health
+
     const second = await probeServer()
+    if (cycleId !== probeCycleId || manualOffline) return health
     if (second === 'ok') {
         markServerContact(trigger)
         return health
@@ -299,22 +315,58 @@ const runProbeCycle = async trigger => {
  * (resume + staleness tick + the manual button) probes once, not three times.
  */
 export const evaluateConnectionHealth = ({ trigger = 'manual' } = {}) => {
+    if (manualOffline) return Promise.resolve(health)
     if (probeInFlight) return probeInFlight
     clearRetryTimer()
-    probeInFlight = runProbeCycle(trigger)
-        .catch(error => {
-            console.warn('[ConnectionHealth] Probe cycle failed:', error)
-            return health
-        })
-        .finally(() => {
-            probeInFlight = null
-        })
+    const cycleId = ++probeCycleId
+    const cyclePromise = runProbeCycle(trigger, cycleId).catch(error => {
+        console.warn('[ConnectionHealth] Probe cycle failed:', error)
+        return health
+    })
+    const trackedPromise = cyclePromise.finally(() => {
+        if (probeInFlight === trackedPromise) probeInFlight = null
+    })
+    probeInFlight = trackedPromise
     return probeInFlight
+}
+
+/**
+ * Keep working from IndexedDB and queue writes until the user explicitly retries
+ * online. The transport may currently be inside the restart between the two
+ * five-second probes, so join that lease first and make our final operation the
+ * disable — otherwise the restart's enable could silently undo this choice.
+ */
+export const continueOffline = async () => {
+    const stateBefore = health
+    manualOffline = true
+    probeCycleId++
+    probeInFlight = null
+    clearRetryTimer()
+    setHealth(CONNECTION_HEALTH_OFFLINE, 'manual_offline')
+
+    // A no-op joins an existing restart, or briefly owns the lease when idle.
+    await runExclusiveFirestoreRestart(async () => {})
+    if (manualOffline) {
+        const db = getDbSafe()
+        if (db && typeof db.disableNetwork === 'function') {
+            try {
+                await db.disableNetwork()
+            } catch (error) {
+                console.warn('[ConnectionHealth] Failed to enter manual offline mode:', error)
+            }
+        }
+    }
+
+    track('connection_manual_offline', { state_from: stateBefore, outcome: health })
+    return health
 }
 
 /** The "Reconnect now" button. Always probes, whatever the current state. */
 export const reconnectNow = async () => {
     const stateBefore = health
+    manualOffline = false
+    probeCycleId++
+    probeInFlight = null
     setHealth(CONNECTION_HEALTH_RECONNECTING, 'manual_reconnect')
     // A manual reconnect is the user telling us they think it is broken — restart
     // the transport unconditionally rather than waiting for a probe to fail first.
@@ -356,6 +408,7 @@ export const installConnectionHealthMonitor = ({
 
     const tick = () => {
         if (documentIsHidden()) return
+        if (manualOffline) return
         if (browserIsOffline()) {
             setHealth(CONNECTION_HEALTH_OFFLINE, 'monitor')
             return
@@ -372,6 +425,7 @@ export const installConnectionHealthMonitor = ({
     }
 
     const onOnline = () => {
+        if (manualOffline) return
         // The browser's `online` event is optimistic (a captive portal fires it),
         // so recovery still has to be proven by a probe rather than assumed.
         evaluateConnectionHealth({ trigger: 'browser_online' }).catch(() => {})
@@ -394,9 +448,11 @@ export const installConnectionHealthMonitor = ({
 export const resetConnectionHealthForTests = () => {
     clearRetryTimer()
     health = CONNECTION_HEALTH_LIVE
+    manualOffline = false
     lastServerContactAt = null
     lastChangeAt = null
     probeInFlight = null
+    probeCycleId = 0
     retryDelayMs = STALE_RETRY_BASE_MS
     documentRef = null
     deps = {}

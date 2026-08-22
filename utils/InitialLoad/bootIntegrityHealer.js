@@ -35,17 +35,28 @@ let scheduledTimers = []
 let running = false
 let networkCyclesUsed = 0
 let recheckWhenBackOnline = null
+let recheckStoreUnsubscribe = null
 
 // The redux slice is debounced and is still '' during early boot (its listener is
 // installed from a component that only mounts once login resolves), so the very
 // first scheduled check at 1000ms would not see an offline browser at all.
-const isOffline = () => store.getState().connectionState === 'offline' || isBrowserOffline()
+const isOffline = () => {
+    const state = store.getState()
+    return (
+        state.connectionState === 'offline' ||
+        state.connectionHealth === 'offline' ||
+        state.connectionHealth === 'stale' ||
+        state.connectionHealth === 'reconnecting' ||
+        isBrowserOffline()
+    )
+}
 
 const removeRecheckListener = () => {
-    if (!recheckWhenBackOnline) return
-    if (typeof window !== 'undefined' && window.removeEventListener) {
+    if (recheckWhenBackOnline && typeof window !== 'undefined' && window.removeEventListener) {
         window.removeEventListener('online', recheckWhenBackOnline)
     }
+    if (recheckStoreUnsubscribe) recheckStoreUnsubscribe()
+    recheckStoreUnsubscribe = null
     recheckWhenBackOnline = null
 }
 
@@ -56,15 +67,21 @@ const removeRecheckListener = () => {
  */
 const scheduleRecheckWhenBackOnline = () => {
     if (recheckWhenBackOnline) return
-    if (typeof window === 'undefined' || !window.addEventListener) return
     recheckWhenBackOnline = () => {
+        // A browser `online` event is only a hint. Manual reconnect additionally
+        // transitions connectionHealth through reconnecting before it is proven
+        // live, so wait for both signals instead of running into a parked client.
+        if (isOffline()) return
         removeRecheckListener()
         // Let the transport settle before deciding what is "missing".
         setTimeout(() => {
             runBootIntegrityCheck().catch(error => console.warn('[BootIntegrity] Check failed:', error))
         }, RECHECK_AFTER_RECONNECT_MS)
     }
-    window.addEventListener('online', recheckWhenBackOnline)
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('online', recheckWhenBackOnline)
+    }
+    if (typeof store.subscribe === 'function') recheckStoreUnsubscribe = store.subscribe(recheckWhenBackOnline)
 }
 
 export const resetBootIntegrityHealerForTests = () => {

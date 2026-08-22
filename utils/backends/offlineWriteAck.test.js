@@ -1,9 +1,10 @@
 import { awaitWriteAck, isAppOffline } from './offlineWriteAck'
 
 let mockConnectionState = ''
+let mockConnectionHealth = 'live'
 
 jest.mock('../../redux/store', () => ({
-    getState: () => ({ connectionState: mockConnectionState }),
+    getState: () => ({ connectionState: mockConnectionState, connectionHealth: mockConnectionHealth }),
 }))
 
 const setBrowserOnline = online => {
@@ -13,6 +14,7 @@ const setBrowserOnline = online => {
 describe('awaitWriteAck', () => {
     beforeEach(() => {
         mockConnectionState = ''
+        mockConnectionHealth = 'live'
         setBrowserOnline(true)
         jest.spyOn(console, 'warn').mockImplementation(() => {})
     })
@@ -29,6 +31,14 @@ describe('awaitWriteAck', () => {
 
         mockConnectionState = ''
         setBrowserOnline(false)
+        expect(isAppOffline()).toBe(true)
+    })
+
+    it('uses the local write path when the server is stale or manually offline', () => {
+        mockConnectionHealth = 'stale'
+        expect(isAppOffline()).toBe(true)
+
+        mockConnectionHealth = 'offline'
         expect(isAppOffline()).toBe(true)
     })
 
