@@ -9,6 +9,8 @@ import {
     CONNECTION_HEALTH_OFFLINE,
     CONNECTION_HEALTH_RECONNECTING,
     CONNECTION_HEALTH_STALE,
+    continueOffline,
+    isManualOfflineMode,
     reconnectNow,
 } from '../../utils/connectionHealth'
 
@@ -39,9 +41,17 @@ export const CONNECTION_STATUS_COPY = {
     },
 }
 
+const MANUAL_OFFLINE_COPY = {
+    title: 'Alldone is offline',
+    description:
+        'You chose to work offline. Your changes are saved on this device and will sync when you try going online again.',
+}
+
 export default function ConnectionStatusModal({ connectionHealth, closeModal }) {
     const [reconnecting, setReconnecting] = useState(false)
-    const copy = CONNECTION_STATUS_COPY[connectionHealth]
+    const [switchingOffline, setSwitchingOffline] = useState(false)
+    const manualOffline = connectionHealth === CONNECTION_HEALTH_OFFLINE && isManualOfflineMode()
+    const copy = manualOffline ? MANUAL_OFFLINE_COPY : CONNECTION_STATUS_COPY[connectionHealth]
 
     if (!copy) return null
 
@@ -55,16 +65,39 @@ export default function ConnectionStatusModal({ connectionHealth, closeModal }) 
         }
     }
 
+    const onContinueOffline = async () => {
+        setSwitchingOffline(true)
+        try {
+            await continueOffline()
+        } finally {
+            setSwitchingOffline(false)
+            if (typeof closeModal === 'function') closeModal()
+        }
+    }
+
+    const canChooseOffline =
+        connectionHealth === CONNECTION_HEALTH_RECONNECTING || connectionHealth === CONNECTION_HEALTH_STALE
+
     return (
         <View style={[localStyles.container, applyPopoverWidth()]}>
             <Text style={localStyles.title}>{translate(copy.title)}</Text>
             <Text style={localStyles.description}>{translate(copy.description)}</Text>
             <View style={localStyles.buttonRow}>
+                {canChooseOffline && (
+                    <Button
+                        title={translate('Work offline')}
+                        type={'secondary'}
+                        onPress={onContinueOffline}
+                        disabled={switchingOffline}
+                        buttonStyle={localStyles.offlineButton}
+                        testID={'connection-status-work-offline'}
+                    />
+                )}
                 <Button
-                    title={translate('Reconnect now')}
+                    title={translate(manualOffline ? 'Try online again' : 'Reconnect now')}
                     type={'primary'}
                     onPress={onReconnect}
-                    disabled={reconnecting || connectionHealth === CONNECTION_HEALTH_RECONNECTING}
+                    disabled={reconnecting || switchingOffline || connectionHealth === CONNECTION_HEALTH_RECONNECTING}
                     testID={'connection-status-reconnect'}
                 />
             </View>
@@ -96,7 +129,12 @@ const localStyles = StyleSheet.create({
     },
     buttonRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         justifyContent: 'flex-end',
         marginTop: 16,
+    },
+    offlineButton: {
+        marginRight: 8,
+        marginBottom: 8,
     },
 })

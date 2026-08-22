@@ -70,6 +70,25 @@ describe('ConnectionStatusChip', () => {
         act(() => tree.unmount())
     })
 
+    it('offers offline work as soon as the first probe enters reconnecting', async () => {
+        const workOffline = jest.spyOn(connectionHealth, 'continueOffline').mockResolvedValue('offline')
+        const tree = renderChip()
+        setHealth('reconnecting')
+
+        const chip = tree.root.findByProps({ testID: 'connection-status-chip-reconnecting' })
+        act(() => {
+            chip.props.onPress()
+        })
+
+        const button = tree.root.findByProps({ testID: 'connection-status-work-offline' })
+        await act(async () => {
+            await button.props.onPress()
+        })
+
+        expect(workOffline).toHaveBeenCalledTimes(1)
+        act(() => tree.unmount())
+    })
+
     it('shows the offline chip', () => {
         const tree = renderChip()
         setHealth('offline')

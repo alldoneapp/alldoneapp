@@ -44,6 +44,7 @@ const ALLOWED_EVENTS = new Set([
     'connection_health_change',
     'connection_stale_detected',
     'connection_manual_reconnect',
+    'connection_manual_offline',
     // Sampled client performance measurements. Values are deliberately limited
     // to aggregate counts, timings and stable route names — never object ids.
     'performance_trace',
