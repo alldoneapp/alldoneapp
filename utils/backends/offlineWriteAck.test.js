@@ -1,10 +1,19 @@
 import { awaitWriteAck, isAppOffline } from './offlineWriteAck'
+import * as connectionHealth from '../connectionHealth'
 
 let mockConnectionState = ''
 let mockConnectionHealth = 'live'
+let mockHealthListeners
+let finishLatencySample
 
 jest.mock('../../redux/store', () => ({
     getState: () => ({ connectionState: mockConnectionState, connectionHealth: mockConnectionHealth }),
+}))
+
+jest.mock('../connectionHealth', () => ({
+    markServerContact: jest.fn(),
+    startConnectionLatencySample: jest.fn(),
+    subscribeConnectionHealth: jest.fn(),
 }))
 
 const setBrowserOnline = online => {
@@ -13,8 +22,16 @@ const setBrowserOnline = online => {
 
 describe('awaitWriteAck', () => {
     beforeEach(() => {
+        jest.clearAllMocks()
         mockConnectionState = ''
         mockConnectionHealth = 'live'
+        mockHealthListeners = new Set()
+        finishLatencySample = jest.fn()
+        connectionHealth.startConnectionLatencySample.mockReturnValue(finishLatencySample)
+        connectionHealth.subscribeConnectionHealth.mockImplementation(listener => {
+            mockHealthListeners.add(listener)
+            return () => mockHealthListeners.delete(listener)
+        })
         setBrowserOnline(true)
         jest.spyOn(console, 'warn').mockImplementation(() => {})
     })
@@ -40,6 +57,9 @@ describe('awaitWriteAck', () => {
 
         mockConnectionHealth = 'offline'
         expect(isAppOffline()).toBe(true)
+
+        mockConnectionHealth = 'slow'
+        expect(isAppOffline()).toBe(false)
     })
 
     it('waits for the server ack while online', async () => {
@@ -59,6 +79,26 @@ describe('awaitWriteAck', () => {
         resolveWrite('acked')
         await pending
         expect(settled).toBe(true)
+        expect(connectionHealth.startConnectionLatencySample).toHaveBeenCalledWith('write_ack')
+        expect(connectionHealth.markServerContact).toHaveBeenCalledWith('write_ack')
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps waiting while slow, but releases the operation when the user chooses offline', async () => {
+        let continued = false
+        const pending = awaitWriteAck(new Promise(() => {}), 'slow write').then(value => {
+            continued = true
+            return value
+        })
+
+        mockHealthListeners.forEach(listener => listener('slow'))
+        await Promise.resolve()
+        expect(continued).toBe(false)
+
+        mockHealthListeners.forEach(listener => listener('offline'))
+        await expect(pending).resolves.toBeUndefined()
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
+        expect(mockHealthListeners.size).toBe(0)
     })
 
     it('resolves the online path with the write result', async () => {

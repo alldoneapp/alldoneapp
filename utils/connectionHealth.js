@@ -14,6 +14,8 @@
  * The state machine, deliberately biased towards `live`:
  *
  *   live          the server was heard from recently — the normal state, renders nothing
+ *   slow          an interactive server read or write has waited at least five seconds —
+ *                 work can continue online or switch offline without a transport restart
  *   reconnecting  a probe failed once; the transport has been restarted and is being re-probed
  *   stale         two probes failed while the browser claims to be online — the app is
  *                 showing data of unknown age. THIS is the state the app could not see before.
@@ -40,6 +42,7 @@ import { isBrowserOffline } from './connectionState'
 import { runExclusiveFirestoreRestart } from './backends/firestoreRestartLease'
 
 export const CONNECTION_HEALTH_LIVE = 'live'
+export const CONNECTION_HEALTH_SLOW = 'slow'
 export const CONNECTION_HEALTH_RECONNECTING = 'reconnecting'
 export const CONNECTION_HEALTH_STALE = 'stale'
 export const CONNECTION_HEALTH_OFFLINE = 'offline'
@@ -62,12 +65,19 @@ export const STALENESS_CHECK_INTERVAL_MS = 60 * 1000
  */
 export const PROBE_TIMEOUT_MS = 5000
 
+/** Offer offline work when a real page read or write acknowledgement takes this long. */
+export const SLOW_CONNECTION_THRESHOLD_MS = 5000
+
+/** Keep the choice visible briefly after the delayed operation eventually completes. */
+export const SLOW_CONNECTION_LINGER_MS = 30 * 1000
+
 /** Backoff between re-probes while stale, doubling from the first value up to the cap. */
 export const STALE_RETRY_BASE_MS = 5000
 export const STALE_RETRY_MAX_MS = 60 * 1000
 
 const HEALTH_STATES = new Set([
     CONNECTION_HEALTH_LIVE,
+    CONNECTION_HEALTH_SLOW,
     CONNECTION_HEALTH_RECONNECTING,
     CONNECTION_HEALTH_STALE,
     CONNECTION_HEALTH_OFFLINE,
@@ -81,6 +91,10 @@ let probeInFlight = null
 let probeCycleId = 0
 let retryTimer
 let retryDelayMs = STALE_RETRY_BASE_MS
+let latencyGeneration = 0
+let activeSlowSamples = 0
+let slowRecoveryTimer
+const healthListeners = new Set()
 
 // Injected once by installConnectionHealthMonitor so the module stays importable
 // (and unit-testable) without pulling in the redux store, the Firebase client or
@@ -150,6 +164,19 @@ const clearRetryTimer = () => {
     }
 }
 
+const clearSlowRecoveryTimer = () => {
+    if (slowRecoveryTimer !== undefined) {
+        clearTimeout(slowRecoveryTimer)
+        slowRecoveryTimer = undefined
+    }
+}
+
+const invalidateLatencySamples = () => {
+    latencyGeneration++
+    activeSlowSamples = 0
+    clearSlowRecoveryTimer()
+}
+
 const setHealth = (nextHealth, trigger) => {
     if (!HEALTH_STATES.has(nextHealth) || nextHealth === health) return
     const previous = health
@@ -157,6 +184,14 @@ const setHealth = (nextHealth, trigger) => {
     const durationMs = lastChangeAt === null ? 0 : changedAt - lastChangeAt
     health = nextHealth
     lastChangeAt = changedAt
+
+    if (
+        nextHealth === CONNECTION_HEALTH_RECONNECTING ||
+        nextHealth === CONNECTION_HEALTH_STALE ||
+        nextHealth === CONNECTION_HEALTH_OFFLINE
+    ) {
+        invalidateLatencySamples()
+    }
 
     if (nextHealth === CONNECTION_HEALTH_LIVE) {
         retryDelayMs = STALE_RETRY_BASE_MS
@@ -176,6 +211,87 @@ const setHealth = (nextHealth, trigger) => {
         duration_ms: durationMs,
     })
     dispatchHealth(nextHealth)
+    healthListeners.forEach(listener => listener(nextHealth))
+}
+
+/** Observe health changes without coupling low-level write helpers to Redux. */
+export const subscribeConnectionHealth = listener => {
+    if (typeof listener !== 'function') return () => {}
+    healthListeners.add(listener)
+    return () => healthListeners.delete(listener)
+}
+
+const scheduleSlowRecovery = generation => {
+    clearSlowRecoveryTimer()
+    const lingerMs = deps.slowConnectionLingerMs || SLOW_CONNECTION_LINGER_MS
+    slowRecoveryTimer = setTimeout(() => {
+        slowRecoveryTimer = undefined
+        if (
+            generation !== latencyGeneration ||
+            activeSlowSamples > 0 ||
+            manualOffline ||
+            health !== CONNECTION_HEALTH_SLOW
+        ) {
+            return
+        }
+        invalidateLatencySamples()
+        setHealth(CONNECTION_HEALTH_LIVE, 'slow_connection_recovered')
+    }, lingerMs)
+}
+
+/**
+ * Times a real server-dependent operation. Unlike the reachability probe, this
+ * does not restart or park Firestore: it only exposes the user's offline choice
+ * when an otherwise working connection makes a page read or write feel stuck.
+ */
+export const startConnectionLatencySample = (source = 'server_operation') => {
+    if (
+        manualOffline ||
+        browserIsOffline() ||
+        (health !== CONNECTION_HEALTH_LIVE && health !== CONNECTION_HEALTH_SLOW)
+    ) {
+        return () => {}
+    }
+
+    const generation = latencyGeneration
+    const startedAt = now()
+    const thresholdMs = deps.slowConnectionThresholdMs || SLOW_CONNECTION_THRESHOLD_MS
+    let finished = false
+    let reportedSlow = false
+
+    const timer = setTimeout(() => {
+        if (
+            finished ||
+            generation !== latencyGeneration ||
+            manualOffline ||
+            browserIsOffline() ||
+            (health !== CONNECTION_HEALTH_LIVE && health !== CONNECTION_HEALTH_SLOW)
+        ) {
+            return
+        }
+
+        reportedSlow = true
+        activeSlowSamples++
+        clearSlowRecoveryTimer()
+        const wasAlreadySlow = health === CONNECTION_HEALTH_SLOW
+        setHealth(CONNECTION_HEALTH_SLOW, 'slow_server_operation')
+        if (!wasAlreadySlow) {
+            track('connection_slow_detected', {
+                duration_ms: now() - startedAt,
+                browser_online: !browserIsOffline(),
+                source,
+            })
+        }
+    }, thresholdMs)
+
+    return () => {
+        if (finished) return
+        finished = true
+        clearTimeout(timer)
+        if (!reportedSlow || generation !== latencyGeneration) return
+        activeSlowSamples = Math.max(0, activeSlowSamples - 1)
+        if (activeSlowSamples === 0 && health === CONNECTION_HEALTH_SLOW) scheduleSlowRecovery(generation)
+    }
 }
 
 /**
@@ -188,6 +304,9 @@ export const markServerContact = (trigger = 'snapshot') => {
     // A late server snapshot from the connection we just parked must not undo an
     // explicit user choice. Reconnect now is the only exit from manual offline.
     if (manualOffline) return
+    // A different snapshot arriving does not make the delayed interactive
+    // operation fast. Its own completion owns recovery from the `slow` state.
+    if (health === CONNECTION_HEALTH_SLOW) return
     if (health !== CONNECTION_HEALTH_LIVE) setHealth(CONNECTION_HEALTH_LIVE, trigger)
 }
 
@@ -447,6 +566,7 @@ export const installConnectionHealthMonitor = ({
 
 export const resetConnectionHealthForTests = () => {
     clearRetryTimer()
+    invalidateLatencySamples()
     health = CONNECTION_HEALTH_LIVE
     manualOffline = false
     lastServerContactAt = null
@@ -456,4 +576,5 @@ export const resetConnectionHealthForTests = () => {
     retryDelayMs = STALE_RETRY_BASE_MS
     documentRef = null
     deps = {}
+    healthListeners.clear()
 }

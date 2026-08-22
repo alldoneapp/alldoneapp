@@ -1,4 +1,12 @@
+jest.mock('../connectionHealth', () => ({
+    markServerContact: jest.fn(),
+    startConnectionLatencySample: jest.fn(),
+}))
+
 import { createCachedSnapshotGate, CACHED_SNAPSHOT_GRACE_MS } from './cachedSnapshotGate'
+import * as connectionHealth from '../connectionHealth'
+
+let finishLatencySample
 
 const makeSnapshot = ({ fromCache, docs = [], hasPendingWrites = false } = {}) => ({
     docs,
@@ -16,6 +24,9 @@ describe('createCachedSnapshotGate', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        jest.clearAllMocks()
+        finishLatencySample = jest.fn()
+        connectionHealth.startConnectionLatencySample.mockReturnValue(finishLatencySample)
     })
 
     afterEach(() => {
@@ -36,6 +47,9 @@ describe('createCachedSnapshotGate', () => {
         const { handler, delivered } = createHarness()
         handler(makeSnapshot({ fromCache: false }))
         expect(delivered).toHaveLength(1)
+        expect(connectionHealth.startConnectionLatencySample).toHaveBeenCalledWith('server_snapshot')
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
+        expect(connectionHealth.markServerContact).toHaveBeenCalledWith('snapshot')
     })
 
     it('buffers cached snapshots while online (unchanged online behavior)', () => {
@@ -119,6 +133,7 @@ describe('createCachedSnapshotGate', () => {
         jest.advanceTimersByTime(CACHED_SNAPSHOT_GRACE_MS)
 
         expect(unsubscribe).toHaveBeenCalledTimes(1)
+        expect(finishLatencySample).toHaveBeenCalledTimes(1)
         expect(delivered).toHaveLength(0)
     })
 

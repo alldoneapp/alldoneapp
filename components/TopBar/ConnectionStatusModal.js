@@ -8,6 +8,7 @@ import { translate } from '../../i18n/TranslationService'
 import {
     CONNECTION_HEALTH_OFFLINE,
     CONNECTION_HEALTH_RECONNECTING,
+    CONNECTION_HEALTH_SLOW,
     CONNECTION_HEALTH_STALE,
     continueOffline,
     isManualOfflineMode,
@@ -25,6 +26,11 @@ import {
  * imply that it is.
  */
 export const CONNECTION_STATUS_COPY = {
+    [CONNECTION_HEALTH_SLOW]: {
+        title: 'Slow connection',
+        description:
+            'Alldone is taking longer than usual to receive data from the server. You can stay online or work offline and sync your changes later.',
+    },
     [CONNECTION_HEALTH_RECONNECTING]: {
         title: 'Reconnecting',
         description: 'Alldone is checking the connection to the server. This usually takes a few seconds.',
@@ -76,7 +82,10 @@ export default function ConnectionStatusModal({ connectionHealth, closeModal }) 
     }
 
     const canChooseOffline =
-        connectionHealth === CONNECTION_HEALTH_RECONNECTING || connectionHealth === CONNECTION_HEALTH_STALE
+        connectionHealth === CONNECTION_HEALTH_SLOW ||
+        connectionHealth === CONNECTION_HEALTH_RECONNECTING ||
+        connectionHealth === CONNECTION_HEALTH_STALE
+    const stayOnline = connectionHealth === CONNECTION_HEALTH_SLOW
 
     return (
         <View style={[localStyles.container, applyPopoverWidth()]}>
@@ -94,9 +103,9 @@ export default function ConnectionStatusModal({ connectionHealth, closeModal }) 
                     />
                 )}
                 <Button
-                    title={translate(manualOffline ? 'Try online again' : 'Reconnect now')}
+                    title={translate(manualOffline ? 'Try online again' : stayOnline ? 'Stay online' : 'Reconnect now')}
                     type={'primary'}
-                    onPress={onReconnect}
+                    onPress={stayOnline ? closeModal : onReconnect}
                     disabled={reconnecting || switchingOffline || connectionHealth === CONNECTION_HEALTH_RECONNECTING}
                     testID={'connection-status-reconnect'}
                 />

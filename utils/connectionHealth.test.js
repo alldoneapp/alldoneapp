@@ -4,6 +4,7 @@ import {
     CONNECTION_HEALTH_LIVE,
     CONNECTION_HEALTH_OFFLINE,
     CONNECTION_HEALTH_RECONNECTING,
+    CONNECTION_HEALTH_SLOW,
     CONNECTION_HEALTH_STALE,
     STALE_RETRY_MAX_MS,
     continueOffline,
@@ -16,6 +17,7 @@ import {
     nextStaleRetryDelay,
     reconnectNow,
     resetConnectionHealthForTests,
+    startConnectionLatencySample,
 } from './connectionHealth'
 import { resetFirestoreRestartLeaseForTests } from './backends/firestoreRestartLease'
 
@@ -96,11 +98,51 @@ describe('connectionHealth', () => {
     afterEach(() => {
         resetConnectionHealthForTests()
         resetFirestoreRestartLeaseForTests()
+        jest.useRealTimers()
         console.warn.mockRestore()
     })
 
     it('is live before anything has happened', () => {
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
+    })
+
+    it('offers offline work when a real server operation stays slow despite other server traffic', () => {
+        jest.useFakeTimers()
+        let clock = 1000
+        const { dispatched, tracked, stop } = install({
+            db: createFakeDb(['ok']),
+            now: () => clock,
+            slowConnectionThresholdMs: 5000,
+            slowConnectionLingerMs: 30000,
+        })
+
+        const finish = startConnectionLatencySample('write_ack')
+        clock += 5000
+        jest.advanceTimersByTime(5000)
+
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
+        expect(dispatched).toContain(CONNECTION_HEALTH_SLOW)
+        expect(tracked).toContainEqual({
+            name: 'connection_slow_detected',
+            params: { duration_ms: 5000, browser_online: true, source: 'write_ack' },
+        })
+
+        // Other snapshots prove reachability, but they do not make this delayed
+        // interactive operation fast or hide the user's offline choice.
+        markServerContact('snapshot')
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
+
+        finish()
+        clock += 29999
+        jest.advanceTimersByTime(29999)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
+
+        clock += 1
+        jest.advanceTimersByTime(1)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
+
+        stop()
+        jest.useRealTimers()
     })
 
     it('does nothing and returns a noop without a window', () => {
