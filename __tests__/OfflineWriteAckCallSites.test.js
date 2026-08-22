@@ -35,7 +35,7 @@ describe('offline write-ack call sites', () => {
     it('routes the task-completion commit through awaitWriteAck', () => {
         const source = read(TASKS)
 
-        expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/offlineWriteAck'/)
+        expect(source).toMatch(/import \{[^}]*\bawaitWriteAck\b[^}]*\} from '\.\.\/offlineWriteAck'/)
         expect(source).toMatch(/awaitWriteAck\(taskBatch\.commit\(\)/)
         // The bare await is what made XP / done feed / follower unreachable.
         expect(source).not.toMatch(/\n {4}await taskBatch\.commit\(\)/)
