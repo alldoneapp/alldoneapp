@@ -23,20 +23,44 @@
  * so a persistent cache would only ever hold one session's throwaway data while
  * making emulator runs less deterministic.
  */
+import { getPerformanceDiagnostics } from '../performance/performanceDiagnostics'
+import { markNamedPerformanceTrace, startPerformanceTrace } from '../performance/performanceLogger'
+
 export const enableFirestorePersistence = (db, { useEmulator = false } = {}) => {
-    if (useEmulator) return Promise.resolve(false)
-    if (!db || typeof db.enablePersistence !== 'function') return Promise.resolve(false)
+    const diagnostics = getPerformanceDiagnostics()
+    const trace = startPerformanceTrace('firestore_persistence', {
+        diagnostic_mode: diagnostics.disableFirestorePersistence,
+    })
+    if (diagnostics.disableFirestorePersistence) {
+        trace.end('diagnostic_disabled', { outcome: 'skipped' })
+        markNamedPerformanceTrace('app_boot', 'persistence_skipped', { outcome: 'diagnostic_disabled' })
+        return Promise.resolve(false)
+    }
+    if (useEmulator) {
+        trace.end('emulator_skipped', { outcome: 'skipped' })
+        return Promise.resolve(false)
+    }
+    if (!db || typeof db.enablePersistence !== 'function') {
+        trace.end('unsupported', { outcome: 'skipped' })
+        return Promise.resolve(false)
+    }
 
     let persistencePromise
     try {
         persistencePromise = db.enablePersistence({ synchronizeTabs: true })
     } catch (error) {
         console.warn('Firestore persistence could not be requested:', error)
+        trace.fail('request_failed')
+        markNamedPerformanceTrace('app_boot', 'persistence_failed', { outcome: 'failed' })
         return Promise.resolve(false)
     }
 
     return Promise.resolve(persistencePromise)
-        .then(() => true)
+        .then(() => {
+            trace.end('enabled', { outcome: 'success' })
+            markNamedPerformanceTrace('app_boot', 'persistence_ready', { outcome: 'success' })
+            return true
+        })
         .catch(error => {
             if (error && error.code === 'failed-precondition') {
                 console.warn(
@@ -51,6 +75,8 @@ export const enableFirestorePersistence = (db, { useEmulator = false } = {}) => 
             } else {
                 console.warn('Firestore persistence failed to enable:', error)
             }
+            trace.fail('enable_failed')
+            markNamedPerformanceTrace('app_boot', 'persistence_failed', { outcome: error?.code || 'failed' })
             return false
         })
 }

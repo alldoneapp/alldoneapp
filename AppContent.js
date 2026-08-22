@@ -14,6 +14,11 @@ import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
 import { isBrowserOffline } from './utils/connectionState'
 import { scheduleNotesOfflinePrefetch } from './utils/NotesOfflinePrefetch'
 import { scheduleNotesOfflineCatchUp } from './utils/NotesOfflineCatchUp'
+import {
+    endNamedPerformanceTrace,
+    markNamedPerformanceTrace,
+    schedulePerformanceAfterPaint,
+} from './utils/performance/performanceLogger'
 import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
@@ -244,7 +249,13 @@ export default function AppContent() {
                 const { user, missing, error } = await loadGlobalDataAndGetUserResult(userId)
 
                 if (user) {
+                    markNamedPerformanceTrace('app_boot', 'user_loaded', {
+                        project_count: Array.isArray(user.projectIds) ? user.projectIds.length : 0,
+                    })
                     await loadInitialDataForLoggedUser(user)
+                    markNamedPerformanceTrace('app_boot', 'initial_data_loaded', {
+                        project_count: Array.isArray(user.projectIds) ? user.projectIds.length : 0,
+                    })
                     // Warm the offline note-content cache once the session is idle
                     // (OFFLINE_SUPPORT_PLAN.md notes follow-ups); also re-runs on
                     // reconnect. Fire-and-forget by design.
@@ -279,6 +290,9 @@ export default function AppContent() {
     }
 
     const onInitFirabase = async firebaseUser => {
+        markNamedPerformanceTrace('app_boot', 'auth_resolved', {
+            outcome: firebaseUser && !firebaseUser.isAnonymous ? 'signed_in' : 'signed_out',
+        })
         if (firebaseUser && !firebaseUser.isAnonymous) {
             if (loginInProgressUid.current === firebaseUser.uid) {
                 console.log('Login already in progress for this user, ignoring the repeated auth event')
@@ -338,6 +352,18 @@ export default function AppContent() {
             }, 100)
             return () => clearTimeout(timer)
         }
+    }, [loggedIn, processedInitialURL])
+
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL) return undefined
+        return schedulePerformanceAfterPaint(() => {
+            endNamedPerformanceTrace('app_boot', 'app_ready', {
+                outcome: 'success',
+                project_count: Array.isArray(store.getState().loggedUser?.projectIds)
+                    ? store.getState().loggedUser.projectIds.length
+                    : 0,
+            })
+        })
     }, [loggedIn, processedInitialURL])
 
     return (

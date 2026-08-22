@@ -32,6 +32,7 @@ import { moveInnerFeedsOnMoveObjectFromProject } from '../../../../utils/backend
 import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import store from '../../../../redux/store'
+import { startPerformanceTrace } from '../../../../utils/performance/performanceLogger'
 
 /**
  * The cross-entity "move this object to another project" engine, extracted
@@ -68,6 +69,20 @@ export default function useMoveObjectToProject() {
 
     const moveObjectToProject = async (item, project, newProject) => {
         const { type, data } = item
+        const performanceTrace = startPerformanceTrace('move_object_project', {
+            object_type: type,
+            task_count: type === 'task' ? 1 : 0,
+            subtask_count: type === 'task' ? data.subtaskIds?.length || 0 : 0,
+        })
+        const observeDetachedMove = promise => {
+            Promise.resolve(promise).then(
+                () => performanceTrace.end('move_complete', { outcome: 'success' }),
+                error => {
+                    performanceTrace.fail('move_failed')
+                    throw error
+                }
+            )
+        }
         const objectType = type === 'chat' ? 'topics' : type + 's'
         const beforeDeleteSource =
             type === 'chat'
@@ -89,24 +104,37 @@ export default function useMoveObjectToProject() {
         if (type === 'chat') dispatch(startLoadingData())
 
         await moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
+        performanceTrace.mark('chat_history_moved')
         if (type !== 'chat') dispatch(stopLoadingData())
         // Keep the object's "Updates" activity history with it across the move (chat is handled above).
-        await moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id)
+        const movedFeedCount = await moveInnerFeedsOnMoveObjectFromProject(
+            project.id,
+            newProject.id,
+            objectType,
+            data.id
+        )
+        performanceTrace.mark('activity_history_moved', { document_count: movedFeedCount || 0 })
 
         if (type === 'chat') {
             dispatch(stopLoadingData())
+            performanceTrace.end('move_complete', { outcome: 'success' })
         } else if (type === 'task') {
             const task = data
             const taskOwner = TasksHelper.getTaskOwner(task.userId, project.id)
             dispatch(startLoadingData())
 
             if (!newProject.userIds.includes(taskOwner.uid) && task.userId !== DEFAULT_WORKSTREAM_ID) {
-                setTaskAssignee(project.id, task.id, loggedUser.uid, taskOwner, loggedUser, task).then(updatedTask => {
-                    setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
-                    dispatch([setAssignee(loggedUser), hideProjectPicker()])
-                })
+                observeDetachedMove(
+                    setTaskAssignee(project.id, task.id, loggedUser.uid, taskOwner, loggedUser, task).then(
+                        updatedTask => {
+                            const taskMove = setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
+                            dispatch([setAssignee(loggedUser), hideProjectPicker()])
+                            return taskMove
+                        }
+                    )
+                )
             } else {
-                setTaskProject(project, newProject, task)
+                observeDetachedMove(setTaskProject(project, newProject, task))
                 dispatch(hideProjectPicker())
             }
         } else if (type === 'note') {
@@ -126,18 +154,22 @@ export default function useMoveObjectToProject() {
 
             dispatch(startLoadingData())
             if (movedOwnerId !== note.userId) {
-                setNoteProject(project, newProject, note, noteOwner, loggedUser).then(() => {
-                    dispatch(stopLoadingData())
-                })
+                observeDetachedMove(
+                    setNoteProject(project, newProject, note, noteOwner, loggedUser).then(() => {
+                        dispatch(stopLoadingData())
+                    })
+                )
             } else {
-                setNoteProject(project, newProject, note).then(() => {
-                    dispatch(stopLoadingData())
-                })
+                observeDetachedMove(
+                    setNoteProject(project, newProject, note).then(() => {
+                        dispatch(stopLoadingData())
+                    })
+                )
             }
             dispatch(hideProjectPicker())
         } else if (type === 'goal') {
             const goal = data
-            updateGoalProject(project, newProject, goal)
+            observeDetachedMove(updateGoalProject(project, newProject, goal))
         } else if (type === 'skill') {
             const skill = data
             const { loggedUser, route } = store.getState()
@@ -157,11 +189,13 @@ export default function useMoveObjectToProject() {
                     ])
                 }
             })
+            performanceTrace.end('client_complete', { outcome: 'success' })
         } else if (type === 'contact') {
             const contact = data
             dispatch(startLoadingData())
             await setContactProject(project, newProject, contact)
             dispatch(stopLoadingData())
+            performanceTrace.end('move_complete', { outcome: 'success' })
         }
 
         writeBrowserUrl(item, newProject)

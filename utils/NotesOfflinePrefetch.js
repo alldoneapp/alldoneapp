@@ -26,6 +26,8 @@ import { getDb } from './backends/firestore'
 import { isBrowserOffline } from './connectionState'
 import { createNoteLocalPersistence } from '../components/NotesView/NotesDV/EditorView/noteLocalPersistence'
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
+import { getPerformanceDiagnostics } from './performance/performanceDiagnostics'
+import { logPerformanceMeasurement, performanceNow, startPerformanceTrace } from './performance/performanceLogger'
 
 export const NOTES_PER_PROJECT = 5
 export const MAX_NOTES_PER_RUN = 30
@@ -41,6 +43,7 @@ const MARKER_LIMIT = 200
 let running = false
 let lastRunAt = 0
 let listenersInstalled = false
+let diagnosticSkipLogged = false
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -129,6 +132,20 @@ const persistNoteContentLocally = async (noteId, contentBytes) => {
 }
 
 export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
+    const diagnostics = getPerformanceDiagnostics()
+    if (diagnostics.disableNotesPrefetch) {
+        if (!diagnosticSkipLogged) {
+            diagnosticSkipLogged = true
+            logPerformanceMeasurement(
+                'notes_offline_prefetch',
+                'diagnostic_disabled',
+                0,
+                { diagnostic_mode: true, outcome: 'skipped' },
+                { sampleRate: 1 }
+            )
+        }
+        return
+    }
     if (running) return
     if (isBrowserOffline()) return
     if (!force && Date.now() - lastRunAt < RUN_COOLDOWN_MS) return
@@ -137,35 +154,82 @@ export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
 
     running = true
     lastRunAt = Date.now()
+    const projectCount = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds.length : 0
+    const trace = startPerformanceTrace('notes_offline_prefetch', { project_count: projectCount })
+    let networkDurationMs = 0
+    let indexedDbDurationMs = 0
+    let byteCount = 0
+    let errorCount = 0
     try {
+        const listingStartedAt = performanceNow()
         const candidates = await fetchRecentNoteCandidates()
+        networkDurationMs += performanceNow() - listingStartedAt
         const markers = readPrefetchMarkers()
         const { activeNoteId } = store.getState()
         const toPrefetch = selectNotesToPrefetch(candidates, markers, { activeNoteId })
-        if (toPrefetch.length === 0) return
+        trace.mark('candidates_selected', {
+            candidate_count: candidates.length,
+            note_count: toPrefetch.length,
+            network_duration_ms: Math.round(networkDurationMs),
+        })
+        if (toPrefetch.length === 0) {
+            trace.end('nothing_to_prefetch', { outcome: 'success' })
+            return
+        }
 
         let warmed = 0
         for (const { projectId, noteId, lastEditionDate } of toPrefetch) {
             if (isBrowserOffline()) break
             if (store.getState().activeNoteId === noteId) continue
             try {
+                const downloadStartedAt = performanceNow()
                 const data = await Backend.getNoteData(projectId, noteId)
+                networkDurationMs += performanceNow() - downloadStartedAt
                 const bytes = data ? new Uint8Array(data) : new Uint8Array(0)
+                byteCount += bytes.length
                 if (bytes.length > 0 && bytes.length <= MAX_NOTE_CONTENT_BYTES) {
+                    const persistenceStartedAt = performanceNow()
                     const persisted = await persistNoteContentLocally(noteId, bytes)
-                    if (!persisted) return // no IndexedDB in this browser — nothing more to do
+                    indexedDbDurationMs += performanceNow() - persistenceStartedAt
+                    if (!persisted) {
+                        trace.end('indexeddb_unavailable', {
+                            outcome: 'skipped',
+                            note_count: warmed,
+                            byte_count: byteCount,
+                        })
+                        return // no IndexedDB in this browser — nothing more to do
+                    }
                     warmed++
                 }
                 // An empty (never-saved) note needs no local copy; either way the
                 // marker prevents re-checking this edition on the next run.
                 markers[noteId] = lastEditionDate
             } catch (error) {
+                errorCount++
                 console.warn(`[NotesPrefetch] Warming note ${noteId} failed:`, error)
             }
             await wait(DELAY_BETWEEN_NOTES_MS)
         }
         writePrefetchMarkers(markers)
         if (warmed > 0) console.log(`[NotesPrefetch] Warmed ${warmed} note(s) for offline use`)
+        trace.end('complete', {
+            outcome: errorCount > 0 ? 'partial' : 'success',
+            note_count: warmed,
+            candidate_count: candidates.length,
+            byte_count: byteCount,
+            error_count: errorCount,
+            network_duration_ms: Math.round(networkDurationMs),
+            indexeddb_duration_ms: Math.round(indexedDbDurationMs),
+        })
+    } catch (error) {
+        trace.fail('failed', {
+            note_count: 0,
+            byte_count: byteCount,
+            error_count: errorCount + 1,
+            network_duration_ms: Math.round(networkDurationMs),
+            indexeddb_duration_ms: Math.round(indexedDbDurationMs),
+        })
+        throw error
     } finally {
         running = false
     }
@@ -177,6 +241,10 @@ export const runNotesOfflinePrefetch = async ({ force = false } = {}) => {
  * offline copies are most likely stale.
  */
 export const scheduleNotesOfflinePrefetch = () => {
+    if (getPerformanceDiagnostics().disableNotesPrefetch) {
+        runNotesOfflinePrefetch()
+        return
+    }
     setTimeout(() => {
         runNotesOfflinePrefetch().catch(error => console.warn('[NotesPrefetch] Run failed:', error))
     }, PREFETCH_DELAY_AFTER_LOGIN_MS)

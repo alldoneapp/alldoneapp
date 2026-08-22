@@ -78,6 +78,7 @@ import {
     setUsersInProject,
     setWorkstreamsInProject,
 } from '../../redux/actions'
+import { startPerformanceTrace } from '../performance/performanceLogger'
 
 export const PROJECT_DATA_USERS = 'users'
 export const PROJECT_DATA_CONTACTS = 'contacts'
@@ -180,6 +181,12 @@ function ensureOneKind(projectId, kind) {
     const descriptor = KIND_DESCRIPTORS[kind]
     if (!descriptor) return Promise.resolve(false)
 
+    const performanceTrace = startPerformanceTrace(
+        'project_data_first_snapshot',
+        { object_type: kind, scope: 'project' },
+        { sampleRate: 0.02 }
+    )
+
     const entry = { loaded: false, promise: null }
     let settle = () => {}
     entry.promise = new Promise(resolve => {
@@ -194,6 +201,7 @@ function ensureOneKind(projectId, kind) {
         // The watcher stays armed on purpose - it will still fill redux when it eventually
         // delivers. Only the promise stops blocking whoever awaited it.
         console.warn(`[InitialLoad] ${kind} of project ${projectId} did not arrive within the first-snapshot budget`)
+        performanceTrace.end('snapshot_timeout', { outcome: 'timeout' })
         settle(false)
     }, FIRST_SNAPSHOT_TIMEOUT_MS)
 
@@ -209,6 +217,7 @@ function ensureOneKind(projectId, kind) {
         // Forget it so a later render or the next sweep can retry.
         entries.delete(key)
         console.warn(`[InitialLoad] Failed to watch ${kind} of project ${projectId}:`, error)
+        performanceTrace.fail('listener_failed')
         settle(false)
     }
 
@@ -221,6 +230,10 @@ function ensureOneKind(projectId, kind) {
             }
             entry.loaded = true
             clearPendingTimeout()
+            performanceTrace.end('snapshot_applied', {
+                outcome: 'success',
+                document_count: Array.isArray(data) ? data.length : 0,
+            })
             settle(true)
         })
 
