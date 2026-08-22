@@ -47,6 +47,28 @@ import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/o
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
 import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
 
+const SHOW_MORE_TIME_FIELDS = ['hasTomorrowTasks', 'hasFutureTasks', 'hasSomedayTasks']
+
+const recomputeProjectShowMoreFlags = projectData => {
+    if (!projectData) return
+    const categoryData = Object.entries(projectData)
+        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && key !== WORKSTREAM_TASKS_MY_DAY_TYPE && value)
+        .map(([, value]) => value)
+    const workstreamData = Object.values(projectData[WORKSTREAM_TASKS_MY_DAY_TYPE] || {})
+    SHOW_MORE_TIME_FIELDS.forEach(field => {
+        projectData[field] = [...categoryData, ...workstreamData].some(value => !!value?.[field])
+    })
+}
+
+const recomputeGlobalShowMoreFlags = openTasksShowMoreData => {
+    const projectData = Object.entries(openTasksShowMoreData)
+        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && value && typeof value === 'object')
+        .map(([, value]) => value)
+    SHOW_MORE_TIME_FIELDS.forEach(field => {
+        openTasksShowMoreData[field] = projectData.some(value => !!value[field])
+    })
+}
+
 export const initialState = {
     loggedIn: null,
     loadingStep: 0,
@@ -3227,6 +3249,8 @@ export const theReducer = (state = initialState, action) => {
             const openTasksShowMoreData = cloneDeep(state.openTasksShowMoreData)
             if (openTasksShowMoreData[projectId]?.[WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]) {
                 delete openTasksShowMoreData[projectId][WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]
+                recomputeProjectShowMoreFlags(openTasksShowMoreData[projectId])
+                recomputeGlobalShowMoreFlags(openTasksShowMoreData)
             }
 
             return { ...state, openTasksShowMoreData }
@@ -3237,6 +3261,7 @@ export const theReducer = (state = initialState, action) => {
 
             const openTasksShowMoreData = { ...state.openTasksShowMoreData }
             if (openTasksShowMoreData[projectId]) delete openTasksShowMoreData[projectId]
+            recomputeGlobalShowMoreFlags(openTasksShowMoreData)
 
             return { ...state, openTasksShowMoreData }
         }

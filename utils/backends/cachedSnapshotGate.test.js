@@ -10,6 +10,10 @@ const makeSnapshot = ({ fromCache, docs = [], hasPendingWrites = false } = {}) =
 })
 
 describe('createCachedSnapshotGate', () => {
+    it('keeps online cached-data latency below one second', () => {
+        expect(CACHED_SNAPSHOT_GRACE_MS).toBeLessThan(1000)
+    })
+
     beforeEach(() => {
         jest.useFakeTimers()
     })

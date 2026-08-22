@@ -14,7 +14,6 @@ import {
     watchAllMilestones,
 } from '../../../utils/backends/openTasks'
 import NeedShowMoreOpenTasksButton from './NeedShowMoreOpenTasksButton'
-import NeedShowMoreEmptyGoalsButton from './NeedShowMoreEmptyGoalsButton'
 import OpenTasksByProjectHandler from './OpenTasksByProjectHandler'
 import BottomShowMoreButtonContainer from './BottomShowMoreButtonContainer'
 import Backend from '../../../utils/BackendBridge'
@@ -170,7 +169,6 @@ function OpenTasksByProject({
             {!hideProjectData && (
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />
-                    <NeedShowMoreEmptyGoalsButton projectId={projectId} />
                     {!assistantProfileMode && (
                         <ProjectHeader
                             projectIndex={projectIndex}

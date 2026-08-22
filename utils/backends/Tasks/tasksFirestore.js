@@ -47,7 +47,7 @@ import {
     uploadNewSubTaskFeedsChain,
 } from '../firestore'
 import store from '../../../redux/store'
-import { awaitWriteAck } from '../offlineWriteAck'
+import { awaitWriteAck, isAppOffline } from '../offlineWriteAck'
 import { startPerformanceTrace } from '../../performance/performanceLogger'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
@@ -2203,7 +2203,10 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
 
     delete taskCopy.time
     delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
+    await awaitWriteAck(
+        getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
+        'create task in target project'
+    )
     performanceTrace.mark('target_task_created')
 
     if (route === 'TaskDetailedView') {
@@ -2225,18 +2228,28 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
     promises.push(
-        getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
+        awaitWriteAck(
+            getDb()
+                .doc(`items/${currentProject.id}/tasks/${task.id}`)
+                .update({ movingToOtherProjectId: newProject.id }),
+            'mark source task as moving'
+        )
     )
     await Promise.all(promises)
     performanceTrace.mark('subtasks_copied')
 
-    batch = new BatchWrapper(getDb())
+    const batch = new BatchWrapper(getDb())
     updateTaskData(currentProject.id, task.id, {}, batch)
     batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    batch.commit()
+    await awaitWriteAck(batch.commit(), 'delete task from source project')
+    performanceTrace.mark('source_task_deleted')
 
-    setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
-    performanceTrace.end('client_complete', { outcome: 'success' })
+    await setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
+    performanceTrace.mark('feed_chain_committed')
+    const queuedOffline = isAppOffline()
+    performanceTrace.end(queuedOffline ? 'queued_offline' : 'server_acked', {
+        outcome: queuedOffline ? 'queued_offline' : 'success',
+    })
 }
 
 export async function setTaskProjectWithGoal(currentProject, newProject, task, goal) {
@@ -2302,23 +2315,31 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
 
     delete taskCopy.time
     delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
+    await awaitWriteAck(
+        getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
+        'create goal task in target project'
+    )
 
     const promises = []
     promises.push(
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
     promises.push(
-        getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
+        awaitWriteAck(
+            getDb()
+                .doc(`items/${currentProject.id}/tasks/${task.id}`)
+                .update({ movingToOtherProjectId: newProject.id }),
+            'mark source goal task as moving'
+        )
     )
     await Promise.all(promises)
 
     const batch = new BatchWrapper(getDb())
     updateTaskData(currentProject.id, task.id, {}, batch)
     batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    await batch.commit()
+    await awaitWriteAck(batch.commit(), 'delete goal task from source project')
 
-    setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
+    await setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
 }
 
 export async function setTaskParentGoal(projectId, taskId, task, goal, externalBatch, options = {}) {

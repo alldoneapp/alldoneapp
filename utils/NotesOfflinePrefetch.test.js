@@ -1,4 +1,10 @@
-import { selectNotesToPrefetch, readPrefetchMarkers, MAX_NOTES_PER_RUN } from './NotesOfflinePrefetch'
+import {
+    selectNotesToPrefetch,
+    readPrefetchMarkers,
+    MAX_NOTES_PER_RUN,
+    PREFETCH_IDLE_RETRY_MS,
+    waitForNotesPrefetchIdle,
+} from './NotesOfflinePrefetch'
 
 describe('selectNotesToPrefetch', () => {
     const note = (noteId, lastEditionDate, projectId = 'p1') => ({ noteId, lastEditionDate, projectId })
@@ -43,5 +49,46 @@ describe('readPrefetchMarkers', () => {
     it('round-trips stored markers', () => {
         localStorage.setItem('alldone_notes_prefetch_v1', JSON.stringify({ a: 100 }))
         expect(readPrefetchMarkers()).toEqual({ a: 100 })
+    })
+})
+
+describe('waitForNotesPrefetchIdle', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    const idleDeadline = overrides => ({
+        didTimeout: false,
+        timeRemaining: () => 50,
+        ...overrides,
+    })
+
+    it('runs when the browser has idle budget and the app is not busy', async () => {
+        const scheduleIdle = callback => callback(idleDeadline())
+        await expect(waitForNotesPrefetchIdle({ scheduleIdle, isBusy: () => false })).resolves.toBeUndefined()
+    })
+
+    it('retries instead of competing with active user work', async () => {
+        let busy = true
+        const scheduleIdle = callback => callback(idleDeadline())
+        const waiting = waitForNotesPrefetchIdle({ scheduleIdle, isBusy: () => busy })
+
+        busy = false
+        jest.advanceTimersByTime(PREFETCH_IDLE_RETRY_MS)
+
+        await expect(waiting).resolves.toBeUndefined()
+    })
+
+    it('does not treat a timed-out callback as an idle window', async () => {
+        let callbacks = 0
+        const scheduleIdle = callback => {
+            callbacks++
+            callback(idleDeadline(callbacks === 1 ? { didTimeout: true, timeRemaining: () => 0 } : {}))
+        }
+        const waiting = waitForNotesPrefetchIdle({ scheduleIdle, isBusy: () => false })
+
+        expect(callbacks).toBe(1)
+        jest.advanceTimersByTime(PREFETCH_IDLE_RETRY_MS)
+        await expect(waiting).resolves.toBeUndefined()
+        expect(callbacks).toBe(2)
     })
 })
