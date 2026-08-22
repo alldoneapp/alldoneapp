@@ -15,6 +15,12 @@ import AppContent from './AppContent'
 import { getSentryVariables, initTimeProvider } from './utils/backends/firestore'
 import HelperFunctions from './utils/HelperFunctions'
 import { startDailyAppReload } from './utils/DailyAppReload'
+import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from './utils/performance/performanceLogger'
+import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
+
+startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
+installStorePerformanceObserver(store)
+installBrowserPerformanceObservers()
 
 try {
     const sentryDsn = getSentryVariables().SENTRY_DSN

@@ -185,6 +185,13 @@ always mounted in the single-project Goals view. Fixing it means either sharing 
 per-project task listener across milestone buckets or making the stats lazy — not a
 cosmetic change, so it was left out of AT-2336.
 
+### Client performance telemetry
+
+Boot, page readiness, Firestore first snapshots, offline note workers and bulk task operations emit
+sampled, consent-gated `performance_trace` events through `utils/performance/performanceLogger.js`.
+No entity ids are accepted. For the debug console, in-memory record buffer and controlled
+Firestore-persistence/note-prefetch comparison switches, see `PERFORMANCE_DIAGNOSTICS.md`.
+
 ### Firebase Functions
 
 Located in `functions/`. Deploys to the **Node 22** runtime, and that is pinned in **two**

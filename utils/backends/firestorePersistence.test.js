@@ -4,6 +4,8 @@ describe('enableFirestorePersistence', () => {
     let consoleWarn
 
     beforeEach(() => {
+        window.history.replaceState({}, '', '/')
+        localStorage.clear()
         consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
     })
 
@@ -22,6 +24,14 @@ describe('enableFirestorePersistence', () => {
         const db = { enablePersistence: jest.fn(() => Promise.resolve()) }
 
         await expect(enableFirestorePersistence(db, { useEmulator: true })).resolves.toBe(false)
+        expect(db.enablePersistence).not.toHaveBeenCalled()
+    })
+
+    it('supports an explicit diagnostic run without persistent cache', async () => {
+        window.history.replaceState({}, '', '/?perfDisablePersistence=1')
+        const db = { enablePersistence: jest.fn(() => Promise.resolve()) }
+
+        await expect(enableFirestorePersistence(db)).resolves.toBe(false)
         expect(db.enablePersistence).not.toHaveBeenCalled()
     })
 

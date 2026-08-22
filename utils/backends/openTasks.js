@@ -40,6 +40,7 @@ import {
 import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
+import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
 
 export const TODAY_DATE = '0'
 
@@ -420,13 +421,23 @@ const watchUserOpenTasks = (
 
     let cacheChanges = []
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot)
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        {
+            object_type: 'tasks',
+            scope: 'project',
+            source: areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks',
+        },
+        { sampleRate: 0.02 }
+    )
     function handleOpenTasksSnapshot(querySnapshot) {
         const changes = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-        if (gate.shouldBuffer(querySnapshot)) {
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             deliverOpenTasksChanges(changes)
@@ -1298,9 +1309,15 @@ const watchStreamAndUserOpenTasks = (
 
     let cacheChanges = []
     const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot)
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'tasks', scope: 'project', source: 'workstream_open_tasks' },
+        { sampleRate: 0.02 }
+    )
     function handleStreamAndUserTasksSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             // AT-2337: see the note in watchUserOpenTasks - coalesce this snapshot's
@@ -1454,9 +1471,15 @@ function watchEmptyGoals(
         .where('ownerId', '==', ownerId)
 
     const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot)
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'goals', scope: 'project', source: 'empty_goals_in_tasks' },
+        { sampleRate: 0.02 }
+    )
     function handleEmptyGoalsSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
-        if (gate.shouldBuffer(querySnapshot)) {
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
+        if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]

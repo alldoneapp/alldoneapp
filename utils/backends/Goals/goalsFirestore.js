@@ -60,6 +60,7 @@ import {
     switchProject,
 } from '../../../redux/actions'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
+import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
 
 import { createGoalAssistantChangedFeed } from './goalUpdates'
 import { createGenericTaskWhenMention, setTaskProjectWithGoal } from '../Tasks/tasksFirestore'
@@ -164,6 +165,10 @@ export function watchAllGoals(projectId, watcherKey, ownerId) {
         .collection(`goals/${projectId}/items`)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
         .where('ownerId', '==', ownerId)
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'goals', scope: 'project', source: 'goals_board' },
+        { sampleRate: 0.02 }
+    )
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(
         goalsData => {
@@ -174,13 +179,16 @@ export function watchAllGoals(projectId, watcherKey, ownerId) {
                     goals.push(goal)
                 })
                 store.dispatch([setGoalsInProject(projectId, goals), stopLoadingData()])
+                snapshotPerformance.observe(goalsData, false)
             } catch (err) {
+                snapshotPerformance.fail()
                 console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
                 // Ensure spinner decrements on unexpected handler errors
                 store.dispatch(stopLoadingData())
             }
         },
         err => {
+            snapshotPerformance.fail()
             console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
             // Ensure spinner decrements on snapshot errors
             store.dispatch(stopLoadingData())
@@ -318,6 +326,10 @@ async function getOpenMilestonesFromGoal(projectId, goal) {
 }
 
 export function watchAllMilestones(projectId, watcherKey, ownerId) {
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'milestones', scope: 'project', source: 'goals_board' },
+        { sampleRate: 0.02 }
+    )
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goalsMilestones/${projectId}/milestonesItems`)
         .where('ownerId', '==', ownerId)
@@ -342,12 +354,15 @@ export function watchAllMilestones(projectId, watcherKey, ownerId) {
                         setDoneMilestonesInProject(projectId, doneMilestone),
                         stopLoadingData(),
                     ])
+                    snapshotPerformance.observe(milestonesData, false)
                 } catch (err) {
+                    snapshotPerformance.fail()
                     console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
                     store.dispatch(stopLoadingData())
                 }
             },
             err => {
+                snapshotPerformance.fail()
                 console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
                 store.dispatch(stopLoadingData())
             }
