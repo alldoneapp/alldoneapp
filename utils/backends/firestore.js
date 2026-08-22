@@ -49,6 +49,7 @@ import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
 import { startPerformanceTrace } from '../performance/performanceLogger'
+import { awaitWriteAck } from './offlineWriteAck'
 import { isBrowserOffline } from '../connectionState'
 import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
@@ -2161,7 +2162,7 @@ export async function setTaskProjectFeedsChain(currentProject, newProject, task,
     }
     await tryAddFollower(currentProject.id, followCurrentTaskData, batchFeed)
     await tryAddFollower(newProject.id, followNewTaskData, batchFeed)
-    batchFeed.commit()
+    await awaitWriteAck(batchFeed.commit(), 'task project feed chain')
 }
 
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds, which is
@@ -2186,7 +2187,7 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
             feedDoc.data()
         )
     })
-    await batch.commit()
+    await awaitWriteAck(batch.commit(), 'moved object activity history')
 
     return feedsSnapshot.size
 }

@@ -1,0 +1,32 @@
+const fs = require('fs')
+const path = require('path')
+
+const readSource = relativePath => fs.readFileSync(path.resolve(__dirname, '../..', relativePath), 'utf8')
+
+describe('task project move completion', () => {
+    it('keeps the move trace open through source deletion and feed persistence', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+        const branch = source.match(
+            /export async function setTaskProject\(([\s\S]*?)\n}\n\nexport async function setTaskProjectWithGoal/
+        )
+
+        expect(branch).not.toBeNull()
+        expect(branch[1]).toMatch(/await awaitWriteAck\(batch\.commit\(\), 'delete task from source project'\)/)
+        expect(branch[1]).toMatch(/performanceTrace\.mark\('source_task_deleted'\)/)
+        expect(branch[1]).toMatch(/await setTaskProjectFeedsChain\(/)
+        expect(branch[1]).toMatch(/performanceTrace\.mark\('feed_chain_committed'\)/)
+        expect(branch[1]).toMatch(/const queuedOffline = isAppOffline\(\)/)
+        expect(branch[1]).toMatch(/performanceTrace\.end\(queuedOffline \? 'queued_offline' : 'server_acked'/)
+        expect(branch[1]).not.toMatch(/\nbatch = new BatchWrapper/)
+    })
+
+    it('awaits the feed batch through the offline-aware acknowledgement helper', () => {
+        const source = readSource('backends/firestore.js')
+        const branch = source.match(
+            /export async function setTaskProjectFeedsChain\(([\s\S]*?)\n}\n\n\/\/ The per-object/
+        )
+
+        expect(branch).not.toBeNull()
+        expect(branch[1]).toMatch(/await awaitWriteAck\(batchFeed\.commit\(\), 'task project feed chain'\)/)
+    })
+})
