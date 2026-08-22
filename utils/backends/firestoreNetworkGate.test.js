@@ -40,6 +40,21 @@ describe('installFirestoreNetworkGate', () => {
         stop()
     })
 
+    it('parks and resumes for a user-selected offline session', () => {
+        const db = createDbMock()
+        let manualOffline = false
+        const stop = installFirestoreNetworkGate(db, { isManualOffline: () => manualOffline })
+
+        manualOffline = true
+        store.dispatch({ type: 'Set show new day notification', show: true })
+        expect(db.disableNetwork).toHaveBeenCalledTimes(1)
+
+        manualOffline = false
+        store.dispatch({ type: 'Set show new day notification', show: false })
+        expect(db.enableNetwork).toHaveBeenCalledTimes(1)
+        stop()
+    })
+
     it('does nothing after being uninstalled', () => {
         const db = createDbMock()
         const stop = installFirestoreNetworkGate(db)

@@ -32,7 +32,12 @@ import { isBrowserOffline } from '../connectionState'
  */
 export const isAppOffline = () => {
     try {
-        if (store.getState().connectionState === 'offline') return true
+        const state = store.getState()
+        if (state.connectionState === 'offline') return true
+        // `stale` is a proven server outage even when navigator.onLine remains
+        // optimistic. Manual offline uses the same health value after the user
+        // chooses "Work offline" during the first reconnect attempt.
+        if (state.connectionHealth === 'stale' || state.connectionHealth === 'offline') return true
     } catch (error) {
         // The store is always available in the app; in isolated unit tests it
         // may not be, and the browser-level signal is enough there.

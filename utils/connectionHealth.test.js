@@ -6,10 +6,12 @@ import {
     CONNECTION_HEALTH_RECONNECTING,
     CONNECTION_HEALTH_STALE,
     STALE_RETRY_MAX_MS,
+    continueOffline,
     evaluateConnectionHealth,
     getConnectionHealth,
     handleAppResume,
     installConnectionHealthMonitor,
+    isManualOfflineMode,
     markServerContact,
     nextStaleRetryDelay,
     reconnectNow,
@@ -186,6 +188,41 @@ describe('connectionHealth', () => {
         stop()
     })
 
+    it('parks the transport when the user chooses offline and ignores late server contact', async () => {
+        const db = createFakeDb(['ok'])
+        const { tracked, stop } = install({ db })
+
+        await continueOffline()
+
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_OFFLINE)
+        expect(isManualOfflineMode()).toBe(true)
+        expect(db.calls.disableNetwork).toBe(1)
+        expect(tracked.some(event => event.name === 'connection_manual_offline')).toBe(true)
+
+        markServerContact('late_snapshot')
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_OFFLINE)
+
+        await evaluateConnectionHealth({ trigger: 'staleness' })
+        expect(db.calls.get).toBe(0)
+        stop()
+    })
+
+    it('lets the user choose offline during the second probe without a late stale override', async () => {
+        const db = createFakeDb(['unavailable', 'hang'])
+        const { stop } = install({ db })
+
+        const evaluating = evaluateConnectionHealth({ trigger: 'test' })
+        await flush()
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_RECONNECTING)
+
+        await continueOffline()
+        await evaluating
+
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_OFFLINE)
+        expect(isManualOfflineMode()).toBe(true)
+        stop()
+    })
+
     it('coalesces concurrent evaluations into one probe cycle', async () => {
         const db = createFakeDb(['ok'])
         const { stop } = install({ db })
@@ -346,6 +383,19 @@ describe('connectionHealth', () => {
             const outcome = await reconnectNow()
 
             expect(outcome).toBe(CONNECTION_HEALTH_STALE)
+            stop()
+        })
+
+        it('exits manual offline before restarting and probing', async () => {
+            const db = createFakeDb(['ok'])
+            const { stop } = install({ db })
+            await continueOffline()
+
+            const outcome = await reconnectNow()
+
+            expect(outcome).toBe(CONNECTION_HEALTH_LIVE)
+            expect(isManualOfflineMode()).toBe(false)
+            expect(db.calls.get).toBe(1)
             stop()
         })
     })

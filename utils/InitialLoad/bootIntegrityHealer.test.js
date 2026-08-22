@@ -10,6 +10,7 @@ import {
 
 jest.mock('../../redux/store', () => ({
     getState: jest.fn(),
+    subscribe: jest.fn(),
 }))
 
 jest.mock('../backends/firestore', () => ({
@@ -54,6 +55,8 @@ describe('runBootIntegrityCheck', () => {
             administratorUser: { uid: 'admin-1' },
         }
         store.getState.mockImplementation(() => state)
+        store.subscribe.mockReset()
+        store.subscribe.mockImplementation(() => jest.fn())
         getDb.mockReturnValue(buildDbMock())
         recoverDroppedProject.mockReset()
         recoverDroppedProject.mockImplementation(async projectId => {
@@ -101,6 +104,40 @@ describe('runBootIntegrityCheck', () => {
         expect(recoverDroppedProject).not.toHaveBeenCalled()
         expect(loadGlobalData).not.toHaveBeenCalled()
         expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('stands down while connection health is stale or manually offline', async () => {
+        delete state.loggedUserProjectsMap.p2
+
+        state.connectionHealth = 'stale'
+        await runBootIntegrityCheck({ settleMs: 0 })
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+
+        state.connectionHealth = 'offline'
+        await runBootIntegrityCheck({ settleMs: 0 })
+        expect(recoverDroppedProject).not.toHaveBeenCalled()
+        expect(getDb().disableNetwork).not.toHaveBeenCalled()
+    })
+
+    it('re-runs after manual offline is explicitly reconnected', async () => {
+        jest.useFakeTimers()
+        try {
+            state.connectionHealth = 'offline'
+            delete state.loggedUserProjectsMap.p2
+
+            await runBootIntegrityCheck({ settleMs: 0 })
+            const onStoreChange = store.subscribe.mock.calls[0][0]
+
+            state.connectionHealth = 'live'
+            onStoreChange()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(recoverDroppedProject).toHaveBeenCalledWith('p2')
+        } finally {
+            jest.useRealTimers()
+        }
     })
 
     // AT-2340. CHECK_DELAYS_MS are four ONE-SHOT timers armed once per user, and
