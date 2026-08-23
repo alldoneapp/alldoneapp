@@ -408,6 +408,10 @@ async function generatePreConfigTaskResult(
             userTimezoneOffset,
             language,
             maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,
+            // A scheduled/preconfigured run must not be marked successful after its tool loop
+            // wrote a visible error and stopped. storeChunks persists the error first, then
+            // propagates it so the recurring-task lifecycle can record a real failure and retry.
+            failOnToolExecutionError: true,
         }
         const latestUserMessage = contextMessages
             .slice()
