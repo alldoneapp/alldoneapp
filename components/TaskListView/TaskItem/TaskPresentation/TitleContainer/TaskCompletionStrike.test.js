@@ -1,6 +1,8 @@
 import React from 'react'
 import { Animated, StyleSheet } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
+import { act as domAct } from 'react-dom/test-utils'
+import { createRoot } from 'react-dom/client'
 
 import TaskCompletionStrike, { groupRectsIntoLines, resolveStrikeLineCount } from './TaskCompletionStrike'
 
@@ -85,7 +87,7 @@ describe('groupRectsIntoLines', () => {
         const lines = groupRectsIntoLines([rect(100, 50, 200, 24)], base)
 
         // Line ink runs 100→124, so its middle is 12 below the overlay top, less half the bar.
-        expect(lines[0].top).toBeCloseTo(12 - 0.75)
+        expect(lines[0].top).toBeCloseTo(12 - 1)
     })
 
     it('orders lines top to bottom and never exceeds the three the title can show', () => {
@@ -120,6 +122,19 @@ describe('TaskCompletionStrike', () => {
         // TaskRoutingActivityOverlay.
         const overlay = renderStrike().root.findByProps({ testID: 'task-completion-strike' })
         expect(overlay.props.pointerEvents).toBe('none')
+    })
+
+    it('shares one opacity with the rest of the flourish', () => {
+        // The checkbox fill, the row wash and this line all fade in — and, on a retained row, back
+        // out again — off the same value, so they can never be seen arriving or leaving separately.
+        const opacity = new Animated.Value(0)
+        const overlay = renderStrike({ opacity }).root.findByProps({ testID: 'task-completion-strike' })
+
+        expect(StyleSheet.flatten(overlay.props.style).opacity).toBe(opacity)
+    })
+
+    it('renders without an opacity so it stays usable standalone', () => {
+        expect(() => renderStrike({ opacity: undefined })).not.toThrow()
     })
 
     it('drives every bar from one animated node', () => {
@@ -157,6 +172,107 @@ describe('TaskCompletionStrike', () => {
         it('survives an element id that resolves to nothing', () => {
             expect(() => renderStrike({ elementId: 'social_text_missing' })).not.toThrow()
             expect(bars(renderStrike({ elementId: 'social_text_missing', measuredHeight: 24 }))).toHaveLength(1)
+        })
+
+        it('draws no leading head, because it does not know where the line ends', () => {
+            // A head parked at the column's right edge would sit in empty space well past the text.
+            // Better to lose the flourish than to point at nothing.
+            expect(
+                renderStrike({ measuredHeight: 24 }).root.findAllByProps({
+                    testID: 'task-completion-strike-head',
+                })
+            ).toHaveLength(0)
+        })
+    })
+
+    describe('with a measured title (the real DOM path)', () => {
+        /**
+         * `measureTitleLines` is DOM-only — it needs a real element to range over and a real
+         * overlay box to map the rects into — so the measured path can only be reached through
+         * react-dom. It is worth the extra machinery: this is the branch that runs in production
+         * for every completion, and the fallback below is only ever the safety net.
+         */
+        const INK = [{ top: 10, bottom: 26, left: 20, right: 120, width: 100, height: 16 }]
+        const TITLE_ID = 'social_text_measured'
+
+        let originalCreateRange
+        let host
+
+        beforeEach(() => {
+            originalCreateRange = document.createRange
+            // jsdom has no layout, so the rects a browser would produce are supplied here. Modelled
+            // as real ink INSIDE a wider column (left: 20, not 0), which is the whole point of
+            // measuring — see `groupRectsIntoLines`.
+            document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => INK })
+        })
+
+        afterEach(() => {
+            document.createRange = originalCreateRange
+            if (host) {
+                document.body.removeChild(host)
+                host = null
+            }
+        })
+
+        const renderInDom = (props = {}) => {
+            const title = document.createElement('div')
+            title.id = TITLE_ID
+            document.body.appendChild(title)
+            host = document.createElement('div')
+            document.body.appendChild(host)
+            const root = createRoot(host)
+            domAct(() => {
+                root.render(
+                    <TaskCompletionStrike
+                        progress={new Animated.Value(0)}
+                        measuredHeight={24}
+                        isSubtask={false}
+                        elementId={TITLE_ID}
+                        {...props}
+                    />
+                )
+            })
+            document.body.removeChild(title)
+            return host
+        }
+
+        const query = (node, testID) => node.querySelectorAll(`[data-testid="${testID}"]`)
+
+        it('sizes the bar to the ink rather than to the flex column', () => {
+            const bar = query(renderInDom(), 'task-completion-strike-scaler')[0].firstElementChild
+
+            // 100px of text, offset 20px into the column. A column-wide bar here would cross
+            // several hundred pixels of empty space on a desktop row.
+            expect(bar.style.width).toBe('100px')
+            expect(bar.style.left).toBe('20px')
+        })
+
+        it('draws one leading head per measured line', () => {
+            // The tip that makes the line read as being DRAWN rather than as a shape being scaled.
+            expect(query(renderInDom(), 'task-completion-strike-head')).toHaveLength(1)
+        })
+
+        it('travels the head along the line it belongs to', () => {
+            const progress = new Animated.Value(0)
+            const node = renderInDom({ progress })
+            const head = query(node, 'task-completion-strike-head')[0]
+
+            const atStart = head.style.transform
+            domAct(() => progress.setValue(1))
+            // It has to end somewhere else — a head pinned at the start is worse than no head.
+            expect(head.style.transform).not.toBe(atStart)
+        })
+
+        it('recovers to the fallback when the measurement throws', () => {
+            document.createRange = () => {
+                throw new Error('no layout')
+            }
+
+            // ANY problem falls back to full-width bars: the strike still says "done", which is the
+            // thing that matters, and nothing about a decoration may take the row down.
+            const node = renderInDom()
+            expect(query(node, 'task-completion-strike')).toHaveLength(1)
+            expect(query(node, 'task-completion-strike-head')).toHaveLength(0)
         })
     })
 })

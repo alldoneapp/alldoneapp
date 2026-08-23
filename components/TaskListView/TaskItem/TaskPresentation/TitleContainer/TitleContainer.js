@@ -95,6 +95,7 @@ export default function TitleContainer({
             {completionStrike && (
                 <TaskCompletionStrike
                     progress={completionStrike.progress}
+                    opacity={completionStrike.opacity}
                     measuredHeight={titleHeightRef.current}
                     isSubtask={task.isSubtask}
                     // Same DOM id `TasksHelper.showWrappedTaskEllipsis` already measures this title

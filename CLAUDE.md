@@ -700,34 +700,78 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 ### Task completion animation (AT-2404)
 
-Ticking a task's checkbox strikes its title through, washes the row a faint green and collapses it
-out of the list. The state lives in `components/TaskListView/TaskItem/TaskPresentation/taskCompletionMotion.js`
-(owned by `TaskPresentation`, the row) and is triggered from `CheckBoxWrapper` (the checkbox,
-several levels down) through a `beginCompletionMotion` prop — **not** redux: a slice keyed by task
-id would re-render every mounted row on every completion, the exact fan-out AT-2336 exists to
-prevent, for state that concerns one row for 700ms. Because it is implemented once in the shared
-row, it applies everywhere `TaskPresentation` renders — open lists, MyDay, Goal DV, subtasks, TDV
-subtasks, backlinks, the comment popup — on mobile and desktop alike.
+Ticking a task's checkbox punches the checkbox, bursts a ring and six sparks out of it, sweeps a
+strike-through across the title with a green wash following the same edge, and — **only for a row
+that is about to leave its list** — collapses the row upward out of the way. The state lives in
+`components/TaskListView/TaskItem/TaskPresentation/taskCompletionMotion.js` (owned by
+`TaskPresentation`, the row) and is triggered from `CheckBoxWrapper` (the checkbox, several levels
+down) through a `beginCompletionMotion` prop — **not** redux: a slice keyed by task id would
+re-render every mounted row on every completion, the exact fan-out AT-2336 exists to prevent, for
+state that concerns one row for under a second. Because it is implemented once in the shared row it
+applies everywhere `TaskPresentation` renders — open lists, MyDay, Goal DV, pending, done, the
+inline subtask list, the TDV Subtasks tab, backlinks, drag mode, the comment popup — on mobile and
+desktop alike. There is no second/mobile task-row component.
+
+**A SUBTASK MUST NEVER COLLAPSE.** The collapse is only ever a cover for a removal that is about to
+happen anyway: a completed top-level task disappears because the `inDone == false` query stops
+matching it, not because anything here removes it. That premise is **false for a subtask**.
+`setTaskStatus` keeps a subtask's `inDone` at its parent's value and never stamps `completed`
+(`tasksFirestore.js` — `inDone: task.parentId ? task.inDone : isDone`), and **no** subtask query
+filters on `done` (`watchSubtasksList`, `watchSubtasks`, the open/MyDay/Goal-DV lists that bucket by
+`parentId`). A checked-off subtask therefore stays exactly where it is, greyed
+(`TitleContainer` already styles `task.isSubtask && task.done`), ready to be reopened. The first
+pass of this feature collapsed it anyway and never restored `collapsing`, so a completed subtask was
+left as an invisible zero-height row that only came back on a remount — it looked deleted and was
+still there. The gate is `rowRemainsAfterCompletion(task, { inCommentPopup })`, a pure exported
+function resolved **in `TaskPresentation`** and passed to the hook as `retainRow`, never decided at
+the checkbox: expressing it at the one shared row is what makes it impossible for a subtask context
+to forget. It answers true for `isSubtask`, for a bare `parentId` (legacy/partial docs — `DragHelper`
+derives one from the other) and for the comment-popup header, which is a row inside a modal with no
+list to leave. A retained row plays every other beat and then **releases** — the strike and wash fade
+out and the state clears — leaving the ordinary done-subtask appearance, which is also what a reload
+renders, so a subtask you just completed and one that was already done look identical.
 
 **`begin()` returns the number of ms the caller must wait before writing.** That is the whole
-contract, and it is what keeps `CheckBoxWrapper` from having to know whether motion is enabled: the
-reduced-motion branch simply returns a shorter hold. The hold is **700ms** (300ms strike + 260ms
-collapse + ~140ms buffer), down from the 2000ms the row used to wait. The row is fully collapsed and
-invisible before the write is issued, so the snapshot that removes it can never interrupt the
-animation halfway. Undo is untouched — a 10s bar over 7-day retention, independent of this timing.
+contract, and it is what keeps `CheckBoxWrapper` from having to know what kind of row it is in or
+whether motion is enabled. Three answers: **1000ms** for a collapsing row (~920ms of motion — burst
+560, strike 80+360, collapse 600+320 — plus an 80ms buffer so the row is flat and invisible before
+the write, and the snapshot that removes it can never interrupt the animation halfway), **620ms**
+for a retained row (nothing is racing, so the buffer would be dead time), and **300ms** under
+reduced motion. Up from the first pass's flat 700ms: the user asked for longer, and the extra time
+all went into the checkbox beats. Undo is untouched — a 10s bar over 7-day retention, independent of
+this timing.
 
-**The write delay used to be `ANIMATION_DURATION` imported from `TaskCompletionAnimation.js`**, which
-silently tied how long a row waited before saving to how long a Giphy GIF was displayed. That
-coupling is gone. The GIF overlay itself **no longer fires on checkbox completions** — it ran on
-every single tick, portalling a random 300px GIF over the screen plus a `giphyRandomGif` cloud-function
-round trip, which is unusable when clearing a list. It is still wired to the deliberate one-off paths
-that dispatch `showTaskCompletionAnimation()` (WorkflowModal, FollowUpModal, comment-popup workflow
-controls) through `GlobalModalsContainerApp`.
+**The checkbox is where the delight goes, because it is bounded.** The row wash stays deliberately
+quiet (`UtilityGreen125` at 0.55) — completing a task happens constantly, including in bursts when a
+list is cleared, so a full-row colour has to sit low in the attention order or it strobes. A 24px
+box cannot strobe a list, so that is where the saturated `UtilityGreen200`, the expanding ring and
+the six sparks live (`CheckBoxContainer/TaskCompletionCelebration.js`). Two things about it are
+load-bearing: the green check is an **overlay**, not a restyle of `CheckBox` (the persistent done
+state is grey `Text03` everywhere in the app and is not this animation's to change — an overlay
+means there is nothing to unwind), and the punch scale is applied to the **real checkbox**, so what
+squashes and springs back is the element the finger landed on. It stands down over the `pending`
+clock and the AI-step control, which are different affordances that a green "done" tile would lie
+about. Spark travel is ~11px: the predecessor here was a random 300px Giphy GIF portalled over the
+middle of the screen on **every** tick, plus a `giphyRandomGif` cloud-function round trip, which is
+exactly the gimmick to avoid. That overlay is still wired to the deliberate one-off paths that
+dispatch `showTaskCompletionAnimation()` (WorkflowModal, FollowUpModal, comment-popup workflow
+controls) through `GlobalModalsContainerApp`, and to nothing else.
 
-**Only a genuine completion is crossed out.** `scheduleMoveTasksFromOpen` is also how ticking a
+**One `Animated.Value` drives the strike AND the wash** (`scaleX`, both with
+`transformOrigin: 'left center'`), so the wash's leading edge IS the strike's head — two values,
+however carefully tuned, read as two animations that happen to overlap. A second shared value
+(`flourish`) fades in everything green together and is what the retained-row release winds back
+down. The release itself is a **timer**, not the `Animated` completion callback: it has to fire
+identically on the animated path, the reduced-motion path and any renderer whose composite never
+reports finishing, and a subtask that kept its strike because one callback never arrived is the
+exact failure this exists to remove. A `done → open` effect resets everything as a second guarantee,
+so reopening a subtask can never leave completion styling behind.
+
+**Only a genuine completion is celebrated.** `scheduleMoveTasksFromOpen` is also how ticking a
 _workflow_ task hands it to the next reviewer — `stepToMoveId` is a step id, not `DONE_STEP`. That
-row still fades and collapses (it is leaving the list) but gets neither the strike nor the green,
-because the task is not done.
+row still fades and collapses (it is leaving the list) but gets no strike, no green and no checkbox
+burst, because the task is not done — it would otherwise be congratulated for finishing something it
+has only handed on.
 
 **The strike measures the text, not the column.** `TaskCompletionStrike` runs a
 `Range.getClientRects()` over the rendered title (via the same `social_text_<projectId>_<taskId>_<isObservedTask>`
@@ -736,22 +780,31 @@ by rounded `top` into one span per wrapped line. Without this the bar spans the 
 is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row would be crossed out
 by a several-hundred-pixel line through empty space. Any failure (no DOM, missing element, empty
 measurement) falls back to full-width bars sized off the title's `onLayout` height, capped at the
-three lines `numberOfLines={3}` allows. Two things that are load-bearing and easy to break: the
+three lines `numberOfLines={3}` allows. Three things that are load-bearing and easy to break: the
 scaling node needs `transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS
-`transform-origin`) or the line expands from its own middle instead of being drawn; and the rects
-must be measured against an **untransformed** wrapper, since measuring the scaler itself reads a box
-already squashed to `scaleX(0)`.
+`transform-origin`) or the line expands from its own middle instead of being drawn; the rects must be
+measured against an **untransformed** wrapper, since measuring the scaler itself reads a box already
+squashed to `scaleX(0)`; and the bright leading **head** must sit OUTSIDE that scaler and travel by
+`translateX` instead, or it is squashed to nothing along with everything else — the point of a head
+is that it keeps its shape while the line behind it grows. No head is drawn on the fallback path,
+which does not know where a line ends and would park it in empty space.
 
 `textDecorationLine: 'line-through'` is deliberately not used — it cannot be animated, and
 `SocialText` renders hashtags, mentions, links and the leading priority/Gmail chips as separate
 nested elements, so a decoration on the parent `<Text>` is at the mercy of each child's styling.
 
 **Reduced motion keeps the information and drops the motion** — the strike appears statically, fully
-drawn, the row never collapses, and the hold shortens to 250ms so it does not read as lag. Zero
-would mean no completion feedback at all. Same `useReducedMotion()` from `Ghosts/ghostAnimation.js`
-and the same `animationsAreDisabled()` jest convention as every other animation here. Pinned by
-`taskCompletionMotion.test.js`, `TitleContainer/TaskCompletionStrike.test.js`,
-`TitleContainer/TitleContainer.test.js` and the `completion motion handshake` block in
+drawn, the checkbox is green, the ring and sparks are not rendered at all (they carry nothing), the
+row never collapses, and the hold shortens to 300ms so it does not read as lag. Zero would mean no
+completion feedback at all. Same `useReducedMotion()` from `Ghosts/ghostAnimation.js` and the same
+`animationsAreDisabled()` jest convention as every other animation here — which means a suite that
+wants to see the real branch must opt out of it, or an inert row makes every collapse assertion pass
+vacuously. Pinned by `taskCompletionMotion.test.js` (the rule and the hook),
+`TaskPresentationCompletion.test.js` (the REAL row, real checkbox press, subtask vs top-level vs
+comment popup vs reopen — the wiring, which is where the subtask bug actually lived),
+`CheckBoxContainer/TaskCompletionCelebration.test.js`, `CheckBoxContainer/CheckBoxContainer.test.js`,
+`TitleContainer/TaskCompletionStrike.test.js` (including the DOM measurement path through
+react-dom), `TitleContainer/TitleContainer.test.js` and the `completion motion handshake` block in
 `CheckBoxContainer/CheckBoxWrapper.test.js`.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
