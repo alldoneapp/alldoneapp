@@ -200,6 +200,7 @@ const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
 const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
+const mockFirestoreGetAll = jest.fn()
 const mockResponsesCreate = jest.fn()
 const mockFirestoreTimestamp = { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) }
 const mockFirestoreFieldValue = {
@@ -217,6 +218,7 @@ jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
     firestore: Object.assign(
         jest.fn(() => ({
+            getAll: (...refs) => mockFirestoreGetAll(...refs),
             doc: jest.fn(path => ({
                 path,
                 get: mockDocGet,
@@ -1058,6 +1060,98 @@ describe('Responses API compatibility helpers', () => {
                 isLoading: false,
                 isThinking: false,
                 assistantRun: expect.objectContaining({ status: 'failed' }),
+            })
+        )
+    })
+
+    test('propagates a native tool failure after persisting its error for a background task', async () => {
+        mockDocSet.mockClear()
+        mockDocUpdate.mockClear()
+        mockBatchUpdate.mockClear()
+        mockBatchCommit.mockClear()
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: false, data: () => ({}) },
+            {
+                exists: true,
+                id: 'assistant-1',
+                data: () => ({ allowedTools: ['update_project_description'] }),
+            },
+        ])
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ uid: 'assistant-1', allowedTools: ['update_project_description'] }),
+        })
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([]),
+        }))
+
+        const missingProjectId = '-MDq6lDDNf_OwPjWeJsX2'
+        const stream = [
+            {
+                content: '',
+                additional_kwargs: {
+                    tool_calls: [
+                        {
+                            id: 'call-update-project',
+                            type: 'function',
+                            function: {
+                                name: 'update_project_description',
+                                arguments: JSON.stringify({
+                                    projectId: missingProjectId,
+                                    description: 'Updated description',
+                                }),
+                            },
+                        },
+                    ],
+                },
+            },
+        ]
+
+        await expect(
+            storeBotAnswerStream(
+                'project-1',
+                'tasks',
+                'task-1',
+                stream,
+                ['user-1'],
+                ['PUBLIC'],
+                null,
+                'assistant-1',
+                ['user-1'],
+                'Anna',
+                'user-1',
+                null,
+                [['user', 'Update all project descriptions']],
+                'MODEL_GPT5_6_LUNA',
+                'TEMPERATURE_NORMAL',
+                ['update_project_description'],
+                {
+                    project: { name: 'Project A' },
+                    chat: { title: 'Weekly Project Descriptions Update' },
+                    chatLink: 'https://my.alldone.app/projects/project-1/tasks/task-1/chat',
+                },
+                null,
+                {
+                    projectId: 'project-1',
+                    assistantId: 'assistant-1',
+                    requestUserId: 'user-1',
+                    objectType: 'tasks',
+                    objectId: 'task-1',
+                    failOnToolExecutionError: true,
+                }
+            )
+        ).rejects.toMatchObject({
+            code: 'ASSISTANT_TOOL_EXECUTION_FAILED',
+            message: `Target project not found or not accessible: "${missingProjectId}"`,
+        })
+
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: expect.stringContaining(
+                    `Error executing update_project_description: Target project not found or not accessible: "${missingProjectId}"`
+                ),
+                isLoading: false,
             })
         )
     })
@@ -6038,6 +6132,84 @@ describe('assistant project description tool', () => {
                 feedUser: expect.objectContaining({ uid: 'assistant-1' }),
             })
         )
+    })
+
+    test('recovers a unique one-character typo in an accessible projectId', async () => {
+        const familieProjectId = '-MDq6lDDNf_OwPjWeJsX'
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'another-project-id-1', name: 'Operations', description: 'Old description' },
+                { id: familieProjectId, name: 'Familie', description: 'Family description' },
+            ]),
+        }))
+        updateProjectDescription.mockResolvedValue({
+            success: true,
+            updated: true,
+            project: { id: familieProjectId, name: 'Familie' },
+            description: 'Updated family description',
+            previousDescription: 'Family description',
+            message: 'Project description updated in project "Familie"',
+        })
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await executeToolNatively(
+            'update_project_description',
+            { description: 'Updated family description', projectId: `${familieProjectId}2` },
+            'another-project-id-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(updateProjectDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: familieProjectId,
+                userId: 'user-1',
+                description: 'Updated family description',
+            })
+        )
+    })
+
+    test('rejects an ambiguous one-character projectId correction', async () => {
+        const requestedProjectId = '-MDq6lDDNf_OwPjWeJsX2'
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: '-MDq6lDDNf_OwPjWeJsX', name: 'Familie', description: '' },
+                { id: '-MDq6lDDNf_OwPjWeJsX3', name: 'Other', description: '' },
+            ]),
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_project_description',
+                { description: 'Updated family description', projectId: requestedProjectId },
+                '-MDq6lDDNf_OwPjWeJsX',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow(`Target project not found or not accessible: "${requestedProjectId}"`)
+
+        expect(updateProjectDescription).not.toHaveBeenCalled()
     })
 
     test('updates an exact projectName target', async () => {

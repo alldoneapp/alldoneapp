@@ -360,7 +360,10 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
 
         expect(mockStoreBotAnswerStream.mock.calls[0][18]).toEqual(
-            expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
+            expect.objectContaining({
+                maxRunWallClockMs: 55 * 60 * 1000,
+                failOnToolExecutionError: true,
+            })
         )
     })
 
