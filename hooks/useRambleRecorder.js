@@ -105,51 +105,14 @@ export default function useRambleRecorder({ onComplete, onError }) {
         setElapsedSeconds(0)
     }, [])
 
-    /**
-     * `start()` is async — it waits on `getUserMedia` (a permission prompt the first time) and on
-     * the AT-2357 silence probe, so several hundred milliseconds can pass between the caller
-     * asking to record and a MediaRecorder existing. Push-to-talk releases inside that window all
-     * the time (AT-2405), and before this latch `stop()`/`cancel()` found `recorderRef.current`
-     * still null, did nothing at all, and the recorder then started AFTER the release with nobody
-     * left to stop it — a hot microphone running to the 300s cap. The token is compared rather
-     * than a bare boolean so a NEW start issued while an old acquisition is still in flight cannot
-     * be aborted by the old one's release.
-     */
-    const startTokenRef = useRef(0)
-    const abortedTokenRef = useRef(-1)
-
-    const abortPendingStart = () => {
-        if (!startTokenRef.current || recorderRef.current) return false
-        abortedTokenRef.current = startTokenRef.current
-        return true
-    }
-
-    /**
-     * @param {{minDurationMs?: number}} [options] discard the take instead of delivering it when
-     *   the recorder ran for less than this. Owned here because `startedAtRef` is the only honest
-     *   measure of how much audio exists — the press duration is not, since acquisition eats an
-     *   unpredictable slice of it.
-     * @returns {boolean} whether a recording will actually be delivered to `onComplete`.
-     */
-    const stop = useCallback((options = {}) => {
-        const { minDurationMs = 0 } = options
-        // Released before the microphone ever opened: there is no audio, so this is a discard, not
-        // a stop. Silent on purpose — the user held the button briefly and nothing happened.
-        if (abortPendingStart()) return false
+    const stop = useCallback(() => {
         const recorder = recorderRef.current
-        if (!recorder || recorder.state === 'inactive') return false
-        if (minDurationMs > 0 && Date.now() - startedAtRef.current < minDurationMs) {
-            cancelledRef.current = true
-            recorder.stop()
-            return false
-        }
+        if (!recorder || recorder.state === 'inactive') return
         recorder.stop()
-        return true
     }, [])
 
     const cancel = useCallback(() => {
         cancelledRef.current = true
-        abortPendingStart()
         const recorder = recorderRef.current
         if (recorder && recorder.state !== 'inactive') {
             recorder.stop()
@@ -172,29 +135,16 @@ export default function useRambleRecorder({ onComplete, onError }) {
         // workaround (and whether it still belongs to this device), and the pre-flight probe that
         // re-acquires a silent device with processing disabled BEFORE recording starts, so the
         // broken take never happens and no speech is lost. See rambleMicCapture.js.
-        const startToken = startTokenRef.current + 1
-        startTokenRef.current = startToken
-
         let acquired
         try {
             acquired = await acquireDictationStream({
                 requestStream: audio => navigator.mediaDevices.getUserMedia({ audio }),
             })
         } catch (error) {
-            if (abortedTokenRef.current === startToken) return
             onErrorRef.current?.('permission-denied')
             return
         }
         const { stream, monitor, captureMode, setting, deviceId, deviceLabel, triedDevices, switchedDevice } = acquired
-
-        // The caller let go (or cancelled) while the microphone was still opening. Hand the device
-        // straight back instead of starting a recording nobody is holding — see the token comment
-        // on `stop()`.
-        if (abortedTokenRef.current === startToken) {
-            monitor?.close()
-            stream.getTracks().forEach(track => track.stop())
-            return
-        }
 
         const mimeType = pickSupportedMimeType()
         let recorder
