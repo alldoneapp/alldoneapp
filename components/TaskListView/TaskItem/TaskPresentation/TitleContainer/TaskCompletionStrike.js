@@ -24,7 +24,14 @@ import { colors } from '../../../../styles/global'
  * own centre.
  */
 
-const STRIKE_THICKNESS = 1.5
+const STRIKE_THICKNESS = 2
+
+// The bright tip that travels along with the line's leading edge. Without it the bar is a shape
+// being scaled; with it, the line reads as being DRAWN, which is the whole difference between the
+// effect looking mechanical and looking deliberate. Only rendered on measured lines, because the
+// fallback does not know where a line actually ends.
+const STRIKE_HEAD_WIDTH = 9
+const STRIKE_HEAD_THICKNESS = 3
 
 // Matches `TitleContainer`'s `descriptionText` margins, which is where the first text line starts.
 const TEXT_MARGIN_TOP = 5
@@ -119,11 +126,15 @@ export const measureTitleLines = (elementId, overlayNode) => {
 /**
  * @param {object} props
  * @param {Animated.Value} props.progress 0 → 1, drives `scaleX`.
+ * @param {Animated.Value} [props.opacity] 0 → 1 as the completion starts, and back to 0 when a
+ *   RETAINED row (a subtask, which stays in its list) releases the effect. Shared with the row wash
+ *   and the checkbox fill so every part of the flourish arrives and leaves together. Optional so
+ *   the component still renders standalone.
  * @param {number} props.measuredHeight Laid-out height of the title text (fallback path only).
  * @param {boolean} props.isSubtask Subtasks use the smaller body2 metrics.
  * @param {string} [props.elementId] DOM id of the rendered title, used to measure its true width.
  */
-export default function TaskCompletionStrike({ progress, measuredHeight, isSubtask, elementId }) {
+export default function TaskCompletionStrike({ progress, opacity, measuredHeight, isSubtask, elementId }) {
     const overlayRef = useRef(null)
     const [measuredLines, setMeasuredLines] = useState(null)
 
@@ -149,7 +160,12 @@ export default function TaskCompletionStrike({ progress, measuredHeight, isSubta
         }))
 
     return (
-        <View ref={overlayRef} style={localStyles.overlay} pointerEvents="none" testID="task-completion-strike">
+        <Animated.View
+            ref={overlayRef}
+            style={[localStyles.overlay, opacity ? { opacity } : undefined]}
+            pointerEvents="none"
+            testID="task-completion-strike"
+        >
             <Animated.View
                 style={[localStyles.scaler, { transform: [{ scaleX: progress }] }]}
                 testID="task-completion-strike-scaler"
@@ -166,7 +182,39 @@ export default function TaskCompletionStrike({ progress, measuredHeight, isSubta
                     />
                 ))}
             </Animated.View>
-        </View>
+            {/* The heads sit OUTSIDE the scaler and travel by `translateX` instead. Inside it they
+                would be squashed to nothing along with everything else — the point of a head is
+                that it keeps its shape while the line behind it grows. */}
+            {lines.map((line, index) =>
+                line.width === undefined ? null : (
+                    <Animated.View
+                        key={`head-${index}`}
+                        testID="task-completion-strike-head"
+                        style={[
+                            localStyles.head,
+                            {
+                                top: line.top + (STRIKE_THICKNESS - STRIKE_HEAD_THICKNESS) / 2,
+                                opacity: progress.interpolate({
+                                    inputRange: [0, 0.08, 0.75, 1],
+                                    outputRange: [0, 1, 1, 0],
+                                }),
+                                transform: [
+                                    {
+                                        translateX: progress.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [
+                                                line.left - STRIKE_HEAD_WIDTH / 2,
+                                                line.left + line.width - STRIKE_HEAD_WIDTH / 2,
+                                            ],
+                                        }),
+                                    },
+                                ],
+                            },
+                        ]}
+                    />
+                )
+            )}
+        </Animated.View>
     )
 }
 
@@ -185,7 +233,17 @@ const localStyles = StyleSheet.create({
         height: STRIKE_THICKNESS,
         borderRadius: STRIKE_THICKNESS / 2,
         // Text02, not the title's own near-black: the line marks the text as struck without
-        // competing with it for weight during the ~300ms both are on screen together.
+        // competing with it for weight during the ~360ms both are on screen together.
         backgroundColor: colors.Text02,
+    },
+    head: {
+        position: 'absolute',
+        left: 0,
+        width: STRIKE_HEAD_WIDTH,
+        height: STRIKE_HEAD_THICKNESS,
+        borderRadius: STRIKE_HEAD_THICKNESS / 2,
+        // The one saturated green on the title, and only for the moment it is moving. It ties the
+        // line to the checkbox burst without turning the strike itself into a highlighter.
+        backgroundColor: colors.UtilityGreen300,
     },
 })
