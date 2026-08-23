@@ -44,7 +44,7 @@ import { canDropFilesOnTaskRow } from './taskFileDropHelper'
 import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
 import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
-import useTaskCompletionMotion from './taskCompletionMotion'
+import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
 
 function TaskPresentation(
     {
@@ -126,17 +126,31 @@ function TaskPresentation(
     const { processing: routingProcessing, confirmation: routingConfirmation } = useTaskRoutingActivity(task, projectId)
     const hasRoutingActivity = !!(routingProcessing || routingConfirmation)
 
-    // AT-2404 — strike-through, green settle and collapse when this row is checked off. The state
-    // lives here because the effect is the whole row's, but it is TRIGGERED from `CheckBoxWrapper`
-    // below, which is handed `beginCompletionMotion` and told how long to hold its write.
+    /**
+     * AT-2404 — the checkbox burst, strike-through, green wash and exit this row plays when it is
+     * checked off. The state lives here because the effect is the whole row's, but it is TRIGGERED
+     * from `CheckBoxWrapper` below, which is handed `beginCompletionMotion` and told how long to
+     * hold its write.
+     *
+     * `retainRow` is the subtask guarantee, and it is resolved HERE — from the task, through the
+     * shared `rowRemainsAfterCompletion` rule — rather than at the checkbox, because
+     * `TaskPresentation` is the ONE row implementation behind every context that renders a task
+     * line: open lists, MyDay, Goal DV, pending, done, backlinks, drag mode, the inline subtask
+     * list under a row, the TDV Subtasks tab and the comment popup header. A rule expressed here
+     * cannot be forgotten by one of them. See the function for why a subtask is the case that
+     * matters.
+     */
+    const retainRow = rowRemainsAfterCompletion(task, { inCommentPopup })
     const {
         onRowLayout: onCompletionRowLayout,
         rowStyle: completionRowStyle,
         beginCompletionMotion,
         cancelCompletionMotion,
         completionStrike,
+        completionWash,
+        completionCelebration,
         isCompleting,
-    } = useTaskCompletionMotion()
+    } = useTaskCompletionMotion({ retainRow, isDone: task.done })
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -327,6 +341,7 @@ function TaskPresentation(
             <Animated.View
                 style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
                 onLayout={onCompletionRowLayout}
+                testID="task-completion-row"
             >
                 <SwipeAreasContainer
                     leftText={'Properties'}
@@ -393,21 +408,25 @@ function TaskPresentation(
                                         confirmation={routingConfirmation}
                                     />
                                 )}
-                                {/* AT-2404 — the "settle": a pale green wash that rises with the
-                                    strike-through, on the same Animated.Value so the two are one
-                                    gesture rather than two animations that can drift apart.
-                                    Rendered only when the task is genuinely completed, so a workflow
-                                    step advance (which also leaves this list) does not get the
-                                    colour that means "done". */}
-                                {completionStrike && (
+                                {/* AT-2404 — the green wash, and the reason it SWEEPS rather than
+                                    fades: it scales on X from the same `Animated.Value` and the
+                                    same left origin as the strike-through, so its leading edge is
+                                    the strike's head. One value, one gesture — the colour arrives
+                                    across the row exactly as fast as the line is drawn, which is
+                                    what makes them read as a single event instead of two
+                                    animations that happen to overlap. Rendered only when the task
+                                    is genuinely completed, so a workflow step advance (which also
+                                    leaves this list) does not get the colour that means "done". */}
+                                {completionWash && (
                                     <Animated.View
                                         style={[
                                             localStyles.completionTint,
                                             {
-                                                opacity: completionStrike.progress.interpolate({
+                                                opacity: completionWash.opacity.interpolate({
                                                     inputRange: [0, 1],
                                                     outputRange: [0, COMPLETION_TINT_PEAK_OPACITY],
                                                 }),
+                                                transform: [{ scaleX: completionWash.progress }],
                                             },
                                         ]}
                                         pointerEvents="none"
@@ -438,6 +457,7 @@ function TaskPresentation(
                                         isNextStepAi={showAiStepControl}
                                         beginCompletionMotion={beginCompletionMotion}
                                         cancelCompletionMotion={cancelCompletionMotion}
+                                        completionCelebration={completionCelebration}
                                     />
                                     {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
                                         <GmailTag
@@ -562,12 +582,14 @@ function TaskPresentation(
 }
 
 /**
- * Deliberately fainter than `useLastAddedTaskColor`'s 600ms `UtilityBlue125` flash for a newly
- * added task. Adding a task is occasional; completing one happens constantly, including in bursts
- * when a list is cleared, so its confirmation has to sit lower in the attention order or it turns
- * into strobing. `UtilityGreen125` at this alpha composites to roughly #E4FBF3 over a white row.
+ * The row wash stays deliberately quiet even though the rest of this sequence got louder. Adding a
+ * task is occasional — `useLastAddedTaskColor` can afford a 600ms `UtilityBlue125` flash for it;
+ * completing one happens constantly, including in bursts when a list is cleared, so a full-row
+ * colour has to sit low in the attention order or it turns into strobing. The excitement was added
+ * where it is bounded instead: inside the 24px checkbox, which cannot strobe a whole list.
+ * `UtilityGreen125` at this alpha composites to roughly #DEF9EF over a white row.
  */
-const COMPLETION_TINT_PEAK_OPACITY = 0.45
+const COMPLETION_TINT_PEAK_OPACITY = 0.55
 
 const localStyles = StyleSheet.create({
     dragModeContainer: {
@@ -582,6 +604,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.UtilityGreen125,
         // Matches `taskPresentationLayout.taskRow` so the wash cannot square off the row's corners.
         borderRadius: 4,
+        // Grows from the checkbox side. Passed through verbatim by react-native-web 0.21's
+        // `preprocess` (it becomes CSS `transform-origin`) — without it the wash would expand from
+        // the row's centre in both directions and the sweep would read backwards.
+        transformOrigin: 'left center',
     },
 })
 

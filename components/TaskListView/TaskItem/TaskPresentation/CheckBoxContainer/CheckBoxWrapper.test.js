@@ -53,7 +53,8 @@ jest.mock('../../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/Recu
 jest.mock('./EmailTaskCompletionModal', () => 'EmailTaskCompletionModal')
 jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
 
-import { moveTasksFromOpen } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from '../taskCompletionMotion'
 import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import { getUserWorkflow } from '../../../../ContactsView/Utils/ContactsHelper'
 import CheckBoxWrapper from './CheckBoxWrapper'
@@ -88,6 +89,8 @@ describe('CheckBoxWrapper task completion', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         moveTasksFromOpen.mockClear()
+        setTaskStatus.mockClear()
+        setTaskStatus.mockResolvedValue(undefined)
         performEmailLineAction.mockClear()
         performEmailLineAction.mockResolvedValue(undefined)
         getUserWorkflow.mockReset()
@@ -520,6 +523,43 @@ describe('CheckBoxWrapper task completion', () => {
             // Otherwise the failed completion leaves an invisible, zero-height row in the list.
             expect(cancelCompletionMotion).toHaveBeenCalled()
             expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(false)
+        })
+
+        test('holds a subtask for less time than a collapsing row, even with no row handler', async () => {
+            // The buffer on a collapsing row exists purely to keep the write behind the collapse.
+            // A subtask never collapses, so making the user wait for it would be dead time.
+            const tree = renderWrapper({ ...baseTask, isSubtask: true })
+
+            act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+            await act(async () => {
+                jest.advanceTimersByTime(RETAINED_HOLD_MS)
+                await Promise.resolve()
+            })
+
+            expect(setTaskStatus).toHaveBeenCalledTimes(1)
+            expect(RETAINED_HOLD_MS).toBeLessThan(COMPLETION_HOLD_MS)
+        })
+
+        test.each([
+            ['an ordinary row', {}],
+            // Four render branches in this component differ only in which popover wraps the
+            // checkbox. Repeating twenty props four times is how a new one lands on three of them
+            // and silently does nothing on the fourth, so they share one spread — pinned here on
+            // the branch furthest from the default.
+            [
+                'a row showing the email completion modal',
+                { gmailData: { connectionId: 'email_google_12345678', messageId: 'message-1' } },
+            ],
+        ])('forwards the checkbox celebration through %s', (_description, taskOverrides) => {
+            const completionCelebration = { punch: 'punch', burst: 'burst', opacity: 'opacity', animated: true }
+            const tree = renderWrapper({ ...baseTask, ...taskOverrides }, { completionCelebration })
+
+            if (taskOverrides.gmailData) {
+                act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+                expect(tree.root.findAllByType('EmailTaskCompletionModal')).toHaveLength(1)
+            }
+
+            expect(tree.root.findByType('CheckBoxContainer').props.completionCelebration).toBe(completionCelebration)
         })
 
         test('completes normally when no row handler is supplied', async () => {
