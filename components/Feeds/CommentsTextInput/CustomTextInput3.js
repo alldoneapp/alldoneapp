@@ -50,7 +50,7 @@ import {
 import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
-import { resolveDictationSubmit, scheduleDictationSubmit } from './dictationSubmit'
+import useDictationSubmit from './dictationSubmit'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -306,6 +306,8 @@ function CustomTextInput3(
     // mic and saying nothing would send whatever the user had half-typed.
     const dictationInsertedRef = useRef(false)
 
+    const armDictationSubmit = useDictationSubmit({ onDictationSubmit, forceTriggerEnterActionForBreakLines })
+
     const insertDictatedText = text => {
         dictationInsertedRef.current = false
         const editor = quillRef.current
@@ -345,13 +347,18 @@ function CustomTextInput3(
     }
 
     // Push-to-talk (AT-2405): holding the mic inserts the transcript AND fires this input's own
-    // Enter action. `textRef` is written synchronously by `updateText`, so by the time the
-    // insertion above returns it already holds draft + transcript — which is what has to be sent,
-    // not the transcript alone, or a half-typed message would be silently thrown away.
+    // Enter action. The insertion above only QUEUES the host's state update, so the submit is
+    // armed rather than called — `useDictationSubmit` fires it after the next commit, by which
+    // time the host's Enter action can see the dictated text. Submitting synchronously here ran
+    // the host's pre-dictation closure instead, which in the add-new-task field dismissed the
+    // editor and created nothing; see dictationSubmit.js.
+    //
+    // `textRef` is written synchronously by `updateText`, so it already holds draft + transcript
+    // — that is what has to be sent, not the transcript alone, or a half-typed message would be
+    // silently thrown away.
     const submitDictatedText = () => {
         if (!dictationInsertedRef.current) return
-        const submit = resolveDictationSubmit({ onDictationSubmit, forceTriggerEnterActionForBreakLines })
-        scheduleDictationSubmit(submit, textRef.current)
+        armDictationSubmit(() => textRef.current)
     }
 
     //MENTIONS
