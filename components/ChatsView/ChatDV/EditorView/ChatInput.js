@@ -429,6 +429,12 @@ export default function ChatInput({
                 // than revealed on hover/focus (AT-2355). The strip it sits in is reserved
                 // whenever dictation is enabled, so nothing reflows.
                 alwaysShowDictation={true}
+                // Push-to-talk (AT-2405). This composer submits through a document-level keydown
+                // listener rather than the generic `forceTriggerEnterActionForBreakLines`, so it
+                // has to hand the send action over explicitly. The text passed in is the whole
+                // composer content (existing draft + transcript), and `onSubmit` already accepts a
+                // string precisely so a programmatic send does not race the `inputText` state.
+                onDictationSubmit={editing ? undefined : text => text && onSubmit(text)}
             />
             <ChatInputButtons
                 projectId={projectId}
