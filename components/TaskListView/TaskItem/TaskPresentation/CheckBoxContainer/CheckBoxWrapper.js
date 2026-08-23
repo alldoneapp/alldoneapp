@@ -15,7 +15,7 @@ import { getUserWorkflow } from '../../../../ContactsView/Utils/ContactsHelper'
 import { checkIsLimitedByXp } from '../../../../Premium/PremiumHelper'
 import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
-import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
+import { COMPLETION_HOLD_MS } from '../taskCompletionMotion'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import { taskBypassesWorkflow } from '../../../../../utils/taskExecutionMode'
 import { getEmailTaskArchiveData, isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
@@ -41,6 +41,8 @@ function CheckBoxWrapper(
         pending,
         showWorkflowIndicator,
         isNextStepAi,
+        beginCompletionMotion,
+        cancelCompletionMotion,
     },
     ref
 ) {
@@ -53,7 +55,6 @@ function CheckBoxWrapper(
     const [emailCompletionSubmitting, setEmailCompletionSubmitting] = useState(false)
     const [pendingEmailArchiveChoice, setPendingEmailArchiveChoice] = useState(null)
     const [recurrenceDateBasisModalIsOpen, setRecurrenceDateBasisModalIsOpen] = useState(false)
-    const [showAnimation, setShowAnimation] = useState(false)
     const [taskTransitionPending, setTaskTransitionPending] = useState(false)
     const checkBoxIdRef = useRef(v4())
     const isUnmountedRef = useRef(false)
@@ -87,10 +88,22 @@ function CheckBoxWrapper(
         }
     }
 
-    const safeSetShowAnimation = value => {
-        if (!isUnmountedRef.current) {
-            setShowAnimation(value)
-        }
+    /**
+     * AT-2404 — hands the row its completion animation and is told how long to hold the write.
+     *
+     * The duration is decided by `useTaskCompletionMotion`, not here, so the reduced-motion branch
+     * (a static strike-through and a much shorter hold) needs no knowledge of it at this level.
+     * Falls back to the standard hold if the row did not supply a handler, which keeps this
+     * component usable — and its existing suite meaningful — outside `TaskPresentation`.
+     *
+     * @param {boolean} strikeThrough False when the checkbox advances a workflow task to its next
+     *   step: the row still leaves the list, but the task is not done, so it must not be crossed
+     *   out or tinted with the success colour.
+     */
+    const startCompletionMotion = strikeThrough => {
+        if (typeof beginCompletionMotion !== 'function') return COMPLETION_HOLD_MS
+        const holdMs = beginCompletionMotion({ strikeThrough })
+        return typeof holdMs === 'number' ? holdMs : COMPLETION_HOLD_MS
     }
 
     const rollbackOptimisticCheck = async error => {
@@ -105,7 +118,9 @@ function CheckBoxWrapper(
             console.error('[task transition] Could not reload task after checkbox failure', readError)
         }
         safeSetChecked(persistedTask ? persistedTask.done : done)
-        safeSetShowAnimation(false)
+        // The row already struck itself through and collapsed optimistically; the write failed, so
+        // put it back rather than leaving an invisible zero-height row behind.
+        if (typeof cancelCompletionMotion === 'function') cancelCompletionMotion()
     }
 
     const {
@@ -130,7 +145,9 @@ function CheckBoxWrapper(
         if (taskTransitionPendingRef.current) return
         taskTransitionPendingRef.current = true
         setTaskTransitionPending(true)
-        setShowAnimation(true)
+        // Only ever reached for a subtask being completed (the un-complete path writes directly),
+        // so this is always a genuine "done".
+        const holdMs = startCompletionMotion(true)
         const t = setTimeout(async () => {
             try {
                 await setTaskStatus(
@@ -151,7 +168,7 @@ function CheckBoxWrapper(
                 taskTransitionPendingRef.current = false
                 if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
-        }, ANIMATION_DURATION)
+        }, holdMs)
         timeoutsRef.current.push(t)
     }
 
@@ -159,7 +176,10 @@ function CheckBoxWrapper(
         if (taskTransitionPendingRef.current) return
         taskTransitionPendingRef.current = true
         setTaskTransitionPending(true)
-        setShowAnimation(true)
+        // `stepToMoveId` is DONE_STEP for a real completion, but a WORKFLOW STEP ID when ticking a
+        // workflow task simply hands it to the next reviewer. Both leave this list and both get the
+        // exit animation; only the first is crossed out, because only the first is done.
+        const holdMs = startCompletionMotion(stepToMoveId === DONE_STEP)
         const t = setTimeout(async () => {
             try {
                 await moveTasksFromOpen(
@@ -178,7 +198,7 @@ function CheckBoxWrapper(
                 taskTransitionPendingRef.current = false
                 if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
-        }, ANIMATION_DURATION)
+        }, holdMs)
         timeoutsRef.current.push(t)
     }
 
@@ -345,8 +365,6 @@ function CheckBoxWrapper(
         onCheckboxPress,
     }))
 
-    // console.log('CheckBoxWrapper state - showAnimation:', showAnimation)
-
     return (
         <>
             {recurrenceDateBasisModalIsOpen ? (
@@ -490,13 +508,6 @@ function CheckBoxWrapper(
                     loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                 />
             )}
-            <TaskCompletionAnimation
-                visible={showAnimation}
-                onAnimationComplete={() => {
-                    console.log('Animation completed callback')
-                    safeSetShowAnimation(false)
-                }}
-            />
         </>
     )
 }

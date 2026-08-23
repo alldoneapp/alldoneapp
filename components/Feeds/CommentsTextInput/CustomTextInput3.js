@@ -50,7 +50,6 @@ import {
 import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
-import { resolveDictationSubmit, scheduleDictationSubmit } from './dictationSubmit'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -144,7 +143,6 @@ function CustomTextInput3(
         hideDictation = false,
         dictationTargetKind,
         alwaysShowDictation = false,
-        onDictationSubmit,
     },
     ref
 ) {
@@ -300,14 +298,7 @@ function CustomTextInput3(
         }
     }, [dictationEnabled, alwaysShowDictation, containerElement])
 
-    // Whether the last transcript actually made it into the editor. A push-to-talk submit is only
-    // allowed to fire when it did: a transcript that normalizes away to nothing (whitespace, a
-    // lone newline in a title input) would otherwise submit the UNTOUCHED draft — i.e. holding the
-    // mic and saying nothing would send whatever the user had half-typed.
-    const dictationInsertedRef = useRef(false)
-
     const insertDictatedText = text => {
-        dictationInsertedRef.current = false
         const editor = quillRef.current
         if (!editor) return
         const cleaned = normalizeDictatedText(text, dictationIsTitleTarget)
@@ -340,18 +331,7 @@ function CustomTextInput3(
         // 'user' source: runs the normal onChange path (htmlRef stays in sync — AT-2178, and
         // onChangeText reaches the parent's save flow) and lands in the undo history.
         editor.updateContents(delta, 'user')
-        dictationInsertedRef.current = true
         placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
-    }
-
-    // Push-to-talk (AT-2405): holding the mic inserts the transcript AND fires this input's own
-    // Enter action. `textRef` is written synchronously by `updateText`, so by the time the
-    // insertion above returns it already holds draft + transcript — which is what has to be sent,
-    // not the transcript alone, or a half-typed message would be silently thrown away.
-    const submitDictatedText = () => {
-        if (!dictationInsertedRef.current) return
-        const submit = resolveDictationSubmit({ onDictationSubmit, forceTriggerEnterActionForBreakLines })
-        scheduleDictationSubmit(submit, textRef.current)
     }
 
     //MENTIONS
@@ -1424,7 +1404,6 @@ function CustomTextInput3(
                             targetKind={dictationKind}
                             getCurrentText={() => textRef.current}
                             onTextReady={insertDictatedText}
-                            onSubmit={submitDictatedText}
                             visible={dictationButtonVisible}
                         />
                     </View>
