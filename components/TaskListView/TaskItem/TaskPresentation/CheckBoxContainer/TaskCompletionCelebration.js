@@ -44,7 +44,8 @@ export const SUBTASK_CHECKBOX_SIZE = 20
  *   checkbox, not here; exported through the same object so the two can never be wired up apart.
  * @param {Animated.Value} props.burst 0 → 1 over the burst duration. Drives ring and sparks.
  * @param {Animated.Value} props.opacity 0 → 1, and back to 0 when a retained row releases. Shared
- *   with the row wash and the strike so every green thing arrives and leaves as one event.
+ *   with the row wash and the title's progress bar so every green thing arrives and leaves as one
+ *   event.
  * @param {boolean} props.animated False under `prefers-reduced-motion` and under jest.
  * @param {boolean} props.isSubtask Subtask checkboxes are 20px, not 24px.
  */
