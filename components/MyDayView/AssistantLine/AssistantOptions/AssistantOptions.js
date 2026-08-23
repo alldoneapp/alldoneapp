@@ -96,58 +96,64 @@ export default function AssistantOptions({
         setQuickActionsExpanded(showAllQuickActions)
     }, [assistant?.uid, assistantProjectId, showAllQuickActions])
 
-    const handleSendMessage = useCallback(async () => {
-        const trimmedMessage = message.trim()
-        if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
+    // `explicitText` is the push-to-talk path (AT-2405): a dictation that submits itself hands over
+    // the composer text it just wrote, because the `message` state behind it is still a queued
+    // setState at that point and reading it here would send the pre-dictation draft.
+    const handleSendMessage = useCallback(
+        async explicitText => {
+            const trimmedMessage = (typeof explicitText === 'string' ? explicitText : message).trim()
+            if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
 
-        if (gold <= 0) {
-            setShowRunOutOfGoldModal(true)
-            return
-        }
-
-        inputRef.current?.blur()
-        Keyboard.dismiss()
-        isSendingRef.current = true
-        setIsSending(true)
-        try {
-            const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
-                skipNavigation: true,
-                enableAssistant: true,
-                projectId: conversationProjectId,
-            })
-
-            if (!topicData) {
-                isSendingRef.current = false
-                setIsSending(false)
+            if (gold <= 0) {
+                setShowRunOutOfGoldModal(true)
                 return
             }
 
-            setMessage('')
-            setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
-            inputRef.current?.clear()
+            inputRef.current?.blur()
+            Keyboard.dismiss()
+            isSendingRef.current = true
+            setIsSending(true)
+            try {
+                const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
+                    skipNavigation: true,
+                    enableAssistant: true,
+                    projectId: conversationProjectId,
+                })
 
-            // Unblock the input now that the thread has been created
-            isSendingRef.current = false
-            setIsSending(false)
-
-            // Continue executing the task in the background without blocking the input
-            if (topicData.projectId && !conversationProject?.isTemplate) {
-                try {
-                    const userIdsToNotify = generateUserIdsToNotifyForNewComments(
-                        topicData.projectId,
-                        topicData.isPublicFor,
-                        ''
-                    )
-                } catch (error) {
-                    console.error('❌ [AssistantOptions] Error triggering assistant reply:', error)
+                if (!topicData) {
+                    isSendingRef.current = false
+                    setIsSending(false)
+                    return
                 }
+
+                setMessage('')
+                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+                inputRef.current?.clear()
+
+                // Unblock the input now that the thread has been created
+                isSendingRef.current = false
+                setIsSending(false)
+
+                // Continue executing the task in the background without blocking the input
+                if (topicData.projectId && !conversationProject?.isTemplate) {
+                    try {
+                        const userIdsToNotify = generateUserIdsToNotifyForNewComments(
+                            topicData.projectId,
+                            topicData.isPublicFor,
+                            ''
+                        )
+                    } catch (error) {
+                        console.error('❌ [AssistantOptions] Error triggering assistant reply:', error)
+                    }
+                }
+            } catch (error) {
+                console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
+                isSendingRef.current = false
+                setIsSending(false)
             }
-        } catch (error) {
-            console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
-            isSendingRef.current = false
-            setIsSending(false)
-        }
-    }, [assistant, conversationProject, conversationProjectId, message, gold])
+        },
+        [assistant, conversationProject, conversationProjectId, message, gold]
+    )
 
     const updateInputHeight = useCallback(contentHeight => {
         setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
@@ -261,6 +267,10 @@ export default function AssistantOptions({
                     // instead of waiting for hover/focus — on touch there is no hover at all, so
                     // it used to appear only after the field was already tapped (AT-2355).
                     alwaysShowDictation={true}
+                    // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
+                    // inserted and the message is sent. Enter's own guards still apply, since this
+                    // is the same send path the keydown listener uses.
+                    onDictationSubmit={text => text && handleSendMessage(text)}
                 />
                 <AppPopover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
