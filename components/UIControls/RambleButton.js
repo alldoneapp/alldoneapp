@@ -1,26 +1,14 @@
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import useRambleRecorder from '../../hooks/useRambleRecorder'
 import useEscapeKey from '../../hooks/useEscapeKey'
-import usePushToTalkGesture from '../../hooks/usePushToTalkGesture'
-import {
-    PUSH_TO_TALK_DISCARD,
-    PUSH_TO_TALK_MIN_RECORDING_MS,
-    PUSH_TO_TALK_STOP,
-    PUSH_TO_TALK_SUBMIT,
-    resolvePushToTalkRelease,
-} from './pushToTalk'
 import { processRamble } from '../../utils/backends/Rambler/ramblerBackend'
 import { translate } from '../../i18n/TranslationService'
 import store from '../../redux/store'
 import { setShowLimitedFeatureModal } from '../../redux/actions'
-
-// A pointer press leaves a trailing `click`; react-native-web turns that into `onPress`, which
-// would toggle the recorder a second time right after the gesture already handled the release.
-export const POINTER_CLICK_SUPPRESSION_MS = 700
 
 export const RAMBLE_PHASE_IDLE = 'idle'
 export const RAMBLE_PHASE_RECORDING = 'recording'
@@ -37,23 +25,12 @@ export function formatRambleElapsed(elapsedSeconds) {
  * caller. Shared between the CustomTextInput3 overlay button and the notes editor toolbar, which
  * render their own chrome around the same phases.
  */
-export function useRambleController({ projectId, targetKind = 'generic', getCurrentText, onTextReady, onSubmit }) {
+export function useRambleController({ projectId, targetKind = 'generic', getCurrentText, onTextReady }) {
     const [processing, setProcessing] = useState(false)
-
-    // Armed by a push-to-talk release and consumed by the completion below, so that only the take
-    // the user actually held for is submitted. A tap-started take that happens to finish while a
-    // hold is in flight must not inherit the arming, which is why it is cleared on every exit path
-    // (success, error, cancel) rather than only on success.
-    const submitOnCompleteRef = useRef(false)
-    const onSubmitRef = useRef(onSubmit)
-    onSubmitRef.current = onSubmit
 
     // 'silent-input*' means the microphone handed the browser silence (AT-2357) — the recording was
     // never uploaded, so these messages replace a Gold charge and a misleading "No speech detected".
     const handleRecorderError = useCallback((code, details = {}) => {
-        // A take that failed is never submitted; drop the arming so a later tap-started recording
-        // cannot inherit it.
-        submitOnCompleteRef.current = false
         if (code === 'permission-denied') {
             alert(translate('Microphone access was denied. Please allow microphone access in your browser settings.'))
         } else if (code === 'silent-input-retry') {
@@ -84,8 +61,6 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
 
     const handleRecordingComplete = useCallback(
         async ({ audioBase64, mimeType, durationSeconds, deviceLabel }) => {
-            const shouldSubmit = submitOnCompleteRef.current
-            submitOnCompleteRef.current = false
             setProcessing(true)
             try {
                 const requestStartedAt = Date.now()
@@ -106,14 +81,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
                     audioSeconds: durationSeconds,
                     ...(result?.timings || {}),
                 })
-                if (result?.text) {
-                    onTextReady(result.text)
-                    // Push-to-talk: the transcript is inserted AND sent, with no review step
-                    // (AT-2405). Submitting is the host's job — it is the only layer that knows
-                    // what "send" means for this input (post a comment, create a task, save a
-                    // goal) and what guards apply (an open popup, an in-flight submit).
-                    if (shouldSubmit) onSubmitRef.current?.(result.text)
-                }
+                if (result?.text) onTextReady(result.text)
             } catch (error) {
                 console.error('Ramble processing error:', error)
                 if (error?.code === 'offline') {
@@ -158,10 +126,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
 
     // Escape discards the recording without leaving the input; LIFO stack keeps popups unaffected.
     useEscapeKey(
-        useCallback(() => {
-            submitOnCompleteRef.current = false
-            cancel()
-        }, [cancel]),
+        useCallback(() => cancel(), [cancel]),
         { enabled: isRecording }
     )
 
@@ -173,69 +138,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         else start()
     }, [processing, isRecording, start, stop])
 
-    // Read through a ref rather than the `isRecording` state: press-down and release are raw DOM
-    // events, so they can both land inside a single React commit and would otherwise both see the
-    // stale pre-press value.
-    const recordingRef = useRef(false)
-    recordingRef.current = isRecording
-    const pressStartedRecordingRef = useRef(false)
-    const processingRef = useRef(false)
-    processingRef.current = processing
-
-    /**
-     * Press-down ALWAYS starts a recording if one is not already running — a tap and a hold are
-     * the same gesture until the user lets go. See `pushToTalk.js` for why the recording cannot
-     * wait for the hold threshold to elapse.
-     */
-    const handlePressStart = useCallback(() => {
-        if (processingRef.current) {
-            pressStartedRecordingRef.current = false
-            return
-        }
-        if (recordingRef.current) {
-            pressStartedRecordingRef.current = false
-            return
-        }
-        pressStartedRecordingRef.current = true
-        submitOnCompleteRef.current = false
-        start()
-    }, [start])
-
-    const handlePressEnd = useCallback(
-        ({ heldMs, releasedInside, cancelled }) => {
-            const pressStartedRecording = pressStartedRecordingRef.current
-            pressStartedRecordingRef.current = false
-            if (processingRef.current && !pressStartedRecording) return
-
-            const outcome = resolvePushToTalkRelease({
-                heldMs,
-                releasedInside,
-                cancelled,
-                pressStartedRecording,
-            })
-
-            if (outcome === PUSH_TO_TALK_SUBMIT) {
-                // Arm BEFORE stopping: `stop()` can run the recorder's `onstop` synchronously.
-                submitOnCompleteRef.current = true
-                // The recorder vetoes a take with too little audio in it (an accidental hold, or
-                // one that released before the microphone finished opening) and says so by
-                // returning false — in which case nothing was captured to submit.
-                if (!stop({ minDurationMs: PUSH_TO_TALK_MIN_RECORDING_MS })) {
-                    submitOnCompleteRef.current = false
-                }
-            } else if (outcome === PUSH_TO_TALK_STOP) {
-                stop()
-            } else if (outcome === PUSH_TO_TALK_DISCARD) {
-                submitOnCompleteRef.current = false
-                cancel()
-            }
-            // PUSH_TO_TALK_KEEP_RECORDING: a tap. The recording runs on until the next tap, which
-            // is exactly the behaviour the mic has always had.
-        },
-        [stop, cancel]
-    )
-
-    return { phase, elapsedSeconds, toggle, cancel, handlePressStart, handlePressEnd }
+    return { phase, elapsedSeconds, toggle, cancel }
 }
 
 /**
@@ -251,45 +154,15 @@ export default function RambleButton({
     targetKind,
     getCurrentText,
     onTextReady,
-    onSubmit,
     disabled,
     visible = true,
     style,
 }) {
-    const { phase, elapsedSeconds, toggle, handlePressStart, handlePressEnd } = useRambleController({
+    const { phase, elapsedSeconds, toggle } = useRambleController({
         projectId,
         targetKind,
         getCurrentText,
         onTextReady,
-        onSubmit,
-    })
-
-    // The node is held in state, not a ref: this button unmounts whenever it is hidden while idle,
-    // so the gesture effect has to re-run against the new node when it comes back. TouchableOpacity
-    // forwards its ref to the host DOM node (useMergeRefs), so the raw listeners and react-native-
-    // web's own press handling coexist on the same element.
-    const [buttonNode, setButtonNode] = useState(null)
-    const [pressed, setPressed] = useState(false)
-    const gestureEndedAtRef = useRef(0)
-    // The gesture stops the press from propagating (a mic can sit inside a draggable task row), so
-    // react-native-web's responder never grants and its own `activeOpacity` never runs. Holding a
-    // button with no feedback at all reads as a dead control, so the pressed state is driven here.
-    const onGesturePressStart = useCallback(() => {
-        setPressed(true)
-        handlePressStart()
-    }, [handlePressStart])
-    const onGesturePressEnd = useCallback(
-        release => {
-            setPressed(false)
-            gestureEndedAtRef.current = Date.now()
-            handlePressEnd(release)
-        },
-        [handlePressEnd]
-    )
-    usePushToTalkGesture(buttonNode, {
-        enabled: phase !== RAMBLE_PHASE_PROCESSING,
-        onPressStart: onGesturePressStart,
-        onPressEnd: onGesturePressEnd,
     })
 
     if (disabled) return null
@@ -297,22 +170,10 @@ export default function RambleButton({
 
     return (
         <TouchableOpacity
-            ref={setButtonNode}
-            style={[
-                localStyles.container,
-                phase === RAMBLE_PHASE_RECORDING && localStyles.recordingContainer,
-                pressed && localStyles.pressedContainer,
-                style,
-            ]}
-            // Mouse and touch are owned by the gesture above. react-native-web still fires
-            // `onPress` from the trailing `click`, so a pointer press is filtered out here by the
-            // timestamp; what is left is keyboard activation (Enter/Space), which keeps plain
-            // tap-to-toggle semantics and never auto-submits — holding a key is not a gesture, and
-            // dictation has to stay usable without one.
-            onPress={() => {
-                if (Date.now() - gestureEndedAtRef.current < POINTER_CLICK_SUPPRESSION_MS) return
-                toggle()
-            }}
+            style={[localStyles.container, phase === RAMBLE_PHASE_RECORDING && localStyles.recordingContainer, style]}
+            onPress={toggle}
+            // Keep the editor focused and its selection intact while pressing the button.
+            onMouseDown={event => event.preventDefault()}
             accessibilityLabel={translate(phase === RAMBLE_PHASE_RECORDING ? 'Stop dictation' : 'Dictate')}
             disabled={phase === RAMBLE_PHASE_PROCESSING}
         >
@@ -348,9 +209,6 @@ const localStyles = StyleSheet.create({
     },
     recordingContainer: {
         backgroundColor: colors.Grey100,
-    },
-    pressedContainer: {
-        opacity: 0.5,
     },
     elapsedText: {
         color: colors.Red200,
