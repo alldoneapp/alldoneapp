@@ -44,7 +44,6 @@ import { canDropFilesOnTaskRow } from './taskFileDropHelper'
 import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
 import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
-import useTaskCompletionMotion from './taskCompletionMotion'
 
 function TaskPresentation(
     {
@@ -125,18 +124,6 @@ function TaskPresentation(
     // long list pays nothing for a feature that concerns a handful of freshly created tasks.
     const { processing: routingProcessing, confirmation: routingConfirmation } = useTaskRoutingActivity(task, projectId)
     const hasRoutingActivity = !!(routingProcessing || routingConfirmation)
-
-    // AT-2404 — strike-through, green settle and collapse when this row is checked off. The state
-    // lives here because the effect is the whole row's, but it is TRIGGERED from `CheckBoxWrapper`
-    // below, which is handed `beginCompletionMotion` and told how long to hold its write.
-    const {
-        onRowLayout: onCompletionRowLayout,
-        rowStyle: completionRowStyle,
-        beginCompletionMotion,
-        cancelCompletionMotion,
-        completionStrike,
-        isCompleting,
-    } = useTaskCompletionMotion()
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -319,15 +306,7 @@ function TaskPresentation(
 
     return (
         <TaskFileDropZone disabled={!fileDropAllowed} projectId={projectId} task={task}>
-            {/* AT-2404 — the node that collapses on completion. It has to be the OUTERMOST row
-                element so the height that animates to 0 is the whole row (swipe areas, shortcuts
-                and all); collapsing anything inner would leave its wrapper holding the space open
-                and the list would not close the gap. `completionRowStyle` is undefined except
-                during those ~260ms, so an ordinary row is never pinned to a measured height. */}
-            <Animated.View
-                style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
-                onLayout={onCompletionRowLayout}
-            >
+            <View style={isLocked && !inParentGoal && localStyles.blurry}>
                 <SwipeAreasContainer
                     leftText={'Properties'}
                     rightText={'Reminder'}
@@ -339,15 +318,7 @@ function TaskPresentation(
                     rightThreshold={80}
                     leftThreshold={80}
                     enabled={
-                        !inCommentPopup &&
-                        !activeEditMode &&
-                        !isActiveOrganizeMode &&
-                        !isLocked &&
-                        anonymousGranted &&
-                        // A row that is collapsing must not also be swipeable — the gesture would
-                        // fight the height animation and could open a reminder popup for a task
-                        // that is already on its way out.
-                        !isCompleting
+                        !inCommentPopup && !activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted
                     }
                     renderLeftActions={renderLeftSwipe}
                     renderRightActions={accessGranted && renderRightSwipe}
@@ -393,27 +364,6 @@ function TaskPresentation(
                                         confirmation={routingConfirmation}
                                     />
                                 )}
-                                {/* AT-2404 — the "settle": a pale green wash that rises with the
-                                    strike-through, on the same Animated.Value so the two are one
-                                    gesture rather than two animations that can drift apart.
-                                    Rendered only when the task is genuinely completed, so a workflow
-                                    step advance (which also leaves this list) does not get the
-                                    colour that means "done". */}
-                                {completionStrike && (
-                                    <Animated.View
-                                        style={[
-                                            localStyles.completionTint,
-                                            {
-                                                opacity: completionStrike.progress.interpolate({
-                                                    inputRange: [0, 1],
-                                                    outputRange: [0, COMPLETION_TINT_PEAK_OPACITY],
-                                                }),
-                                            },
-                                        ]}
-                                        pointerEvents="none"
-                                        testID="task-completion-tint"
-                                    />
-                                )}
                                 <View
                                     pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
                                     style={[
@@ -436,8 +386,6 @@ function TaskPresentation(
                                         pending={pending}
                                         showWorkflowIndicator={showWorkflowIndicator}
                                         isNextStepAi={showAiStepControl}
-                                        beginCompletionMotion={beginCompletionMotion}
-                                        cancelCompletionMotion={cancelCompletionMotion}
                                     />
                                     {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
                                         <GmailTag
@@ -478,7 +426,6 @@ function TaskPresentation(
                                         leadingPriorityTag={leadingPriorityTag}
                                         useCommentPopupTextColor={inCommentPopup}
                                         setTaskTitleIsMultiline={setTaskTitleIsMultiline}
-                                        completionStrike={completionStrike}
                                     />
                                 </View>
                                 {inMyDayAndNotSubtask && (
@@ -556,18 +503,10 @@ function TaskPresentation(
                         )}
                     </View>
                 </Swipeable>
-            </Animated.View>
+            </View>
         </TaskFileDropZone>
     )
 }
-
-/**
- * Deliberately fainter than `useLastAddedTaskColor`'s 600ms `UtilityBlue125` flash for a newly
- * added task. Adding a task is occasional; completing one happens constantly, including in bursts
- * when a list is cleared, so its confirmation has to sit lower in the attention order or it turns
- * into strobing. `UtilityGreen125` at this alpha composites to roughly #E4FBF3 over a white row.
- */
-const COMPLETION_TINT_PEAK_OPACITY = 0.45
 
 const localStyles = StyleSheet.create({
     dragModeContainer: {
@@ -576,12 +515,6 @@ const localStyles = StyleSheet.create({
     blurry: {
         filter: 'blur(3px)',
         userSelect: 'none',
-    },
-    completionTint: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: colors.UtilityGreen125,
-        // Matches `taskPresentationLayout.taskRow` so the wash cannot square off the row's corners.
-        borderRadius: 4,
     },
 })
 
