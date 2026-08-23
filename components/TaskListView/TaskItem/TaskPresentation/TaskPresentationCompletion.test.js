@@ -265,7 +265,7 @@ describe('TaskPresentation completion (AT-2404)', () => {
             tickCheckbox(ref)
 
             expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
-            expect(tree.root.findByType('TitleContainer').props.completionStrike).not.toBeNull()
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).not.toBeNull()
         })
     })
 
@@ -305,7 +305,7 @@ describe('TaskPresentation completion (AT-2404)', () => {
             tickCheckbox(ref)
 
             expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
-            expect(tree.root.findByType('TitleContainer').props.completionStrike).not.toBeNull()
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).not.toBeNull()
         })
 
         it('clears the flourish again once the sequence is over', async () => {
@@ -319,7 +319,7 @@ describe('TaskPresentation completion (AT-2404)', () => {
 
             // What is left is the ordinary done row — the same thing a reload renders.
             expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
-            expect(tree.root.findByType('TitleContainer').props.completionStrike).toBeNull()
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).toBeNull()
         })
     })
 
@@ -348,7 +348,7 @@ describe('TaskPresentation completion (AT-2404)', () => {
             })
 
             expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
-            expect(tree.root.findByType('TitleContainer').props.completionStrike).toBeNull()
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).toBeNull()
             expect(rowStyle(tree).height).toBeUndefined()
         })
 

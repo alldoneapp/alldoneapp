@@ -6,37 +6,44 @@ import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
 /**
  * AT-2404 — the motion a task row plays when it is checked off.
  *
- * FIRST PASS (MR !436) shipped a strike-through, a faint green tint and a collapse, all inside a
- * 700ms hold. It worked, and it was flat: the thing the user actually touches — the checkbox — did
- * nothing at all beyond flipping to a dead grey square, and the row's only other move was to
- * disappear. Completing a task is the single most repeated positive moment in the product and it
- * read like a table row being deleted.
+ * FIRST PASS (MR !436) shipped a strike-through, a faint green tint and a collapse in a 700ms hold.
+ * SECOND PASS (MR !438) added the beats at the point of contact — the checkbox punch, the ring and
+ * sparks, the green fill — because the flattest thing on screen had been the one element the user
+ * actually touched.
  *
- * This pass keeps the same skeleton and adds the beats that were missing, in the order the eye
- * travels: the point of contact first, then the title, then the row.
+ * THIS PASS changes the MESSAGE of the title beat. A dark line drawn through a title is the visual
+ * language of deletion; "you finished this" is a different statement, and the natural way to say it
+ * is a PROGRESS BAR reaching 100%. So the strike is gone and a slim bright-green bar now fills left
+ * to right across the title in 450ms, with a glowing leading edge and a small confirmation pulse
+ * when it lands. See `TitleContainer/TaskCompletionProgress.js` for the geometry.
+ *
+ * The beats, in the order the eye travels: the point of contact first, then the title, then the row.
  *
  *   1. PUNCH (t=0) — the checkbox squashes to 0.84 and springs back through an overshoot. It is a
  *      spring rather than a keyframed timing precisely because the overshoot is the part that reads
  *      as "it responded to me"; a linear pop reads as a glitch.
  *   2. BURST (t=0, 560ms) — a ring expands out of the checkbox and six short sparks fly out with
- *      it. This is the "exciting" the first pass lacked, and it is deliberately anchored TO THE
- *      CHECKBOX and clipped to the row's own neighbourhood: no portal, no full-screen confetti, no
- *      cloud round trip. (The random full-screen Giphy overlay that used to fire here is exactly
- *      the gimmick this replaces — see `TaskCompletionAnimation.js`, still wired to the deliberate
- *      one-off workflow paths and nothing else.)
+ *      it. Deliberately anchored TO THE CHECKBOX and clipped to the row's own neighbourhood: no
+ *      portal, no full-screen confetti, no cloud round trip. (The random full-screen Giphy overlay
+ *      that used to fire here is exactly the gimmick this replaces — see
+ *      `TaskCompletionAnimation.js`, still wired to the deliberate one-off workflow paths and
+ *      nothing else.)
  *   3. GREEN (t=0) — the checkbox fills with `UtilityGreen200` and a white check, over the top of
  *      the real checkbox rather than by restyling it. Nothing about the persistent done state
  *      changes, so there is no colour to unwind later.
- *   4. STRIKE + WASH (t=80, 360ms) — the line sweeps across the title, and the green row wash
+ *   4. SWEEP + WASH (t=70, 450ms) — the progress bar fills across the title, and the green row wash
  *      sweeps WITH it from the same `scaleX` value and the same `transformOrigin: 'left center'`.
- *      One value, so the wash edge tracks the strike head exactly instead of the two drifting.
- *   5. EXIT (t=600, 320ms) — height to 0, opacity to 0, and a 6px lift, so the row leaves upward
+ *      One value, so the wash edge tracks the bar's leading edge instead of the two drifting.
+ *   5. PULSE (t=520, 150ms) — 100%. The finished bar thickens briefly and settles, and the head
+ *      blooms out. Strictly AFTER the fill (same `Animated.sequence`), because a confirmation that
+ *      can overlap the thing it is confirming is just a wobble.
+ *   6. EXIT (t=670, 320ms) — height to 0, opacity to 0, and a 6px lift, so the row leaves upward
  *      into the gap it is closing rather than just being deleted.
  *
- * ~920ms of motion inside a 1000ms hold (was ~560/700). The user asked for longer; the extra 300ms
- * all goes into beats 1–3, which is where the delight is, and the row is still fully gone before
- * the second is out. Undo is untouched: a 10s bar over 7-day retention (`utils/undo/`), entirely
- * independent of this.
+ * ~990ms of motion inside a 1070ms hold. The sweep itself is the "super quick" 450ms that was
+ * asked for; the extra 70ms over the previous pass is the confirmation pulse, which has to finish
+ * before the row is allowed to start leaving. Undo is untouched: a 10s bar over 7-day retention
+ * (`utils/undo/`), entirely independent of this.
  *
  * ── SUBTASKS DO NOT COLLAPSE ──────────────────────────────────────────────────────────────────
  *
@@ -52,49 +59,58 @@ import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
  * `task.isSubtask`, NOT a per-call argument from the checkbox. That is deliberate: `TaskPresentation`
  * is shared by every context that renders a task line (open lists, MyDay, Goal DV, TDV subtasks,
  * inline subtask lists, backlinks, the comment popup, drag mode), so gating at the row means a
- * caller cannot forget and collapse a subtask by accident. A retained row plays beats 1–4, then
- * RELEASES them (the strike and wash fade out and the state clears) so what is left behind is the
- * ordinary done-subtask appearance — which is also what a reload shows, so nothing is inconsistent
- * between a subtask you just completed and one that was already done.
+ * caller cannot forget and collapse a subtask by accident. A retained row plays beats 1–5, then
+ * RELEASES them (the bar, the head and the wash fade out and the state clears) so what is left
+ * behind is the ordinary done-subtask appearance — which is also what a reload shows, so nothing is
+ * inconsistent between a subtask you just completed and one that was already done.
  */
 
 // Spring, not timing: the overshoot on the way back is what makes it feel like a button.
 export const CHECKBOX_PUNCH_DIP = 0.84
 export const CHECKBOX_PUNCH_DIP_MS = 90
-// Ring + sparks. Outlives the strike so the row is still sparkling while the title is crossed out.
+// Ring + sparks. Outlives the sweep so the row is still sparkling while the bar reaches 100%.
 export const BURST_DURATION_MS = 560
-// Everything green (checkbox fill, row wash, strike) shares this fade so they arrive as one event.
+// Everything green (checkbox fill, row wash, progress bar) shares this fade so they arrive as one
+// event.
 export const FLOURISH_FADE_IN_MS = 140
-// Lets the punch land first — the strike reads as a consequence of the tap rather than a co-event.
-export const STRIKE_DELAY_MS = 80
-export const STRIKE_DURATION_MS = 360
-export const COLLAPSE_DELAY_MS = 600
+// Lets the punch land first — the sweep reads as a consequence of the tap rather than a co-event.
+export const PROGRESS_DELAY_MS = 70
+/**
+ * The 0 → 100% fill. "Super quick" is the requirement, and 450ms is the fastest a sweep can be while
+ * still being legible as a DIRECTION on a long wrapped title: much under ~350ms and the eye only
+ * registers the end state, at which point the bar might as well have appeared all at once and the
+ * progress metaphor is lost.
+ */
+export const PROGRESS_DURATION_MS = 450
+// The confirmation at 100%. Deliberately short — it is punctuation, not a beat of its own.
+export const PROGRESS_PULSE_MS = 150
+export const COLLAPSE_DELAY_MS = 670
 export const COLLAPSE_DURATION_MS = 320
-// 600 + 320 = 920ms of motion, then ~80ms of buffer before the write.
-export const COMPLETION_HOLD_MS = 1000
+// 670 + 320 = 990ms of motion, then ~80ms of buffer before the write.
+export const COMPLETION_HOLD_MS = 1070
 
 // Retained rows (subtasks): no collapse, so the flourish is wound back down instead.
-export const RELEASE_DELAY_MS = 620
+export const RELEASE_DELAY_MS = 690
 export const RELEASE_DURATION_MS = 260
 /**
  * Shorter than `COMPLETION_HOLD_MS` because nothing is waiting on the row to disappear — the write
- * only has to land after the burst and the strike have been seen, and the row is still there
+ * only has to land after the burst and the sweep have been seen, and the row is still there
  * afterwards either way. Long enough that the done styling does not arrive mid-sweep.
  */
-export const RETAINED_HOLD_MS = 620
+export const RETAINED_HOLD_MS = 690
 
 /**
  * `prefers-reduced-motion` and jest both get the same STATIC frame: the green checkbox fill and a
- * fully-drawn strike-through. The information survives, the motion does not — the same split
+ * progress bar already at 100%. The information survives, the motion does not — the same split
  * `TaskRoutingActivityOverlay` already draws between its overlay (decoration) and `TaskRoutingTag`
- * (the message). No ring, no sparks, no collapse: those are pure motion and carry nothing.
+ * (the message). No ring, no sparks, no pulse, no collapse: those are pure motion and carry nothing.
  *
  * The hold still exists so the frame is perceptible before the row leaves; it is just short enough
  * not to read as lag. Zero would mean a reduced-motion user sees no completion feedback at all.
  */
 export const REDUCED_MOTION_HOLD_MS = 300
-// A retained row has to put itself back even with motion switched off, or the static strike sits on
-// a done subtask forever and disagrees with what a reload renders.
+// A retained row has to put itself back even with motion switched off, or a full green bar sits
+// under a done subtask forever and disagrees with what a reload renders.
 export const REDUCED_MOTION_RELEASE_MS = 450
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
@@ -150,7 +166,14 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
     // Mixing drivers on one Animated.Value throws at runtime.
     const punch = useRef(new Animated.Value(1)).current
     const burst = useRef(new Animated.Value(0)).current
-    const strike = useRef(new Animated.Value(0)).current
+    // The 0 → 100% sweep. Drives the title's progress bar AND the row wash, so the wash's leading
+    // edge is the bar's leading edge.
+    const sweep = useRef(new Animated.Value(0)).current
+    // A CLOCK for the confirmation at 100%, not an amplitude: it runs 0 → 1 once the sweep has
+    // landed, and the bump shape (thicken, settle, bloom the head out) lives in the interpolations
+    // in `TaskCompletionProgress`. Keeping it normalised here is what lets that component change the
+    // shape of the confirmation without touching the sequence.
+    const pulse = useRef(new Animated.Value(0)).current
     const flourish = useRef(new Animated.Value(0)).current
     // Non-native: `height` cannot be driven natively, and the row's opacity rides with it on the
     // same node so both stay on the same driver.
@@ -191,19 +214,20 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
         releaseTimeoutRef.current = null
         punch.setValue(1)
         burst.setValue(0)
-        strike.setValue(0)
+        sweep.setValue(0)
+        pulse.setValue(0)
         flourish.setValue(0)
         rowOpacity.setValue(1)
         rowHeight.setValue(0)
         setCollapsing(false)
         setCompletion(null)
-    }, [punch, burst, strike, flourish, rowOpacity, rowHeight])
+    }, [punch, burst, sweep, pulse, flourish, rowOpacity, rowHeight])
 
     /**
      * Reopening a completed subtask has to hand back a completely ordinary row. The release at the
      * end of the sequence normally does that already, but not on every path — a row that was
      * remounted mid-flourish, or one whose release never ran because motion is disabled under jest,
-     * would otherwise keep a fully-drawn strike over a task that is open again. Watching the
+     * would otherwise keep a filled progress bar under a task that is open again. Watching the
      * persisted flag closes all of them at once, and only ever fires on the done → open edge, so an
      * ordinary row pays a single ref comparison per render.
      */
@@ -217,7 +241,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
      * Clearing the completion state at the end of a RETAINED row's sequence is a timer rather than
      * the animation's own completion callback, and deliberately so: it has to fire identically on
      * the animated path, the reduced-motion path and any renderer whose `Animated` composite never
-     * reports finishing. A subtask that kept its strike because one callback did not arrive is the
+     * reports finishing. A subtask that kept its progress bar because one callback did not arrive is the
      * exact failure this whole branch exists to remove.
      */
     const scheduleRelease = useCallback(
@@ -232,17 +256,17 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
 
     /**
      * @param {object} options
-     * @param {boolean} options.strikeThrough Whether the task is genuinely being COMPLETED. False
+     * @param {boolean} options.isCompletion Whether the task is genuinely being COMPLETED. False
      *   when the checkbox advances a WORKFLOW task to its next step: the row is leaving this list,
-     *   but the task is not done, so it gets neither the strike, the green wash nor the checkbox
-     *   celebration — it just exits. It would otherwise be told it had finished something it has
-     *   only handed on.
+     *   but the task is not done, so it gets neither the progress sweep, the green wash nor the
+     *   checkbox celebration — it just exits. It would otherwise be told it had finished something
+     *   it has only handed on.
      * @returns {number} ms to wait before persisting.
      */
     const begin = useCallback(
-        ({ strikeThrough = true } = {}) => {
+        ({ isCompletion = true } = {}) => {
             const staticOnly = reducedMotion || animationsAreDisabled()
-            setCompletion({ strikeThrough, animated: !staticOnly })
+            setCompletion({ isCompletion, animated: !staticOnly })
 
             if (releaseTimeoutRef.current) {
                 clearTimeout(releaseTimeoutRef.current)
@@ -252,10 +276,14 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
             if (staticOnly) {
                 punch.setValue(1)
                 burst.setValue(0)
-                strike.setValue(1)
+                // The bar is simply already at 100%. `pulse` stays at rest: the confirmation is a
+                // motion, and its resting frame (a full bar with its leading edge lit) is exactly
+                // the static statement wanted here.
+                sweep.setValue(1)
+                pulse.setValue(0)
                 flourish.setValue(1)
                 // A retained row must put itself back even with motion switched off, or the static
-                // strike sits on a done subtask forever and disagrees with what a reload renders.
+                // bar sits under a done subtask forever and disagrees with what a reload renders.
                 if (retainRow) scheduleRelease(REDUCED_MOTION_RELEASE_MS)
                 return REDUCED_MOTION_HOLD_MS
             }
@@ -263,7 +291,8 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
             const measuredHeight = rowHeightRef.current
             punch.setValue(1)
             burst.setValue(0)
-            strike.setValue(0)
+            sweep.setValue(0)
+            pulse.setValue(0)
             flourish.setValue(0)
             rowOpacity.setValue(1)
 
@@ -297,23 +326,33 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                     easing: Easing.out(Easing.quad),
                     useNativeDriver: true,
                 }),
-                // Beat 4 — the sweep. Drives the strike bars AND the row wash, so the wash's edge
-                // is the strike's head.
+                // Beats 4 and 5 — the 0 → 100% sweep and then, strictly afterwards, the
+                // confirmation. One sequence rather than two parallel entries with a hand-computed
+                // delay: a confirmation that can start before the thing it confirms has finished is
+                // a wobble, and a delay tuned against a duration drifts the moment either changes.
                 Animated.sequence([
-                    Animated.delay(STRIKE_DELAY_MS),
-                    Animated.timing(strike, {
+                    Animated.delay(PROGRESS_DELAY_MS),
+                    Animated.timing(sweep, {
                         toValue: 1,
-                        duration: STRIKE_DURATION_MS,
-                        // Fast out of the gate, easing into the far edge — a line being drawn,
-                        // rather than a bar sliding in at constant speed.
-                        easing: Easing.out(Easing.cubic),
+                        duration: PROGRESS_DURATION_MS,
+                        // Off the mark immediately, holding speed through the middle and settling
+                        // onto 100% — a bar being filled, rather than one sliding in at a constant
+                        // rate (mechanical) or dawdling towards the end (`Easing.out` alone, which
+                        // spends most of a 450ms budget barely moving).
+                        easing: Easing.bezier(0.22, 0.75, 0.25, 1),
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(pulse, {
+                        toValue: 1,
+                        duration: PROGRESS_PULSE_MS,
+                        easing: Easing.out(Easing.quad),
                         useNativeDriver: true,
                     }),
                 ]),
             ]
 
             if (retainRow) {
-                // Beat 5a — put the row back. The task stays in the list as an ordinary done row,
+                // Beat 6a — put the row back. The task stays in the list as an ordinary done row,
                 // so everything this animation added has to come off again.
                 beats.push(
                     Animated.sequence([
@@ -327,8 +366,8 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                     ])
                 )
             } else if (measuredHeight > 0) {
-                // Beat 5b — the exit. A row that has never been laid out (measured height 0) still
-                // strikes and sparkles; it just cannot collapse, because animating to 0 from an
+                // Beat 6b — the exit. A row that has never been laid out (measured height 0) still
+                // sweeps and sparkles; it just cannot collapse, because animating to 0 from an
                 // unknown start would jump.
                 rowHeight.setValue(measuredHeight)
                 setCollapsing(true)
@@ -365,7 +404,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
 
             return retainRow ? RETAINED_HOLD_MS : COMPLETION_HOLD_MS
         },
-        [reducedMotion, retainRow, punch, burst, strike, flourish, rowOpacity, rowHeight, scheduleRelease]
+        [reducedMotion, retainRow, punch, burst, sweep, pulse, flourish, rowOpacity, rowHeight, scheduleRelease]
     )
 
     // Only applied while collapsing. Left off otherwise so the row is never pinned to a stale
@@ -387,19 +426,19 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
         : undefined
 
     // Null for the overwhelming majority of rows, so none of the completion layers is even mounted
-    // until the row is actually being completed. All three are gated on `strikeThrough`, because a
+    // until the row is actually being completed. All three are gated on `isCompletion`, because a
     // workflow step advance is not a completion and must not be congratulated as one.
-    const isCompletionRun = !!completion?.strikeThrough
+    const isCompletionRun = !!completion?.isCompletion
 
     return {
         onRowLayout,
         rowStyle,
         beginCompletionMotion: begin,
         cancelCompletionMotion: reset,
-        completionStrike: isCompletionRun
-            ? { progress: strike, opacity: flourish, animated: completion.animated }
+        completionProgress: isCompletionRun
+            ? { progress: sweep, pulse, opacity: flourish, animated: completion.animated }
             : null,
-        completionWash: isCompletionRun ? { progress: strike, opacity: flourish, animated: completion.animated } : null,
+        completionWash: isCompletionRun ? { progress: sweep, opacity: flourish, animated: completion.animated } : null,
         completionCelebration: isCompletionRun
             ? { punch, burst, opacity: flourish, animated: completion.animated }
             : null,

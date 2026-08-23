@@ -8,13 +8,14 @@ import useTaskCompletionMotion, {
     COLLAPSE_DURATION_MS,
     COMPLETION_HOLD_MS,
     FLOURISH_FADE_IN_MS,
+    PROGRESS_DELAY_MS,
+    PROGRESS_DURATION_MS,
+    PROGRESS_PULSE_MS,
     REDUCED_MOTION_HOLD_MS,
     REDUCED_MOTION_RELEASE_MS,
     RELEASE_DELAY_MS,
     RELEASE_DURATION_MS,
     RETAINED_HOLD_MS,
-    STRIKE_DELAY_MS,
-    STRIKE_DURATION_MS,
     rowRemainsAfterCompletion,
 } from './taskCompletionMotion'
 
@@ -107,7 +108,7 @@ describe('useTaskCompletionMotion', () => {
         await renderHarness()
 
         expect(motion.isCompleting).toBe(false)
-        expect(motion.completionStrike).toBeNull()
+        expect(motion.completionProgress).toBeNull()
         expect(motion.completionWash).toBeNull()
         expect(motion.completionCelebration).toBeNull()
         // Load-bearing: an ordinary row must never carry a height from a stale measurement.
@@ -123,7 +124,7 @@ describe('useTaskCompletionMotion', () => {
 
             let holdMs
             await act(async () => {
-                holdMs = motion.beginCompletionMotion({ strikeThrough: true })
+                holdMs = motion.beginCompletionMotion({ isCompletion: true })
             })
 
             expect(holdMs).toBe(COMPLETION_HOLD_MS)
@@ -139,22 +140,22 @@ describe('useTaskCompletionMotion', () => {
             await renderHarness()
 
             act(() => motion.onRowLayout(layout(48)))
-            await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
 
             // A row that only shrinks reads as being deleted; the lift makes it read as leaving.
             const [{ translateY }] = motion.rowStyle.transform
             expect(translateY.__getValue()).toBe(0)
         })
 
-        it('still strikes and sparkles a row that has never reported a height', async () => {
+        it('still sweeps and sparkles a row that has never reported a height', async () => {
             enableAnimations()
             await renderHarness()
 
             // No onRowLayout at all. Collapsing from an unknown height would jump, so it is skipped
             // — but the completion must not silently do nothing.
-            await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
 
-            expect(motion.completionStrike).not.toBeNull()
+            expect(motion.completionProgress).not.toBeNull()
             expect(motion.completionCelebration).not.toBeNull()
             expect(motion.rowStyle).toBeUndefined()
         })
@@ -172,7 +173,7 @@ describe('useTaskCompletionMotion', () => {
             act(() => motion.onRowLayout(layout(height)))
             let holdMs
             await act(async () => {
-                holdMs = motion.beginCompletionMotion({ strikeThrough: true })
+                holdMs = motion.beginCompletionMotion({ isCompletion: true })
             })
             return holdMs
         }
@@ -191,7 +192,7 @@ describe('useTaskCompletionMotion', () => {
             enableAnimations()
             await beginRetained()
 
-            expect(motion.completionStrike).not.toBeNull()
+            expect(motion.completionProgress).not.toBeNull()
             expect(motion.completionWash).not.toBeNull()
             expect(motion.completionCelebration).not.toBeNull()
         })
@@ -217,24 +218,24 @@ describe('useTaskCompletionMotion', () => {
             // What is left is the normal done-subtask appearance — which is also what a reload
             // renders, so a subtask you just completed and one that was already done look the same.
             expect(motion.isCompleting).toBe(false)
-            expect(motion.completionStrike).toBeNull()
+            expect(motion.completionProgress).toBeNull()
             expect(motion.completionWash).toBeNull()
             expect(motion.completionCelebration).toBeNull()
             expect(motion.rowStyle).toBeUndefined()
         })
 
         it('releases on a shorter schedule with motion switched off', async () => {
-            // Reduced motion draws the strike statically, so without a release it would sit on the
-            // done subtask forever.
+            // Reduced motion draws the bar statically at 100%, so without a release it would sit
+            // under the done subtask forever.
             AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
             enableAnimations()
             await beginRetained()
 
-            expect(motion.completionStrike).not.toBeNull()
+            expect(motion.completionProgress).not.toBeNull()
             await act(async () => {
                 jest.advanceTimersByTime(REDUCED_MOTION_RELEASE_MS)
             })
-            expect(motion.completionStrike).toBeNull()
+            expect(motion.completionProgress).toBeNull()
         })
 
         it('resets immediately when the subtask is reopened', async () => {
@@ -244,7 +245,7 @@ describe('useTaskCompletionMotion', () => {
                 tree = renderer.create(<Harness options={{ retainRow: true, isDone: false }} />)
                 await Promise.resolve()
             })
-            await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
 
             // The write lands: the subtask is now done and still on screen.
             await act(async () => {
@@ -258,7 +259,7 @@ describe('useTaskCompletionMotion', () => {
             })
 
             expect(motion.isCompleting).toBe(false)
-            expect(motion.completionStrike).toBeNull()
+            expect(motion.completionProgress).toBeNull()
             expect(motion.completionCelebration).toBeNull()
             expect(motion.rowStyle).toBeUndefined()
         })
@@ -270,7 +271,7 @@ describe('useTaskCompletionMotion', () => {
                 tree = renderer.create(<Harness options={{ retainRow: true, isDone: false }} />)
                 await Promise.resolve()
             })
-            await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
 
             // An open → open re-render (any unrelated store change) must not wipe the flourish
             // mid-sweep. Only the done → open edge clears it.
@@ -278,7 +279,7 @@ describe('useTaskCompletionMotion', () => {
                 tree.update(<Harness options={{ retainRow: true, isDone: false }} />)
             })
 
-            expect(motion.completionStrike).not.toBeNull()
+            expect(motion.completionProgress).not.toBeNull()
         })
     })
 
@@ -286,32 +287,55 @@ describe('useTaskCompletionMotion', () => {
         enableAnimations()
         await renderHarness()
 
-        await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
-        expect(motion.completionStrike).not.toBeNull()
+        await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+        expect(motion.completionProgress).not.toBeNull()
 
         await act(async () => motion.cancelCompletionMotion())
         // A workflow task handed to the next reviewer leaves the list, so it still animates out,
-        // but it is not done: no strike, no green wash and — the new one — no checkbox burst. It
-        // would otherwise be told it had finished something it has only handed on.
-        await act(async () => motion.beginCompletionMotion({ strikeThrough: false }))
-        expect(motion.completionStrike).toBeNull()
+        // but it is not done: no progress sweep, no green wash and no checkbox burst. It would
+        // otherwise be told it had finished something it has only handed on.
+        await act(async () => motion.beginCompletionMotion({ isCompletion: false }))
+        expect(motion.completionProgress).toBeNull()
         expect(motion.completionWash).toBeNull()
         expect(motion.completionCelebration).toBeNull()
         expect(motion.isCompleting).toBe(true)
     })
 
-    it('drives the strike and the row wash from one value so they cannot drift', async () => {
+    it('drives the title sweep and the row wash from one value so they cannot drift', async () => {
         enableAnimations()
         await renderHarness()
 
-        await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+        await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
 
-        // The wash's leading edge IS the strike's head. Two values, however carefully tuned, would
-        // read as two animations that happen to overlap.
-        expect(motion.completionWash.progress).toBe(motion.completionStrike.progress)
+        // The wash's leading edge IS the bar's leading edge. Two values, however carefully tuned,
+        // would read as two animations that happen to overlap.
+        expect(motion.completionWash.progress).toBe(motion.completionProgress.progress)
         // And everything green fades in — and, on a retained row, back out — together.
-        expect(motion.completionWash.opacity).toBe(motion.completionStrike.opacity)
-        expect(motion.completionCelebration.opacity).toBe(motion.completionStrike.opacity)
+        expect(motion.completionWash.opacity).toBe(motion.completionProgress.opacity)
+        expect(motion.completionCelebration.opacity).toBe(motion.completionProgress.opacity)
+    })
+
+    it('hands the title a confirmation clock that starts at rest on every run', async () => {
+        enableAnimations()
+        await renderHarness()
+
+        await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+
+        // `pulse` is normalised 0 → 1 and is only started once the sweep has landed, so a run that
+        // begins with it anywhere but 0 would flash the confirmation before the bar has filled. It
+        // is a separate value from `progress` precisely so the pulse cannot be expressed as "the
+        // tail of the fill", which is what made the old head-fade read as part of the sweep.
+        expect(motion.completionProgress.pulse).toBeDefined()
+        expect(motion.completionProgress.pulse.__getValue()).toBe(0)
+        expect(motion.completionProgress.pulse).not.toBe(motion.completionProgress.progress)
+
+        // A second completion in the same row (a failed write, then a retry) must not inherit the
+        // finished state of the first.
+        await act(async () => motion.cancelCompletionMotion())
+        expect(motion.completionProgress).toBeNull()
+        await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+        expect(motion.completionProgress.progress.__getValue()).toBe(0)
+        expect(motion.completionProgress.pulse.__getValue()).toBe(0)
     })
 
     it('shows a static frame and a shorter hold under prefers-reduced-motion', async () => {
@@ -323,15 +347,18 @@ describe('useTaskCompletionMotion', () => {
 
         let holdMs
         await act(async () => {
-            holdMs = motion.beginCompletionMotion({ strikeThrough: true })
+            holdMs = motion.beginCompletionMotion({ isCompletion: true })
         })
 
         expect(holdMs).toBe(REDUCED_MOTION_HOLD_MS)
         expect(holdMs).toBeLessThan(COMPLETION_HOLD_MS)
         // The information survives without the motion: the line is there, fully drawn, immediately,
         // and the checkbox is green.
-        expect(motion.completionStrike).toEqual(expect.objectContaining({ animated: false }))
-        expect(motion.completionStrike.progress.__getValue()).toBe(1)
+        expect(motion.completionProgress).toEqual(expect.objectContaining({ animated: false }))
+        expect(motion.completionProgress.progress.__getValue()).toBe(1)
+        // The bar is at 100% but the confirmation never runs: its resting frame IS the static
+        // statement, and a pulse is pure motion.
+        expect(motion.completionProgress.pulse.__getValue()).toBe(0)
         expect(motion.completionCelebration.opacity.__getValue()).toBe(1)
         // The ring and the sparks carry nothing, so they are simply not run.
         expect(motion.completionCelebration.burst.__getValue()).toBe(0)
@@ -346,11 +373,12 @@ describe('useTaskCompletionMotion', () => {
 
         let holdMs
         await act(async () => {
-            holdMs = motion.beginCompletionMotion({ strikeThrough: true })
+            holdMs = motion.beginCompletionMotion({ isCompletion: true })
         })
 
         expect(holdMs).toBe(REDUCED_MOTION_HOLD_MS)
-        expect(motion.completionStrike.progress.__getValue()).toBe(1)
+        expect(motion.completionProgress.progress.__getValue()).toBe(1)
+        expect(motion.completionProgress.pulse.__getValue()).toBe(0)
         expect(motion.rowStyle).toBeUndefined()
     })
 
@@ -359,7 +387,7 @@ describe('useTaskCompletionMotion', () => {
         await renderHarness()
 
         act(() => motion.onRowLayout(layout(48)))
-        await act(async () => motion.beginCompletionMotion({ strikeThrough: true }))
+        await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
         expect(motion.rowStyle).toBeDefined()
 
         await act(async () => motion.cancelCompletionMotion())
@@ -367,7 +395,7 @@ describe('useTaskCompletionMotion', () => {
         // Everything back to a normal row — the failure path must not leave an invisible,
         // zero-height row sitting in the list.
         expect(motion.isCompleting).toBe(false)
-        expect(motion.completionStrike).toBeNull()
+        expect(motion.completionProgress).toBeNull()
         expect(motion.completionCelebration).toBeNull()
         expect(motion.rowStyle).toBeUndefined()
     })
@@ -375,17 +403,31 @@ describe('useTaskCompletionMotion', () => {
     describe('the shape of the sequence', () => {
         // Ordering invariants, asserted on the constants rather than by sampling a running
         // animation: they are what makes the beats read as one gesture instead of a pile-up.
-        it('lets the tap land before the title is crossed out', () => {
-            expect(STRIKE_DELAY_MS).toBeGreaterThan(0)
-            expect(STRIKE_DELAY_MS).toBeLessThan(BURST_DURATION_MS)
+        it('lets the tap land before the title starts filling', () => {
+            expect(PROGRESS_DELAY_MS).toBeGreaterThan(0)
+            expect(PROGRESS_DELAY_MS).toBeLessThan(BURST_DURATION_MS)
+        })
+
+        it('fills 0 to 100% quickly, but slowly enough to read as a direction', () => {
+            // The whole point of the pass: a sweep, not a bar that simply appears. Under ~350ms the
+            // eye only registers the end state; much over ~550ms and clearing a list drags.
+            expect(PROGRESS_DURATION_MS).toBeGreaterThanOrEqual(350)
+            expect(PROGRESS_DURATION_MS).toBeLessThanOrEqual(550)
         })
 
         it('brings every green thing in before the sweep is over', () => {
-            expect(FLOURISH_FADE_IN_MS).toBeLessThan(STRIKE_DELAY_MS + STRIKE_DURATION_MS)
+            expect(FLOURISH_FADE_IN_MS).toBeLessThan(PROGRESS_DELAY_MS + PROGRESS_DURATION_MS)
         })
 
-        it('finishes the strike before the row starts leaving', () => {
-            expect(STRIKE_DELAY_MS + STRIKE_DURATION_MS).toBeLessThanOrEqual(COLLAPSE_DELAY_MS)
+        it('confirms only after 100% has actually been reached', () => {
+            // The pulse is punctuation. A confirmation that can overlap the thing it confirms is a
+            // wobble, so it is sequenced behind the fill rather than delayed alongside it.
+            expect(PROGRESS_PULSE_MS).toBeGreaterThan(0)
+            expect(PROGRESS_PULSE_MS).toBeLessThan(PROGRESS_DURATION_MS)
+        })
+
+        it('finishes the sweep and its confirmation before the row starts leaving', () => {
+            expect(PROGRESS_DELAY_MS + PROGRESS_DURATION_MS + PROGRESS_PULSE_MS).toBeLessThanOrEqual(COLLAPSE_DELAY_MS)
         })
 
         it('finishes the burst before the row starts leaving', () => {
@@ -398,14 +440,25 @@ describe('useTaskCompletionMotion', () => {
         })
 
         it('starts a retained row releasing only after its write has landed', () => {
-            // Otherwise the strike would fade out while the row still looked un-completed.
+            // Otherwise the bar would fade out while the row still looked un-completed.
             expect(RELEASE_DELAY_MS).toBeGreaterThanOrEqual(RETAINED_HOLD_MS)
         })
 
-        it('is longer than the pass it replaces but still under a second', () => {
-            // The user asked for longer; "a bit" is not "clearing a list now takes a beat per row".
+        it('lets a retained row see its own confirmation before anything is released', () => {
+            // A subtask keeps its row, so the pulse is the only ending it gets. Releasing over the
+            // top of it would swallow the one beat that says "100%".
+            expect(RELEASE_DELAY_MS).toBeGreaterThanOrEqual(
+                PROGRESS_DELAY_MS + PROGRESS_DURATION_MS + PROGRESS_PULSE_MS
+            )
+            expect(RETAINED_HOLD_MS).toBeGreaterThanOrEqual(
+                PROGRESS_DELAY_MS + PROGRESS_DURATION_MS + PROGRESS_PULSE_MS
+            )
+        })
+
+        it('stays close enough to a second that clearing a list does not drag', () => {
+            // The user asked for a longer, richer sequence; "longer" is not "a beat per row".
             expect(COMPLETION_HOLD_MS).toBeGreaterThan(700)
-            expect(COMPLETION_HOLD_MS).toBeLessThanOrEqual(1000)
+            expect(COMPLETION_HOLD_MS).toBeLessThanOrEqual(1120)
         })
     })
 })

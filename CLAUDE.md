@@ -700,9 +700,10 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 ### Task completion animation (AT-2404)
 
-Ticking a task's checkbox punches the checkbox, bursts a ring and six sparks out of it, sweeps a
-strike-through across the title with a green wash following the same edge, and — **only for a row
-that is about to leave its list** — collapses the row upward out of the way. The state lives in
+Ticking a task's checkbox punches the checkbox, bursts a ring and six sparks out of it, fills a slim
+bright-green **progress bar** left-to-right across the title with a green row wash following the same
+edge, confirms with a small pulse at 100%, and — **only for a row that is about to leave its list** —
+collapses the row upward out of the way. The state lives in
 `components/TaskListView/TaskItem/TaskPresentation/taskCompletionMotion.js` (owned by
 `TaskPresentation`, the row) and is triggered from `CheckBoxWrapper` (the checkbox, several levels
 down) through a `beginCompletionMotion` prop — **not** redux: a slice keyed by task id would
@@ -727,19 +728,19 @@ function resolved **in `TaskPresentation`** and passed to the hook as `retainRow
 the checkbox: expressing it at the one shared row is what makes it impossible for a subtask context
 to forget. It answers true for `isSubtask`, for a bare `parentId` (legacy/partial docs — `DragHelper`
 derives one from the other) and for the comment-popup header, which is a row inside a modal with no
-list to leave. A retained row plays every other beat and then **releases** — the strike and wash fade
-out and the state clears — leaving the ordinary done-subtask appearance, which is also what a reload
-renders, so a subtask you just completed and one that was already done look identical.
+list to leave. A retained row plays every other beat and then **releases** — the bar, its head and
+the wash fade out and the state clears — leaving the ordinary done-subtask appearance, which is also
+what a reload renders, so a subtask you just completed and one that was already done look
+identical.
 
 **`begin()` returns the number of ms the caller must wait before writing.** That is the whole
 contract, and it is what keeps `CheckBoxWrapper` from having to know what kind of row it is in or
-whether motion is enabled. Three answers: **1000ms** for a collapsing row (~920ms of motion — burst
-560, strike 80+360, collapse 600+320 — plus an 80ms buffer so the row is flat and invisible before
-the write, and the snapshot that removes it can never interrupt the animation halfway), **620ms**
-for a retained row (nothing is racing, so the buffer would be dead time), and **300ms** under
-reduced motion. Up from the first pass's flat 700ms: the user asked for longer, and the extra time
-all went into the checkbox beats. Undo is untouched — a 10s bar over 7-day retention, independent of
-this timing.
+whether motion is enabled. Three answers: **1070ms** for a collapsing row (~990ms of motion — burst
+560, sweep 70+450, pulse 150, collapse 670+320 — plus an 80ms buffer so the row is flat and invisible
+before the write, and the snapshot that removes it can never interrupt the animation halfway),
+**690ms** for a retained row (nothing is racing, so the buffer would be dead time), and **300ms**
+under reduced motion. Undo is untouched — a 10s bar over 7-day retention, independent of this
+timing.
 
 **The checkbox is where the delight goes, because it is bounded.** The row wash stays deliberately
 quiet (`UtilityGreen125` at 0.55) — completing a task happens constantly, including in bursts when a
@@ -757,55 +758,86 @@ exactly the gimmick to avoid. That overlay is still wired to the deliberate one-
 dispatch `showTaskCompletionAnimation()` (WorkflowModal, FollowUpModal, comment-popup workflow
 controls) through `GlobalModalsContainerApp`, and to nothing else.
 
-**One `Animated.Value` drives the strike AND the wash** (`scaleX`, both with
-`transformOrigin: 'left center'`), so the wash's leading edge IS the strike's head — two values,
+**One `Animated.Value` drives the title bar AND the wash** (`scaleX`, both with
+`transformOrigin: 'left center'`), so the wash's leading edge IS the bar's leading edge — two values,
 however carefully tuned, read as two animations that happen to overlap. A second shared value
 (`flourish`) fades in everything green together and is what the retained-row release winds back
-down. The release itself is a **timer**, not the `Animated` completion callback: it has to fire
-identically on the animated path, the reduced-motion path and any renderer whose composite never
-reports finishing, and a subtask that kept its strike because one callback never arrived is the
-exact failure this exists to remove. A `done → open` effect resets everything as a second guarantee,
-so reopening a subtask can never leave completion styling behind.
+down. A third, `pulse`, is the confirmation at 100% and is a **normalised clock, not an amplitude**:
+it is sequenced strictly _after_ the fill in the same `Animated.sequence` (a confirmation that can
+overlap the thing it confirms is a wobble), and the bump shape — thicken, settle, bloom the head out
+— lives in the interpolations in `TaskCompletionProgress`, so the confirmation can be re-shaped
+without touching the sequence. The release itself is a **timer**, not the `Animated` completion
+callback: it has to fire identically on the animated path, the reduced-motion path and any renderer
+whose composite never reports finishing, and a subtask that kept its progress bar because one
+callback never arrived is the exact failure this exists to remove. A `done → open` effect resets
+everything as a second guarantee, so reopening a subtask can never leave completion styling
+behind.
 
 **Only a genuine completion is celebrated.** `scheduleMoveTasksFromOpen` is also how ticking a
 _workflow_ task hands it to the next reviewer — `stepToMoveId` is a step id, not `DONE_STEP`. That
-row still fades and collapses (it is leaving the list) but gets no strike, no green and no checkbox
+row still fades and collapses (it is leaving the list) but gets no sweep, no green and no checkbox
 burst, because the task is not done — it would otherwise be congratulated for finishing something it
-has only handed on.
+has only handed on. The flag is `begin({ isCompletion })`; it was called `strikeThrough` while the
+title beat was a strike-through.
 
-**The strike measures the text, not the column.** `TaskCompletionStrike` runs a
+**A progress bar, not a strike-through — the geometry is the same, the message is not.** The first
+two passes drew a dark `Text02` line through the middle of the title. It was accurate and it read as
+_deletion_: a struck-out row is the visual language of "this was removed". `TaskCompletionProgress`
+therefore keeps the measurement and inverts the metaphor — a 3px `UtilityGreen200` bar centred on
+the **bottom edge** of each line's ink (an underline hugging the text, never through the glyphs),
+filling 0→100% with a lighter `UtilityGreen150` glowing head at the leading edge. Deliberately **not**
+a track-plus-fill and deliberately **no percentage numbers**: a grey track announces a UI control in
+a list of prose, and a `0% → 100%` badge is unreadable at this speed while adding a second thing to
+look at.
+
+**A wrapped title is ONE bar's worth of progress, not three filling at once.**
+`buildSweepSegments` gives each measured line the share of 0→1 that matches its own ink width, so
+the head runs off the end of line one exactly as line two starts and travels at a constant speed
+through the title. Three simultaneous fills read as three progress bars, which is exactly the
+"UI widget" feel being avoided. It is still ONE `Animated.Value` — each line interpolates its own
+window of it with `extrapolate: 'clamp'` — so the lines can never drift apart. The last segment's
+`end` is pinned to exactly `1` rather than computed, because floating-point drift there leaves a
+hairline of unfilled title precisely where the confirmation pulse fires.
+
+**The sweep measures the text, not the column.** `TaskCompletionProgress` runs a
 `Range.getClientRects()` over the rendered title (via the same `social_text_<projectId>_<taskId>_<isObservedTask>`
 DOM id `TasksHelper.showWrappedTaskEllipsis` already uses) and groups the resulting per-word rects
 by rounded `top` into one span per wrapped line. Without this the bar spans the title column, which
-is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row would be crossed out
-by a several-hundred-pixel line through empty space. Any failure (no DOM, missing element, empty
-measurement) falls back to full-width bars sized off the title's `onLayout` height, capped at the
-three lines `numberOfLines={3}` allows. Three things that are load-bearing and easy to break: the
-scaling node needs `transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS
-`transform-origin`) or the line expands from its own middle instead of being drawn; the rects must be
-measured against an **untransformed** wrapper, since measuring the scaler itself reads a box already
-squashed to `scaleX(0)`; and the bright leading **head** must sit OUTSIDE that scaler and travel by
-`translateX` instead, or it is squashed to nothing along with everything else — the point of a head
-is that it keeps its shape while the line behind it grows. No head is drawn on the fallback path,
-which does not know where a line ends and would park it in empty space.
+is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row would show a
+several-hundred-pixel bar under empty space, which reads as a row-level loading indicator rather
+than as the title being completed. Any failure (no DOM, missing element, empty measurement) falls
+back to full-width bars sized off the title's `onLayout` height, capped at the three lines
+`numberOfLines={3}` allows, positioned low in the line box and still filled **sequentially** (equal
+shares). Three things that are load-bearing and easy to break: each bar needs
+`transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS `transform-origin`)
+or it expands from its own middle and stops reading as progress at all — the same origin is what
+keeps the pulse's `scaleY` centred; the rects must be measured against an **untransformed** wrapper,
+since measuring a scaled node reads a box already squashed to `scaleX(0)`; and the glowing **head**
+must sit OUTSIDE the scaled bar and travel by `translateX` instead, or it is squashed to nothing
+along with everything else — the point of a head is that it keeps its shape while the bar behind it
+grows. No head is drawn on the fallback path, which does not know where a line ends and would park
+it in empty space.
 
-`textDecorationLine: 'line-through'` is deliberately not used — it cannot be animated, and
-`SocialText` renders hashtags, mentions, links and the leading priority/Gmail chips as separate
-nested elements, so a decoration on the parent `<Text>` is at the mercy of each child's styling.
+`textDecorationLine` (`'underline'` or `'line-through'`) is deliberately not used — it cannot be
+animated, and `SocialText` renders hashtags, mentions, links and the leading priority/Gmail chips as
+separate nested elements, so a decoration on the parent `<Text>` is at the mercy of each child's
+styling.
 
-**Reduced motion keeps the information and drops the motion** — the strike appears statically, fully
-drawn, the checkbox is green, the ring and sparks are not rendered at all (they carry nothing), the
-row never collapses, and the hold shortens to 300ms so it does not read as lag. Zero would mean no
-completion feedback at all. Same `useReducedMotion()` from `Ghosts/ghostAnimation.js` and the same
+**Reduced motion keeps the information and drops the motion** — the bar appears statically at 100%,
+the checkbox is green, `pulse` stays at rest (its resting frame IS the static statement), the ring
+and sparks are not rendered at all (they carry nothing), the row never collapses, and the hold
+shortens to 300ms so it does not read as lag. Zero would mean no completion feedback at all. Same `useReducedMotion()` from `Ghosts/ghostAnimation.js` and the same
 `animationsAreDisabled()` jest convention as every other animation here — which means a suite that
 wants to see the real branch must opt out of it, or an inert row makes every collapse assertion pass
 vacuously. Pinned by `taskCompletionMotion.test.js` (the rule and the hook),
 `TaskPresentationCompletion.test.js` (the REAL row, real checkbox press, subtask vs top-level vs
 comment popup vs reopen — the wiring, which is where the subtask bug actually lived),
 `CheckBoxContainer/TaskCompletionCelebration.test.js`, `CheckBoxContainer/CheckBoxContainer.test.js`,
-`TitleContainer/TaskCompletionStrike.test.js` (including the DOM measurement path through
-react-dom), `TitleContainer/TitleContainer.test.js` and the `completion motion handshake` block in
-`CheckBoxContainer/CheckBoxWrapper.test.js`.
+`TitleContainer/TaskCompletionProgress.test.js` (segment geometry, wrapped-title hand-over and the
+DOM measurement path through react-dom), `TitleContainer/TitleContainer.test.js` and the
+`completion motion handshake` block in `CheckBoxContainer/CheckBoxWrapper.test.js`. Note
+`findAllByProps` must pass `{ deep: false }` when counting bars: an `Animated.View` matches both as
+the composite element and as the host `View` it renders, which silently doubles every count.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
