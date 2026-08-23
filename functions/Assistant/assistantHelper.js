@@ -3605,6 +3605,55 @@ const updateLastAssistantCommentData = async (projectId, objectType, objectId, c
 
 const normalizeProjectNameForLookup = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
 
+const MIN_RECOVERABLE_PROJECT_ID_LENGTH = 12
+
+function areProjectIdsOneEditApart(projectIdA, projectIdB) {
+    if (typeof projectIdA !== 'string' || typeof projectIdB !== 'string' || projectIdA === projectIdB) return false
+    if (
+        projectIdA.length < MIN_RECOVERABLE_PROJECT_ID_LENGTH ||
+        projectIdB.length < MIN_RECOVERABLE_PROJECT_ID_LENGTH
+    ) {
+        return false
+    }
+    if (Math.abs(projectIdA.length - projectIdB.length) > 1) return false
+
+    if (projectIdA.length === projectIdB.length) {
+        let differences = 0
+        for (let index = 0; index < projectIdA.length; index++) {
+            if (projectIdA[index] !== projectIdB[index]) differences++
+            if (differences > 1) return false
+        }
+        return differences === 1
+    }
+
+    const longerId = projectIdA.length > projectIdB.length ? projectIdA : projectIdB
+    const shorterId = projectIdA.length > projectIdB.length ? projectIdB : projectIdA
+    let longerIndex = 0
+    let shorterIndex = 0
+    let skippedCharacters = 0
+
+    while (longerIndex < longerId.length && shorterIndex < shorterId.length) {
+        if (longerId[longerIndex] === shorterId[shorterIndex]) {
+            longerIndex++
+            shorterIndex++
+            continue
+        }
+
+        skippedCharacters++
+        if (skippedCharacters > 1) return false
+        longerIndex++
+    }
+
+    return true
+}
+
+function findUniqueSingleEditProjectIdMatch(projects, requestedProjectId) {
+    const matches = (Array.isArray(projects) ? projects : []).filter(project =>
+        areProjectIdsOneEditApart(project?.id, requestedProjectId)
+    )
+    return matches.length === 1 ? matches[0] : null
+}
+
 const projectNamesMatch = (projectNameA, projectNameB) => {
     const a = normalizeProjectNameForLookup(projectNameA)
     const b = normalizeProjectNameForLookup(projectNameB)
@@ -3757,9 +3806,17 @@ async function resolveProjectTargetForDescriptionUpdate(
     const projectsById = new Map(projects.map(project => [project.id, project]))
 
     if (normalizedRequestedProjectId) {
-        const projectFromId = projectsById.get(normalizedRequestedProjectId)
+        let projectFromId = projectsById.get(normalizedRequestedProjectId)
         if (!projectFromId) {
-            throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
+            projectFromId = findUniqueSingleEditProjectIdMatch(projects, normalizedRequestedProjectId)
+            if (!projectFromId) {
+                throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
+            }
+            console.warn('PROJECT DESCRIPTION UPDATE: Corrected a unique one-character projectId mismatch', {
+                requestedProjectId: normalizedRequestedProjectId,
+                resolvedProjectId: projectFromId.id,
+                resolvedProjectName: projectFromId.name || null,
+            })
         }
         if (normalizedRequestedProjectName && !projectNamesMatch(projectFromId.name, normalizedRequestedProjectName)) {
             throw new Error(
@@ -9890,6 +9947,7 @@ async function storeChunks(
         let thinkingContent = ''
         let answerContent = ''
         let toolAlreadyExecuted = false
+        let fatalToolExecutionError = null
         const createdNoteResults = []
         const startedVmJobResults = []
 
@@ -10483,6 +10541,13 @@ async function storeChunks(
                         const errorMsg = `Error executing ${toolName}: ${error.message}`
                         commentText = commentText.replace(toolStatusMessage, errorMsg)
                         await safeCommentUpdate({ commentText, isLoading: false })
+                        if (runtimeContextForTools.failOnToolExecutionError === true) {
+                            fatalToolExecutionError = error
+                            fatalToolExecutionError.toolName = toolName
+                            if (!fatalToolExecutionError.code) {
+                                fatalToolExecutionError.code = 'ASSISTANT_TOOL_EXECUTION_FAILED'
+                            }
+                        }
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -11025,6 +11090,15 @@ async function storeChunks(
         console.log('🔨 [TIMING] Starting final operations...')
         await Promise.all(promises)
         const finalOpsDuration = Date.now() - finalOpsStart
+
+        if (fatalToolExecutionError) {
+            console.error('🔧 NATIVE TOOL CALL: Propagating background tool execution failure', {
+                toolName: fatalToolExecutionError.toolName || null,
+                code: fatalToolExecutionError.code || null,
+                error: fatalToolExecutionError.message,
+            })
+            throw fatalToolExecutionError
+        }
 
         const streamProcessDuration = Date.now() - streamProcessStart
         const totalDuration = Date.now() - chunksStartTime
