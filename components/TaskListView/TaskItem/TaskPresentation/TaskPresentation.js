@@ -127,10 +127,10 @@ function TaskPresentation(
     const hasRoutingActivity = !!(routingProcessing || routingConfirmation)
 
     /**
-     * AT-2404 — the checkbox burst, strike-through, green wash and exit this row plays when it is
-     * checked off. The state lives here because the effect is the whole row's, but it is TRIGGERED
-     * from `CheckBoxWrapper` below, which is handed `beginCompletionMotion` and told how long to
-     * hold its write.
+     * AT-2404 — the checkbox burst, title progress sweep, green wash and exit this row plays when
+     * it is checked off. The state lives here because the effect is the whole row's, but it is
+     * TRIGGERED from `CheckBoxWrapper` below, which is handed `beginCompletionMotion` and told how
+     * long to hold its write.
      *
      * `retainRow` is the subtask guarantee, and it is resolved HERE — from the task, through the
      * shared `rowRemainsAfterCompletion` rule — rather than at the checkbox, because
@@ -146,7 +146,7 @@ function TaskPresentation(
         rowStyle: completionRowStyle,
         beginCompletionMotion,
         cancelCompletionMotion,
-        completionStrike,
+        completionProgress,
         completionWash,
         completionCelebration,
         isCompleting,
@@ -410,10 +410,10 @@ function TaskPresentation(
                                 )}
                                 {/* AT-2404 — the green wash, and the reason it SWEEPS rather than
                                     fades: it scales on X from the same `Animated.Value` and the
-                                    same left origin as the strike-through, so its leading edge is
-                                    the strike's head. One value, one gesture — the colour arrives
-                                    across the row exactly as fast as the line is drawn, which is
-                                    what makes them read as a single event instead of two
+                                    same left origin as the title's progress bar, so its leading
+                                    edge is the bar's leading edge. One value, one gesture — the
+                                    colour arrives across the row exactly as fast as the bar fills,
+                                    which is what makes them read as a single event instead of two
                                     animations that happen to overlap. Rendered only when the task
                                     is genuinely completed, so a workflow step advance (which also
                                     leaves this list) does not get the colour that means "done". */}
@@ -498,7 +498,7 @@ function TaskPresentation(
                                         leadingPriorityTag={leadingPriorityTag}
                                         useCommentPopupTextColor={inCommentPopup}
                                         setTaskTitleIsMultiline={setTaskTitleIsMultiline}
-                                        completionStrike={completionStrike}
+                                        completionProgress={completionProgress}
                                     />
                                 </View>
                                 {inMyDayAndNotSubtask && (

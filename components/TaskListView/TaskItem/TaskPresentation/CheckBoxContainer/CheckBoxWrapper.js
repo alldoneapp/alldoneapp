@@ -93,21 +93,22 @@ function CheckBoxWrapper(
      * AT-2404 — hands the row its completion animation and is told how long to hold the write.
      *
      * The duration is decided by `useTaskCompletionMotion`, not here, so the reduced-motion branch
-     * (a static strike-through and a much shorter hold) needs no knowledge of it at this level.
+     * (a statically-filled progress bar and a much shorter hold) needs no knowledge of it at this
+     * level.
      * Falls back to the standard hold if the row did not supply a handler, which keeps this
      * component usable — and its existing suite meaningful — outside `TaskPresentation`.
      *
-     * @param {boolean} strikeThrough False when the checkbox advances a workflow task to its next
-     *   step: the row still leaves the list, but the task is not done, so it must not be crossed
-     *   out or tinted with the success colour.
+     * @param {boolean} isCompletion False when the checkbox advances a workflow task to its next
+     *   step: the row still leaves the list, but the task is not done, so it must not be swept to
+     *   100% or tinted with the success colour.
      */
-    const startCompletionMotion = strikeThrough => {
+    const startCompletionMotion = isCompletion => {
         // A subtask row never collapses, so it never needs the buffer that keeps a collapsing row
         // ahead of its own snapshot. Matters only when there is no row handler at all — inside
         // `TaskPresentation` the hook returns the authoritative duration.
         const fallbackHold = task.isSubtask || task.parentId ? RETAINED_HOLD_MS : COMPLETION_HOLD_MS
         if (typeof beginCompletionMotion !== 'function') return fallbackHold
-        const holdMs = beginCompletionMotion({ strikeThrough })
+        const holdMs = beginCompletionMotion({ isCompletion })
         return typeof holdMs === 'number' ? holdMs : fallbackHold
     }
 
@@ -123,7 +124,7 @@ function CheckBoxWrapper(
             console.error('[task transition] Could not reload task after checkbox failure', readError)
         }
         safeSetChecked(persistedTask ? persistedTask.done : done)
-        // The row already struck itself through and collapsed optimistically; the write failed, so
+        // The row already swept itself to 100% and collapsed optimistically; the write failed, so
         // put it back rather than leaving an invisible zero-height row behind.
         if (typeof cancelCompletionMotion === 'function') cancelCompletionMotion()
     }
@@ -183,7 +184,7 @@ function CheckBoxWrapper(
         setTaskTransitionPending(true)
         // `stepToMoveId` is DONE_STEP for a real completion, but a WORKFLOW STEP ID when ticking a
         // workflow task simply hands it to the next reviewer. Both leave this list and both get the
-        // exit animation; only the first is crossed out, because only the first is done.
+        // exit animation; only the first is swept to 100%, because only the first is done.
         const holdMs = startCompletionMotion(stepToMoveId === DONE_STEP)
         const t = setTimeout(async () => {
             try {

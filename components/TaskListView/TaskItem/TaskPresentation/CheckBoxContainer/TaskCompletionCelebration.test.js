@@ -41,7 +41,7 @@ const rawStyle = node => Object.assign({}, ...[].concat(node.props.style).filter
 describe('TaskCompletionCelebration', () => {
     it('never intercepts a tap', () => {
         // The row stays fully completable, draggable and editable while it sparkles — the same rule
-        // TaskRoutingActivityOverlay and the strike already follow.
+        // TaskRoutingActivityOverlay and the title's progress bar already follow.
         expect(container(render()).props.pointerEvents).toBe('none')
     })
 

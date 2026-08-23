@@ -464,7 +464,7 @@ describe('CheckBoxWrapper task completion', () => {
 
             act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
 
-            expect(beginCompletionMotion).toHaveBeenCalledWith({ strikeThrough: true })
+            expect(beginCompletionMotion).toHaveBeenCalledWith({ isCompletion: true })
 
             await act(async () => {
                 jest.advanceTimersByTime(119)
@@ -488,8 +488,8 @@ describe('CheckBoxWrapper task completion', () => {
             act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
 
             // The row still animates out — it is leaving this list — but the task is NOT done, so
-            // it must not be shown struck through or tinted with the success colour.
-            expect(beginCompletionMotion).toHaveBeenCalledWith({ strikeThrough: false })
+            // it must not be swept to 100% or tinted with the success colour.
+            expect(beginCompletionMotion).toHaveBeenCalledWith({ isCompletion: false })
 
             await act(async () => {
                 jest.runAllTimers()
@@ -504,7 +504,7 @@ describe('CheckBoxWrapper task completion', () => {
                 .root.findByType('CheckBoxContainer')
                 .props.onCheckboxPress(false)
 
-            expect(beginCompletionMotion).toHaveBeenCalledWith({ strikeThrough: true })
+            expect(beginCompletionMotion).toHaveBeenCalledWith({ isCompletion: true })
         })
 
         test('restores the row when the write fails', async () => {
