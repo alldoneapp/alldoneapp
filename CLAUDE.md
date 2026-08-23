@@ -698,6 +698,62 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 **Nested `react-tiny-popover` dismisses its parent on tap (mobile tap/click timing)**: `react-tiny-popover` (v4) closes a popover by attaching a `window` `'click'` listener and calling `onClickOutside` whenever the click target is not inside **that** popover's own `document.body` portal. A nested popover (a dropdown/picker opened from inside a popover-based modal) renders in a **separate** portal, so tapping an item in the child is "outside" the parent — the parent's `onClickOutside` fires and the whole modal closes. This reproduces mainly on **mobile web**: a tap emits the touch press (`onPress`, which does the selection) and then a **synthesized `click` shortly after**, and it is that trailing click that reaches the parent's window listener — on desktop the RN-web press typically stops the click from bubbling to `window`, hiding the bug. The ordering is dependable: `onPress` (pointerup/touchend, or the click at the event target during bubbling) always runs before the trailing `click` reaches `window`, so a flag set in `onPress` is readable by the parent's `onClickOutside`. Fix (see `components/TaskListView/EmailLine/EmailLabelChip.js` + `EmailLabelModal/EmailRow.js` + `emailLineHelper.js`): on the child item's `onPress`, stamp a module-level interaction (`markEmailLabelPickerInteraction`); in the parent's `onClickOutside`, swallow the dismiss **once** (`shouldIgnoreEmailLabelModalDismiss` clears the stamp and returns true). Prefer this **consume-once** guard over a fixed time window so it does not depend on how far apart the tap and click land; keep a generous sanity cap (~2s) so a stamp whose dismiss never arrives (the desktop case) can't later swallow a genuine outside tap. Do not reach for `contentDestination` to re-parent the child into the modal DOM — it breaks the library's viewport-relative positioning math — and avoid an in-flow inline dropdown (it expands the modal) or an absolute in-modal overlay (it gets clipped by the modal's `CustomScrollView`).
 
+### Task completion animation (AT-2404)
+
+Ticking a task's checkbox strikes its title through, washes the row a faint green and collapses it
+out of the list. The state lives in `components/TaskListView/TaskItem/TaskPresentation/taskCompletionMotion.js`
+(owned by `TaskPresentation`, the row) and is triggered from `CheckBoxWrapper` (the checkbox,
+several levels down) through a `beginCompletionMotion` prop — **not** redux: a slice keyed by task
+id would re-render every mounted row on every completion, the exact fan-out AT-2336 exists to
+prevent, for state that concerns one row for 700ms. Because it is implemented once in the shared
+row, it applies everywhere `TaskPresentation` renders — open lists, MyDay, Goal DV, subtasks, TDV
+subtasks, backlinks, the comment popup — on mobile and desktop alike.
+
+**`begin()` returns the number of ms the caller must wait before writing.** That is the whole
+contract, and it is what keeps `CheckBoxWrapper` from having to know whether motion is enabled: the
+reduced-motion branch simply returns a shorter hold. The hold is **700ms** (300ms strike + 260ms
+collapse + ~140ms buffer), down from the 2000ms the row used to wait. The row is fully collapsed and
+invisible before the write is issued, so the snapshot that removes it can never interrupt the
+animation halfway. Undo is untouched — a 10s bar over 7-day retention, independent of this timing.
+
+**The write delay used to be `ANIMATION_DURATION` imported from `TaskCompletionAnimation.js`**, which
+silently tied how long a row waited before saving to how long a Giphy GIF was displayed. That
+coupling is gone. The GIF overlay itself **no longer fires on checkbox completions** — it ran on
+every single tick, portalling a random 300px GIF over the screen plus a `giphyRandomGif` cloud-function
+round trip, which is unusable when clearing a list. It is still wired to the deliberate one-off paths
+that dispatch `showTaskCompletionAnimation()` (WorkflowModal, FollowUpModal, comment-popup workflow
+controls) through `GlobalModalsContainerApp`.
+
+**Only a genuine completion is crossed out.** `scheduleMoveTasksFromOpen` is also how ticking a
+_workflow_ task hands it to the next reviewer — `stepToMoveId` is a step id, not `DONE_STEP`. That
+row still fades and collapses (it is leaving the list) but gets neither the strike nor the green,
+because the task is not done.
+
+**The strike measures the text, not the column.** `TaskCompletionStrike` runs a
+`Range.getClientRects()` over the rendered title (via the same `social_text_<projectId>_<taskId>_<isObservedTask>`
+DOM id `TasksHelper.showWrappedTaskEllipsis` already uses) and groups the resulting per-word rects
+by rounded `top` into one span per wrapped line. Without this the bar spans the title column, which
+is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row would be crossed out
+by a several-hundred-pixel line through empty space. Any failure (no DOM, missing element, empty
+measurement) falls back to full-width bars sized off the title's `onLayout` height, capped at the
+three lines `numberOfLines={3}` allows. Two things that are load-bearing and easy to break: the
+scaling node needs `transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS
+`transform-origin`) or the line expands from its own middle instead of being drawn; and the rects
+must be measured against an **untransformed** wrapper, since measuring the scaler itself reads a box
+already squashed to `scaleX(0)`.
+
+`textDecorationLine: 'line-through'` is deliberately not used — it cannot be animated, and
+`SocialText` renders hashtags, mentions, links and the leading priority/Gmail chips as separate
+nested elements, so a decoration on the parent `<Text>` is at the mercy of each child's styling.
+
+**Reduced motion keeps the information and drops the motion** — the strike appears statically, fully
+drawn, the row never collapses, and the hold shortens to 250ms so it does not read as lag. Zero
+would mean no completion feedback at all. Same `useReducedMotion()` from `Ghosts/ghostAnimation.js`
+and the same `animationsAreDisabled()` jest convention as every other animation here. Pinned by
+`taskCompletionMotion.test.js`, `TitleContainer/TaskCompletionStrike.test.js`,
+`TitleContainer/TitleContainer.test.js` and the `completion motion handshake` block in
+`CheckBoxContainer/CheckBoxWrapper.test.js`.
+
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
 On macOS, `getUserMedia({ audio: true })` enables Chrome's default processing chain

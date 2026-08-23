@@ -6,6 +6,24 @@ import { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 
+/**
+ * The full-screen Giphy celebration.
+ *
+ * AT-2404 — this NO LONGER fires when a task checkbox is ticked. It used to run on every single
+ * completion, which meant a random 300px GIF portalled over the middle of the screen (and a
+ * `giphyRandomGif` cloud-function round trip) every time anyone checked anything off — the exact
+ * "flashy and distracting" failure mode a completion animation should avoid, and unusable when
+ * clearing several tasks in a row. Checkbox completions now use the quiet per-row motion in
+ * `TaskPresentation/taskCompletionMotion.js` instead.
+ *
+ * It remains wired to the deliberate, one-off paths that dispatch `showTaskCompletionAnimation()`
+ * — WorkflowModal, FollowUpModal and the comment-popup workflow controls — which render it once,
+ * globally, through `GlobalModalsContainerApp`.
+ *
+ * `ANIMATION_DURATION` is this overlay's OWN sequence length. `CheckBoxWrapper` used to borrow it
+ * as its write-delay, which silently coupled how long a row waited before saving to how long a GIF
+ * was shown; that coupling is gone, and the row's timing now lives in `taskCompletionMotion.js`.
+ */
 export const ANIMATION_DURATION = 2000 // 2 seconds
 
 // Search terms for celebration GIFs
