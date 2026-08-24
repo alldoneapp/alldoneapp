@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Animated, StyleSheet } from 'react-native'
 
 import { colors } from '../../../../styles/global'
+import { getTextStartMarkerId } from '../../../../UIControls/SocialText/textRangeMarkers'
 
 /**
  * AT-2404 — the 0 → 100% completion sweep a task title plays when the task is checked off.
@@ -18,6 +19,14 @@ import { colors } from '../../../../styles/global'
  * grey track appearing under the title first would announce a UI control in a list of prose, and a
  * `0% → 100%` badge is unreadable at this speed while adding a second thing to look at. The fill
  * alone communicates the direction; the glowing head communicates that it is moving.
+ *
+ * ONE SEGMENT PER VISIBLE LINE. The count of bars has to equal the number of lines the reader can
+ * actually see — a two-line title showing three bars is the single most visible way this can be
+ * wrong, and it shipped. Both paths get there differently and both had to be fixed: the measured
+ * path was ranging over an EMPTY marker element and so never produced a line at all (see
+ * `measureTitleLines`), and the fallback that was therefore always running divided the title's
+ * height by the bare line height when a wrapped line is six pixels taller than that (see
+ * `WRAPPED_TEXT_MARGIN`). The two defects compose: `round(60 / 24)` is 3.
  *
  * ONE SWEEP ACROSS A WRAPPED TITLE. A title wrapped to three lines is ONE bar's worth of progress,
  * not three bars filling at once: `buildSweepSegments` gives each line the share of 0→1 that matches
@@ -70,6 +79,34 @@ const PULSE_HEAD_BLOOM = 2.4
 const TEXT_MARGIN_TOP = 5
 const SUBTASK_TEXT_MARGIN_TOP = 6
 
+/**
+ * A WRAPPED LINE IS NOT ONE LINE HEIGHT TALL, and assuming it was is what drew three bars across a
+ * two-line title.
+ *
+ * `SocialText` does not lay a title out as text in a block. It renders one `<Text>` per word into a
+ * `flexWrap` row, and every one of those carries `marginTop: 3` / `marginBottom: 3` (`WordsList`'s
+ * `wrappedText`). The cross size of a flex line is the tallest MARGIN box on it, so a visible line
+ * of title occupies `lineHeight + 6`, not `lineHeight` — 30px for a task, 28px for a subtask.
+ *
+ * The fallback used to divide the measured height by the bare line height, which reads 60px of
+ * two-line title as `round(60 / 24)` = 3 lines. One line survived (`round(30 / 24)` = 1) and three
+ * survived by being clamped to the three-line maximum, so the defect showed up only on the
+ * two-line case — exactly as reported. It also drifted each bar 6px further up its line than the
+ * last, because the same wrong pitch positions them.
+ *
+ * Two independent confirmations that 6 is the right number, both already in the codebase:
+ * `TitleContainer.onTaskTitleLayout` compares against `lineHeight + wrappedTextVerticalMargins`
+ * with `wrappedTextVerticalMargins = 6` to decide whether a title is multiline, and
+ * `descriptionText`'s `maxHeight: 90` caps `numberOfLines={3}` at three 30px lines.
+ */
+const WRAPPED_TEXT_MARGIN = 3
+
+/**
+ * Distance from the top of one visible line of title to the top of the next. The measured path
+ * reads this off the real rects; the fallback has to derive it.
+ */
+export const resolveLinePitch = lineHeight => lineHeight + WRAPPED_TEXT_MARGIN * 2
+
 // Where the bar's CENTRE sits inside a line box when the ink was not measured. The measured path
 // derives this from the real rect; with no measurement the middle of the line box is the best
 // available estimate of the same place, because CSS splits half-leading evenly above and below the
@@ -100,14 +137,17 @@ export const OPTICAL_OFFSET_Y = 1
 const MAX_TITLE_LINES = 3
 
 /**
- * The title's own `onLayout` height divided by its line height. Only used when the DOM measurement
- * below is unavailable. Guarded on both ends because a layout can arrive before the text has
- * measured (height 0 → a single line is the right guess) and because rounding on a fractional line
- * height must never render more bars than the text can actually show.
+ * The title's own `onLayout` height divided by the pitch of a visible line. Only used when the DOM
+ * measurement below is unavailable. Guarded on both ends because a layout can arrive before the
+ * text has measured (height 0 → a single line is the right guess) and because rounding on a
+ * fractional pitch must never render more bars than the text can actually show.
+ *
+ * The second argument is the LINE PITCH (`resolveLinePitch`), not the bare line height — see
+ * `WRAPPED_TEXT_MARGIN`. Passing the line height reads a two-line title as three lines.
  */
-export const resolveProgressLineCount = (measuredHeight, lineHeight) => {
-    if (!measuredHeight || !lineHeight) return 1
-    return Math.min(MAX_TITLE_LINES, Math.max(1, Math.round(measuredHeight / lineHeight)))
+export const resolveProgressLineCount = (measuredHeight, linePitch) => {
+    if (!measuredHeight || !linePitch) return 1
+    return Math.min(MAX_TITLE_LINES, Math.max(1, Math.round(measuredHeight / linePitch)))
 }
 
 /**
@@ -142,6 +182,35 @@ export const buildSweepSegments = lines => {
 }
 
 /**
+ * Two rects are on the same visible line when their vertical spans genuinely OVERLAP, not when
+ * their tops happen to round to the same integer.
+ *
+ * Rounding `top` was the original grouping key and it is too brittle for the rects this actually
+ * receives. A range over the title returns, per the CSSOM-View rules for `Range.getClientRects()`,
+ * both the border box of every selected element AND the rects of the text inside it — so a single
+ * word contributes two nearly-identical rects whose tops can straddle a `.5` boundary and land in
+ * two different buckets, splitting one line into two bars. Inline tags (a hashtag, a mention) are a
+ * different height from the words beside them and are centred against them, so their tops differ by
+ * more than rounding can absorb while still plainly sitting on the same line.
+ *
+ * Overlap is the property that actually distinguishes the two cases, and it does so with enormous
+ * margin: rects on one line overlap almost completely, while consecutive lines are `lineHeight + 6`
+ * apart with boxes only `lineHeight` tall, leaving a clean 6px gap and zero overlap. Half the
+ * SHORTER of the two heights is therefore a threshold nothing realistic comes close to either side
+ * of — and taking the shorter one is what stops a line whose union has grown tall from swallowing
+ * the line below it.
+ */
+const SAME_LINE_OVERLAP_RATIO = 0.5
+
+const sharesLine = (line, rect) => {
+    const overlap = Math.min(line.bottom, rect.bottom) - Math.max(line.top, rect.top)
+    const shortest = Math.min(line.bottom - line.top, rect.bottom - rect.top)
+    // A zero-height rect has no span to overlap, so any contact at all is the best signal available.
+    if (shortest <= 0) return overlap > 0
+    return overlap > shortest * SAME_LINE_OVERLAP_RATIO
+}
+
+/**
  * Collapses a flat list of client rects into one span per visual line.
  *
  * WHY THIS EXISTS — without it the bar spans the whole title COLUMN, which is `flex: 1` and
@@ -149,39 +218,38 @@ export const buildSweepSegments = lines => {
  * progress bar several hundred pixels long, most of it under empty space, which reads as a row-level
  * loading indicator rather than as the title being completed.
  *
- * `Range.getClientRects()` over the title returns a rect per inline box — which, because
- * `SocialText` splits the title into per-word/segment elements, means roughly one rect per word.
- * Grouping them by their rounded `top` and taking `min(left) … max(right)` therefore reconstructs
- * exactly the ink extent of each wrapped line, without needing to know anything about how the text
- * was split or where it wrapped.
+ * `Range.getClientRects()` over the title returns a rect per box it selects — which, because
+ * `SocialText` splits the title into per-word/segment elements, means at least one rect per word.
+ * Clustering them by vertical overlap (`sharesLine`) and taking `min(left) … max(right)` therefore
+ * reconstructs exactly the ink extent of each wrapped line, without needing to know anything about
+ * how the text was split or where it happened to wrap.
  *
  * Exported for testing.
  */
 export const groupRectsIntoLines = (rects, baseRect) => {
     if (!rects?.length || !baseRect) return null
 
-    const lines = new Map()
-    rects.forEach(rect => {
-        // Sub-pixel line boxes are common; rounding is what makes two words on the same line group
-        // together instead of becoming two nearly-identical bars.
-        const key = Math.round(rect.top)
-        const existing = lines.get(key)
-        if (existing) {
-            existing.left = Math.min(existing.left, rect.left)
-            existing.right = Math.max(existing.right, rect.right)
-            // Both ends of the union, not just the bottom. Sub-pixel only — the grouping key rounds
-            // `top`, so every rect in a group is within a pixel of the others — but the midpoint is
-            // now what positions the bar, and taking `max(bottom)` while keeping whichever `top`
-            // happened to arrive first biases that midpoint downwards for no reason.
-            existing.top = Math.min(existing.top, rect.top)
-            existing.bottom = Math.max(existing.bottom, rect.bottom)
-        } else {
-            lines.set(key, { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
-        }
-    })
+    const lines = []
+    // Sorted by `top`, so a line is always finished by the rects that belong to it before the next
+    // one begins and the result comes out in reading order for free.
+    Array.from(rects)
+        .sort((a, b) => a.top - b.top || a.left - b.left)
+        .forEach(rect => {
+            const current = lines[lines.length - 1]
+            if (current && sharesLine(current, rect)) {
+                current.left = Math.min(current.left, rect.left)
+                current.right = Math.max(current.right, rect.right)
+                // Both ends of the union, not just the bottom: the midpoint is what positions the
+                // bar, and taking `max(bottom)` while keeping whichever `top` happened to arrive
+                // first biases that midpoint downwards for no reason.
+                current.top = Math.min(current.top, rect.top)
+                current.bottom = Math.max(current.bottom, rect.bottom)
+                return
+            }
+            lines.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
+        })
 
-    return Array.from(lines.values())
-        .sort((a, b) => a.top - b.top)
+    return lines
         .slice(0, MAX_TITLE_LINES)
         .map(line => ({
             // Relative to the overlay's own box, and centred on the MIDDLE of the line rather than
@@ -203,21 +271,42 @@ export const groupRectsIntoLines = (rects, baseRect) => {
 }
 
 /**
- * Reads the ink extent of the rendered title. Web-only by nature, and deliberately total in its
- * failure handling: ANY problem returns null and the caller falls back to full-width bars, which
- * still communicate "done". `document.getElementById(...).getBoundingClientRect()` is the same
- * measurement route `TasksHelper.showWrappedTaskEllipsis` already uses for this exact element.
+ * Reads the ink extent of the rendered title, one entry per visible line.
+ *
+ * WHAT THIS MEASURES, AND WHY IT IS A RANGE BETWEEN TWO MARKERS. `SocialText` lays a title out as a
+ * single `flexWrap` row of siblings: leading chips (priority, Gmail, calendar, VM status), then one
+ * element per word or inline tag, then a hidden end marker. There is no element that wraps "the
+ * text" — `LeftTagsAndIcons` renders a fragment — so the only way to address the words is to bound
+ * them, which is what `Content`'s marker PAIR is for (see `textRangeMarkers.js`). A range from just
+ * after the start marker to just before the end marker contains the title's own words and inline
+ * tags, and excludes the chips, both markers and anything else on the row.
+ *
+ * THIS USED TO MEASURE THE END MARKER'S CONTENTS, WHICH ARE EMPTY. `elementId` names a deliberately
+ * empty, zero-size, `visibility: hidden` `<View>` — it is an end-of-text POSITION probe for
+ * `TasksHelper.showWrappedTaskEllipsis`, which reads its `bottom`/`left`, and it was mistaken for
+ * the title element itself. `selectNodeContents` on it selects nothing, `getClientRects()` returns
+ * an empty list, and this function returned null on EVERY completion — so the measured path never
+ * ran in production and every sweep was drawn by the fallback below.
+ *
+ * Web-only by nature, and deliberately total in its failure handling: ANY problem returns null and
+ * the caller falls back to full-width bars, which still communicate "done".
  */
 export const measureTitleLines = (elementId, overlayNode) => {
     if (typeof document === 'undefined' || !document.createRange || !elementId) return null
     if (!overlayNode?.getBoundingClientRect) return null
 
     try {
-        const textNode = document.getElementById(elementId)
-        if (!textNode) return null
+        const endMarker = document.getElementById(elementId)
+        const startMarker = document.getElementById(getTextStartMarkerId(elementId))
+        if (!endMarker || !startMarker) return null
+        // A range only means anything if its ends are siblings on the same row. Bailing to the
+        // fallback is the right failure here rather than measuring from wherever the two happen to
+        // be, which is how chips end up under the bar.
+        if (startMarker.parentElement == null || startMarker.parentElement !== endMarker.parentElement) return null
 
         const range = document.createRange()
-        range.selectNodeContents(textNode)
+        range.setStartAfter(startMarker)
+        range.setEndBefore(endMarker)
         const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0)
 
         return groupRectsIntoLines(rects, overlayNode.getBoundingClientRect())
@@ -237,7 +326,9 @@ export const measureTitleLines = (elementId, overlayNode) => {
  *   and the checkbox fill so every part of the flourish arrives and leaves together.
  * @param {number} props.measuredHeight Laid-out height of the title text (fallback path only).
  * @param {boolean} props.isSubtask Subtasks use the smaller body2 metrics.
- * @param {string} [props.elementId] DOM id of the rendered title, used to measure its true width.
+ * @param {string} [props.elementId] Id of the title's end-of-text marker. Paired with the start
+ *   marker derived from it, this bounds the range `measureTitleLines` measures — it is NOT the id
+ *   of an element containing the text, and ranging over its contents selects nothing.
  */
 export default function TaskCompletionProgress({ progress, pulse, opacity, measuredHeight, isSubtask, elementId }) {
     const overlayRef = useRef(null)
@@ -253,20 +344,27 @@ export default function TaskCompletionProgress({ progress, pulse, opacity, measu
 
     const lineHeight = isSubtask ? 22 : 24
     const marginTop = isSubtask ? SUBTASK_TEXT_MARGIN_TOP : TEXT_MARGIN_TOP
+    const linePitch = resolveLinePitch(lineHeight)
 
     const lines =
         measuredLines ||
         // Fallback: no DOM, no id, or a measurement that came back empty. Spans the title column,
         // which is wider than the text but still unmistakably a completion sweep.
-        Array.from({ length: resolveProgressLineCount(measuredHeight, lineHeight) }, (_unused, index) => ({
+        Array.from({ length: resolveProgressLineCount(measuredHeight, linePitch) }, (_unused, index) => ({
             // Same rule as the measured path, including the optical offset: `top` is the bar's own
             // top edge, so the centre it is aiming for has half the bar's thickness taken off it
             // and the same 1px correction added on. The two paths have to agree — a row that failed
             // to measure sitting a pixel off one that measured is exactly the kind of difference
             // nobody would find deliberately.
+            //
+            // The line ADVANCES by the pitch and is CENTRED on the line height inside it: a wrapped
+            // line is `lineHeight + 6` tall because every word carries 3px of vertical margin, and
+            // the text sits in the middle of that. Stepping by the bare line height instead walked
+            // each bar 6px further up its own line than the last.
             top:
                 marginTop +
-                index * lineHeight +
+                WRAPPED_TEXT_MARGIN +
+                index * linePitch +
                 lineHeight * FALLBACK_CENTER_RATIO -
                 BAR_THICKNESS / 2 +
                 OPTICAL_OFFSET_Y,

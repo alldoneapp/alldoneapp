@@ -829,15 +829,52 @@ window of it with `extrapolate: 'clamp'` — so the lines can never drift apart.
 hairline of unfilled title precisely where the confirmation pulse fires.
 
 **The sweep measures the text, not the column.** `TaskCompletionProgress` runs a
-`Range.getClientRects()` over the rendered title (via the same `social_text_<projectId>_<taskId>_<isObservedTask>`
-DOM id `TasksHelper.showWrappedTaskEllipsis` already uses) and groups the resulting per-word rects
-by rounded `top` into one span per wrapped line. Without this the bar spans the title column, which
+`Range.getClientRects()` over the rendered title and groups the resulting per-word rects into one
+span per wrapped line. Without this the bar spans the title column, which
 is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row would show a
 several-hundred-pixel bar under empty space, which reads as a row-level loading indicator rather
-than as the title being completed. Any failure (no DOM, missing element, empty measurement) falls
+than as the title being completed. Any failure (no DOM, missing marker, empty measurement) falls
 back to full-width bars sized off the title's `onLayout` height, capped at the three lines
 `numberOfLines={3}` allows, centred in the line box like the measured path and still filled
-**sequentially** (equal shares). Three things that are load-bearing and easy to break: each bar needs
+**sequentially** (equal shares).
+
+**There is no element that contains a task title, so the range is drawn between two markers
+(AT-2404 follow-up).** `SocialText` lays a title out as ONE `flexWrap` row whose children are, in
+order: the leading chips from `LeftTagsAndIcons` (priority, Gmail, calendar, VM status, milestone
+date), then one `<Text>` per word/inline tag from `WordsList`, then a hidden marker. Nothing wraps
+"the text" — `LeftTagsAndIcons` renders a **fragment**, so its chips are plain siblings of the
+words — and the chip count varies per row. `Content` therefore renders a **pair** of empty,
+`visibility: hidden`, zero-size markers around the words (`textRangeMarkers.js` derives the start
+id from the end id), and `measureTitleLines` ranges `setStartAfter(start)` → `setEndBefore(end)`:
+exactly the words and inline tags, never the chips and never the markers.
+
+The obvious-looking shortcut is the trap that shipped: `elementId` **is** that end marker, and it is
+an end-of-text **position probe** for `TasksHelper.showWrappedTaskEllipsis` (which reads its
+`bottom`/`left`), not a container. It is deliberately empty, so `selectNodeContents` on it selected
+nothing, `getClientRects()` came back empty, and `measureTitleLines` returned null on **every**
+completion — the measured path never once ran in production. It read as working because the whole
+suite stubbed `document.createRange` and the stub answered for whichever element it was handed. Keep
+that marker last and zero-size; it has the other consumer.
+
+**A wrapped line is `lineHeight + 6` tall, not `lineHeight` — this is what drew three bars across a
+two-line title.** Every per-word `<Text>` carries `marginTop: 3`/`marginBottom: 3` (`WordsList`'s
+`wrappedText`), and a flex line's cross size is the tallest **margin** box on it, so the real pitch
+is 30px (task) / 28px (subtask). The fallback — which, per the above, was the only path ever
+running — divided the measured height by the bare line height: `round(60 / 24)` is `round(2.5)`,
+which JS rounds **up** to 3. It hid on both neighbours, which is why only dogfooding found it: one
+line was `round(30 / 24)` = 1 and correct, three lines was `round(90 / 24)` = 4 clamped back to the
+3-line maximum and correct. Two lines was the only visible arity that was wrong. The same wrong
+pitch also walked each bar 6px further up its own line than the last. Use `resolveLinePitch`;
+`descriptionText`'s `maxHeight: 90` and `TitleContainer`'s `lineHeight + wrappedTextVerticalMargins`
+multiline check are the two independent confirmations that 6 is the number.
+
+Grouping rects into lines is by **vertical overlap** (`> half the shorter height`), not by rounded
+`top`. Per CSSOM-View a range reports both the border box of each selected element **and** the rects
+of the text inside it, so one word arrives twice with tops that can straddle a `.5` boundary and
+split one line into two bars; and an inline tag is a different height from the words beside it. Real
+lines are a clean 6px apart with zero overlap, so the threshold has enormous margin either side.
+
+Three things that are load-bearing and easy to break: each bar needs
 `transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS `transform-origin`)
 or it expands from its own middle and stops reading as progress at all — the same origin is what
 keeps the pulse's `scaleY` centred; the rects must be measured against an **untransformed** wrapper,
@@ -867,6 +904,13 @@ DOM measurement path through react-dom), `TitleContainer/TitleContainer.test.js`
 `completion motion handshake` block in `CheckBoxContainer/CheckBoxWrapper.test.js`. Note
 `findAllByProps` must pass `{ deep: false }` when counting bars: an `Animated.View` matches both as
 the composite element and as the host `View` it renders, which silently doubles every count.
+
+Its `measuring the title SocialText actually renders` block is the one that would have caught the
+above, and the reason it can is that it renders the **real** `Content` and synthesises the layout
+from the nodes the range genuinely contains — so "the chips are excluded" and "a two-line title
+yields two bars" are assertions about the code rather than restatements of a stub. A rect stub that
+answers for whatever element it is handed cannot tell that the wrong element is being measured;
+that is exactly how the empty-marker defect passed a green suite.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 

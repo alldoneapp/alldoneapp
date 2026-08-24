@@ -7,9 +7,13 @@ import { createRoot } from 'react-dom/client'
 import TaskCompletionProgress, {
     buildSweepSegments,
     groupRectsIntoLines,
+    measureTitleLines,
     OPTICAL_OFFSET_Y,
+    resolveLinePitch,
     resolveProgressLineCount,
 } from './TaskCompletionProgress'
+import Content from '../../../../UIControls/SocialText/Content'
+import { getTextStartMarkerId } from '../../../../UIControls/SocialText/textRangeMarkers'
 
 /**
  * AT-2404. The completion sweep is decoration, so the things worth pinning are the ways it can be
@@ -44,14 +48,47 @@ const barStyle = (tree, index = 0) => StyleSheet.flatten(bars(tree)[index].props
 
 const rect = (top, left, right, height = 24) => ({ top, bottom: top + height, left, right, width: right - left })
 
+// The real pitch of a visible line of title: the line height plus the 3px of top and bottom margin
+// every per-word `<Text>` carries. These are the numbers the fallback actually runs on.
+const TASK_PITCH = 30
+const SUBTASK_PITCH = 28
+
+describe('resolveLinePitch', () => {
+    it('adds the per-word vertical margins to the line height', () => {
+        // A title is a flexWrap row of per-word elements, each with `marginTop: 3` /
+        // `marginBottom: 3`, so a visible line is six pixels taller than its line height. Confirmed
+        // independently by `TitleContainer`'s multiline check (`lineHeight + 6`) and by
+        // `descriptionText`'s `maxHeight: 90` capping `numberOfLines={3}`.
+        expect(resolveLinePitch(24)).toBe(TASK_PITCH)
+        expect(resolveLinePitch(22)).toBe(SUBTASK_PITCH)
+    })
+})
+
 describe('resolveProgressLineCount', () => {
     it.each([
-        ['a single line', 24, 24, 1],
-        ['a title wrapped to two lines', 48, 24, 2],
-        ['a title wrapped to three lines', 72, 24, 3],
-        ['subtask metrics', 44, 22, 2],
-    ])('counts %s', (_description, measuredHeight, lineHeight, expected) => {
-        expect(resolveProgressLineCount(measuredHeight, lineHeight)).toBe(expected)
+        ['a single line', TASK_PITCH, TASK_PITCH, 1],
+        ['a title wrapped to two lines', 2 * TASK_PITCH, TASK_PITCH, 2],
+        ['a title wrapped to three lines', 3 * TASK_PITCH, TASK_PITCH, 3],
+        ['subtask metrics', 2 * SUBTASK_PITCH, SUBTASK_PITCH, 2],
+    ])('counts %s', (_description, measuredHeight, linePitch, expected) => {
+        expect(resolveProgressLineCount(measuredHeight, linePitch)).toBe(expected)
+    })
+
+    it('reads a visibly two-line title as two lines, not three', () => {
+        // THE REPORTED BUG. A two-line title measures 60px, and the fallback used to divide that by
+        // the bare 24px line height: `round(60 / 24)` is `round(2.5)`, which JavaScript rounds UP to
+        // 3. So a task the user could see wrapping onto two lines was swept with three bars, the
+        // third of them under empty space below the text.
+        //
+        // It hid on either side of that case, which is why it took dogfooding to find: one line was
+        // `round(30 / 24)` = 1 and came out right, and three lines was `round(90 / 24)` = 4 clamped
+        // back down to the three-line maximum, so it came out right too. Two lines was the only
+        // visible arity that was wrong.
+        expect(resolveProgressLineCount(2 * TASK_PITCH, TASK_PITCH)).toBe(2)
+        expect(resolveProgressLineCount(2 * SUBTASK_PITCH, SUBTASK_PITCH)).toBe(2)
+
+        // The old arithmetic, kept as the thing that must never come back.
+        expect(Math.round((2 * TASK_PITCH) / 24)).toBe(3)
     })
 
     it.each([
@@ -60,13 +97,13 @@ describe('resolveProgressLineCount', () => {
     ])('falls back to one line for %s', (_description, measuredHeight) => {
         // A layout can arrive before the text has measured. One line is both the right guess and
         // the safe one — it can never draw a bar under empty space below the text.
-        expect(resolveProgressLineCount(measuredHeight, 24)).toBe(1)
+        expect(resolveProgressLineCount(measuredHeight, TASK_PITCH)).toBe(1)
     })
 
     it('never draws more lines than the title can show', () => {
         // `numberOfLines={3}` caps the title, so a runaway measurement must not produce a stack of
         // bars below the text.
-        expect(resolveProgressLineCount(500, 24)).toBe(3)
+        expect(resolveProgressLineCount(500, TASK_PITCH)).toBe(3)
     })
 })
 
@@ -188,6 +225,45 @@ describe('groupRectsIntoLines', () => {
         expect(second.top - first.top).toBeCloseTo(24)
     })
 
+    it('keeps a real two-line title at two lines', () => {
+        // The rects a browser actually hands back for a wrapped title: one per word, at the real
+        // 30px pitch (24px boxes with a 6px gap between the lines). Four words over two lines must
+        // produce two bars — not four, and not three.
+        const lines = groupRectsIntoLines(
+            [rect(100, 50, 110), rect(100, 114, 190), rect(130, 50, 120), rect(130, 124, 176)],
+            base
+        )
+
+        expect(lines).toHaveLength(2)
+        expect(lines.map(line => line.width)).toEqual([140, 126])
+    })
+
+    it('keeps the two rects a browser returns for one word on one line', () => {
+        // `Range.getClientRects()` reports both the border box of each selected element AND the
+        // rects of the text inside it, so one word arrives twice with near-identical geometry. Under
+        // the old `Math.round(top)` key those two could straddle a `.5` boundary and split a single
+        // line into two overlapping bars; overlapping spans can never be two lines.
+        const lines = groupRectsIntoLines([rect(100.49, 50, 200), rect(100.51, 50, 200)], base)
+
+        expect(lines).toHaveLength(1)
+    })
+
+    it('keeps an inline tag on the line of the words beside it', () => {
+        // A hashtag or mention chip is shorter than the words around it and is centred against
+        // them, so its top differs by more than rounding absorbs while it plainly sits on the same
+        // line. Overlap is what actually answers the question.
+        const lines = groupRectsIntoLines([rect(100, 50, 120, 24), rect(103, 124, 170, 18)], base)
+
+        expect(lines).toHaveLength(1)
+        expect(lines[0].width).toBe(120)
+    })
+
+    it('still separates lines that merely touch', () => {
+        // Adjacent boxes with no gap at all are the tightest two lines can ever be. They share an
+        // edge and no area, so they must stay two.
+        expect(groupRectsIntoLines([rect(100, 50, 200, 24), rect(124, 50, 180, 24)], base)).toHaveLength(2)
+    })
+
     it('orders lines top to bottom and never exceeds the three the title can show', () => {
         const lines = groupRectsIntoLines(
             [rect(172, 50, 120), rect(100, 50, 200), rect(148, 50, 180), rect(124, 50, 190)],
@@ -238,7 +314,7 @@ describe('TaskCompletionProgress', () => {
 
     it('drives every line from the one shared sweep', () => {
         const progress = new Animated.Value(0)
-        const tree = renderProgress({ progress, measuredHeight: 72 })
+        const tree = renderProgress({ progress, measuredHeight: 3 * TASK_PITCH })
 
         // Three lines, three windows onto ONE value — not three animations that could drift apart.
         const parents = bars(tree).map(bar => StyleSheet.flatten(bar.props.style).transform[0].scaleX._parent)
@@ -264,12 +340,19 @@ describe('TaskCompletionProgress', () => {
         // react-test-renderer never puts the title in the document, so these exercise the fallback
         // path exactly as a non-web renderer would hit it.
         it('draws one full-width bar per wrapped line', () => {
-            expect(bars(renderProgress({ measuredHeight: 24 }))).toHaveLength(1)
-            expect(bars(renderProgress({ measuredHeight: 72 }))).toHaveLength(3)
+            expect(bars(renderProgress({ measuredHeight: TASK_PITCH }))).toHaveLength(1)
+            expect(bars(renderProgress({ measuredHeight: 3 * TASK_PITCH }))).toHaveLength(3)
+        })
+
+        it('draws exactly two bars for a title that visibly wraps to two lines', () => {
+            // The reported bug at the component level: a two-line title is 60px of laid-out height,
+            // and it must produce two bars. It produced three.
+            expect(bars(renderProgress({ measuredHeight: 2 * TASK_PITCH }))).toHaveLength(2)
+            expect(bars(renderProgress({ measuredHeight: 2 * SUBTASK_PITCH, isSubtask: true }))).toHaveLength(2)
         })
 
         it('stretches each bar across the column', () => {
-            const style = barStyle(renderProgress({ measuredHeight: 24 }))
+            const style = barStyle(renderProgress({ measuredHeight: TASK_PITCH }))
 
             // Unknown ink width, so the bar spans the column: wider than the text, but still
             // unmistakably a completion sweep rather than nothing at all.
@@ -278,7 +361,7 @@ describe('TaskCompletionProgress', () => {
         })
 
         it('still fills the lines one after another', () => {
-            const [first, second] = bars(renderProgress({ measuredHeight: 48 })).map(
+            const [first, second] = bars(renderProgress({ measuredHeight: 2 * TASK_PITCH })).map(
                 bar => StyleSheet.flatten(bar.props.style).transform[0].scaleX
             )
 
@@ -288,57 +371,68 @@ describe('TaskCompletionProgress', () => {
             expect(second.__getValue()).toBe(0)
         })
 
-        it('spaces subtask bars on the smaller body2 line height', () => {
-            const tree = renderProgress({ measuredHeight: 44, isSubtask: true })
+        it('spaces subtask bars on the smaller body2 line pitch', () => {
+            const tree = renderProgress({ measuredHeight: 2 * SUBTASK_PITCH, isSubtask: true })
 
-            expect(barStyle(tree, 1).top - barStyle(tree, 0).top).toBe(22)
+            // Consecutive bars are one PITCH apart, not one line height: stepping by the bare line
+            // height walks each bar 6px further up its own line than the last, so by the third line
+            // of a wrapped title the bar has left the text entirely.
+            expect(barStyle(tree, 1).top - barStyle(tree, 0).top).toBe(SUBTASK_PITCH)
         })
 
         it('centres the bar in the line box even with nothing measured', () => {
             // The fallback must agree with the measured path, or a row that fails to measure would
             // show the underline the measured path no longer draws.
-            const top = barStyle(renderProgress({ measuredHeight: 24 })).top
+            const top = barStyle(renderProgress({ measuredHeight: TASK_PITCH })).top
 
-            // Text starts 5 below the overlay (TEXT_MARGIN_TOP) on a 24px line, so the centre is
-            // 5 + 12, the bar's top edge is half its 3px thickness above it, and the optical offset
+            // The text block starts 5 below the overlay (TEXT_MARGIN_TOP); inside it the word
+            // carries 3px of top margin, and its 24px line box is centred 12 further down. The
+            // bar's top edge is half its 3px thickness above that centre, and the optical offset
             // takes it 1px back down.
-            expect(top + 3 / 2).toBeCloseTo(5 + 12 + OPTICAL_OFFSET_Y)
+            expect(top + 3 / 2).toBeCloseTo(5 + 3 + 12 + OPTICAL_OFFSET_Y)
         })
 
         it('applies the same one-pixel optical offset as the measured path', () => {
             // The two paths are computed independently, so this is the assertion that stops one of
             // them being corrected and the other quietly left on the geometric centre — which is
             // precisely what happened to the thickness correction in the centring pass.
-            const top = barStyle(renderProgress({ measuredHeight: 24 })).top
+            const top = barStyle(renderProgress({ measuredHeight: TASK_PITCH })).top
 
-            expect(top + 3 / 2 - (5 + 12)).toBeCloseTo(1)
+            expect(top + 3 / 2 - (5 + 3 + 12)).toBeCloseTo(1)
         })
 
         it('centres every line of a wrapped fallback title on its own line box', () => {
-            const tree = renderProgress({ measuredHeight: 72 })
+            const tree = renderProgress({ measuredHeight: 3 * TASK_PITCH })
             const centers = [0, 1, 2].map(index => barStyle(tree, index).top + 3 / 2)
 
-            expect(centers).toEqual([5 + 12 + OPTICAL_OFFSET_Y, 5 + 36 + OPTICAL_OFFSET_Y, 5 + 60 + OPTICAL_OFFSET_Y])
+            // 20, 50, 80 — one pitch apart, each through the middle of its own line's text.
+            expect(centers).toEqual([
+                5 + 3 + 12 + OPTICAL_OFFSET_Y,
+                5 + 3 + TASK_PITCH + 12 + OPTICAL_OFFSET_Y,
+                5 + 3 + 2 * TASK_PITCH + 12 + OPTICAL_OFFSET_Y,
+            ])
         })
 
         it('centres a subtask bar on the smaller body2 line box', () => {
-            const top = barStyle(renderProgress({ measuredHeight: 22, isSubtask: true })).top
+            const top = barStyle(renderProgress({ measuredHeight: SUBTASK_PITCH, isSubtask: true })).top
 
-            // 22px line height, 6px top margin — and the same 1px offset, because a subtask plays
-            // every beat of the sweep except the collapse.
-            expect(top + 3 / 2).toBeCloseTo(6 + 11 + OPTICAL_OFFSET_Y)
+            // 22px line height, 6px block margin, 3px word margin — and the same 1px offset,
+            // because a subtask plays every beat of the sweep except the collapse.
+            expect(top + 3 / 2).toBeCloseTo(6 + 3 + 11 + OPTICAL_OFFSET_Y)
         })
 
         it('survives an element id that resolves to nothing', () => {
             expect(() => renderProgress({ elementId: 'social_text_missing' })).not.toThrow()
-            expect(bars(renderProgress({ elementId: 'social_text_missing', measuredHeight: 24 }))).toHaveLength(1)
+            expect(bars(renderProgress({ elementId: 'social_text_missing', measuredHeight: TASK_PITCH }))).toHaveLength(
+                1
+            )
         })
 
         it('draws no leading head, because it does not know where the line ends', () => {
             // A head parked at the column's right edge would sit in empty space well past the text.
             // Better to lose the flourish than to point at nothing.
             expect(
-                renderProgress({ measuredHeight: 24 }).root.findAllByProps(
+                renderProgress({ measuredHeight: TASK_PITCH }).root.findAllByProps(
                     { testID: 'task-completion-progress-head' },
                     { deep: false }
                 )
@@ -363,12 +457,23 @@ describe('TaskCompletionProgress', () => {
         let originalCreateRange
         let host
 
+        // jsdom has no layout, so the rects a browser would produce are supplied here. The range
+        // BOUNDARIES are still exercised for real: a stub that ignored `setStartAfter` /
+        // `setEndBefore` would report rects for a measurement that never happened.
+        const stubRange = rects => () => {
+            let bounded = 0
+            return {
+                setStartAfter: () => (bounded += 1),
+                setEndBefore: () => (bounded += 1),
+                getClientRects: () => (bounded === 2 ? rects : []),
+            }
+        }
+
         beforeEach(() => {
             originalCreateRange = document.createRange
-            // jsdom has no layout, so the rects a browser would produce are supplied here. Modelled
-            // as real ink INSIDE a wider column (left: 20, not 0), which is the whole point of
-            // measuring — see `groupRectsIntoLines`.
-            document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => SINGLE_LINE })
+            // Modelled as real ink INSIDE a wider column (left: 20, not 0), which is the whole
+            // point of measuring — see `groupRectsIntoLines`.
+            document.createRange = stubRange(SINGLE_LINE)
         })
 
         afterEach(() => {
@@ -380,8 +485,17 @@ describe('TaskCompletionProgress', () => {
         })
 
         const renderInDom = (props = {}) => {
+            // The two markers `Content` renders around the title text, as the siblings they are in
+            // production. The measurement is a range BETWEEN them, so a lone end marker — which is
+            // empty, and was what this used to measure — must not be enough.
             const title = document.createElement('div')
-            title.id = TITLE_ID
+            const startMarker = document.createElement('div')
+            startMarker.id = getTextStartMarkerId(TITLE_ID)
+            const endMarker = document.createElement('div')
+            endMarker.id = TITLE_ID
+            title.appendChild(startMarker)
+            title.appendChild(document.createTextNode('Buy some milk'))
+            title.appendChild(endMarker)
             document.body.appendChild(title)
             host = document.createElement('div')
             document.body.appendChild(host)
@@ -436,7 +550,7 @@ describe('TaskCompletionProgress', () => {
         })
 
         it('centres each wrapped line on its own line box', () => {
-            document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => TWO_LINES })
+            document.createRange = stubRange(TWO_LINES)
             const bars = query(renderInDom(), 'task-completion-progress-bar')
 
             // Line boxes 10→26 and 34→50: centres 18 and 42, so tops 16.5 and 40.5, each shifted a
@@ -476,7 +590,7 @@ describe('TaskCompletionProgress', () => {
 
         describe('a title wrapped over two lines', () => {
             beforeEach(() => {
-                document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => TWO_LINES })
+                document.createRange = stubRange(TWO_LINES)
             })
 
             it('fills the lines one after another, not both at once', () => {
@@ -522,6 +636,264 @@ describe('TaskCompletionProgress', () => {
             const node = renderInDom()
             expect(query(node, 'task-completion-progress')).toHaveLength(1)
             expect(query(node, 'task-completion-progress-head')).toHaveLength(0)
+        })
+    })
+
+    describe('measuring the title SocialText actually renders', () => {
+        /**
+         * The suite above supplies rects directly, which is the only way to test the geometry in a
+         * renderer with no layout — but it is also how the original defect survived every test:
+         * the stub answered for whatever element it was handed, so it could not tell that the
+         * element being measured was the wrong one.
+         *
+         * These tests render the REAL `Content`, which is what puts a task title on screen, and
+         * synthesise the layout from the nodes the range genuinely contains. That makes the
+         * assertions about WHICH nodes are measured — chips out, words in, markers neither — real
+         * assertions rather than restatements of the stub.
+         */
+        const TITLE_ID = 'social_text_project_task_false'
+        const LINE_TOP = [100, 100 + 30]
+        const LINE_HEIGHT = 24
+        const CHIP_LEFT = 8
+        const TEXT_LEFT = 60
+        const WORD_WIDTH = 40
+
+        let originalCreateRange
+        let originalGetBoundingClientRect
+        let host
+        let titleHost
+
+        // The words of a two-line title, in the order `Content` lays them out. Four words on line
+        // one, two on line two — a title that visibly wraps ONCE.
+        const WORDS = ['Prepare', 'the', 'quarterly', 'board', 'review', 'deck']
+        const WORDS_ON_FIRST_LINE = 4
+
+        /**
+         * A miniature layout engine: gives every element in the DOM a rect, placing the words on
+         * two lines and the chips up at the left of line one. Zero-size for anything with no ink,
+         * which is what both markers are.
+         */
+        const layoutFor = (element, wordOrder) => {
+            const wordIndex = wordOrder.indexOf(element)
+            if (wordIndex >= 0) {
+                const line = wordIndex < WORDS_ON_FIRST_LINE ? 0 : 1
+                const column = line === 0 ? wordIndex : wordIndex - WORDS_ON_FIRST_LINE
+                const left = TEXT_LEFT + column * (WORD_WIDTH + 5)
+                return { top: LINE_TOP[line], bottom: LINE_TOP[line] + LINE_HEIGHT, left, right: left + WORD_WIDTH }
+            }
+            if (element.getAttribute && element.getAttribute('data-chip') != null) {
+                return { top: LINE_TOP[0] + 2, bottom: LINE_TOP[0] + 22, left: CHIP_LEFT, right: CHIP_LEFT + 40 }
+            }
+            return { top: LINE_TOP[0], bottom: LINE_TOP[0], left: 0, right: 0 }
+        }
+
+        const withSize = box => ({ ...box, width: box.right - box.left, height: box.bottom - box.top })
+
+        // The overlay's own box, which every measured rect is mapped into. It has to be readable
+        // from the layout effect that does the measuring, so it goes on the prototype rather than
+        // on the node — the node does not exist yet at the moment it is read.
+        const OVERLAY_BOX = withSize({ top: LINE_TOP[0] - 8, bottom: LINE_TOP[1] + 40, left: 0, right: 400 })
+
+        beforeEach(() => {
+            originalCreateRange = document.createRange
+            originalGetBoundingClientRect = Element.prototype.getBoundingClientRect
+            Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+                if (this.getAttribute && this.getAttribute('data-testid') === 'task-completion-progress') {
+                    return OVERLAY_BOX
+                }
+                return originalGetBoundingClientRect.call(this)
+            }
+        })
+
+        afterEach(() => {
+            document.createRange = originalCreateRange
+            Element.prototype.getBoundingClientRect = originalGetBoundingClientRect
+            ;[titleHost, host].forEach(node => node && node.parentNode && node.parentNode.removeChild(node))
+            titleHost = null
+            host = null
+        })
+
+        /** Renders the real `Content` and returns the word elements in document order. */
+        const renderTitle = () => {
+            titleHost = document.createElement('div')
+            document.body.appendChild(titleHost)
+            domAct(() => {
+                createRoot(titleHost).render(
+                    <Content
+                        elementId={TITLE_ID}
+                        numberOfLines={3}
+                        wrapText={true}
+                        // Stands in for the priority / Gmail / calendar chips, which
+                        // `LeftTagsAndIcons` renders as plain siblings of the words.
+                        leftCustomElement={<div data-chip="priority">P1</div>}
+                        wordList={[{ type: 'text', text: WORDS.join(' ') }]}
+                    />
+                )
+            })
+            const container = document.getElementById(TITLE_ID).parentElement
+            return Array.from(container.children).filter(child => WORDS.includes((child.textContent || '').trim()))
+        }
+
+        /**
+         * `Range.getClientRects()` for the element-boundary case, per CSSOM-View: the border box of
+         * every element the range selects whose parent it does not. Implemented off the range's own
+         * boundary points, so the rects returned depend on where the code under test actually put
+         * them — which is the entire point.
+         */
+        const installRangeFrom = wordOrder => {
+            document.createRange = () => {
+                let container = null
+                let start = 0
+                let end = 0
+                return {
+                    setStartAfter(node) {
+                        container = node.parentNode
+                        start = Array.prototype.indexOf.call(container.childNodes, node) + 1
+                    },
+                    setEndBefore(node) {
+                        container = node.parentNode
+                        end = Array.prototype.indexOf.call(container.childNodes, node)
+                    },
+                    selectNodeContents(node) {
+                        container = node
+                        start = 0
+                        end = node.childNodes.length
+                    },
+                    getClientRects() {
+                        if (!container) return []
+                        return Array.prototype.slice
+                            .call(container.childNodes, start, end)
+                            .map(node => withSize(layoutFor(node, wordOrder)))
+                    },
+                }
+            }
+        }
+
+        const renderSweep = () => {
+            host = document.createElement('div')
+            document.body.appendChild(host)
+            domAct(() => {
+                createRoot(host).render(
+                    <TaskCompletionProgress
+                        progress={new Animated.Value(0)}
+                        pulse={new Animated.Value(0)}
+                        // A height that would have produced the wrong answer on its own, so a bar
+                        // count of two can only have come from the measurement.
+                        measuredHeight={2 * 30}
+                        isSubtask={false}
+                        elementId={TITLE_ID}
+                    />
+                )
+            })
+            return host.querySelector('[data-testid="task-completion-progress"]')
+        }
+
+        it('is measuring an END MARKER that holds no text at all', () => {
+            // The root cause, stated as the structural fact it is. `elementId` names an empty,
+            // hidden, zero-size `<View>` that exists so `TasksHelper.showWrappedTaskEllipsis` can
+            // read its position — NOT an element containing the title. A range over its contents
+            // selects nothing, `getClientRects()` comes back empty, and the measured path returned
+            // null on every completion in production.
+            const words = renderTitle()
+            const endMarker = document.getElementById(TITLE_ID)
+
+            expect(endMarker.childNodes).toHaveLength(0)
+            expect(endMarker.textContent).toBe('')
+
+            // ...and therefore a range over its CONTENTS — which is what the old measurement drew —
+            // selects nothing and reports no rects, however the title is laid out. jsdom has no
+            // `Range.getClientRects`, so this uses the same faithful stand-in as the tests below.
+            installRangeFrom(words)
+            const range = document.createRange()
+            range.selectNodeContents(endMarker)
+            expect(Array.from(range.getClientRects())).toHaveLength(0)
+        })
+
+        it('renders a start marker alongside it, so the text can be bounded', () => {
+            renderTitle()
+            const startMarker = document.getElementById(getTextStartMarkerId(TITLE_ID))
+            const endMarker = document.getElementById(TITLE_ID)
+
+            // Siblings on the one flexWrap row, with every word between them.
+            expect(startMarker).toBeTruthy()
+            expect(startMarker.parentElement).toBe(endMarker.parentElement)
+            const children = Array.from(startMarker.parentElement.children)
+            expect(children.indexOf(startMarker)).toBeLessThan(children.indexOf(endMarker))
+        })
+
+        it('draws exactly two sweep lines for a title that wraps to two lines', () => {
+            // THE REGRESSION. Six words over two visible lines: two bars, one per line the reader
+            // can see. Before the fix this rendered three — the measurement returned nothing and
+            // the fallback read 60px of title as `round(60 / 24)` = 3.
+            const words = renderTitle()
+            installRangeFrom(words)
+            const overlay = renderSweep()
+
+            const rendered = overlay.querySelectorAll('[data-testid="task-completion-progress-bar"]')
+            expect(rendered).toHaveLength(2)
+
+            // One head per measured line, which only happens on the measured path — the fallback
+            // draws none. So this also proves the sweep was measured rather than guessed.
+            expect(overlay.querySelectorAll('[data-testid="task-completion-progress-head"]')).toHaveLength(2)
+        })
+
+        it('sizes each line to its own words and starts after the chips, not at them', () => {
+            const words = renderTitle()
+            installRangeFrom(words)
+            const overlay = renderSweep()
+            const [first, second] = overlay.querySelectorAll('[data-testid="task-completion-progress-bar"]')
+
+            // Line one holds four words, line two holds two, so the bars are different lengths.
+            // 4 words: 60 → 60 + 3*45 + 40 = 235. 2 words: 60 → 60 + 45 + 40 = 145.
+            expect(first.style.left).toBe(`${TEXT_LEFT}px`)
+            expect(first.style.width).toBe('175px')
+            expect(second.style.left).toBe(`${TEXT_LEFT}px`)
+            expect(second.style.width).toBe('85px')
+
+            // The chip sits at x=8 and is NOT part of the title, so no bar may reach back to it.
+            // A range built over the whole row instead of between the markers would start here.
+            expect(parseFloat(first.style.left)).toBeGreaterThan(CHIP_LEFT)
+        })
+
+        it('keeps the bars one real line pitch apart, each centred on its own text', () => {
+            const words = renderTitle()
+            installRangeFrom(words)
+            const overlay = renderSweep()
+            const [first, second] = overlay.querySelectorAll('[data-testid="task-completion-progress-bar"]')
+
+            // Overlay top is 8 above line one, whose 24px box is centred 12 down: 20, less half the
+            // 3px bar, plus the optical pixel.
+            expect(parseFloat(first.style.top)).toBeCloseTo(8 + 12 - 1.5 + OPTICAL_OFFSET_Y)
+            // ...and the second sits exactly one 30px pitch below it. The offset shifts the whole
+            // sweep, so it must not change the spacing between the lines.
+            expect(parseFloat(second.style.top) - parseFloat(first.style.top)).toBeCloseTo(30)
+        })
+
+        it('keeps the glowing head centred on the bar it leads', () => {
+            const words = renderTitle()
+            installRangeFrom(words)
+            const overlay = renderSweep()
+            const bar = overlay.querySelector('[data-testid="task-completion-progress-bar"]')
+            const head = overlay.querySelector('[data-testid="task-completion-progress-head"]')
+
+            // The head is 5px against the bar's 3px, so their centres coincide only if it is offset
+            // by half the difference. Both derive from the same `top`, so the optical pixel moves
+            // the two together or not at all.
+            expect(parseFloat(head.style.top) + 5 / 2).toBeCloseTo(parseFloat(bar.style.top) + 3 / 2)
+        })
+
+        it('falls back rather than sweeping the chips when the start marker is missing', () => {
+            // A lone end marker cannot bound anything. Measuring from the top of the row instead
+            // would put the bar under the priority chip, so the safe answer is to give up and let
+            // the fallback draw column-wide bars.
+            const words = renderTitle()
+            installRangeFrom(words)
+            const startMarker = document.getElementById(getTextStartMarkerId(TITLE_ID))
+            startMarker.parentNode.removeChild(startMarker)
+
+            expect(
+                measureTitleLines(TITLE_ID, { getBoundingClientRect: () => withSize(layoutFor(document.body, [])) })
+            ).toBeNull()
         })
     })
 })
