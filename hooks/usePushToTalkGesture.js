@@ -38,21 +38,15 @@ const findTouch = (touchList, identifier) =>
  * @param {HTMLElement|null} node
  * @param {{
  *   enabled?: boolean,
- *   onPressStart: (point: {clientX: number, clientY: number}|null) => void,
- *   onPressMove?: (travel: {dx: number, dy: number, distance: number}) => void,
- *   onPressEnd: (release: {
- *     heldMs: number, releasedInside: boolean, cancelled: boolean,
- *     dx: number, dy: number, distance: number,
- *   }) => void,
+ *   onPressStart: () => void,
+ *   onPressEnd: (release: {heldMs: number, releasedInside: boolean, cancelled: boolean}) => void,
  * }} options
  */
-export default function usePushToTalkGesture(node, { enabled = true, onPressStart, onPressMove, onPressEnd }) {
+export default function usePushToTalkGesture(node, { enabled = true, onPressStart, onPressEnd }) {
     // Handlers are read through refs so a re-render (the elapsed-seconds tick fires every second
     // while recording) cannot tear the listeners down and lose the gesture in progress.
     const startRef = useRef(onPressStart)
     startRef.current = onPressStart
-    const moveRef = useRef(onPressMove)
-    moveRef.current = onPressMove
     const endRef = useRef(onPressEnd)
     endRef.current = onPressEnd
 
@@ -62,31 +56,10 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
         let activeGesture = null
         let pressedAt = 0
         let suppressMouseUntil = 0
-        // Where the finger went down. Slide-to-cancel is measured from the press ORIGIN, not from
-        // the button's rect: the button is 24px and the thumb covers it, so "did you leave the
-        // button" is a hair-trigger the user cannot see. Travel from where they actually pressed is
-        // the thing they can feel. See `pushToTalk.js` for the thresholds.
-        let origin = null
 
-        const travelFrom = point => {
-            if (!origin || !point || point.clientX == null) return { dx: 0, dy: 0, distance: 0 }
-            const dx = point.clientX - origin.clientX
-            const dy = point.clientY - origin.clientY
-            return { dx, dy, distance: Math.sqrt(dx * dx + dy * dy) }
-        }
-
-        const reportTravel = point => {
-            if (!activeGesture || !origin || !moveRef.current || !point || point.clientX == null) return
-            // Travel only — deliberately no `getBoundingClientRect()` here. This runs on every
-            // pointermove, and a layout read at 60Hz to answer a question nobody asks (the cancel
-            // rule is a distance now, not a hit test) is a frame budget spent on nothing.
-            moveRef.current(travelFrom(point))
-        }
-
-        const beginGesture = (kind, id, event, point) => {
+        const beginGesture = (kind, id, event) => {
             if (activeGesture !== null) return false
             activeGesture = { kind, id }
-            origin = point && point.clientX != null ? { clientX: point.clientX, clientY: point.clientY } : null
             pressedAt = highResNow()
             // Keep the caret where it is: the editor must not lose focus or its selection because
             // the user reached for the mic. This is what the old `onMouseDown` preventDefault on
@@ -97,11 +70,7 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
             // A mic can sit inside a draggable task row, and @hello-pangea/dnd starts a drag 120ms
             // after touchstart. Holding the mic must not drag the row out from under it.
             event.stopPropagation()
-            // The press point is handed to the caller so the hold overlay can draw its ring around
-            // the finger in viewport coordinates. It is the press ORIGIN, not the button's centre:
-            // the button grows into a timer chip the instant recording starts, so its centre moves,
-            // and a boundary that shifts under a held thumb is worse than one that is 10px off.
-            startRef.current?.(origin ? { ...origin } : null)
+            startRef.current?.()
             return true
         }
 
@@ -110,9 +79,7 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
             activeGesture = null
             const heldMs = highResNow() - pressedAt
             const releasedInside = cancelled ? false : isReleaseInsideRect(node.getBoundingClientRect(), point)
-            const travel = travelFrom(point)
-            origin = null
-            endRef.current?.({ heldMs, releasedInside, cancelled: !!cancelled, ...travel })
+            endRef.current?.({ heldMs, releasedInside, cancelled: !!cancelled })
         }
 
         const pointerId = event => (event.pointerId == null ? 'pointer' : event.pointerId)
@@ -121,11 +88,7 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
             if (event.isPrimary === false) return
             if (event.pointerType === 'mouse' && event.button !== 0) return
             if (event.pointerType === 'mouse' && highResNow() < suppressMouseUntil) return
-            if (
-                beginGesture('pointer', pointerId(event), event, pointFromMouse(event)) &&
-                node.setPointerCapture &&
-                event.pointerId != null
-            ) {
+            if (beginGesture('pointer', pointerId(event), event) && node.setPointerCapture && event.pointerId != null) {
                 try {
                     node.setPointerCapture(event.pointerId)
                 } catch (error) {
@@ -133,10 +96,6 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
                     // pointer capture but reject it.
                 }
             }
-        }
-        const onPointerMove = event => {
-            if (activeGesture?.kind !== 'pointer' || activeGesture.id !== pointerId(event)) return
-            reportTravel(pointFromMouse(event))
         }
         const onPointerUp = event => finishGesture('pointer', pointerId(event), pointFromMouse(event), false)
         const onPointerCancel = event => finishGesture('pointer', pointerId(event), null, true)
@@ -154,22 +113,9 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
                 activeGesture = { kind: 'touch', id: touch.identifier }
                 if (event.cancelable) event.preventDefault()
                 event.stopPropagation()
-                // The handover keeps the pointer gesture's origin: it is the same finger, and
-                // re-seeding from touchstart would zero out any travel already reported.
                 return
             }
-            beginGesture('touch', touch.identifier, event, pointFromMouse(touch))
-        }
-        const onTouchMove = event => {
-            if (activeGesture?.kind !== 'touch') return
-            const moved =
-                findTouch(event.changedTouches, activeGesture.id) || findTouch(event.touches, activeGesture.id)
-            if (!moved) return
-            // Sliding to cancel must not scroll the page out from under the finger. touchstart
-            // already prevented the default for this touch in most browsers; iOS is not reliable
-            // about that once the finger travels, so the move is prevented too while we own it.
-            if (event.cancelable) event.preventDefault()
-            reportTravel(pointFromMouse(moved))
+            beginGesture('touch', touch.identifier, event)
         }
         const onTouchEnd = event => {
             if (activeGesture?.kind !== 'touch') return
@@ -185,11 +131,7 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
 
         const onMouseDown = event => {
             if (event.button !== 0 || highResNow() < suppressMouseUntil) return
-            beginGesture('mouse', 'mouse', event, pointFromMouse(event))
-        }
-        const onMouseMove = event => {
-            if (activeGesture?.kind !== 'mouse') return
-            reportTravel(pointFromMouse(event))
+            beginGesture('mouse', 'mouse', event)
         }
         const onMouseUp = event => finishGesture('mouse', 'mouse', pointFromMouse(event), false)
 
@@ -202,32 +144,25 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
         node.addEventListener('pointerdown', onPointerDown)
         node.addEventListener('touchstart', onTouchStart, { passive: false })
         node.addEventListener('mousedown', onMouseDown)
-        window.addEventListener('pointermove', onPointerMove)
         window.addEventListener('pointerup', onPointerUp)
         window.addEventListener('pointercancel', onPointerCancel)
-        window.addEventListener('touchmove', onTouchMove, { passive: false })
         window.addEventListener('touchend', onTouchEnd)
         window.addEventListener('touchcancel', onTouchCancel)
-        window.addEventListener('mousemove', onMouseMove)
         window.addEventListener('mouseup', onMouseUp)
         window.addEventListener('blur', onWindowBlur)
         return () => {
             node.removeEventListener('pointerdown', onPointerDown)
             node.removeEventListener('touchstart', onTouchStart)
             node.removeEventListener('mousedown', onMouseDown)
-            window.removeEventListener('pointermove', onPointerMove)
             window.removeEventListener('pointerup', onPointerUp)
             window.removeEventListener('pointercancel', onPointerCancel)
-            window.removeEventListener('touchmove', onTouchMove)
             window.removeEventListener('touchend', onTouchEnd)
             window.removeEventListener('touchcancel', onTouchCancel)
-            window.removeEventListener('mousemove', onMouseMove)
             window.removeEventListener('mouseup', onMouseUp)
             window.removeEventListener('blur', onWindowBlur)
             // A gesture in flight at unmount never gets its release; the recorder's own unmount
             // cleanup stops the stream, so there is nothing to report here.
             activeGesture = null
-            origin = null
         }
     }, [enabled, node])
 }

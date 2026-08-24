@@ -320,32 +320,6 @@ describe('createInputLevelMonitor', () => {
         expect(monitor.hasSignal()).toBe(true)
     })
 
-    test('getLevel() falls back down while getPeak() does not (AT-2408)', () => {
-        // The two answer different questions off the same analyser read, and the meter only works
-        // if they stay different: the running peak is what proves a microphone was alive at all
-        // (AT-2357) and must never fall, while a level meter that never falls is a filled bar.
-        let current = [0, 0, 0]
-        installAudioContext(() => current)
-        const monitor = createInputLevelMonitor(buildStream())
-
-        current = [0.3, -0.5, 0.2]
-        monitor.sample()
-        expect(monitor.getLevel()).toBeCloseTo(0.5)
-        expect(monitor.getPeak()).toBeCloseTo(0.5)
-
-        current = [0.01, 0, -0.02]
-        monitor.sample()
-        expect(monitor.getLevel()).toBeCloseTo(0.02)
-        expect(monitor.getPeak()).toBeCloseTo(0.5)
-    })
-
-    test('getLevel() reports nothing before the first sample', () => {
-        installAudioContext([0.4])
-        const monitor = createInputLevelMonitor(buildStream())
-
-        expect(monitor.getLevel()).toBe(0)
-    })
-
     test('close() releases the audio context once', () => {
         const closed = installAudioContext([0.1])
         const monitor = createInputLevelMonitor(buildStream())

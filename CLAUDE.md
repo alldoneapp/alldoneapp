@@ -798,14 +798,26 @@ with the MESSAGE. What says "completed" rather than "deleted" is the colour, the
 moving head; the strike-through's **place** is simply where a line across a title belongs. Both
 paths now aim the bar's **centre** at the line's centre and subtract half the bar's thickness to get
 the `top` they set — `(line.top + line.bottom) / 2` on the measured path, `lineHeight * 0.5` on the
-fallback, so a row that fails to measure cannot quietly keep drawing the underline. No optical
-fudge factor is applied and none is wanted: a range's client rect spans the line box, CSS splits
-half-leading evenly, so the em box is concentric with it and both the x-height centre of lowercase
-and the cap-height centre of mixed case land within ~1px of that midpoint — in opposite directions,
-which is precisely why any constant nudge would be font-specific guesswork. Related: the per-line
-union takes `min(top)` as well as `max(bottom)`. That is sub-pixel (the grouping key rounds `top`,
-so a group spans under a pixel) but the midpoint is now load-bearing, and half a union is a bias
-with nothing behind it.
+fallback, so a row that fails to measure cannot quietly keep drawing the underline. Related: the
+per-line union takes `min(top)` as well as `max(bottom)`. That is sub-pixel (the grouping key rounds
+`top`, so a group spans under a pixel) but the midpoint is now load-bearing, and half a union is a
+bias with nothing behind it.
+
+**On top of that geometric centre sits exactly one pixel of optical correction, `OPTICAL_OFFSET_Y`.**
+The centring pass shipped with none and argued none was wanted — a range's client rect spans the line
+box, CSS splits half-leading evenly, so the em box is concentric with it, and the x-height centre of
+lowercase and the cap-height centre of mixed case sit ~1px off that midpoint in **opposite**
+directions, making any constant nudge look like font-specific guesswork. That reasoning is right
+about which direction a _font-fitting_ correction would take, and it is why this is not one. But the
+geometrically centred bar still read as slightly high in production (_"now the strikethrough is a
+little too high"_): the line box is symmetric about the em box, the **ink inside it is not** — a
+Latin face hangs descenders below the baseline while most of a lowercase word's mass sits above it,
+so a line of text has its visual centre of gravity marginally below the centre of the box holding it.
+The fix is a flat `+1` applied to **both** paths, never to one, and never as a per-line term: it
+shifts the whole sweep and must not change the spacing between wrapped lines, or the last line of a
+three-line title drifts off its text. The glowing head needs no separate handling and must not get
+one — it derives its `top` from the bar's, so it stays concentric for free. One pixel is the smallest
+correction available; anything larger starts walking back toward the underline this replaced.
 
 **A wrapped title is ONE bar's worth of progress, not three filling at once.**
 `buildSweepSegments` gives each measured line the share of 0→1 that matches its own ink width, so

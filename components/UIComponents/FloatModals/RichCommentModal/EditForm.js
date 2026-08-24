@@ -52,9 +52,19 @@ export default class EditForm extends Component {
     }
 
     onKeyDown = event => {
-        const { isShiftPressed } = this.state
+        const { disableDoneButton } = this.props
+        const { isShiftPressed, mentionsModalActive, comment } = this.state
+        const { isQuillTagEditorOpen, openModals } = store.getState()
         const { key } = event
-        if (key === 'Enter' && !isShiftPressed && this.canSubmit()) {
+        if (
+            key === 'Enter' &&
+            !isShiftPressed &&
+            !mentionsModalActive &&
+            !isQuillTagEditorOpen &&
+            !openModals[MENTION_MODAL_ID] &&
+            !disableDoneButton &&
+            comment.trim()
+        ) {
             this.done()
             event.preventDefault()
         }
@@ -67,50 +77,6 @@ export default class EditForm extends Component {
         if (key === 'Shift') {
             this.setState({ isShiftPressed: false })
         }
-    }
-
-    /**
-     * Every guard that stands between "there is a comment" and "post it", shared by the Enter
-     * listener above and the push-to-talk submit below so the two can never drift. Shift is
-     * deliberately NOT part of it: it means "insert a newline instead of submitting", which is a
-     * keyboard concept with no analogue in a gesture — and a Shift left latched by an earlier
-     * keystroke would otherwise silently swallow a dictation the user just spoke.
-     */
-    canSubmit = () => {
-        const { disableDoneButton, userIsAnonymous } = this.props
-        const { mentionsModalActive, comment } = this.state
-        const { isQuillTagEditorOpen, openModals } = store.getState()
-        return (
-            !userIsAnonymous &&
-            !disableDoneButton &&
-            !mentionsModalActive &&
-            !isQuillTagEditorOpen &&
-            !openModals[MENTION_MODAL_ID] &&
-            !!comment.trim()
-        )
-    }
-
-    /**
-     * Push-to-talk (AT-2410): holding the dictation mic inserts the transcript AND posts the
-     * comment, with no separate send step.
-     *
-     * This composer owns its Enter handling with the `document` keydown listener above rather than
-     * through `forceTriggerEnterActionForBreakLines`, so it has to hand the send action to
-     * CustomTextInput3 explicitly — the same opt-in ChatInput and the MyDay assistant line make.
-     * Without it `resolveDictationSubmit` returns null and a held dictation is inserted and then
-     * left sitting in the field, which is what this bug was: the comment popup is reached from
-     * ~17 places (the feed interaction bar, the task/goal comment buttons, Suggested, Follow-up,
-     * the workflow modals...), so it was every "comment" surface except the Chat DV composer.
-     *
-     * The dictated text is deliberately NOT read from the argument: `done()` posts `state.comment`
-     * together with the mentions and karma collected alongside it, and by the time this runs that
-     * state is already current — `useDictationSubmit` fires from a POST-COMMIT effect precisely so
-     * the host has re-rendered with draft + transcript. Reading the argument instead would post the
-     * text while dropping everything else the form knows about it.
-     */
-    submitDictatedComment = () => {
-        if (!this.canSubmit()) return
-        this.done()
     }
 
     setMentionsModalActive = value => {
@@ -223,8 +189,6 @@ export default class EditForm extends Component {
                             chatAssistantData={chatAssistantData}
                             setAssistantId={setAssistantId}
                             externalEditorId={`${projectId}AddComment`}
-                            // Push-to-talk (AT-2410) — see `submitDictatedComment`.
-                            onDictationSubmit={this.submitDictatedComment}
                         />
                     </View>
                 </View>
