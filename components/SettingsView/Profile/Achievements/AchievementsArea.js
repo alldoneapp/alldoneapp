@@ -3,7 +3,9 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
-import EmptyInboxDayCelebration from './EmptyInboxDayCelebration'
+import EmptyInboxStreakValue from './EmptyInboxStreakValue'
+import EmptyInboxTodayDot from './EmptyInboxTodayDot'
+import useEmptyInboxDotCelebration from './emptyInboxDotMotion'
 import useTodayEmptyInboxCelebration from './useTodayEmptyInboxCelebration'
 import {
     buildEmptyInboxActivityWeeks,
@@ -14,6 +16,7 @@ import {
 
 const CELL_SIZE = 11
 const CELL_GAP = 3
+const CELL_RADIUS = 2
 const WEEK_WIDTH = CELL_SIZE + CELL_GAP
 const DAY_LABEL_WIDTH = 40
 const MIN_WEEKS = 12
@@ -31,9 +34,13 @@ const getNumberOfWeeks = width =>
 // margin in `activityGrid` takes it back out of the centering math (see below).
 export const getGridWidth = numberOfWeeks => DAY_LABEL_WIDTH + numberOfWeeks * WEEK_WIDTH
 
-const Metric = ({ label, value }) => (
+const Metric = ({ label, value, celebration }) => (
     <View style={localStyles.metric}>
-        <Text style={localStyles.metricValue}>{value}</Text>
+        {celebration ? (
+            <EmptyInboxStreakValue value={value} celebration={celebration} style={localStyles.metricValue} />
+        ) : (
+            <Text style={localStyles.metricValue}>{value}</Text>
+        )}
         <Text style={localStyles.metricLabel}>{label}</Text>
     </View>
 )
@@ -46,7 +53,10 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
         [user.emptyInboxDays, user.lastDayEmptyInbox]
     )
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
-    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay)
+    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay, user.uid)
+    // AT-2418: one bundle of Animated.Values drives the dot AND the streak number, so the two beats
+    // are one event rather than two animations that happen to overlap.
+    const celebration = useEmptyInboxDotCelebration(celebrationRunId, stats.currentStreak)
     const numberOfWeeks = contentWidth ? getNumberOfWeeks(contentWidth) : MIN_WEEKS
     const weeks = useMemo(
         () => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks),
@@ -74,12 +84,12 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
             <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
 
-            {celebrateNewDay && (
-                <EmptyInboxDayCelebration runId={celebrationRunId} currentStreak={stats.currentStreak} />
-            )}
-
             <View style={localStyles.metricsContainer}>
-                <Metric label={translate('Current streak')} value={stats.currentStreak} />
+                <Metric
+                    label={translate('Current streak')}
+                    value={stats.currentStreak}
+                    celebration={celebrationRunId ? celebration : null}
+                />
                 <Metric label={translate('Longest streak')} value={stats.longestStreak} />
                 <Metric label={translate('Total days')} value={stats.totalDays} />
             </View>
@@ -110,25 +120,38 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                         <View style={localStyles.weeks}>
                             {weeks.map((week, weekIndex) => (
                                 <View key={weekIndex} style={localStyles.week}>
-                                    {week.days.map(day => (
-                                        <View
-                                            key={day.dateKey}
-                                            accessible={day.achieved}
-                                            accessibilityLabel={
-                                                day.achieved
-                                                    ? translate('Empty inbox reached on', {
-                                                          date: day.date.format('LL'),
-                                                      })
-                                                    : undefined
-                                            }
-                                            style={[
-                                                localStyles.activityCell,
-                                                day.achieved && localStyles.achievedCell,
-                                                day.isFuture && localStyles.futureCell,
-                                                day.isToday && !day.achieved && localStyles.todayCell,
-                                            ]}
-                                        />
-                                    ))}
+                                    {week.days.map(day => {
+                                        const achievedLabel = day.achieved
+                                            ? translate('Empty inbox reached on', { date: day.date.format('LL') })
+                                            : undefined
+
+                                        // AT-2418: only today's cell, only on the run that is
+                                        // celebrating it. Every other cell keeps the plain View it
+                                        // has always rendered, so the 370 squares around it cost
+                                        // nothing extra.
+                                        return celebrationRunId && day.isToday && day.achieved ? (
+                                            <EmptyInboxTodayDot
+                                                key={day.dateKey}
+                                                celebration={celebration}
+                                                size={CELL_SIZE}
+                                                gap={CELL_GAP}
+                                                radius={CELL_RADIUS}
+                                                accessibilityLabel={achievedLabel}
+                                            />
+                                        ) : (
+                                            <View
+                                                key={day.dateKey}
+                                                accessible={day.achieved}
+                                                accessibilityLabel={achievedLabel}
+                                                style={[
+                                                    localStyles.activityCell,
+                                                    day.achieved && localStyles.achievedCell,
+                                                    day.isFuture && localStyles.futureCell,
+                                                    day.isToday && !day.achieved && localStyles.todayCell,
+                                                ]}
+                                            />
+                                        )
+                                    })}
                                 </View>
                             ))}
                         </View>
@@ -246,7 +269,7 @@ const localStyles = StyleSheet.create({
         width: CELL_SIZE,
         height: CELL_SIZE,
         marginBottom: CELL_GAP,
-        borderRadius: 2,
+        borderRadius: CELL_RADIUS,
         backgroundColor: colors.Grey200,
     },
     achievedCell: {

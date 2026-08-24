@@ -4,6 +4,7 @@ import renderer from 'react-test-renderer'
 import moment from 'moment'
 
 import AchievementsArea, { EmptyInboxOverview, getGridWidth } from './AchievementsArea'
+import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebrationMarker'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
@@ -34,7 +35,22 @@ const renderGrid = cardWidth => {
     return { grid: flattenStyle(grid.props.style), contentWidth: cardWidth - 40 }
 }
 
+const renderOverview = (props = {}) => {
+    let tree
+    renderer.act(() => {
+        tree = renderer.create(<EmptyInboxOverview user={{ uid: 'user-1', emptyInboxDays: [] }} {...props} />)
+    })
+    return tree
+}
+
+const todayDotsIn = tree => tree.root.findAllByProps({ testID: 'empty-inbox-today-dot' }, { deep: false })
+
 describe('AchievementsArea', () => {
+    beforeEach(() => {
+        resetEmptyInboxCelebrationSessionMarkers()
+        localStorage.clear()
+    })
+
     it('renders empty inbox achievement metrics and activity', () => {
         const tree = renderer.create(
             <AchievementsArea
@@ -83,5 +99,81 @@ describe('AchievementsArea', () => {
 
         expect(grid.width).toBeLessThanOrEqual(contentWidth)
         expect(grid.alignSelf).toBe('center')
+    })
+
+    // AT-2418 — the celebration is now the day's own cell being added to the grid, so the wiring
+    // that matters is "which cell becomes the animated one, and when".
+    describe('today’s dot (AT-2418)', () => {
+        const todayKey = moment().format('YYYY-MM-DD')
+
+        it('hands today’s cell to the animated dot when the board celebrates it', () => {
+            const tree = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [todayKey] },
+                celebrateNewDay: true,
+            })
+
+            expect(todayDotsIn(tree)).toHaveLength(1)
+        })
+
+        it('leaves every other cell a plain View', () => {
+            // Exactly one cell may be replaced: the grid is 371 squares and the celebration is one
+            // of them.
+            const tree = renderOverview({
+                user: {
+                    uid: 'user-1',
+                    emptyInboxDays: [todayKey, moment().subtract(1, 'day').format('YYYY-MM-DD')],
+                },
+                celebrateNewDay: true,
+            })
+
+            expect(todayDotsIn(tree)).toHaveLength(1)
+        })
+
+        it('does not touch the grid when there is nothing to celebrate', () => {
+            const tree = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [moment().subtract(1, 'day').format('YYYY-MM-DD')] },
+                celebrateNewDay: true,
+            })
+
+            expect(todayDotsIn(tree)).toHaveLength(0)
+        })
+
+        // The same overview renders in Settings → Profile. It shows the streak, it does not
+        // celebrate, and it must not spend the once-per-day marker the board is waiting on.
+        it('never celebrates in the profile card', () => {
+            const profileCard = renderOverview({ user: { uid: 'user-1', emptyInboxDays: [todayKey] } })
+            expect(todayDotsIn(profileCard)).toHaveLength(0)
+
+            const board = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [todayKey] },
+                celebrateNewDay: true,
+            })
+            expect(todayDotsIn(board)).toHaveLength(1)
+        })
+
+        it('celebrates a day only once, so a tab switch back does not replay it', () => {
+            const firstVisit = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [todayKey] },
+                celebrateNewDay: true,
+            })
+            expect(todayDotsIn(firstVisit)).toHaveLength(1)
+            renderer.act(() => firstVisit.unmount())
+
+            const secondVisit = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [todayKey] },
+                celebrateNewDay: true,
+            })
+
+            expect(todayDotsIn(secondVisit)).toHaveLength(0)
+        })
+
+        it('ticks the current streak through the celebration, not the other metrics', () => {
+            const tree = renderOverview({
+                user: { uid: 'user-1', emptyInboxDays: [todayKey] },
+                celebrateNewDay: true,
+            })
+
+            expect(tree.root.findAllByProps({ testID: 'empty-inbox-streak-value' }, { deep: false })).toHaveLength(1)
+        })
     })
 })
