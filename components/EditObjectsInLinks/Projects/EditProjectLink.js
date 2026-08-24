@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react'
-import { checkDVLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import NavigationService from '../../../utils/NavigationService'
 import { StyleSheet, View } from 'react-native'
@@ -51,7 +50,6 @@ export default function EditProjectLink({ containerStyle, projectData, closeModa
         closeModal()
 
         setTimeout(() => {
-            checkDVLink('project')
             const linkUrl = objectUrl != null ? getPathname(objectUrl) : `/project/${projectId}/properties`
             URLTrigger.processUrl(NavigationService, linkUrl)
         }, 400)

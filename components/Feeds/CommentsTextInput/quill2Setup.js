@@ -4,7 +4,6 @@ import { getPlaceholderData, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHel
 
 const Module = Quill.import('core/module')
 const Clipboard = Quill.import('modules/clipboard')
-const CodeBlock = Quill.import('formats/code-block')
 const History = Quill.import('modules/history')
 const SnowTheme = Quill.import('themes/snow')
 
@@ -57,45 +56,6 @@ class GatedClipboard extends Clipboard {
     onCapturePaste(e) {
         if (this.quill.enablePasteListener === false) return
         super.onCapturePaste(e)
-    }
-
-    // AT-2416. `Clipboard.convert` short-circuits to a verbatim `insert(text)` whenever the
-    // clipboard carries no text/html, so quill 2 never runs the app's TEXT_NODE matcher over a
-    // plain-text paste — quill 1 did, because it pushed the text through the DOM first. The
-    // app's own "Copy link" button uses navigator.clipboard.writeText (text/plain ONLY), so a
-    // copied task link pasted as raw URL text and only became a chip once a space was typed.
-    // The autoformat module installs `convertPastedPlainText` on every text-input editor
-    // (notes keep quill's own paste pipeline and never set it); routing through it also makes
-    // the chip part of `pastedDelta`, so quill's own caret arithmetic is right by construction.
-    convert({ html, text }, formats = {}) {
-        const convertPlainText = this.quill.convertPastedPlainText
-        const pastingIntoCodeBlock = formats[CodeBlock.blotName] != null
-        if (!html && text && !pastingIntoCodeBlock && typeof convertPlainText === 'function') {
-            return convertPlainText(text, formats)
-        }
-        return super.convert({ html, text }, formats)
-    }
-
-    // AT-2416. Quill places the post-paste caret at `delta.length() - range.length`, i.e. it
-    // derives the position from the delta it was ABOUT to apply. That is only correct while
-    // nothing else edits the document during the same update — and in this app something
-    // always might: the autoformat module listens for `text-change` and rewrites a pasted
-    // task/note/goal URL into a one-character embed (plus a leading space when the link opens
-    // the line). A 46-character URL collapsing to one character leaves quill's index ~45
-    // characters too far to the right, so pasting a task link mid-sentence dropped the caret
-    // at the end of the line instead of behind the link. It only looked correct when the paste
-    // happened at the end of the text, where quill clamps the overshoot to the last index.
-    //
-    // Everything a paste inserts lands at `range.index`, so the honest measure of how much was
-    // inserted is how much the document actually grew, taken AFTER the update (and therefore
-    // after every synchronous `text-change` listener has had its turn). For a paste nothing
-    // rewrites, this resolves to exactly the index quill would have chosen.
-    onPaste(range, { text, html }) {
-        const lengthBefore = this.quill.getLength()
-        super.onPaste(range, { text, html })
-        const inserted = this.quill.getLength() - lengthBefore + range.length
-        this.quill.setSelection(range.index + inserted, Quill.sources.SILENT)
-        this.quill.scrollSelectionIntoView()
     }
 }
 

@@ -16,7 +16,7 @@ import HighlightWrapper from '../../UIComponents/FloatModals/ManageTaskModal/Hig
 import ContactMoreButton from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Contacts/ContactMoreButton'
 import { FORM_TYPE_EDIT } from '../../NotesView/NotesDV/EditorView/EditorsGroup/EditorsConstants'
 import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
-import { checkDVLink, getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getDvMainTabLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import { useSelector } from 'react-redux'
@@ -74,7 +74,6 @@ export default function EditUserLink({ projectId, containerStyle, contactData, c
         closeModal()
 
         setTimeout(() => {
-            checkDVLink('people')
             const linkUrl =
                 objectUrl != null ? getPathname(objectUrl) : getDvMainTabLink(projectId, contactData.uid, 'users')
             URLTrigger.processUrl(NavigationService, linkUrl)

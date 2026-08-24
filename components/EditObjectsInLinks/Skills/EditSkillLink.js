@@ -10,7 +10,7 @@ import { CREATE_TASK_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInput
 import SaveButton from '../Common/SaveButton'
 import OpenButton from '../../NewObjectsInMentions/Common/OpenButton'
 import NavigationService from '../../../utils/NavigationService'
-import { checkDVLink, getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getDvMainTabLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import PrivacyWrapper from '../../UIComponents/FloatModals/ManageTaskModal/PrivacyWrapper'
@@ -80,7 +80,6 @@ export default function EditSkillLink({ projectId, skillData, closeModal, object
 
     const openDV = () => {
         closeModal()
-        checkDVLink('skill')
         const linkUrl = objectUrl != null ? getPathname(objectUrl) : getDvMainTabLink(projectId, skillData.id, 'skills')
         URLTrigger.processUrl(NavigationService, linkUrl)
     }

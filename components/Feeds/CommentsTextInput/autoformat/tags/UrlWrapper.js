@@ -5,13 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputIsCalendarTask, quillTextInputRefs } from '../../CustomTextInput3'
-import {
-    addProtocol,
-    checkDVLink,
-    formatUrl,
-    getUrlObject,
-    isValidPreConfigTaskLink,
-} from '../../../../../utils/LinkingHelper'
+import { addProtocol, formatUrl, getUrlObject, isValidPreConfigTaskLink } from '../../../../../utils/LinkingHelper'
 import { colors } from '../../../../styles/global'
 import { getQuillEditorRef } from '../../textInputHelper'
 import URLTrigger from '../../../../../URLSystem/URLTrigger'
@@ -255,7 +249,6 @@ export default function UrlWrapper({ value, objectName, isShared }) {
             if (!loggedUser.isAnonymous || isShared) {
                 closeModal()
                 setTimeout(() => {
-                    checkDVLink(type)
                     URLTrigger.processUrl(NavigationService, getPathname(currentUrl))
                 }, 400)
             }
