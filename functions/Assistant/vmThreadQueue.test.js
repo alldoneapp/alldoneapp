@@ -20,25 +20,41 @@ function mockMakeRef(path) {
 }
 
 const mockLaunchQueuedVmJob = jest.fn(async () => ({ success: true, outcome: 'launched' }))
+const mockSettleOrphanedQueuedVmJob = jest.fn(async () => true)
 
 jest.mock('firebase-admin', () => ({
     firestore: () => ({
         doc: path => mockMakeRef(path),
-        collection: name => ({
-            where: (field, op, value) => ({
+        collection: name => {
+            const filters = []
+            let maxDocs = Infinity
+            const query = {
+                where: (field, op, value) => {
+                    filters.push({ field, op, value })
+                    return query
+                },
+                limit: count => {
+                    maxDocs = count
+                    return query
+                },
                 get: async () => {
                     const docs = Object.keys(mockStore)
                         .filter(p => p.startsWith(`${name}/`))
-                        .filter(p => {
-                            const v = mockStore[p][field]
-                            if (op === '>') return Number(v) > value
-                            return true
-                        })
+                        .filter(p =>
+                            filters.every(({ field, op, value }) => {
+                                const actual = mockStore[p][field]
+                                if (op === '>') return Number(actual) > value
+                                if (op === '==') return actual === value
+                                return true
+                            })
+                        )
+                        .slice(0, maxDocs)
                         .map(p => ({ id: p.slice(name.length + 1), ref: mockMakeRef(p), data: () => mockStore[p] }))
                     return { docs }
                 },
-            }),
-        }),
+            }
+            return query
+        },
         runTransaction: async updateFn =>
             updateFn({
                 get: async ref => ref.get(),
@@ -49,12 +65,18 @@ jest.mock('firebase-admin', () => ({
     }),
 }))
 
-jest.mock('./vmJob', () => ({ launchQueuedVmJob: mockLaunchQueuedVmJob }))
+jest.mock('./vmJob', () => ({
+    launchQueuedVmJob: mockLaunchQueuedVmJob,
+    settleOrphanedQueuedVmJob: mockSettleOrphanedQueuedVmJob,
+}))
 
 const admin = require('firebase-admin')
 const {
     VM_DISPATCH_LEASE_MS,
+    VM_QUEUED_ORPHAN_GRACE_MS,
     vmThreadKey,
+    isQueuedVmJobReferencedBySession,
+    isOrphanedQueuedVmJob,
     admitVmJobToThread,
     isVmThreadOccupied,
     advanceVmThreadQueue,
@@ -64,6 +86,7 @@ const {
     unblockVmThreadInteraction,
     releaseVmThreadDispatchLease,
     drainStalledVmThreadQueues,
+    reconcileOrphanedQueuedVmJobs,
 } = require('./vmThreadQueue')
 
 const SESSION_PATH = 'vmSessions/project-1__chat-1'
@@ -74,6 +97,8 @@ describe('vmThreadQueue', () => {
         Object.keys(mockStore).forEach(k => delete mockStore[k])
         mockLaunchQueuedVmJob.mockClear()
         mockLaunchQueuedVmJob.mockResolvedValue({ success: true, outcome: 'launched' })
+        mockSettleOrphanedQueuedVmJob.mockClear()
+        mockSettleOrphanedQueuedVmJob.mockResolvedValue(true)
     })
 
     test('vmThreadKey composes projectId + objectId', () => {
@@ -212,6 +237,76 @@ describe('vmThreadQueue', () => {
         expect(mockStore[SESSION_PATH].activeCorrelationId).toBe('job-1')
         await releaseVmThreadDispatchLease(ref(), 'job-1')
         expect(mockStore[SESSION_PATH].activeCorrelationId).toBeNull()
+    })
+
+    describe('orphaned queued jobs', () => {
+        test('recognizes FIFO membership and only accepts a live active lease as ownership', () => {
+            const now = 9_000_000
+            expect(isQueuedVmJobReferencedBySession({ queue: ['job-1'] }, 'job-1', now)).toBe(true)
+            expect(
+                isQueuedVmJobReferencedBySession(
+                    {
+                        activeCorrelationId: 'job-1',
+                        activeLeaseOwner: 'dispatch:job-1',
+                        activeLeaseExpiresAt: now + 1000,
+                    },
+                    'job-1',
+                    now
+                )
+            ).toBe(true)
+            expect(
+                isQueuedVmJobReferencedBySession(
+                    {
+                        activeCorrelationId: 'job-1',
+                        activeLeaseOwner: 'dispatch:job-1',
+                        activeLeaseExpiresAt: now - 1,
+                    },
+                    'job-1',
+                    now
+                )
+            ).toBe(false)
+        })
+
+        test('reconciles an old queued record that disappeared from its session FIFO', async () => {
+            const now = 10_000_000
+            const orphan = {
+                correlationId: 'orphan-1',
+                kind: 'vm_job',
+                projectId: 'project-1',
+                objectId: 'chat-1',
+                status: 'queued',
+                queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            }
+            mockStore['pendingWebhooks/orphan-1'] = orphan
+
+            expect(isOrphanedQueuedVmJob(orphan, 'orphan-1', null, now)).toBe(true)
+            await expect(reconcileOrphanedQueuedVmJobs(() => now)).resolves.toEqual({
+                checked: 1,
+                reconciled: 1,
+                errors: 0,
+            })
+            expect(mockSettleOrphanedQueuedVmJob).toHaveBeenCalledWith('orphan-1', now)
+        })
+
+        test('does not reconcile a queued record that the session still owns', async () => {
+            const now = 11_000_000
+            mockStore['pendingWebhooks/queued-1'] = {
+                correlationId: 'queued-1',
+                kind: 'vm_job',
+                projectId: 'project-1',
+                objectId: 'chat-1',
+                status: 'queued',
+                queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            }
+            mockStore[SESSION_PATH] = { queue: ['queued-1'], queueLength: 1 }
+
+            await expect(reconcileOrphanedQueuedVmJobs(() => now)).resolves.toEqual({
+                checked: 1,
+                reconciled: 0,
+                errors: 0,
+            })
+            expect(mockSettleOrphanedQueuedVmJob).not.toHaveBeenCalled()
+        })
     })
 
     describe('drainStalledVmThreadQueues (crash backstop)', () => {
