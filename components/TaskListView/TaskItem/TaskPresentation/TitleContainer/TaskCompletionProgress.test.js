@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import TaskCompletionProgress, {
     buildSweepSegments,
     groupRectsIntoLines,
+    OPTICAL_OFFSET_Y,
     resolveProgressLineCount,
 } from './TaskCompletionProgress'
 
@@ -148,10 +149,21 @@ describe('groupRectsIntoLines', () => {
         const lines = groupRectsIntoLines([rect(100, 50, 200, 24)], base)
 
         // The user-visible bug this pins: the line box runs 100→124, so its centre is 12 below the
-        // overlay top and the bar's own top edge is that less half its 3px thickness. Sitting it on
-        // the bottom edge (22.5) made it a detached underline.
-        expect(lines[0].top).toBeCloseTo(12 - 1.5)
-        expect(lines[0].top + 3 / 2).toBeCloseTo(12)
+        // overlay top and the bar's own top edge is that less half its 3px thickness, plus the 1px
+        // optical offset. Sitting it on the bottom edge (22.5) made it a detached underline.
+        expect(lines[0].top).toBeCloseTo(12 - 1.5 + OPTICAL_OFFSET_Y)
+        expect(lines[0].top + 3 / 2).toBeCloseTo(12 + OPTICAL_OFFSET_Y)
+    })
+
+    it('sits one pixel below the geometric centre of the line box', () => {
+        // The correction dogfooding asked for: the geometrically centred bar read as slightly high,
+        // because a line box is symmetric about the em box while the ink inside it is not. Pinned as
+        // an exact pixel, not as "roughly centred" — the whole complaint was a one-pixel one, so a
+        // tolerance wide enough to accept the old position would pin nothing at all.
+        const lines = groupRectsIntoLines([rect(100, 50, 200, 24)], base)
+
+        expect(lines[0].top + 3 / 2 - 12).toBeCloseTo(1)
+        expect(OPTICAL_OFFSET_Y).toBe(1)
     })
 
     it('centres on the full union of the line, not on whichever rect arrived first', () => {
@@ -161,7 +173,7 @@ describe('groupRectsIntoLines', () => {
         const lines = groupRectsIntoLines([rect(100.4, 50, 120, 21.6), rect(100, 125, 200, 24)], base)
 
         expect(lines).toHaveLength(1)
-        expect(lines[0].top + 3 / 2).toBeCloseTo(12)
+        expect(lines[0].top + 3 / 2).toBeCloseTo(12 + OPTICAL_OFFSET_Y)
     })
 
     it('keeps each line centred on its own line box when the title wraps', () => {
@@ -169,8 +181,10 @@ describe('groupRectsIntoLines', () => {
 
         // Centres 12 and 36 — one line height apart, each through its own text rather than both
         // drifting towards the bottom of the block.
-        expect(first.top + 3 / 2).toBeCloseTo(12)
-        expect(second.top + 3 / 2).toBeCloseTo(36)
+        expect(first.top + 3 / 2).toBeCloseTo(12 + OPTICAL_OFFSET_Y)
+        expect(second.top + 3 / 2).toBeCloseTo(36 + OPTICAL_OFFSET_Y)
+        // The offset shifts the whole sweep, so it must not change the spacing BETWEEN lines: a
+        // per-line nudge that accumulated would pull the last line of a wrapped title off its text.
         expect(second.top - first.top).toBeCloseTo(24)
     })
 
@@ -286,22 +300,33 @@ describe('TaskCompletionProgress', () => {
             const top = barStyle(renderProgress({ measuredHeight: 24 })).top
 
             // Text starts 5 below the overlay (TEXT_MARGIN_TOP) on a 24px line, so the centre is
-            // 5 + 12 and the bar's top edge is half its 3px thickness above it.
-            expect(top + 3 / 2).toBeCloseTo(5 + 12)
+            // 5 + 12, the bar's top edge is half its 3px thickness above it, and the optical offset
+            // takes it 1px back down.
+            expect(top + 3 / 2).toBeCloseTo(5 + 12 + OPTICAL_OFFSET_Y)
+        })
+
+        it('applies the same one-pixel optical offset as the measured path', () => {
+            // The two paths are computed independently, so this is the assertion that stops one of
+            // them being corrected and the other quietly left on the geometric centre — which is
+            // precisely what happened to the thickness correction in the centring pass.
+            const top = barStyle(renderProgress({ measuredHeight: 24 })).top
+
+            expect(top + 3 / 2 - (5 + 12)).toBeCloseTo(1)
         })
 
         it('centres every line of a wrapped fallback title on its own line box', () => {
             const tree = renderProgress({ measuredHeight: 72 })
             const centers = [0, 1, 2].map(index => barStyle(tree, index).top + 3 / 2)
 
-            expect(centers).toEqual([5 + 12, 5 + 36, 5 + 60])
+            expect(centers).toEqual([5 + 12 + OPTICAL_OFFSET_Y, 5 + 36 + OPTICAL_OFFSET_Y, 5 + 60 + OPTICAL_OFFSET_Y])
         })
 
         it('centres a subtask bar on the smaller body2 line box', () => {
             const top = barStyle(renderProgress({ measuredHeight: 22, isSubtask: true })).top
 
-            // 22px line height, 6px top margin.
-            expect(top + 3 / 2).toBeCloseTo(6 + 11)
+            // 22px line height, 6px top margin — and the same 1px offset, because a subtask plays
+            // every beat of the sweep except the collapse.
+            expect(top + 3 / 2).toBeCloseTo(6 + 11 + OPTICAL_OFFSET_Y)
         })
 
         it('survives an element id that resolves to nothing', () => {
@@ -392,8 +417,9 @@ describe('TaskCompletionProgress', () => {
             const bar = query(renderInDom(), 'task-completion-progress-bar')[0]
 
             // The production bug, pinned on the production path. The line box runs 10→26, so its
-            // centre is 18 and the bar's top edge is 16.5. The underline this replaced sat at 24.5.
-            expect(bar.style.top).toBe('16.5px')
+            // centre is 18, the bar's top edge is 16.5 and the 1px optical offset puts it at 17.5.
+            // The underline this replaced sat at 24.5.
+            expect(bar.style.top).toBe('17.5px')
         })
 
         it('carries the head at the same height as the bar it leads', () => {
@@ -402,17 +428,21 @@ describe('TaskCompletionProgress', () => {
             const head = query(node, 'task-completion-progress-head')[0]
 
             // The head is thicker than the bar, so it is offset by half the difference to keep the
-            // two concentric. A head that drifted off the bar would read as two separate marks.
+            // two concentric. A head that drifted off the bar would read as two separate marks —
+            // and because the head derives from the same `top`, the optical offset moves both or
+            // neither. This is the assertion that catches an offset applied to only one of them.
             expect(parseFloat(head.style.top) + 5 / 2).toBeCloseTo(parseFloat(bar.style.top) + 3 / 2)
+            expect(head.style.top).toBe('16.5px')
         })
 
         it('centres each wrapped line on its own line box', () => {
             document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => TWO_LINES })
             const bars = query(renderInDom(), 'task-completion-progress-bar')
 
-            // Line boxes 10→26 and 34→50: centres 18 and 42, so tops 16.5 and 40.5. Both centred on
-            // their own text rather than both sinking towards the bottom of the block.
-            expect([...bars].map(bar => bar.style.top)).toEqual(['16.5px', '40.5px'])
+            // Line boxes 10→26 and 34→50: centres 18 and 42, so tops 16.5 and 40.5, each shifted a
+            // pixel down. Both centred on their own text rather than both sinking towards the
+            // bottom of the block, and still exactly one line height apart.
+            expect([...bars].map(bar => bar.style.top)).toEqual(['17.5px', '41.5px'])
         })
 
         it('draws one leading head per measured line', () => {

@@ -33,7 +33,8 @@ import { colors } from '../../../../styles/global'
  * Colour, direction and the moving head are what say "completed" instead of "deleted"; the
  * strike-through's PLACE is simply where a line across a title belongs. Both paths below therefore
  * aim the bar's centre at the line's centre, and both subtract half the bar's thickness to get from
- * that centre to the `top` they actually set.
+ * that centre to the `top` they actually set — then add the single `OPTICAL_OFFSET_Y` pixel that
+ * takes it from the geometric centre to the optical one.
  *
  * Drawn as an absolutely-positioned, `pointerEvents="none"` sibling of the title text, following the
  * same rule as `TaskRoutingActivityOverlay`: decoration never joins the layout, so it cannot change
@@ -74,6 +75,25 @@ const SUBTASK_TEXT_MARGIN_TOP = 6
 // available estimate of the same place, because CSS splits half-leading evenly above and below the
 // text, so the line box and the glyphs it holds are concentric.
 const FALLBACK_CENTER_RATIO = 0.5
+
+/**
+ * The one optical correction on top of the geometric centre, applied to BOTH paths so a row that
+ * fails to measure cannot sit a pixel away from one that measured.
+ *
+ * The centring pass argued against exactly this — that a constant nudge would be font-specific
+ * guesswork, because the x-height centre of lowercase text sits above the line box's midpoint while
+ * the cap-height centre of mixed-case text sits below it. That reasoning is sound about which
+ * DIRECTION a font-fitting correction would take, and it is why this is not one. It is a fixed 1px,
+ * and it exists because the geometrically centred bar read as slightly high on screen: the line box
+ * is symmetric about the em box, but the ink inside it is not — a Latin face carries descenders
+ * below the baseline and most of a lowercase word's mass above it, so the visual centre of gravity
+ * of a line of text sits marginally below the centre of the box that contains it. One pixel is the
+ * smallest correction available and matches what dogfooding asked for; anything larger would start
+ * to reintroduce the underline this replaced.
+ *
+ * Positive is downwards, in the same coordinate space as every `top` below.
+ */
+export const OPTICAL_OFFSET_Y = 1
 
 // `numberOfLines={3}` on the title, so the text can never occupy more than three lines however
 // long the task name is.
@@ -169,13 +189,13 @@ export const groupRectsIntoLines = (rects, baseRect) => {
             // what it looked like in production: detached from the text and visibly low. A progress
             // bar that replaces a strike-through has to occupy the strike-through's place.
             //
-            // The midpoint of the rect is the right target, and it is optically centred as well as
-            // geometrically: a range's client rect spans the line box, CSS splits half-leading
-            // evenly above and below the text, and the em box is therefore concentric with it. The
-            // x-height centre of lowercase text and the cap-height centre of mixed-case text both
-            // land within about a pixel of that midpoint at these font sizes, in either direction —
-            // so there is no constant nudge worth adding, and any nudge would be font-specific.
-            top: (line.top + line.bottom) / 2 - baseRect.top - BAR_THICKNESS / 2,
+            // The midpoint of the rect is the right target: a range's client rect spans the line
+            // box, CSS splits half-leading evenly above and below the text, and the em box is
+            // therefore concentric with it. `OPTICAL_OFFSET_Y` then takes it the last pixel down —
+            // the box is symmetric about the em box but the ink inside it is not, so a bar on the
+            // exact midpoint reads as slightly high. See the constant for why that is a fixed
+            // correction rather than a font-fitting one.
+            top: (line.top + line.bottom) / 2 - baseRect.top - BAR_THICKNESS / 2 + OPTICAL_OFFSET_Y,
             left: line.left - baseRect.left,
             width: line.right - line.left,
         }))
@@ -239,9 +259,17 @@ export default function TaskCompletionProgress({ progress, pulse, opacity, measu
         // Fallback: no DOM, no id, or a measurement that came back empty. Spans the title column,
         // which is wider than the text but still unmistakably a completion sweep.
         Array.from({ length: resolveProgressLineCount(measuredHeight, lineHeight) }, (_unused, index) => ({
-            // Same rule as the measured path: `top` is the bar's own top edge, so the centre it is
-            // aiming for has half the bar's thickness taken off it.
-            top: marginTop + index * lineHeight + lineHeight * FALLBACK_CENTER_RATIO - BAR_THICKNESS / 2,
+            // Same rule as the measured path, including the optical offset: `top` is the bar's own
+            // top edge, so the centre it is aiming for has half the bar's thickness taken off it
+            // and the same 1px correction added on. The two paths have to agree — a row that failed
+            // to measure sitting a pixel off one that measured is exactly the kind of difference
+            // nobody would find deliberately.
+            top:
+                marginTop +
+                index * lineHeight +
+                lineHeight * FALLBACK_CENTER_RATIO -
+                BAR_THICKNESS / 2 +
+                OPTICAL_OFFSET_Y,
             left: 0,
             width: undefined,
         }))
