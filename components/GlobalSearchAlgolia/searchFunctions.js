@@ -2,7 +2,7 @@ import store from '../../redux/store'
 import { hideFloatPopup, hideGlobalSearchPopup, setGlobalSearchResults } from '../../redux/actions'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
-import { checkDVLink, getDvNoteTabLink } from '../../utils/LinkingHelper'
+import { getDvNoteTabLink } from '../../utils/LinkingHelper'
 import {
     MENTION_MODAL_CONTACTS_TAB,
     MENTION_MODAL_GOALS_TAB,
@@ -21,7 +21,6 @@ import {
 export const goToObjectDetailView = (projectId, objectId, objectType, detailedViewType) => {
     store.dispatch([hideFloatPopup(), setGlobalSearchResults(null), hideGlobalSearchPopup()])
     const tabView = objectType === 'chats' ? 'chat' : objectType === 'notes' ? 'editor' : 'properties'
-    checkDVLink(detailedViewType)
     let linkUrl = `/projects/${projectId}/${objectType}/${objectId}/${tabView}`
     URLTrigger.directProcessUrl(NavigationService, linkUrl)
 }
@@ -43,24 +42,8 @@ export const convertNoteObjectType = parentObjectType => {
 export const goToObjectNoteView = (projectId, parentObject) => {
     const { type, id } = parentObject
     const url = getDvNoteTabLink(projectId, id, type === 'topics' ? 'chats' : type)
-    let dvType = ''
-
-    if (type === 'tasks') {
-        dvType = 'task'
-    } else if (type === 'goals') {
-        dvType = 'goal'
-    } else if (type === 'users' || type === 'contacts') {
-        dvType = 'people'
-    } else if (type === 'topics') {
-        dvType = 'chat'
-    } else if (type === 'skills') {
-        dvType = 'skills'
-    } else if (type === 'assistants') {
-        dvType = 'assistants'
-    }
 
     store.dispatch([hideFloatPopup(), setGlobalSearchResults(null), hideGlobalSearchPopup()])
-    checkDVLink(dvType)
     URLTrigger.directProcessUrl(NavigationService, url)
 }
 
