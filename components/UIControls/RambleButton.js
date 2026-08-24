@@ -1,16 +1,20 @@
-import React, { useCallback, useRef, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import useRambleRecorder from '../../hooks/useRambleRecorder'
 import useEscapeKey from '../../hooks/useEscapeKey'
 import usePushToTalkGesture from '../../hooks/usePushToTalkGesture'
+import RambleHoldOverlay from './RambleHoldOverlay'
+import { HAPTIC_CANCEL_ARMED_MS, HAPTIC_CANCEL_DISARMED_MS, vibrate } from '../../utils/haptics'
 import {
     PUSH_TO_TALK_DISCARD,
     PUSH_TO_TALK_MIN_RECORDING_MS,
     PUSH_TO_TALK_STOP,
     PUSH_TO_TALK_SUBMIT,
+    isCancelArmed,
+    resolveCancelProgress,
     resolvePushToTalkRelease,
 } from './pushToTalk'
 import { processRamble } from '../../utils/backends/Rambler/ramblerBackend'
@@ -21,6 +25,14 @@ import { setShowLimitedFeatureModal } from '../../redux/actions'
 // A pointer press leaves a trailing `click`; react-native-web turns that into `onPress`, which
 // would toggle the recorder a second time right after the gesture already handled the release.
 export const POINTER_CLICK_SUPPRESSION_MS = 700
+
+/**
+ * How long a press has to last before the hold overlay (AT-2408) appears. Comfortably above an
+ * intentional tap (~80-150ms) so tapping the mic to start a normal dictation does not flash a ring
+ * across the screen, and comfortably below `PUSH_TO_TALK_HOLD_MS` (400) so the overlay is always
+ * already up by the time the press counts as a hold.
+ */
+export const RAMBLE_HOLD_OVERLAY_DELAY_MS = 200
 
 export const RAMBLE_PHASE_IDLE = 'idle'
 export const RAMBLE_PHASE_RECORDING = 'recording'
@@ -151,7 +163,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         [projectId, targetKind, getCurrentText, onTextReady]
     )
 
-    const { isRecording, elapsedSeconds, start, stop, cancel } = useRambleRecorder({
+    const { isRecording, elapsedSeconds, start, stop, cancel, getInputLevel } = useRambleRecorder({
         onComplete: handleRecordingComplete,
         onError: handleRecorderError,
     })
@@ -186,23 +198,29 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
      * Press-down ALWAYS starts a recording if one is not already running — a tap and a hold are
      * the same gesture until the user lets go. See `pushToTalk.js` for why the recording cannot
      * wait for the hold threshold to elapse.
+     *
+     * @returns {boolean} whether THIS press started a recording. The hold overlay (AT-2408) is
+     *   shown only then: a press that landed on an already-running tap-started take is the toggle's
+     *   second tap, and for it sliding away does NOT cancel — drawing a cancel ring over a gesture
+     *   that does not cancel would be a lie.
      */
     const handlePressStart = useCallback(() => {
         if (processingRef.current) {
             pressStartedRecordingRef.current = false
-            return
+            return false
         }
         if (recordingRef.current) {
             pressStartedRecordingRef.current = false
-            return
+            return false
         }
         pressStartedRecordingRef.current = true
         submitOnCompleteRef.current = false
         start()
+        return true
     }, [start])
 
     const handlePressEnd = useCallback(
-        ({ heldMs, releasedInside, cancelled }) => {
+        ({ heldMs, releasedInside, cancelled, distance }) => {
             const pressStartedRecording = pressStartedRecordingRef.current
             pressStartedRecordingRef.current = false
             if (processingRef.current && !pressStartedRecording) return
@@ -210,6 +228,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
             const outcome = resolvePushToTalkRelease({
                 heldMs,
                 releasedInside,
+                distance,
                 cancelled,
                 pressStartedRecording,
             })
@@ -235,7 +254,7 @@ export function useRambleController({ projectId, targetKind = 'generic', getCurr
         [stop, cancel]
     )
 
-    return { phase, elapsedSeconds, toggle, cancel, handlePressStart, handlePressEnd }
+    return { phase, elapsedSeconds, toggle, cancel, getInputLevel, handlePressStart, handlePressEnd }
 }
 
 /**
@@ -256,7 +275,7 @@ export default function RambleButton({
     visible = true,
     style,
 }) {
-    const { phase, elapsedSeconds, toggle, handlePressStart, handlePressEnd } = useRambleController({
+    const { phase, elapsedSeconds, toggle, getInputLevel, handlePressStart, handlePressEnd } = useRambleController({
         projectId,
         targetKind,
         getCurrentText,
@@ -271,24 +290,84 @@ export default function RambleButton({
     const [buttonNode, setButtonNode] = useState(null)
     const [pressed, setPressed] = useState(false)
     const gestureEndedAtRef = useRef(0)
+
+    // --- hold overlay state (AT-2408) -------------------------------------------------------
+    // Where the ring is drawn, and whether it is drawn at all. `hold.origin === null` covers a
+    // press we could not locate (a synthetic event with no coordinates); the recording still runs,
+    // it just gets no ring, which is strictly better than a ring in the top-left corner.
+    const [hold, setHold] = useState(null)
+    const [cancelArmed, setCancelArmed] = useState(false)
+    // Written on every pointermove. An Animated.Value rather than state on purpose: a number in
+    // state would re-render this button — and through it the host input — at pointer-event rate.
+    const cancelProgress = useRef(new Animated.Value(0)).current
+    const cancelArmedRef = useRef(false)
+    const holdTimerRef = useRef(null)
+
+    const clearHoldTimer = () => {
+        if (holdTimerRef.current) {
+            clearTimeout(holdTimerRef.current)
+            holdTimerRef.current = null
+        }
+    }
+    useEffect(() => clearHoldTimer, [])
+
     // The gesture stops the press from propagating (a mic can sit inside a draggable task row), so
     // react-native-web's responder never grants and its own `activeOpacity` never runs. Holding a
     // button with no feedback at all reads as a dead control, so the pressed state is driven here.
-    const onGesturePressStart = useCallback(() => {
-        setPressed(true)
-        handlePressStart()
-    }, [handlePressStart])
+    const onGesturePressStart = useCallback(
+        point => {
+            setPressed(true)
+            const startedRecording = handlePressStart()
+            cancelProgress.setValue(0)
+            cancelArmedRef.current = false
+            setCancelArmed(false)
+            clearHoldTimer()
+            if (!startedRecording || !point) return
+            // Deliberately delayed. A tap is 80–150ms and also comes through here, so showing the
+            // ring on press-down would flash a 190px circle over the screen every time somebody
+            // taps the mic to start a normal dictation. The delay is still well under the 400ms
+            // hold threshold, so by the time the press COUNTS as a hold the overlay is already up.
+            holdTimerRef.current = setTimeout(() => {
+                holdTimerRef.current = null
+                setHold({ x: point.clientX, y: point.clientY })
+            }, RAMBLE_HOLD_OVERLAY_DELAY_MS)
+        },
+        [handlePressStart, cancelProgress]
+    )
+
+    const onGesturePressMove = useCallback(
+        ({ distance }) => {
+            cancelProgress.setValue(resolveCancelProgress(distance))
+            const armed = isCancelArmed(distance)
+            if (armed === cancelArmedRef.current) return
+            cancelArmedRef.current = armed
+            setCancelArmed(armed)
+            // The thumb is on top of the control and the eyes are usually on the text, so crossing
+            // the boundary is the one moment a buzz says something the screen cannot. Decoration
+            // only — the ring and the card already changed.
+            vibrate(armed ? HAPTIC_CANCEL_ARMED_MS : HAPTIC_CANCEL_DISARMED_MS)
+        },
+        [cancelProgress]
+    )
+
     const onGesturePressEnd = useCallback(
         release => {
             setPressed(false)
+            clearHoldTimer()
+            setHold(null)
+            setCancelArmed(false)
+            cancelArmedRef.current = false
+            cancelProgress.setValue(0)
             gestureEndedAtRef.current = Date.now()
             handlePressEnd(release)
         },
-        [handlePressEnd]
+        [handlePressEnd, cancelProgress]
     )
+
     usePushToTalkGesture(buttonNode, {
         enabled: phase !== RAMBLE_PHASE_PROCESSING,
         onPressStart: onGesturePressStart,
+        onPressMove: onGesturePressMove,
         onPressEnd: onGesturePressEnd,
     })
 
@@ -296,43 +375,70 @@ export default function RambleButton({
     if (!visible && phase === RAMBLE_PHASE_IDLE) return null
 
     return (
-        <TouchableOpacity
-            ref={setButtonNode}
-            style={[
-                localStyles.container,
-                phase === RAMBLE_PHASE_RECORDING && localStyles.recordingContainer,
-                pressed && localStyles.pressedContainer,
-                style,
-            ]}
-            // Mouse and touch are owned by the gesture above. react-native-web still fires
-            // `onPress` from the trailing `click`, so a pointer press is filtered out here by the
-            // timestamp; what is left is keyboard activation (Enter/Space), which keeps plain
-            // tap-to-toggle semantics and never auto-submits — holding a key is not a gesture, and
-            // dictation has to stay usable without one.
-            onPress={() => {
-                if (Date.now() - gestureEndedAtRef.current < POINTER_CLICK_SUPPRESSION_MS) return
-                toggle()
-            }}
-            accessibilityLabel={translate(phase === RAMBLE_PHASE_RECORDING ? 'Stop dictation' : 'Dictate')}
-            disabled={phase === RAMBLE_PHASE_PROCESSING}
-        >
-            {phase === RAMBLE_PHASE_PROCESSING ? (
-                <ActivityIndicator size={14} color={colors.Text03} />
-            ) : (
-                <>
-                    <Icon
-                        name={'mic'}
-                        size={16}
-                        color={phase === RAMBLE_PHASE_RECORDING ? colors.Red200 : colors.Text03}
-                    />
-                    {phase === RAMBLE_PHASE_RECORDING && (
-                        <Text style={[styles.caption1, localStyles.elapsedText]}>
-                            {formatRambleElapsed(elapsedSeconds)}
-                        </Text>
-                    )}
-                </>
-            )}
-        </TouchableOpacity>
+        <>
+            {/* Mounted only for the duration of a hold: it portals out of the input, listens for
+                resizes and runs an animation frame, none of which a resting mic should pay for. */}
+            {hold ? (
+                <RambleHoldOverlay
+                    visible
+                    originX={hold.x}
+                    originY={hold.y}
+                    progress={cancelProgress}
+                    armed={cancelArmed}
+                    elapsedLabel={formatRambleElapsed(elapsedSeconds)}
+                    getInputLevel={getInputLevel}
+                />
+            ) : null}
+            <TouchableOpacity
+                ref={setButtonNode}
+                style={[
+                    localStyles.container,
+                    phase === RAMBLE_PHASE_RECORDING && localStyles.recordingContainer,
+                    cancelArmed && localStyles.cancelArmedContainer,
+                    pressed && localStyles.pressedContainer,
+                    style,
+                ]}
+                // Mouse and touch are owned by the gesture above. react-native-web still fires
+                // `onPress` from the trailing `click`, so a pointer press is filtered out here by
+                // the timestamp; what is left is keyboard activation (Enter/Space), which keeps
+                // plain tap-to-toggle semantics and never auto-submits — holding a key is not a
+                // gesture, and dictation has to stay usable without one.
+                onPress={() => {
+                    if (Date.now() - gestureEndedAtRef.current < POINTER_CLICK_SUPPRESSION_MS) return
+                    toggle()
+                }}
+                accessibilityLabel={translate(
+                    cancelArmed ? 'Release to cancel' : phase === RAMBLE_PHASE_RECORDING ? 'Stop dictation' : 'Dictate'
+                )}
+                disabled={phase === RAMBLE_PHASE_PROCESSING}
+            >
+                {phase === RAMBLE_PHASE_PROCESSING ? (
+                    <ActivityIndicator size={14} color={colors.Text03} />
+                ) : (
+                    <>
+                        <Icon
+                            // The finger is on top of this, so the swap is not the feedback — the
+                            // ring and the card are. It matters for the frame after the release,
+                            // and for a mouse hold, where the pointer does not hide the button.
+                            name={cancelArmed ? 'trash-2' : 'mic'}
+                            size={16}
+                            color={
+                                cancelArmed
+                                    ? colors.UtilityRed300
+                                    : phase === RAMBLE_PHASE_RECORDING
+                                      ? colors.Red200
+                                      : colors.Text03
+                            }
+                        />
+                        {phase === RAMBLE_PHASE_RECORDING && (
+                            <Text style={[styles.caption1, localStyles.elapsedText]}>
+                                {formatRambleElapsed(elapsedSeconds)}
+                            </Text>
+                        )}
+                    </>
+                )}
+            </TouchableOpacity>
+        </>
     )
 }
 
@@ -348,6 +454,9 @@ const localStyles = StyleSheet.create({
     },
     recordingContainer: {
         backgroundColor: colors.Grey100,
+    },
+    cancelArmedContainer: {
+        backgroundColor: colors.UtilityRed100,
     },
     pressedContainer: {
         opacity: 0.5,

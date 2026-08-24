@@ -12,7 +12,6 @@ import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE } from '../../XpBar/XpBar'
-import ConnectionStatusChip from '../ConnectionStatusChip'
 
 const SECONDARY_BAR_MOBILE = 36
 
@@ -74,8 +73,6 @@ export default function TopBarMobile() {
                     {!isAnonymous && <MobileNotificationArea expandSecondaryBar={expandSecondaryBar} />}
                 </View>
             </View>
-
-            <ConnectionStatusChip mobile />
 
             {!isAnonymous && (
                 <Animated.View

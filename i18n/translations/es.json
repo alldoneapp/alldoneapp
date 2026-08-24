@@ -2129,6 +2129,8 @@
     "Rambler dictation": "Dictado Rambler",
     "Dictate": "Dictar",
     "Stop dictation": "Detener dictado",
+    "Slide away to cancel": "Desliza para cancelar",
+    "Release to cancel": "Suelta para cancelar",
     "No speech detected": "No se detectó voz",
     "Could not process dictation": "No se pudo procesar el dictado",
     "Microphone access was denied. Please allow microphone access in your browser settings.": "Se denegó el acceso al micrófono. Por favor, permite el acceso al micrófono en la configuración de tu navegador.",
