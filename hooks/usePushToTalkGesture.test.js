@@ -24,14 +24,11 @@ const Harness = ({ enabled = true }) => {
     const [node, setNode] = useState(null)
     usePushToTalkGesture(node, {
         enabled,
-        onPressStart: point => events.push({ type: 'start', point }),
-        onPressMove: travel => events.push({ type: 'move', ...travel }),
+        onPressStart: () => events.push({ type: 'start' }),
         onPressEnd: release => events.push({ type: 'end', ...release }),
     })
     return <div ref={setNode} data-testid="mic" />
 }
-
-const moves = () => events.filter(event => event.type === 'move')
 
 const mount = (props = {}) => {
     act(() => {
@@ -76,8 +73,7 @@ describe('usePushToTalkGesture', () => {
         giveRect(node)
 
         dispatch(node, 'mousedown', { button: 0, clientX: 10, clientY: 10 })
-        // The press point is carried so the hold overlay can draw its ring around the finger.
-        expect(events).toEqual([{ type: 'start', point: { clientX: 10, clientY: 10 } }])
+        expect(events).toEqual([{ type: 'start' }])
 
         dispatch(window, 'mouseup', { clientX: 10, clientY: 10 })
         expect(events[1].type).toBe('end')
@@ -133,7 +129,7 @@ describe('usePushToTalkGesture', () => {
         giveRect(node)
 
         dispatch(node, 'touchstart', { changedTouches: [touch(1, 10, 10)] })
-        expect(events).toEqual([{ type: 'start', point: { clientX: 10, clientY: 10 } }])
+        expect(events).toEqual([{ type: 'start' }])
 
         dispatch(window, 'touchend', { changedTouches: [touch(1, 10, 10)] })
         expect(events[1]).toMatchObject({ type: 'end', releasedInside: true })
@@ -194,104 +190,6 @@ describe('usePushToTalkGesture', () => {
         dispatch(node, 'mousedown', { button: 0, clientX: 10, clientY: 10 })
 
         expect(events.filter(event => event.type === 'start')).toHaveLength(1)
-    })
-
-    /**
-     * Travel reporting (AT-2408). The hold overlay draws the cancel boundary as a ring around the
-     * press point, so the number it animates against has to be measured from that same point —
-     * anywhere else and the drawn boundary stops matching the rule the release is judged by.
-     */
-    describe('slide travel', () => {
-        test('a move during the press reports how far the finger has come from where it pressed', () => {
-            const node = mount()
-            giveRect(node)
-
-            dispatch(node, 'mousedown', { button: 0, clientX: 100, clientY: 100 })
-            dispatch(window, 'mousemove', { clientX: 130, clientY: 140 })
-
-            // 3-4-5: the distance is the hypotenuse, not the larger axis — cancelling has no
-            // preferred direction, so a diagonal slide must count for its full length.
-            expect(moves()).toHaveLength(1)
-            expect(moves()[0]).toMatchObject({ dx: 30, dy: 40, distance: 50 })
-        })
-
-        test('the release carries the same travel the last move did', () => {
-            const node = mount()
-            giveRect(node)
-
-            dispatch(node, 'mousedown', { button: 0, clientX: 100, clientY: 100 })
-            dispatch(window, 'mouseup', { clientX: 100, clientY: 200 })
-
-            const end = events.find(event => event.type === 'end')
-            expect(end).toMatchObject({ dx: 0, dy: 100, distance: 100 })
-        })
-
-        test('travel is measured from the press, not from the button', () => {
-            // The button grows into a timer chip the moment recording starts, so anything measured
-            // against its live rect would move under a perfectly still thumb.
-            const node = mount()
-            giveRect(node, { left: 0, top: 0, right: 24, bottom: 24, width: 24, height: 24 })
-
-            dispatch(node, 'mousedown', { button: 0, clientX: 20, clientY: 20 })
-            giveRect(node, { left: 0, top: 0, right: 70, bottom: 24, width: 70, height: 24 })
-            dispatch(window, 'mousemove', { clientX: 20, clientY: 20 })
-
-            expect(moves()[0]).toMatchObject({ distance: 0 })
-        })
-
-        test('a touch slide reports travel and stops the page scrolling under the finger', () => {
-            const node = mount()
-            giveRect(node)
-
-            dispatch(node, 'touchstart', { changedTouches: [touch(1, 50, 300)] })
-            const move = dispatch(window, 'touchmove', { changedTouches: [touch(1, 50, 200)] })
-
-            expect(moves()[0]).toMatchObject({ dy: -100, distance: 100 })
-            // Without this the list scrolls away while the user is sliding to cancel, and on iOS
-            // the browser can take the gesture over entirely.
-            expect(move.defaultPrevented).toBe(true)
-        })
-
-        test('a move from a different finger is ignored', () => {
-            const node = mount()
-            giveRect(node)
-
-            dispatch(node, 'touchstart', { changedTouches: [touch(1, 50, 300)] })
-            dispatch(window, 'touchmove', { changedTouches: [touch(2, 400, 400)] })
-
-            expect(moves()).toHaveLength(0)
-        })
-
-        test('nothing is reported before a press or after a release', () => {
-            const node = mount()
-            giveRect(node)
-
-            dispatch(window, 'mousemove', { clientX: 300, clientY: 300 })
-            dispatch(node, 'mousedown', { button: 0, clientX: 100, clientY: 100 })
-            dispatch(window, 'mouseup', { clientX: 100, clientY: 100 })
-            dispatch(window, 'mousemove', { clientX: 300, clientY: 300 })
-
-            expect(moves()).toHaveLength(0)
-        })
-
-        test('the pointer→touch handover keeps the original press point', () => {
-            // Re-seeding the origin at touchstart would silently zero out travel that had already
-            // been reported, so a slide that began under the pointer stream would reset mid-gesture.
-            const node = mount()
-            giveRect(node)
-
-            dispatch(node, 'pointerdown', {
-                pointerId: 1,
-                isPrimary: true,
-                pointerType: 'touch',
-                clientX: 100,
-                clientY: 100,
-            })
-            dispatch(node, 'touchstart', { changedTouches: [touch(1, 108, 100)] })
-            dispatch(window, 'touchmove', { changedTouches: [touch(1, 200, 100)] })
-
-            expect(moves()[0]).toMatchObject({ distance: 100 })
-        })
     })
 
     test('disabled installs nothing', () => {

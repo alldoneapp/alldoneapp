@@ -161,22 +161,6 @@ export default function useRambleRecorder({ onComplete, onError }) {
     const stopRef = useRef(stop)
     stopRef.current = stop
 
-    /**
-     * The live microphone level, 0..1, for the hold overlay's meter (AT-2408).
-     *
-     * Deliberately a GETTER rather than React state. The level has to be read ~10x a second to look
-     * alive, and putting that in state would re-render every consumer of this hook ten times a
-     * second — including `EditorToolbar`, which is a large tree. The meter instead polls this from
-     * its own animation frame and drives `Animated` values, so the cost stays inside the meter.
-     * Returns 0 when there is no monitor (no Web Audio) or no recording, which renders as a
-     * resting meter rather than as an error — the meter is reassurance, never a gate.
-     */
-    const getInputLevel = useCallback(() => {
-        const monitor = monitorRef.current
-        if (!monitor || typeof monitor.getLevel !== 'function') return 0
-        return monitor.getLevel()
-    }, [])
-
     const start = useCallback(async () => {
         if (recorderRef.current) return
         if (!isDictationSupported()) {
@@ -368,5 +352,5 @@ export default function useRambleRecorder({ onComplete, onError }) {
         }
     }, [])
 
-    return { isRecording, elapsedSeconds, start, stop, cancel, getInputLevel }
+    return { isRecording, elapsedSeconds, start, stop, cancel }
 }

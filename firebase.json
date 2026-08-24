@@ -50,19 +50,6 @@
                         "value": "bytes"
                     }
                 ]
-            },
-            {
-                "source": "/ota/**",
-                "headers": [
-                    {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                    },
-                    {
-                        "key": "Cache-Control",
-                        "value": "private, no-cache, max-age=0"
-                    }
-                ]
             }
         ],
         "rewrites": [

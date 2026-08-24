@@ -19,7 +19,6 @@ import {
     markNamedPerformanceTrace,
     schedulePerformanceAfterPaint,
 } from './utils/performance/performanceLogger'
-import { finishAppBootConnectionWait } from './utils/performance/userWaitConnection'
 import { syncServerClock } from './utils/serverClock'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
@@ -307,7 +306,6 @@ export default function AppContent() {
             }
         } else {
             loginInProgressUid.current = null
-            finishAppBootConnectionWait()
             await logoutUser()
         }
     }
@@ -322,10 +320,7 @@ export default function AppContent() {
     }
 
     useEffect(() => {
-        if (publicPageUrl) {
-            finishAppBootConnectionWait()
-            store.dispatch(setInitialUrl(publicPageUrl))
-        }
+        if (publicPageUrl) store.dispatch(setInitialUrl(publicPageUrl))
     }, [publicPageUrl])
 
     useEffect(() => {
@@ -335,7 +330,6 @@ export default function AppContent() {
             initIpRegistry()
         }, 100)
         return () => {
-            finishAppBootConnectionWait()
             unwatch('userProjectWatcherUnsubKey')
         }
     }, [])
@@ -369,7 +363,6 @@ export default function AppContent() {
                     ? store.getState().loggedUser.projectIds.length
                     : 0,
             })
-            finishAppBootConnectionWait()
         })
     }, [loggedIn, processedInitialURL])
 
