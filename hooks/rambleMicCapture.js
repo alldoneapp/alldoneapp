@@ -419,16 +419,25 @@ export function createInputLevelMonitor(stream) {
     }
 
     let peak = 0
+    // The peak of the LAST sampled window, as opposed to `peak`, which is the running maximum over
+    // the whole take. The running maximum is what answers "was this microphone alive at all"
+    // (AT-2357) and it must stay monotonic for that; a live level meter needs the opposite — a
+    // value that falls again when the user stops talking (AT-2408). Both come off the same
+    // analyser read, so the meter costs nothing beyond the polling that already happens.
+    let windowPeak = 0
     let closed = false
 
     const sample = () => {
         if (closed) return peak
         try {
             analyser.getFloatTimeDomainData(buffer)
+            let current = 0
             for (let index = 0; index < buffer.length; index += 1) {
                 const amplitude = Math.abs(buffer[index])
-                if (amplitude > peak) peak = amplitude
+                if (amplitude > current) current = amplitude
             }
+            windowPeak = current
+            if (current > peak) peak = current
         } catch (error) {
             // A closed/interrupted context stops contributing; the peak so far still stands.
         }
@@ -439,6 +448,7 @@ export function createInputLevelMonitor(stream) {
         ready,
         sample,
         getPeak: () => peak,
+        getLevel: () => windowPeak,
         hasSignal: () => peak > 0,
         close: () => {
             if (closed) return

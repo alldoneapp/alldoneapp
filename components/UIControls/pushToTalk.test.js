@@ -7,12 +7,16 @@
  * regression here is a regression in a feature that shipped long before this one.
  */
 import {
+    PUSH_TO_TALK_CANCEL_DEAD_ZONE,
+    PUSH_TO_TALK_CANCEL_RADIUS,
     PUSH_TO_TALK_DISCARD,
     PUSH_TO_TALK_HOLD_MS,
     PUSH_TO_TALK_KEEP_RECORDING,
     PUSH_TO_TALK_STOP,
     PUSH_TO_TALK_SUBMIT,
+    isCancelArmed,
     isReleaseInsideRect,
+    resolveCancelProgress,
     resolvePushToTalkRelease,
 } from './pushToTalk'
 
@@ -74,6 +78,82 @@ describe('resolvePushToTalkRelease', () => {
     test('the threshold is configurable but defaults to the shared constant', () => {
         expect(release({ heldMs: 300, holdThresholdMs: 200 })).toBe(PUSH_TO_TALK_SUBMIT)
         expect(release({ heldMs: 300 })).toBe(PUSH_TO_TALK_KEEP_RECORDING)
+    })
+})
+
+/**
+ * Slide-to-cancel by distance (AT-2408).
+ *
+ * The rule this replaces discarded the take whenever the release landed off a 24px button — under a
+ * thumb roughly twice that wide, with nothing drawn on screen to say so. Losing a spoken sentence
+ * was therefore both the easiest outcome to reach and the only one with no explanation. These tests
+ * pin the two halves of the fix: drifting is now forgiven, and the distance that is NOT forgiven is
+ * the same number the ring is drawn at.
+ */
+describe('slide-to-cancel distance (AT-2408)', () => {
+    test('progress is zero inside the dead zone, one at the ring, and rises in between', () => {
+        expect(resolveCancelProgress(0)).toBe(0)
+        expect(resolveCancelProgress(PUSH_TO_TALK_CANCEL_DEAD_ZONE)).toBe(0)
+        expect(resolveCancelProgress(PUSH_TO_TALK_CANCEL_RADIUS)).toBe(1)
+        expect(resolveCancelProgress(PUSH_TO_TALK_CANCEL_RADIUS + 500)).toBe(1)
+
+        const midpoint = (PUSH_TO_TALK_CANCEL_DEAD_ZONE + PUSH_TO_TALK_CANCEL_RADIUS) / 2
+        expect(resolveCancelProgress(midpoint)).toBeCloseTo(0.5, 5)
+    })
+
+    test('progress never reports motion for an unmeasurable distance', () => {
+        // A finger resting on glass jitters; a ring that shimmers while the user holds still reads
+        // as broken, and NaN reaching an Animated.Value would freeze the whole overlay.
+        expect(resolveCancelProgress(undefined)).toBe(0)
+        expect(resolveCancelProgress(NaN)).toBe(0)
+        expect(resolveCancelProgress(-40)).toBe(0)
+    })
+
+    test('the ring radius IS the arming distance — the drawn boundary cannot lie', () => {
+        expect(isCancelArmed(PUSH_TO_TALK_CANCEL_RADIUS - 1)).toBe(false)
+        expect(isCancelArmed(PUSH_TO_TALK_CANCEL_RADIUS)).toBe(true)
+        expect(isCancelArmed(undefined)).toBe(false)
+    })
+
+    test('a hold released well beyond the ring is discarded', () => {
+        expect(release({ distance: PUSH_TO_TALK_CANCEL_RADIUS + 20, releasedInside: false })).toBe(PUSH_TO_TALK_DISCARD)
+    })
+
+    test('drifting off the button but staying inside the ring still SUBMITS', () => {
+        // The whole bug: 40px of thumb travel used to be indistinguishable from a deliberate cancel.
+        expect(release({ distance: 40, releasedInside: false })).toBe(PUSH_TO_TALK_SUBMIT)
+        expect(release({ distance: PUSH_TO_TALK_CANCEL_RADIUS - 1, releasedInside: false })).toBe(PUSH_TO_TALK_SUBMIT)
+    })
+
+    test('a fast flick out of the ring cancels even though it was too short to be a hold', () => {
+        // Once a ring is on screen promising that sliding out cancels, it has to cancel at any
+        // speed — otherwise the mic is left hot right after the user performed the cancel gesture.
+        expect(release({ heldMs: 80, distance: PUSH_TO_TALK_CANCEL_RADIUS + 60 })).toBe(PUSH_TO_TALK_DISCARD)
+    })
+
+    test('a quick tap that barely moves is still the legacy toggle', () => {
+        expect(release({ heldMs: 80, distance: 6 })).toBe(PUSH_TO_TALK_KEEP_RECORDING)
+    })
+
+    test('the radius is configurable, and defaults to the constant the ring reads', () => {
+        expect(release({ distance: 50, cancelRadius: 40 })).toBe(PUSH_TO_TALK_DISCARD)
+        expect(release({ distance: 50 })).toBe(PUSH_TO_TALK_SUBMIT)
+    })
+
+    test('a caller that cannot measure travel keeps the pre-AT-2408 rule exactly', () => {
+        // Ordering matters as much as the rule: the fallback sits AFTER the hold threshold, which is
+        // what kept a sloppy tap from discarding a take before this change and must keep doing so.
+        expect(release({ distance: undefined, releasedInside: false })).toBe(PUSH_TO_TALK_DISCARD)
+        expect(release({ distance: undefined, heldMs: 50, releasedInside: false })).toBe(PUSH_TO_TALK_KEEP_RECORDING)
+    })
+
+    test('travel never overrides a cancelled gesture or the toggle branch', () => {
+        expect(release({ cancelled: true, distance: 0 })).toBe(PUSH_TO_TALK_DISCARD)
+        // A press on an already-running take: sliding away does not cancel, because that press did
+        // not start the recording. The overlay is not drawn for it either — see RambleButton.
+        expect(release({ pressStartedRecording: false, distance: 400, releasedInside: false })).toBe(
+            PUSH_TO_TALK_KEEP_RECORDING
+        )
     })
 })
 

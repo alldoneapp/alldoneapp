@@ -84,16 +84,19 @@ jest.mock('./vmAgentModelCatalog', () => ({
 
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
-const { deductGold } = require('../Gold/goldHelper')
+const { deductGold, refundGold } = require('../Gold/goldHelper')
 const {
     startVmJob,
     launchQueuedVmJob,
+    settleOrphanedQueuedVmJob,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     DEFAULT_CLAUDE_MODEL,
+    VM_ORPHANED_QUEUE_FAILURE_REASON,
     formatAgentModelLabel,
 } = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 const { getOpenRouterUpstreamPrice } = require('./vmAgentModelCatalog')
+const { VM_QUEUED_ORPHAN_GRACE_MS } = require('./vmThreadQueue')
 
 describe('startVmJob', () => {
     beforeEach(() => {
@@ -1491,6 +1494,84 @@ describe('startVmJob', () => {
 
         expect(result).toEqual({ success: false, reason: 'settled', status: 'cancelled' })
         expect(mockQueueEnqueue).not.toHaveBeenCalled()
+    })
+})
+
+describe('orphaned queued VM settlement', () => {
+    beforeEach(() => {
+        Object.keys(mockDocs).forEach(key => delete mockDocs[key])
+        jest.clearAllMocks()
+    })
+
+    test('transactionally fails the orphan, refunds once, and finalizes its loading comment', async () => {
+        const now = 10_000_000
+        const pending = {
+            correlationId: 'orphan-1',
+            kind: 'vm_job',
+            userId: 'user-1',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            status: 'queued',
+            queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            goldCharged: 20,
+            statusCommentId: 'comment-1',
+        }
+        mockGetDoc('pendingWebhooks/orphan-1').get.mockResolvedValue({
+            exists: true,
+            data: () => pending,
+        })
+        mockGetDoc('vmSessions/project-1__task-1').get.mockResolvedValue({ exists: false, data: () => ({}) })
+
+        await expect(settleOrphanedQueuedVmJob('orphan-1', now)).resolves.toBe(true)
+
+        expect(mockGetDoc('pendingWebhooks/orphan-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: 'failed',
+                failureReason: VM_ORPHANED_QUEUE_FAILURE_REASON,
+                failedAt: now,
+                orphanedQueueReconciledAt: now,
+            }),
+            { merge: true }
+        )
+        expect(refundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ idempotencyKey: 'vm_job_refund:orphan-1' })
+        )
+        expect(mockGetDoc('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                isLoading: false,
+                assistantRun: expect.objectContaining({ runId: 'orphan-1', status: 'failed' }),
+            }),
+            { merge: true }
+        )
+    })
+
+    test('does nothing when the queued job still belongs to its session FIFO', async () => {
+        const now = 20_000_000
+        mockGetDoc('pendingWebhooks/queued-1').get.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                correlationId: 'queued-1',
+                kind: 'vm_job',
+                userId: 'user-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                status: 'queued',
+                queuedAt: now - VM_QUEUED_ORPHAN_GRACE_MS - 1,
+            }),
+        })
+        mockGetDoc('vmSessions/project-1__task-1').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ queue: ['queued-1'], queueLength: 1 }),
+        })
+
+        await expect(settleOrphanedQueuedVmJob('queued-1', now)).resolves.toBe(false)
+        expect(mockGetDoc('pendingWebhooks/queued-1').set).not.toHaveBeenCalled()
+        expect(refundGold).not.toHaveBeenCalled()
     })
 })
 
