@@ -1,5 +1,4 @@
 import { isCapacitorShell } from './CapacitorShell'
-import { HOSTING_URL } from 'react-native-dotenv'
 
 // Self-hosted over-the-air updates for the iOS Capacitor shell.
 //
@@ -24,6 +23,28 @@ import { HOSTING_URL } from 'react-native-dotenv'
 // download-revert-redownload loop (observed live before this fix).
 
 const CHECK_THROTTLE_MS = 5 * 60 * 1000
+
+// Where the manifest lives. HOSTING_URL is env-injected per environment, but ONLY
+// into the BEGIN-ENVS block of utils/backends/firestore.js — that block, and two
+// like it, are the whole of what ci/replace-envs.sh (and the equivalent sed in
+// .gitlab-ci.yml) rewrites. A second `import { HOSTING_URL } from
+// 'react-native-dotenv'` in this file is not covered by that pass, so it survives
+// into the bundle as an unresolved dotenv import and fails the production build
+// outright: `"HOSTING_URL" is not defined in .env` (there is no .env in the web
+// build images — react-native-dotenv only ever resolves what the sed left behind).
+// Read it through the accessor firestore.js already exports instead.
+//
+// Required lazily, and inside the check rather than at module scope, for the
+// reason in the header: this module's EVALUATION races appReadyTimeout, and a
+// static import would put the whole Firestore client in front of notifyAppReady().
+const resolveHostingUrl = () => {
+    try {
+        // eslint-disable-next-line global-require
+        return require('./backends/firestore').getHostingUrl() || ''
+    } catch (error) {
+        return ''
+    }
+}
 
 export const OTA_DECISION = {
     APPLY: 'apply',
@@ -80,11 +101,19 @@ const checkAndApply = async updater => {
     if (now - lastCheckAt < CHECK_THROTTLE_MS) return
     lastCheckAt = now
 
+    const hostingUrl = resolveHostingUrl()
+    if (!hostingUrl) {
+        // Nothing to compare against: a relative fetch from inside the shell
+        // resolves against capacitor://localhost, not the deployment.
+        console.log('[shellOta] not updating: no hosting url')
+        return
+    }
+
     try {
         // Own identity is served from the RUNNING bundle (relative fetch), the
         // manifest from the live hosting for this environment.
         const currentInfo = await readJson('./ota-version.json')
-        const latestInfo = await readJson(`${HOSTING_URL}/ota/latest.json`)
+        const latestInfo = await readJson(`${hostingUrl}/ota/latest.json`)
         const decision = resolveOtaDecision(currentInfo, latestInfo)
         if (decision !== OTA_DECISION.APPLY) {
             if (decision !== OTA_DECISION.UP_TO_DATE) {
@@ -96,7 +125,7 @@ const checkAndApply = async updater => {
         applying = true
         console.log(`[shellOta] downloading web bundle ${latestInfo.version.slice(0, 12)}`)
         const bundle = await updater.download({
-            url: `${HOSTING_URL}${latestInfo.url}`,
+            url: `${hostingUrl}${latestInfo.url}`,
             version: latestInfo.version,
         })
         console.log('[shellOta] applying update (webview will reload)')
@@ -109,15 +138,19 @@ const checkAndApply = async updater => {
     }
 }
 
+// Returns the "check now" callback for the resume signal, or a no-op outside the
+// shell. It deliberately does NOT register a visibilitychange listener of its own:
+// utils/appResume.js is the single owner of "the app just came back" (PT-4660),
+// and re-deriving that here would be wrong in exactly the case this feature exists
+// for — an iOS home-screen/shell app announces its return with `pageshow` (a
+// bfcache restore), which a bare visibilitychange listener never observes.
+// AppNavigator hands this to installAppResumeListener as `onResume`.
 export const installShellOtaUpdater = () => {
     const updater = getUpdaterPlugin()
-    if (!updater) return
+    if (!updater) return () => {}
 
     updater.notifyAppReady().catch(() => {})
 
     checkAndApply(updater)
-    const onVisible = () => {
-        if (document.visibilityState === 'visible') checkAndApply(updater)
-    }
-    document.addEventListener('visibilitychange', onVisible)
+    return () => checkAndApply(updater)
 }
