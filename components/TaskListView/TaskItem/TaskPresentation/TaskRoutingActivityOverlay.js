@@ -21,7 +21,7 @@ import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRo
  *     matters because the thing it is covering is a list that re-renders on every Firestore
  *     snapshot. A JS-driven loop here would be janking against exactly the work it is waiting for.
  *   - Confirmation is a ONE-SHOT of known length, so it uses `Animated` with `useNativeDriver`,
- *     matching `EmptyInboxDayCelebration` and the rest of the codebase's celebration idiom.
+ *     matching `emptyInboxDotMotion` and the rest of the codebase's celebration idiom.
  *
  * Both stand down entirely under `prefers-reduced-motion` — the badge in the leading slot still
  * appears, so the INFORMATION survives while the motion does not. That split is the point: this
