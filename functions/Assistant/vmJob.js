@@ -30,6 +30,7 @@ const {
     admitVmJobToThread,
     readVmThreadSession,
     isVmThreadSessionOccupied,
+    isOrphanedQueuedVmJob,
     advanceVmThreadQueue,
 } = require('./vmThreadQueue')
 const { resolveVmThreadAgentContinuity } = require('./vmThreadAgentContinuity')
@@ -63,6 +64,9 @@ const VM_MIN_GOLD_TO_LAUNCH_QUEUED = VM_GOLD_PER_MINUTE
 const VM_GOLD_EXHAUSTED_FAILURE_REASON = 'insufficient_gold'
 const VM_QUEUED_GOLD_EXHAUSTED_TEXT =
     '🛑 Skipped this queued VM task because you ran out of Gold. Add Gold and start a new VM task to continue.'
+const VM_ORPHANED_QUEUE_FAILURE_REASON = 'orphaned_vm_queue'
+const VM_ORPHANED_QUEUE_FAILURE_TEXT =
+    '❌ This queued VM task could not start because its previous VM session ended unexpectedly. Your reserved Gold has been refunded. Please start the VM task again.'
 
 // Generous expiry — must be larger than the detached job's runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
@@ -1073,6 +1077,86 @@ async function settleQueuedVmJobInsufficientGold(pending) {
 }
 
 /**
+ * Settle and refund a queued job whose authoritative vmSessions FIFO no longer references it.
+ *
+ * The pending record and session are re-read in one transaction so a normal drain that just
+ * claimed the job always wins. refundGold's idempotency key protects the post-transaction side
+ * effect if the scheduled reconciler is retried after the status write committed.
+ */
+async function settleOrphanedQueuedVmJob(correlationId, now = Date.now()) {
+    if (!correlationId) return false
+    const db = admin.firestore()
+    const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
+
+    const pending = await db.runTransaction(async transaction => {
+        const pendingSnapshot = await transaction.get(pendingRef)
+        if (!pendingSnapshot.exists) return null
+        const latest = pendingSnapshot.data() || {}
+        if (!latest.projectId || !latest.objectId) return null
+
+        const sessionRef = vmThreadSessionRef(latest.projectId, latest.objectId)
+        const sessionSnapshot = await transaction.get(sessionRef)
+        const session = sessionSnapshot.exists ? sessionSnapshot.data() || {} : null
+        if (!isOrphanedQueuedVmJob(latest, correlationId, session, now)) return null
+
+        transaction.set(
+            pendingRef,
+            {
+                status: 'failed',
+                failureReason: VM_ORPHANED_QUEUE_FAILURE_REASON,
+                error: 'Queued VM job lost its thread-session queue entry before launch',
+                failedAt: now,
+                orphanedQueueReconciledAt: now,
+            },
+            { merge: true }
+        )
+        return { ...latest, correlationId: latest.correlationId || correlationId }
+    })
+    if (!pending) return false
+
+    const { refundGold } = require('../Gold/goldHelper')
+    await refundGold(pending.userId, Number(pending.goldCharged) || VM_JOB_BASE_GOLD, {
+        source: VM_JOB_GOLD_REFUND_SOURCE,
+        idempotencyKey: `vm_job_refund:${correlationId}`,
+        channel: 'assistant',
+        projectId: pending.projectId,
+        objectId: pending.objectId,
+        objectType: pending.objectType,
+        note: 'Orphaned queued VM task',
+    }).catch(() => {})
+
+    if (pending.statusCommentId) {
+        await db
+            .doc(
+                `chatComments/${pending.projectId}/${pending.objectType || 'tasks'}/${pending.objectId}/comments/${pending.statusCommentId}`
+            )
+            .set(
+                {
+                    commentText: VM_ORPHANED_QUEUE_FAILURE_TEXT,
+                    originalContent: VM_ORPHANED_QUEUE_FAILURE_TEXT,
+                    isLoading: false,
+                    assistantRun: {
+                        kind: 'vm_job',
+                        runId: correlationId,
+                        requestUserId: pending.userId,
+                        status: 'failed',
+                    },
+                    lastChangeDate: Timestamp.now(),
+                },
+                { merge: true }
+            )
+            .catch(() => {})
+    }
+
+    console.warn('🖥️ VM JOB: reconciled orphaned queued job', {
+        correlationId,
+        projectId: pending.projectId,
+        objectId: pending.objectId,
+    })
+    return true
+}
+
+/**
  * Flip a queued job to 'pending' and launch its Cloud Run execution. Called by the runner's drain
  * when the current thread job finishes, and by the stalled-queue sweeper. No-op if the job already
  * settled (e.g. cancelled while queued).
@@ -1228,7 +1312,9 @@ module.exports = {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_JOB_EXPIRY_MS,
+    VM_ORPHANED_QUEUE_FAILURE_REASON,
     reconcileUnknownVmCloudRunLaunches,
+    settleOrphanedQueuedVmJob,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     DEFAULT_VM_EXECUTION_MODE,
     VALID_VM_EXECUTION_MODES,
