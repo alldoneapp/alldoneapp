@@ -47,7 +47,6 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import {
     addProtocol,
-    checkDVLink,
     checkIfUrlBelongsToProjectInTheList,
     handleNestedLinks,
     isValidHost,
@@ -783,7 +782,6 @@ export default function LinkTag({
             } else {
                 if (internalLink && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
                     if (!loggedUser.isAnonymous || shared) {
-                        checkDVLink(type)
                         URLTrigger.processUrl(NavigationService, linkUrl)
                     }
                 } else {

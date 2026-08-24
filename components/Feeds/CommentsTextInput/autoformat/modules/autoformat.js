@@ -8,7 +8,6 @@ import {
     getPlaceholderData,
     NEW_ATTACHMENT,
     processPastedText,
-    processPastedTextWithBreakLines,
     QUILL_EDITOR_TEXT_INPUT_TYPE,
 } from '../../textInputHelper'
 import store from '../../../../../redux/store'
@@ -144,63 +143,40 @@ class Autoformat extends Module {
         })
     }
 
-    parsePastedText(parse, text, attributes) {
-        const singleLineText = this.singleLine || this.disabledEnterKey ? text.replace(/(\r\n|\n|\r)/gm, '') : text
-        const projectId = store.getState().quillEditorProjectId
-        const parsedDelta = parse(
-            singleLineText,
-            Delta,
-            projectId,
-            this.editorId,
-            this.userIdAllowedToEditTags,
-            false,
-            '',
-            this.quill,
-            false,
-            attributes,
-            true
-        )
-        return dropEmbedsTheEditorCannotRender(this.quill, parsedDelta, Delta)
-    }
-
     registerTextInputTextPasteListener() {
-        // Quill 2 only runs clipboard matchers over parsed HTML: `Clipboard.convert` returns a
-        // verbatim `insert(text)` whenever the clipboard carries no text/html, so the matcher
-        // below never sees a plain-text paste. Quill 1 pushed plain text through the DOM, so it
-        // did. That regressed the app's most ordinary way of sharing a task: "Copy link" uses
-        // navigator.clipboard.writeText, i.e. text/plain ONLY, so a copied task link pasted as
-        // raw URL text and only turned into a chip once the user typed a space (AT-2416).
-        // `GatedClipboard.convert` calls this hook to close the gap.
-        //
-        // Break lines are preserved here, unlike in the matcher below: an HTML text node's
-        // newlines are block structure that quill's own matchText has already normalised away,
-        // whereas a plain-text payload carries the user's real line breaks and collapsing them
-        // would mangle every multi-line paste into a comment.
-        this.quill.convertPastedPlainText = (text, formats) =>
-            this.parsePastedText(processPastedTextWithBreakLines, text, formats)
-
         this.quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
             if (delta.ops.length > 0) {
+                if (this.singleLine || this.disabledEnterKey) {
+                    delta.ops[0].insert = delta.ops[0].insert.replace(/(\r\n|\n|\r)/gm, '')
+                }
+
                 const { insert, attributes } = delta.ops[0]
-                return this.parsePastedText(processPastedText, insert, attributes)
+                const projectId = store.getState().quillEditorProjectId
+                const parsedDelta = processPastedText(
+                    insert,
+                    Delta,
+                    projectId,
+                    this.editorId,
+                    this.userIdAllowedToEditTags,
+                    false,
+                    '',
+                    this.quill,
+                    false,
+                    attributes,
+                    true
+                )
+                return parsedDelta
             }
             return delta
         })
     }
 
     registerNumericTextInputTextPasteListener() {
-        const keepDigitsOnly = text => text.replace(/\D/g, '')
-
-        // Same quill 2 gap as the hook above: without this, a plain-text clipboard bypasses the
-        // matcher entirely and letters land in a digits-only field. CustomTextInput3's keydown
-        // guard deliberately lets Ctrl+V through, so the matcher IS the validation.
-        this.quill.convertPastedPlainText = text => new Delta().insert(keepDigitsOnly(text))
-
         this.quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
             if (this.singleLine || this.disabledEnterKey) {
                 delta.ops[0].insert = delta.ops[0].insert.replace(/(\r\n|\n|\r)/gm, '')
             }
-            delta.ops[0].insert = keepDigitsOnly(delta.ops[0].insert)
+            delta.ops[0].insert = delta.ops[0].insert.replace(/\D/g, '')
             return delta
         })
     }
@@ -400,29 +376,6 @@ class Autoformat extends Module {
     }
 }
 
-// Quill 2 scopes an editor's registry to its `formats` option and THROWS
-// `[Parchment] Unable to create <name> blot` the moment a delta carries an embed outside it —
-// which abandons the update mid-flight and takes the caret with it (that is defect 1 of
-// AT-2416, hit through taskTagFormat). Quill 1's Scroll.insertAt skipped such a blot silently.
-// The pasted-text parser is shared by every text input but emits embeds that only SOME of them
-// whitelist: milestoneTag is in no text input's ALLOWED_FORMATS at all, and karma/attachment
-// only reach the editors whose `otherFormats` ask for them. Now that plain-text pastes are
-// parsed too, that stops being a corner case, so restore quill 1's behaviour: drop what this
-// particular editor cannot render rather than destroying the whole paste. The trigger-token
-// text these embeds are parsed from is an internal blob, so dropping beats showing it raw.
-function dropEmbedsTheEditorCannotRender(quillInstance, delta, DeltaClass) {
-    const scroll = quillInstance && quillInstance.scroll
-    if (!scroll || typeof scroll.query !== 'function') return delta
-
-    const supportedOps = delta.ops.filter(op => {
-        if (!op.insert || typeof op.insert === 'string') return true
-        const blotName = Object.keys(op.insert)[0]
-        return !blotName || scroll.query(blotName) != null
-    })
-
-    return supportedOps.length === delta.ops.length ? delta : new DeltaClass(supportedOps)
-}
-
 function getFormat(transform, match) {
     let format = {}
 
@@ -541,20 +494,7 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
 
                 const { type, objectId, url: objectUrl } = url
                 const isObjectNoteUrl = objectUrl && objectUrl.endsWith('/note')
-                // `taskTagFormat` renders the live task row and exists only in the NOTES
-                // editor's format whitelist (EditorToolbar) — text inputs are built with
-                // ALLOWED_FORMATS, which does not carry it. Quill 2 gives an editor a registry
-                // scoped to its `formats` option, so inserting the blot into a text input
-                // throws `[Parchment] Unable to create taskTagFormat blot` from inside this
-                // `text-change` listener; the update is abandoned mid-flight, no chip is
-                // created, and the caret placement quill had queued after it never runs.
-                // Quill 1's Scroll.insertAt bailed out silently on a non-whitelisted blot,
-                // which is why this only surfaced after the quill 2 migration (AT-2416).
-                // The pasted-text path has always made the same distinction through its
-                // `inNote` argument (processPastedText) — this is the typed/autoformat path
-                // catching up, and it matches the intent of the commit that introduced the
-                // task tag ("this is for in note have access directly to the task object").
-                if (type === 'task' && !isObjectNoteUrl && !isTextInputEditor(quillInstance)) {
+                if (type === 'task' && !isObjectNoteUrl) {
                     const taskTagFormat = { id: v4(), taskId: objectId, editorId, objectUrl }
                     ops.insert({
                         taskTagFormat,

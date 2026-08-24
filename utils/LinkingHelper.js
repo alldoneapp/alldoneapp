@@ -1,10 +1,6 @@
 import v4 from 'uuid/v4'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { REGEX_URL } from '../components/Feeds/Utils/HelperFunctions'
-import { setSelectedSidebarTab } from '../redux/actions'
-import { DV_TAB_ROOT_CONTACTS, DV_TAB_ROOT_NOTES, DV_TAB_ROOT_TASKS, DV_TAB_ROOT_GOALS } from './TabNavigationConstants'
-import store from '../redux/store'
-import NavigationService from '../utils/NavigationService'
 import { getAppUrlHost } from './backends/firestore'
 
 export const LINKED_OBJECT_TYPE_CONTACT = 'contact'
@@ -224,37 +220,27 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
     }
 }
 
-const checkDVLink = type => {
-    const { selectedNavItem } = store.getState()
-    if (type === 'task' && selectedNavItem.startsWith('TASK_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
-        NavigationService.navigate('Root')
-    } else if (type === 'people' && selectedNavItem.startsWith('USER_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS))
-        NavigationService.navigate('Root')
-    } else if (type === 'people' && selectedNavItem.startsWith('CONTACT_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS))
-        NavigationService.navigate('Root')
-    } else if (type === 'project' && selectedNavItem.startsWith('PROJECT_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
-        NavigationService.navigate('Root')
-    } else if (type === 'note' && selectedNavItem.startsWith('NOTE_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_NOTES))
-        NavigationService.navigate('Root')
-    } else if (type === 'goal' && selectedNavItem.startsWith('GOAL_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_GOALS))
-        NavigationService.navigate('Root')
-    } else if (type === 'chat' && selectedNavItem.startsWith('CHAT_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
-        NavigationService.navigate('Root')
-    } else if (type === 'skill' && selectedNavItem.startsWith('SKILL_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
-        NavigationService.navigate('Root')
-    } else if (type === 'assistant' && selectedNavItem.startsWith('ASSISTANT_')) {
-        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
-        NavigationService.navigate('Root')
-    }
-}
+// `checkDVLink` lived here until AT-2417 and is deliberately gone. It bounced every
+// detailed-view link through the matching ROOT LIST (`setSelectedSidebarTab` +
+// `NavigationService.navigate('Root')`) before the URL system navigated to the target,
+// which is why opening a note showed the notes list first. It was a June-2021 workaround
+// for react-navigation: back then `NavigationService.navigate` was a plain
+// `NavigationActions.navigate`, so navigating from a DV to another DV of the SAME route
+// name did not remount the screen or re-read its params — the bounce forced a real route
+// change. #7524 (June 2022) made `navigate` a `StackActions.reset` with a changing key,
+// and the Stage 2 rewrite kept that contract explicitly: NavigationService increments
+// `id` on every navigate and AppNavigator renders the screen under `key={id}`, so EVERY
+// navigation already remounts the subtree with fresh params. The bounce has therefore
+// been dead weight since 2022, while still costing a full mount of the wrong list — which
+// `URLsNotes.push`/`URLsTasks.push` etc. record as a junk browser-history entry, so Back
+// landed on that list instead of where the user came from.
+//
+// It was also driven by STALE state: nothing resets `selectedNavItem` to a `ROOT_*` value
+// when you leave a DV for a root list, so after opening any note once, `selectedNavItem`
+// stayed `NOTE_EDITOR` for the rest of the session and a note link clicked in the TASK
+// LIST still took the note-to-note branch. That is the exact reported symptom.
+//
+// Do not reintroduce it: a link to a DV must navigate straight to that DV.
 
 const formatUrl = plainUrl => {
     let execRes = null
@@ -327,6 +313,5 @@ export {
     isValidPreConfigTaskLink,
     getUrlObject,
     handleNestedLinks,
-    checkDVLink,
     getUrlParts,
 }

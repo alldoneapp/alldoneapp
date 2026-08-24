@@ -8,7 +8,7 @@ import { CREATE_TASK_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInput
 import SaveButton from '../Common/SaveButton'
 import OpenButton from '../../NewObjectsInMentions/Common/OpenButton'
 import NavigationService from '../../../utils/NavigationService'
-import { checkDVLink, getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getDvMainTabLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import { updateAssistant } from '../../../utils/backends/Assistants/assistantsFirestore'
@@ -42,7 +42,6 @@ export default function EditAssistantLink({ projectId, assistantData, closeModal
 
     const openDV = () => {
         closeModal()
-        checkDVLink('assistant')
         const linkUrl =
             objectUrl != null ? getPathname(objectUrl) : getDvMainTabLink(projectId, assistantData.uid, 'assistants')
         URLTrigger.processUrl(NavigationService, linkUrl)
