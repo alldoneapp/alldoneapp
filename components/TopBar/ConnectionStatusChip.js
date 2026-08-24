@@ -50,7 +50,7 @@ export const CONNECTION_CHIP_PRESENTATION = {
     },
 }
 
-export default function ConnectionStatusChip({ mobile = false }) {
+export default function ConnectionStatusChip() {
     const connectionHealth = useSelector(state => state.connectionHealth)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
@@ -68,13 +68,15 @@ export default function ConnectionStatusChip({ mobile = false }) {
             content={<ConnectionStatusModal connectionHealth={connectionHealth} closeModal={() => setIsOpen(false)} />}
         >
             <TouchableOpacity
-                style={[localStyles.chip, mobile && localStyles.mobileChip]}
+                style={localStyles.chip}
                 onPress={() => setIsOpen(open => !open)}
                 accessibilityLabel={translate(presentation.label)}
                 testID={`connection-status-chip-${connectionHealth}`}
             >
                 <Icon name={presentation.icon} size={20} color={presentation.color} />
-                {(mobile || !smallScreenNavigation) && (
+                {/* On phones the top bar has no room for a label; the icon opens the
+                    same explanation, so nothing is lost but the width. */}
+                {!smallScreenNavigation && (
                     <Text style={[localStyles.label, { color: presentation.color }]} numberOfLines={1}>
                         {translate(presentation.label)}
                     </Text>
@@ -98,10 +100,5 @@ const localStyles = StyleSheet.create({
     label: {
         ...styles.subtitle2,
         marginLeft: 6,
-    },
-    mobileChip: {
-        alignSelf: 'center',
-        marginLeft: 0,
-        marginBottom: 8,
     },
 })

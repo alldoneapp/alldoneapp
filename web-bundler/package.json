@@ -8,7 +8,7 @@
     },
     "scripts": {
         "prebuild": "node check-node.js",
-        "build": "webpack --config webpack.config.js --mode production && node ../ci/buildOtaBundle.js",
+        "build": "webpack --config webpack.config.js --mode production",
         "prebuild:analyze": "node check-node.js",
         "build:analyze": "ANALYZE_BUNDLE=1 webpack --config webpack.config.js --mode production",
         "predev": "node check-node.js",

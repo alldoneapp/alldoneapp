@@ -17,10 +17,8 @@ import HelperFunctions from './utils/HelperFunctions'
 import { startDailyAppReload } from './utils/DailyAppReload'
 import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from './utils/performance/performanceLogger'
 import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
-import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
 
 startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
-startAppBootConnectionWait()
 installStorePerformanceObserver(store)
 installBrowserPerformanceObservers()
 
