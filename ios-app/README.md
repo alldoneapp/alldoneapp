@@ -63,6 +63,21 @@ resource (ids `AB00DDEE...FF`).
 - Content flows edge-to-edge under the home indicator (AT-2321 reservation
   removed repo-wide; ChatInput lifts itself via useHomeIndicatorLift)
 
+## Over-the-air updates (working, self-hosted)
+
+Every web deploy publishes itself as an OTA bundle (`ci/buildOtaBundle.js`,
+runs inside web-bundler's npm build): `/ota/latest.json` + an immutable
+`/ota/bundle-<sha>.zip` on the same Firebase Hosting as the web app (CORS for
+`/ota/**` is in firebase.json — a capacitor:// origin cannot read it
+otherwise). The shell checks on boot/foreground (`utils/shellOtaUpdater.js`),
+downloads through `@capgo/capacitor-updater` (manual mode), applies with
+auto-rollback, and only `channel: 'ci'` bundles ever update (local dev builds
+stay put). Two hard-won invariants: `notifyAppReady()` fires at module
+evaluation — racing the 60s `appReadyTimeout` against full app bootstrap
+loses on slow boots and produces an endless download→revert loop — and the
+E2E was verified in the simulator including an update applied while logged
+in. Store releases are now only needed for native shell changes.
+
 ## Roadmap (in order)
 
 1. **Push notifications** — `@capacitor/push-notifications` via APNs/FCM,
