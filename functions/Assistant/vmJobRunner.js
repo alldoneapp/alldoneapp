@@ -2713,6 +2713,40 @@ async function superviseVmCommand({
     }
 }
 
+// Remove a dead sandbox from a session without deleting the session document itself. The document
+// also owns the per-thread FIFO queue, so deleting it here strands every queued pendingWebhooks
+// record. Lease/sandbox guards keep a late cleanup from clearing a newer run that already reused
+// the thread.
+async function clearDeadVmSessionSandbox(
+    sessionRef,
+    { sandboxId = null, leaseOwner = null, sessionData = {}, now = Date.now() } = {}
+) {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        if (!snapshot.exists) return false
+        const session = snapshot.data() || {}
+        if (sandboxId && session.sandboxId && session.sandboxId !== sandboxId) return false
+
+        const activeLeaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now
+        if (leaseOwner ? session.activeLeaseOwner !== leaseOwner : activeLeaseLive) return false
+
+        transaction.set(
+            sessionRef,
+            {
+                ...sessionData,
+                sandboxId: null,
+                status: 'failed',
+                activeLeaseOwner: null,
+                activeLeaseExpiresAt: null,
+                activeCorrelationId: null,
+                deadSandboxAt: now,
+            },
+            { merge: true }
+        )
+        return true
+    })
+}
+
 // After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
 // tasks hit a live VM) and record whether the latest run completed or failed. The scheduled
 // pauser pauses it once idle. If keep-alive can't be set, fall back to pausing now; if that
@@ -2788,7 +2822,11 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
             try {
                 await sandbox.kill()
             } catch (_) {}
-            await sessionRef.delete().catch(() => {})
+            await clearDeadVmSessionSandbox(sessionRef, {
+                sandboxId,
+                leaseOwner,
+                sessionData: baseDoc,
+            }).catch(() => {})
             return false
         }
     }
@@ -2846,14 +2884,36 @@ async function pauseIdleVmSessions() {
             await doc.ref.set({ status: 'paused', pausedAt: Date.now() }, { merge: true })
             console.log('💤 VM SESSIONS PAUSER: paused', { sandboxId: s.sandboxId })
         } catch (error) {
-            // Likely already killed (kill timeout) — clear so the thread starts fresh next time.
+            // Likely already killed (kill timeout) — clear only the sandbox fields. The session may
+            // own queued jobs even without a live lease, so deleting it would orphan those jobs.
             console.warn('💤 VM SESSIONS PAUSER: pause failed, clearing session', {
                 sandboxId: s.sandboxId,
                 error: error.message,
             })
-            await doc.ref.delete().catch(() => {})
+            await clearDeadVmSessionSandbox(doc.ref, { sandboxId: s.sandboxId }).catch(() => {})
         }
     }
+}
+
+async function deleteIdleVmSessionIfUnoccupied(sessionRef, cutoff, now = Date.now()) {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        if (!snapshot.exists) return null
+        const session = snapshot.data() || {}
+        const queue = Array.isArray(session.queue) ? session.queue : []
+        const activeLeaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now
+        if (
+            Number(session.lastUsedAt || 0) >= cutoff ||
+            queue.length > 0 ||
+            session.blockedByCorrelationId ||
+            activeLeaseLive
+        ) {
+            return null
+        }
+
+        transaction.delete(sessionRef)
+        return session
+    })
 }
 
 // Scheduled cleanup: delete paused sandboxes (and their session docs) idle longer than the TTL.
@@ -2864,7 +2924,11 @@ async function cleanupIdleVmSessions() {
     const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
     console.log('🧹 VM SESSIONS CLEANUP: idle sessions found', { count: snap.size })
     for (const doc of snap.docs) {
-        const s = doc.data()
+        // Delete the Firestore document transactionally before killing its sandbox. A new dispatch
+        // either lands before this transaction (and makes it skip) or recreates a clean session
+        // afterwards; in neither ordering can its queue be erased or its sandbox be killed.
+        const s = await deleteIdleVmSessionIfUnoccupied(doc.ref, cutoff).catch(() => null)
+        if (!s) continue
         if (s.sandboxId && e2bApiKey) {
             try {
                 await Sandbox.kill(s.sandboxId, { apiKey: e2bApiKey })
@@ -2872,7 +2936,6 @@ async function cleanupIdleVmSessions() {
                 console.warn('🧹 VM SESSIONS CLEANUP: kill failed', { sandboxId: s.sandboxId, error: error.message })
             }
         }
-        await doc.ref.delete().catch(() => {})
     }
 }
 
@@ -4579,6 +4642,8 @@ module.exports = {
         startVmJobHeartbeat,
         claimVmSessionLease,
         startVmSessionHeartbeat,
+        clearDeadVmSessionSandbox,
+        deleteIdleVmSessionIfUnoccupied,
         keepVmSessionAlive,
         isReusableVmSession,
         shouldResumeVmSession,
