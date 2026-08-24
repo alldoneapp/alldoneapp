@@ -38,8 +38,8 @@ const findTouch = (touchList, identifier) =>
  * @param {HTMLElement|null} node
  * @param {{
  *   enabled?: boolean,
- *   onPressStart: () => void,
- *   onPressMove?: (travel: {dx: number, dy: number, distance: number, insideButton: boolean}) => void,
+ *   onPressStart: (point: {clientX: number, clientY: number}|null) => void,
+ *   onPressMove?: (travel: {dx: number, dy: number, distance: number}) => void,
  *   onPressEnd: (release: {
  *     heldMs: number, releasedInside: boolean, cancelled: boolean,
  *     dx: number, dy: number, distance: number,
@@ -68,23 +68,19 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
         // the thing they can feel. See `pushToTalk.js` for the thresholds.
         let origin = null
 
-        const reportTravel = point => {
-            if (!activeGesture || !origin || !point || point.clientX == null) return
-            const dx = point.clientX - origin.clientX
-            const dy = point.clientY - origin.clientY
-            moveRef.current?.({
-                dx,
-                dy,
-                distance: Math.sqrt(dx * dx + dy * dy),
-                insideButton: isReleaseInsideRect(node.getBoundingClientRect(), point),
-            })
-        }
-
         const travelFrom = point => {
             if (!origin || !point || point.clientX == null) return { dx: 0, dy: 0, distance: 0 }
             const dx = point.clientX - origin.clientX
             const dy = point.clientY - origin.clientY
             return { dx, dy, distance: Math.sqrt(dx * dx + dy * dy) }
+        }
+
+        const reportTravel = point => {
+            if (!activeGesture || !origin || !moveRef.current || !point || point.clientX == null) return
+            // Travel only — deliberately no `getBoundingClientRect()` here. This runs on every
+            // pointermove, and a layout read at 60Hz to answer a question nobody asks (the cancel
+            // rule is a distance now, not a hit test) is a frame budget spent on nothing.
+            moveRef.current(travelFrom(point))
         }
 
         const beginGesture = (kind, id, event, point) => {
@@ -101,7 +97,11 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
             // A mic can sit inside a draggable task row, and @hello-pangea/dnd starts a drag 120ms
             // after touchstart. Holding the mic must not drag the row out from under it.
             event.stopPropagation()
-            startRef.current?.()
+            // The press point is handed to the caller so the hold overlay can draw its ring around
+            // the finger in viewport coordinates. It is the press ORIGIN, not the button's centre:
+            // the button grows into a timer chip the instant recording starts, so its centre moves,
+            // and a boundary that shifts under a held thumb is worse than one that is 10px off.
+            startRef.current?.(origin ? { ...origin } : null)
             return true
         }
 
@@ -162,7 +162,8 @@ export default function usePushToTalkGesture(node, { enabled = true, onPressStar
         }
         const onTouchMove = event => {
             if (activeGesture?.kind !== 'touch') return
-            const moved = findTouch(event.changedTouches, activeGesture.id) || findTouch(event.touches, activeGesture.id)
+            const moved =
+                findTouch(event.changedTouches, activeGesture.id) || findTouch(event.touches, activeGesture.id)
             if (!moved) return
             // Sliding to cancel must not scroll the page out from under the finger. touchstart
             // already prevented the default for this touch in most browsers; iOS is not reliable
