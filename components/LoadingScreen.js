@@ -2,7 +2,6 @@ import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import Spinner from './UIComponents/Spinner'
-import ConnectionStatusChip from './TopBar/ConnectionStatusChip'
 
 const LoadingScreen = ({ text, secondText }) => {
     return (
@@ -10,7 +9,6 @@ const LoadingScreen = ({ text, secondText }) => {
             <Spinner containerSize={200} spinnerSize={150} />
             <Text style={[localstyles.text, { paddingTop: 40 }, !secondText && { marginBottom: 30 }]}>{text}</Text>
             {!!secondText && <Text style={[localstyles.text, { marginBottom: 30 }]}>{secondText}</Text>}
-            <ConnectionStatusChip mobile />
         </View>
     )
 }
