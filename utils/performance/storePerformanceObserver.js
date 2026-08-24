@@ -1,5 +1,6 @@
 import { ROOT_ROUTES } from '../TabNavigationConstants'
 import { getAnalyticsPagePath } from '../analytics/analytics'
+import { startConnectionLatencySample } from '../connectionHealth'
 import { schedulePerformanceAfterPaint, startPerformanceTrace } from './performanceLogger'
 
 const PAGE_SETTLE_GRACE_MS = 250
@@ -24,6 +25,7 @@ export const installStorePerformanceObserver = store => {
         activePage.cancelAfterPaint?.()
         clearTimeout(activePage.settleTimer)
         clearTimeout(activePage.timeout)
+        activePage.finishConnectionWait()
         activePage.trace.end(phase, metadata)
         activePage = null
     }
@@ -60,6 +62,7 @@ export const installStorePerformanceObserver = store => {
         activePage = {
             pagePath,
             trace,
+            finishConnectionWait: startConnectionLatencySample('page_load'),
             timeout: setTimeout(() => closeActivePage('page_timeout', { outcome: 'timeout' }), PAGE_TRACE_TIMEOUT_MS),
             settleTimer: null,
             cancelAfterPaint: null,

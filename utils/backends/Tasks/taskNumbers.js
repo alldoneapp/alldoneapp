@@ -258,9 +258,15 @@ export const watchSidebarTasksAmount = (
 
     const dateEndToday = moment().endOf('day').valueOf()
 
+    // Workstreams are filled progressively after the task-count listeners have
+    // already started. Keep the mapping replaceable so that membership changes
+    // can reuse the task history below instead of recreating every Firestore
+    // listener for every project.
+    let currentWorkstreamsUsersIdsByProject = workstreamsUsersIdsByProject
     const usersTasksAmountByProject = {}
     const taskHistory = {}
     const observedTaskHistory = {}
+    const projectIndexById = new Map(projectIds.map((projectId, index) => [projectId, index]))
 
     projectIds.forEach(projectId => {
         taskHistory[projectId] = {}
@@ -270,6 +276,33 @@ export const watchSidebarTasksAmount = (
         usersTasksAmountByProject[projectId][uid]
             ? usersTasksAmountByProject[projectId][uid]++
             : (usersTasksAmountByProject[projectId][uid] = 1)
+    }
+
+    const decreaseUserCount = (projectId, uid) => {
+        if (!uid || !usersTasksAmountByProject[projectId]) return
+        const currentAmount = usersTasksAmountByProject[projectId][uid] || 0
+        usersTasksAmountByProject[projectId][uid] = Math.max(0, currentAmount - 1)
+    }
+
+    const getWorkstreamUserIds = (projectId, workstreamId) => {
+        const projectIndex = projectIndexById.get(projectId)
+        const workstreams = currentWorkstreamsUsersIdsByProject?.[projectIndex] || []
+        const workstream = workstreams.find(data => data.wsId === workstreamId)
+        return Array.isArray(workstream?.userIds) ? workstream.userIds : []
+    }
+
+    const setTaskWorkstreamUsers = (projectId, taskId, workstreamId) => {
+        const history = taskHistory[projectId]?.[taskId]
+        if (!history) return
+
+        const previousUserIds = history.wsUsersIds || []
+        const nextUserIds = workstreamId ? getWorkstreamUserIds(projectId, workstreamId) : []
+        if (history.workstreamId === workstreamId && isEqual(previousUserIds, nextUserIds)) return
+
+        previousUserIds.forEach(uid => decreaseUserCount(projectId, uid))
+        nextUserIds.forEach(uid => increaseUserCount(projectId, uid))
+        history.workstreamId = workstreamId
+        history.wsUsersIds = [...nextUserIds]
     }
 
     const packageAmountsInArray = () => {
@@ -316,7 +349,6 @@ export const watchSidebarTasksAmount = (
     projectIds.forEach((projectId, index) => {
         if (!usersTasksAmountByProject[projectId])
             usersTasksAmountByProject[projectId] = { loadedRegular: false, loadedObserved: false }
-        const workstreamsUsersIds = workstreamsUsersIdsByProject[index]
 
         globalWatcherUnsub[normalWatcherKeys[index]] = getDb()
             .collection(`items/${projectId}/tasks`)
@@ -330,31 +362,7 @@ export const watchSidebarTasksAmount = (
 
                 const needToCountInWorkstreamsUsers = task => {
                     const { userId } = task
-                    return userId.startsWith(WORKSTREAM_ID_PREFIX)
-                }
-
-                const increaseWorksreamsUsersCount = (taskId, taskWsId) => {
-                    let wsUsersIds = []
-                    for (let i = 0; i < workstreamsUsersIds.length; i++) {
-                        const wsData = workstreamsUsersIds[i]
-                        const { wsId, userIds } = wsData
-                        if (wsId === taskWsId) {
-                            wsUsersIds = userIds
-                            userIds.forEach(uid => {
-                                usersTasksAmountByProject[projectId][uid]
-                                    ? usersTasksAmountByProject[projectId][uid]++
-                                    : (usersTasksAmountByProject[projectId][uid] = 1)
-                            })
-                            break
-                        }
-                    }
-                    taskHistory[projectId][taskId].wsUsersIds = wsUsersIds
-                }
-
-                const decreaseWorksreamsUsersCount = wsUsersIds => {
-                    wsUsersIds.forEach(uid => {
-                        usersTasksAmountByProject[projectId][uid]--
-                    })
+                    return typeof userId === 'string' && userId.startsWith(WORKSTREAM_ID_PREFIX)
                 }
 
                 const changes = snapshot.docChanges()
@@ -365,30 +373,29 @@ export const watchSidebarTasksAmount = (
                     const lastUid = currentReviewerId
 
                     if (change.type === 'added') {
-                        taskHistory[projectId][taskId] = { previousUid: lastUid, /*wsIds: [],*/ wsUsersIds: [] }
+                        taskHistory[projectId][taskId] = {
+                            previousUid: lastUid,
+                            workstreamId: null,
+                            wsUsersIds: [],
+                        }
                         increaseUserCount(projectId, lastUid)
-                        if (needToCountInWorkstreamsUsers(task)) increaseWorksreamsUsersCount(taskId, userId)
+                        if (needToCountInWorkstreamsUsers(task)) setTaskWorkstreamUsers(projectId, taskId, userId)
                     } else if (change.type === 'removed') {
-                        if (taskHistory[projectId][taskId]) {
-                            usersTasksAmountByProject[projectId][lastUid]--
-                            decreaseWorksreamsUsersCount(taskHistory[projectId][taskId].wsUsersIds)
+                        const history = taskHistory[projectId][taskId]
+                        if (history) {
+                            decreaseUserCount(projectId, history.previousUid)
+                            setTaskWorkstreamUsers(projectId, taskId, null)
                             delete taskHistory[projectId][taskId]
                         }
                     } else {
-                        if (taskHistory[projectId][taskId]) {
-                            const previousUid = taskHistory[projectId][taskId].previousUid
-                            if (
-                                previousUid !== lastUid ||
-                                taskHistory[projectId][taskId].wsUsersIds.length > 0 !==
-                                    needToCountInWorkstreamsUsers(task)
-                            ) {
-                                decreaseWorksreamsUsersCount(taskHistory[projectId][taskId].wsUsersIds)
-                                taskHistory[projectId][taskId].wsUsersIds = []
-                                if (needToCountInWorkstreamsUsers(task)) increaseWorksreamsUsersCount(taskId, userId)
-                            }
+                        const history = taskHistory[projectId][taskId]
+                        if (history) {
+                            const previousUid = history.previousUid
+                            const nextWorkstreamId = needToCountInWorkstreamsUsers(task) ? userId : null
+                            setTaskWorkstreamUsers(projectId, taskId, nextWorkstreamId)
                             if (previousUid !== lastUid) {
-                                usersTasksAmountByProject[projectId][previousUid]--
-                                taskHistory[projectId][taskId].previousUid = lastUid
+                                decreaseUserCount(projectId, previousUid)
+                                history.previousUid = lastUid
                                 increaseUserCount(projectId, lastUid)
                             }
                         }
@@ -453,11 +460,44 @@ export const watchSidebarTasksAmount = (
                     updateSidebarNumbers(projectIds, packageAmountsInArray())
             })
     })
+
+    return {
+        // Reassign only the workstream-derived portion of each affected task's
+        // count. Direct and observed counts, listener ownership and confirmed
+        // sidebar values stay intact throughout the boot-time warm-up.
+        updateWorkstreamsUsersIdsByProject(nextWorkstreamsUsersIdsByProject) {
+            const oldUsersTasksAmountByProject = cloneDeep(usersTasksAmountByProject)
+            const previousWorkstreamsUsersIdsByProject = currentWorkstreamsUsersIdsByProject
+            currentWorkstreamsUsersIdsByProject = nextWorkstreamsUsersIdsByProject
+
+            projectIds.forEach((projectId, index) => {
+                if (
+                    isEqual(
+                        previousWorkstreamsUsersIdsByProject?.[index] || [],
+                        nextWorkstreamsUsersIdsByProject?.[index] || []
+                    )
+                ) {
+                    return
+                }
+                Object.entries(taskHistory[projectId] || {}).forEach(([taskId, history]) => {
+                    if (history.workstreamId) {
+                        setTaskWorkstreamUsers(projectId, taskId, history.workstreamId)
+                    }
+                })
+            })
+
+            if (!isEqual(oldUsersTasksAmountByProject, usersTasksAmountByProject)) {
+                updateSidebarNumbers(projectIds, packageAmountsInArray())
+            }
+        },
+    }
 }
 
-export const unwatchSidebarTasksAmount = watcherKeys => {
+export const clearSidebarTasksAmount = () => store.dispatch(setSidebarNumbers({ loading: false }))
+
+export const unwatchSidebarTasksAmount = (watcherKeys, { clearNumbers = true } = {}) => {
     watcherKeys.forEach(watcherKey => {
         globalWatcherUnsub[watcherKey]()
     })
-    store.dispatch(setSidebarNumbers({ loading: false }))
+    if (clearNumbers) clearSidebarTasksAmount()
 }
