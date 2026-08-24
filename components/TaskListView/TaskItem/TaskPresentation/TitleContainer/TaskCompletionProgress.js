@@ -26,6 +26,15 @@ import { colors } from '../../../../styles/global'
  * being avoided. It is still ONE `Animated.Value` — each line just interpolates its own window of it
  * — so the lines can never drift apart.
  *
+ * THROUGH THE TEXT, NOT UNDER IT. The bar is centred on the middle of each line. An earlier pass put
+ * it on the bottom edge of the ink, reasoning that a bar through the glyphs is a strike-through
+ * however green it is — but that argument confuses the POSITION with the MESSAGE. In production it
+ * read as a detached underline sitting visibly low, because an underline is exactly what it was.
+ * Colour, direction and the moving head are what say "completed" instead of "deleted"; the
+ * strike-through's PLACE is simply where a line across a title belongs. Both paths below therefore
+ * aim the bar's centre at the line's centre, and both subtract half the bar's thickness to get from
+ * that centre to the `top` they actually set.
+ *
  * Drawn as an absolutely-positioned, `pointerEvents="none"` sibling of the title text, following the
  * same rule as `TaskRoutingActivityOverlay`: decoration never joins the layout, so it cannot change
  * the row's height, reflow the title or swallow a tap.
@@ -60,9 +69,11 @@ const PULSE_HEAD_BLOOM = 2.4
 const TEXT_MARGIN_TOP = 5
 const SUBTASK_TEXT_MARGIN_TOP = 6
 
-// Where the bar sits inside a line box when the ink was not measured: low enough to read as an
-// underline rather than as a strike-through, high enough not to touch the line below.
-const FALLBACK_BASELINE_RATIO = 0.82
+// Where the bar's CENTRE sits inside a line box when the ink was not measured. The measured path
+// derives this from the real rect; with no measurement the middle of the line box is the best
+// available estimate of the same place, because CSS splits half-leading evenly above and below the
+// text, so the line box and the glyphs it holds are concentric.
+const FALLBACK_CENTER_RATIO = 0.5
 
 // `numberOfLines={3}` on the title, so the text can never occupy more than three lines however
 // long the task name is.
@@ -138,6 +149,11 @@ export const groupRectsIntoLines = (rects, baseRect) => {
         if (existing) {
             existing.left = Math.min(existing.left, rect.left)
             existing.right = Math.max(existing.right, rect.right)
+            // Both ends of the union, not just the bottom. Sub-pixel only — the grouping key rounds
+            // `top`, so every rect in a group is within a pixel of the others — but the midpoint is
+            // now what positions the bar, and taking `max(bottom)` while keeping whichever `top`
+            // happened to arrive first biases that midpoint downwards for no reason.
+            existing.top = Math.min(existing.top, rect.top)
             existing.bottom = Math.max(existing.bottom, rect.bottom)
         } else {
             lines.set(key, { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
@@ -148,11 +164,18 @@ export const groupRectsIntoLines = (rects, baseRect) => {
         .sort((a, b) => a.top - b.top)
         .slice(0, MAX_TITLE_LINES)
         .map(line => ({
-            // Relative to the overlay's own box, and straddling the BOTTOM of the line's ink rather
-            // than its middle: a bar through the glyphs is a strike-through however green it is.
-            // Centring it on the ink's bottom edge hugs the text like an underline and stays clear
-            // of the line below, whichever way the engine sizes its text-run rects.
-            top: line.bottom - baseRect.top - BAR_THICKNESS / 2,
+            // Relative to the overlay's own box, and centred on the MIDDLE of the line rather than
+            // on its bottom edge. Sitting the bar on the bottom edge made it an underline, which is
+            // what it looked like in production: detached from the text and visibly low. A progress
+            // bar that replaces a strike-through has to occupy the strike-through's place.
+            //
+            // The midpoint of the rect is the right target, and it is optically centred as well as
+            // geometrically: a range's client rect spans the line box, CSS splits half-leading
+            // evenly above and below the text, and the em box is therefore concentric with it. The
+            // x-height centre of lowercase text and the cap-height centre of mixed-case text both
+            // land within about a pixel of that midpoint at these font sizes, in either direction —
+            // so there is no constant nudge worth adding, and any nudge would be font-specific.
+            top: (line.top + line.bottom) / 2 - baseRect.top - BAR_THICKNESS / 2,
             left: line.left - baseRect.left,
             width: line.right - line.left,
         }))
@@ -216,7 +239,9 @@ export default function TaskCompletionProgress({ progress, pulse, opacity, measu
         // Fallback: no DOM, no id, or a measurement that came back empty. Spans the title column,
         // which is wider than the text but still unmistakably a completion sweep.
         Array.from({ length: resolveProgressLineCount(measuredHeight, lineHeight) }, (_unused, index) => ({
-            top: marginTop + index * lineHeight + lineHeight * FALLBACK_BASELINE_RATIO,
+            // Same rule as the measured path: `top` is the bar's own top edge, so the centre it is
+            // aiming for has half the bar's thickness taken off it.
+            top: marginTop + index * lineHeight + lineHeight * FALLBACK_CENTER_RATIO - BAR_THICKNESS / 2,
             left: 0,
             width: undefined,
         }))
