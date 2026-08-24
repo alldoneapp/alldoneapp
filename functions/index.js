@@ -4678,12 +4678,26 @@ exports.reconcileVmCloudRunLaunches = onSchedule(
     async () => {
         const { reconcileUnknownVmCloudRunLaunches } = require('./Assistant/vmJob')
         const { reconcileVmWorkerTerminations } = require('./Assistant/vmJobReconciliation')
-        const [launches, workers] = await Promise.all([
+        const { reconcileOrphanedQueuedVmJobs } = require('./Assistant/vmThreadQueue')
+        const [launches, workers, orphanedQueues] = await Promise.all([
             reconcileUnknownVmCloudRunLaunches(),
             reconcileVmWorkerTerminations(),
+            reconcileOrphanedQueuedVmJobs(),
         ])
-        if (launches.checked || launches.errors || workers.checked || workers.reconciled || workers.errors) {
-            console.log('🖥️ VM JOB: Cloud Run reconciliation complete', { launches, workers })
+        if (
+            launches.checked ||
+            launches.errors ||
+            workers.checked ||
+            workers.reconciled ||
+            workers.errors ||
+            orphanedQueues.reconciled ||
+            orphanedQueues.errors
+        ) {
+            console.log('🖥️ VM JOB: Cloud Run reconciliation complete', {
+                launches,
+                workers,
+                orphanedQueues,
+            })
         }
     }
 )

@@ -48,6 +48,7 @@ import { scrollDocumentToTop } from './utils/scrollUtils'
 import { startVirtualKeyboardViewport } from './utils/virtualKeyboard'
 import { installEscapeStack } from './utils/escapeStack'
 import { installConnectionStateListener } from './utils/connectionState'
+import { installShellOtaUpdater } from './utils/shellOtaUpdater'
 import { installConnectionHealthMonitor } from './utils/connectionHealth'
 import { installAppResumeListener } from './utils/appResume'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
@@ -228,6 +229,9 @@ export class AppContainer extends React.Component {
         // `connectionState` redux slice from the browser online/offline events.
         // Installed here for the same reason as the listeners above.
         this.stopConnectionStateListener = installConnectionStateListener()
+        // iOS Capacitor shell: confirm this boot as healthy (rollback guard)
+        // and track web deploys over the air. No-op everywhere else.
+        installShellOtaUpdater()
         // Connection health (PT-4660): `connectionState` above only reports what the
         // BROWSER believes. These two add what the app can actually prove — a resume
         // signal that coalesces visibilitychange/pageshow/focus into one event, and a

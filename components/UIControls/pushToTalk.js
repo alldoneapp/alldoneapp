@@ -35,10 +35,54 @@ export const PUSH_TO_TALK_HOLD_MS = 400
  */
 export const PUSH_TO_TALK_MIN_RECORDING_MS = 1000
 
+/**
+ * How far the finger has to travel from where it pressed before the take is thrown away (AT-2408).
+ *
+ * This replaces "released outside the button" as the cancel rule, and the change is the whole
+ * point. The mic is a 24px target under a thumb roughly twice that wide, so the old rule fired on a
+ * few pixels of drift — invisibly, because nothing was drawn and nothing moved. Silently discarding
+ * a sentence someone just spoke is the worst outcome this feature has, and it was the EASIEST one
+ * to reach.
+ *
+ * 96px is deliberately larger than a thumb: it cannot be crossed by holding still, and the ring
+ * drawn at exactly this radius (`RambleHoldOverlay`) is the promise that the boundary is where the
+ * user can see it. The two must stay in step — the ring reads the constant, it does not repeat it.
+ */
+export const PUSH_TO_TALK_CANCEL_RADIUS = 96
+
+/**
+ * Travel below this reports zero cancel progress. A finger resting on a screen jitters by a few
+ * pixels, and a ring that shimmers while the user holds perfectly still reads as broken.
+ */
+export const PUSH_TO_TALK_CANCEL_DEAD_ZONE = 16
+
 export const PUSH_TO_TALK_KEEP_RECORDING = 'keep-recording'
 export const PUSH_TO_TALK_SUBMIT = 'submit'
 export const PUSH_TO_TALK_STOP = 'stop'
 export const PUSH_TO_TALK_DISCARD = 'discard'
+
+/**
+ * How far into the cancel gesture the finger is, 0..1, for the overlay to animate against.
+ *
+ * Pure and exported so the visuals and the decision below can never disagree about where the
+ * boundary is: 1 means "let go now and it is gone", and it is reached at exactly the radius
+ * `isCancelArmed` uses.
+ */
+export function resolveCancelProgress(
+    distance,
+    { radius = PUSH_TO_TALK_CANCEL_RADIUS, deadZone = PUSH_TO_TALK_CANCEL_DEAD_ZONE } = {}
+) {
+    if (!Number.isFinite(distance) || distance <= deadZone) return 0
+    if (distance >= radius) return 1
+    return (distance - deadZone) / (radius - deadZone)
+}
+
+/**
+ * Whether releasing right now would discard the take.
+ */
+export function isCancelArmed(distance, { radius = PUSH_TO_TALK_CANCEL_RADIUS } = {}) {
+    return Number.isFinite(distance) && distance >= radius
+}
 
 /**
  * What a released press means.
@@ -52,18 +96,22 @@ export const PUSH_TO_TALK_DISCARD = 'discard'
  * @param {{
  *   heldMs: number,             // press-down to release
  *   releasedInside: boolean,    // was the pointer still over the button at release
+ *   distance?: number,          // how far the finger travelled from where it pressed
  *   cancelled?: boolean,        // the browser took the gesture away (scroll, pointercancel)
  *   pressStartedRecording: boolean, // did THIS press start the recording, or was one already running
  *   holdThresholdMs?: number,
+ *   cancelRadius?: number,
  * }} press
  * @returns {'keep-recording'|'submit'|'stop'|'discard'}
  */
 export function resolvePushToTalkRelease({
     heldMs,
     releasedInside,
+    distance,
     cancelled = false,
     pressStartedRecording,
     holdThresholdMs = PUSH_TO_TALK_HOLD_MS,
+    cancelRadius = PUSH_TO_TALK_CANCEL_RADIUS,
 }) {
     // A press that landed on an ALREADY-RUNNING recording is the second tap of the toggle. It can
     // never submit: the user started that take by tapping, so they own the send button too, and
@@ -78,13 +126,26 @@ export function resolvePushToTalkRelease({
     // worst outcome available, so a cancelled press always ends the take it started.
     if (cancelled) return PUSH_TO_TALK_DISCARD
 
+    // Slide-to-cancel: the finger travelled out of the ring drawn around the press point (AT-2408).
+    // The whole take is dropped — nothing is uploaded, nothing is transcribed, no Gold is spent.
+    //
+    // Measured travel is checked BEFORE the hold threshold on purpose. Once a ring is on screen
+    // promising that sliding out of it cancels, a FAST flick out has to cancel too; the alternative
+    // is a mic left hot after the user visibly performed the cancel gesture, just quickly. That is
+    // safe to do here precisely because 96px is a deliberate movement — the old "left the 24px
+    // button" test could never have been trusted this way, which is why it stayed below the
+    // threshold and why a sloppy tap used to be the only thing it protected.
+    const measuredTravel = distance != null
+    if (measuredTravel && isCancelArmed(distance, { radius: cancelRadius })) return PUSH_TO_TALK_DISCARD
+
     // Short press: a tap. The recording this press started keeps running, and the next tap stops
     // it. This is the pre-existing behaviour, reached by a different route.
     if (heldMs < holdThresholdMs) return PUSH_TO_TALK_KEEP_RECORDING
 
-    // Slide-off-to-cancel: the finger left the button before letting go. The whole take is dropped
-    // — nothing is uploaded, nothing is transcribed, no Gold is spent.
-    if (!releasedInside) return PUSH_TO_TALK_DISCARD
+    // Fallback for a caller that cannot measure travel at all (no coordinates on the event). Keeps
+    // the pre-AT-2408 rule and its exact position in the order, so nothing that used to work
+    // changes shape just because a synthetic release carries no point.
+    if (!measuredTravel && !releasedInside) return PUSH_TO_TALK_DISCARD
 
     return PUSH_TO_TALK_SUBMIT
 }
