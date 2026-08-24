@@ -494,7 +494,20 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
 
                 const { type, objectId, url: objectUrl } = url
                 const isObjectNoteUrl = objectUrl && objectUrl.endsWith('/note')
-                if (type === 'task' && !isObjectNoteUrl) {
+                // `taskTagFormat` renders the live task row and exists only in the NOTES
+                // editor's format whitelist (EditorToolbar) — text inputs are built with
+                // ALLOWED_FORMATS, which does not carry it. Quill 2 gives an editor a registry
+                // scoped to its `formats` option, so inserting the blot into a text input
+                // throws `[Parchment] Unable to create taskTagFormat blot` from inside this
+                // `text-change` listener; the update is abandoned mid-flight, no chip is
+                // created, and the caret placement quill had queued after it never runs.
+                // Quill 1's Scroll.insertAt bailed out silently on a non-whitelisted blot,
+                // which is why this only surfaced after the quill 2 migration (AT-2416).
+                // The pasted-text path has always made the same distinction through its
+                // `inNote` argument (processPastedText) — this is the typed/autoformat path
+                // catching up, and it matches the intent of the commit that introduced the
+                // task tag ("this is for in note have access directly to the task object").
+                if (type === 'task' && !isObjectNoteUrl && !isTextInputEditor(quillInstance)) {
                     const taskTagFormat = { id: v4(), taskId: objectId, editorId, objectUrl }
                     ops.insert({
                         taskTagFormat,
