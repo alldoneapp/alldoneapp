@@ -1777,6 +1777,89 @@ describe('VM session isolation', () => {
             { merge: true }
         )
     })
+
+    test('preserves the thread queue when both keep-alive and pause fail', async () => {
+        const transaction = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    sandboxId: 'sandbox-1',
+                    activeLeaseOwner: 'this-execution',
+                    queue: ['queued-job'],
+                    queueLength: 1,
+                }),
+            })),
+            set: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+        const sessionRef = { delete: jest.fn() }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {
+                throw new Error('sandbox disappeared')
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 404,
+            text: async () => 'sandbox not found',
+        }))
+
+        try {
+            await expect(
+                __private__.keepVmSessionAlive(
+                    sessionRef,
+                    sandbox,
+                    {
+                        agent: 'claude',
+                        vmTemplate: 'claude-template',
+                        projectId: 'project-1',
+                        objectId: 'task-1',
+                        objectType: 'tasks',
+                        correlationId: 'failed-job',
+                    },
+                    'test-key',
+                    'this-execution',
+                    'failed'
+                )
+            ).resolves.toBe(false)
+        } finally {
+            global.fetch = originalFetch
+        }
+
+        expect(sessionRef.delete).not.toHaveBeenCalled()
+        expect(transaction.set).toHaveBeenCalledWith(
+            sessionRef,
+            expect.objectContaining({
+                sandboxId: null,
+                status: 'failed',
+                activeLeaseOwner: null,
+                activeCorrelationId: null,
+                lastRunStatus: 'failed',
+            }),
+            { merge: true }
+        )
+    })
+
+    test('does not clean up an old session while it still owns queued work', async () => {
+        const transaction = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ lastUsedAt: 1000, queue: ['queued-job'], queueLength: 1 }),
+            })),
+            delete: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+
+        await expect(__private__.deleteIdleVmSessionIfUnoccupied({}, 2000, 3000)).resolves.toBeNull()
+        expect(transaction.delete).not.toHaveBeenCalled()
+    })
 })
 
 describe('VM runner artifact presentation', () => {
