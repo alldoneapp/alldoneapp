@@ -144,21 +144,34 @@ describe('groupRectsIntoLines', () => {
         expect(lines).toHaveLength(1)
     })
 
-    it('sits the bar under the ink rather than through it', () => {
+    it('runs the bar through the vertical centre of the line, not along its bottom', () => {
         const lines = groupRectsIntoLines([rect(100, 50, 200, 24)], base)
 
-        // Line ink runs 100→124. A bar centred on 112 would be a strike-through however green it
-        // is; centring it on the ink's bottom edge (24 below the overlay top, less half the bar's
-        // 3px) hugs the text like an underline, which is what reads as progress.
-        expect(lines[0].top).toBeCloseTo(24 - 1.5)
+        // The user-visible bug this pins: the line box runs 100→124, so its centre is 12 below the
+        // overlay top and the bar's own top edge is that less half its 3px thickness. Sitting it on
+        // the bottom edge (22.5) made it a detached underline.
+        expect(lines[0].top).toBeCloseTo(12 - 1.5)
+        expect(lines[0].top + 3 / 2).toBeCloseTo(12)
     })
 
-    it('keeps a line clear of the one below it', () => {
-        const [first, second] = groupRectsIntoLines([rect(100, 50, 200, 18), rect(124, 50, 180, 18)], base)
+    it('centres on the full union of the line, not on whichever rect arrived first', () => {
+        // One line, two boxes of slightly different height and offset — a chip beside plain words.
+        // The union is 100→124, so the centre is 12. Taking max(bottom) while keeping the first
+        // rect's top would put it at 12.2: sub-pixel, but a bias with nothing behind it.
+        const lines = groupRectsIntoLines([rect(100.4, 50, 120, 21.6), rect(100, 125, 200, 24)], base)
 
-        // The bar of line one must not land on top of line two's glyphs — 3px tall, and the gap
-        // between the two ink boxes here is 6px.
-        expect(first.top + 3).toBeLessThan(second.top)
+        expect(lines).toHaveLength(1)
+        expect(lines[0].top + 3 / 2).toBeCloseTo(12)
+    })
+
+    it('keeps each line centred on its own line box when the title wraps', () => {
+        const [first, second] = groupRectsIntoLines([rect(100, 50, 200, 24), rect(124, 50, 180, 24)], base)
+
+        // Centres 12 and 36 — one line height apart, each through its own text rather than both
+        // drifting towards the bottom of the block.
+        expect(first.top + 3 / 2).toBeCloseTo(12)
+        expect(second.top + 3 / 2).toBeCloseTo(36)
+        expect(second.top - first.top).toBeCloseTo(24)
     })
 
     it('orders lines top to bottom and never exceeds the three the title can show', () => {
@@ -267,13 +280,28 @@ describe('TaskCompletionProgress', () => {
             expect(barStyle(tree, 1).top - barStyle(tree, 0).top).toBe(22)
         })
 
-        it('sits the bar low in the line rather than through it', () => {
-            // Even with no measurement the bar must not land on the middle of the glyphs, which is
-            // the strike-through this pass exists to remove.
+        it('centres the bar in the line box even with nothing measured', () => {
+            // The fallback must agree with the measured path, or a row that fails to measure would
+            // show the underline the measured path no longer draws.
             const top = barStyle(renderProgress({ measuredHeight: 24 })).top
 
-            expect(top).toBeGreaterThan(5 + 24 / 2)
-            expect(top).toBeLessThan(5 + 24)
+            // Text starts 5 below the overlay (TEXT_MARGIN_TOP) on a 24px line, so the centre is
+            // 5 + 12 and the bar's top edge is half its 3px thickness above it.
+            expect(top + 3 / 2).toBeCloseTo(5 + 12)
+        })
+
+        it('centres every line of a wrapped fallback title on its own line box', () => {
+            const tree = renderProgress({ measuredHeight: 72 })
+            const centers = [0, 1, 2].map(index => barStyle(tree, index).top + 3 / 2)
+
+            expect(centers).toEqual([5 + 12, 5 + 36, 5 + 60])
+        })
+
+        it('centres a subtask bar on the smaller body2 line box', () => {
+            const top = barStyle(renderProgress({ measuredHeight: 22, isSubtask: true })).top
+
+            // 22px line height, 6px top margin.
+            expect(top + 3 / 2).toBeCloseTo(6 + 11)
         })
 
         it('survives an element id that resolves to nothing', () => {
@@ -358,6 +386,33 @@ describe('TaskCompletionProgress', () => {
             // hundred pixels under empty space on a desktop row.
             expect(bar.style.width).toBe('100px')
             expect(bar.style.left).toBe('20px')
+        })
+
+        it('runs the bar through the middle of the measured line, not under it', () => {
+            const bar = query(renderInDom(), 'task-completion-progress-bar')[0]
+
+            // The production bug, pinned on the production path. The line box runs 10→26, so its
+            // centre is 18 and the bar's top edge is 16.5. The underline this replaced sat at 24.5.
+            expect(bar.style.top).toBe('16.5px')
+        })
+
+        it('carries the head at the same height as the bar it leads', () => {
+            const node = renderInDom()
+            const bar = query(node, 'task-completion-progress-bar')[0]
+            const head = query(node, 'task-completion-progress-head')[0]
+
+            // The head is thicker than the bar, so it is offset by half the difference to keep the
+            // two concentric. A head that drifted off the bar would read as two separate marks.
+            expect(parseFloat(head.style.top) + 5 / 2).toBeCloseTo(parseFloat(bar.style.top) + 3 / 2)
+        })
+
+        it('centres each wrapped line on its own line box', () => {
+            document.createRange = () => ({ selectNodeContents: () => {}, getClientRects: () => TWO_LINES })
+            const bars = query(renderInDom(), 'task-completion-progress-bar')
+
+            // Line boxes 10→26 and 34→50: centres 18 and 42, so tops 16.5 and 40.5. Both centred on
+            // their own text rather than both sinking towards the bottom of the block.
+            expect([...bars].map(bar => bar.style.top)).toEqual(['16.5px', '40.5px'])
         })
 
         it('draws one leading head per measured line', () => {
