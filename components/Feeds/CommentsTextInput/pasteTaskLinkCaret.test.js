@@ -245,4 +245,76 @@ describe('AT-2416 pasting a task link keeps the caret behind the link', () => {
             expect(quill.getText()).toBe('alpha xy beta\n')
         })
     })
+
+    describe('defect 3 — a text/plain clipboard never reached the app’s paste matcher', () => {
+        // This is how the app's own "Copy link" button fills the clipboard
+        // (copyTextToClipboard -> navigator.clipboard.writeText writes text/plain only).
+        const copyLinkClipboard = { text: TASK_URL }
+
+        it('turns a task link copied with "Copy link" into a chip on paste, not on the next space', () => {
+            const quill = buildEditor('input')
+            quill.setText('alpha beta gamma')
+
+            pasteInto(quill, { at: 6, ...copyLinkClipboard })
+
+            const chip = embedIndexOf(quill, 'url')
+            expect(chip).toBe(6)
+            expect(quill.getSelection().index).toBe(chip + 2)
+            expect(quill.getText(chip + 2)).toBe('beta gamma\n')
+        })
+
+        it('does the same in an empty input', () => {
+            const quill = buildEditor('input')
+
+            pasteInto(quill, { at: 0, ...copyLinkClipboard })
+
+            expect(embedIndexOf(quill, 'url')).toBe(0)
+            expect(quill.getSelection().index).toBe(2)
+        })
+
+        it('keeps the line breaks of a multi-line plain-text paste', () => {
+            const quill = buildEditor('input')
+            const multiline = 'line one\nline two\nline three'
+
+            pasteInto(quill, { at: 0, text: multiline })
+
+            // processPastedText (the HTML-text-node parser) splits on /\s/ and rejoins with
+            // single spaces, so the plain-text hook has to use the break-line-preserving
+            // variant or every multi-line paste into a comment collapses onto one line.
+            expect(quill.getText()).toBe(`${multiline}\n`)
+            expect(quill.getSelection().index).toBe(multiline.length)
+        })
+
+        it('keeps ordinary plain text and its spacing untouched', () => {
+            const quill = buildEditor('input')
+            quill.setText('alpha beta')
+
+            pasteInto(quill, { at: 6, text: 'one two three ' })
+
+            expect(quill.getText()).toBe('alpha one two three beta\n')
+            expect(quill.getSelection().index).toBe(20)
+        })
+
+        it('leaves the notes editor’s own paste pipeline alone', () => {
+            const quill = buildEditor('note')
+            quill.setText('alpha ')
+
+            pasteInto(quill, { at: 6, ...copyLinkClipboard })
+
+            // The notes editor sets no hook (quill.enablePasteListener is false there and it
+            // attaches its own markdown/html paste handling), so text stays verbatim.
+            expect(quill.getText()).toBe(`alpha ${TASK_URL}\n`)
+        })
+
+        it('degrades instead of throwing when the parser emits a blot this editor cannot render', () => {
+            const quill = buildEditor('input')
+            quill.setText('alpha ')
+
+            // milestoneTag is in no text input's ALLOWED_FORMATS; before the guard this threw
+            // ParchmentError and destroyed the whole paste along with the caret.
+            expect(() => pasteInto(quill, { at: 6, text: 'qM54HU5TsTOe3YwSprint7qM54HU5TsTOe3YwMS1' })).not.toThrow()
+            expect(embedIndexOf(quill, 'milestoneTag')).toBe(-1)
+            expect(quill.getSelection()).not.toBeNull()
+        })
+    })
 })
