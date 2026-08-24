@@ -11,6 +11,7 @@ const { buildWorkflowStepAdvanceUpdate, isAiWorkflowStep, buildAiStepPrompt } = 
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
+const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/vmThreadQueue')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
@@ -134,7 +135,7 @@ const buildAwaitingExecutionFields = ({ assistantRunIds = [], vmCorrelationIds =
 const findLiveTaskAiWork = async (projectId, taskId, now = Date.now()) => {
     const [assistantRunIds, vmCorrelationIds] = await Promise.all([
         findActiveAssistantRuns(projectId, taskId, now),
-        findUnsettledVmJobs(projectId, taskId),
+        findUnsettledVmJobs(projectId, taskId, now),
     ])
 
     return { assistantRunIds, vmCorrelationIds, isLive: assistantRunIds.length > 0 || vmCorrelationIds.length > 0 }
@@ -809,19 +810,49 @@ const findActiveAssistantRuns = async (projectId, taskId, now = Date.now()) => {
  * memory, because a task only ever has a handful of VM jobs and a composite index would have to be
  * created by hand (see the Firestore indexes notes in CLAUDE.md).
  */
-const findUnsettledVmJobs = async (projectId, taskId) => {
+const findUnsettledVmJobs = async (projectId, taskId, now = Date.now()) => {
     try {
         const snapshot = await admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get()
 
-        return snapshot.docs
+        const candidates = snapshot.docs.filter(doc => {
+            const job = doc.data() || {}
+            return (
+                job.kind === 'vm_job' &&
+                job.projectId === projectId &&
+                (job.objectType || 'tasks') === 'tasks' &&
+                !VM_TERMINAL_STATUSES.includes(job.status)
+            )
+        })
+
+        // `queued` is only live while the authoritative vmSessions FIFO still references it. An
+        // older runner could lose that queue by deleting a dead sandbox's whole session document;
+        // treating the surviving pendingWebhooks record as active then suppresses every later AI
+        // workflow prompt on the task forever. Admission writes the session first, so this check is
+        // safe even for a newly-created queued job.
+        const queuedCandidates = candidates.filter(doc => (doc.data() || {}).status === 'queued')
+        let session = null
+        if (queuedCandidates.length > 0) {
+            const sessionDoc = await admin
+                .firestore()
+                .doc(`vmSessions/${vmThreadKey(projectId, taskId)}`)
+                .get()
+            session = sessionDoc.exists ? sessionDoc.data() || {} : null
+        }
+
+        return candidates
             .filter(doc => {
                 const job = doc.data() || {}
-                return (
-                    job.kind === 'vm_job' &&
-                    job.projectId === projectId &&
-                    (job.objectType || 'tasks') === 'tasks' &&
-                    !VM_TERMINAL_STATUSES.includes(job.status)
-                )
+                if (job.status !== 'queued') return true
+                const correlationId = job.correlationId || doc.id
+                const referenced = isQueuedVmJobReferencedBySession(session, correlationId, now)
+                if (!referenced) {
+                    console.warn('[workflowAiStep] Ignoring orphaned queued VM job', {
+                        projectId,
+                        taskId,
+                        correlationId,
+                    })
+                }
+                return referenced
             })
             .map(doc => doc.id)
     } catch (error) {
@@ -960,7 +991,7 @@ const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskI
             if (activeAssistantRunIds.length > 0 && !assistantTimedOut) continue
 
             const correlationIds = run.awaitingAnyTaskVm
-                ? await findUnsettledVmJobs(run.projectId, run.taskId)
+                ? await findUnsettledVmJobs(run.projectId, run.taskId, now)
                 : run.awaitingCorrelationIds
             const stillRunning = await filterUnsettledVmJobs(correlationIds)
             const timedOut = now >= resolveAwaitingDeadline(run, stillRunning)
