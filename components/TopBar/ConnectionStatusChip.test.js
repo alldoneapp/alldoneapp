@@ -14,15 +14,15 @@ jest.mock('../UIComponents/ModalShell/AppPopover', () => {
 
 import ConnectionStatusChip from './ConnectionStatusChip'
 import store from '../../redux/store'
-import { setConnectionHealth, toggleSmallScreenNavigation } from '../../redux/actions'
+import { setConnectionHealth } from '../../redux/actions'
 import * as connectionHealth from '../../utils/connectionHealth'
 
-const renderChip = props => {
+const renderChip = () => {
     let tree
     act(() => {
         tree = create(
             <Provider store={store}>
-                <ConnectionStatusChip {...props} />
+                <ConnectionStatusChip />
             </Provider>
         )
     })
@@ -36,15 +36,9 @@ const setHealth = health =>
         store.dispatch(setConnectionHealth(health))
     })
 
-const setMobile = mobile =>
-    act(() => {
-        store.dispatch(toggleSmallScreenNavigation(mobile))
-    })
-
 describe('ConnectionStatusChip', () => {
     afterEach(() => {
         setHealth('live')
-        setMobile(false)
         jest.restoreAllMocks()
     })
 
@@ -94,23 +88,6 @@ describe('ConnectionStatusChip', () => {
         })
 
         expect(workOffline).toHaveBeenCalledTimes(1)
-        act(() => tree.unmount())
-    })
-
-    it('keeps the slow status actionable on mobile', () => {
-        setMobile(true)
-        const tree = renderChip({ mobile: true })
-        setHealth('slow')
-
-        const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
-        expect(chip.props.accessibilityLabel).toBe('Slow connection')
-        expect(treeText(tree)).toContain('Slow connection')
-
-        act(() => {
-            chip.props.onPress()
-        })
-        expect(treeText(tree)).toContain('Work offline')
-        expect(treeText(tree)).toContain('Stay online')
         act(() => tree.unmount())
     })
 

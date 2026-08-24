@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 
 import WordsList from './WordsList'
 import LeftTagsAndIcons from './LeftTagsAndIcons'
+import { getTextStartMarkerId } from './textRangeMarkers'
 
 export default function Content({
     task,
@@ -49,6 +50,11 @@ export default function Content({
                 activeCalendarStyle={activeCalendarStyle}
                 task={task}
             />
+            {/* Start of the title TEXT. Empty, hidden and zero-size, exactly like the end marker
+                below — the two exist so that a DOM range can be drawn around the words WITHOUT
+                the leading chips above, which are plain siblings here because `LeftTagsAndIcons`
+                renders a fragment. See `textRangeMarkers.js`. */}
+            {elementId && <View style={{ visibility: 'hidden' }} nativeID={getTextStartMarkerId(elementId)} />}
             <WordsList
                 numberOfLines={activeCalendarStyle ? 1 : numberOfLines}
                 wrapText={wrapText}
@@ -65,6 +71,9 @@ export default function Content({
                 inFeedComment={inFeedComment}
                 wordList={wordList}
             />
+            {/* End of the title text, and an end-of-text position probe in its own right:
+                `TasksHelper.showWrappedTaskEllipsis` reads this element's `bottom`/`left` to decide
+                whether the title overflowed, so it must stay LAST and stay zero-size. */}
             {elementId && <View style={{ visibility: 'hidden' }} nativeID={elementId} />}
         </View>
     )

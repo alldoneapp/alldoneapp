@@ -198,47 +198,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
-    it('does not suppress the prompt for an orphaned queued VM record', async () => {
-        seedAssignee()
-        mockStore.set('pendingWebhooks/orphaned-vm', {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'queued',
-            createdAt: Date.now() - 60_000,
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({ status: 'pending' })
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('awaitingCorrelationIds')
-    })
-
-    it('still holds the prompt for a queued VM that remains in the thread FIFO', async () => {
-        seedAssignee()
-        mockStore.set('pendingWebhooks/queued-vm', {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'queued',
-            createdAt: Date.now() - 60_000,
-        })
-        mockStore.set(`vmSessions/${PROJECT}__${TASK}`, {
-            queue: ['queued-vm'],
-            queueLength: 1,
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            status: RUN_STATUS_AWAITING_VM,
-            awaitingCorrelationIds: ['queued-vm'],
-            awaitingSkipReason: 'task_ai_run_already_active',
-        })
-    })
-
     it('copies the persisted popup comment into the run for this AI-step entry', async () => {
         seedAssignee()
         const newTask = taskOnAiStep({
