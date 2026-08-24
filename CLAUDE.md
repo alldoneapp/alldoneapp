@@ -783,12 +783,29 @@ title beat was a strike-through.
 **A progress bar, not a strike-through — the geometry is the same, the message is not.** The first
 two passes drew a dark `Text02` line through the middle of the title. It was accurate and it read as
 _deletion_: a struck-out row is the visual language of "this was removed". `TaskCompletionProgress`
-therefore keeps the measurement and inverts the metaphor — a 3px `UtilityGreen200` bar centred on
-the **bottom edge** of each line's ink (an underline hugging the text, never through the glyphs),
-filling 0→100% with a lighter `UtilityGreen150` glowing head at the leading edge. Deliberately **not**
-a track-plus-fill and deliberately **no percentage numbers**: a grey track announces a UI control in
-a list of prose, and a `0% → 100%` badge is unreadable at this speed while adding a second thing to
+therefore keeps the measurement and inverts the metaphor — a 3px `UtilityGreen200` bar filling
+0→100% with a lighter `UtilityGreen150` glowing head at the leading edge. Deliberately **not** a
+track-plus-fill and deliberately **no percentage numbers**: a grey track announces a UI control in a
+list of prose, and a `0% → 100%` badge is unreadable at this speed while adding a second thing to
 look at.
+
+**The bar goes THROUGH the text, and the intermediate pass that put it under the text was wrong.**
+Having argued that "a bar through the glyphs is a strike-through however green it is", that pass
+centred the bar on the **bottom edge** of each line's ink. It shipped, and the immediate dogfooding
+verdict was _"der grüne Strich ist nicht mittig zum Text"_ — because an underline is exactly what it
+had become: a mark detached from the text, sitting visibly low. The argument confused the POSITION
+with the MESSAGE. What says "completed" rather than "deleted" is the colour, the direction and the
+moving head; the strike-through's **place** is simply where a line across a title belongs. Both
+paths now aim the bar's **centre** at the line's centre and subtract half the bar's thickness to get
+the `top` they set — `(line.top + line.bottom) / 2` on the measured path, `lineHeight * 0.5` on the
+fallback, so a row that fails to measure cannot quietly keep drawing the underline. No optical
+fudge factor is applied and none is wanted: a range's client rect spans the line box, CSS splits
+half-leading evenly, so the em box is concentric with it and both the x-height centre of lowercase
+and the cap-height centre of mixed case land within ~1px of that midpoint — in opposite directions,
+which is precisely why any constant nudge would be font-specific guesswork. Related: the per-line
+union takes `min(top)` as well as `max(bottom)`. That is sub-pixel (the grouping key rounds `top`,
+so a group spans under a pixel) but the midpoint is now load-bearing, and half a union is a bias
+with nothing behind it.
 
 **A wrapped title is ONE bar's worth of progress, not three filling at once.**
 `buildSweepSegments` gives each measured line the share of 0→1 that matches its own ink width, so
@@ -807,8 +824,8 @@ is `flex: 1` and stretches to the trailing tags — "Buy milk" on a desktop row 
 several-hundred-pixel bar under empty space, which reads as a row-level loading indicator rather
 than as the title being completed. Any failure (no DOM, missing element, empty measurement) falls
 back to full-width bars sized off the title's `onLayout` height, capped at the three lines
-`numberOfLines={3}` allows, positioned low in the line box and still filled **sequentially** (equal
-shares). Three things that are load-bearing and easy to break: each bar needs
+`numberOfLines={3}` allows, centred in the line box like the measured path and still filled
+**sequentially** (equal shares). Three things that are load-bearing and easy to break: each bar needs
 `transformOrigin: 'left center'` (RNW 0.21 passes it through `preprocess` to CSS `transform-origin`)
 or it expands from its own middle and stops reading as progress at all — the same origin is what
 keeps the pulse's `scaleY` centred; the rects must be measured against an **untransformed** wrapper,
