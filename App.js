@@ -18,11 +18,16 @@ import { startDailyAppReload } from './utils/DailyAppReload'
 import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from './utils/performance/performanceLogger'
 import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
 import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
+import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
 
 startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
 startAppBootConnectionWait()
 installStorePerformanceObserver(store)
 installBrowserPerformanceObservers()
+// A ca9/b815 Firestore assertion permanently poisons the SDK AsyncQueue. Install
+// before the app mounts so the first unhandled queue rejection can replace the
+// page instead of leaving every listener and write broken for the whole session.
+installGlobalFirestoreFatalRecovery()
 
 try {
     const sentryDsn = getSentryVariables().SENTRY_DSN
