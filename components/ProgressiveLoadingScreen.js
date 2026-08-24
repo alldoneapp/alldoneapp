@@ -1,7 +1,6 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Spinner from './UIComponents/Spinner'
-import ConnectionStatusChip from './TopBar/ConnectionStatusChip'
 
 const ProgressiveLoadingScreen = ({ step, totalSteps, currentMessage }) => {
     const progressPercentage = Math.round((step / totalSteps) * 100)
@@ -10,7 +9,6 @@ const ProgressiveLoadingScreen = ({ step, totalSteps, currentMessage }) => {
         <View style={localstyles.container}>
             <Spinner containerSize={200} spinnerSize={150} />
             <Text style={[localstyles.text, { paddingTop: 40 }]}>{currentMessage}</Text>
-            <ConnectionStatusChip mobile />
             <View style={localstyles.progressContainer}>
                 <View style={localstyles.progressBar}>
                     <View style={[localstyles.progressFill, { width: `${progressPercentage}%` }]} />
