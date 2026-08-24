@@ -231,14 +231,19 @@ export class AppContainer extends React.Component {
         this.stopConnectionStateListener = installConnectionStateListener()
         // iOS Capacitor shell: confirm this boot as healthy (rollback guard)
         // and track web deploys over the air. No-op everywhere else.
-        installShellOtaUpdater()
+        // It returns the "check for a new web deploy" callback rather than
+        // listening for itself, so the resume signal keeps its single owner below.
+        const checkShellOtaUpdate = installShellOtaUpdater()
         // Connection health (PT-4660): `connectionState` above only reports what the
         // BROWSER believes. These two add what the app can actually prove — a resume
         // signal that coalesces visibilitychange/pageshow/focus into one event, and a
         // monitor that probes the server when the connection looks suspect. Installed
         // here for the same reason as the listeners above.
         this.stopConnectionHealthMonitor = installConnectionHealthMonitor()
-        this.stopAppResumeListener = installAppResumeListener()
+        // The OTA check rides that coalesced signal: `pageshow` after a bfcache
+        // restore is the only return signal an iOS home-screen shell reliably
+        // sends, and it is already handled here.
+        this.stopAppResumeListener = installAppResumeListener({ onResume: checkShellOtaUpdate })
     }
 
     componentDidUpdate(prevProps, prevState) {
