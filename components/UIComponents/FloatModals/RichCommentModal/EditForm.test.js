@@ -220,4 +220,37 @@ describe('RichCommentModal EditForm push-to-talk submit', () => {
         expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ comment: 'send me anyway' }))
         tree.unmount()
     })
+
+    /**
+     * "Whether the pop-up closes depends on whether the assistant is active — same behaviour as
+     * Enter and as clicking send." That rule is not implemented here at all: it lives one level up
+     * in `RichCommentModal.done`, which reads `isThreadAssistantEnabled` and keeps the pop-up open
+     * when a bot answer is on its way.
+     *
+     * So the thing to protect is that a held dictation cannot END UP on a different path. All
+     * three triggers must hand `onSuccess` the identical payload through the identical `done()`,
+     * because then closing, clearing the editor, Gold and the assistant hand-off are the same by
+     * construction rather than by three implementations that happen to agree today.
+     */
+    test('Enter, the send button and a held dictation are the same submit', () => {
+        const payloads = []
+        const submitVia = trigger => {
+            const onSuccess = jest.fn(data => payloads.push(data))
+            const tree = renderForm(undefined, { onSuccess })
+            act(() => {
+                tree.root.findByProps({ testID: 'comment-input' }).props.onChangeText('one comment, three ways')
+            })
+            act(() => trigger(tree))
+            expect(onSuccess).toHaveBeenCalledTimes(1)
+            tree.unmount()
+        }
+
+        submitVia(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true })))
+        submitVia(tree => tree.root.findByType('SubmitButton').props.onSubmit())
+        submitVia(tree => tree.root.findByProps({ testID: 'comment-input' }).props.onDictationSubmit('dictated'))
+
+        expect(payloads).toHaveLength(3)
+        expect(payloads[1]).toEqual(payloads[0])
+        expect(payloads[2]).toEqual(payloads[0])
+    })
 })

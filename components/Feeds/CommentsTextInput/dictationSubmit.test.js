@@ -273,4 +273,17 @@ describe('every composer that posts a message submits its dictations (AT-2410)',
 
         expect(composer).toMatch(/onDictationSubmit=\{/)
     })
+
+    test('the comment pop-up still closes on the assistant state, not unconditionally', () => {
+        // A held dictation posts through the same `done()` as Enter and the send button, so
+        // whether the pop-up closes afterwards is decided once, here, for all three: it stays open
+        // when a bot answer is on its way. Flattening this to a bare `closeModal()` would tear the
+        // pop-up away from an assistant reply the user is waiting for — via the mic as well.
+        const modal = fs.readFileSync(
+            path.join(__dirname, '../../UIComponents/FloatModals/RichCommentModal/RichCommentModal.js'),
+            'utf8'
+        )
+
+        expect(modal).toContain('if (!inNotesEditor && !shouldTriggerAssistant) {')
+    })
 })
