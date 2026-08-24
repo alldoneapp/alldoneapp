@@ -16,7 +16,7 @@
  *   live          the server was heard from recently — the normal state, renders nothing
  *   slow          an interactive server read or write has waited at least five seconds —
  *                 work can continue online or switch offline without a transport restart
- *   reconnecting  a probe failed once; the transport has been restarted and is being re-probed
+ *   reconnecting  a probe failed once; Firestore is reconnecting and is being re-probed
  *   stale         two probes failed while the browser claims to be online — the app is
  *                 showing data of unknown age. THIS is the state the app could not see before.
  *   offline       the browser itself reports offline — already covered by the offline toast
@@ -393,15 +393,17 @@ const runProbeCycle = async (trigger, cycleId) => {
         return health
     }
 
-    // One failure is not a verdict. Rebuild the transport — the reload-equivalent —
-    // and ask again. Exactly one restart per cycle, through the shared lease so it
-    // can never interleave with the boot integrity healer's own cycles.
+    // One failure is not a verdict. On a browser `online` event the SDK and the
+    // offline network gate are already recreating the Listen stream; cycling it
+    // again here can overlap that recovery and trigger Firestore's fatal ca9
+    // pending-response race. Give that existing recovery a second probe instead.
+    // Other triggers still rebuild the transport through the shared lease.
     setHealth(CONNECTION_HEALTH_RECONNECTING, trigger)
-    await restartTransport()
+    if (trigger !== 'browser_online') await restartTransport()
 
     // The offline action is offered as soon as reconnecting appears. The user can
-    // therefore choose it while the restart is in flight; do not start a second
-    // probe after that explicit choice.
+    // therefore choose it while either recovery path is in flight; do not start
+    // a second probe after that explicit choice.
     if (cycleId !== probeCycleId || manualOffline) return health
 
     const second = await probeServer()

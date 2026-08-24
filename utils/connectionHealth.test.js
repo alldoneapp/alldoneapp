@@ -316,6 +316,19 @@ describe('connectionHealth', () => {
         stop()
     })
 
+    it('does not cycle Firestore again while the browser-online recovery is already rebuilding streams', async () => {
+        const db = createFakeDb(['unavailable'])
+        const { stop } = install({ db })
+
+        await evaluateConnectionHealth({ trigger: 'browser_online' })
+
+        expect(db.calls.get).toBe(2)
+        expect(db.calls.disableNetwork).toBe(0)
+        expect(db.calls.enableNetwork).toBe(0)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_STALE)
+        stop()
+    })
+
     it('removes its listeners on uninstall', () => {
         const { windowObject, stop } = install({ db: createFakeDb(['ok']) })
         expect(windowObject.listenerCount('offline')).toBe(1)
