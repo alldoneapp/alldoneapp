@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import HeaderGlobalProject from './HeaderGlobalProject'
@@ -16,6 +16,7 @@ import { FOLLOWED_TAB, ALL_TAB } from './Utils/FeedsConstants'
 
 import { HISTORICAL_MODE, LOADING_MODE, NEW_FEEDS_MODE } from './Utils/FeedsHelper'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
+import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 
 export default function RootViewFeedsGlobalProject() {
     const dispatch = useDispatch()
@@ -96,6 +97,33 @@ export default function RootViewFeedsGlobalProject() {
         setSortedProjects([...normalProjects, ...guideProjects])
     }, [loggedUserProjects, selectedProjectIndex])
 
+    const sortedProjectIds = useMemo(() => sortedProjects.map(project => project.id), [sortedProjects])
+    const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
+    const selectedProjectId = isProjectSelected ? loggedUserProjects[selectedProjectIndex]?.id : null
+    const projectRevealKey = `${isProjectSelected ? selectedProjectId : 'all'}:${loggedUser.uid}:${projectMembershipKey}`
+    const projectRevealKeyRef = useRef(projectRevealKey)
+    projectRevealKeyRef.current = projectRevealKey
+    const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
+    const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
+    const markProjectReady = useCallback(projectId => {
+        setProjectReadiness(current => {
+            const key = projectRevealKeyRef.current
+            const projectIds = current.key === key ? current.projectIds : []
+            if (projectIds.includes(projectId)) return current
+            return { key, projectIds: [...projectIds, projectId] }
+        })
+    }, [])
+    const { revealedProjectIds, primaryProjectId } = useRateLimitedProjectReveal({
+        projectIds: isProjectSelected ? [] : sortedProjectIds,
+        readyProjectIds,
+        resetKey: projectRevealKey,
+    })
+    const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
+    const visibleProjects = isProjectSelected
+        ? [loggedUserProjects[selectedProjectIndex]].filter(Boolean)
+        : sortedProjects.filter(project => revealedProjectIdsSet.has(project.id))
+    const trackedProjectId = isProjectSelected ? selectedProjectId : primaryProjectId
+
     useEffect(() => {
         if (processedInitialURL && needReloadGlobalFeeds) {
             if (isFirstRender) {
@@ -134,21 +162,20 @@ export default function RootViewFeedsGlobalProject() {
             <HashtagFiltersView />
 
             {selectedProjectIndex < 0 ? (
-                sortedProjects.map((project, index) => {
-                    const projectId = project.id
-                    return (
-                        <GlobalProject
-                            key={projectId}
-                            project={project}
-                            feedActiveTab={feedActiveTab}
-                            updateProjectNewFeedAmount={updateProjectNewFeedAmount}
-                            amountNewFeeds={amountNewFeedsProjects[project.id]}
-                            globalActiveMode={globalActiveMode}
-                            feedsUserId={loggedUser.uid}
-                            projectId={projectId}
-                        />
-                    )
-                })
+                visibleProjects.map(project => (
+                    <GlobalProject
+                        key={project.id}
+                        project={project}
+                        feedActiveTab={feedActiveTab}
+                        updateProjectNewFeedAmount={updateProjectNewFeedAmount}
+                        amountNewFeeds={amountNewFeedsProjects[project.id]}
+                        globalActiveMode={globalActiveMode}
+                        feedsUserId={loggedUser.uid}
+                        projectId={project.id}
+                        trackInitialLoad={project.id === trackedProjectId}
+                        onInitialSnapshot={markProjectReady}
+                    />
+                ))
             ) : (
                 <GlobalProject
                     project={loggedUserProjects[selectedProjectIndex]}
@@ -158,6 +185,8 @@ export default function RootViewFeedsGlobalProject() {
                     globalActiveMode={HISTORICAL_MODE}
                     feedsUserId={loggedUser.uid}
                     projectId={loggedUserProjects[selectedProjectIndex].id}
+                    trackInitialLoad
+                    onInitialSnapshot={markProjectReady}
                 />
             )}
         </View>

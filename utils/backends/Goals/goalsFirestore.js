@@ -61,6 +61,7 @@ import {
 } from '../../../redux/actions'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
+import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 
 import { createGoalAssistantChangedFeed } from './goalUpdates'
 import { createGenericTaskWhenMention, setTaskProjectWithGoal } from '../Tasks/tasksFirestore'
@@ -158,7 +159,12 @@ export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2
         })
 }
 
-export function watchAllGoals(projectId, watcherKey, ownerId) {
+export function watchAllGoals(
+    projectId,
+    watcherKey,
+    ownerId,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
     const query = getDb()
@@ -169,31 +175,56 @@ export function watchAllGoals(projectId, watcherKey, ownerId) {
         { object_type: 'goals', scope: 'project', source: 'goals_board' },
         { sampleRate: 0.02 }
     )
+    let loadingActive = manageLoading
+    let initialSnapshotDelivered = false
+    if (manageLoading) store.dispatch(startLoadingData())
 
-    globalWatcherUnsub[watcherKey] = query.onSnapshot(
-        goalsData => {
-            try {
-                const goals = []
-                goalsData.forEach(doc => {
-                    const goal = mapGoalData(doc.id, doc.data())
-                    goals.push(goal)
-                })
-                store.dispatch([setGoalsInProject(projectId, goals), stopLoadingData()])
-                snapshotPerformance.observe(goalsData, false)
-            } catch (err) {
-                snapshotPerformance.fail()
-                console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
-                // Ensure spinner decrements on unexpected handler errors
-                store.dispatch(stopLoadingData())
-            }
-        },
-        err => {
+    const finishLoading = () => {
+        if (!loadingActive) return
+        loadingActive = false
+        store.dispatch(stopLoadingData())
+    }
+    const finishInitialSnapshot = () => {
+        finishLoading()
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'goals_snapshot',
+    })
+
+    function handleSnapshot(goalsData) {
+        const buffered = gate.shouldBuffer(goalsData)
+        snapshotPerformance.observe(goalsData, buffered)
+        if (buffered) return
+
+        try {
+            const goals = []
+            goalsData.forEach(doc => {
+                const goal = mapGoalData(doc.id, doc.data())
+                goals.push(goal)
+            })
+            store.dispatch(setGoalsInProject(projectId, goals))
+            finishInitialSnapshot()
+        } catch (err) {
             snapshotPerformance.fail()
-            console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
-            // Ensure spinner decrements on snapshot errors
-            store.dispatch(stopLoadingData())
+            console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
         }
-    )
+    }
+
+    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, err => {
+        gate.dispose()
+        snapshotPerformance.fail()
+        console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
+        finishInitialSnapshot()
+    })
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(() => {
+        unsubscribe()
+        finishLoading()
+    })
 }
 
 async function getGoalsInDoneMilestone(projectId, milestoneId, idsOfGoalsToExclude) {
@@ -325,48 +356,78 @@ async function getOpenMilestonesFromGoal(projectId, goal) {
     return milestones
 }
 
-export function watchAllMilestones(projectId, watcherKey, ownerId) {
+export function watchAllMilestones(
+    projectId,
+    watcherKey,
+    ownerId,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
     const snapshotPerformance = createFirstSnapshotPerformance(
         { object_type: 'milestones', scope: 'project', source: 'goals_board' },
         { sampleRate: 0.02 }
     )
-    globalWatcherUnsub[watcherKey] = getDb()
+    let loadingActive = manageLoading
+    let initialSnapshotDelivered = false
+    if (manageLoading) store.dispatch(startLoadingData())
+
+    const finishLoading = () => {
+        if (!loadingActive) return
+        loadingActive = false
+        store.dispatch(stopLoadingData())
+    }
+    const finishInitialSnapshot = () => {
+        finishLoading()
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'milestones_snapshot',
+    })
+    const query = getDb()
         .collection(`goalsMilestones/${projectId}/milestonesItems`)
         .where('ownerId', '==', ownerId)
         .orderBy('date', 'asc')
-        .onSnapshot(
-            milestonesData => {
-                try {
-                    const milestones = []
-                    const openMilestones = []
-                    let doneMilestone = []
-                    milestonesData.forEach(doc => {
-                        const milestone = mapMilestoneData(doc.id, doc.data())
-                        milestones.push(milestone)
-                        milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
-                    })
 
-                    doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
-                    doneMilestone.reverse()
+    function handleSnapshot(milestonesData) {
+        const buffered = gate.shouldBuffer(milestonesData)
+        snapshotPerformance.observe(milestonesData, buffered)
+        if (buffered) return
 
-                    store.dispatch([
-                        setOpenMilestonesInProject(projectId, openMilestones),
-                        setDoneMilestonesInProject(projectId, doneMilestone),
-                        stopLoadingData(),
-                    ])
-                    snapshotPerformance.observe(milestonesData, false)
-                } catch (err) {
-                    snapshotPerformance.fail()
-                    console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
-                    store.dispatch(stopLoadingData())
-                }
-            },
-            err => {
-                snapshotPerformance.fail()
-                console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
-                store.dispatch(stopLoadingData())
-            }
-        )
+        try {
+            const openMilestones = []
+            let doneMilestone = []
+            milestonesData.forEach(doc => {
+                const milestone = mapMilestoneData(doc.id, doc.data())
+                milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
+            })
+
+            doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
+            doneMilestone.reverse()
+
+            store.dispatch([
+                setOpenMilestonesInProject(projectId, openMilestones),
+                setDoneMilestonesInProject(projectId, doneMilestone),
+            ])
+            finishInitialSnapshot()
+        } catch (err) {
+            snapshotPerformance.fail()
+            console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        }
+    }
+
+    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, err => {
+        gate.dispose()
+        snapshotPerformance.fail()
+        console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
+        finishInitialSnapshot()
+    })
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(() => {
+        unsubscribe()
+        finishLoading()
+    })
 }
 
 export function watchMilestones(projectId, callback, milestonesInDone, watcherKey, ownerId) {
