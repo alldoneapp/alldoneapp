@@ -63,10 +63,10 @@ export default function useRateLimitedProjectReveal({
             if (!requireNearViewport || projectId !== nextProjectId) return
             setNearProject(current => {
                 if (current?.key === revealKey && current.projectId === projectId) return current
-                return { key: revealKey, projectId, sinceAt: now() }
+                return { key: revealKey, projectId }
             })
         },
-        [nextProjectId, now, requireNearViewport, revealKey]
+        [nextProjectId, requireNearViewport, revealKey]
     )
 
     useEffect(() => {
@@ -79,8 +79,7 @@ export default function useRateLimitedProjectReveal({
         }
 
         const currentTime = now()
-        const intervalStartedAt = requireNearViewport ? nearProject.sinceAt : lastRevealAtRef.current
-        const intervalRemaining = Math.max(0, intervalStartedAt + minIntervalMs - currentTime)
+        const intervalRemaining = Math.max(0, lastRevealAtRef.current + minIntervalMs - currentTime)
         const readinessRemaining = previousProjectReady
             ? 0
             : Math.max(0, lastRevealAtRef.current + maxReadyWaitMs - currentTime)
