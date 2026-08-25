@@ -225,7 +225,7 @@ export default class NotesByProject extends PureComponent {
                 () => {
                     // Side-effects moved out of updater to avoid React warning about updates inside update functions
                     if (inAllProjects) {
-                        setLastEditNoteDate(finalLastEditedDate)
+                        setLastEditNoteDate(project, finalLastEditedDate)
                     }
                     this.finishTrackedLoading?.()
                     this.finishTrackedLoading = null

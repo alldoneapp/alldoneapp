@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from 'react'
+import React, { useLayoutEffect, useRef, useState } from 'react'
 
 // Starting at [0, 0] made every consumer render one frame with a bogus size.
 // That is invisible for most of them, but modals cap themselves with
@@ -17,9 +17,17 @@ const getInitialWindowSize = () => {
 
 export default function useWindowSize() {
     const [size, setSize] = useState(getInitialWindowSize)
+    const sizeRef = useRef(size)
     useLayoutEffect(() => {
         const updateSize = () => {
-            setSize([window.innerWidth, window.innerHeight])
+            const width = window.innerWidth
+            const height = window.innerHeight
+            const currentSize = sizeRef.current
+            if (currentSize[0] === width && currentSize[1] === height) return
+
+            const nextSize = [width, height]
+            sizeRef.current = nextSize
+            setSize(nextSize)
         }
         window.addEventListener('resize', updateSize)
         updateSize()

@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import NotesView from './NotesView'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
+import useNearViewportMount from '../../hooks/useNearViewportMount'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -15,6 +16,7 @@ jest.mock('./EmptyNotesAllProjects', () => 'EmptyNotesAllProjects')
 jest.mock('../HashtagFilters/HashtagFiltersView', () => 'HashtagFiltersView')
 jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
 jest.mock('../../hooks/useRateLimitedProjectReveal', () => jest.fn())
+jest.mock('../../hooks/useNearViewportMount', () => jest.fn())
 jest.mock('../../redux/store', () => ({
     getState: () => ({ loggedUser: { uid: 'user-1' } }),
 }))
@@ -74,6 +76,8 @@ const renderView = () => {
 }
 
 describe('NotesView progressive project mounting', () => {
+    const markProjectNearViewport = jest.fn()
+
     beforeEach(() => {
         jest.clearAllMocks()
         useDispatch.mockReturnValue(jest.fn())
@@ -82,7 +86,10 @@ describe('NotesView progressive project mounting', () => {
             revealedProjectIds: ['project-1'],
             primaryProjectId: 'project-1',
             complete: false,
+            nextProjectId: 'project-2',
+            markProjectNearViewport,
         })
+        useNearViewportMount.mockReturnValue({ placeholderRef: { current: null }, isNearViewport: false })
     })
 
     it('keeps the first all-projects render to one NotesByProject block', () => {
@@ -97,6 +104,7 @@ describe('NotesView progressive project mounting', () => {
             projectIds: ['project-1', 'project-2', 'project-3'],
             readyProjectIds: [],
             resetKey: expect.stringContaining('project-1'),
+            requireNearViewport: true,
         })
     })
 
@@ -105,6 +113,8 @@ describe('NotesView progressive project mounting', () => {
             revealedProjectIds: ['project-1', 'project-2'],
             primaryProjectId: 'project-1',
             complete: false,
+            nextProjectId: 'project-3',
+            markProjectNearViewport,
         })
 
         const tree = renderView()
@@ -117,6 +127,16 @@ describe('NotesView progressive project mounting', () => {
             true,
             false,
         ])
+        const projectBlocks = tree.root.findAllByType('NotesByProject')
+        expect(projectBlocks[0].props.setLastEditNoteDate).toBe(projectBlocks[1].props.setLastEditNoteDate)
+    })
+
+    it('admits the next project only when its placeholder is near the viewport', () => {
+        useNearViewportMount.mockReturnValue({ placeholderRef: { current: null }, isNearViewport: true })
+
+        renderView()
+
+        expect(markProjectNearViewport).toHaveBeenCalledWith('project-2')
     })
 
     it('does not schedule background project reveals in a selected-project view', () => {
@@ -126,6 +146,8 @@ describe('NotesView progressive project mounting', () => {
             revealedProjectIds: [],
             primaryProjectId: null,
             complete: true,
+            nextProjectId: null,
+            markProjectNearViewport,
         })
 
         const tree = renderView()
