@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
+import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -20,6 +21,7 @@ jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
 jest.mock('../../../hooks/useNearViewportMount', () => jest.fn())
+jest.mock('../../../hooks/useRateLimitedProjectMountQueue', () => jest.fn())
 jest.mock('./openTasksViewProjectScope', () => ({
     getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
 }))
@@ -34,6 +36,9 @@ const buildState = ({ openTasksAmount, todayEmptyGoalsTotal }) => ({
     openTasksAmount,
     todayEmptyGoalsTotalAmountInOpenTasksView: { total: todayEmptyGoalsTotal },
     loggedUserProjectsMap: {},
+    currentUser: { uid: 'user-1' },
+    initialLoadingEndOpenTasks: {},
+    initialLoadingEndObservedTasks: {},
     loggedUser: {
         uid: 'user-1',
         projectIds: ['project-1'],
@@ -68,8 +73,13 @@ describe('OpenTasksViewAllProjects', () => {
         useDispatch.mockReturnValue(jest.fn())
         useNearViewportMount.mockImplementation(() => ({
             placeholderRef: { current: null },
-            shouldMount: true,
+            isNearViewport: true,
         }))
+        useRateLimitedProjectMountQueue.mockReturnValue({
+            mountedProjectCount: 2,
+            nextProjectIndex: null,
+            markProjectNearViewport: jest.fn(),
+        })
     })
 
     it('AT-2262: puts the empty-inbox congrats right under the assistant line', () => {
@@ -190,9 +200,14 @@ describe('OpenTasksViewAllProjects', () => {
 
     describe('viewport-gated project mounting', () => {
         it('keeps offscreen project watchers dormant while mounting the first project eagerly', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
             useNearViewportMount.mockImplementation(({ eager }) => ({
                 placeholderRef: { current: null },
-                shouldMount: eager,
+                isNearViewport: eager,
             }))
 
             const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
@@ -200,8 +215,8 @@ describe('OpenTasksViewAllProjects', () => {
 
             expect(projectBlocks).toHaveLength(1)
             expect(projectBlocks[0].props.projectId).toBe('project-1')
-            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, { eager: true })
-            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, { eager: false })
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, { eager: true, enabled: false })
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, { eager: false, enabled: true })
         })
 
         it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
@@ -210,6 +225,19 @@ describe('OpenTasksViewAllProjects', () => {
             expect(tree.root.findAllByType('OpenTasksByProject')).toHaveLength(2)
             expect(tree.root.findAllByType('AllProjectsShowMoreAvailability')).toHaveLength(1)
             expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(1)
+        })
+
+        it('feeds task-stream readiness into the central mount queue', () => {
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            state.initialLoadingEndOpenTasks['project-1user-1'] = true
+            state.initialLoadingEndObservedTasks['project-1user-1'] = true
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds: ['project-1', 'project-2'],
+                projectReadyStates: [true, false],
+            })
         })
     })
 })

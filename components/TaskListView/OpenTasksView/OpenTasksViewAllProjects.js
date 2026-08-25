@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
+import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksByProject from './OpenTasksByProject'
 import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actions'
@@ -14,13 +14,18 @@ import TaskFiltersLine from '../PriorityFilters/TaskFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
 import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
+import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 
-function DeferredProjectBlock({ eager, children }) {
-    const { placeholderRef, shouldMount } = useNearViewportMount({ eager })
+function DeferredProjectBlock({ projectIndex, mounted, observe, onNearViewport, children }) {
+    const { placeholderRef, isNearViewport } = useNearViewportMount({ eager: mounted, enabled: observe })
+
+    useEffect(() => {
+        if (observe && isNearViewport) onNearViewport(projectIndex)
+    }, [isNearViewport, observe, onNearViewport, projectIndex])
 
     return (
-        <View ref={placeholderRef} style={!shouldMount && localStyles.deferredProjectPlaceholder}>
-            {shouldMount ? children : null}
+        <View ref={placeholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
+            {mounted ? children : null}
         </View>
     )
 }
@@ -38,6 +43,7 @@ export default function OpenTasksViewAllProjects() {
     const todayEmptyGoalsTotal = useSelector(state => state.todayEmptyGoalsTotalAmountInOpenTasksView.total)
     const inFocusTaskProjectId = useSelector(state => state.loggedUser.inFocusTaskProjectId)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
+    const currentUserId = useSelector(state => state.currentUser.uid)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
 
     // AT-2337: this list is recomputed on every render of the all-projects board
@@ -70,6 +76,22 @@ export default function OpenTasksViewAllProjects() {
             inFocusTaskProjectId,
         ]
     )
+    const projectReadyStates = useSelector(
+        state =>
+            sortedLoggedUserProjectIds.map(projectId => {
+                const instanceKey = projectId + currentUserId
+                return (
+                    !!state.initialLoadingEndOpenTasks?.[instanceKey] &&
+                    !!state.initialLoadingEndObservedTasks?.[instanceKey]
+                )
+            }),
+        shallowEqual
+    )
+    const { mountedProjectCount, nextProjectIndex, markProjectNearViewport } = useRateLimitedProjectMountQueue({
+        projectIds: sortedLoggedUserProjectIds,
+        projectReadyStates,
+    })
+
     useEffect(() => {
         dispatch(resetLoadingData())
         return () => {
@@ -114,7 +136,13 @@ export default function OpenTasksViewAllProjects() {
                 }
 
                 return (
-                    <DeferredProjectBlock key={projectId} eager={index === 0}>
+                    <DeferredProjectBlock
+                        key={projectId}
+                        projectIndex={index}
+                        mounted={index < mountedProjectCount}
+                        observe={index === nextProjectIndex}
+                        onNearViewport={markProjectNearViewport}
+                    >
                         <OpenTasksByProject
                             projectId={projectId}
                             firstProject={thisProjectIsTheFirstProject}

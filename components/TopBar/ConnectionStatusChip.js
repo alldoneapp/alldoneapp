@@ -113,8 +113,8 @@ const localStyles = StyleSheet.create({
     },
     mobileContainer: {
         alignItems: 'center',
-        paddingTop: 8,
-        paddingBottom: 8,
+        paddingTop: 16,
+        paddingBottom: 4,
         paddingHorizontal: 16,
     },
 })
