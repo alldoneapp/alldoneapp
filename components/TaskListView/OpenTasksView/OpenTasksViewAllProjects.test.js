@@ -20,7 +20,7 @@ jest.mock('../Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
 jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
 jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
-jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
+jest.mock('../../MyDayView/AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
 jest.mock('../../../hooks/useNearViewportMount', () => jest.fn())
 jest.mock('../../../hooks/useRateLimitedProjectMountQueue', () => jest.fn())
 jest.mock('../TaskListSkeleton', () => 'TaskListSkeleton')
@@ -93,9 +93,9 @@ describe('OpenTasksViewAllProjects', () => {
 
         // The assistant line (which also renders the latest comment) keeps the top of the
         // page, immediately under the All Projects line...
-        expect(childTypes.indexOf('AssistantLine')).toBe(childTypes.indexOf('AllProjectsLine') + 1)
+        expect(childTypes.indexOf('AllProjectsAssistantLine')).toBe(childTypes.indexOf('AllProjectsLine') + 1)
         // ...and the congrats is its immediate sibling below it — never above it.
-        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBe(childTypes.indexOf('AssistantLine') + 1)
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBe(childTypes.indexOf('AllProjectsAssistantLine') + 1)
         expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeGreaterThan(childTypes.indexOf('AllProjectsLine'))
         // Still high on the page: above the email line, the filters and the task list.
         expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeLessThan(childTypes.indexOf('EmailLine'))
@@ -108,7 +108,7 @@ describe('OpenTasksViewAllProjects', () => {
         const childTypes = renderedChildTypes(tree)
 
         expect(childTypes).not.toContain('AllProjectsEmptyInbox')
-        expect(childTypes.indexOf('AssistantLine')).toBeLessThan(childTypes.indexOf('EmailLine'))
+        expect(childTypes.indexOf('AllProjectsAssistantLine')).toBeLessThan(childTypes.indexOf('EmailLine'))
         expect(childTypes.indexOf('EmailLine')).toBeLessThan(childTypes.indexOf('TaskFiltersLine'))
         expect(childTypes.indexOf('TaskFiltersLine')).toBeLessThan(childTypes.indexOf('OpenTasksByProject'))
     })

@@ -17,6 +17,12 @@ jest.mock('react-redux', () => ({
 jest.mock('../../../components/TaskListView/Header/ProjectHeader', () => 'ProjectHeader')
 jest.mock('../../../components/TaskListView/PendingTasksView/PendingTasksByDate', () => 'PendingTasksByDate')
 jest.mock('../../../components/MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
+jest.mock('../../../hooks/useProjectData', () => ({
+    __esModule: true,
+    default: () => {},
+    useProjectsData: () => {},
+}))
+jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({ PROJECT_DATA_ASSISTANTS: 'assistants' }))
 jest.mock('../../../components/HashtagFilters/FilterHelpers/FilterTasks', () => ({
     filterPendingTasks: jest.fn(tasksByDateAndStep => tasksByDateAndStep),
 }))
