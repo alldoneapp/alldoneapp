@@ -54,14 +54,31 @@ describe('MainViewsContainer popup scroll lock', () => {
         expect(renderWithState({ ...state, showFloatPopup: 0 }).props.scrollEnabled).toBe(true)
     })
 
-    it('renders the mobile connection chip as part of the scrollable content', () => {
-        const scrollView = renderWithState({ smallScreen: true, smallScreenNavigation: true, showFloatPopup: 0 })
+    // AT-2426: the stacked placement is no longer phone-only. The desktop header row
+    // has no slack for a ~165px labelled chip, so every layout at or below the tablet
+    // band renders it here instead of in the header.
+    test.each([
+        ['phone', { smallScreen: true, smallScreenNavigation: true, isMiddleScreen: true }],
+        // Mid-resize: AppNavigator writes the nav flags and `smallScreen` in separate
+        // dispatches, so there is a frame with only the first of them set.
+        ['mid-resize', { smallScreen: false, smallScreenNavigation: true, isMiddleScreen: false }],
+        ['tablet portrait', { smallScreen: true, smallScreenNavigation: false, isMiddleScreen: true }],
+        // iPad Air / Pro 11 landscape: `smallScreen` but NOT `isMiddleScreen`. Measured
+        // to overflow the header in German, which is why the band is `smallScreen`.
+        ['tablet landscape', { smallScreen: true, smallScreenNavigation: false, isMiddleScreen: false }],
+    ])('%s stacks the connection chip in the scrollable content below the header', (_mode, state) => {
+        const scrollView = renderWithState({ ...state, showFloatPopup: 0 })
 
-        expect(scrollView.findByType('ConnectionStatusChip').props.mobile).toBe(true)
+        expect(scrollView.findByType('ConnectionStatusChip').props.belowHeader).toBe(true)
     })
 
-    it('keeps the desktop connection chip out of the page content', () => {
-        const scrollView = renderWithState({ smallScreen: false, smallScreenNavigation: false, showFloatPopup: 0 })
+    it('keeps the connection chip out of the page content on desktop', () => {
+        const scrollView = renderWithState({
+            smallScreen: false,
+            smallScreenNavigation: false,
+            isMiddleScreen: false,
+            showFloatPopup: 0,
+        })
 
         expect(scrollView.findAllByType('ConnectionStatusChip')).toHaveLength(0)
     })

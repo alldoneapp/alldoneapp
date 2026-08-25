@@ -11,6 +11,6 @@ describe('ProgressiveLoadingScreen', () => {
             <ProgressiveLoadingScreen step={2} totalSteps={5} currentMessage={'Loading'} />
         )
 
-        expect(component.root.findByType('ConnectionStatusChip').props.mobile).toBe(true)
+        expect(component.root.findByType('ConnectionStatusChip').props.belowHeader).toBe(true)
     })
 })

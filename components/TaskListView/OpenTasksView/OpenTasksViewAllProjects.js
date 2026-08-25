@@ -15,26 +15,17 @@ import EmailLine from '../EmailLine/EmailLine'
 import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
-import TaskListSkeleton from '../TaskListSkeleton'
-
-export const ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN = '0px'
-export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 1500
 
 function DeferredProjectBlock({ projectIndex, mounted, observe, onNearViewport, children }) {
-    const { placeholderRef, isNearViewport } = useNearViewportMount({
-        eager: mounted,
-        enabled: observe,
-        rootMargin: ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN,
-        trackVisibility: true,
-    })
+    const { placeholderRef, isNearViewport } = useNearViewportMount({ eager: mounted, enabled: observe })
 
     useEffect(() => {
-        if (observe) onNearViewport(projectIndex, isNearViewport)
+        if (observe && isNearViewport) onNearViewport(projectIndex)
     }, [isNearViewport, observe, onNearViewport, projectIndex])
 
     return (
         <View ref={placeholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
-            {mounted ? children : observe ? <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader /> : null}
+            {mounted ? children : null}
         </View>
     )
 }
@@ -99,7 +90,6 @@ export default function OpenTasksViewAllProjects() {
     const { mountedProjectCount, nextProjectIndex, markProjectNearViewport } = useRateLimitedProjectMountQueue({
         projectIds: sortedLoggedUserProjectIds,
         projectReadyStates,
-        minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
     })
 
     useEffect(() => {

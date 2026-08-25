@@ -265,3 +265,36 @@ The full-app service-worker boot (precache → offline reload) is deliberately N
 it needs real Firebase auth/env and is covered by the `ServiceWorkerPrecache` jest
 guards plus preview-channel QA. If `playwright` is not resolvable from the repo root,
 point `PLAYWRIGHT_HOME` at a directory whose `node_modules` contains it.
+
+### `at2426/` — the connection chip must not be pinned in a header that cannot hold it
+
+"On Tablet Sizes we should also show the 'Slow Connection' etc. chip below the header like on
+mobile .. otherwise it doesnt fit"
+
+The defect is a **width**, which is the one thing jsdom can never answer: every box there
+measures 0x0, so "it doesn't fit" is structurally unassertable in Jest. The Jest suites
+(`connectionChipPlacement.test.js`, `TopBar.test.js`, `MainViewsContainer.test.js`) pin the
+_decision_; this harness pins that the decision is the _right_ one, by mounting the REAL
+`TopBarContainer` — and through it the real `TopBar`, `TopBarStatisticArea`, `XpBar`,
+`GoldArea`, `TasksStatisticsArea`, `QuotaBar` and `NotificationArea` — in the app's real
+shell geometry and measuring `getBoundingClientRect()`s in Chromium.
+
+10 viewports x 4 connection states x 3 languages. Two details are load-bearing:
+
+- **Every measurement is against a chip-absent baseline** at the same viewport (the `live`
+  state renders no chip at all), so what is asserted is the chip's _own_ contribution. The
+  header has pre-existing problems of its own — at 820-834px the sidebar plus the desktop top
+  bar already exceed the viewport with or without a chip — and this change must be neither
+  blamed for nor credited with those.
+- **Language is part of the geometry, not a detail.** German's "Langsame Verbindung" is
+  182.7px against "Slow connection"'s 149.7px, and at 1180/1194px the header's slack is
+  154.4px — so an English-only measurement calls that a comfortable fit and ships a bug. This
+  is exactly why the breakpoint is `smallScreen` and not the narrower `isMiddleScreen`.
+
+`KNOWN_HEADER_OVERFLOW_WIDTHS` records the 1234-1500px band, where `smallScreen` has switched
+off (full-size XP bar and wide pills return while the margins stay at 104px a side) and the row
+has ~23px of slack at 1280px. That is pre-existing and deliberately out of scope. It is
+ratcheted **both** ways: an overflow at an unlisted width fails, and a listed width that has
+stopped overflowing in every state and language also fails, so the list cannot outlive the
+defect it documents. It is keyed on width alone on purpose — keying on (width, language,
+state) would encode today's exact translations and break on any copy edit.

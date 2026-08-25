@@ -98,16 +98,16 @@ describe('ConnectionStatusChip', () => {
         act(() => tree.unmount())
     })
 
-    it('keeps the slow status actionable on mobile', () => {
+    it('keeps the slow status actionable below the header', () => {
         setMobile(true)
-        const tree = renderChip({ mobile: true })
+        const tree = renderChip({ belowHeader: true })
         setHealth('slow')
 
         const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
         expect(chip.props.accessibilityLabel).toBe('Slow connection')
         expect(treeText(tree)).toContain('Slow connection')
         expect(
-            StyleSheet.flatten(tree.root.findByProps({ testID: 'mobile-connection-status-container' }).props.style)
+            StyleSheet.flatten(tree.root.findByProps({ testID: 'connection-status-below-header' }).props.style)
         ).toMatchObject({ paddingTop: 16, paddingBottom: 4, paddingHorizontal: 16 })
 
         act(() => {
@@ -174,6 +174,21 @@ describe('ConnectionStatusChip', () => {
         })
 
         expect(reconnect).toHaveBeenCalled()
+        act(() => tree.unmount())
+    })
+
+    // AT-2426. The chip is labelled in BOTH placements now. The old icon-only branch was
+    // guarded on `!smallScreenNavigation`, which could never be false in the header — the
+    // header is not mounted at those sizes — so it never ran, and an unlabelled yellow
+    // circle says nothing a user can act on.
+    it.each([
+        ['in the header', {}],
+        ['below the header', { belowHeader: true }],
+    ])('labels the chip %s', (_placement, props) => {
+        const tree = renderChip(props)
+        setHealth('slow')
+
+        expect(treeText(tree)).toContain('Slow connection')
         act(() => tree.unmount())
     })
 })

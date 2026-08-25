@@ -10,7 +10,7 @@ const LoadingScreen = ({ text, secondText }) => {
             <Spinner containerSize={200} spinnerSize={150} />
             <Text style={[localstyles.text, { paddingTop: 40 }, !secondText && { marginBottom: 30 }]}>{text}</Text>
             {!!secondText && <Text style={[localstyles.text, { marginBottom: 30 }]}>{secondText}</Text>}
-            <ConnectionStatusChip mobile />
+            <ConnectionStatusChip belowHeader />
         </View>
     )
 }

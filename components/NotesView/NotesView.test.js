@@ -105,13 +105,12 @@ describe('NotesView progressive project mounting', () => {
         expect(tree.root.findByType('NotesListSkeleton').props).toEqual(
             expect.objectContaining({ rowCount: 3, showProjectHeader: true })
         )
-        expect(useNearViewportMount).toHaveBeenCalledWith({ rootMargin: '0px', trackVisibility: true })
+        expect(useNearViewportMount).toHaveBeenCalledWith({ rootMargin: '0px' })
         expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith({
             projectIds: ['project-1', 'project-2', 'project-3'],
             readyProjectIds: [],
             resetKey: expect.stringContaining('project-1'),
             requireNearViewport: true,
-            minIntervalMs: 1500,
         })
     })
 
@@ -143,7 +142,7 @@ describe('NotesView progressive project mounting', () => {
 
         renderView()
 
-        expect(markProjectNearViewport).toHaveBeenCalledWith('project-2', true)
+        expect(markProjectNearViewport).toHaveBeenCalledWith('project-2')
     })
 
     it('does not schedule background project reveals in a selected-project view', () => {
@@ -159,9 +158,7 @@ describe('NotesView progressive project mounting', () => {
 
         const tree = renderView()
 
-        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith(
-            expect.objectContaining({ projectIds: [], minIntervalMs: undefined })
-        )
+        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith(expect.objectContaining({ projectIds: [] }))
         expect(tree.root.findAllByType('NotesByProject')).toHaveLength(1)
         expect(tree.root.findByType('NotesByProject').props.project.id).toBe('project-1')
         expect(tree.root.findByType('NotesByProject').props.trackInitialLoad).toBe(true)
