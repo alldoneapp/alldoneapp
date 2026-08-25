@@ -15,9 +15,6 @@ jest.mock('./AssistantOptions/AssistantOptions', () => 'AssistantOptions')
 jest.mock('./LastCommentArea', () => 'LastCommentArea')
 jest.mock('../../AdminPanel/Assistants/AssistantAvatar', () => 'AssistantAvatar')
 jest.mock('../../Icon', () => 'Icon')
-// The switch control reaches the popover/modal stack and from there the firestore client; its
-// own behaviour is covered by AssistantSwitchControl.test.js.
-jest.mock('./AssistantSwitchControl', () => 'AssistantSwitchControl')
 jest.mock('./AssistantOptions/helper', () => ({
     calculateAmountOfOptionButtons: () => 2,
     getAssistantLineData: () => ({
@@ -71,59 +68,5 @@ describe('AssistantLine edit control', () => {
         })
 
         expect(tree.root.findAllByProps({ accessibilityLabel: 'Edit assistant' })).toHaveLength(0)
-    })
-})
-
-describe('AssistantLine switch control (AT-2430)', () => {
-    beforeEach(() => {
-        mockState = {
-            isMiddleScreen: false,
-            smallScreenNavigation: false,
-            defaultAssistant: mockAssistant,
-            loggedUser: { defaultProjectId: mockProject.id },
-            selectedProjectIndex: 0,
-            loggedUserProjects: [mockProject],
-        }
-    })
-
-    const assistantSwitch = {
-        groups: [{ projectId: mockProject.id, projectName: 'Project', options: [] }],
-        grouped: false,
-        activeProjectId: mockProject.id,
-        activeAssistantId: mockAssistant.uid,
-        onSelect: jest.fn(),
-    }
-
-    it('renders no switch control unless a scope is given', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(<AssistantLine projectOverride={mockProject} />)
-        })
-
-        expect(tree.root.findAllByType('AssistantSwitchControl')).toHaveLength(0)
-    })
-
-    it('hands the whole switch scope to the control, expanded and collapsed alike', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(<AssistantLine projectOverride={mockProject} assistantSwitch={assistantSwitch} />)
-        })
-
-        const expanded = tree.root.findByType('AssistantSwitchControl')
-        expect(expanded.props.groups).toBe(assistantSwitch.groups)
-        expect(expanded.props.onSelect).toBe(assistantSwitch.onSelect)
-        expect(expanded.props.activeAssistantId).toBe(mockAssistant.uid)
-        // Expanded is the default layout, so it must NOT ask for the collapsed styling.
-        expect(expanded.props.collapsed).toBeUndefined()
-
-        act(() => {
-            tree.update(
-                <AssistantLine projectOverride={mockProject} assistantSwitch={assistantSwitch} startCollapsed={true} />
-            )
-        })
-
-        const collapsed = tree.root.findByType('AssistantSwitchControl')
-        expect(collapsed.props.collapsed).toBe(true)
-        expect(collapsed.props.groups).toBe(assistantSwitch.groups)
     })
 })
