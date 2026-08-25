@@ -186,16 +186,13 @@ export default function RichCommentModal({
 
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        // Optimistic, like the chat list and the thread (AT-2424): the press has already cleared
-        // the comment's unread state, so the button says "Archived" from the same frame and only
-        // comes back if the mailbox refuses.
-        setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
         archiveAndMarkReadLinkedEmails(pendingEmails)
-            .catch(error => {
-                // The action put the unread state back; the button has to come back with it.
+            .then(() => {
                 if (modalMountedRef.current) {
-                    setArchivedEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
+                    setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
                 }
+            })
+            .catch(error => {
                 console.error('Failed to archive linked email from comment popup', error)
                 alert(`${translate("Email couldn't be archived")}: ${error.message}`)
             })
