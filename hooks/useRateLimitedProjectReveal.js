@@ -6,10 +6,10 @@ export const PROJECT_REVEAL_MAX_READY_WAIT_MS = 5000
 /**
  * Reveal an automatically sorted project list without mounting every expensive
  * child in consecutive paints. Revealed project ids stay mounted even when a
- * first snapshot reorders the list; the next currently highest-ranked project
- * is admitted after the previous one is ready (or after the safety timeout).
- * Callers with long boards can additionally require the next placeholder to be
- * near the viewport, keeping offscreen listeners and rendering dormant.
+ * first snapshot reorders the list. Regular callers admit the next project after
+ * the previous one is ready. Viewport-gated callers preload the next project
+ * behind its ghost, then reveal it after its own first snapshot. The timeout
+ * keeps an unavailable project from blocking the rest of the board forever.
  */
 export default function useRateLimitedProjectReveal({
     projectIds,
@@ -63,7 +63,9 @@ export default function useRateLimitedProjectReveal({
             if (!requireNearViewport || projectId !== nextProjectId) return
             setNearProject(current => {
                 if (!isNearViewport) {
-                    return current?.key === revealKey && current.projectId === projectId ? null : current
+                    // The viewport-gated caller has already started this one
+                    // prefetch. Keep it alive while the ghost is replaced.
+                    return current
                 }
                 if (current?.key === revealKey && current.projectId === projectId) return current
                 return { key: revealKey, projectId, sinceAt: now() }
@@ -71,6 +73,12 @@ export default function useRateLimitedProjectReveal({
         },
         [nextProjectId, now, requireNearViewport, revealKey]
     )
+
+    const loadingProjectId =
+        requireNearViewport && nearProject?.key === revealKey && nearProject.projectId === nextProjectId
+            ? nextProjectId
+            : null
+    const loadingProjectReady = !!loadingProjectId && readyProjectIds.includes(loadingProjectId)
 
     useEffect(() => {
         if (revealState.key !== revealKey || complete || !lastRevealedProjectId) return undefined
@@ -84,9 +92,9 @@ export default function useRateLimitedProjectReveal({
         const currentTime = now()
         const intervalStartedAt = requireNearViewport ? nearProject.sinceAt : lastRevealAtRef.current
         const intervalRemaining = Math.max(0, intervalStartedAt + minIntervalMs - currentTime)
-        const readinessRemaining = previousProjectReady
-            ? 0
-            : Math.max(0, lastRevealAtRef.current + maxReadyWaitMs - currentTime)
+        const projectReady = requireNearViewport ? loadingProjectReady : previousProjectReady
+        const readyWaitStartedAt = requireNearViewport ? nearProject.sinceAt : lastRevealAtRef.current
+        const readinessRemaining = projectReady ? 0 : Math.max(0, readyWaitStartedAt + maxReadyWaitMs - currentTime)
         const delay = Math.max(intervalRemaining, readinessRemaining)
 
         const timer = setTimeout(() => {
@@ -106,6 +114,7 @@ export default function useRateLimitedProjectReveal({
     }, [
         complete,
         lastRevealedProjectId,
+        loadingProjectReady,
         maxReadyWaitMs,
         minIntervalMs,
         nearProject,
@@ -119,5 +128,12 @@ export default function useRateLimitedProjectReveal({
         revealState.key,
     ])
 
-    return { revealedProjectIds, primaryProjectId, complete, nextProjectId, markProjectNearViewport }
+    return {
+        revealedProjectIds,
+        primaryProjectId,
+        complete,
+        nextProjectId,
+        loadingProjectId,
+        markProjectNearViewport,
+    }
 }
