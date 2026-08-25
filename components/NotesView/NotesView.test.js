@@ -105,6 +105,7 @@ describe('NotesView progressive project mounting', () => {
         expect(tree.root.findByType('NotesListSkeleton').props).toEqual(
             expect.objectContaining({ rowCount: 3, showProjectHeader: true })
         )
+        expect(useNearViewportMount).toHaveBeenCalledWith({ rootMargin: '0px' })
         expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith({
             projectIds: ['project-1', 'project-2', 'project-3'],
             readyProjectIds: [],
