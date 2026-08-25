@@ -32,6 +32,11 @@
 // once-per-signature latch in `useTaskRoutingActivity` rather than by a tight deadline.
 export const ROUTING_CONFIRMATION_WINDOW_MS = 60000
 
+// Both classifiers run inside the same 540-second Cloud Function. Ten minutes therefore outlives
+// every legitimate invocation while giving old `classifying` records a deterministic end in the UI.
+// The write guard prevents new stale records; this bound also makes already-stranded documents quiet.
+export const ROUTING_PROCESSING_WINDOW_MS = 10 * 60 * 1000
+
 export const ROUTING_ACTIVITY_PROCESSING = 'processing'
 export const ROUTING_ACTIVITY_CONFIRMED = 'confirmed'
 
@@ -48,6 +53,31 @@ const PROJECT_ROUTING_IN_FLIGHT = new Set(['pending', 'classifying'])
 // The goal router has no client-stamped pending state; it claims the task itself.
 const GOAL_ROUTING_IN_FLIGHT = new Set(['classifying'])
 
+const getProjectRoutingStartedAt = projectRouting =>
+    projectRouting?.status === 'pending'
+        ? projectRouting.requestedAt
+        : projectRouting?.startedAt || projectRouting?.requestedAt
+
+const getProcessingCandidate = (task, now) => {
+    if (!task) return null
+
+    if (PROJECT_ROUTING_IN_FLIGHT.has(task.projectRouting?.status)) {
+        const startedAt = getProjectRoutingStartedAt(task.projectRouting)
+        if (Number.isFinite(startedAt) && now - startedAt <= ROUTING_PROCESSING_WINDOW_MS) {
+            return { subject: ROUTING_SUBJECT_PROJECT, expiresAt: startedAt + ROUTING_PROCESSING_WINDOW_MS }
+        }
+    }
+
+    if (GOAL_ROUTING_IN_FLIGHT.has(task.goalSuggestion?.status)) {
+        const startedAt = task.goalSuggestion.createdAt
+        if (Number.isFinite(startedAt) && now - startedAt <= ROUTING_PROCESSING_WINDOW_MS) {
+            return { subject: ROUTING_SUBJECT_GOAL, expiresAt: startedAt + ROUTING_PROCESSING_WINDOW_MS }
+        }
+    }
+
+    return null
+}
+
 const isFresh = (resolvedAt, now) => {
     if (!Number.isFinite(resolvedAt) || resolvedAt <= 0) return false
     // Only the lower bound is enforced. A `resolvedAt` in the future means the function's
@@ -62,22 +92,14 @@ const isFresh = (resolvedAt, now) => {
  * @param {object} task a task as mapped by `mapTaskData`
  * @returns {null | { subject: 'project' | 'goal' }}
  */
-export const getTaskRoutingProcessing = task => {
-    if (!task) return null
-
-    // Project routing is reported first: it is the coarser decision, and while it is running
-    // goal routing has not started (the fan-out sequences project routing first and skips
-    // goal routing entirely for a task that is about to leave the project).
-    if (PROJECT_ROUTING_IN_FLIGHT.has(task.projectRouting?.status)) {
-        return { subject: ROUTING_SUBJECT_PROJECT }
-    }
-
-    if (GOAL_ROUTING_IN_FLIGHT.has(task.goalSuggestion?.status)) {
-        return { subject: ROUTING_SUBJECT_GOAL }
-    }
-
-    return null
+export const getTaskRoutingProcessing = (task, now = Date.now()) => {
+    const candidate = getProcessingCandidate(task, now)
+    return candidate ? { subject: candidate.subject } : null
 }
+
+/** When the current processing indicator must stop even if Firestore never sends another snapshot. */
+export const getTaskRoutingProcessingExpiresAt = (task, now = Date.now()) =>
+    getProcessingCandidate(task, now)?.expiresAt || null
 
 /**
  * True just after a server check actually CHANGED the task. A decision that left the task
@@ -141,7 +163,7 @@ export const getTaskRoutingActivity = (task, projectId, now = Date.now()) => {
     const confirmation = getTaskRoutingConfirmation(task, projectId, now)
     if (confirmation) return { kind: ROUTING_ACTIVITY_CONFIRMED, ...confirmation }
 
-    const processing = getTaskRoutingProcessing(task)
+    const processing = getTaskRoutingProcessing(task, now)
     if (processing) return { kind: ROUTING_ACTIVITY_PROCESSING, ...processing }
 
     return null

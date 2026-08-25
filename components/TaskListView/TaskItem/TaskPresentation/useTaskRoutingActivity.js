@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { getTaskRoutingConfirmation, getTaskRoutingProcessing } from '../../../../utils/taskRoutingActivity'
+import {
+    getTaskRoutingConfirmation,
+    getTaskRoutingProcessing,
+    getTaskRoutingProcessingExpiresAt,
+} from '../../../../utils/taskRoutingActivity'
 
 /**
  * AT-2381 — turns the pure routing state in `utils/taskRoutingActivity.js` into something a
  * row can render, and owns the one thing that state cannot express on its own: a confirmation
  * has to play ONCE.
  *
- * The processing sparkle needs no latch — it is a level, true for exactly as long as the
- * server is still deciding, and it ends when the snapshot with the settled status arrives.
+ * The processing sparkle needs no latch — it is a level, true while the server is deciding. It
+ * normally ends when the settled snapshot arrives, with a ten-minute expiry as a backstop for a
+ * stranded `classifying` document.
  * The confirmation is the opposite: it is an edge, and the evidence for it (`status: 'routed'`
  * plus `resolvedAt`) stays on the task document forever. Without a latch it would replay every
  * time the row remounted inside the freshness window — which in a virtualised list means every
@@ -62,15 +67,19 @@ export const resetPlayedRoutingConfirmations = () => playedConfirmations.clear()
  */
 export default function useTaskRoutingActivity(task, projectId) {
     const [confirmation, setConfirmation] = useState(null)
+    const [processingNow, setProcessingNow] = useState(() => Date.now())
     const timeoutRef = useRef(null)
 
     const taskId = task?.id
     // Depending on primitives rather than on `task` keeps the effect from re-running on every
     // unrelated field change — a task row re-renders constantly (drag state, focus, counters).
     const projectRoutingStatus = task?.projectRouting?.status
+    const projectRoutingRequestedAt = task?.projectRouting?.requestedAt
+    const projectRoutingStartedAt = task?.projectRouting?.startedAt
     const projectRoutingResolvedAt = task?.projectRouting?.resolvedAt
     const movedFromProjectId = task?.projectRouting?.movedFromProjectId
     const goalSuggestionStatus = task?.goalSuggestion?.status
+    const goalSuggestionCreatedAt = task?.goalSuggestion?.createdAt
     const goalSuggestionResolvedAt = task?.goalSuggestion?.resolvedAt
     const parentGoalId = task?.parentGoalId
 
@@ -95,9 +104,28 @@ export default function useTaskRoutingActivity(task, projectId) {
         parentGoalId,
     ])
 
+    useEffect(() => {
+        const now = Date.now()
+        setProcessingNow(now)
+
+        const expiresAt = getTaskRoutingProcessingExpiresAt(task, now)
+        if (!expiresAt) return undefined
+
+        const expiryTimeout = setTimeout(() => setProcessingNow(Date.now()), Math.max(0, expiresAt - now + 1))
+        return () => clearTimeout(expiryTimeout)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        taskId,
+        projectRoutingStatus,
+        projectRoutingRequestedAt,
+        projectRoutingStartedAt,
+        goalSuggestionStatus,
+        goalSuggestionCreatedAt,
+    ])
+
     // A settled decision ends the sparkle even before its snapshot changes anything else, and a
     // confirmation showing at the same time as "still working" would contradict itself.
-    const processing = confirmation ? null : getTaskRoutingProcessing(task)
+    const processing = confirmation ? null : getTaskRoutingProcessing(task, processingNow)
 
     return { processing, confirmation }
 }

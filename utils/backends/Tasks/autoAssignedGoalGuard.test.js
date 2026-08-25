@@ -1,5 +1,6 @@
 import {
     clearsUnseenAutoAssignedGoal,
+    hasUnseenSettledGoalRouting,
     isRouterAssignedGoal,
     payloadSawAssignment,
     preserveAutoAssignedGoal,
@@ -38,6 +39,16 @@ const staleEditorPayload = (overrides = {}) => ({
     parentGoalIsPublicFor: null,
     lockKey: '',
     goalSuggestion: null,
+    ...overrides,
+})
+
+const settledSuggestion = (status = 'none', overrides = {}) => ({
+    status,
+    goalId: null,
+    claimId: 'hjuF2yIfPYbJBwkht5Td',
+    projectId: '-M6X9vdIokG7HAammHGg',
+    source: 'task_goal_router',
+    createdAt: 1786480503739,
     ...overrides,
 })
 
@@ -144,10 +155,53 @@ describe('preserveAutoAssignedGoal', () => {
         expect(preserveAutoAssignedGoal(staleEditorPayload(), live).parentGoalId).toBeNull()
     })
 
-    it('stays out of the way once the suggestion has been resolved', () => {
-        const live = liveAssignedTask({ goalSuggestion: autoAssignedSuggestion({ status: 'dismissed' }) })
+    it('keeps a settled no-match result when the editor still carries the claim phase', () => {
+        const live = liveAssignedTask({
+            parentGoalId: null,
+            parentGoalIsPublicFor: null,
+            lockKey: '',
+            goalSuggestion: settledSuggestion('none'),
+        })
+        const stale = staleEditorPayload({
+            goalSuggestion: {
+                status: 'classifying',
+                claimId: live.goalSuggestion.claimId,
+                source: 'task_goal_router',
+            },
+        })
 
-        expect(preserveAutoAssignedGoal(staleEditorPayload(), live)).toEqual(staleEditorPayload())
+        expect(hasUnseenSettledGoalRouting(stale, live)).toBe(true)
+        expect(preserveAutoAssignedGoal(stale, live).goalSuggestion).toEqual(live.goalSuggestion)
+    })
+
+    it('keeps a settled suggestion when the editor predates the routing claim', () => {
+        const live = liveAssignedTask({
+            parentGoalId: null,
+            parentGoalIsPublicFor: null,
+            lockKey: '',
+            goalSuggestion: settledSuggestion('pending', { goalId: GOAL_ID }),
+        })
+
+        expect(hasUnseenSettledGoalRouting(staleEditorPayload(), live)).toBe(true)
+        expect(preserveAutoAssignedGoal(staleEditorPayload(), live).goalSuggestion).toEqual(live.goalSuggestion)
+    })
+
+    it('does not replace a different routing claim', () => {
+        const live = liveAssignedTask({ goalSuggestion: settledSuggestion('none') })
+        const newerClaim = staleEditorPayload({
+            goalSuggestion: { status: 'classifying', claimId: 'different-claim', source: 'task_goal_router' },
+        })
+
+        expect(hasUnseenSettledGoalRouting(newerClaim, live)).toBe(false)
+        expect(preserveAutoAssignedGoal(newerClaim, live)).toBe(newerClaim)
+    })
+
+    it('stays out of the way when the payload already carries a terminal result', () => {
+        const live = liveAssignedTask({ goalSuggestion: settledSuggestion('dismissed') })
+        const deliberate = staleEditorPayload({ goalSuggestion: settledSuggestion('accepted') })
+
+        expect(hasUnseenSettledGoalRouting(deliberate, live)).toBe(false)
+        expect(preserveAutoAssignedGoal(deliberate, live)).toBe(deliberate)
     })
 
     it('returns the payload untouched when there is nothing to guard', () => {

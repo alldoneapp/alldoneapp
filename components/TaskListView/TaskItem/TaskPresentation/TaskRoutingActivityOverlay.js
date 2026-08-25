@@ -14,9 +14,10 @@ import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRo
  *
  * Two states, two very different motion budgets:
  *
- *   - Processing is INDEFINITE. It runs until a snapshot ends it, which can be seconds (a small
- *     account) or considerably longer (a cold function plus a 40-project classification). So it
- *     is a CSS animation — `animationKeyframes`, compiled by react-native-web into a real
+ *   - Processing is VARIABLE-LENGTH. It normally runs until a snapshot ends it, with a ten-minute
+ *     stale-state backstop owned by `useTaskRoutingActivity`. It can be seconds (a small account)
+ *     or considerably longer (a cold function plus a 40-project classification). So it is a CSS
+ *     animation — `animationKeyframes`, compiled by react-native-web into a real
  *     `@keyframes` rule and composited by the browser. That costs zero JS per frame, which
  *     matters because the thing it is covering is a list that re-renders on every Firestore
  *     snapshot. A JS-driven loop here would be janking against exactly the work it is waiting for.

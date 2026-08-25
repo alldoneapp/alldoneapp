@@ -179,6 +179,30 @@ describe('updateTask + AT-2277 goal preservation', () => {
         expect(taskWrite().extendedName).toBe('renamed while the router was thinking')
     })
 
+    it('keeps the terminal routing result when a title save still carries classifying', async () => {
+        const claimId = 'claim-1'
+        const live = {
+            ...baseTask(),
+            goalSuggestion: {
+                status: 'none',
+                goalId: null,
+                claimId,
+                source: 'task_goal_router',
+                createdAt: 1786480503739,
+            },
+        }
+        const stale = {
+            ...baseTask(),
+            extendedName: 'renamed after the classifier finished',
+            goalSuggestion: { status: 'classifying', claimId, source: 'task_goal_router' },
+        }
+
+        await runUpdate(stale, live)
+
+        expect(taskWrite().extendedName).toBe('renamed after the classifier finished')
+        expect(taskWrite().goalSuggestion).toEqual(live.goalSuggestion)
+    })
+
     it('lets the user remove a goal they can actually see', async () => {
         const live = liveTaskWithRoutedGoal()
         const deliberate = { ...live, parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
