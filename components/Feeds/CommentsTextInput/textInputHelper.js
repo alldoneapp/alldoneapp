@@ -827,14 +827,24 @@ export const buildDictationDelta = ({ Delta, contentDelta, index, length, needsL
  * before the inserted text. Set it now for the common case, then re-assert it after Quill's update
  * cycle has run. `isEditorStillLive` guards the deferred call against the editor unmounting in the
  * meantime.
+ *
+ * Returns a canceller for that deferred re-assertion, because it is a FOCUS operation as much as a
+ * caret one and the two have opposite requirements (AT-2422). Quill's `setSelection` ends in
+ * `Selection.setNativeRange`, which does `if (!this.hasFocus()) this.root.focus()` — so the
+ * deferred call cannot merely move a caret, it resurrects focus in an editor that has since been
+ * blurred, re-opening the on-screen keyboard. A push-to-talk dictation that submits itself is
+ * exactly that case: its host sends and blurs, and this timer then undoes the blur. Cancel it
+ * whenever the dictation is going to submit rather than be typed into; see
+ * CustomTextInput3.submitDictatedText.
  */
 export const placeDictationCaret = (editor, caretIndex, isEditorStillLive) => {
     editor.setSelection(caretIndex, 0, 'user')
-    setTimeout(() => {
+    const deferredCaretTimeout = setTimeout(() => {
         if (isEditorStillLive && !isEditorStillLive()) return
         editor.focus()
         editor.setSelection(caretIndex, 0, 'user')
     }, 0)
+    return () => clearTimeout(deferredCaretTimeout)
 }
 
 export const insertPerplexityContent = (editor, content) => {

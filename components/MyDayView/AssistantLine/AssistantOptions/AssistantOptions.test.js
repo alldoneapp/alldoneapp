@@ -364,6 +364,34 @@ describe('AssistantOptions search button', () => {
         dismissKeyboard.mockRestore()
     })
 
+    // AT-2422: a held-mic send must end the same way a button send does. The bug was NOT here —
+    // this blur always ran — but the dictation's deferred caret timer fired afterwards and undid
+    // it (see dictationSubmitFocus.test.js). Pinning the host half so the voice path can never
+    // quietly stop blurring instead.
+    it('removes input focus and dismisses the keyboard when a held-mic dictation sends itself', async () => {
+        createBotQuickTopic.mockResolvedValue({
+            projectId: 'selected-project',
+            chatId: 'chat-1',
+            isPublicFor: ['all'],
+        })
+        const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss')
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        // The push-to-talk path hands the text over explicitly, because the `message` state behind
+        // it is still a queued setState at that point.
+        await act(async () => {
+            tree.root.findByType(TextInput).props.onDictationSubmit('dictated and sent')
+        })
+
+        expect(createBotQuickTopic).toHaveBeenCalledWith(expect.anything(), 'dictated and sent', expect.anything())
+        expect(mockInputBlur).toHaveBeenCalledTimes(1)
+        expect(dismissKeyboard).toHaveBeenCalledTimes(1)
+        dismissKeyboard.mockRestore()
+    })
+
     it('creates fallback-assistant chats in the selected project while loading tasks from the assistant project', async () => {
         createBotQuickTopic.mockResolvedValue({
             projectId: 'selected-project',
