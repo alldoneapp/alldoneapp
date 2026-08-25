@@ -7,35 +7,17 @@ import { resolveAssistantTemplateConflicts } from '../../../../utils/backends/As
 import { translate } from '../../../../i18n/TranslationService'
 import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 import { getAssistantTemplateReviewLabelKey } from './templateReview'
+import { formatTemplateConflictField } from './templateConflictFields'
 
-const FIELD_LABEL_KEYS = {
-    displayName: 'Name',
-    description: 'Description',
-    emailSignature: 'Email signature',
-    emailModel: 'Inbound email model',
-    heartbeatModel: 'Heartbeat model',
-    heartbeatReasoningEffort: 'Heartbeat reasoning effort',
-    model: 'Assistant model',
-    reasoningEffort: 'Reasoning effort',
-    temperature: 'Temperature',
-}
+// Re-exported so the existing importers (and UpdateFromTemplate.test.js) keep
+// their entry point after the formatter moved to a Firestore-free module.
+export { formatTemplateConflictField }
 
 const MODEL_LABELS = {
     MODEL_GPT5_6_SOL: 'GPT 5.6 Sol',
     MODEL_GPT5_6_TERRA: 'GPT 5.6 Terra',
     MODEL_GPT5_6_LUNA: 'GPT 5.6 Luna',
     MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4 Flash',
-}
-
-export const formatTemplateConflictField = field => {
-    const labelKey = FIELD_LABEL_KEYS[field]
-    if (labelKey) return translate(labelKey)
-
-    const readable = String(field || '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-        .replace(/[_-]+/g, ' ')
-        .trim()
-    return readable ? readable.charAt(0).toUpperCase() + readable.slice(1) : ''
 }
 
 export const formatTemplateConflictValue = (field, value, exists) => {
