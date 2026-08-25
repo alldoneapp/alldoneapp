@@ -13,6 +13,7 @@ import ShowMoreButtonsArea from './ShowMoreButtonsArea'
 import useEarlierSubtasks from './useEarlierSubtasks'
 import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
 import TaskListSkeleton from '../TaskListSkeleton'
@@ -26,28 +27,10 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const [filteredTasksByDate, setFilteredTasksByDate] = useState([])
     const [filters, filtersArray] = useSelectorHashtagFilters()
 
-    // Check if this project is using a different assistant than the default project
-    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const defaultAssistant = useSelector(state => state.defaultAssistant)
-    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
-    const isDefaultProject = project.id === defaultProjectId
-    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
-    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const useSelectedProjectAssistantLine =
-        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
-    // Keep the selected project as the conversation context even when its assistant
-    // is inherited from the default project.
-    const assistantLineProject = project
-    const assistantLineAssistantId = useSelectedProjectAssistantLine
-        ? selectedProjectAssistantId
-        : defaultProjectAssistantId
-    const showAssistantSwitch =
-        !isDefaultProject &&
-        useSelectedProjectAssistantLine &&
-        !!defaultProject &&
-        !!defaultProjectAssistantId &&
-        !!selectedProjectAssistantId
-    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
+    // AT-2430: assistant resolution + switch options, shared with the open/pending boards of the
+    // same project so all three tabs can never show a different assistant.
+    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
+    const showAssistantLine = !isAnonymous && inSelectedProject && hasAssistantLine
 
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
     const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck, loadingEarlierTasks } =
@@ -93,23 +76,7 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
             />
             {showAssistantLine && (
                 <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                    <AssistantLine
-                        showLastComment={true}
-                        useAssistantProjectContext={!useSelectedProjectAssistantLine}
-                        useGlobalLatestComment={!useSelectedProjectAssistantLine}
-                        projectOverride={assistantLineProject}
-                        assistantIdOverride={assistantLineAssistantId}
-                        assistantSwitchOptions={
-                            showAssistantSwitch
-                                ? {
-                                      projectOverride: defaultProject,
-                                      assistantIdOverride: defaultProjectAssistantId,
-                                      useAssistantProjectContext: true,
-                                      useGlobalLatestComment: true,
-                                  }
-                                : null
-                        }
-                    />
+                    <AssistantLine {...assistantLineProps} />
                 </View>
             )}
             {filteredTasksByDate.map((item, index) => {

@@ -74,14 +74,8 @@ export const PROBE_TIMEOUT_MS = 5000
  */
 export const FIRESTORE_RESTART_TIMEOUT_MS = 5000
 
-/**
- * Offer offline work when a real page read or write acknowledgement takes this long.
- * Ten seconds, not five: a read that is merely sluggish recovers on its own well
- * inside that window, so the shorter threshold spent the indicator on connections
- * that were about to answer anyway — and an indicator that cries wolf is one the
- * user learns to ignore, which is the same defect as never showing it at all.
- */
-export const SLOW_CONNECTION_THRESHOLD_MS = 10000
+/** Offer offline work when a real page read or write acknowledgement takes this long. */
+export const SLOW_CONNECTION_THRESHOLD_MS = 5000
 
 /** Keep the choice visible briefly after the delayed operation eventually completes. */
 export const SLOW_CONNECTION_LINGER_MS = 30 * 1000
