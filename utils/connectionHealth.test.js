@@ -44,9 +44,14 @@ const createFakeWindow = () => {
  * realistic shape of a dead transport, which does NOT reject), 'denied' rejects
  * with permission-denied, 'unavailable' rejects.
  */
-const createFakeDb = behaviours => {
+const createFakeDb = (behaviours, { disableNetwork = 'ok', enableNetwork = 'ok' } = {}) => {
     const remaining = [...behaviours]
     const calls = { get: 0, disableNetwork: 0, enableNetwork: 0 }
+    const networkOperation = behaviour => {
+        if (behaviour === 'hang') return new Promise(() => {})
+        if (behaviour === 'fail') return Promise.reject(new Error('restart failed'))
+        return Promise.resolve()
+    }
     return {
         calls,
         doc: () => ({
@@ -61,11 +66,11 @@ const createFakeDb = behaviours => {
         }),
         disableNetwork: () => {
             calls.disableNetwork++
-            return Promise.resolve()
+            return networkOperation(disableNetwork)
         },
         enableNetwork: () => {
             calls.enableNetwork++
-            return Promise.resolve()
+            return networkOperation(enableNetwork)
         },
     }
 }
@@ -455,6 +460,73 @@ describe('connectionHealth', () => {
             expect(outcome).toBe(CONNECTION_HEALTH_LIVE)
             expect(isManualOfflineMode()).toBe(false)
             expect(db.calls.get).toBe(1)
+            stop()
+        })
+
+        it('does not leave the UI waiting when the Firestore restart never settles', async () => {
+            const db = createFakeDb(['ok'], { disableNetwork: 'hang' })
+            const requestClientReload = jest.fn(() => true)
+            const { tracked, stop } = install({
+                db,
+                firestoreRestartTimeoutMs: 5,
+                probeServerDirectly: () => Promise.resolve({ exists: true }),
+                requestClientReload,
+            })
+
+            const outcome = await reconnectNow()
+
+            expect(outcome).toBe(CONNECTION_HEALTH_STALE)
+            expect(requestClientReload).toHaveBeenCalledWith('restart_timeout')
+            expect(tracked).toContainEqual({
+                name: 'connection_manual_reconnect',
+                params: { state_from: CONNECTION_HEALTH_LIVE, outcome: 'reload_restart_timeout' },
+            })
+            stop()
+        })
+
+        it('requests a fresh client when Firestore rejects its own restart', async () => {
+            const db = createFakeDb(['ok'], { enableNetwork: 'fail' })
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                probeServerDirectly: () => Promise.resolve({ exists: true }),
+                requestClientReload,
+            })
+
+            const outcome = await reconnectNow()
+
+            expect(outcome).toBe(CONNECTION_HEALTH_STALE)
+            expect(requestClientReload).toHaveBeenCalledWith('restart_failed')
+            stop()
+        })
+
+        it('does not reload a stuck client when an independent server check is also unreachable', async () => {
+            const db = createFakeDb(['ok'], { disableNetwork: 'hang' })
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                firestoreRestartTimeoutMs: 5,
+                probeServerDirectly: () => Promise.reject(new Error('network unavailable')),
+                requestClientReload,
+            })
+
+            const outcome = await reconnectNow()
+
+            expect(outcome).toBe(CONNECTION_HEALTH_STALE)
+            expect(requestClientReload).not.toHaveBeenCalled()
+            stop()
+        })
+
+        it('returns offline immediately without trying to restart an offline browser', async () => {
+            const db = createFakeDb(['ok'], { disableNetwork: 'hang' })
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({ db, offline: true, requestClientReload })
+
+            const outcome = await reconnectNow()
+
+            expect(outcome).toBe(CONNECTION_HEALTH_OFFLINE)
+            expect(db.calls.disableNetwork).toBe(0)
+            expect(requestClientReload).not.toHaveBeenCalled()
             stop()
         })
     })

@@ -67,6 +67,7 @@ jest.mock('../../utils/connectionHealth', () => ({
 }))
 
 import EndDayStatisticsModal, {
+    RECONNECT_ATTEMPT_TIMEOUT_MS,
     RECONNECT_STATISTICS_TIMEOUT_MS,
 } from '../../components/UIComponents/FloatModals/EndDayStatisticsModal'
 import store from '../../redux/store'
@@ -258,6 +259,30 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         await pressReconnect(tree)
 
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
+        expect(text(tree)).toContain('Still no connection')
+    })
+
+    it('gives up when the shared reconnect operation itself never answers', async () => {
+        jest.useFakeTimers()
+        reconnectNow.mockImplementation(() => new Promise(() => {}))
+        const tree = await render()
+        const button = tree.root.findByProps({ testID: 'newDayReconnectButton' })
+        let pressing
+
+        renderer.act(() => {
+            pressing = button.props.onPress({ preventDefault: () => {}, stopPropagation: () => {} })
+        })
+        await flush()
+        expect(text(tree)).toContain('Reconnecting')
+
+        await renderer.act(async () => {
+            jest.advanceTimersByTime(RECONNECT_ATTEMPT_TIMEOUT_MS)
+            await pressing
+        })
+
+        expect(text(tree)).not.toContain('Reconnecting')
+        expect(has(tree, 'newDayReconnectButton')).toBe(true)
+        expect(has(tree, 'startNewDayButton')).toBe(true)
         expect(text(tree)).toContain('Still no connection')
     })
 
