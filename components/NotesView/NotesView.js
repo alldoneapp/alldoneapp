@@ -29,24 +29,24 @@ import NotesListSkeleton from './NotesListSkeleton'
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
 export const NOTES_PROJECT_REVEAL_ROOT_MARGIN = '0px'
-// Keep the deferred ghost around for at least one complete 1.4 s shimmer cycle.
-// A normal touchpad/mobile scroll can itself take close to a second, so the shared
-// 500 ms reveal interval lets the placeholder disappear before scrolling settles.
-export const NOTES_PROJECT_GHOST_MIN_VISIBLE_MS = 1500
+export const NOTES_PROJECT_GHOST_MIN_VISIBLE_MS = 200
 
-function DeferredProjectReveal({ projectId, onNearViewport }) {
+function DeferredProjectReveal({ projectId, revealed, loading, observe, onNearViewport, children }) {
     const { placeholderRef, isNearViewport } = useNearViewportMount({
+        eager: revealed,
+        enabled: observe,
         rootMargin: NOTES_PROJECT_REVEAL_ROOT_MARGIN,
         trackVisibility: true,
     })
 
     useEffect(() => {
-        onNearViewport(projectId, isNearViewport)
-    }, [isNearViewport, onNearViewport, projectId])
+        if (observe) onNearViewport(projectId, isNearViewport)
+    }, [isNearViewport, observe, onNearViewport, projectId])
 
     return (
-        <View ref={placeholderRef} style={localStyles.deferredProjectReveal}>
-            <NotesListSkeleton rowCount={3} showProjectHeader />
+        <View ref={placeholderRef} style={!revealed && localStyles.deferredProjectReveal}>
+            {(revealed || loading) && <View style={!revealed && localStyles.preloadedProject}>{children}</View>}
+            {!revealed && observe && <NotesListSkeleton rowCount={3} showProjectHeader />}
         </View>
     )
 }
@@ -88,7 +88,7 @@ function NotesView() {
         },
         [projectRevealKey]
     )
-    const { revealedProjectIds, primaryProjectId, nextProjectId, markProjectNearViewport } =
+    const { revealedProjectIds, primaryProjectId, nextProjectId, loadingProjectId, markProjectNearViewport } =
         useRateLimitedProjectReveal({
             projectIds: inAllProjects ? sortedProjectIds : [],
             readyProjectIds,
@@ -98,6 +98,10 @@ function NotesView() {
         })
     const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
     const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
+    const visibleProjectIndexes = useMemo(
+        () => new Map(visibleProjects.map((project, index) => [project.id, index])),
+        [visibleProjects]
+    )
 
     // The owner filter runs client-side over the notes already loaded, so widen the fetch
     // window while one is active. Without this, filtering a 10-note window by owner can show
@@ -195,28 +199,36 @@ function NotesView() {
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
                 ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
-                    visibleProjects.map((project, index) => (
-                        <NotesByProject
-                            key={project.id}
-                            project={project}
-                            filterBy={notesActiveTab}
-                            firstProject={index === 0}
-                            maxNotesToRender={3}
-                            onInitialSnapshot={markProjectReady}
-                            setLastEditNoteDate={setLastEditNoteDate}
-                            showInitialSkeleton
-                            trackInitialLoad={project.id === primaryProjectId}
-                        />
-                    ))
+                    sortedLoggedUserProjects.map(project => {
+                        const revealed = revealedProjectIdsSet.has(project.id)
+                        const loading = project.id === loadingProjectId
+                        const observe = project.id === nextProjectId
+                        if (!revealed && !observe) return null
+
+                        return (
+                            <DeferredProjectReveal
+                                key={project.id}
+                                projectId={project.id}
+                                revealed={revealed}
+                                loading={loading}
+                                observe={observe}
+                                onNearViewport={markProjectNearViewport}
+                            >
+                                <NotesByProject
+                                    project={project}
+                                    filterBy={notesActiveTab}
+                                    firstProject={revealed && visibleProjectIndexes.get(project.id) === 0}
+                                    maxNotesToRender={3}
+                                    onInitialSnapshot={markProjectReady}
+                                    setLastEditNoteDate={setLastEditNoteDate}
+                                    showInitialSkeleton
+                                    trackInitialLoad={project.id === primaryProjectId}
+                                />
+                            </DeferredProjectReveal>
+                        )
+                    })
                 ) : (
                     <EmptyNotesAllProjects sortedActiveProjects={sortedLoggedUserProjects} />
-                )}
-                {inAllProjects && nextProjectId && (
-                    <DeferredProjectReveal
-                        key={nextProjectId}
-                        projectId={nextProjectId}
-                        onNearViewport={markProjectNearViewport}
-                    />
                 )}
             </View>
         </View>
@@ -257,6 +269,9 @@ const localStyles = StyleSheet.create({
     },
     deferredProjectReveal: {
         marginBottom: 25,
+    },
+    preloadedProject: {
+        display: 'none',
     },
 })
 

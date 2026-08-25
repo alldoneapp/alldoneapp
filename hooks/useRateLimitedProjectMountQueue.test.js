@@ -43,30 +43,47 @@ describe('useRateLimitedProjectMountQueue', () => {
         })
 
         expect(queue.mountedProjectCount).toBe(1)
+        expect(queue.preloadingProjectIndex).toBeNull()
         expect(queue.nextProjectIndex).toBe(1)
         act(() => jest.advanceTimersByTime(5000))
         expect(queue.mountedProjectCount).toBe(1)
     })
 
-    it('admits one near project after the previous task streams are ready', () => {
+    it('preloads one near project immediately and admits it after its own task streams are ready', () => {
         let queue
+        let tree
+        const onUpdate = value => {
+            queue = value
+        }
         act(() => {
-            renderer.create(
+            tree = renderer.create(
                 <Harness
                     projectIds={['project-1', 'project-2', 'project-3']}
                     projectReadyStates={[true, false, false]}
                     minIntervalMs={0}
-                    onUpdate={value => {
-                        queue = value
-                    }}
+                    onUpdate={onUpdate}
                 />
             )
         })
 
         act(() => queue.markProjectNearViewport(1))
+        expect(queue.preloadingProjectIndex).toBe(1)
+        expect(queue.mountedProjectCount).toBe(1)
+
+        act(() => {
+            tree.update(
+                <Harness
+                    projectIds={['project-1', 'project-2', 'project-3']}
+                    projectReadyStates={[true, true, false]}
+                    minIntervalMs={0}
+                    onUpdate={onUpdate}
+                />
+            )
+        })
         act(() => jest.runOnlyPendingTimers())
 
         expect(queue.mountedProjectCount).toBe(2)
+        expect(queue.preloadingProjectIndex).toBeNull()
         expect(queue.nextProjectIndex).toBe(2)
     })
 
@@ -76,7 +93,7 @@ describe('useRateLimitedProjectMountQueue', () => {
             renderer.create(
                 <Harness
                     projectIds={['project-1', 'project-2']}
-                    projectReadyStates={[true, false]}
+                    projectReadyStates={[true, true]}
                     minIntervalMs={1500}
                     onUpdate={value => {
                         queue = value
@@ -95,13 +112,13 @@ describe('useRateLimitedProjectMountQueue', () => {
         expect(queue.mountedProjectCount).toBe(2)
     })
 
-    it('cancels admission when layout pushes the ghost back out of view', () => {
+    it('keeps a started preload alive when layout pushes the ghost back out of view', () => {
         let queue
         act(() => {
             renderer.create(
                 <Harness
                     projectIds={['project-1', 'project-2']}
-                    projectReadyStates={[true, false]}
+                    projectReadyStates={[true, true]}
                     minIntervalMs={1500}
                     onUpdate={value => {
                         queue = value
@@ -113,11 +130,8 @@ describe('useRateLimitedProjectMountQueue', () => {
         act(() => queue.markProjectNearViewport(1, true))
         act(() => jest.advanceTimersByTime(750))
         act(() => queue.markProjectNearViewport(1, false))
-        act(() => jest.advanceTimersByTime(2000))
-        expect(queue.mountedProjectCount).toBe(1)
-
-        act(() => queue.markProjectNearViewport(1, true))
-        act(() => jest.advanceTimersByTime(1500))
+        expect(queue.preloadingProjectIndex).toBe(1)
+        act(() => jest.advanceTimersByTime(750))
         expect(queue.mountedProjectCount).toBe(2)
     })
 
@@ -138,6 +152,7 @@ describe('useRateLimitedProjectMountQueue', () => {
         })
 
         act(() => queue.markProjectNearViewport(1))
+        expect(queue.preloadingProjectIndex).toBe(1)
         act(() => jest.advanceTimersByTime(4999))
         expect(queue.mountedProjectCount).toBe(1)
 
@@ -163,5 +178,6 @@ describe('useRateLimitedProjectMountQueue', () => {
         act(() => queue.markProjectNearViewport(2))
         act(() => jest.runOnlyPendingTimers())
         expect(queue.mountedProjectCount).toBe(1)
+        expect(queue.preloadingProjectIndex).toBeNull()
     })
 })
