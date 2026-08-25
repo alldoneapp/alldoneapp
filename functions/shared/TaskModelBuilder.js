@@ -89,6 +89,7 @@ function buildTaskObject({
     currentReviewerId = null,
     completed = null,
     creatorId = null,
+    projectRouting = null,
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -228,6 +229,7 @@ function buildTaskObject({
 
         // Human readable ID (if generated)
         humanReadableId: humanReadableId,
+        ...(projectRouting ? { projectRouting } : {}),
         autoFollowUpManaged: autoFollowUpManaged,
         autoFollowUpType: autoFollowUpType,
         autoFollowUpContactId: autoFollowUpContactId,

@@ -21,7 +21,7 @@
         "alias": "android"
     },
     "appVersionName": "Y",
-    "appVersionCode": 2,
+    "appVersionCode": 3,
     "shortcuts": [],
     "generatorApp": "bubblewrap-cli",
     "webManifestUrl": "https://my.alldone.app/manifest.json",
@@ -35,10 +35,19 @@
     "isMetaQuest": false,
     "fullScopeUrl": "https://my.alldone.app/",
     "minSdkVersion": 21,
+    "shareTarget": {
+        "action": "https://my.alldone.app/projects/tasks/open",
+        "method": "GET",
+        "params": {
+            "title": "share_title",
+            "text": "share_text",
+            "url": "share_url"
+        }
+    },
     "orientation": "default",
     "fingerprints": [],
     "additionalTrustedOrigins": [],
     "retainedBundles": [],
     "displayOverride": [],
-    "appVersion": "1.0.1"
+    "appVersion": "1.0.2"
 }

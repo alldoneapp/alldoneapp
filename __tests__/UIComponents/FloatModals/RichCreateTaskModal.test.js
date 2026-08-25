@@ -175,6 +175,15 @@ describe('RichCreateTaskModal duplicate submissions (AT-2183)', () => {
         expect(mockCreateTaskWithService).toHaveBeenCalledTimes(1)
     })
 
+    test('uses a shared link as the initial task name in the normal add-task form', () => {
+        renderPopup({ initialTask: undefined, initialTaskName: 'https://example.com/shared' })
+
+        expect(capturedMainModalProps.task).toMatchObject({
+            name: 'https://example.com/shared',
+            extendedName: 'https://example.com/shared',
+        })
+    })
+
     test('creates a single task for a burst of five submissions', () => {
         renderPopup()
         const { createTask } = capturedMainModalProps
