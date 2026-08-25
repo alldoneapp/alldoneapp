@@ -55,6 +55,7 @@ describe('NotesListSkeleton', () => {
         const header = tree.root.findByProps({ testID: 'notes-project-loading-skeleton-header' })
 
         expect(header.props.style.height).toBe(56)
+        expect(tree.root.findByProps({ testID: 'notes-project-loading-skeleton-leading-edge' })).toBeTruthy()
         expect(tree.root.findAllByProps({ testID: 'note-loading-skeleton-row' })).toHaveLength(3)
     })
 
