@@ -116,11 +116,24 @@ const getCurrentAuthUid = () => {
  * full client's bad view. A recovered document is returned normally, and a direct read that
  * cannot reach the server is reported as a failed read so the caller retries instead of
  * recovering.
+ *
+ * `options.absenceIsExpected` marks a PROBE: a caller that is only asking "is this id a user?"
+ * about an id that may equally be a contact, an assistant or a workstream (AT-2428). For that
+ * question an absence is an ordinary answer, not an anomaly, so the probe skips the verification
+ * round trip and logs nothing — it must not spend a REST read, nor report a production ERROR,
+ * for every contact the app opens. The safety net is unchanged rather than weakened: a probe is
+ * only allowed to answer "not a user" cheaply, and a caller that finds NOTHING to explain the
+ * absence has to escalate to a verified read (`getUserData` with no options), which is what still
+ * recovers a real user whose realtime read was wrong and still logs loudly when it is genuinely
+ * gone. `verified` on the result says which of the two answers the caller got.
  */
-export async function fetchUserDataResult(userId, isLoggedUser) {
+export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
+    const { absenceIsExpected = false } = options
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
+            if (absenceIsExpected) return { user: null, missing: true, error: null, verified: false }
+
             let directSnapshot
             try {
                 directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
@@ -132,7 +145,7 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                         'treating it as a failed read rather than a missing account.',
                     verifyError
                 )
-                return { user: null, missing: false, error: verifyError }
+                return { user: null, missing: false, error: verifyError, verified: false }
             }
 
             if (directSnapshot.exists) {
@@ -153,7 +166,7 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                         restartError
                     )
                 }
-                return { user: recoveredUser, missing: !recoveredUser, error: null }
+                return { user: recoveredUser, missing: !recoveredUser, error: null, verified: true }
             }
 
             const authUid = getCurrentAuthUid()
@@ -169,19 +182,19 @@ export async function fetchUserDataResult(userId, isLoggedUser) {
                     calledFrom: new Error().stack,
                 }
             )
-            return { user: null, missing: true, error: null }
+            return { user: null, missing: true, error: null, verified: true }
         }
         const user = docSnapshot.data()
         const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
-        return { user: mappedUser, missing: !mappedUser, error: null }
+        return { user: mappedUser, missing: !mappedUser, error: null, verified: true }
     } catch (error) {
         console.error(`Error fetching user data for ${userId}:`, error)
-        return { user: null, missing: false, error }
+        return { user: null, missing: false, error, verified: false }
     }
 }
 
-export async function getUserData(userId, isLoggedUser) {
-    const { user } = await fetchUserDataResult(userId, isLoggedUser)
+export async function getUserData(userId, isLoggedUser, options) {
+    const { user } = await fetchUserDataResult(userId, isLoggedUser, options)
     return user
 }
 
