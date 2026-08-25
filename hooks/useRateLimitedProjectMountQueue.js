@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 export const PROJECT_MOUNT_MIN_INTERVAL_MS = 500
 export const PROJECT_MOUNT_MAX_READY_WAIT_MS = 5000
@@ -23,7 +23,6 @@ export default function useRateLimitedProjectMountQueue({
         mountedCount: initialMountedCount,
     }))
     const [nearProject, setNearProject] = useState(null)
-    const lastMountAtRef = useRef(now())
 
     const mountedProjectCount =
         queueState.projectKey === projectKey
@@ -33,16 +32,18 @@ export default function useRateLimitedProjectMountQueue({
     useEffect(() => {
         if (queueState.projectKey === projectKey) return
 
-        lastMountAtRef.current = now()
         setNearProject(null)
         setQueueState({ projectKey, mountedCount: initialMountedCount })
     }, [initialMountedCount, now, projectKey, queueState.projectKey])
 
     const markProjectNearViewport = useCallback(
-        projectIndex => {
+        (projectIndex, isNearViewport = true) => {
             if (projectIndex !== mountedProjectCount || projectIndex >= projectIds.length) return
 
             setNearProject(current => {
+                if (!isNearViewport) {
+                    return current?.projectKey === projectKey && current.projectIndex === projectIndex ? null : current
+                }
                 if (current?.projectKey === projectKey && current.projectIndex === projectIndex) return current
                 return { projectKey, projectIndex, sinceAt: now() }
             })
@@ -63,7 +64,10 @@ export default function useRateLimitedProjectMountQueue({
         }
 
         const currentTime = now()
-        const intervalRemaining = Math.max(0, lastMountAtRef.current + minIntervalMs - currentTime)
+        // Start the visible interval when the placeholder actually reaches the
+        // viewport. Measuring from the previous mount lets a long scroll consume
+        // the whole delay before the user can see the loading ghost.
+        const intervalRemaining = Math.max(0, nearProject.sinceAt + minIntervalMs - currentTime)
         const readinessRemaining = previousProjectReady
             ? 0
             : Math.max(0, nearProject.sinceAt + maxReadyWaitMs - currentTime)
@@ -77,7 +81,6 @@ export default function useRateLimitedProjectMountQueue({
                     mountedCount: Math.min(projectIds.length, mountedProjectCount + 1),
                 }
             })
-            lastMountAtRef.current = now()
             setNearProject(current =>
                 current?.projectKey === projectKey && current.projectIndex === mountedProjectCount ? null : current
             )
