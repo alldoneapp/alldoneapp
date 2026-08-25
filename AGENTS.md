@@ -6,7 +6,7 @@
 
 ## Build, Test, and Development Commands
 
-Install dependencies with `npm install` using Node.js 14.21.x. Start Metro and Expo with `npm start`; target devices via `npm run ios`, `npm run android`, or `npm run web`. Create a static bundle using `npm run build-web`. When caching causes stale assets, reset the bundler with `npm run start-clean`. Apply repository formatting before commits through `npm run format-code`.
+Use the repo-wide Node.js 22 runtime from `.nvmrc` with npm 10. Install dependencies with `nvm use && npm ci`. Start the webpack development server with `npm run dev` and create the production web bundle with `npm run build-web-webpack`. The React Native/Expo-era scripts still present in `package.json` (`start`, `web`, `android`, `ios`, `build-web`, and `start-clean`) are retired and should not be used. Apply repository formatting before commits through `npm run format-code`.
 
 For additional repo-specific development guidance, including the Node 20 exception for `cloudflare/email-worker/`, refer to `CLAUDE.md`.
 
@@ -24,6 +24,6 @@ Commit summaries follow the repository convention of short, sentence-case statem
 
 ## Environment & Secrets
 
-Respect the versions pinned in `README.md` (Node 14.21.3, npm 6.14.18, Expo CLI 6.1.0). Environment data resides in `.env`, `envs/`, and `env_functions*.json`; never commit real keys. Request Algolia, Firebase, and Sentry credentials from maintainers, store them using the existing naming scheme, and update GitLab CI variables in tandem for staging and production.
+Respect the versions pinned by `.nvmrc` and the package engines (Node 22 and npm 10), plus firebase-tools 13.29.3. Expo CLI is no longer part of the supported toolchain. Environment data resides in `.env`, `envs/`, and `env_functions*.json`; never commit real keys. Request Algolia, Firebase, and Sentry credentials from maintainers, store them using the existing naming scheme, and update GitLab CI variables in tandem for staging and production.
 
 When granting a GCP IAM role for something a Cloud Function does (Cloud Tasks, Pub/Sub, etc.), grant it to the **`firebase-adminsdk-*@<project>` service account**, not the compute/runtime SA — `functions/firebaseConfig.js` initializes admin with an explicit cert credential, so all firebase-admin GCP calls run as the Admin SDK SA. See the IAM and "Assistant VM Tool" sections in `CLAUDE.md` for the full story.
