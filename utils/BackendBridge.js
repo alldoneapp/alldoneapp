@@ -20,8 +20,8 @@ export default class Backend {
         return await bridge.removeInvitedUserFromProject(user, projectId)
     }
 
-    static async getUserDataByUidOrEmail(uidOrEmail) {
-        return await bridge.getUserDataByUidOrEmail(uidOrEmail)
+    static async getUserDataByUidOrEmail(uidOrEmail, options) {
+        return await bridge.getUserDataByUidOrEmail(uidOrEmail, options)
     }
 
     static async declineProjectInvitation(user, project) {

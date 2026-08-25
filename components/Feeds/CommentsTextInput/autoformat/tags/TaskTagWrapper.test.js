@@ -133,3 +133,61 @@ describe('TaskTagWrapper missing-task recovery', () => {
         expect(tree.root.findByType('TaskTag').props.task).toBe(doneTask)
     })
 })
+
+/**
+ * AT-2428. The note toolbar's "add task" button does not insert an embed for an existing task —
+ * `DvContainer`/`NoteIntegration` render a bare `<TaskTagWrapper editorId={note.id} />` with NO
+ * `taskId`, so the wrapper opens `ManageTaskModal` in create mode. Every guard in the component
+ * has to survive that, which is why these tests pass no `taskId` at all rather than a placeholder.
+ */
+describe('TaskTagWrapper opened from the note toolbar (no task yet)', () => {
+    beforeEach(() => {
+        jest.useFakeTimers()
+        mockGetTaskData.mockReset()
+        mockState = {
+            activeNoteId: 'note-1',
+            activeNoteIsReadOnly: false,
+            loggedUser: { uid: 'user-1' },
+            notesInnerTasks: { 'note-1': {} },
+            quillEditorProjectId: 'project-1',
+            quillTextInputProjectIdsByEditorId: { 'note-1': 'project-1' },
+            smallScreenNavigation: false,
+        }
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
+    })
+
+    it('renders without a taskId instead of crashing on the recovered-task guard', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<TaskTagWrapper editorId="note-1" loadTask={mockGetTaskData} />)
+        })
+
+        expect(tree.root.findAllByType('TaskTag')).toHaveLength(0)
+    })
+
+    it('opens the create modal and never runs the missing-task recovery read', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<TaskTagWrapper editorId="note-1" loadTask={mockGetTaskData} />)
+        })
+
+        expect(jest.getTimerCount()).toBe(0)
+        expect(mockGetTaskData).not.toHaveBeenCalled()
+    })
+
+    it('survives a re-render while the task is still being created', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<TaskTagWrapper editorId="note-1" loadTask={mockGetTaskData} />)
+        })
+
+        act(() => {
+            tree.update(<TaskTagWrapper editorId="note-1" loadTask={mockGetTaskData} setModalHeight={() => {}} />)
+        })
+
+        expect(tree.root.findAllByType('TaskTag')).toHaveLength(0)
+    })
+})

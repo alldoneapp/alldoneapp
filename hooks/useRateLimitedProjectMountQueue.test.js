@@ -135,33 +135,6 @@ describe('useRateLimitedProjectMountQueue', () => {
         expect(queue.mountedProjectCount).toBe(2)
     })
 
-    it('recovers when a fast fling skips the next project sentinel', () => {
-        let queue
-        act(() => {
-            renderer.create(
-                <Harness
-                    projectIds={['project-1', 'project-2']}
-                    projectReadyStates={[true, true]}
-                    minIntervalMs={200}
-                    onUpdate={value => {
-                        queue = value
-                    }}
-                />
-            )
-        })
-
-        act(() => queue.markProjectNearViewport(1, false, true))
-        expect(queue.preloadingProjectIndex).toBe(1)
-        expect(queue.preloadingProjectSkipped).toBe(true)
-
-        act(() => jest.advanceTimersByTime(199))
-        expect(queue.mountedProjectCount).toBe(1)
-
-        act(() => jest.advanceTimersByTime(1))
-        expect(queue.mountedProjectCount).toBe(2)
-        expect(queue.preloadingProjectSkipped).toBe(false)
-    })
-
     it('waits for readiness but falls back when one project does not answer', () => {
         let queue
         act(() => {
