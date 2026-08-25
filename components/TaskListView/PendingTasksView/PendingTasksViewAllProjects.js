@@ -4,7 +4,7 @@ import PendingTasksByProject from './PendingTasksByProject'
 import { useSelector } from 'react-redux'
 import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
+import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
 export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
@@ -37,7 +37,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
                 ]}
             >
                 <AllProjectsLine />
-                <AllProjectsAssistantLine />
+                <AssistantLine useAssistantProjectContext={false} />
                 {sortedProjects.map(project => (
                     <PendingTasksByProject key={project.id} project={project} />
                 ))}

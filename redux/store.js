@@ -87,13 +87,6 @@ export const initialState = {
     projectChatLastNotification: {},
     globalAssistants: [],
     defaultAssistant: {},
-    // AT-2430: which assistant the assistant line is talking to in a given project, when the
-    // user picked one with the line's switch control. `{ [projectId]: assistantId }`, session
-    // only and deliberately never persisted — it is a view preference, not a property of the
-    // project (`project.assistantId` is the project's SHARED assistant and changing it would
-    // change the assistant for every member). A stale entry cannot do harm: readers resolve it
-    // against the project's live option list and fall back when it no longer matches.
-    assistantLineSelection: {},
     selectedProjectIndex: ALL_PROJECTS_INDEX,
     selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
     selectedNavItem: DV_TAB_ROOT_TASKS,
@@ -887,28 +880,6 @@ export const theReducer = (state = initialState, action) => {
             }
 
             return { ...state, projectAssistants, currentUser }
-        }
-        // AT-2430. Writes the SAME state back by identity when nothing changed: the assistant
-        // line is mounted on every task board, so a redundant new map identity here would
-        // re-render every one of them for a no-op selection.
-        case 'Set assistant line assistant': {
-            const { projectId, assistantId } = action
-            if (!projectId) return state
-
-            const current = state.assistantLineSelection[projectId]
-
-            if (!assistantId) {
-                if (current === undefined) return state
-                const assistantLineSelection = { ...state.assistantLineSelection }
-                delete assistantLineSelection[projectId]
-                return { ...state, assistantLineSelection }
-            }
-
-            if (current === assistantId) return state
-            return {
-                ...state,
-                assistantLineSelection: { ...state.assistantLineSelection, [projectId]: assistantId },
-            }
         }
         case 'Set workstreams in project': {
             const { projectId, workstreams } = action
