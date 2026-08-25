@@ -1135,17 +1135,26 @@ export async function removeInvitedUserFromProject(user, projectId) {
     }
 }
 
-export async function getUserDataByUidOrEmail(uidOrEmail) {
+/**
+ * `options.absenceIsExpected` marks a probe — see `fetchUserDataResult`. Pass it when this id may
+ * legitimately belong to something other than a user (a contact, an assistant, a workstream) so
+ * the lookup does not pay a verification round trip, or log an ERROR, for an ordinary answer.
+ */
+export async function getUserDataByUidOrEmail(uidOrEmail, options) {
     let user = null
 
     const emailRegex =
         /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
     if (emailRegex.test(String(uidOrEmail).toLowerCase())) {
+        // An email with no account is the ordinary case here (this runs on the project-invitation
+        // path), and every caller already handles a null user. Dereferencing the empty query
+        // result instead threw `Cannot read properties of undefined (reading 'id')` and took the
+        // invitation flow down with it.
         const userObj = (await getUsersByEmail(uidOrEmail, true))[0]
 
-        user = mapUserData(userObj.id, userObj.data())
+        user = userObj ? mapUserData(userObj.id, userObj.data()) : null
     } else {
-        user = await getUserData(uidOrEmail, false)
+        user = await getUserData(uidOrEmail, false, options)
     }
 
     return user
@@ -1341,15 +1350,24 @@ export async function getUserOrContactBy(projectId, userId) {
         return ws
     }
 
+    // This races four collections precisely because the id may belong to any of them, so a miss in
+    // `users/` is an ordinary answer rather than an anomaly and must not cost a verification round
+    // trip or log a production ERROR for every contact and assistant the app resolves (AT-2428).
     const promises = [
-        getUserData(userId, false),
+        getUserData(userId, false, { absenceIsExpected: true }),
         getContactData(projectId, userId),
         getAssistantData(projectId, userId),
         getAssistantData(GLOBAL_PROJECT_ID, userId),
     ]
     const [user, contact, assistant, globalAssistant] = await Promise.all(promises)
 
-    return user || contact || assistant || globalAssistant
+    const resolved = user || contact || assistant || globalAssistant
+    if (resolved) return resolved
+
+    // Nothing explained the absence, so the cheap answer is no longer good enough: escalate to the
+    // verified read. That is what still recovers a real user whose realtime read was wrong (the
+    // 2026-08-13 incident) and what still reports loudly when the document is genuinely gone.
+    return (await getUserData(userId, false)) || null
 }
 
 export async function watchLoggedUser(userId, callback) {

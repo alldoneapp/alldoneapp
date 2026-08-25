@@ -167,7 +167,11 @@ class ContactsHelper {
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
         const projectIndex = project ? project.index : ALL_PROJECTS_INDEX
         tab = !accessGranted && tab === DV_TAB_USER_BACKLINKS ? DV_TAB_USER_PROFILE : tab
-        const user = await Backend.getUserDataByUidOrEmail(userId)
+        // This route is reached with an id that is a user OR a contact — opening a person's note
+        // from search lands here either way — so "not a user" is an ordinary answer and is probed
+        // for cheaply. Escalation to the verified read happens below, only once the contact lookup
+        // has also come up empty (AT-2428).
+        let user = await Backend.getUserDataByUidOrEmail(userId, { absenceIsExpected: true })
         const backlinkSection = {
             index: tabConstant === URL_PEOPLE_DETAILS_BACKLINKS_TASKS || URL_CONTACT_DETAILS_BACKLINKS_TASKS ? 1 : 0,
             section:
@@ -183,6 +187,12 @@ class ContactsHelper {
                 tabConstant = tabConstant.replace('PEOPLE_', 'CONTACT_')
                 return ContactsHelper.processURLContactDetailsTab(navigation, tab, projectId, userId, tabConstant)
             }
+
+            // Neither a user nor a contact. The probe's cheap "missing" is not good enough to
+            // bounce someone to the people list on, so confirm it against the server: a real user
+            // whose realtime read was wrong is recovered here and opens normally, and a genuinely
+            // dangling id is reported by the verified read rather than swallowed.
+            user = await Backend.getUserDataByUidOrEmail(userId)
         }
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
@@ -342,9 +352,16 @@ class ContactsHelper {
         const inSelectedProject = checkIfSelectedProject(projectIndex)
         if (inSelectedProject && user != null) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+            // Only a recorded contact carries a `recorderUserId`. Without the guard this read
+            // `/users/undefined` for every ordinary contact in a shared project — a guaranteed 404
+            // plus an ERROR log about a document that was never going to exist (AT-2428). The
+            // resulting value is deliberately left as `null`, exactly what the lookup returned
+            // before, so this only removes the doomed request and not a behaviour anyone relies on.
             const selectedUser =
                 projectType === PROJECT_TYPE_SHARED
-                    ? await Backend.getUserDataByUidOrEmail(user.recorderUserId)
+                    ? user.recorderUserId
+                        ? await Backend.getUserDataByUidOrEmail(user.recorderUserId, { absenceIsExpected: true })
+                        : null
                     : loggedUser
             const data = { projectId: projectId, userId: userId }
             URLsContacts.push(tabConstant !== undefined ? tabConstant : URL_CONTACT_DETAILS, data, projectId, userId)

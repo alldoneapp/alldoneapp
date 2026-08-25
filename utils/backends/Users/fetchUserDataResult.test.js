@@ -149,7 +149,7 @@ describe('fetchUserDataResult', () => {
 
         const result = await fetchUserDataResult('user-1', true)
 
-        expect(result).toEqual({ user: null, missing: true, error: null })
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: true })
         expect(db.get).toHaveBeenCalledTimes(1)
         expect(consoleError).toHaveBeenCalled()
     })
@@ -163,7 +163,7 @@ describe('fetchUserDataResult', () => {
         const result = await fetchUserDataResult('user-1', true)
 
         // missing:false is what keeps the caller retrying instead of overwriting users/{uid}.
-        expect(result).toEqual({ user: null, missing: false, error: offline })
+        expect(result).toEqual({ user: null, missing: false, error: offline, verified: false })
         expect(consoleError).not.toHaveBeenCalled()
     })
 
@@ -216,6 +216,97 @@ describe('fetchUserDataResult', () => {
 
         const result = await fetchUserDataResult('user-1', true)
 
-        expect(result).toEqual({ user: null, missing: false, error: denied })
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+    })
+})
+
+/**
+ * AT-2428. Resolving an id that may equally be a contact, an assistant or a workstream is a PROBE,
+ * and for a probe "not a user" is an ordinary answer. Production paid a REST round trip and logged
+ * `User document not found in Firestore: /users/...` as a console ERROR for every one of them,
+ * which is what made an ordinary contact navigation look like a broken account.
+ *
+ * The safety net must not be weakened by that: a probe may only answer cheaply, and a caller with
+ * nothing to explain the absence escalates to the verified read, which is still the only thing
+ * allowed to say `verified: true`.
+ */
+describe('fetchUserDataResult probes (absenceIsExpected)', () => {
+    let consoleWarn
+    let consoleError
+
+    beforeEach(() => {
+        mockGetDb.mockReset()
+        mockMapUserData.mockClear()
+        mockRestartFirestoreNetwork.mockClear()
+        mockReadDocumentDirectlyFromServer.mockReset()
+        consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        consoleWarn.mockRestore()
+        consoleError.mockRestore()
+    })
+
+    it('answers a missing document without the verification round trip or an error log', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+
+        const result = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: false })
+        expect(mockReadDocumentDirectlyFromServer).not.toHaveBeenCalled()
+        expect(mockRestartFirestoreNetwork).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+        expect(consoleWarn).not.toHaveBeenCalled()
+    })
+
+    it('marks the cheap answer unverified so an escalating caller can tell the two apart', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+        const probe = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        mockGetDb.mockReturnValue(buildDb({ first: snapshot({ exists: false }) }))
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+        const escalated = await fetchUserDataResult('contact-1', false)
+
+        expect(probe.verified).toBe(false)
+        expect(escalated.verified).toBe(true)
+        expect(escalated.missing).toBe(true)
+    })
+
+    it('still returns an existing user normally', async () => {
+        const db = buildDb({ first: snapshot({ exists: true, data: { email: 'a@b.c' } }) })
+        mockGetDb.mockReturnValue(db)
+
+        const result = await fetchUserDataResult('user-1', false, { absenceIsExpected: true })
+
+        expect(result.user).toEqual({ uid: 'user-1', email: 'a@b.c', isLoggedUser: false })
+        expect(result.missing).toBe(false)
+        expect(result.verified).toBe(true)
+    })
+
+    it('still reports a failed read as an error rather than a missing user', async () => {
+        const denied = new Error('permission-denied')
+        mockGetDb.mockReturnValue({ doc: () => ({ get: () => Promise.reject(denied) }) })
+
+        const result = await fetchUserDataResult('contact-1', false, { absenceIsExpected: true })
+
+        // A probe is allowed to skip the CONFIRMATION of an absence, never to turn a broken read
+        // into one: `missing` stays false so the caller does not conclude "no such user".
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+    })
+
+    it('leaves the logged-user path fully verified and loud', async () => {
+        const db = buildDb({ first: snapshot({ exists: false }) })
+        mockGetDb.mockReturnValue(db)
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledWith('users/user-1')
+        expect(consoleError).toHaveBeenCalled()
+        expect(result.missing).toBe(true)
+        expect(result.verified).toBe(true)
     })
 })
