@@ -29,6 +29,8 @@ function GlobalProject({
     globalActiveMode,
     feedsUserId,
     projectId,
+    trackInitialLoad = true,
+    onInitialSnapshot,
 }) {
     const dispatch = useDispatch()
 
@@ -64,14 +66,18 @@ function GlobalProject({
     const feedsLimit = feedsExpanded ? MAX_FEEDS_AMOUNT_TO_DISPLAY : baseFeedsAmount
     const watchedFeedsLimit = useRef(feedsLimit)
 
-    const reloadStoreFeeds = userId => {
+    const reloadStoreFeeds = (userId, trackLoad = trackInitialLoad) => {
         // Scoped to this project: `setFollowedFeeds()` / `setAllFeeds()` without a project id reset
         // the whole map, so with one GlobalProject mounted per project every mount used to throw
         // away every other project's already-loaded feeds.
         dispatch([setFollowedFeeds(projectId, undefined), setAllFeeds(projectId, undefined)])
         watchedFeedsLimit.current = feedsLimit
         Backend.unsubStoreFeedsTab(projectId)
-        Backend.watchNewFeedsAllTabsRedux(projectId, userId, feedsLimit)
+        Backend.watchNewFeedsAllTabsRedux(projectId, userId, feedsLimit, {
+            manageLoading: trackLoad,
+            trackConnectionHealth: trackLoad,
+            onInitialSnapshot,
+        })
     }
 
     const requestAllFeeds = useCallback(() => {
@@ -110,7 +116,11 @@ function GlobalProject({
         if (watchedFeedsLimit.current === feedsLimit) return
         watchedFeedsLimit.current = feedsLimit
         Backend.unsubStoreFeedsTab(projectId)
-        Backend.watchNewFeedsAllTabsRedux(projectId, feedsUserId, feedsLimit)
+        Backend.watchNewFeedsAllTabsRedux(projectId, feedsUserId, feedsLimit, {
+            manageLoading: true,
+            trackConnectionHealth: true,
+            onInitialSnapshot,
+        })
     }, [feedsLimit])
 
     useEffect(() => {

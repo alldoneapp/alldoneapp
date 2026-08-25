@@ -28,7 +28,15 @@ import { PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader
 
 const EMPTY_PROJECT_CONTACTS = {}
 
-function ContactListByProject({ members, contacts, onlyMembers, projectIndex, firstProject, maxContactsToRender }) {
+function ContactListByProject({
+    members,
+    contacts,
+    onlyMembers,
+    projectIndex,
+    firstProject,
+    maxContactsToRender,
+    requestProjectData = true,
+}) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const handlesAddContactShortcut = inSelectedProject || firstProject
@@ -41,10 +49,9 @@ function ContactListByProject({ members, contacts, onlyMembers, projectIndex, fi
 
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
 
-    // AT-2386: belt and braces next to `ContactsView`'s sweep - this block also renders standalone
-    // (single-project mode), where nothing else would have asked for the project's contacts.
-    // Loading is idempotent inside the loader, so the two callers cost one watcher.
-    useProjectData(project?.id, PROJECT_DATA_CONTACTS)
+    // Standalone consumers still request their own data. ContactsView passes false because its
+    // admission queue owns the request and must attach loading/connection tracking before it starts.
+    useProjectData(requestProjectData ? project?.id : null, PROJECT_DATA_CONTACTS)
 
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef({}).current

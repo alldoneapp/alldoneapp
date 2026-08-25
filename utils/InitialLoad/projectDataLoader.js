@@ -116,8 +116,13 @@ const KIND_DESCRIPTORS = {
     },
     [PROJECT_DATA_CONTACTS]: {
         watcherKey: projectId => `${projectId}Contacts`,
-        watch: (projectId, watcherKey, callback) =>
-            require('../backends/Contacts/contactsFirestore').watchProjectContacts(projectId, callback, watcherKey),
+        watch: (projectId, watcherKey, callback, options) =>
+            require('../backends/Contacts/contactsFirestore').watchProjectContacts(
+                projectId,
+                callback,
+                watcherKey,
+                options
+            ),
         apply: (projectId, contacts) => store.dispatch(setContactsInProject(projectId, contacts)),
     },
     [PROJECT_DATA_WORKSTREAMS]: {
@@ -173,7 +178,7 @@ export const getRequestedProjectDataKeys = () => Array.from(entries.keys())
  *
  * Never throws: it is reachable from render paths where a rejection would take a list down.
  */
-function ensureOneKind(projectId, kind) {
+function ensureOneKind(projectId, kind, options) {
     const key = entryKey(projectId, kind)
     const existing = entries.get(key)
     if (existing) return existing.promise
@@ -222,20 +227,25 @@ function ensureOneKind(projectId, kind) {
     }
 
     try {
-        const result = descriptor.watch(projectId, descriptor.watcherKey(projectId), data => {
-            try {
-                descriptor.apply(projectId, data)
-            } catch (error) {
-                console.warn(`[InitialLoad] Failed to store ${kind} of project ${projectId}:`, error)
-            }
-            entry.loaded = true
-            clearPendingTimeout()
-            performanceTrace.end('snapshot_applied', {
-                outcome: 'success',
-                document_count: Array.isArray(data) ? data.length : 0,
-            })
-            settle(true)
-        })
+        const result = descriptor.watch(
+            projectId,
+            descriptor.watcherKey(projectId),
+            data => {
+                try {
+                    descriptor.apply(projectId, data)
+                } catch (error) {
+                    console.warn(`[InitialLoad] Failed to store ${kind} of project ${projectId}:`, error)
+                }
+                entry.loaded = true
+                clearPendingTimeout()
+                performanceTrace.end('snapshot_applied', {
+                    outcome: 'success',
+                    document_count: Array.isArray(data) ? data.length : 0,
+                })
+                settle(true)
+            },
+            { ...options, onError: fail }
+        )
 
         // These watchers are declared `async`, so a synchronous throw inside one surfaces as a
         // rejected promise rather than an exception here.
@@ -251,10 +261,12 @@ function ensureOneKind(projectId, kind) {
  * Ensures some or all per-project collections for one project.
  * Resolves when every requested kind has delivered its first snapshot (or timed out).
  */
-export function ensureProjectDataLoaded(projectId, kinds) {
+export function ensureProjectDataLoaded(projectId, kinds, options) {
     if (!projectId || typeof projectId !== 'string') return Promise.resolve(false)
     const requested = normalizeKinds(kinds)
-    return Promise.all(requested.map(kind => ensureOneKind(projectId, kind))).then(results => results.every(Boolean))
+    return Promise.all(requested.map(kind => ensureOneKind(projectId, kind, options))).then(results =>
+        results.every(Boolean)
+    )
 }
 
 /** Same, for a list of projects, all started immediately and in parallel. */

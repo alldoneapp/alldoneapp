@@ -50,6 +50,8 @@ import {
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
+import { createCachedSnapshotGate } from '../cachedSnapshotGate'
+import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
 
 const normalizeContactEmail = value =>
     String(value || '')
@@ -94,20 +96,45 @@ const buildContactEmailFieldsFromList = emailList => {
 
 //ACCESS FUNCTIONS
 
-export async function watchProjectContacts(projectId, callback, watcherKey) {
+export async function watchProjectContacts(
+    projectId,
+    callback,
+    watcherKey,
+    { trackConnectionHealth = false, onError } = {}
+) {
     const { loggedUser } = store.getState()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'contacts', scope: 'project', source: 'contacts_board' },
+        { sampleRate: 0.02 }
+    )
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'contacts_snapshot',
+    })
 
-    globalWatcherUnsub[watcherKey] = getDb()
+    function handleSnapshot(contactList) {
+        const buffered = gate.shouldBuffer(contactList)
+        snapshotPerformance.observe(contactList, buffered)
+        if (buffered) return
+
+        const contacts = []
+        contactList.forEach(contact => {
+            contacts.push(mapContactData(contact.id, contact.data()))
+        })
+        callback(contacts)
+    }
+
+    const unsubscribe = getDb()
         .collection(`/projectsContacts/${projectId}/contacts`)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
-        .onSnapshot(async contactList => {
-            const contacts = []
-            contactList.forEach(contact => {
-                contacts.push(mapContactData(contact.id, contact.data()))
-            })
-            callback(contacts)
+        .onSnapshot({ includeMetadataChanges: true }, handleSnapshot, error => {
+            gate.dispose()
+            snapshotPerformance.fail()
+            console.error('watchProjectContacts: onSnapshot error', { projectId, watcherKey, error })
+            onError?.(error)
         })
+    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(unsubscribe)
 }
 
 export async function watchContactData(projectId, contactId, callback, watcherKey) {

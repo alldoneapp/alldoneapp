@@ -2,13 +2,7 @@ import React, { useEffect } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
-import {
-    setDoneMilestonesInProject,
-    setGoalsInProject,
-    setOpenMilestonesInProject,
-    startLoadingData,
-    stopLoadingData,
-} from '../../redux/actions'
+import { setDoneMilestonesInProject, setGoalsInProject, setOpenMilestonesInProject } from '../../redux/actions'
 import URLsGoals, { URL_PROJECT_USER_GOALS_DONE, URL_PROJECT_USER_GOALS_OPEN } from '../../URLSystem/Goals/URLsGoals'
 import Backend from '../../utils/BackendBridge'
 import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
@@ -46,35 +40,25 @@ export default function GoalsViewSelectedProject({
 
     useEffect(() => {
         if (currentUserId) {
-            setTimeout(() => {
-                dispatch(startLoadingData())
-            }, 1)
             const watcherKey = v4()
             const ownerId = getOwnerId(projectId, currentUserId)
 
             watchAllMilestones(projectId, watcherKey, ownerId)
             return () => {
                 Backend.unwatch(watcherKey)
-                dispatch([
-                    stopLoadingData(),
-                    setOpenMilestonesInProject(projectId, null),
-                    setDoneMilestonesInProject(projectId, null),
-                ])
+                dispatch([setOpenMilestonesInProject(projectId, null), setDoneMilestonesInProject(projectId, null)])
             }
         }
     }, [projectId, currentUserId])
 
     useEffect(() => {
         if (currentUserId) {
-            setTimeout(() => {
-                dispatch(startLoadingData())
-            }, 1)
             const watcherKey = v4()
             const ownerId = getOwnerId(projectId, currentUserId)
             watchAllGoals(projectId, watcherKey, ownerId)
             return () => {
                 Backend.unwatch(watcherKey)
-                dispatch([stopLoadingData(), setGoalsInProject(projectId, null)])
+                dispatch(setGoalsInProject(projectId, null))
             }
         }
     }, [projectId, currentUserId])

@@ -6173,6 +6173,8 @@ export function resetAllNewFeeds(projectId, feedActiveTab) {
 export async function unsubStoreFeedsTab(projectId) {
     feedsReduxStoreUnsub.followed[projectId] ? feedsReduxStoreUnsub.followed[projectId]() : null
     feedsReduxStoreUnsub.all[projectId] ? feedsReduxStoreUnsub.all[projectId]() : null
+    delete feedsReduxStoreUnsub.followed[projectId]
+    delete feedsReduxStoreUnsub.all[projectId]
 }
 
 /**
@@ -6180,24 +6182,55 @@ export async function unsubStoreFeedsTab(projectId) {
  *                      query is capped at what is rendered instead of always pulling 200 documents
  *                      per project per tab (AT-2192).
  */
-export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
+export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount, options = {}) {
+    const deliveredTabs = new Set()
+    const markInitialSnapshot = tab => {
+        deliveredTabs.add(tab)
+        if (deliveredTabs.size === 2) options.onInitialSnapshot?.(projectId)
+    }
     const followedPath = `/feedsStore/${projectId}/${userId}/feeds/followed`
-    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount, {
+        ...options,
+        onInitialSnapshot: () => markInitialSnapshot('followed'),
+    })
 
     const allPath = `/feedsStore/${projectId}/all`
-    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount, {
+        ...options,
+        onInitialSnapshot: () => markInitialSnapshot('all'),
+    })
 }
 
 function storeFollowedFeeds(projectId, feeds) {
-    store.dispatch([setFollowedFeeds(projectId, feeds), stopLoadingData()])
+    store.dispatch(setFollowedFeeds(projectId, feeds))
 }
 
 function storeAllFeeds(projectId, feeds) {
-    store.dispatch([setAllFeeds(projectId, feeds), stopLoadingData()])
+    store.dispatch(setAllFeeds(projectId, feeds))
 }
 
-function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
-    store.dispatch(startLoadingData())
+function watchNewFeedsTabRedux(
+    projectId,
+    tab,
+    path,
+    callback,
+    visibleAmount,
+    { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
+) {
+    let loadingActive = manageLoading
+    let initialSnapshotDelivered = false
+    if (manageLoading) store.dispatch(startLoadingData())
+    const finishLoading = () => {
+        if (!loadingActive) return
+        loadingActive = false
+        store.dispatch(stopLoadingData())
+    }
+    const finishInitialSnapshot = () => {
+        finishLoading()
+        if (initialSnapshotDelivered) return
+        initialSnapshotDelivered = true
+        onInitialSnapshot?.(projectId)
+    }
     const { loggedUser, currentUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const currentUserId = currentUser.uid
@@ -6206,12 +6239,26 @@ function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
     // document while another user's feed is being viewed. In every other case the snapshot reaches
     // the list untouched and the query can be capped at exactly what the list can display.
     const needsClientSideFilter = currentUserId !== loggedUserId
-    feedsReduxStoreUnsub[tab][projectId] = db
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        { object_type: 'feeds', scope: 'project', source: `updates_${tab}` },
+        { sampleRate: 0.02 }
+    )
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'updates_snapshot',
+    })
+    const query = db
         .collection(path)
         .limit(getFeedsQueryLimit(visibleAmount, needsClientSideFilter))
         .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
         .orderBy('lastChangeDate', 'desc')
-        .onSnapshot(feedsData => {
+
+    function handleSnapshot(feedsData) {
+        const buffered = gate.shouldBuffer(feedsData)
+        snapshotPerformance.observe(feedsData, buffered)
+        if (buffered) return
+
+        try {
             const feeds = []
             feedsData.forEach(doc => {
                 const feed = doc.data()
@@ -6222,7 +6269,24 @@ function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
             })
             feeds.splice(MAX_NUMBER_OF_FEEDS_TO_SHOW)
             callback(projectId, feeds)
-        })
+            finishInitialSnapshot()
+        } catch (error) {
+            snapshotPerformance.fail()
+            console.error('watchNewFeedsTabRedux: snapshot handler error', { projectId, tab, error })
+            finishInitialSnapshot()
+        }
+    }
+
+    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, error => {
+        gate.dispose()
+        snapshotPerformance.fail()
+        console.error('watchNewFeedsTabRedux: onSnapshot error', { projectId, tab, error })
+        finishInitialSnapshot()
+    })
+    feedsReduxStoreUnsub[tab][projectId] = gate.wrapUnsubscribe(() => {
+        unsubscribe()
+        finishLoading()
+    })
 }
 
 export async function getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {

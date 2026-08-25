@@ -109,6 +109,16 @@ describe('projectDataLoader', () => {
         expect(areProjectContactsLoaded('p1')).toBe(true)
     })
 
+    it('forwards primary connection tracking to the contacts watcher', async () => {
+        const loaded = ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS, { trackConnectionHealth: true })
+
+        expect(watchProjectContacts.mock.calls[0][3]).toEqual(
+            expect.objectContaining({ trackConnectionHealth: true, onError: expect.any(Function) })
+        )
+        deliver(watchProjectContacts, [])
+        await expect(loaded).resolves.toBe(true)
+    })
+
     it('is idempotent - a second request never arms a second watcher', () => {
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)

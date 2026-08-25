@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -7,20 +7,14 @@ import moment from 'moment'
 import MilestonesListByProject from './MilestonesListByProject'
 import { getOwnerId, GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
-import {
-    setDoneMilestonesInProject,
-    setGoalsInProject,
-    setOpenMilestonesInProject,
-    startLoadingData,
-    stopLoadingData,
-} from '../../redux/actions'
+import { setDoneMilestonesInProject, setGoalsInProject, setOpenMilestonesInProject } from '../../redux/actions'
 import URLsGoals, { URL_ALL_PROJECTS_GOALS_DONE, URL_ALL_PROJECTS_GOALS_OPEN } from '../../URLSystem/Goals/URLsGoals'
 
 import EmptyGoalsAllProjects from './EmptyGoalsAllProjects'
 import Backend from '../../utils/BackendBridge'
-import store from '../../redux/store'
 import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
 import { decodeFirstBoardMilestone, selectFirstBoardMilestoneByProject } from './goalsBoardSelectors'
+import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 
 const NO_MILESTONE_DATE = moment('5000-01-01').valueOf()
 const EMPTY_IDS = []
@@ -30,16 +24,52 @@ export const getProjectsToWatch = (loggedUserProjects, templateProjectIds, archi
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
     )
 
-export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetDismissibleRefs, setDismissibleRefs }) {
+export function GoalsProjectWatcher({ project, currentUserId, trackInitialLoad, onInitialSnapshot }) {
     const dispatch = useDispatch()
+
+    useEffect(() => {
+        const goalsWatcherKey = v4()
+        const milestonesWatcherKey = v4()
+        const ownerId = getOwnerId(project.id, currentUserId)
+        const deliveredSnapshots = new Set()
+        const markSnapshotDelivered = snapshotType => {
+            deliveredSnapshots.add(snapshotType)
+            if (deliveredSnapshots.size === 2) onInitialSnapshot(project.id)
+        }
+        const watcherOptions = {
+            manageLoading: trackInitialLoad,
+            trackConnectionHealth: trackInitialLoad,
+        }
+
+        watchAllMilestones(project.id, milestonesWatcherKey, ownerId, {
+            ...watcherOptions,
+            onInitialSnapshot: () => markSnapshotDelivered('milestones'),
+        })
+        watchAllGoals(project.id, goalsWatcherKey, ownerId, {
+            ...watcherOptions,
+            onInitialSnapshot: () => markSnapshotDelivered('goals'),
+        })
+
+        return () => {
+            Backend.unwatch(milestonesWatcherKey)
+            Backend.unwatch(goalsWatcherKey)
+            dispatch([
+                setOpenMilestonesInProject(project.id, null),
+                setDoneMilestonesInProject(project.id, null),
+                setGoalsInProject(project.id, null),
+            ])
+        }
+    }, [currentUserId, project.id, trackInitialLoad])
+
+    return null
+}
+
+export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetDismissibleRefs, setDismissibleRefs }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const processedInitialURL = useSelector(state => state.processedInitialURL)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds || EMPTY_IDS)
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds || EMPTY_IDS)
-    const loggedUserProjectsAmount = loggedUserProjects.length
-    const archivedProjectIdsAmount = archivedProjectIds.length
-    const templateProjectsAmount = templateProjectIds.length
     const currentUserId = useSelector(state => state.currentUser.uid)
     const goalsActiveTab = useSelector(state => state.goalsActiveTab)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
@@ -75,57 +105,31 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
 
         return [...normalProjectsSorted, ...guidesSorted]
     }, [loggedUserProjects, templateProjectIds, archivedProjectIds, firstBoardMilestoneByProject])
-
-    useEffect(() => {
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const { templateProjectIds, archivedProjectIds } = loggedUser
-        const projects = getProjectsToWatch(loggedUserProjects, templateProjectIds, archivedProjectIds)
-        const watcherKeys = []
-        // One batched increment instead of one `setTimeout` + dispatch per project (AT-2336).
-        const loadingTimeout = setTimeout(() => {
-            if (projects.length > 0) dispatch(startLoadingData(projects.length))
-        }, 1)
-        projects.forEach(project => {
-            const watcherKey = v4()
-            watcherKeys.push(watcherKey)
-            const ownerId = getOwnerId(project.id, currentUserId)
-            watchAllMilestones(project.id, watcherKey, ownerId)
+    const sortedProjectIds = useMemo(
+        () => sortedLoggedUserProjects.map(project => project.id),
+        [sortedLoggedUserProjects]
+    )
+    const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
+    const projectRevealKey = `${currentUserId}:${projectMembershipKey}`
+    const projectRevealKeyRef = useRef(projectRevealKey)
+    projectRevealKeyRef.current = projectRevealKey
+    const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
+    const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
+    const markProjectReady = useCallback(projectId => {
+        setProjectReadiness(current => {
+            const key = projectRevealKeyRef.current
+            const projectIds = current.key === key ? current.projectIds : []
+            if (projectIds.includes(projectId)) return current
+            return { key, projectIds: [...projectIds, projectId] }
         })
-        return () => {
-            clearTimeout(loadingTimeout)
-            projects.forEach((project, index) => {
-                Backend.unwatch(watcherKeys[index])
-                dispatch([
-                    stopLoadingData(),
-                    setOpenMilestonesInProject(project.id, null),
-                    setDoneMilestonesInProject(project.id, null),
-                ])
-            })
-        }
-    }, [loggedUserProjectsAmount, templateProjectsAmount, archivedProjectIdsAmount])
-
-    useEffect(() => {
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const { templateProjectIds, archivedProjectIds } = loggedUser
-        const projects = getProjectsToWatch(loggedUserProjects, templateProjectIds, archivedProjectIds)
-        const watcherKeys = []
-        const loadingTimeout = setTimeout(() => {
-            if (projects.length > 0) dispatch(startLoadingData(projects.length))
-        }, 1)
-        projects.forEach(project => {
-            const watcherKey = v4()
-            watcherKeys.push(watcherKey)
-            const ownerId = getOwnerId(project.id, currentUserId)
-            watchAllGoals(project.id, watcherKey, ownerId)
-        })
-        return () => {
-            clearTimeout(loadingTimeout)
-            projects.forEach((project, index) => {
-                Backend.unwatch(watcherKeys[index])
-                dispatch([stopLoadingData(), setGoalsInProject(project.id, null)])
-            })
-        }
-    }, [loggedUserProjectsAmount, templateProjectsAmount, archivedProjectIdsAmount])
+    }, [])
+    const { revealedProjectIds, primaryProjectId, complete } = useRateLimitedProjectReveal({
+        projectIds: sortedProjectIds,
+        readyProjectIds,
+        resetKey: projectRevealKey,
+    })
+    const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
+    const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
 
     const writeBrowserURL = () => {
         URLsGoals.push(
@@ -143,28 +147,35 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
 
     return (
         <View>
-            {sortedLoggedUserProjects.map(project => {
+            {visibleProjects.map(project => {
                 const firstMilestone = decodeFirstBoardMilestone(firstBoardMilestoneByProject[project.id])
                 const canShowProject = !!firstMilestone
                 if (canShowProject && !firstMilestoneId) firstMilestoneId = firstMilestone.id
                 if (canShowProject) amountOfProjectsWithMilestones++
 
                 return (
-                    <MilestonesListByProject
-                        key={project.id}
-                        projectId={project.id}
-                        projectIndex={project.index}
-                        goalsActiveTab={goalsActiveTab}
-                        firstMilestoneId={firstMilestoneId}
-                        setDismissibleRefs={setDismissibleRefs}
-                        unsetDismissibleRefs={unsetDismissibleRefs}
-                        closeEdition={closeEdition}
-                        openEdition={openEdition}
-                        canShowProject={canShowProject}
-                    />
+                    <Fragment key={project.id}>
+                        <GoalsProjectWatcher
+                            project={project}
+                            currentUserId={currentUserId}
+                            trackInitialLoad={project.id === primaryProjectId}
+                            onInitialSnapshot={markProjectReady}
+                        />
+                        <MilestonesListByProject
+                            projectId={project.id}
+                            projectIndex={project.index}
+                            goalsActiveTab={goalsActiveTab}
+                            firstMilestoneId={firstMilestoneId}
+                            setDismissibleRefs={setDismissibleRefs}
+                            unsetDismissibleRefs={unsetDismissibleRefs}
+                            closeEdition={closeEdition}
+                            openEdition={openEdition}
+                            canShowProject={canShowProject}
+                        />
+                    </Fragment>
                 )
             })}
-            {amountOfProjectsWithMilestones === 0 && (
+            {complete && amountOfProjectsWithMilestones === 0 && (
                 <EmptyGoalsAllProjects sortedActiveProjects={sortedLoggedUserProjects} />
             )}
         </View>
