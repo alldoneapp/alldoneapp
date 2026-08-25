@@ -149,4 +149,31 @@ describe('useRateLimitedProjectReveal', () => {
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
         expect(reveal.nextProjectId).toBe('p3')
     })
+
+    it('keeps a viewport ghost visible for the minimum interval before admitting its project', () => {
+        let reveal
+        act(() => {
+            renderer.create(
+                <Harness
+                    projectIds={['p1', 'p2']}
+                    readyProjectIds={['p1']}
+                    minIntervalMs={500}
+                    requireNearViewport
+                    onUpdate={value => {
+                        reveal = value
+                    }}
+                />
+            )
+        })
+
+        // Even if the previous project has been mounted for a long time, the
+        // newly visible ghost gets its own full display interval.
+        act(() => jest.advanceTimersByTime(5000))
+        act(() => reveal.markProjectNearViewport('p2'))
+        act(() => jest.advanceTimersByTime(499))
+        expect(reveal.revealedProjectIds).toEqual(['p1'])
+
+        act(() => jest.advanceTimersByTime(1))
+        expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
+    })
 })

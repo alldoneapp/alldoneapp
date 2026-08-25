@@ -12,13 +12,12 @@ import {
     useUnreadLinkedEmailsScope,
 } from './unreadEmailArchiveContext'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
-import { clearChatCommentsForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
+import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 import { syncEmailCommentsReadState } from '../../utils/backends/EmailLine/emailCommentReadSync'
 
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
-// Archiving clears the comment's unread state first and gets a rollback back (AT-2424).
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
-    clearChatCommentsForLinkedEmails: jest.fn(async () => async () => {}),
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
 }))
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
@@ -237,7 +236,7 @@ describe('UnreadEmailArchiveProvider', () => {
 
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
         expect(performEmailLineAction).toHaveBeenCalledWith('conn-a', { action: 'archive', messageIds: ['m1'] })
-        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledWith([email('conn-a', 'm1')])
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([email('conn-a', 'm1')])
         expect(lastScope().archive.isArchivedEmail('conn-a:m1')).toBe(true)
     })
 
