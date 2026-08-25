@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
@@ -17,14 +17,60 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-// Begin the one-project preload shortly before its placeholder becomes visible.
-// 320 px is just under the 360 px deferred block and therefore keeps the queue
-// bounded while hiding most first-snapshot latency during a normal scroll.
-export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '320px 0px'
+// Start a bounded two-project preload roughly two deferred blocks ahead. This
+// overlaps network latency without mounting the full All Projects board.
+export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
+export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 2
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
-function DeferredProjectBlock({ projectIndex, mounted, preloading, observe, onNearViewport, children }) {
+const uniqueProjectIndexes = indexes => [...new Set(indexes.filter(index => index !== null))]
+
+export const getViewportPriorityProjectState = ({
+    projectNodes,
+    mountedProjectIndexes,
+    projectCount,
+    viewportTop = 56,
+    viewportBottom,
+}) => {
+    const mountedSet = new Set(mountedProjectIndexes)
+    const measuredProjects = [...projectNodes.entries()]
+        .filter(([index]) => index < projectCount)
+        .map(([index, node]) => ({ index, bounds: node?.getBoundingClientRect?.() }))
+        .filter(({ bounds }) => bounds)
+        .sort((first, second) => first.bounds.top - second.bounds.top)
+    const visibleProjects = measuredProjects.filter(
+        ({ bounds }) => bounds.bottom > viewportTop && bounds.top < viewportBottom
+    )
+    const visibleUnloadedIndexes = visibleProjects.map(({ index }) => index).filter(index => !mountedSet.has(index))
+
+    if (visibleProjects.length === 0) {
+        return { projectIndexes: [], hasVisibleProject: false }
+    }
+
+    const lastVisibleIndex = visibleProjects[visibleProjects.length - 1].index
+    let nextUnloadedIndex = lastVisibleIndex + 1
+    while (nextUnloadedIndex < projectCount && mountedSet.has(nextUnloadedIndex)) nextUnloadedIndex += 1
+
+    return {
+        projectIndexes: uniqueProjectIndexes([
+            ...visibleUnloadedIndexes,
+            nextUnloadedIndex < projectCount ? nextUnloadedIndex : null,
+        ]),
+        hasVisibleProject: true,
+    }
+}
+
+function DeferredProjectBlock({
+    projectIndex,
+    mounted,
+    preloading,
+    observe,
+    showGhost,
+    onNearViewport,
+    onPlaceholderRef,
+    children,
+}) {
     const { placeholderRef, isNearViewport, hasPassedViewport } = useNearViewportMount({
         eager: mounted,
         enabled: observe,
@@ -37,10 +83,18 @@ function DeferredProjectBlock({ projectIndex, mounted, preloading, observe, onNe
         if (observe) onNearViewport(projectIndex, isNearViewport, hasPassedViewport)
     }, [hasPassedViewport, isNearViewport, observe, onNearViewport, projectIndex])
 
+    const setPlaceholderRef = useCallback(
+        node => {
+            placeholderRef.current = node
+            onPlaceholderRef(projectIndex, node)
+        },
+        [onPlaceholderRef, placeholderRef, projectIndex]
+    )
+
     return (
-        <View ref={placeholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
+        <View ref={setPlaceholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
             {(mounted || preloading) && <View style={!mounted && localStyles.preloadedProject}>{children}</View>}
-            {!mounted && observe && <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader />}
+            {!mounted && showGhost && <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader />}
         </View>
     )
 }
@@ -82,6 +136,8 @@ export default function OpenTasksViewAllProjects() {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
+    const [viewportGhostProjectIndexes, setViewportGhostProjectIndexes] = useState([])
+    const projectNodesRef = useRef(new Map())
 
     // AT-2337: this list is recomputed on every render of the all-projects board
     // (two lodash `orderBy` passes with a `name.toLowerCase()` key, over a filter
@@ -125,8 +181,8 @@ export default function OpenTasksViewAllProjects() {
         shallowEqual
     )
     const {
-        mountedProjectCount,
-        preloadingProjectIndex,
+        mountedProjectIndexes,
+        preloadingProjectIndexes,
         preloadingProjectSkipped,
         nextProjectIndex,
         markProjectNearViewport,
@@ -134,7 +190,48 @@ export default function OpenTasksViewAllProjects() {
         projectIds: sortedLoggedUserProjectIds,
         projectReadyStates,
         minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
+        preloadConcurrency: ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY,
     })
+    const mountedProjectIndexesSet = useMemo(() => new Set(mountedProjectIndexes), [mountedProjectIndexes])
+    const viewportGhostProjectIndexesSet = useMemo(
+        () => new Set(viewportGhostProjectIndexes),
+        [viewportGhostProjectIndexes]
+    )
+
+    const registerProjectPlaceholder = useCallback((projectIndex, node) => {
+        if (node) projectNodesRef.current.set(projectIndex, node)
+        else projectNodesRef.current.delete(projectIndex)
+    }, [])
+
+    const handleProjectNearViewport = useCallback(
+        (projectIndex, isNearViewport, hasPassedViewport) => {
+            const viewportPriority = hasPassedViewport
+                ? getViewportPriorityProjectState({
+                      projectNodes: projectNodesRef.current,
+                      mountedProjectIndexes,
+                      projectCount: sortedLoggedUserProjectIds.length,
+                      viewportBottom: typeof window === 'undefined' ? Number.MAX_SAFE_INTEGER : window.innerHeight,
+                  })
+                : { projectIndexes: [], hasVisibleProject: false }
+            const viewportProjectIndexes = viewportPriority.projectIndexes
+            if (hasPassedViewport && viewportProjectIndexes.length > 0) {
+                setViewportGhostProjectIndexes(current =>
+                    current.length === viewportProjectIndexes.length &&
+                    current.every((index, position) => index === viewportProjectIndexes[position])
+                        ? current
+                        : viewportProjectIndexes
+                )
+            }
+            markProjectNearViewport(
+                projectIndex,
+                isNearViewport,
+                hasPassedViewport,
+                viewportProjectIndexes,
+                viewportPriority.hasVisibleProject
+            )
+        },
+        [markProjectNearViewport, mountedProjectIndexes, sortedLoggedUserProjectIds.length]
+    )
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -192,10 +289,16 @@ export default function OpenTasksViewAllProjects() {
                     <DeferredProjectBlock
                         key={projectId}
                         projectIndex={index}
-                        mounted={index < mountedProjectCount}
-                        preloading={index === preloadingProjectIndex}
+                        mounted={mountedProjectIndexesSet.has(index)}
+                        preloading={preloadingProjectIndexes.includes(index)}
                         observe={index === nextProjectIndex}
-                        onNearViewport={markProjectNearViewport}
+                        showGhost={
+                            index === nextProjectIndex ||
+                            preloadingProjectIndexes.includes(index) ||
+                            viewportGhostProjectIndexesSet.has(index)
+                        }
+                        onNearViewport={handleProjectNearViewport}
+                        onPlaceholderRef={registerProjectPlaceholder}
                     >
                         <OpenTasksByProject
                             projectId={projectId}
