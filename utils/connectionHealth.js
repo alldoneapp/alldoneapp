@@ -75,7 +75,7 @@ export const PROBE_TIMEOUT_MS = 5000
 export const FIRESTORE_RESTART_TIMEOUT_MS = 5000
 
 /** Offer offline work when a real page read or write acknowledgement takes this long. */
-export const SLOW_CONNECTION_THRESHOLD_MS = 10000
+export const SLOW_CONNECTION_THRESHOLD_MS = 5000
 
 /** Keep the choice visible briefly after the delayed operation eventually completes. */
 export const SLOW_CONNECTION_LINGER_MS = 30 * 1000

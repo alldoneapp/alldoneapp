@@ -7,8 +7,8 @@ import renderer, { act } from 'react-test-renderer'
 
 import useNearViewportMount, { NEAR_VIEWPORT_ROOT_MARGIN } from './useNearViewportMount'
 
-function Harness({ eager = false }) {
-    const { placeholderRef, shouldMount } = useNearViewportMount({ eager })
+function Harness({ eager = false, enabled = true }) {
+    const { placeholderRef, shouldMount } = useNearViewportMount({ eager, enabled })
     return <div ref={placeholderRef}>{shouldMount ? 'mounted' : 'placeholder'}</div>
 }
 
@@ -50,5 +50,18 @@ describe('useNearViewportMount', () => {
 
         expect(tree.toJSON().children).toEqual(['mounted'])
         expect(disconnect).toHaveBeenCalled()
+    })
+
+    it('does not create an observer until the central queue selects the block', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<Harness enabled={false} />, { createNodeMock: () => observedNode })
+        })
+
+        expect(tree.toJSON().children).toEqual(['placeholder'])
+        expect(global.IntersectionObserver).not.toHaveBeenCalled()
+
+        act(() => tree.update(<Harness enabled />))
+        expect(global.IntersectionObserver).toHaveBeenCalledTimes(1)
     })
 })
