@@ -110,7 +110,8 @@ export const watchOpenTasks = (
     showSomedayTasks,
     keepMainDayData,
     instanceKey,
-    assistantProfileMode = false
+    assistantProfileMode = false,
+    { trackConnectionHealth = true } = {}
 ) =>
     // AT-2337: mounting "All projects" calls this once per project (~78x) and each
     // call fired 4 separate store notifications before a single task had loaded.
@@ -124,7 +125,8 @@ export const watchOpenTasks = (
             showSomedayTasks,
             keepMainDayData,
             instanceKey,
-            assistantProfileMode
+            assistantProfileMode,
+            trackConnectionHealth
         )
     })
 
@@ -135,7 +137,8 @@ const watchOpenTasksInternal = (
     showSomedayTasks,
     keepMainDayData,
     instanceKey,
-    assistantProfileMode = false
+    assistantProfileMode = false,
+    trackConnectionHealth = true
 ) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
@@ -239,7 +242,8 @@ const watchOpenTasksInternal = (
         showSomedayTasks,
         subtasksByParentId,
         subtasksMap,
-        assistantProfileMode
+        assistantProfileMode,
+        trackConnectionHealth
     )
     watchUserOpenTasks(
         projectId,
@@ -253,7 +257,9 @@ const watchOpenTasksInternal = (
         showLaterTasks,
         showSomedayTasks,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        false,
+        trackConnectionHealth
     )
 
     watchStreamAndUserOpenTasksInBatches(
@@ -266,7 +272,8 @@ const watchOpenTasksInternal = (
         showLaterTasks,
         showSomedayTasks,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        trackConnectionHealth
     )
 
     watchEmptyGoals(
@@ -277,7 +284,8 @@ const watchOpenTasksInternal = (
         showLaterTasks,
         showSomedayTasks,
         estimationByDate,
-        amountOfTasksByDate
+        amountOfTasksByDate,
+        trackConnectionHealth
     )
 
     // Save vars at the end
@@ -393,7 +401,8 @@ const watchUserOpenTasks = (
     showSomedayTasks,
     subtasksByParentId,
     subtasksMap,
-    assistantProfileMode = false
+    assistantProfileMode = false,
+    trackConnectionHealth = true
 ) => {
     if (!areObservedTasks)
         setTimeout(() => {
@@ -420,7 +429,7 @@ const watchUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot)
+    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
             object_type: 'tasks',
@@ -1209,7 +1218,8 @@ const watchStreamAndUserOpenTasksInBatches = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    trackConnectionHealth = true
 ) => {
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
@@ -1234,7 +1244,8 @@ const watchStreamAndUserOpenTasksInBatches = (
             loggedUser,
             userIdList[i],
             subtasksByParentId,
-            subtasksMap
+            subtasksMap,
+            trackConnectionHealth
         )
     }
 }
@@ -1287,7 +1298,8 @@ const watchStreamAndUserOpenTasks = (
     loggedUser,
     assigneeUserId,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    trackConnectionHealth = true
 ) => {
     const { taskListWatchersVars } = store.getState()
     const currentUserId = currentUser.uid
@@ -1308,7 +1320,7 @@ const watchStreamAndUserOpenTasks = (
     )
 
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot)
+    const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         { object_type: 'tasks', scope: 'project', source: 'workstream_open_tasks' },
         { sampleRate: 0.02 }
@@ -1410,7 +1422,8 @@ export const addWatchersForOneStreamAndUser = (
     subtasksMap,
     showLaterTasks,
     showSomedayTasks,
-    assigneeUserId
+    assigneeUserId,
+    trackConnectionHealth = true
 ) => {
     const { currentUser, loggedUser } = store.getState()
 
@@ -1427,7 +1440,8 @@ export const addWatchersForOneStreamAndUser = (
         loggedUser,
         assigneeUserId,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        trackConnectionHealth
     )
 }
 
@@ -1441,7 +1455,8 @@ function watchEmptyGoals(
     showLaterTasks,
     showSomedayTasks,
     estimationByDate,
-    amountOfTasksByDate
+    amountOfTasksByDate,
+    trackConnectionHealth = true
 ) {
     // AT-2337: this used to read `currentUserId` one line ABOVE its own `const`
     // declaration. Babel's block-scoping transform rewrites `const` to `var`, so
@@ -1470,7 +1485,7 @@ function watchEmptyGoals(
         .where('assigneesIds', 'array-contains-any', [currentUserId])
         .where('ownerId', '==', ownerId)
 
-    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot)
+    const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         { object_type: 'goals', scope: 'project', source: 'empty_goals_in_tasks' },
         { sampleRate: 0.02 }

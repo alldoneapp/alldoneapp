@@ -1,10 +1,12 @@
 const mockUnsubscribeFunctions = []
 const mockSnapshotCallbacks = []
+const emptySnapshot = { docs: [], forEach: () => {} }
 
 const mockQuery = {
     where: jest.fn(() => mockQuery),
     limit: jest.fn(() => mockQuery),
     orderBy: jest.fn(() => mockQuery),
+    get: jest.fn(() => Promise.resolve(emptySnapshot)),
     onSnapshot: jest.fn(callback => {
         const unsubscribe = jest.fn()
         mockUnsubscribeFunctions.push(unsubscribe)
@@ -54,6 +56,7 @@ describe('task show-more listener ownership', () => {
         mockQuery.where.mockClear()
         mockQuery.limit.mockClear()
         mockQuery.orderBy.mockClear()
+        mockQuery.get.mockClear()
         mockQuery.onSnapshot.mockClear()
         mockUnsubscribeFunctions.splice(0)
         mockSnapshotCallbacks.splice(0)
@@ -73,7 +76,6 @@ describe('task show-more listener ownership', () => {
         expect(mockQuery.onSnapshot).toHaveBeenCalledTimes(11)
         expect(mockQuery.limit).toHaveBeenCalledTimes(9)
 
-        const emptySnapshot = { docs: [], forEach: () => {} }
         mockSnapshotCallbacks.forEach(callback => callback(emptySnapshot))
         const actions = mockStore.dispatch.mock.calls.flatMap(([action]) => action)
         expect(actions).toEqual(
@@ -90,6 +92,34 @@ describe('task show-more listener ownership', () => {
 
         unsubscribe()
         mockUnsubscribeFunctions.forEach(stop => expect(stop).toHaveBeenCalledTimes(1))
+        expect(mockGlobalWatcherUnsub.availability).toBeUndefined()
+    })
+
+    it('uses one-shot availability reads for All Projects instead of permanent listeners', async () => {
+        const unsubscribe = watchOpenTasksShowMoreAvailability({
+            projectId: 'project-1',
+            userId: 'user-1',
+            userWorkstreamIds: ['workstream-a', 'workstream-b'],
+            watcherKey: 'availability',
+            live: false,
+        })
+
+        expect(mockQuery.onSnapshot).not.toHaveBeenCalled()
+        expect(mockQuery.get).toHaveBeenCalledTimes(11)
+
+        await Promise.resolve()
+        await Promise.resolve()
+
+        const actions = mockStore.dispatch.mock.calls.flatMap(([action]) => action)
+        expect(actions).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'Add there are later open tasks', thereAreLaterOpenTasks: false }),
+                expect.objectContaining({ type: 'Add there are someday open tasks', thereAreSomedayOpenTasks: false }),
+            ])
+        )
+
+        unsubscribe()
+        expect(mockUnsubscribeFunctions).toHaveLength(0)
         expect(mockGlobalWatcherUnsub.availability).toBeUndefined()
     })
 
