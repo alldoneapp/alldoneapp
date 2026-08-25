@@ -37,10 +37,11 @@ export const NOTES_PROJECT_GHOST_MIN_VISIBLE_MS = 1500
 function DeferredProjectReveal({ projectId, onNearViewport }) {
     const { placeholderRef, isNearViewport } = useNearViewportMount({
         rootMargin: NOTES_PROJECT_REVEAL_ROOT_MARGIN,
+        trackVisibility: true,
     })
 
     useEffect(() => {
-        if (isNearViewport) onNearViewport(projectId)
+        onNearViewport(projectId, isNearViewport)
     }, [isNearViewport, onNearViewport, projectId])
 
     return (
