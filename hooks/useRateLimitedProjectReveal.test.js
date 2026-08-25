@@ -47,7 +47,6 @@ describe('useRateLimitedProjectReveal', () => {
 
         expect(reveal.revealedProjectIds).toEqual(['p1'])
         expect(reveal.primaryProjectId).toBe('p1')
-        expect(reveal.loadingProjectId).toBeNull()
     })
 
     it('reveals the next project after the previous snapshot and minimum interval', () => {
@@ -126,18 +125,16 @@ describe('useRateLimitedProjectReveal', () => {
 
     it('keeps offscreen projects dormant until the next placeholder nears the viewport', () => {
         let reveal
-        let tree
-        const onUpdate = value => {
-            reveal = value
-        }
         act(() => {
-            tree = renderer.create(
+            renderer.create(
                 <Harness
                     projectIds={['p1', 'p2', 'p3']}
                     readyProjectIds={['p1']}
                     minIntervalMs={0}
                     requireNearViewport
-                    onUpdate={onUpdate}
+                    onUpdate={value => {
+                        reveal = value
+                    }}
                 />
             )
         })
@@ -147,24 +144,9 @@ describe('useRateLimitedProjectReveal', () => {
         expect(reveal.nextProjectId).toBe('p2')
 
         act(() => reveal.markProjectNearViewport('p2'))
-        expect(reveal.loadingProjectId).toBe('p2')
-        expect(reveal.revealedProjectIds).toEqual(['p1'])
-
-        act(() => {
-            tree.update(
-                <Harness
-                    projectIds={['p1', 'p2', 'p3']}
-                    readyProjectIds={['p1', 'p2']}
-                    minIntervalMs={0}
-                    requireNearViewport
-                    onUpdate={onUpdate}
-                />
-            )
-        })
         act(() => jest.runOnlyPendingTimers())
 
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
-        expect(reveal.loadingProjectId).toBeNull()
         expect(reveal.nextProjectId).toBe('p3')
     })
 
@@ -174,7 +156,7 @@ describe('useRateLimitedProjectReveal', () => {
             renderer.create(
                 <Harness
                     projectIds={['p1', 'p2']}
-                    readyProjectIds={['p1', 'p2']}
+                    readyProjectIds={['p1']}
                     minIntervalMs={500}
                     requireNearViewport
                     onUpdate={value => {
@@ -195,13 +177,13 @@ describe('useRateLimitedProjectReveal', () => {
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
     })
 
-    it('keeps a started viewport preload alive when layout pushes the ghost away', () => {
+    it('cancels a transient viewport hit when layout pushes the ghost away', () => {
         let reveal
         act(() => {
             renderer.create(
                 <Harness
                     projectIds={['p1', 'p2']}
-                    readyProjectIds={['p1', 'p2']}
+                    readyProjectIds={['p1']}
                     minIntervalMs={1500}
                     requireNearViewport
                     onUpdate={value => {
@@ -214,8 +196,11 @@ describe('useRateLimitedProjectReveal', () => {
         act(() => reveal.markProjectNearViewport('p2', true))
         act(() => jest.advanceTimersByTime(750))
         act(() => reveal.markProjectNearViewport('p2', false))
-        expect(reveal.loadingProjectId).toBe('p2')
-        act(() => jest.advanceTimersByTime(750))
+        act(() => jest.advanceTimersByTime(2000))
+        expect(reveal.revealedProjectIds).toEqual(['p1'])
+
+        act(() => reveal.markProjectNearViewport('p2', true))
+        act(() => jest.advanceTimersByTime(1500))
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
     })
 })

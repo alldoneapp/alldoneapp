@@ -501,12 +501,6 @@ const watchUserOpenTasks = (
                 batchDispatch(setOpenTasksMap(projectId, {}))
             } else if (areObservedTasks) {
                 batchDispatch(updateInitialLoadingEndObservedTasks(instanceKey, true))
-            } else {
-                // The observed stream may populate storedTasks before the assigned
-                // stream delivers an empty first snapshot. That empty assigned
-                // stream is still ready; without this flag a staged project waits
-                // for the five-second safety timeout despite already having data.
-                batchDispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
             }
 
             if (!optimistic) batchDispatch(stopLoadingData())

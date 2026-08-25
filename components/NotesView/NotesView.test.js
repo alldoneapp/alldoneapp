@@ -88,7 +88,6 @@ describe('NotesView progressive project mounting', () => {
             primaryProjectId: 'project-1',
             complete: false,
             nextProjectId: 'project-2',
-            loadingProjectId: null,
             markProjectNearViewport,
         })
         useNearViewportMount.mockReturnValue({ placeholderRef: { current: null }, isNearViewport: false })
@@ -106,24 +105,13 @@ describe('NotesView progressive project mounting', () => {
         expect(tree.root.findByType('NotesListSkeleton').props).toEqual(
             expect.objectContaining({ rowCount: 3, showProjectHeader: true })
         )
-        expect(useNearViewportMount).toHaveBeenNthCalledWith(1, {
-            eager: true,
-            enabled: false,
-            rootMargin: '0px',
-            trackVisibility: true,
-        })
-        expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
-            eager: false,
-            enabled: true,
-            rootMargin: '0px',
-            trackVisibility: true,
-        })
+        expect(useNearViewportMount).toHaveBeenCalledWith({ rootMargin: '0px', trackVisibility: true })
         expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith({
             projectIds: ['project-1', 'project-2', 'project-3'],
             readyProjectIds: [],
             resetKey: expect.stringContaining('project-1'),
             requireNearViewport: true,
-            minIntervalMs: 200,
+            minIntervalMs: 1500,
         })
     })
 
@@ -133,7 +121,6 @@ describe('NotesView progressive project mounting', () => {
             primaryProjectId: 'project-1',
             complete: false,
             nextProjectId: 'project-3',
-            loadingProjectId: null,
             markProjectNearViewport,
         })
 
@@ -149,26 +136,6 @@ describe('NotesView progressive project mounting', () => {
         ])
         const projectBlocks = tree.root.findAllByType('NotesByProject')
         expect(projectBlocks[0].props.setLastEditNoteDate).toBe(projectBlocks[1].props.setLastEditNoteDate)
-    })
-
-    it('mounts the upcoming notes project behind its viewport ghost while it loads', () => {
-        useRateLimitedProjectReveal.mockReturnValue({
-            revealedProjectIds: ['project-1'],
-            primaryProjectId: 'project-1',
-            complete: false,
-            nextProjectId: 'project-2',
-            loadingProjectId: 'project-2',
-            markProjectNearViewport,
-        })
-
-        const tree = renderView()
-
-        expect(tree.root.findAllByType('NotesByProject').map(node => node.props.project.id)).toEqual([
-            'project-1',
-            'project-2',
-        ])
-        expect(tree.root.findAllByType('NotesListSkeleton')).toHaveLength(1)
-        expect(tree.root.findAllByType('NotesByProject')[1].props.trackInitialLoad).toBe(false)
     })
 
     it('admits the next project only when its placeholder is near the viewport', () => {
@@ -187,7 +154,6 @@ describe('NotesView progressive project mounting', () => {
             primaryProjectId: null,
             complete: true,
             nextProjectId: null,
-            loadingProjectId: null,
             markProjectNearViewport,
         })
 

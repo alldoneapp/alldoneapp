@@ -147,8 +147,9 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1')
     })
 
-    const deliverSnapshot = (listenerIndex, changes) => {
-        listeners[listenerIndex]({
+    /** Feeds a change through the FIRST registered listener - the logged user's own open tasks. */
+    const deliverRealSnapshot = changes => {
+        listeners[0]({
             docChanges: () => changes,
             docs: changes.map(change => change.doc),
             size: changes.length,
@@ -158,8 +159,6 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             metadata: { fromCache: false, hasPendingWrites: false },
         })
     }
-    /** Feeds a change through the FIRST registered listener - the logged user's own open tasks. */
-    const deliverRealSnapshot = changes => deliverSnapshot(0, changes)
 
     const realAddedChange = (taskId, raw) => ({ type: 'added', doc: { id: taskId, data: () => raw } })
 
@@ -198,26 +197,6 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
 
         expect(mainTasksOf(published[published.length - 1])[0][0]).toBe('goal-1')
-    })
-
-    it('marks an empty assigned stream ready when the observed stream populated the project first', () => {
-        const observedTask = buildRawTask({
-            currentReviewerId: 'user-2',
-            observersIds: ['user-1'],
-            dueDateByObserversIds: { 'user-1': Date.now() },
-            estimationsByObserverIds: { 'user-1': 0 },
-        })
-
-        deliverSnapshot(1, [realAddedChange('observed-task-1', observedTask)])
-        mockDispatch.mockClear()
-        deliverSnapshot(0, [])
-
-        const actions = mockDispatch.mock.calls.flatMap(([action]) => (Array.isArray(action) ? action : [action]))
-        expect(actions).toContainEqual({
-            type: 'Update initial loading end open tasks',
-            instanceKey: 'project-1user-1',
-            initialLoadingEndOpenTasks: true,
-        })
     })
 
     it('removes the row again when the write is rejected', () => {
