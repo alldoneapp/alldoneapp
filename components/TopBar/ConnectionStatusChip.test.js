@@ -108,7 +108,7 @@ describe('ConnectionStatusChip', () => {
         expect(treeText(tree)).toContain('Slow connection')
         expect(
             StyleSheet.flatten(tree.root.findByProps({ testID: 'mobile-connection-status-container' }).props.style)
-        ).toMatchObject({ paddingTop: 8, paddingBottom: 8, paddingHorizontal: 16 })
+        ).toMatchObject({ paddingTop: 16, paddingBottom: 4, paddingHorizontal: 16 })
 
         act(() => {
             chip.props.onPress()

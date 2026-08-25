@@ -112,6 +112,10 @@ describe('connectionHealth', () => {
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
     })
 
+    it('offers the slow-connection choice after five seconds', () => {
+        expect(SLOW_CONNECTION_THRESHOLD_MS).toBe(5000)
+    })
+
     it('offers offline work when a real server operation stays slow despite other server traffic', () => {
         jest.useFakeTimers()
         let clock = 1000
@@ -133,7 +137,11 @@ describe('connectionHealth', () => {
         expect(dispatched).toContain(CONNECTION_HEALTH_SLOW)
         expect(tracked).toContainEqual({
             name: 'connection_slow_detected',
-            params: { duration_ms: 10000, browser_online: true, source: 'write_ack' },
+            params: {
+                duration_ms: SLOW_CONNECTION_THRESHOLD_MS,
+                browser_online: true,
+                source: 'write_ack',
+            },
         })
 
         // Other snapshots prove reachability, but they do not make this delayed
