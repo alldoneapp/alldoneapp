@@ -61,7 +61,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
     }
   />
   <ConnectionStatusChip
-    mobile={true}
+    belowHeader={true}
   />
 </div>
 `;

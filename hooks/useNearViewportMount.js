@@ -10,13 +10,12 @@ export default function useNearViewportMount({
     eager = false,
     enabled = true,
     rootMargin = NEAR_VIEWPORT_ROOT_MARGIN,
-    trackVisibility = false,
 } = {}) {
     const placeholderRef = useRef(null)
     const [isNearViewport, setIsNearViewport] = useState(eager)
 
     useEffect(() => {
-        if (!enabled || (!trackVisibility && isNearViewport)) return undefined
+        if (!enabled || isNearViewport) return undefined
         if (typeof IntersectionObserver === 'undefined') {
             setIsNearViewport(true)
             return undefined
@@ -30,11 +29,8 @@ export default function useNearViewportMount({
 
         const observer = new IntersectionObserver(
             entries => {
-                const nextIsNearViewport = entries.some(entry => entry.isIntersecting)
-                if (trackVisibility) {
-                    setIsNearViewport(nextIsNearViewport)
-                } else if (nextIsNearViewport) {
-                    setIsNearViewport(nextIsNearViewport)
+                if (entries.some(entry => entry.isIntersecting)) {
+                    setIsNearViewport(true)
                     observer.disconnect()
                 }
             },
@@ -43,7 +39,7 @@ export default function useNearViewportMount({
         observer.observe(target)
 
         return () => observer.disconnect()
-    }, [enabled, isNearViewport, rootMargin, trackVisibility])
+    }, [enabled, isNearViewport, rootMargin])
 
     return { placeholderRef, isNearViewport, shouldMount: eager || isNearViewport }
 }

@@ -6,7 +6,6 @@ import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
-import TaskListSkeleton from '../TaskListSkeleton'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -23,7 +22,6 @@ jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
 jest.mock('../../../hooks/useNearViewportMount', () => jest.fn())
 jest.mock('../../../hooks/useRateLimitedProjectMountQueue', () => jest.fn())
-jest.mock('../TaskListSkeleton', () => 'TaskListSkeleton')
 jest.mock('./openTasksViewProjectScope', () => ({
     getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
 }))
@@ -217,22 +215,8 @@ describe('OpenTasksViewAllProjects', () => {
 
             expect(projectBlocks).toHaveLength(1)
             expect(projectBlocks[0].props.projectId).toBe('project-1')
-            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, {
-                eager: true,
-                enabled: false,
-                rootMargin: '0px',
-                trackVisibility: true,
-            })
-            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
-                eager: false,
-                enabled: true,
-                rootMargin: '0px',
-                trackVisibility: true,
-            })
-            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
-            expect(tree.root.findByType('TaskListSkeleton').props).toEqual(
-                expect.objectContaining({ rowCount: 6, showDateHeader: true, showProjectHeader: true })
-            )
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, { eager: true, enabled: false })
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, { eager: false, enabled: true })
         })
 
         it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
@@ -253,7 +237,6 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
-                minIntervalMs: 1500,
             })
         })
     })

@@ -59,12 +59,9 @@ export default function useRateLimitedProjectReveal({
     const previousProjectReady = !lastRevealedProjectId || readyProjectIds.includes(lastRevealedProjectId)
 
     const markProjectNearViewport = useCallback(
-        (projectId, isNearViewport = true) => {
+        projectId => {
             if (!requireNearViewport || projectId !== nextProjectId) return
             setNearProject(current => {
-                if (!isNearViewport) {
-                    return current?.key === revealKey && current.projectId === projectId ? null : current
-                }
                 if (current?.key === revealKey && current.projectId === projectId) return current
                 return { key: revealKey, projectId, sinceAt: now() }
             })

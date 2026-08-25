@@ -54,16 +54,4 @@ describe('TaskListSkeleton', () => {
 
         expect(tree.root.findAllByProps({ testID: 'task-loading-skeleton-row' })).toHaveLength(1)
     })
-
-    it('can show the next All Projects project boundary before it mounts', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<TaskListSkeleton rowCount={2} showDateHeader showProjectHeader />)
-            await Promise.resolve()
-        })
-
-        expect(tree.root.findByProps({ testID: 'task-project-loading-skeleton-header' }).props.style.height).toBe(56)
-        expect(tree.root.findByProps({ testID: 'task-project-loading-skeleton-leading-edge' })).toBeTruthy()
-        expect(tree.root.findAllByProps({ testID: 'task-loading-skeleton-row' })).toHaveLength(2)
-    })
 })
