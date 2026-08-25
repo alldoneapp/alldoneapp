@@ -306,6 +306,10 @@ function CustomTextInput3(
     // mic and saying nothing would send whatever the user had half-typed.
     const dictationInsertedRef = useRef(false)
 
+    // Cancels the deferred caret re-assertion scheduled by the last `placeDictationCaret`. That
+    // deferred call also re-focuses the editor, which a submitting dictation must not do (AT-2422).
+    const cancelDictationCaretRef = useRef(null)
+
     const armDictationSubmit = useDictationSubmit({ onDictationSubmit, forceTriggerEnterActionForBreakLines })
 
     const insertDictatedText = text => {
@@ -343,7 +347,7 @@ function CustomTextInput3(
         // onChangeText reaches the parent's save flow) and lands in the undo history.
         editor.updateContents(delta, 'user')
         dictationInsertedRef.current = true
-        placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
+        cancelDictationCaretRef.current = placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
     }
 
     // Push-to-talk (AT-2405): holding the mic inserts the transcript AND fires this input's own
@@ -356,8 +360,19 @@ function CustomTextInput3(
     // `textRef` is written synchronously by `updateText`, so it already holds draft + transcript
     // — that is what has to be sent, not the transcript alone, or a half-typed message would be
     // silently thrown away.
+    //
+    // The caret re-assertion queued by the insertion above is dropped here (AT-2422). It is a
+    // deferred `focus()` + `setSelection()` on a macrotask, while this submit runs from a
+    // post-commit effect that React flushes through the Scheduler — so the host's send, and the
+    // `blur()` + `Keyboard.dismiss()` that go with it, land FIRST and the timer then puts focus
+    // straight back, re-opening the keyboard on a field the user has just emptied by voice. The
+    // caret it was protecting is meaningless on this path: the text is leaving the input. Only the
+    // submitting path cancels, so tapping the mic without holding still ends with the caret placed
+    // after the transcript, ready to keep typing.
     const submitDictatedText = () => {
         if (!dictationInsertedRef.current) return
+        cancelDictationCaretRef.current?.()
+        cancelDictationCaretRef.current = null
         armDictationSubmit(() => textRef.current)
     }
 
