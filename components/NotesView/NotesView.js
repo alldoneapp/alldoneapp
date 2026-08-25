@@ -23,9 +23,20 @@ import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
+import useNearViewportMount from '../../hooks/useNearViewportMount'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
+
+function DeferredProjectReveal({ projectId, onNearViewport }) {
+    const { placeholderRef, isNearViewport } = useNearViewportMount()
+
+    useEffect(() => {
+        if (isNearViewport) onNearViewport(projectId)
+    }, [isNearViewport, onNearViewport, projectId])
+
+    return <View ref={placeholderRef} style={localStyles.deferredProjectReveal} />
+}
 
 function NotesView() {
     const dispatch = useDispatch()
@@ -64,11 +75,13 @@ function NotesView() {
         },
         [projectRevealKey]
     )
-    const { revealedProjectIds, primaryProjectId } = useRateLimitedProjectReveal({
-        projectIds: inAllProjects ? sortedProjectIds : [],
-        readyProjectIds,
-        resetKey: projectRevealKey,
-    })
+    const { revealedProjectIds, primaryProjectId, nextProjectId, markProjectNearViewport } =
+        useRateLimitedProjectReveal({
+            projectIds: inAllProjects ? sortedProjectIds : [],
+            readyProjectIds,
+            resetKey: projectRevealKey,
+            requireNearViewport: inAllProjects,
+        })
     const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
     const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
 
@@ -125,9 +138,14 @@ function NotesView() {
         }
     }
 
-    const setLastEditNoteDate = (project, date) => {
-        const rSortedProjects = { ...sortedProjects.current }
-        rSortedProjects[project.id] = { ...project, lastEditNoteDate: date }
+    const setLastEditNoteDate = useCallback((project, date) => {
+        const currentProject = sortedProjects.current[project.id]
+        if (!currentProject || currentProject.lastEditNoteDate === date) return
+
+        const rSortedProjects = {
+            ...sortedProjects.current,
+            [project.id]: { ...project, lastEditNoteDate: date },
+        }
 
         const rSortedLoggedUserProjects = Object.values(rSortedProjects).sort(
             (a, b) => (a.lastEditNoteDate - b.lastEditNoteDate) * -1
@@ -138,7 +156,7 @@ function NotesView() {
         const normalProjects = rSortedLoggedUserProjects.filter(project => !project.parentTemplateId)
         const guides = rSortedLoggedUserProjects.filter(project => !!project.parentTemplateId)
         setSortedLoggedUserProjects([...normalProjects, ...guides])
-    }
+    }, [])
 
     return (
         <View
@@ -171,12 +189,19 @@ function NotesView() {
                             firstProject={index === 0}
                             maxNotesToRender={3}
                             onInitialSnapshot={markProjectReady}
-                            setLastEditNoteDate={date => setLastEditNoteDate(project, date)}
+                            setLastEditNoteDate={setLastEditNoteDate}
                             trackInitialLoad={project.id === primaryProjectId}
                         />
                     ))
                 ) : (
                     <EmptyNotesAllProjects sortedActiveProjects={sortedLoggedUserProjects} />
+                )}
+                {inAllProjects && nextProjectId && (
+                    <DeferredProjectReveal
+                        key={nextProjectId}
+                        projectId={nextProjectId}
+                        onNearViewport={markProjectNearViewport}
+                    />
                 )}
             </View>
         </View>
@@ -214,6 +239,9 @@ const localStyles = StyleSheet.create({
     },
     containerTablet: {
         marginHorizontal: 56,
+    },
+    deferredProjectReveal: {
+        height: 1,
     },
 })
 
