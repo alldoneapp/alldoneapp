@@ -111,6 +111,7 @@ describe('NotesView progressive project mounting', () => {
             readyProjectIds: [],
             resetKey: expect.stringContaining('project-1'),
             requireNearViewport: true,
+            minIntervalMs: 1500,
         })
     })
 
@@ -158,7 +159,9 @@ describe('NotesView progressive project mounting', () => {
 
         const tree = renderView()
 
-        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith(expect.objectContaining({ projectIds: [] }))
+        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith(
+            expect.objectContaining({ projectIds: [], minIntervalMs: undefined })
+        )
         expect(tree.root.findAllByType('NotesByProject')).toHaveLength(1)
         expect(tree.root.findByType('NotesByProject').props.project.id).toBe('project-1')
         expect(tree.root.findByType('NotesByProject').props.trackInitialLoad).toBe(true)
