@@ -161,4 +161,20 @@ describe('parseSkillFrontmatter', () => {
         expect(frontmatter).toBe(null)
         expect(body).toBe('# Just markdown')
     })
+
+    // The indicator used to be normalized away only AFTER the continuation
+    // lines had been folded in, by which point the value was no longer exactly
+    // '>' — so every `description: >` skill was imported with a literal '> '
+    // in front of the line the assistant reads in its skills index (AT-2431).
+    it('drops a block scalar indicator instead of folding it into the value', () => {
+        const { frontmatter } = parseSkillFrontmatter(
+            '---\nname: folded\ndescription: >\n  Extract text from PDFs.\n  Use when asked.\n---\nBody'
+        )
+        expect(frontmatter.description).toBe('Extract text from PDFs. Use when asked.')
+    })
+
+    it('still clears a block scalar indicator that has no continuation lines', () => {
+        const { frontmatter } = parseSkillFrontmatter('---\nname: empty\ndescription: |-\n---\nBody')
+        expect(frontmatter.description).toBe('')
+    })
 })

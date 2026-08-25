@@ -17,12 +17,6 @@ jest.mock('../../../components/TaskListView/Header/ProjectHeader', () => 'Projec
 jest.mock('../../../components/TaskListView/DoneTasksView/DoneTasksByDate', () => 'DoneTasksByDate')
 jest.mock('../../../components/TaskListView/DoneTasksView/ShowMoreButtonsArea', () => 'ShowMoreButtonsArea')
 jest.mock('../../../components/MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../../hooks/useProjectData', () => ({
-    __esModule: true,
-    default: () => {},
-    useProjectsData: () => {},
-}))
-jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({ PROJECT_DATA_ASSISTANTS: 'assistants' }))
 jest.mock('../../../components/HashtagFilters/FilterHelpers/FilterTasks', () => ({
     filterDoneTasks: jest.fn(tasksByDate => tasksByDate),
 }))

@@ -894,6 +894,35 @@ exports.importAssistantSkillsFromRepo = onCall(
     }
 )
 
+// One bundled file per call: a skill bundle can reach 20 MB in total, which is
+// well past the 10 MB callable request limit once base64-encoded, so the client
+// streams the files one at a time.
+exports.uploadAssistantSkillFile = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { uploadAssistantSkillFile } = require('./Assistant/assistantSkillUpload')
+        try {
+            return await uploadAssistantSkillFile({
+                userId: auth.uid,
+                skillId: data && data.skillId,
+                version: data && data.version,
+                relativePath: data && data.relativePath,
+                contentBase64: data && data.contentBase64,
+            })
+        } catch (error) {
+            if (error.code === 'permission-denied') throw new HttpsError('permission-denied', error.message)
+            throw new HttpsError('invalid-argument', error.message)
+        }
+    }
+)
+
 exports.disconnectGitlabRepo = onCall(
     {
         timeoutSeconds: 30,
