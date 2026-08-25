@@ -13,7 +13,7 @@ jest.mock('react-redux', () => ({
 jest.mock('@hello-pangea/dnd', () => ({ DragDropContext: 'DragDropContext' }))
 jest.mock('../../TaskListView/OpenTasksView/AllProjectsEmptyInbox', () => 'AllProjectsEmptyInbox')
 jest.mock('../../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
-jest.mock('../AssistantLine/AssistantLine', () => 'AssistantLine')
+jest.mock('../AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
 jest.mock('./MyDayOpenTasks/MyDaySelectedTasks', () => 'MyDaySelectedTasks')
 jest.mock('./MyDayOpenTasks/MoreTasksLine', () => 'MoreTasksLine')
 jest.mock('./MyDayOpenTasks/MyDayOtherTasks', () => 'MyDayOtherTasks')
@@ -66,8 +66,8 @@ describe.each([
 
         // Assistant line (incl. the latest comment) stays at the top, under the All
         // Projects line; the congrats follows immediately after it.
-        expect(childTypes.indexOf('AssistantLine')).toBe(childTypes.indexOf('AllProjectsLine') + 1)
-        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBe(childTypes.indexOf('AssistantLine') + 1)
+        expect(childTypes.indexOf('AllProjectsAssistantLine')).toBe(childTypes.indexOf('AllProjectsLine') + 1)
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBe(childTypes.indexOf('AllProjectsAssistantLine') + 1)
         expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeGreaterThan(childTypes.indexOf('AllProjectsLine'))
     })
 
@@ -75,7 +75,7 @@ describe.each([
         const childTypes = renderChildTypes(Component, FILLED_STATE)
 
         expect(childTypes).not.toContain('AllProjectsEmptyInbox')
-        expect(childTypes).toContain('AssistantLine')
+        expect(childTypes).toContain('AllProjectsAssistantLine')
     })
 
     it('waits for the tasks to load before congratulating', () => {
