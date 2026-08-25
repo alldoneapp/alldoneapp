@@ -100,6 +100,28 @@ describe('CalendarSection', () => {
         expect(taskList.props.taskList.map(task => task.id)).toEqual(['all-day', 'nine', 'noon'])
     })
 
+    it('orders goal groups by meeting start instead of putting goal meetings first', () => {
+        mockSortGoalTasksGorups.mockReturnValue({ [GENERAL_TASKS]: 1, 'goal-1': 0 })
+
+        const tree = renderSection([
+            ['goal-1', [timed('goal-noon', '2026-08-21T12:00:00+02:00')]],
+            [GENERAL_TASKS, [timed('general-nine', '2026-08-21T09:00:00+02:00')]],
+        ])
+
+        const renderedGroups = tree.root.findAll(node => node.type === 'TasksList' || node.type === 'ParentGoalSection')
+        expect(renderedGroups.map(group => group.props.taskList[0].id)).toEqual(['general-nine', 'goal-noon'])
+    })
+
+    it('keeps an earlier goal meeting ahead of later general meetings', () => {
+        const tree = renderSection([
+            [GENERAL_TASKS, [timed('general-noon', '2026-08-21T12:00:00+02:00')]],
+            ['goal-1', [timed('goal-nine', '2026-08-21T09:00:00+02:00')]],
+        ])
+
+        const renderedGroups = tree.root.findAll(node => node.type === 'TasksList' || node.type === 'ParentGoalSection')
+        expect(renderedGroups.map(group => group.props.taskList[0].id)).toEqual(['goal-nine', 'general-noon'])
+    })
+
     // Being outside MAIN_TASK_INDEX is what keeps priority sorting and dragging off these rows.
     it('renders its lists under the calendar bucket index', () => {
         const tree = renderSection([
