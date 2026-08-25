@@ -5130,10 +5130,10 @@ export async function watchFollowedTabNotes(projectId, maxNotesToRender, callbac
     )
 }
 
-export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
+export async function watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
@@ -5142,10 +5142,10 @@ export async function watchFollowedTabNotesExpandedInAllProjects(projectId, call
     )
 }
 
-export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
+export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
@@ -5197,10 +5197,10 @@ export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
     )
 }
 
-export async function watchAllTabNotesExpandedInAllProjects(projectId, callback) {
+export async function watchAllTabNotesExpandedInAllProjects(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
@@ -5209,10 +5209,10 @@ export async function watchAllTabNotesExpandedInAllProjects(projectId, callback)
     )
 }
 
-export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
+export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
@@ -5236,9 +5236,12 @@ export async function watchAllTabStickyNotes(projectId, callback) {
     )
 }
 
-const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
+const createNotesSnapshotHandler = (callback, isStickyWatcher, { trackConnectionHealth = true } = {}) => {
     let cacheChanges = []
-    const gate = createCachedSnapshotGate(() => handleSnapshot)
+    const gate = createCachedSnapshotGate(() => handleSnapshot, {
+        trackConnectionHealth,
+        connectionSource: 'notes_snapshot',
+    })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
             object_type: isStickyWatcher ? 'sticky_notes' : 'notes',
@@ -5257,9 +5260,6 @@ const createNotesSnapshotHandler = (callback, isStickyWatcher) => {
         }
         const mergedChanges = [...cacheChanges, ...changes]
         callback(mergedChanges)
-        if (!isStickyWatcher) {
-            store.dispatch(stopLoadingData())
-        }
         cacheChanges = []
     }
     return { handleSnapshot, wrapUnsubscribe: gate.wrapUnsubscribe }

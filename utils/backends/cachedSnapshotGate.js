@@ -69,12 +69,17 @@ const createFlushSnapshot = snapshot => ({
  */
 export const createCachedSnapshotGate = (
     getHandler,
-    { graceMs = CACHED_SNAPSHOT_GRACE_MS, isOffline = defaultIsOffline, trackConnectionHealth = true } = {}
+    {
+        graceMs = CACHED_SNAPSHOT_GRACE_MS,
+        isOffline = defaultIsOffline,
+        trackConnectionHealth = true,
+        connectionSource = 'server_snapshot',
+    } = {}
 ) => {
     let graceTimer
     let latestSnapshot = null
     let disposed = false
-    let finishServerLatencySample = trackConnectionHealth ? startConnectionLatencySample('server_snapshot') : null
+    let finishServerLatencySample = trackConnectionHealth ? startConnectionLatencySample(connectionSource) : null
 
     const finishLatencySample = () => {
         if (!finishServerLatencySample) return
@@ -84,7 +89,7 @@ export const createCachedSnapshotGate = (
 
     const ensureLatencySample = () => {
         if (trackConnectionHealth && !finishServerLatencySample)
-            finishServerLatencySample = startConnectionLatencySample('server_snapshot')
+            finishServerLatencySample = startConnectionLatencySample(connectionSource)
     }
 
     const clearGraceTimer = () => {

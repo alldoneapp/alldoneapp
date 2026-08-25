@@ -15,13 +15,6 @@ jest.mock('./performanceLogger', () => ({
     }),
 }))
 
-const mockFinishConnectionWait = jest.fn()
-
-jest.mock('../connectionHealth', () => ({
-    startConnectionLatencySample: jest.fn(() => mockFinishConnectionWait),
-}))
-
-import { startConnectionLatencySample } from '../connectionHealth'
 import { startPerformanceTrace } from './performanceLogger'
 import { __resetStorePerformanceObserverForTests, installStorePerformanceObserver } from './storePerformanceObserver'
 
@@ -70,15 +63,13 @@ describe('store performance observer', () => {
             scope: 'all_projects',
             project_count: 2,
         })
-        expect(startConnectionLatencySample).toHaveBeenCalledWith('page_load')
         expect(mockTrace.mark).toHaveBeenCalledWith('data_loading_started', { watcher_count: 2 })
         expect(mockTrace.end).toHaveBeenCalledWith('page_ready', { outcome: 'success' })
-        expect(mockFinishConnectionWait).toHaveBeenCalledTimes(1)
 
         unsubscribe()
     })
 
-    test('finishes a replaced page wait before starting the next one', () => {
+    test('finishes a replaced performance trace before starting the next one', () => {
         const store = createStore({
             route: '',
             selectedSidebarTab: '',
@@ -91,11 +82,9 @@ describe('store performance observer', () => {
         store.setState({ route: 'TaskList' })
         store.setState({ route: 'TaskDetail' })
 
-        expect(startConnectionLatencySample).toHaveBeenNthCalledWith(1, 'page_load')
-        expect(mockFinishConnectionWait).toHaveBeenCalledTimes(1)
-        expect(startConnectionLatencySample).toHaveBeenNthCalledWith(2, 'page_load')
+        expect(mockTrace.end).toHaveBeenCalledWith('navigation_replaced', { outcome: 'cancelled' })
 
         unsubscribe()
-        expect(mockFinishConnectionWait).toHaveBeenCalledTimes(2)
+        expect(mockTrace.end).toHaveBeenCalledWith('observer_removed', { outcome: 'cancelled' })
     })
 })
