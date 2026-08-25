@@ -30,6 +30,7 @@ const read = relativePath => fs.readFileSync(path.resolve(__dirname, '..', relat
 
 const TASKS = 'utils/backends/Tasks/tasksFirestore.js'
 const COMMENTS = 'utils/backends/Chats/chatsComments.js'
+const CHAT_COMMENT_READ = 'utils/backends/Chats/markChatCommentsAsRead.js'
 
 describe('offline write-ack call sites', () => {
     it('routes the task-completion commit through awaitWriteAck', () => {
@@ -68,6 +69,21 @@ describe('offline write-ack call sites', () => {
         expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/offlineWriteAck'/)
         expect(source).toMatch(/awaitWriteAck\(Promise\.all\(promises\), 'createObjectMessage comment'\)/)
         expect(source).toMatch(/awaitWriteAck\(\s*\n?\s*updateLastCommentData\(/)
+    })
+
+    it('does not park the email-comment unread clear on an ack that cannot arrive', () => {
+        // AT-2424 moved this write onto the press itself: archiving an email comment
+        // clears its unread state FIRST and only then talks to the mailbox. A bare
+        // `await batch.commit()` there would park the archive — and, through it, the
+        // button's optimistic state — forever while offline, even though the delete is
+        // already durable in the local cache and the pending-write queue.
+        const source = read(CHAT_COMMENT_READ)
+
+        expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/offlineWriteAck'/)
+        expect(source).toMatch(/awaitWriteAck\(batch\.commit\(\), 'mark chat comments as read'\)/)
+        // The rollback writes too, and it runs on a failure path that must not hang.
+        expect(source).toMatch(/awaitWriteAck\(batch\.commit\(\), 'restore chat notifications'\)/)
+        expect(source).not.toMatch(/\n\s+await batch\.commit\(\)/)
     })
 
     it('keeps the online path awaiting — durability there depends on it', () => {
