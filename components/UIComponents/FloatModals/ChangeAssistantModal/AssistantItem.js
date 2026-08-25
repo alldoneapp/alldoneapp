@@ -17,25 +17,24 @@ export default function AssistantItem({
     closeModal,
     isDefaultProjectOption,
     alwaysUpdateOnSelect,
+    // AT-2430: the assistant-line switch popup knows exactly which row is active — it built the
+    // list — and its rows are grouped by project, where the store lookup below would answer for
+    // the wrong project. When omitted (every pre-existing call site) the original derivation is
+    // used unchanged.
+    selected: selectedOverride = null,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { displayName, description, photoURL50, uid } = assistant
 
     // For the "default project assistant" option, check if current matches the default project assistant
-    const selected = isDefaultProjectOption
-        ? currentAssistantId === assistant.uid
-        : assistant.uid === currentAssistantId ||
-          assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
-
-    console.log('[AssistantItem] Selection state:', {
-        isDefaultProjectOption,
-        assistantUid: assistant.uid,
-        assistantName: displayName,
-        currentAssistantId,
-        selected,
-        checkResult: isDefaultProjectOption ? `${currentAssistantId} === ${assistant.uid}` : 'regular check',
-    })
+    const selected =
+        selectedOverride !== null
+            ? selectedOverride
+            : isDefaultProjectOption
+              ? currentAssistantId === assistant.uid
+              : assistant.uid === currentAssistantId ||
+                assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
 
     const selectOption = () => {
         // If it's the default project option, resolve the actual assistant ID from default project
@@ -45,14 +44,6 @@ export default function AssistantItem({
             isDefaultProjectOption ||
             !currentAssistantId ||
             assistant.uid !== currentAssistantId
-
-        console.log('[AssistantItem] Selecting assistant:', {
-            isDefaultProjectOption,
-            assistantName: displayName,
-            assistantIdToSet,
-            previousAssistantId: currentAssistantId,
-            willUpdate: shouldUpdate,
-        })
 
         if (shouldUpdate) {
             updateAssistant(assistantIdToSet)

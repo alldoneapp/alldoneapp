@@ -2292,5 +2292,8 @@
     "Finding a matching goal": "Passendes Ziel wird gesucht",
     "Added to goal": "Zum Ziel hinzugefügt",
     "Moved to project": "Verschoben nach {{project}}",
-    "this project": "dieses Projekt"
+    "this project": "dieses Projekt",
+    "Switch assistant": "Assistent wechseln",
+    "Select assistant": "Assistent auswählen",
+    "Select the assistant that will help you": "Wähle den Assistenten, der dir helfen soll"
 }
