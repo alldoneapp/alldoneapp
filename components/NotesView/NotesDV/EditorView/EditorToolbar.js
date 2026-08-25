@@ -13,7 +13,6 @@ import {
     isNoteDictationVisible,
     isNoteTranscriptionVisible,
 } from './noteRecordingControls'
-import { TOOLBAR_STAGE_FULL, TOOLBAR_STAGE_LINK, useNotesToolbarOverflow } from './notesToolbarOverflow'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Quill from 'quill'
 import moment from 'moment'
@@ -497,18 +496,15 @@ const addAttachmentTag = (text, uri) => {
     updateNewAttachmentsDataInNotes(editor, id, text, uri, 'user')
 }
 
-/**
- * The overflow menu for the actions at the end of the bar (AT-2427).
- *
- * `collapsed` says whether the bar folded these actions away and therefore whether this button is
- * on screen at all; `showLink` says whether Link came with them. Both used to be one internal
- * `isMobile` breakpoint read straight from redux — see `notesToolbarOverflow.js` for why the
- * decision is now measured by the bar and pushed down instead.
- */
-const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
+const TextMorePopup = ({ projectId, disabled }) => {
+    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
+    const tablet = useSelector(state => state.isMiddleScreenNoteDV)
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const mobileCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
     const [open, _setOpen] = useState(false)
     const openRef = useRef(open)
     const buttonRef = useRef()
+    const isMobile = sidebarExpanded ? tablet : mobile || mobileCollapsed
 
     const setOpen = value => {
         openRef.current = value
@@ -537,7 +533,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
 
     const pointerEvents = disabled ? 'none' : 'auto'
     return (
-        <div style={{ display: 'inline-block', position: 'relative' }} className={collapsed ? '' : 'ql-hide'}>
+        <div style={{ display: 'inline-block', position: 'relative' }} className={isMobile ? '' : 'ql-hide'}>
             <TouchableOpacity
                 ref={buttonRef}
                 accessibilityLabel={'ql-formats-mobile-btn'}
@@ -547,7 +543,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
                 <MoreVertical />
             </TouchableOpacity>
 
-            {collapsed && (
+            {isMobile && (
                 <NotesAttachmentsSelectorModal projectId={projectId} addAttachmentTag={addAttachmentTag} space={0} />
             )}
 
@@ -556,9 +552,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
                 className={`ql-custom-popup ${openRef.current ? '' : 'ql-hide'}`}
                 style={{ width: 180, paddingLeft: 14 }}
             >
-                {/* Link is the last control the bar gives up, so most of the time it is still out
-                    there and listing it here as well would just be a duplicate. */}
-                <div className={`ql-custom-popup-item ${showLink ? '' : 'ql-hide'}`}>
+                <div className={'ql-custom-popup-item'}>
                     <TouchableOpacity
                         onPress={() => {
                             setOpen(false)
@@ -953,34 +947,6 @@ export const EditorToolbar = ({
     const shortcutAlt = useSelector(state => state.showNoteAltShortcuts)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile || mobileCollapsed
 
-    const dictationVisible = isNoteDictationVisible({ accessGranted, dictationSupported: isDictationSupported() })
-    const transcriptionVisible = isNoteTranscriptionVisible({ accessGranted })
-
-    // AT-2427: the bar folds its trailing actions away when it runs out of room, measured rather
-    // than guessed from a window breakpoint. `isMobile` stays as a FLOOR so phone widths keep
-    // exactly the layout they have always had (Link in the menu) with no dependency on a
-    // measurement landing first; above it the bar decides for itself.
-    const { toolbarRef, collapseActions, collapseLink } = useNotesToolbarOverflow({
-        minStage: isMobile ? TOOLBAR_STAGE_LINK : TOOLBAR_STAGE_FULL,
-        // Stated rather than left to the default: the fold is allowed to CASCADE, so a bar with
-        // no room left after giving up the trailing actions gives up Link as well instead of
-        // overflowing. Capping this at TOOLBAR_STAGE_ACTIONS would pin Link to the bar at every
-        // width — a deliberate product choice, so it belongs where the choice is made.
-        maxStage: TOOLBAR_STAGE_LINK,
-        // Anything that adds or removes a control invalidates the widths remembered for the
-        // stages, so the bar re-measures from fully expanded instead of staying folded on a
-        // width it no longer needs.
-        signature: [
-            accessGranted,
-            tablet,
-            mobile,
-            isMobile,
-            dictationVisible,
-            transcriptionVisible,
-            uniqBy(editors, 'id').length,
-        ].join('|'),
-    })
-
     useEffect(() => {
         shortcutNotePreviewMount()
         return () => shortcutNotePreviewUnmount()
@@ -1000,8 +966,6 @@ export const EditorToolbar = ({
 
     const barPointerEvents = readOnly || disabled ? 'none' : 'auto'
     const commentPointerEvents = connectionState === 'offline' || disabled ? 'none' : 'auto'
-    // Every control that lives after Link and folds into the "more" menu together (AT-2427).
-    const collapsibleActionClass = `ql-toolbar-item ql-formats-actions ${collapseActions ? 'ql-hide' : ''}`
 
     // DICTATION (rambler): one-shot mic recording cleaned up by the project assistant, inserted at
     // the caret. Separate from the meeting Transcribe flow below, which live-appends raw chunks.
@@ -1373,7 +1337,7 @@ export const EditorToolbar = ({
                     </TouchableOpacity>
                 </div>
             )}
-            <div style={{ marginTop: 8 }} id="toolbar" ref={toolbarRef}>
+            <div style={{ marginTop: 8 }} id="toolbar">
                 <div className="ql-formats2" style={{ paddingLeft: 8 }}>
                     <span className={'ql-toolbar-item'}>
                         {(shortcutAlt || shortcutCtrl) && (
@@ -1483,7 +1447,7 @@ export const EditorToolbar = ({
                         </EditorToolbarButton>
                     </span>
 
-                    {dictationVisible && (
+                    {isNoteDictationVisible({ accessGranted, dictationSupported: isDictationSupported() }) && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             <EditorToolbarButton onClick={toggleRamble} style={{ paddingLeft: 6, paddingRight: 6 }}>
                                 <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
@@ -1516,7 +1480,7 @@ export const EditorToolbar = ({
                         </span>
                     )}
 
-                    {transcriptionVisible && (
+                    {isNoteTranscriptionVisible({ accessGranted }) && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             <EditorToolbarButton
                                 onClick={toggleTranscription}
@@ -1549,43 +1513,36 @@ export const EditorToolbar = ({
                 </span>
 
                 {accessGranted && <div style={localStyles.separator} />}
-                {/* AT-2427: this group folds away from the right. The items are hidden
-                    INDIVIDUALLY, inside the one group they have always shared, so a bar with room
-                    for everything lays out byte-identically to before — regrouping them would
-                    have shifted the row by the group's own margins even when nothing collapses.
-                    `ql-hide` rather than unmounting, because Quill binds its toolbar handlers
-                    once, at editor construction: a button removed from the DOM and put back comes
-                    back inert. */}
                 {accessGranted && (
-                    <span className={'ql-formats2'} style={{ pointerEvents: barPointerEvents }}>
-                        {/* Link is the last one to go — everything after it folds a stage earlier. */}
-                        <span className={`ql-toolbar-item ql-formats-link ${collapseLink ? 'ql-hide' : ''}`}>
+                    <span
+                        className={`ql-formats2 ${isMobile ? 'ql-hide' : ''}`}
+                        style={{ pointerEvents: barPointerEvents }}
+                    >
+                        <span className={'ql-toolbar-item'}>
                             {shortcutCtrl && <Shortcut text={'K'} parentStyle={localStyles.shortcuts.regular} />}
                             <TouchableOpacity onPress={modules.toolbar.handlers.link}>
                                 <Icon name={'link'} size={20} color={colors.Text03} style={{ paddingHorizontal: 6 }} />
                             </TouchableOpacity>
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'U'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-image" />
-                            {/* The picker must not live inside a `display: none` subtree, which is
-                                why it moves into the menu instead of being hidden with the button. */}
-                            {!collapseActions && (
+                            {!isMobile && (
                                 <NotesAttachmentsSelectorModal
                                     projectId={projectId}
                                     addAttachmentTag={addAttachmentTag}
                                 />
                             )}
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'5'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-list" value="ordered" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'6'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-list" value="bullet" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {(shortcutAlt || shortcutCtrl) && (
                                 <Shortcut
                                     text={
@@ -1602,19 +1559,12 @@ export const EditorToolbar = ({
                             )}
                             <button className="ql-indent" value="-1" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             <button className="ql-indent" value="+1" />
                         </span>
                     </span>
                 )}
-                {accessGranted && (
-                    <TextMorePopup
-                        projectId={projectId}
-                        disabled={readOnly || disabled}
-                        collapsed={collapseActions}
-                        showLink={collapseLink}
-                    />
-                )}
+                {accessGranted && <TextMorePopup projectId={projectId} disabled={readOnly || disabled} />}
                 <div style={localStyles.separator} />
                 <span></span>
                 <span className="ql-formats-editors">
