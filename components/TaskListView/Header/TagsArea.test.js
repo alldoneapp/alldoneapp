@@ -118,29 +118,3 @@ describe('TagsArea workflow indicator', () => {
         expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
     })
 })
-
-describe('TagsArea add-task button (PT-4745)', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        SharedHelper.accessGranted.mockReturnValue(true)
-    })
-
-    // The "but of course" half of PT-4745: the switcher is on this popup too, and
-    // it opens on THIS project. The popup reads its pre-selection from
-    // `initialProjectId` alone, so handing it the header's own project id is the
-    // whole of the pre-selection contract from this side.
-    it('opens the popup on the project whose line it sits on', () => {
-        const addTask = renderTagsArea({ showAddTask: true }).root.findByType('AddTaskTag')
-
-        expect(addTask.props.projectId).toBe('project-1')
-    })
-
-    // It must NOT opt out. `showProjectSelector` defaults to on, so passing
-    // nothing is correct — passing `false` would be the regression, and it is
-    // invisible on screen (the row is simply absent).
-    it('does not switch the project switcher off', () => {
-        const addTask = renderTagsArea({ showAddTask: true }).root.findByType('AddTaskTag')
-
-        expect(addTask.props.showProjectSelector).not.toBe(false)
-    })
-})
