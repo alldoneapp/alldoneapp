@@ -453,14 +453,15 @@ export default function Comment({
                                     disabled={linkedEmailArchiving || linkedEmailArchived}
                                     accessibilityLabel={translate('Archive email')}
                                 >
-                                    {linkedEmailArchiving ? (
+                                    {/* Archived wins over archiving (AT-2424): the archive is
+                                        optimistic, so the check mark is the answer from the
+                                        press onwards. */}
+                                    {linkedEmailArchived ? (
+                                        <Icon name="check" size={14} color={colors.UtilityBlue125} />
+                                    ) : linkedEmailArchiving ? (
                                         <ActivityIndicator size="small" color={colors.UtilityBlue125} />
                                     ) : (
-                                        <Icon
-                                            name={linkedEmailArchived ? 'check' : 'archive'}
-                                            size={14}
-                                            color={colors.UtilityBlue125}
-                                        />
+                                        <Icon name="archive" size={14} color={colors.UtilityBlue125} />
                                     )}
                                     <Text style={localStyles.linkedEmailButtonText}>
                                         {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
