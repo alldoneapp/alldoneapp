@@ -226,14 +226,14 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useNearViewportMount).toHaveBeenNthCalledWith(1, {
                 eager: true,
                 enabled: false,
-                rootMargin: '0px',
+                rootMargin: '320px 0px',
                 trackVisibility: true,
                 activateWhenPassed: true,
             })
             expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
                 eager: false,
                 enabled: true,
-                rootMargin: '0px',
+                rootMargin: '320px 0px',
                 trackVisibility: true,
                 activateWhenPassed: true,
             })

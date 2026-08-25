@@ -17,7 +17,10 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-export const ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN = '0px'
+// Begin the one-project preload shortly before its placeholder becomes visible.
+// 320 px is just under the 360 px deferred block and therefore keeps the queue
+// bounded while hiding most first-snapshot latency during a normal scroll.
+export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '320px 0px'
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
@@ -25,7 +28,7 @@ function DeferredProjectBlock({ projectIndex, mounted, preloading, observe, onNe
     const { placeholderRef, isNearViewport, hasPassedViewport } = useNearViewportMount({
         eager: mounted,
         enabled: observe,
-        rootMargin: ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN,
+        rootMargin: ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN,
         trackVisibility: true,
         activateWhenPassed: true,
     })
