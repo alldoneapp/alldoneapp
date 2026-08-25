@@ -7,13 +7,21 @@ import renderer, { act } from 'react-test-renderer'
 
 import useRateLimitedProjectReveal from './useRateLimitedProjectReveal'
 
-function Harness({ projectIds, readyProjectIds, onUpdate, minIntervalMs = 500, maxReadyWaitMs = 5000 }) {
+function Harness({
+    projectIds,
+    readyProjectIds,
+    onUpdate,
+    minIntervalMs = 500,
+    maxReadyWaitMs = 5000,
+    requireNearViewport = false,
+}) {
     const reveal = useRateLimitedProjectReveal({
         projectIds,
         readyProjectIds,
         resetKey: [...projectIds].sort().join(':'),
         minIntervalMs,
         maxReadyWaitMs,
+        requireNearViewport,
     })
     useEffect(() => onUpdate(reveal), [onUpdate, reveal])
     return null
@@ -113,5 +121,32 @@ describe('useRateLimitedProjectReveal', () => {
         expect(reveal.revealedProjectIds).toEqual(['p1'])
         act(() => jest.advanceTimersByTime(1))
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
+    })
+
+    it('keeps offscreen projects dormant until the next placeholder nears the viewport', () => {
+        let reveal
+        act(() => {
+            renderer.create(
+                <Harness
+                    projectIds={['p1', 'p2', 'p3']}
+                    readyProjectIds={['p1']}
+                    minIntervalMs={0}
+                    requireNearViewport
+                    onUpdate={value => {
+                        reveal = value
+                    }}
+                />
+            )
+        })
+
+        act(() => jest.advanceTimersByTime(5000))
+        expect(reveal.revealedProjectIds).toEqual(['p1'])
+        expect(reveal.nextProjectId).toBe('p2')
+
+        act(() => reveal.markProjectNearViewport('p2'))
+        act(() => jest.runOnlyPendingTimers())
+
+        expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
+        expect(reveal.nextProjectId).toBe('p3')
     })
 })
