@@ -2,7 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
-import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
+import OpenTasksViewAllProjects, { getViewportPriorityProjectState } from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
@@ -69,9 +69,46 @@ const renderedChildTypes = tree => {
     return types
 }
 
+describe('getViewportPriorityProjectState', () => {
+    it('returns visible unloaded projects plus the next adjacent placeholder', () => {
+        const projectNodes = new Map([
+            [11, { getBoundingClientRect: () => ({ top: -400, bottom: -40 }) }],
+            [12, { getBoundingClientRect: () => ({ top: 80, bottom: 440 }) }],
+            [13, { getBoundingClientRect: () => ({ top: 440, bottom: 800 }) }],
+            [14, { getBoundingClientRect: () => ({ top: 900, bottom: 1260 }) }],
+        ])
+
+        expect(
+            getViewportPriorityProjectState({
+                projectNodes,
+                mountedProjectIndexes: [0, 12],
+                projectCount: 15,
+                viewportBottom: 841,
+            })
+        ).toEqual({ projectIndexes: [13, 14], hasVisibleProject: true })
+    })
+
+    it('keeps preloading the adjacent project when the visible project is already mounted', () => {
+        const projectNodes = new Map([
+            [12, { getBoundingClientRect: () => ({ top: 80, bottom: 800 }) }],
+            [13, { getBoundingClientRect: () => ({ top: 900, bottom: 1260 }) }],
+        ])
+
+        expect(
+            getViewportPriorityProjectState({
+                projectNodes,
+                mountedProjectIndexes: [0, 12],
+                projectCount: 15,
+                viewportBottom: 841,
+            })
+        ).toEqual({ projectIndexes: [13], hasVisibleProject: true })
+    })
+})
+
 describe('OpenTasksViewAllProjects', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        getProjectIdsForAllProjectsTasks.mockReturnValue(['project-1', 'project-2'])
         useDispatch.mockReturnValue(jest.fn())
         useNearViewportMount.mockImplementation(() => ({
             placeholderRef: { current: null },
@@ -80,7 +117,9 @@ describe('OpenTasksViewAllProjects', () => {
         }))
         useRateLimitedProjectMountQueue.mockReturnValue({
             mountedProjectCount: 2,
+            mountedProjectIndexes: [0, 1],
             preloadingProjectIndex: null,
+            preloadingProjectIndexes: [],
             preloadingProjectSkipped: false,
             nextProjectIndex: null,
             markProjectNearViewport: jest.fn(),
@@ -207,7 +246,9 @@ describe('OpenTasksViewAllProjects', () => {
         it('keeps offscreen project watchers dormant while mounting the first project eagerly', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
                 preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
                 preloadingProjectSkipped: false,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
@@ -226,14 +267,14 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useNearViewportMount).toHaveBeenNthCalledWith(1, {
                 eager: true,
                 enabled: false,
-                rootMargin: '320px 0px',
+                rootMargin: '720px 0px',
                 trackVisibility: true,
                 activateWhenPassed: true,
             })
             expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
                 eager: false,
                 enabled: true,
-                rootMargin: '320px 0px',
+                rootMargin: '720px 0px',
                 trackVisibility: true,
                 activateWhenPassed: true,
             })
@@ -246,7 +287,9 @@ describe('OpenTasksViewAllProjects', () => {
         it('mounts one upcoming project behind the ghost as soon as preloading starts', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
                 preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
                 preloadingProjectSkipped: false,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
@@ -259,10 +302,34 @@ describe('OpenTasksViewAllProjects', () => {
             expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
         })
 
+        it('preloads two upcoming projects behind separate ghosts', () => {
+            getProjectIdsForAllProjectsTasks.mockReturnValue(['project-1', 'project-2', 'project-3'])
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1, 2],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByType('OpenTasksByProject').map(block => block.props.projectId)).toEqual([
+                'project-1',
+                'project-2',
+                'project-3',
+            ])
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(2)
+        })
+
         it('shows a stable viewport ghost while skipped projects catch up', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
                 preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
                 preloadingProjectSkipped: true,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
@@ -278,7 +345,9 @@ describe('OpenTasksViewAllProjects', () => {
             jest.useFakeTimers()
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
                 preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
                 preloadingProjectSkipped: true,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
@@ -288,7 +357,9 @@ describe('OpenTasksViewAllProjects', () => {
 
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 2,
+                mountedProjectIndexes: [0, 1],
                 preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
                 preloadingProjectSkipped: false,
                 nextProjectIndex: null,
                 markProjectNearViewport: jest.fn(),
@@ -324,6 +395,7 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
                 minIntervalMs: 200,
+                preloadConcurrency: 2,
             })
         })
     })
