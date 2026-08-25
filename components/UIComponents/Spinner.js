@@ -14,15 +14,17 @@ const Spinner = ({
     const animateValue = useState(new Animated.Value(0))[0]
 
     useEffect(() => {
-        Animated.loop(
+        const animation = Animated.loop(
             Animated.timing(animateValue, {
                 toValue: 1,
                 duration: 1000,
                 easing: Easing.linear,
                 useNativeDriver: false,
             })
-        ).start()
-    }, [])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [animateValue])
 
     const container = {
         width: containerSize,
