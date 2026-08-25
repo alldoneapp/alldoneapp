@@ -5,7 +5,7 @@ import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import OpenTasksByProject from './OpenTasksByProject'
 import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actions'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
-import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import AllProjectsShowMoreAvailability from './AllProjectsShowMoreAvailability'
@@ -260,7 +260,7 @@ export default function OpenTasksViewAllProjects() {
             ]}
         >
             <AllProjectsLine showEmailLabels={true} />
-            <AssistantLine useAssistantProjectContext={false} />
+            <AllProjectsAssistantLine />
             {/* AT-2262: the empty-inbox congrats sits directly UNDER the assistant line
                 (which also renders the latest comment) and above the email line and the
                 task filters. The assistant composer + last comment must keep the top of
