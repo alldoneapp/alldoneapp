@@ -16,6 +16,7 @@ import AssistantLine from '../../../MyDayView/AssistantLine/AssistantLine'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
+import AssistantTemplateReviewBanner from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/AssistantTemplateReviewBanner'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId, children }) {
     const dispatch = useDispatch()
@@ -103,6 +104,15 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId, children }
                 showEditAssistantButton={canEditAssistant}
                 onEditAssistant={openAssistantEditor}
             />
+            {/*
+             * Gated on canEditAssistant for the same reason the notice exists:
+             * it tells you to click Edit, and the Edit button above it is
+             * rendered under exactly that condition. Showing it to someone with
+             * no way in would point at a control that is not on screen.
+             */}
+            {canEditAssistant && (
+                <AssistantTemplateReviewBanner assistant={currentUser} onReview={openAssistantEditor} />
+            )}
             {currentUser.displayName === 'Anna Alldone' && (
                 <View style={localStyles.section}>
                     <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />
