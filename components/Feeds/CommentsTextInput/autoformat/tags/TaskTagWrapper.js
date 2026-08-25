@@ -54,7 +54,11 @@ export default function TaskTagWrapper({
 
     if (lastTaskRef.current.taskId !== taskId) lastTaskRef.current = { taskId, task: null }
     if (taskFromRedux) lastTaskRef.current = { taskId, task: taskFromRedux }
-    const recoveredTaskForId = recoveredTask?.taskId === taskId ? recoveredTask.task : null
+    // The note toolbar renders this wrapper with NO taskId to create a task (see the call sites in
+    // DvContainer/NoteIntegration), so `taskId` is legitimately undefined here. Guard on the
+    // recovered record itself: `recoveredTask?.taskId === taskId` is TRUE when both sides are
+    // undefined, which then dereferenced a null `recoveredTask` and crashed the editor (AT-2428).
+    const recoveredTaskForId = recoveredTask && recoveredTask.taskId === taskId ? recoveredTask.task : null
     const taskToRender = taskFromRedux || recoveredTaskForId || lastTaskRef.current.task
     const isDeleted = deletedTaskId === taskId
 
