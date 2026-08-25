@@ -14,7 +14,7 @@
  * The state machine, deliberately biased towards `live`:
  *
  *   live          the server was heard from recently — the normal state, renders nothing
- *   slow          an interactive server read or write has waited at least five seconds —
+ *   slow          an interactive server read or write has waited at least ten seconds —
  *                 work can continue online or switch offline without a transport restart
  *   reconnecting  a probe failed once; Firestore is reconnecting and is being re-probed
  *   stale         two probes failed while the browser claims to be online — the app is
@@ -66,7 +66,7 @@ export const STALENESS_CHECK_INTERVAL_MS = 60 * 1000
 export const PROBE_TIMEOUT_MS = 5000
 
 /** Offer offline work when a real page read or write acknowledgement takes this long. */
-export const SLOW_CONNECTION_THRESHOLD_MS = 5000
+export const SLOW_CONNECTION_THRESHOLD_MS = 10000
 
 /** Keep the choice visible briefly after the delayed operation eventually completes. */
 export const SLOW_CONNECTION_LINGER_MS = 30 * 1000

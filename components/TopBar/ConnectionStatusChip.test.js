@@ -1,4 +1,5 @@
 import React from 'react'
+import { StyleSheet } from 'react-native'
 import { Provider } from 'react-redux'
 import { create, act } from 'react-test-renderer'
 
@@ -105,6 +106,9 @@ describe('ConnectionStatusChip', () => {
         const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
         expect(chip.props.accessibilityLabel).toBe('Slow connection')
         expect(treeText(tree)).toContain('Slow connection')
+        expect(
+            StyleSheet.flatten(tree.root.findByProps({ testID: 'mobile-connection-status-container' }).props.style)
+        ).toMatchObject({ paddingTop: 8, paddingBottom: 8, paddingHorizontal: 16 })
 
         act(() => {
             chip.props.onPress()
