@@ -29,14 +29,19 @@ import NotesListSkeleton from './NotesListSkeleton'
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
 export const NOTES_PROJECT_REVEAL_ROOT_MARGIN = '0px'
+// Keep the deferred ghost around for at least one complete 1.4 s shimmer cycle.
+// A normal touchpad/mobile scroll can itself take close to a second, so the shared
+// 500 ms reveal interval lets the placeholder disappear before scrolling settles.
+export const NOTES_PROJECT_GHOST_MIN_VISIBLE_MS = 1500
 
 function DeferredProjectReveal({ projectId, onNearViewport }) {
     const { placeholderRef, isNearViewport } = useNearViewportMount({
         rootMargin: NOTES_PROJECT_REVEAL_ROOT_MARGIN,
+        trackVisibility: true,
     })
 
     useEffect(() => {
-        if (isNearViewport) onNearViewport(projectId)
+        onNearViewport(projectId, isNearViewport)
     }, [isNearViewport, onNearViewport, projectId])
 
     return (
@@ -89,6 +94,7 @@ function NotesView() {
             readyProjectIds,
             resetKey: projectRevealKey,
             requireNearViewport: inAllProjects,
+            minIntervalMs: inAllProjects ? NOTES_PROJECT_GHOST_MIN_VISIBLE_MS : undefined,
         })
     const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
     const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
