@@ -4,10 +4,11 @@ export const PROJECT_MOUNT_MIN_INTERVAL_MS = 500
 export const PROJECT_MOUNT_MAX_READY_WAIT_MS = 5000
 
 /**
- * Admit All Projects blocks one at a time. A newly visible placeholder may only
- * mount after the previous project's two task streams delivered their initial
- * snapshots. The timeout keeps an unavailable project from blocking the rest
- * of the board forever.
+ * Admit All Projects blocks one at a time. When the next placeholder reaches the
+ * viewport, its project mounts immediately behind the ghost so its listeners can
+ * start. The project becomes visible after its own two task streams are ready and
+ * the short anti-flicker interval has elapsed. The timeout keeps an unavailable
+ * project from blocking the rest of the board forever.
  */
 export default function useRateLimitedProjectMountQueue({
     projectIds,
@@ -42,7 +43,9 @@ export default function useRateLimitedProjectMountQueue({
 
             setNearProject(current => {
                 if (!isNearViewport) {
-                    return current?.projectKey === projectKey && current.projectIndex === projectIndex ? null : current
+                    // Once this single prefetch has started, keep it alive even
+                    // if layout movement pushes the ghost out of the viewport.
+                    return current
                 }
                 if (current?.projectKey === projectKey && current.projectIndex === projectIndex) return current
                 return { projectKey, projectIndex, sinceAt: now() }
@@ -51,7 +54,12 @@ export default function useRateLimitedProjectMountQueue({
         [mountedProjectCount, now, projectIds.length, projectKey]
     )
 
-    const previousProjectReady = mountedProjectCount === 0 || projectReadyStates[mountedProjectCount - 1] === true
+    const preloadingProjectIndex =
+        nearProject?.projectKey === projectKey && nearProject.projectIndex === mountedProjectCount
+            ? mountedProjectCount
+            : null
+    const preloadingProjectReady =
+        preloadingProjectIndex !== null && projectReadyStates[preloadingProjectIndex] === true
 
     useEffect(() => {
         if (
@@ -68,7 +76,7 @@ export default function useRateLimitedProjectMountQueue({
         // viewport. Measuring from the previous mount lets a long scroll consume
         // the whole delay before the user can see the loading ghost.
         const intervalRemaining = Math.max(0, nearProject.sinceAt + minIntervalMs - currentTime)
-        const readinessRemaining = previousProjectReady
+        const readinessRemaining = preloadingProjectReady
             ? 0
             : Math.max(0, nearProject.sinceAt + maxReadyWaitMs - currentTime)
         const delay = Math.max(intervalRemaining, readinessRemaining)
@@ -93,13 +101,14 @@ export default function useRateLimitedProjectMountQueue({
         mountedProjectCount,
         nearProject,
         now,
-        previousProjectReady,
+        preloadingProjectReady,
         projectIds.length,
         projectKey,
     ])
 
     return {
         mountedProjectCount,
+        preloadingProjectIndex,
         nextProjectIndex: mountedProjectCount < projectIds.length ? mountedProjectCount : null,
         markProjectNearViewport,
     }
