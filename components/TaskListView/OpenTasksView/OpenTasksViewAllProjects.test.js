@@ -1,5 +1,5 @@
 import React from 'react'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
@@ -76,10 +76,12 @@ describe('OpenTasksViewAllProjects', () => {
         useNearViewportMount.mockImplementation(() => ({
             placeholderRef: { current: null },
             isNearViewport: true,
+            hasPassedViewport: false,
         }))
         useRateLimitedProjectMountQueue.mockReturnValue({
             mountedProjectCount: 2,
             preloadingProjectIndex: null,
+            preloadingProjectSkipped: false,
             nextProjectIndex: null,
             markProjectNearViewport: jest.fn(),
         })
@@ -206,12 +208,14 @@ describe('OpenTasksViewAllProjects', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
                 preloadingProjectIndex: null,
+                preloadingProjectSkipped: false,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
             })
             useNearViewportMount.mockImplementation(({ eager }) => ({
                 placeholderRef: { current: null },
                 isNearViewport: eager,
+                hasPassedViewport: false,
             }))
 
             const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
@@ -224,12 +228,14 @@ describe('OpenTasksViewAllProjects', () => {
                 enabled: false,
                 rootMargin: '0px',
                 trackVisibility: true,
+                activateWhenPassed: true,
             })
             expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
                 eager: false,
                 enabled: true,
                 rootMargin: '0px',
                 trackVisibility: true,
+                activateWhenPassed: true,
             })
             expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
             expect(tree.root.findByType('TaskListSkeleton').props).toEqual(
@@ -241,6 +247,7 @@ describe('OpenTasksViewAllProjects', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
                 preloadingProjectIndex: 1,
+                preloadingProjectSkipped: false,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
             })
@@ -250,6 +257,52 @@ describe('OpenTasksViewAllProjects', () => {
 
             expect(projectBlocks.map(block => block.props.projectId)).toEqual(['project-1', 'project-2'])
             expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+        })
+
+        it('shows a stable viewport ghost while skipped projects catch up', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                preloadingProjectIndex: 1,
+                preloadingProjectSkipped: true,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(2)
+        })
+
+        it('keeps the catch-up ghost through the short gap before the next skipped project starts', () => {
+            jest.useFakeTimers()
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                preloadingProjectIndex: 1,
+                preloadingProjectSkipped: true,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            const tree = renderView(state)
+
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 2,
+                preloadingProjectIndex: null,
+                preloadingProjectSkipped: false,
+                nextProjectIndex: null,
+                markProjectNearViewport: jest.fn(),
+            })
+            act(() => tree.update(<OpenTasksViewAllProjects />))
+
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            act(() => jest.advanceTimersByTime(119))
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            act(() => jest.advanceTimersByTime(1))
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(0)
+
+            tree.unmount()
+            jest.useRealTimers()
         })
 
         it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
