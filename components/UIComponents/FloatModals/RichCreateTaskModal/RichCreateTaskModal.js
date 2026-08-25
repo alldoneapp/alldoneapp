@@ -61,7 +61,6 @@ import { getDvTabLink } from '../../../../utils/LinkingHelper'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import SelectProjectModalInSearch from '../SelectProjectModal/SelectProjectModalInSearch'
 import { AUTOMATIC_PROJECT_OPTION, isAutomaticProjectOption } from '../SelectProjectModal/projectPickerConstants'
-import { applyProjectSwitchToDraft } from './projectSwitchDraft'
 import { buildPendingProjectRouting, resolveAutomaticHostProjectId } from '../../../../utils/automaticProjectRouting'
 import {
     addProjectDataToMyDayData,
@@ -198,12 +197,7 @@ export default function RichCreateTaskModal({
     modalTitle,
     tryExpandTasksListInGoalWhenAddTask,
     useLoggedUser,
-    // PT-4745: the project switcher is part of the add-task popup at EVERY entry
-    // point now, so this defaults to on and no caller passes it. It stays a prop
-    // (rather than being deleted) so a future surface that genuinely has no
-    // project to switch to can opt out explicitly, and so the two All Projects
-    // call sites keep saying out loud that they depend on it.
-    showProjectSelector = true,
+    showProjectSelector,
     expandTaskListIfNeeded,
     // AT-2364: opt in to the wide card (used by the big, centered All Projects
     // "Add task" call to action). Every other entry point keeps its width.
@@ -615,25 +609,6 @@ export default function RichCreateTaskModal({
         setActiveGoal(isPublic ? goal : null)
     }
 
-    // PT-4745: the draft's project-scoped ids cannot survive a project change —
-    // see projectSwitchDraft.js for which ones and why. Called BEFORE the new
-    // project is committed so it never runs against a half-updated draft, and
-    // only when the destination really differs: re-picking the project the popup
-    // already opened on must not quietly drop the user's goal or assignee.
-    const applyProjectSwitch = (nextProjectId, nextIsAutomatic) => {
-        const unchanged = nextProjectId === projectId && !!nextIsAutomatic === !!automaticProject
-        if (unchanged) return
-
-        const { loggedUser } = store.getState()
-        const switchedTask = applyProjectSwitchToDraft(task, loggedUser.uid)
-        if (switchedTask === task) return
-
-        setTask(switchedTask)
-        // The goal chip is rendered from this, not from the draft, so it has to
-        // be cleared with it or a dropped goal keeps showing in the popup.
-        if (!switchedTask.parentGoalId) setActiveGoal(null)
-    }
-
     useEffect(() => {
         const { parentGoalId } = task
 
@@ -659,16 +634,7 @@ export default function RichCreateTaskModal({
             ]
 
             setProjects(sortedProjects)
-            // PT-4745: `MainModal` renders the switcher row only when it has a
-            // selected project, so an unresolvable id used to HIDE the switcher
-            // — the one outcome this task exists to remove. The popup was opened
-            // on this project and will create the task in it either way, so fall
-            // back to the bare id and keep the row (and the way out of it).
-            setSelectedProject(
-                automaticProject
-                    ? { id: AUTOMATIC_PROJECT_OPTION }
-                    : loggedUserProjectsMap[projectId] || (projectId ? { id: projectId } : null)
-            )
+            setSelectedProject(automaticProject ? { id: AUTOMATIC_PROJECT_OPTION } : loggedUserProjectsMap[projectId])
         }
     }, [showProjectSelector])
 
@@ -685,19 +651,14 @@ export default function RichCreateTaskModal({
                     projects={projects}
                     setSelectedProjectId={selectedProjectId => {
                         if (isAutomaticProjectOption(selectedProjectId)) {
-                            const hostProjectId = getAutomaticHostProjectId()
-                            applyProjectSwitch(hostProjectId, true)
                             setAutomaticProject(true)
-                            setProjectId(hostProjectId)
+                            setProjectId(getAutomaticHostProjectId())
                             setSelectedProject({ id: AUTOMATIC_PROJECT_OPTION })
                             return
                         }
-                        applyProjectSwitch(selectedProjectId, false)
                         setAutomaticProject(false)
                         setProjectId(selectedProjectId)
-                        setSelectedProject(
-                            projects.find(project => project.id === selectedProjectId) || { id: selectedProjectId }
-                        )
+                        setSelectedProject(projects.find(project => project.id === selectedProjectId))
                     }}
                     showGuideTab={true}
                     showAutomaticProject={true}

@@ -60,7 +60,10 @@ export async function uploadNewAssistantSkill(skill) {
     const { loggedUser } = store.getState()
     updateEditionData(skill)
 
-    skill.uid = getId()
+    // A skill composed from an uploaded bundle has already had its files written
+    // to Storage under a pre-allocated id (that path is part of every stored
+    // `file.storagePath`), so honour an id the caller assigned.
+    skill.uid = skill.uid || getId()
     skill.name = skill.name.trim()
     skill.displayName = skill.displayName.trim()
     skill.createdDate = Date.now()
@@ -82,6 +85,28 @@ export async function updateAssistantSkill(updatedSkill) {
 
 export async function deleteAssistantSkill(skillId) {
     await getDb().doc(`${getSkillsCollectionPath()}/${skillId}`).delete()
+}
+
+// FILE UPLOAD (AT-2431)
+
+// A bundle has to be written to Storage under the skill's id BEFORE the skill
+// document exists (every stored `file.storagePath` contains it), so the id is
+// allocated up front — the same shape the repo import uses with its
+// `proposedSkillId`.
+export function getNewAssistantSkillId() {
+    return getId()
+}
+
+// Bundled files are written by the server (the client has no Storage write
+// grant under assistantSkills/**, and the relative path has to be validated
+// somewhere the caller cannot reach — it becomes a path inside the VM sandbox).
+export async function uploadAssistantSkillBundleFile(skillId, version, relativePath, contentBase64) {
+    const result = await runHttpsCallableFunction(
+        'uploadAssistantSkillFile',
+        { skillId, version, relativePath, contentBase64 },
+        { timeout: 120000 }
+    )
+    return result?.data || result
 }
 
 //MARKETPLACE IMPORT

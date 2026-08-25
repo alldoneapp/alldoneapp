@@ -8,7 +8,7 @@ import MyDaySelectedTasks from './MyDaySelectedTasks'
 import MoreTasksLine from './MoreTasksLine'
 import MyDayOtherTasks from './MyDayOtherTasks'
 import { setActiveDragTaskModeInMyDay } from '../../../../redux/actions'
-import AllProjectsAssistantLine from '../../AssistantLine/AllProjectsAssistantLine'
+import AssistantLine from '../../AssistantLine/AssistantLine'
 import { onBeforeCapture, onDragEnd } from '../../../DragSystem/MyDayDragHelper'
 import AllProjectsLine from '../../../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
@@ -37,7 +37,7 @@ export default function MyDayOpenTasks() {
     return (
         <>
             <AllProjectsLine />
-            <AllProjectsAssistantLine />
+            <AssistantLine useAssistantProjectContext={false} />
             {showEmptyInbox && <AllProjectsEmptyInbox />}
             {!showEmptyInbox && (
                 <DragDropContext onDragEnd={onDragEnd} onBeforeCapture={onBeforeCapture}>

@@ -31,12 +31,6 @@ jest.mock(
     () => 'BottomShowMoreButtonContainer'
 )
 jest.mock('../../../components/MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../../hooks/useProjectData', () => ({
-    __esModule: true,
-    default: () => {},
-    useProjectsData: () => {},
-}))
-jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({ PROJECT_DATA_ASSISTANTS: 'assistants' }))
 jest.mock('../../../components/TaskListView/OKRs/OKRSection', () => 'OKRSection')
 jest.mock('../../../components/TaskListView/Header/UpcomingMilestoneRow', () => 'UpcomingMilestoneRow')
 jest.mock('../../../components/TaskListView/PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
