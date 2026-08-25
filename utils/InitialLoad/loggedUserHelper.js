@@ -31,7 +31,7 @@ import { getProjectDataResult } from '../backends/firestore'
 import { storeVersion } from '../Observers'
 import { checkIfUrlBelongsToProjectInTheList } from '../LinkingHelper'
 import { orderProjectsForDataWarmUp } from './projectDataPriority'
-import { ensureProjectsDataLoaded, forgetAllProjectData, warmProjectsData } from './projectDataLoader'
+import { ensureProjectsDataLoaded, forgetAllProjectData } from './projectDataLoader'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
@@ -111,8 +111,8 @@ async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
     // (users, contacts, workstreams, assistants) used to be awaited in this same `Promise.all`
     // for every project - 56 collection reads on the reporting account, 523 contact documents
     // among them - before login could finish. They are now loaded by `projectDataLoader`:
-    // awaited for the priority projects, warmed in the background for the rest, and pulled on
-    // demand by whatever renders them. `sanitizeProjectsInitialData` normalizes the absent
+    // awaited for the priority projects and pulled on demand by whatever renders the rest.
+    // `sanitizeProjectsInitialData` normalizes the absent
     // fields to `[]`, which is the invariant the unguarded consumers rely on.
     const allPromises = projectIds.map(projectId =>
         getProjectDataResult(projectId)
@@ -264,10 +264,10 @@ async function loadInitialData() {
     // few are AWAITED because two boot decisions read them synchronously right after this:
     // `TasksHelper.processURLProjectsUserTasks` resolves a `/projects/<id>/user/<uid>/tasks` deep
     // link out of `projectUsers[projectId]`, and `getDefaultAssistant` reads
-    // `projectAssistants[defaultProjectId]`. Everything else is warmed in the background, and
-    // whatever renders first pulls what it needs through the loader anyway.
+    // `projectAssistants[defaultProjectId]`. Everything else stays lazy and is loaded by the
+    // existing synchronous lookup funnels when a visible screen actually needs it.
     const loadedProjectIds = projects.map(project => project.id)
-    const { priorityProjectIds, warmUpProjectIds } = orderProjectsForDataWarmUp({
+    const { priorityProjectIds } = orderProjectsForDataWarmUp({
         urlProjectId: checkIfUrlBelongsToProjectInTheList(getInitialRoutingUrl(), loadedProjectIds),
         loggedUser,
         projectIds: loadedProjectIds,
@@ -276,8 +276,6 @@ async function loadInitialData() {
     // Bounded inside the loader, so a wedged stream delays login by at most one snapshot budget
     // instead of hanging it.
     await ensureProjectsDataLoaded(priorityProjectIds)
-
-    warmProjectsData(warmUpProjectIds)
 
     // Defer non-critical watchers to improve initial load time
     setTimeout(() => {

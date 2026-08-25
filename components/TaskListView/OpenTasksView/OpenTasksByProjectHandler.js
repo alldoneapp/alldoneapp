@@ -92,11 +92,12 @@ export default function OpenTasksByProjectHandler({
         )
     }
 
-    // Auto-sync calendar and gmail on page load
-    // Now safe with server-side sync + cooldown cache
+    // Keep integration refreshes out of the All Projects mount fan-out. The
+    // unified Email line refreshes connected accounts once, while calendar is
+    // refreshed on the selected project (and by its server-side sync).
     useEffect(() => {
         const { loggedUser } = store.getState()
-        if (currentUserId === loggedUser.uid) {
+        if (inSelectedProject && currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
             if (projectApis?.calendar) {
                 if (__DEV__)
@@ -109,7 +110,7 @@ export default function OpenTasksByProjectHandler({
                 fetchEmailLineSummary(projectId)
             }
         }
-    }, [projectId, currentUserId])
+    }, [projectId, currentUserId, inSelectedProject])
 
     useEffect(() => {
         // These flags are written straight from onSnapshot, so a task completed
@@ -173,7 +174,8 @@ export default function OpenTasksByProjectHandler({
                 somedayTasksExpandedForNavigateFromAllProjects,
                 false,
                 instanceKey,
-                assistantProfileMode
+                assistantProfileMode,
+                { trackConnectionHealth: inSelectedProject }
             )
 
             return () => {
@@ -229,7 +231,8 @@ export default function OpenTasksByProjectHandler({
                                 taskListWatchersVars.subtasksMap,
                                 laterTasksExpanded,
                                 somedayTasksExpanded,
-                                userId
+                                userId,
+                                inSelectedProject
                             )
                         }
 

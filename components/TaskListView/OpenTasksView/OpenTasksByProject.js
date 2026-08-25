@@ -168,7 +168,7 @@ function OpenTasksByProject({
             />
             {!hideProjectData && (
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
-                    <NeedShowMoreOpenTasksButton projectId={projectId} />
+                    {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
                     {!assistantProfileMode && (
                         <ProjectHeader
                             projectIndex={projectIndex}

@@ -8,16 +8,22 @@ import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
+import AllProjectsShowMoreAvailability from './AllProjectsShowMoreAvailability'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskFiltersLine from '../PriorityFilters/TaskFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
 import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
-import useProgressiveReveal from '../../../hooks/useProgressiveReveal'
+import useNearViewportMount from '../../../hooks/useNearViewportMount'
 
-// Each project block mounts a sizeable UI tree plus its task/milestone/goal watchers.
-// Keep the tab-switch commit to one project, then yield a paint between later projects.
-export const INITIAL_PROJECTS_TO_RENDER = 1
-export const PROJECT_RENDER_BATCH_SIZE = 1
+function DeferredProjectBlock({ eager, children }) {
+    const { placeholderRef, shouldMount } = useNearViewportMount({ eager })
+
+    return (
+        <View ref={placeholderRef} style={!shouldMount && localStyles.deferredProjectPlaceholder}>
+            {shouldMount ? children : null}
+        </View>
+    )
+}
 
 export default function OpenTasksViewAllProjects() {
     const dispatch = useDispatch()
@@ -64,18 +70,6 @@ export default function OpenTasksViewAllProjects() {
             inFocusTaskProjectId,
         ]
     )
-    const { visibleAmount: visibleProjectCount, complete: projectRenderComplete } = useProgressiveReveal(
-        sortedLoggedUserProjectIds.length,
-        {
-            initialAmount: INITIAL_PROJECTS_TO_RENDER,
-            batchSize: PROJECT_RENDER_BATCH_SIZE,
-            // The project map can get a new object identity while watcher snapshots arrive.
-            // Reset only when the ordered ids really changed, not on those unrelated updates.
-            resetKey: sortedLoggedUserProjectIds.join('\u001f'),
-        }
-    )
-    const visibleProjectIds = sortedLoggedUserProjectIds.slice(0, visibleProjectCount)
-
     useEffect(() => {
         dispatch(resetLoadingData())
         return () => {
@@ -112,7 +106,7 @@ export default function OpenTasksViewAllProjects() {
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
-            {visibleProjectIds.map(projectId => {
+            {sortedLoggedUserProjectIds.map((projectId, index) => {
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {
                     areFirstProject = true
@@ -120,22 +114,22 @@ export default function OpenTasksViewAllProjects() {
                 }
 
                 return (
-                    <OpenTasksByProject
-                        key={projectId}
-                        projectId={projectId}
-                        firstProject={thisProjectIsTheFirstProject}
-                        sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
-                        setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                    />
+                    <DeferredProjectBlock key={projectId} eager={index === 0}>
+                        <OpenTasksByProject
+                            projectId={projectId}
+                            firstProject={thisProjectIsTheFirstProject}
+                            sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
+                            setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                        />
+                    </DeferredProjectBlock>
                 )
             })}
 
-            {projectRenderComplete && (
-                <AllProjectsShowMoreButtonContainer
-                    projectIds={sortedLoggedUserProjectIds}
-                    setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                />
-            )}
+            <AllProjectsShowMoreAvailability projectIds={sortedLoggedUserProjectIds} />
+            <AllProjectsShowMoreButtonContainer
+                projectIds={sortedLoggedUserProjectIds}
+                setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+            />
         </View>
     )
 }
@@ -151,5 +145,8 @@ const localStyles = StyleSheet.create({
     },
     containerForTablet: {
         paddingHorizontal: 56,
+    },
+    deferredProjectPlaceholder: {
+        minHeight: 360,
     },
 })

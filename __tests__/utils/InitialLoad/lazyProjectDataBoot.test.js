@@ -13,7 +13,7 @@
  *      from the first frame even though the content is deferred,
  *   3. the priority projects are awaited BEFORE URL routing, because `processURLProjectsUserTasks`
  *      resolves a `/projects/<id>/user/<uid>/tasks` deep link out of `projectUsers[projectId]`,
- *   4. the rest are warmed afterwards, and
+ *   4. the rest stay lazy until a visible screen resolves their data, and
  *   5. nothing outside `loggedUser.projectIds` is ever loaded - which is what makes "only active
  *      projects" a guarantee rather than a side effect of `updateInactiveProjectsData`.
  */
@@ -109,13 +109,8 @@ const mockEnsureProjectsDataLoaded = jest.fn(projectIds => {
     callLog.push(['ensure', [...projectIds]])
     return Promise.resolve(true)
 })
-const mockWarmProjectsData = jest.fn(projectIds => {
-    callLog.push(['warm', [...projectIds]])
-    return () => {}
-})
 jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({
     ensureProjectsDataLoaded: (...args) => mockEnsureProjectsDataLoaded(...args),
-    warmProjectsData: (...args) => mockWarmProjectsData(...args),
     forgetAllProjectData: jest.fn(),
 }))
 
@@ -183,19 +178,17 @@ describe("AT-2386 login no longer loads every project's people", () => {
         })
     })
 
-    it('awaits the priority projects before URL routing, then warms the rest', async () => {
+    it('awaits only priority projects before URL routing and leaves the rest lazy', async () => {
         await login()
 
-        expect(callLog.map(entry => entry[0])).toEqual(['ensure', 'warm', 'processUrl'])
+        expect(callLog.map(entry => entry[0])).toEqual(['ensure', 'processUrl'])
 
         const [, ensured] = callLog[0]
-        const [, warmed] = callLog[1]
 
         // Booting into "All projects" leaves no selected project, so the default project leads.
         expect(ensured[0]).toBe('p2')
-        // Every project is covered exactly once across the two buckets.
-        expect([...ensured, ...warmed].sort()).toEqual(['p1', 'p2', 'p3'])
-        expect(ensured.filter(id => warmed.includes(id))).toEqual([])
+        expect(ensured.sort()).toEqual(['p1', 'p2'])
+        expect(ensured).not.toContain('p3')
     })
 
     it("never loads a project outside the logged user's project ids", async () => {
@@ -204,7 +197,7 @@ describe("AT-2386 login no longer loads every project's people", () => {
         // guarantee of the loader rather than an accident of that reducer.
         await login()
 
-        const requested = callLog.filter(([kind]) => kind === 'ensure' || kind === 'warm').flatMap(([, ids]) => ids)
+        const requested = callLog.filter(([kind]) => kind === 'ensure').flatMap(([, ids]) => ids)
 
         requested.forEach(projectId => expect(mockState.loggedUser.projectIds).toContain(projectId))
     })
@@ -220,7 +213,7 @@ describe("AT-2386 login no longer loads every project's people", () => {
 
         await login()
 
-        const requested = callLog.filter(([kind]) => kind === 'ensure' || kind === 'warm').flatMap(([, ids]) => ids)
+        const requested = callLog.filter(([kind]) => kind === 'ensure').flatMap(([, ids]) => ids)
 
         expect(requested).not.toContain('p3')
         expect(requested.sort()).toEqual(['p1', 'p2'])
