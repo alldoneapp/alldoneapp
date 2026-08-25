@@ -10,7 +10,7 @@ const ProgressiveLoadingScreen = ({ step, totalSteps, currentMessage }) => {
         <View style={localstyles.container}>
             <Spinner containerSize={200} spinnerSize={150} />
             <Text style={[localstyles.text, { paddingTop: 40 }]}>{currentMessage}</Text>
-            <ConnectionStatusChip mobile />
+            <ConnectionStatusChip belowHeader />
             <View style={localstyles.progressContainer}>
                 <View style={localstyles.progressBar}>
                     <View style={[localstyles.progressFill, { width: `${progressPercentage}%` }]} />

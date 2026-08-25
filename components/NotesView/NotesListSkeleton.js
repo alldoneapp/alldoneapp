@@ -37,13 +37,6 @@ export default function NotesListSkeleton({ rowCount = GHOST_DEFAULT_ROWS, noteK
         >
             {showProjectHeader && (
                 <View testID="notes-project-loading-skeleton-header" style={localStyles.projectHeader}>
-                    <GhostBlock
-                        testID="notes-project-loading-skeleton-leading-edge"
-                        style={localStyles.projectLoadingLeadingEdge}
-                        pulse={pulse}
-                        reducedMotion={reducedMotion}
-                        soft
-                    />
                     <View style={localStyles.projectIdentity}>
                         <GhostBlock style={localStyles.projectIcon} pulse={pulse} reducedMotion={reducedMotion} />
                         <GhostBlock style={localStyles.projectName} pulse={pulse} reducedMotion={reducedMotion} />
@@ -88,7 +81,6 @@ const localStyles = StyleSheet.create({
     // Mirrors ProjectHeader's 56px bordered row so the deferred sentinel and the
     // mounted project occupy the same space while the first snapshot is pending.
     projectHeader: {
-        position: 'relative',
         height: 56,
         minHeight: 56,
         maxHeight: 56,
@@ -99,17 +91,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-    },
-    // IntersectionObserver fires as soon as the first pixel of this header enters
-    // the viewport. The real header keeps 25 px above its content, so without a
-    // leading ghost that first visible slice looks like an empty white gap.
-    projectLoadingLeadingEdge: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 4,
-        borderRadius: 2,
     },
     projectIdentity: {
         flex: 1,

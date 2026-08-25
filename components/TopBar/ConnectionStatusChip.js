@@ -50,9 +50,8 @@ export const CONNECTION_CHIP_PRESENTATION = {
     },
 }
 
-export default function ConnectionStatusChip({ mobile = false }) {
+export default function ConnectionStatusChip({ belowHeader = false }) {
     const connectionHealth = useSelector(state => state.connectionHealth)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
 
     const presentation = CONNECTION_CHIP_PRESENTATION[connectionHealth]
@@ -68,25 +67,28 @@ export default function ConnectionStatusChip({ mobile = false }) {
             content={<ConnectionStatusModal connectionHealth={connectionHealth} closeModal={() => setIsOpen(false)} />}
         >
             <TouchableOpacity
-                style={[localStyles.chip, mobile && localStyles.mobileChip]}
+                style={[localStyles.chip, belowHeader && localStyles.belowHeaderChip]}
                 onPress={() => setIsOpen(open => !open)}
                 accessibilityLabel={translate(presentation.label)}
                 testID={`connection-status-chip-${connectionHealth}`}
             >
                 <Icon name={presentation.icon} size={20} color={presentation.color} />
-                {(mobile || !smallScreenNavigation) && (
-                    <Text style={[localStyles.label, { color: presentation.color }]} numberOfLines={1}>
-                        {translate(presentation.label)}
-                    </Text>
-                )}
+                {/* Always labelled. An icon-only variant used to be guarded here for the
+                    in-header case on small screens, but that branch was unreachable — the
+                    header only ever renders the chip at sizes that have room for the label
+                    (see `showConnectionChipBelowHeader`), and every other placement is the
+                    stacked one, which has a full row to itself. */}
+                <Text style={[localStyles.label, { color: presentation.color }]} numberOfLines={1}>
+                    {translate(presentation.label)}
+                </Text>
             </TouchableOpacity>
         </AppPopover>
     )
 
-    if (!mobile) return chip
+    if (!belowHeader) return chip
 
     return (
-        <View style={localStyles.mobileContainer} testID={'mobile-connection-status-container'}>
+        <View style={localStyles.belowHeaderContainer} testID={'connection-status-below-header'}>
             {chip}
         </View>
     )
@@ -107,11 +109,11 @@ const localStyles = StyleSheet.create({
         ...styles.subtitle2,
         marginLeft: 6,
     },
-    mobileChip: {
+    belowHeaderChip: {
         alignSelf: 'center',
         marginLeft: 0,
     },
-    mobileContainer: {
+    belowHeaderContainer: {
         alignItems: 'center',
         paddingTop: 16,
         paddingBottom: 4,

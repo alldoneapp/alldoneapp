@@ -9,10 +9,12 @@ import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
 import HomeButton from './HomeButton'
 import ConnectionStatusChip from './ConnectionStatusChip'
+import { showConnectionChipBelowHeader } from './connectionChipPlacement'
 
 export default function TopBar() {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const chipBelowHeader = useSelector(showConnectionChipBelowHeader)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -48,8 +50,12 @@ export default function TopBar() {
             </View>
             <View style={localStyles.rightArea}>
                 {/* Renders nothing while the connection is live (PT-4660), so this
-                    row collapses to exactly the previous layout in the normal case. */}
-                <ConnectionStatusChip />
+                    row collapses to exactly the previous layout in the normal case.
+                    On tablet-and-narrower it renders nothing at all: this row has no
+                    slack for a labelled chip (measured 141-183px depending on language),
+                    so `MainViewsContainer` stacks it below the header instead
+                    (AT-2426). */}
+                {!chipBelowHeader && <ConnectionStatusChip />}
                 <NotificationArea />
             </View>
         </View>

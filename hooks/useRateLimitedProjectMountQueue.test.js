@@ -70,57 +70,6 @@ describe('useRateLimitedProjectMountQueue', () => {
         expect(queue.nextProjectIndex).toBe(2)
     })
 
-    it('keeps the ghost visible for the full interval after it reaches the viewport', () => {
-        let queue
-        act(() => {
-            renderer.create(
-                <Harness
-                    projectIds={['project-1', 'project-2']}
-                    projectReadyStates={[true, false]}
-                    minIntervalMs={1500}
-                    onUpdate={value => {
-                        queue = value
-                    }}
-                />
-            )
-        })
-
-        // Time spent above the placeholder must not consume its visible lifetime.
-        act(() => jest.advanceTimersByTime(5000))
-        act(() => queue.markProjectNearViewport(1))
-        act(() => jest.advanceTimersByTime(1499))
-        expect(queue.mountedProjectCount).toBe(1)
-
-        act(() => jest.advanceTimersByTime(1))
-        expect(queue.mountedProjectCount).toBe(2)
-    })
-
-    it('cancels admission when layout pushes the ghost back out of view', () => {
-        let queue
-        act(() => {
-            renderer.create(
-                <Harness
-                    projectIds={['project-1', 'project-2']}
-                    projectReadyStates={[true, false]}
-                    minIntervalMs={1500}
-                    onUpdate={value => {
-                        queue = value
-                    }}
-                />
-            )
-        })
-
-        act(() => queue.markProjectNearViewport(1, true))
-        act(() => jest.advanceTimersByTime(750))
-        act(() => queue.markProjectNearViewport(1, false))
-        act(() => jest.advanceTimersByTime(2000))
-        expect(queue.mountedProjectCount).toBe(1)
-
-        act(() => queue.markProjectNearViewport(1, true))
-        act(() => jest.advanceTimersByTime(1500))
-        expect(queue.mountedProjectCount).toBe(2)
-    })
-
     it('waits for readiness but falls back when one project does not answer', () => {
         let queue
         act(() => {

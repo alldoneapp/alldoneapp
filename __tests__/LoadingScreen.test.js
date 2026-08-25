@@ -15,7 +15,7 @@ describe('LoadingScreen component', () => {
         it('renders the connection status while the app is still loading', () => {
             const component = renderer.create(<LoadingScreen />)
 
-            expect(component.root.findByType('ConnectionStatusChip').props.mobile).toBe(true)
+            expect(component.root.findByType('ConnectionStatusChip').props.belowHeader).toBe(true)
         })
     })
 })

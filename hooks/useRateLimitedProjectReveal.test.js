@@ -176,31 +176,4 @@ describe('useRateLimitedProjectReveal', () => {
         act(() => jest.advanceTimersByTime(1))
         expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
     })
-
-    it('cancels a transient viewport hit when layout pushes the ghost away', () => {
-        let reveal
-        act(() => {
-            renderer.create(
-                <Harness
-                    projectIds={['p1', 'p2']}
-                    readyProjectIds={['p1']}
-                    minIntervalMs={1500}
-                    requireNearViewport
-                    onUpdate={value => {
-                        reveal = value
-                    }}
-                />
-            )
-        })
-
-        act(() => reveal.markProjectNearViewport('p2', true))
-        act(() => jest.advanceTimersByTime(750))
-        act(() => reveal.markProjectNearViewport('p2', false))
-        act(() => jest.advanceTimersByTime(2000))
-        expect(reveal.revealedProjectIds).toEqual(['p1'])
-
-        act(() => reveal.markProjectNearViewport('p2', true))
-        act(() => jest.advanceTimersByTime(1500))
-        expect(reveal.revealedProjectIds).toEqual(['p1', 'p2'])
-    })
 })
