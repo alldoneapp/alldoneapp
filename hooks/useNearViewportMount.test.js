@@ -7,9 +7,18 @@ import renderer, { act } from 'react-test-renderer'
 
 import useNearViewportMount, { NEAR_VIEWPORT_ROOT_MARGIN } from './useNearViewportMount'
 
-function Harness({ eager = false, enabled = true, trackVisibility = false }) {
-    const { placeholderRef, shouldMount } = useNearViewportMount({ eager, enabled, trackVisibility })
-    return <div ref={placeholderRef}>{shouldMount ? 'mounted' : 'placeholder'}</div>
+function Harness({ eager = false, enabled = true, trackVisibility = false, activateWhenPassed = false }) {
+    const { placeholderRef, shouldMount, hasPassedViewport } = useNearViewportMount({
+        eager,
+        enabled,
+        trackVisibility,
+        activateWhenPassed,
+    })
+    return (
+        <div ref={placeholderRef} data-passed={hasPassedViewport}>
+            {shouldMount ? 'mounted' : 'placeholder'}
+        </div>
+    )
 }
 
 describe('useNearViewportMount', () => {
@@ -76,5 +85,26 @@ describe('useNearViewportMount', () => {
 
         act(() => intersectionCallback([{ isIntersecting: false }]))
         expect(tree.toJSON().children).toEqual(['placeholder'])
+    })
+
+    it('activates a sentinel that a fast scroll moved completely above the viewport', () => {
+        observedNode.getBoundingClientRect = jest.fn(() => ({ bottom: 200 }))
+        let tree
+        act(() => {
+            tree = renderer.create(<Harness trackVisibility activateWhenPassed />, {
+                createNodeMock: () => observedNode,
+            })
+        })
+
+        expect(tree.toJSON().children).toEqual(['placeholder'])
+
+        observedNode.getBoundingClientRect.mockReturnValue({ bottom: -20 })
+        const scrollContainer = document.createElement('div')
+        document.body.appendChild(scrollContainer)
+        act(() => scrollContainer.dispatchEvent(new Event('scroll')))
+
+        expect(tree.toJSON().children).toEqual(['mounted'])
+        expect(tree.toJSON().props['data-passed']).toBe(true)
+        scrollContainer.remove()
     })
 })
