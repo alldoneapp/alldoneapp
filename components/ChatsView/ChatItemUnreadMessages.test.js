@@ -47,6 +47,8 @@ jest.mock('../../utils/backends/EmailLine/emailCommentReadSync', () => ({
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
     markAlldoneChatsReadForLinkedEmails: jest.fn(),
     markChatCommentsAsReadByMessageIds: jest.fn(),
+    // Archiving clears the comment's unread state first and gets a rollback back (AT-2424).
+    clearChatCommentsForLinkedEmails: jest.fn(async () => async () => {}),
 }))
 
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({

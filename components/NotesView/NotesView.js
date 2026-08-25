@@ -28,12 +28,9 @@ import NotesListSkeleton from './NotesListSkeleton'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
-export const NOTES_PROJECT_REVEAL_ROOT_MARGIN = '0px'
 
 function DeferredProjectReveal({ projectId, onNearViewport }) {
-    const { placeholderRef, isNearViewport } = useNearViewportMount({
-        rootMargin: NOTES_PROJECT_REVEAL_ROOT_MARGIN,
-    })
+    const { placeholderRef, isNearViewport } = useNearViewportMount()
 
     useEffect(() => {
         if (isNearViewport) onNearViewport(projectId)
