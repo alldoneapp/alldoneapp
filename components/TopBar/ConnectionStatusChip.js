@@ -59,7 +59,7 @@ export default function ConnectionStatusChip({ mobile = false }) {
     // Live (and any unknown future state) is silent by design.
     if (!presentation || connectionHealth === CONNECTION_HEALTH_LIVE) return null
 
-    return (
+    const chip = (
         <AppPopover
             isOpen={isOpen}
             onClickOutside={() => setIsOpen(false)}
@@ -82,6 +82,14 @@ export default function ConnectionStatusChip({ mobile = false }) {
             </TouchableOpacity>
         </AppPopover>
     )
+
+    if (!mobile) return chip
+
+    return (
+        <View style={localStyles.mobileContainer} testID={'mobile-connection-status-container'}>
+            {chip}
+        </View>
+    )
 }
 
 const localStyles = StyleSheet.create({
@@ -102,6 +110,11 @@ const localStyles = StyleSheet.create({
     mobileChip: {
         alignSelf: 'center',
         marginLeft: 0,
-        marginBottom: 8,
+    },
+    mobileContainer: {
+        alignItems: 'center',
+        paddingTop: 8,
+        paddingBottom: 8,
+        paddingHorizontal: 16,
     },
 })

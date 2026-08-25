@@ -21,6 +21,7 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import RootSectionNavigation from './RootSectionNavigation'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
+import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
 
 export const isMainViewScrollEnabled = state => !(state.smallScreen && state.showFloatPopup > 0)
 
@@ -28,6 +29,7 @@ export default function MainViewsContainer() {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const enableScroll = useSelector(isMainViewScrollEnabled)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     // smallScreen is the <= 970px content breakpoint, which covers phone, tablet,
     // and compact desktop layouts. React Native Web blocks touch/wheel events here.
 
@@ -40,6 +42,7 @@ export default function MainViewsContainer() {
             scrollEnabled={enableScroll}
         >
             <View>
+                {smallScreenNavigation && <ConnectionStatusChip mobile />}
                 {showGlobalRootSectionNavigation && <RootSectionNavigation />}
                 {(() => {
                     switch (selectedTab) {

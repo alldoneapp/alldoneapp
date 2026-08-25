@@ -6,6 +6,7 @@ import {
     CONNECTION_HEALTH_RECONNECTING,
     CONNECTION_HEALTH_SLOW,
     CONNECTION_HEALTH_STALE,
+    SLOW_CONNECTION_THRESHOLD_MS,
     STALE_RETRY_MAX_MS,
     continueOffline,
     evaluateConnectionHealth,
@@ -112,19 +113,22 @@ describe('connectionHealth', () => {
         const { dispatched, tracked, stop } = install({
             db: createFakeDb(['ok']),
             now: () => clock,
-            slowConnectionThresholdMs: 5000,
             slowConnectionLingerMs: 30000,
         })
 
         const finish = startConnectionLatencySample('write_ack')
-        clock += 5000
-        jest.advanceTimersByTime(5000)
+        clock += SLOW_CONNECTION_THRESHOLD_MS - 1
+        jest.advanceTimersByTime(SLOW_CONNECTION_THRESHOLD_MS - 1)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
+
+        clock += 1
+        jest.advanceTimersByTime(1)
 
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
         expect(dispatched).toContain(CONNECTION_HEALTH_SLOW)
         expect(tracked).toContainEqual({
             name: 'connection_slow_detected',
-            params: { duration_ms: 5000, browser_online: true, source: 'write_ack' },
+            params: { duration_ms: 10000, browser_online: true, source: 'write_ack' },
         })
 
         // Other snapshots prove reachability, but they do not make this delayed
