@@ -37,9 +37,9 @@ jest.mock('../Themes', () => ({ Themes: {} }))
 import TopBarMobile from './TopBarMobile'
 
 describe('TopBarMobile connection health', () => {
-    it('includes the connection status chip on mobile', () => {
+    it('does not pin the connection status chip inside the mobile header', () => {
         const component = renderer.create(<TopBarMobile />)
 
-        expect(component.root.findByType('ConnectionStatusChip').props.mobile).toBe(true)
+        expect(component.root.findAllByType('ConnectionStatusChip')).toHaveLength(0)
     })
 })

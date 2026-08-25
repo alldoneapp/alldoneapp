@@ -16,6 +16,7 @@ jest.mock('../../components/NotesView/NotesView', () => 'NotesView')
 jest.mock('../../components/ChatsView/ChatsView', () => 'ChatsView')
 jest.mock('../../components/UIControls/CustomScrollView', () => 'CustomScrollView')
 jest.mock('../../components/RootView/RootSectionNavigation', () => 'RootSectionNavigation')
+jest.mock('../../components/TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')
 jest.mock('../../components/SidebarMenu/Collapsible/UseCollapsibleSidebar', () => () => ({ overlay: false }))
 jest.mock('../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedAllProjects: () => false,
@@ -51,5 +52,17 @@ describe('MainViewsContainer popup scroll lock', () => {
         ['wide desktop', { smallScreen: false, smallScreenNavigation: false, isMiddleScreen: false }],
     ])('%s layout scrolls after the popup count is released', (_mode, state) => {
         expect(renderWithState({ ...state, showFloatPopup: 0 }).props.scrollEnabled).toBe(true)
+    })
+
+    it('renders the mobile connection chip as part of the scrollable content', () => {
+        const scrollView = renderWithState({ smallScreen: true, smallScreenNavigation: true, showFloatPopup: 0 })
+
+        expect(scrollView.findByType('ConnectionStatusChip').props.mobile).toBe(true)
+    })
+
+    it('keeps the desktop connection chip out of the page content', () => {
+        const scrollView = renderWithState({ smallScreen: false, smallScreenNavigation: false, showFloatPopup: 0 })
+
+        expect(scrollView.findAllByType('ConnectionStatusChip')).toHaveLength(0)
     })
 })
