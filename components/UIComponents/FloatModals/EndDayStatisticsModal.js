@@ -56,6 +56,14 @@ import {
 export const RECONNECT_STATISTICS_TIMEOUT_MS = 15000
 
 /**
+ * Last-resort UI ceiling for the shared reconnect operation itself. The
+ * connection layer bounds its probes and transport restarts, but the popup
+ * must still own a deadline so a regression below it can never strand the
+ * button in its loading state again.
+ */
+export const RECONNECT_ATTEMPT_TIMEOUT_MS = 25000
+
+/**
  * Stages of a manual reconnect, kept apart because the offline latch means
  * opposite things in each: while PROBING the card is still legitimately
  * offline, so a completion check must not read that latch as "the retry
@@ -382,12 +390,20 @@ export default function EndDayStatisticsModal() {
         clearReconnectTimeout()
         setReconnectStatus(RECONNECT_PROBING)
 
-        let outcome
-        try {
-            outcome = await reconnectNow()
-        } catch (error) {
-            reportNewDayError(error, 'reconnectNow')
-        }
+        const reconnectAttempt = Promise.resolve()
+            .then(() => reconnectNow())
+            .catch(error => {
+                reportNewDayError(error, 'reconnectNow')
+                return undefined
+            })
+        const reconnectDeadline = new Promise(resolve => {
+            reconnectTimeoutRef.current = setTimeout(() => {
+                reconnectTimeoutRef.current = undefined
+                resolve(undefined)
+            }, RECONNECT_ATTEMPT_TIMEOUT_MS)
+        })
+        const outcome = await Promise.race([reconnectAttempt, reconnectDeadline])
+        clearReconnectTimeout()
 
         if (outcome !== CONNECTION_HEALTH_LIVE) {
             // Still unreachable. Say so and leave the day startable — the

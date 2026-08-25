@@ -5,6 +5,7 @@ import {
     installFirestoreFatalRecovery,
     isFatalFirestoreInternalError,
     reportFatalFirestoreError,
+    requestFirestoreClientReload,
     resetFirestoreFatalRecoveryForTests,
 } from './firestoreFatalRecovery'
 
@@ -136,6 +137,42 @@ describe('firestoreFatalRecovery', () => {
 
         expect(reportFatalFirestoreError(FATAL_ERROR)).toBe(true)
         expect(reportFatalFirestoreError(new Error('ordinary render failure'))).toBe(false)
+        jest.runOnlyPendingTimers()
+        expect(reload).toHaveBeenCalledTimes(1)
+        stop()
+    })
+
+    it('uses the same guarded reload for a Firestore client whose restart is stuck', () => {
+        const windowObject = createWindow()
+        const storage = createStorage()
+        const reload = jest.fn()
+        const stop = installFirestoreFatalRecovery({
+            windowObject,
+            storage,
+            reload,
+            now: () => 100000,
+            reloadDelayMs: 10,
+        })
+
+        expect(requestFirestoreClientReload('restart_timeout')).toBe(true)
+        jest.advanceTimersByTime(10)
+
+        expect(reload).toHaveBeenCalledTimes(1)
+        expect(storage.setItem).toHaveBeenCalledWith(FIRESTORE_FATAL_RECOVERY_STORAGE_KEY, '100000')
+        stop()
+    })
+
+    it('waits for real connectivity before replacing a stuck Firestore client', () => {
+        const windowObject = createWindow({ online: false })
+        const reload = jest.fn()
+        const stop = installFirestoreFatalRecovery({ windowObject, storage: createStorage(), reload, reloadDelayMs: 0 })
+
+        expect(requestFirestoreClientReload('restart_timeout')).toBe(true)
+        jest.runOnlyPendingTimers()
+        expect(reload).not.toHaveBeenCalled()
+
+        windowObject.navigator.onLine = true
+        windowObject.emit('online')
         jest.runOnlyPendingTimers()
         expect(reload).toHaveBeenCalledTimes(1)
         stop()
