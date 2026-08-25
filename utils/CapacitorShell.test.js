@@ -1,4 +1,10 @@
-import { isCapacitorShell, getNativeGoogleAuthPlugin } from './CapacitorShell'
+import {
+    beginIosShareCredentialProvisioning,
+    getNativeGoogleAuthPlugin,
+    invalidateIosShareCredentialProvisioning,
+    isCapacitorShell,
+    isCurrentIosShareCredentialProvisioning,
+} from './CapacitorShell'
 
 describe('CapacitorShell', () => {
     afterEach(() => {
@@ -27,5 +33,12 @@ describe('CapacitorShell', () => {
         window.Capacitor = { isNativePlatform: () => true, Plugins: {} }
         expect(isCapacitorShell()).toBe(true)
         expect(getNativeGoogleAuthPlugin()).toBe(null)
+    })
+
+    it('invalidates in-flight iOS share credential provisioning', () => {
+        const generation = beginIosShareCredentialProvisioning()
+        expect(isCurrentIosShareCredentialProvisioning(generation)).toBe(true)
+        invalidateIosShareCredentialProvisioning()
+        expect(isCurrentIosShareCredentialProvisioning(generation)).toBe(false)
     })
 })

@@ -145,14 +145,15 @@ const getNewInitialDefaultTask = (
     sourceIsPublicFor,
     objectNoteType,
     lockKey,
-    useLoggedUser
+    useLoggedUser,
+    initialTaskName
 ) => {
     const { loggedUser, currentUser } = store.getState()
     const user = fromTaskList && !useLoggedUser ? currentUser : loggedUser
     const uid = user.uid
     const newTask = TasksHelper.getNewDefaultTask()
     const taskName = fromTaskList
-        ? ''
+        ? initialTaskName || ''
         : `${window.location.origin}${buildLinkBack(projectId, sourceType, sourceId, objectNoteType)} `
     newTask.name = taskName
     newTask.extendedName = taskName
@@ -201,6 +202,7 @@ export default function RichCreateTaskModal({
     // AT-2364: opt in to the wide card (used by the big, centered All Projects
     // "Add task" call to action). Every other entry point keeps its width.
     wide,
+    initialTaskName,
 }) {
     const dispatch = useDispatch()
     // One measurement shared by the form and the in-place project picker, so
@@ -242,7 +244,8 @@ export default function RichCreateTaskModal({
                   sourceIsPublicFor,
                   objectNoteType,
                   lockKey,
-                  useLoggedUser
+                  useLoggedUser,
+                  initialTaskName
               )
     )
 

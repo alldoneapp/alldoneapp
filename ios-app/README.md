@@ -51,6 +51,34 @@ in natively:
 The plist is referenced in `App.xcodeproj/project.pbxproj` as a bundled
 resource (ids `AB00DDEE...FF`).
 
+## Native Share Extension
+
+The `ShareExtension` target adds Alldone to the iOS share sheet for web links
+and plain text. It opens a small native task composer with the shared URL
+prefilled. The user can edit the text, then press Return or **Add** to create
+the task. It is initially written to a writable project and stamped for the
+same automatic project-routing pipeline used by All Projects.
+
+The extension cannot use the web app's Firebase session, so the signed-in
+Capacitor app provisions a narrowly scoped, revocable share token through
+`mintIosShareExtensionToken`. The token and endpoint are shared with the
+extension through App Group `group.app.alldone.ios`; logout revokes the token
+and clears it locally. A newly installed native release must be opened once
+while signed in before its Share Extension can add tasks.
+
+Before an archive can be signed, register both the Share Extension bundle ID
+(`app.alldone.ios.ShareExtension`) and App Group (`group.app.alldone.ios`) in
+the Apple Developer account, then enable the group for both targets' signing
+profiles. This is a native-shell change and therefore requires a TestFlight or
+App Store release; OTA cannot add the target or entitlement.
+
+Release in this order:
+
+1. Deploy `mintIosShareExtensionToken`, `revokeIosShareExtensionToken`, and
+   `iosShareTask`.
+2. Deploy/sync the web bundle that provisions the scoped credential.
+3. Archive and release the native app with the Share Extension embedded.
+
 ## Verified so far (2026-08-19, simulators + iPad Air 5 device, staging)
 
 - Web bundle boots cleanly from `capacitor://localhost` (login screen pixel-correct)

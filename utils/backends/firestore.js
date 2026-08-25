@@ -51,7 +51,11 @@ import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshot
 import { startPerformanceTrace } from '../performance/performanceLogger'
 import { awaitWriteAck } from './offlineWriteAck'
 import { isBrowserOffline } from '../connectionState'
-import { getNativeGoogleAuthPlugin } from '../CapacitorShell'
+import {
+    getIosShareExtensionPlugin,
+    getNativeGoogleAuthPlugin,
+    invalidateIosShareCredentialProvisioning,
+} from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
 import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
@@ -3368,9 +3372,26 @@ export async function loginWithGoogleWebAnonymously() {
 export function logoutWeb(onComplete) {
     // window.google.accounts.id.disableAutoSelect()
     setAnalyticsUser(null)
-    firebase
-        .auth()
-        .signOut()
+    invalidateIosShareCredentialProvisioning()
+    const plugin = getIosShareExtensionPlugin()
+    const clearShareCredential = async () => {
+        if (!plugin) return
+        try {
+            const credential = await plugin.getCredential()
+            if (credential?.installationId && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous) {
+                await runHttpsCallableFunction('revokeIosShareExtensionToken', {
+                    installationId: credential.installationId,
+                })
+            }
+        } catch (error) {
+            console.warn('Could not revoke the iOS share credential during logout', error)
+        } finally {
+            await plugin.clearCredential().catch(() => null)
+        }
+    }
+
+    clearShareCredential()
+        .finally(() => firebase.auth().signOut())
         .then(() => onComplete())
 }
 
@@ -5754,6 +5775,10 @@ export async function listMenubarAppTokens() {
 
 export async function revokeMenubarAppToken(tokenId) {
     return asCallableEnvelope('revokeMenubarAppToken', { tokenId })
+}
+
+export async function mintIosShareExtensionToken(installationId) {
+    return runHttpsCallableFunction('mintIosShareExtensionToken', { installationId })
 }
 
 // Deliberately NOT routed through `runHttpsCallableFunction` (AT-2340): both use

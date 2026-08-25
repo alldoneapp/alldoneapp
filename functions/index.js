@@ -2062,6 +2062,48 @@ exports.menubarAssistantThread = onRequest(
     }
 )
 
+// IOS SHARE EXTENSION
+
+exports.mintIosShareExtensionToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+        const { mintIosShareExtensionToken } = require('./IosShareExtension/iosShareExtension')
+        return await mintIosShareExtensionToken(request.auth.uid, request.data?.installationId)
+    }
+)
+
+exports.revokeIosShareExtensionToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+        const { revokeIosShareExtensionToken } = require('./IosShareExtension/iosShareExtension')
+        return await revokeIosShareExtensionToken(request.auth.uid, request.data?.installationId)
+    }
+)
+
+exports.iosShareTask = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleIosShareTask } = require('./IosShareExtension/iosShareExtension')
+        return await handleIosShareTask(req, res)
+    }
+)
+
 // MENUBAR ASSISTANT RUN QUEUE PROCESSOR - generates the assistant reply for
 // messages sent from the menubar app (queued by menubarAssistantMessage).
 exports.processMenubarAssistantRunSecondGen = onDocumentCreated(

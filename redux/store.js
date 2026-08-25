@@ -141,6 +141,7 @@ export const initialState = {
     assignee: {},
     browserHistoryState: {},
     initialUrl: '/',
+    pendingWebShareTarget: null,
     processedInitialURL: false,
     // True while an anonymous visitor's shared-resource link is being resolved, so the login
     // screen shows a neutral spinner instead of the login UI until we forward them to the view.
@@ -837,6 +838,10 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, webBeingResponsive: action.webBeingResponsive }
         case 'Set initial url':
             return { ...state, initialUrl: action.url }
+        case 'Set pending web share target':
+            return { ...state, pendingWebShareTarget: action.payload }
+        case 'Clear pending web share target':
+            return { ...state, pendingWebShareTarget: null }
         case 'Set task in detail view':
             return { ...state, taskInDetailView: action.task }
         case 'Set navigation route':
