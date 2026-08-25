@@ -43,6 +43,7 @@ const errorText = (value, seen = new Set()) => {
 export const isFatalFirestoreInternalError = value => FIRESTORE_INTERNAL_ASSERTION_PATTERN.test(errorText(value))
 
 let activeRecoveryReporter = null
+let activeClientReloadRequester = null
 let globalRecoveryStop = null
 
 /**
@@ -54,6 +55,18 @@ export const reportFatalFirestoreError = error => {
     if (activeRecoveryReporter) activeRecoveryReporter(error)
     return true
 }
+
+/**
+ * Replace a Firestore client that can no longer execute its own recovery work.
+ *
+ * This is deliberately narrower than a generic "reload the app" helper. It is
+ * for client states where the SDK's own AsyncQueue will not settle a transport
+ * restart, so continuing in the current document cannot restore listeners or
+ * writes. The installed recovery owner supplies the same online wait and
+ * reload-loop cooldown used by the fatal ca9/b815 assertion path.
+ */
+export const requestFirestoreClientReload = (reason = 'unrecoverable_client_state') =>
+    activeClientReloadRequester ? activeClientReloadRequester(reason) : false
 
 const getSessionStorage = windowObject => {
     try {
@@ -97,12 +110,13 @@ export const installFirestoreFatalRecovery = ({
     const sessionStorage = storage === undefined ? getSessionStorage(windowObject) : storage
     const reloadPage = reload || (() => windowObject.location.reload())
     const isOffline = () => !!windowObject.navigator && windowObject.navigator.onLine === false
-    let fatalPending = false
+    let reloadPending = false
+    let pendingReason = ''
     let reloadStarted = false
     let reloadTimer
 
     const attemptRecovery = () => {
-        if (!fatalPending || reloadStarted || reloadTimer !== undefined || isOffline()) return
+        if (!reloadPending || reloadStarted || reloadTimer !== undefined || isOffline()) return
 
         const currentTime = now()
         const previousRecoveryTime = readRecoveryTime(sessionStorage)
@@ -110,8 +124,14 @@ export const installFirestoreFatalRecovery = ({
         if (elapsed !== null && elapsed >= 0 && elapsed < cooldownMs) {
             // A second assertion immediately after the replacement page loaded
             // must not create a reload loop. Leave the error visible for diagnosis.
-            fatalPending = false
-            console.error('[FirestoreRecovery] Fatal assertion repeated during reload cooldown; reload suppressed.')
+            reloadPending = false
+            if (pendingReason === 'fatal_assertion') {
+                console.error('[FirestoreRecovery] Fatal assertion repeated during reload cooldown; reload suppressed.')
+            } else {
+                console.error(
+                    `[FirestoreRecovery] Client recovery repeated during reload cooldown; reload suppressed (${pendingReason}).`
+                )
+            }
             return
         }
 
@@ -121,19 +141,25 @@ export const installFirestoreFatalRecovery = ({
             // the request pending and let the next online event try again.
             if (isOffline()) return
 
-            fatalPending = false
+            reloadPending = false
             reloadStarted = true
             writeRecoveryTime(sessionStorage, now())
-            console.warn('[FirestoreRecovery] Reloading after an unrecoverable Firestore client assertion.')
+            console.warn(`[FirestoreRecovery] Reloading after unrecoverable Firestore state (${pendingReason}).`)
             reloadPage()
         }, reloadDelayMs)
     }
 
+    const requestClientReload = reason => {
+        if (reloadStarted) return true
+        reloadPending = true
+        pendingReason = reason || 'unrecoverable_client_state'
+        attemptRecovery()
+        return reloadPending || reloadTimer !== undefined || reloadStarted
+    }
+
     const requestRecovery = error => {
         if (!isFatalFirestoreInternalError(error)) return false
-        fatalPending = true
-        attemptRecovery()
-        return true
+        return requestClientReload('fatal_assertion')
     }
 
     const onError = event => requestRecovery(event && (event.error || event.message || event))
@@ -144,6 +170,7 @@ export const installFirestoreFatalRecovery = ({
     windowObject.addEventListener('unhandledrejection', onUnhandledRejection)
     windowObject.addEventListener('online', onOnline)
     activeRecoveryReporter = requestRecovery
+    activeClientReloadRequester = requestClientReload
 
     return () => {
         if (reloadTimer !== undefined) clearTimer(reloadTimer)
@@ -151,6 +178,7 @@ export const installFirestoreFatalRecovery = ({
         windowObject.removeEventListener('unhandledrejection', onUnhandledRejection)
         windowObject.removeEventListener('online', onOnline)
         if (activeRecoveryReporter === requestRecovery) activeRecoveryReporter = null
+        if (activeClientReloadRequester === requestClientReload) activeClientReloadRequester = null
     }
 }
 
@@ -169,4 +197,5 @@ export const installGlobalFirestoreFatalRecovery = () => {
 export const resetFirestoreFatalRecoveryForTests = () => {
     if (globalRecoveryStop) globalRecoveryStop()
     activeRecoveryReporter = null
+    activeClientReloadRequester = null
 }

@@ -40,6 +40,7 @@
  */
 import { isBrowserOffline } from './connectionState'
 import { runExclusiveFirestoreRestart } from './backends/firestoreRestartLease'
+import { requestFirestoreClientReload } from './firestoreFatalRecovery'
 
 export const CONNECTION_HEALTH_LIVE = 'live'
 export const CONNECTION_HEALTH_SLOW = 'slow'
@@ -64,6 +65,14 @@ export const STALENESS_CHECK_INTERVAL_MS = 60 * 1000
  * worst case for a definitive verdict is probe + restart + probe ≈ 11.5s.
  */
 export const PROBE_TIMEOUT_MS = 5000
+
+/**
+ * `disableNetwork()` / `enableNetwork()` are local AsyncQueue operations and
+ * normally settle almost immediately. If they do not settle inside this
+ * generous budget, the current Firestore client cannot repair itself; waiting
+ * longer only leaves every reconnect UI spinning on the same poisoned queue.
+ */
+export const FIRESTORE_RESTART_TIMEOUT_MS = 5000
 
 /** Offer offline work when a real page read or write acknowledgement takes this long. */
 export const SLOW_CONNECTION_THRESHOLD_MS = 10000
@@ -340,13 +349,97 @@ const probeServer = async () => {
     }
 }
 
-const restartTransport = () =>
-    runExclusiveFirestoreRestart(async () => {
+/**
+ * Check the backend without touching the possibly poisoned Firestore
+ * AsyncQueue. A successful REST document response (including "not found")
+ * proves that replacing this one client is useful; a network failure means a
+ * reload would only discard the current page while the device is still unable
+ * to reach Firestore.
+ */
+const probeServerOutsideClient = async () => {
+    let timer
+    try {
+        const directProbe = deps.probeServerDirectly
+            ? deps.probeServerDirectly()
+            : // eslint-disable-next-line global-require
+              require('./backends/firestoreDirectRead').readDocumentDirectlyFromServer('info/version')
+        const outcome = await Promise.race([
+            Promise.resolve(directProbe).then(
+                () => 'reachable',
+                error => {
+                    const code = String((error && error.code) || '').toLowerCase()
+                    // The REST service answered; a fresh client may still need to
+                    // refresh auth, but this is not an offline/captive-portal reload.
+                    if (code.includes('permission') || code.includes('unauthenticated')) return 'reachable'
+                    return 'unreachable'
+                }
+            ),
+            new Promise(resolve => {
+                timer = setTimeout(() => resolve('unreachable'), deps.probeTimeoutMs || PROBE_TIMEOUT_MS)
+            }),
+        ])
+        return outcome === 'reachable'
+    } catch (error) {
+        return false
+    } finally {
+        if (timer !== undefined) clearTimeout(timer)
+    }
+}
+
+const restartTransport = async trigger => {
+    const restart = runExclusiveFirestoreRestart(async () => {
         const db = getDbSafe()
         if (!db || typeof db.disableNetwork !== 'function') return
         await db.disableNetwork()
         await db.enableNetwork()
     })
+
+    let timeoutTimer
+    const timeoutMs = deps.firestoreRestartTimeoutMs || FIRESTORE_RESTART_TIMEOUT_MS
+    const outcome = await Promise.race([
+        restart.then(succeeded => (succeeded ? 'ok' : 'failed')),
+        new Promise(resolve => {
+            timeoutTimer = setTimeout(() => resolve('timeout'), timeoutMs)
+        }),
+    ])
+    if (timeoutTimer !== undefined) clearTimeout(timeoutTimer)
+
+    if (outcome === 'ok') return { ok: true, reason: 'ok', reloadRequested: false }
+
+    const reason = outcome === 'timeout' ? 'restart_timeout' : 'restart_failed'
+    console.warn(`[ConnectionHealth] Firestore transport ${outcome}; replacing the client (${trigger}).`)
+    let reloadRequested = false
+    if (!browserIsOffline()) {
+        const serverReachable = await probeServerOutsideClient()
+        if (serverReachable) {
+            const requestReload = deps.requestClientReload || requestFirestoreClientReload
+            try {
+                reloadRequested = requestReload(reason)
+            } catch (error) {
+                console.warn('[ConnectionHealth] Could not request a fresh Firestore client:', error)
+            }
+        } else {
+            console.warn('[ConnectionHealth] Skipping client replacement because Firestore is not reachable.')
+        }
+    }
+    return { ok: false, reason, reloadRequested }
+}
+
+const finishFailedRestart = (trigger, restart) => {
+    if (browserIsOffline()) {
+        setHealth(CONNECTION_HEALTH_OFFLINE, `${trigger}_${restart.reason}`)
+        return health
+    }
+
+    track('connection_stale_detected', {
+        duration_ms: getMillisSinceServerContact() || 0,
+        browser_online: true,
+        trigger: `${trigger}_${restart.reason}`,
+    })
+    setHealth(CONNECTION_HEALTH_STALE, `${trigger}_${restart.reason}`)
+    scheduleStaleRetry()
+    return health
+}
 
 /** Exported for the cap test — a backoff that never stops growing is a battery bug. */
 export const nextStaleRetryDelay = currentMs => Math.min(currentMs * 2, STALE_RETRY_MAX_MS)
@@ -399,7 +492,10 @@ const runProbeCycle = async (trigger, cycleId) => {
     // pending-response race. Give that existing recovery a second probe instead.
     // Other triggers still rebuild the transport through the shared lease.
     setHealth(CONNECTION_HEALTH_RECONNECTING, trigger)
-    if (trigger !== 'browser_online') await restartTransport()
+    if (trigger !== 'browser_online') {
+        const restart = await restartTransport(trigger)
+        if (!restart.ok) return finishFailedRestart(trigger, restart)
+    }
 
     // The offline action is offered as soon as reconnecting appears. The user can
     // therefore choose it while either recovery path is in flight; do not start
@@ -488,10 +584,25 @@ export const reconnectNow = async () => {
     manualOffline = false
     probeCycleId++
     probeInFlight = null
+
+    if (browserIsOffline()) {
+        setHealth(CONNECTION_HEALTH_OFFLINE, 'manual_reconnect')
+        track('connection_manual_reconnect', { state_from: stateBefore, outcome: CONNECTION_HEALTH_OFFLINE })
+        return health
+    }
+
     setHealth(CONNECTION_HEALTH_RECONNECTING, 'manual_reconnect')
     // A manual reconnect is the user telling us they think it is broken — restart
     // the transport unconditionally rather than waiting for a probe to fail first.
-    await restartTransport()
+    const restart = await restartTransport('manual_reconnect')
+    if (!restart.ok) {
+        const outcome = finishFailedRestart('manual_reconnect', restart)
+        track('connection_manual_reconnect', {
+            state_from: stateBefore,
+            outcome: restart.reloadRequested ? `reload_${restart.reason}` : outcome,
+        })
+        return outcome
+    }
     const outcome = await evaluateConnectionHealth({ trigger: 'manual_reconnect' })
     track('connection_manual_reconnect', { state_from: stateBefore, outcome })
     return outcome
