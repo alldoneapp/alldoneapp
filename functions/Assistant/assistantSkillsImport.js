@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 
-const { isValidSkillName } = require('./assistantSkills')
+const { isValidSkillName, requireSkillAdministrator } = require('./assistantSkills')
 
 const MAX_SKILLS_PER_IMPORT = 100
 const MAX_BODY_BYTES = 256 * 1024 // SKILL.md body cap per spec recommendation (<5k tokens) with headroom
@@ -79,6 +79,8 @@ async function fetchRaw(owner, repo, sha, filePath) {
 
 // Minimal YAML frontmatter parser for the two spec-required fields. Handles
 // plain and quoted single-line values plus indented continuation lines.
+const BLOCK_SCALAR_INDICATORS = new Set(['>', '|', '>-', '|-', '>+', '|+'])
+
 function parseSkillFrontmatter(markdown) {
     const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
     if (!match) return { frontmatter: null, body: markdown }
@@ -89,7 +91,14 @@ function parseSkillFrontmatter(markdown) {
         const keyMatch = rawLine.match(/^([A-Za-z][\w-]*):\s?(.*)$/)
         if (keyMatch) {
             currentKey = keyMatch[1]
-            frontmatter[currentKey] = keyMatch[2].trim()
+            const value = keyMatch[2].trim()
+            // A block scalar indicator introduces the value, it is not the
+            // value — and it has to be cleared here, before any continuation
+            // line is folded in. Doing it afterwards (as this did until
+            // AT-2431) never matched, because the string is no longer exactly
+            // ">" by then, so `description: >` shipped every imported skill's
+            // description with a literal "> " glued to the front.
+            frontmatter[currentKey] = BLOCK_SCALAR_INDICATORS.has(value) ? '' : value
         } else if (currentKey && /^\s+\S/.test(rawLine)) {
             // Continuation of a folded multi-line value.
             frontmatter[currentKey] = `${frontmatter[currentKey]} ${rawLine.trim()}`.trim()
@@ -98,7 +107,6 @@ function parseSkillFrontmatter(markdown) {
     for (const key of Object.keys(frontmatter)) {
         const value = frontmatter[key]
         if (/^".*"$/.test(value) || /^'.*'$/.test(value)) frontmatter[key] = value.slice(1, -1)
-        else if (value === '>' || value === '|' || value === '>-' || value === '|-') frontmatter[key] = ''
     }
     return { frontmatter, body }
 }
@@ -108,16 +116,6 @@ function toDisplayName(name) {
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
-}
-
-async function requireAdministrator(userId) {
-    const roleDoc = await admin.firestore().doc('roles/administrator').get()
-    const adminUserId = roleDoc.exists ? roleDoc.data().userId : null
-    if (!adminUserId || adminUserId !== userId) {
-        const error = new Error('Only the administrator can import skills')
-        error.code = 'permission-denied'
-        throw error
-    }
 }
 
 // Fetches a GitHub repo at a pinned commit, finds every */SKILL.md, and stages
@@ -150,7 +148,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
     }
 
     try {
-        await requireAdministrator(userId)
+        await requireSkillAdministrator(userId)
 
         const parsed = parseRepoUrl(repoUrl)
         if (!parsed) throw new Error('Could not parse the repository URL. Use "owner/repo" or a github.com URL.')

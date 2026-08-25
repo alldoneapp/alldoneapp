@@ -3,6 +3,8 @@ const { findBuiltInSkill } = require('./builtInAssistantSkills')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 const SKILLS_COLLECTION_PATH = `assistantSkills/${GLOBAL_PROJECT_ID}/items`
+// Storage prefix for bundled skill files: `assistantSkills/{skillId}/{version}/{relativePath}`.
+const SKILL_STORAGE_ROOT = 'assistantSkills'
 
 // Caps applied when mounting bundled skill files into the VM sandbox.
 const MAX_SKILL_FILES = 20
@@ -21,6 +23,19 @@ function isValidSkillName(name) {
 // Pure markdown skills also work in the in-app chat assistant.
 function isVmOnlySkill(skill) {
     return Array.isArray(skill?.files) && skill.files.length > 0
+}
+
+// Every write into the skill catalog (repo import, direct file upload) is
+// administrator-only. Lives here rather than in one of the callers so the two
+// entry points cannot drift into two different definitions of "admin".
+async function requireSkillAdministrator(userId) {
+    const roleDoc = await admin.firestore().doc('roles/administrator').get()
+    const adminUserId = roleDoc.exists ? roleDoc.data().userId : null
+    if (!adminUserId || adminUserId !== userId) {
+        const error = new Error('Only the administrator can manage skills')
+        error.code = 'permission-denied'
+        throw error
+    }
 }
 
 async function loadSkillsByIds(enabledSkillIds) {
@@ -176,6 +191,8 @@ async function mountSkillsInSandbox(sandbox, skills, agent, correlationId) {
 
 module.exports = {
     SKILLS_COLLECTION_PATH,
+    SKILL_STORAGE_ROOT,
+    requireSkillAdministrator,
     isValidSkillName,
     isVmOnlySkill,
     loadSkillsByIds,

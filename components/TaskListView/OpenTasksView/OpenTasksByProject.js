@@ -25,7 +25,6 @@ import {
     setOpenMilestonesInProjectInTasks,
 } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import TaskFiltersLine from '../PriorityFilters/TaskFiltersLine'
@@ -85,11 +84,34 @@ function OpenTasksByProject({
             visibleOkrsInAllProjects.length === 0 &&
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
 
-    // AT-2430: which assistant this project's line speaks as — the project's own, the default
-    // project's, or one the user picked with the line's switch — plus the switch's own options.
+    // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
-    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
-    const showAssistantLine = !assistantProfileMode && !isAnonymous && inSelectedProject && hasAssistantLine
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = projectId === defaultProjectId
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    // Keep the selected project as the conversation context even when its assistant
+    // is inherited from the default project.
+    const assistantLineProject = project
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
+        !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId
+    const showAssistantLine =
+        !assistantProfileMode &&
+        !isAnonymous &&
+        inSelectedProject &&
+        !!assistantLineProject &&
+        !!assistantLineAssistantId
     const showInitialSkeleton =
         inSelectedProject &&
         filteredOpenTasksDates.length === 0 &&
@@ -160,7 +182,23 @@ function OpenTasksByProject({
                     )}
                     {showAssistantLine && (
                         <View style={{ marginTop: 0 }}>
-                            <AssistantLine {...assistantLineProps} />
+                            <AssistantLine
+                                showLastComment={true}
+                                useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                                useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                                projectOverride={assistantLineProject}
+                                assistantIdOverride={assistantLineAssistantId}
+                                assistantSwitchOptions={
+                                    showAssistantSwitch
+                                        ? {
+                                              projectOverride: defaultProject,
+                                              assistantIdOverride: defaultProjectAssistantId,
+                                              useAssistantProjectContext: true,
+                                              useGlobalLatestComment: true,
+                                          }
+                                        : null
+                                }
+                            />
                         </View>
                     )}
                     {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
