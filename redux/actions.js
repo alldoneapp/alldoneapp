@@ -582,6 +582,18 @@ export const setAssistantsInProject = (projectId, assistants) => {
     return action
 }
 
+// AT-2430: the assistant the assistant line should use inside `projectId`, chosen with the
+// line's own switch control. Pass a falsy `assistantId` to drop the choice and fall back to the
+// project's configured assistant.
+export const setAssistantLineAssistant = (projectId, assistantId) => {
+    const action = {
+        type: 'Set assistant line assistant',
+        projectId,
+        assistantId,
+    }
+    return action
+}
+
 export const setGlobalAssistants = globalAssistants => {
     const action = {
         type: 'Set global assistants',

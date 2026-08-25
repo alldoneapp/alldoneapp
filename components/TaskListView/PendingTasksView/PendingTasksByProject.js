@@ -9,6 +9,7 @@ import { watchTasksInWorkflow, unwatchTasksInWorkflow } from '../../../utils/bac
 import { filterPendingTasks } from '../../HashtagFilters/FilterHelpers/FilterTasks'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -19,28 +20,10 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const [estimationByDate, setEstimationByDate] = useState({})
     const [amountOfTasksByDate, setAmountOfTasksByDate] = useState({})
 
-    // Check if this project is using a different assistant than the default project
-    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const defaultAssistant = useSelector(state => state.defaultAssistant)
-    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
-    const isDefaultProject = project.id === defaultProjectId
-    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
-    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const useSelectedProjectAssistantLine =
-        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
-    // Keep the selected project as the conversation context even when its assistant
-    // is inherited from the default project.
-    const assistantLineProject = project
-    const assistantLineAssistantId = useSelectedProjectAssistantLine
-        ? selectedProjectAssistantId
-        : defaultProjectAssistantId
-    const showAssistantSwitch =
-        !isDefaultProject &&
-        useSelectedProjectAssistantLine &&
-        !!defaultProject &&
-        !!defaultProjectAssistantId &&
-        !!selectedProjectAssistantId
-    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
+    // AT-2430: assistant resolution + switch options, shared with the open/done boards of the
+    // same project so all three tabs can never show a different assistant.
+    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
+    const showAssistantLine = !isAnonymous && inSelectedProject && hasAssistantLine
 
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
@@ -75,23 +58,7 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
             />
             {showAssistantLine && (
                 <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                    <AssistantLine
-                        showLastComment={true}
-                        useAssistantProjectContext={!useSelectedProjectAssistantLine}
-                        useGlobalLatestComment={!useSelectedProjectAssistantLine}
-                        projectOverride={assistantLineProject}
-                        assistantIdOverride={assistantLineAssistantId}
-                        assistantSwitchOptions={
-                            showAssistantSwitch
-                                ? {
-                                      projectOverride: defaultProject,
-                                      assistantIdOverride: defaultProjectAssistantId,
-                                      useAssistantProjectContext: true,
-                                      useGlobalLatestComment: true,
-                                  }
-                                : null
-                        }
-                    />
+                    <AssistantLine {...assistantLineProps} />
                 </View>
             )}
             {filteredTasksByDateAndStep.map((item, index) => {
