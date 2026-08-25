@@ -4,16 +4,13 @@ This repository contains both the frontend and backend (Google Cloud Functions) 
 
 ## 1. Global Dependencies
 
-Ensure you have the following dependencies installed with the specified versions:
+Use the repository-wide toolchain:
 
-- **Node.js** v14.21.3  
-  (We recommend using a Node version manager like `nvm`.)
-- **npm** v6.14.18  
-  (Normally installed along with Node.js.)
-- **expo-cli** v6.1.0  
-  (`npm install -g expo-cli@6.1.0`)
-- **firebase-tools** v13.29.3  
-  (`npm install -g firebase-tools@13.29.3`)
+- **Node.js** v22 (selected through the root `.nvmrc`)
+- **npm** v10 (normally installed with Node.js)
+- **firebase-tools** v13.29.3 (`npm install -g firebase-tools@13.29.3`)
+
+Run `nvm use` at the repository root before installing dependencies. The legacy Expo CLI toolchain is retired. The Cloudflare email worker is the one exception: `cloudflare/email-worker/` uses its own `.nvmrc` to pin Node 20 for Wrangler.
 
 ## 2. CI/CD
 
