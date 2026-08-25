@@ -37,3 +37,28 @@ export function isCapacitorIosShell() {
 export function getNativePurchasesPlugin() {
     return getShellPlugin('Purchases')
 }
+
+// Local native bridge owned by ios-app/. It stores only the scoped share-
+// extension capability in the shared App Group; no Firebase session material
+// leaves the web view.
+export function getIosShareExtensionPlugin() {
+    return isCapacitorIosShell() ? getShellPlugin('IosShareExtension') : null
+}
+
+// Provisioning can overlap when auth state changes quickly. Only the newest
+// attempt may publish a token to the App Group; logout invalidates every
+// attempt that was already waiting on the backend.
+let iosShareCredentialProvisioningGeneration = 0
+
+export function beginIosShareCredentialProvisioning() {
+    iosShareCredentialProvisioningGeneration += 1
+    return iosShareCredentialProvisioningGeneration
+}
+
+export function invalidateIosShareCredentialProvisioning() {
+    iosShareCredentialProvisioningGeneration += 1
+}
+
+export function isCurrentIosShareCredentialProvisioning(generation) {
+    return generation === iosShareCredentialProvisioningGeneration
+}

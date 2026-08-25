@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 
-import { LogOut, setInitialUrl, setResolvingSharedResource } from './redux/actions'
+import { LogOut, setInitialUrl, setPendingWebShareTarget, setResolvingSharedResource } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
@@ -36,11 +36,18 @@ import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoa
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
 import UndoActionBar from './components/Undo/UndoActionBar'
+import { cleanWebShareTargetParamsFromCurrentUrl, loadPendingWebShareTarget } from './utils/webShareTarget'
+import { ensureIosShareExtensionCredential } from './utils/iosShareExtensionCredential'
 
 // A failing initial data load is retried a few times before the user is told about it - and the
 // session is kept in every case (see handleLoginFailure).
 const MAX_LOGIN_ATTEMPTS = 3
 const LOGIN_RETRY_DELAY_MS = 3000
+
+// Capture this synchronously, before the login screen or URL router can replace
+// the incoming share-target URL. The payload itself is consumed only after the
+// All Projects add-task popup has opened.
+const pendingWebShareTargetAtBoot = loadPendingWebShareTarget()
 
 const getCurrentUrl = () => `${window.location.pathname}${window.location.search}`
 
@@ -60,6 +67,7 @@ const resolvePublicPageUrl = () => {
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
     // NOTE: the dismissible-touch DOM capture listener that master's incident
     // fix installed here lives in AppNavigator's AppContainer on this branch —
     // one listener only, or every press dismisses twice.
@@ -327,6 +335,20 @@ export default function AppContent() {
             store.dispatch(setInitialUrl(publicPageUrl))
         }
     }, [publicPageUrl])
+
+    useEffect(() => {
+        if (pendingWebShareTargetAtBoot) {
+            store.dispatch(setPendingWebShareTarget(pendingWebShareTargetAtBoot))
+        }
+        cleanWebShareTargetParamsFromCurrentUrl()
+    }, [])
+
+    useEffect(() => {
+        if (!loggedIn || !loggedUserId) return
+        ensureIosShareExtensionCredential(loggedUserId).catch(error =>
+            console.warn('Could not prepare the iOS share extension', error)
+        )
+    }, [loggedIn, loggedUserId])
 
     useEffect(() => {
         initFirebase()

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import styles, {
@@ -36,6 +36,9 @@ function AddTaskTag({
     // size — sharing the component keeps one popup wiring (popover, float-popup
     // bookkeeping, mention-modal-aware close) instead of a second copy of it.
     large,
+    initialTaskName,
+    autoOpenKey,
+    onAutoOpen,
     openPopover,
     closePopover,
     isOpen,
@@ -52,8 +55,22 @@ function AddTaskTag({
     // do either for it. Both resolve to no-ops on desktop, and in sheet mode
     // (isSheet) the BottomSheet already rides the keyboard itself.
     const popupCardRef = useRef(null)
+    const autoOpenedKeyRef = useRef(null)
+    const autoOpenInitialTaskNameRef = useRef('')
     const { maxHeight: popupMaxHeight, isSheet } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
+
+    useEffect(() => {
+        if (!autoOpenKey || autoOpenedKeyRef.current === autoOpenKey) return
+        autoOpenedKeyRef.current = autoOpenKey
+        // Keep the draft locally until this popup closes. The owner clears the
+        // queued share as soon as it is consumed, which can happen in the same
+        // React batch as opening the (lazily mounted) popover content.
+        autoOpenInitialTaskNameRef.current = initialTaskName || ''
+        openPopover()
+        dispatch(showFloatPopup())
+        if (onAutoOpen) onAutoOpen()
+    }, [autoOpenKey, dispatch, initialTaskName, onAutoOpen, openPopover])
 
     const handleOpen = () => {
         openPopover()
@@ -64,6 +81,7 @@ function AddTaskTag({
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
             closePopover()
             dispatch(hideFloatPopup())
+            autoOpenInitialTaskNameRef.current = ''
         }
     }
 
@@ -166,6 +184,7 @@ function AddTaskTag({
                         showProjectSelector={showProjectSelector}
                         expandTaskListIfNeeded={expandTaskListIfNeeded}
                         wide={large}
+                        initialTaskName={autoOpenInitialTaskNameRef.current || initialTaskName}
                     />
                 </div>
             }

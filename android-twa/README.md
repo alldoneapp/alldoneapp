@@ -23,7 +23,7 @@ npx bubblewrap build --skipPwaValidation     # → app-release-signed.apk + app-
 Upload `app-release-bundle.aab` to the Play Console. For a shell release, bump
 `appVersionCode` (and `appVersion`) in `twa-manifest.json` first — Play requires
 a strictly increasing versionCode. Only shell changes (icon, splash, target SDK
-bumps, manifest colors) need a Play release at all.
+bumps, manifest colors, share-target intent filters) need a Play release at all.
 
 ## Signing (NOT in git)
 

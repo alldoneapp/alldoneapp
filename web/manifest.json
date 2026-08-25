@@ -94,5 +94,14 @@
             "purpose": "maskable"
         }
     ],
+    "share_target": {
+        "action": "/projects/tasks/open",
+        "method": "GET",
+        "params": {
+            "title": "share_title",
+            "text": "share_text",
+            "url": "share_url"
+        }
+    },
     "permissions": ["fullscreen"]
 }

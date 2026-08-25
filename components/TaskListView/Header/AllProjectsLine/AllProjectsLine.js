@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useCallback } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import AllProjectData from './AllProjectData'
@@ -11,13 +11,21 @@ import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOf
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
 import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
+import { clearPendingWebShareTarget } from '../../../../redux/actions'
+import { clearStoredWebShareTarget } from '../../../../utils/webShareTarget'
 
 export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
+    const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
+    const pendingWebShareTarget = useSelector(state => state.pendingWebShareTarget)
 
     const inOpenSection = taskViewToggleSection === 'Open'
+    const consumeWebShareTarget = useCallback(() => {
+        clearStoredWebShareTarget()
+        dispatch(clearPendingWebShareTarget())
+    }, [dispatch])
 
     return (
         <View style={localStyles.container}>
@@ -48,6 +56,9 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                             expandTaskListIfNeeded={true}
                             showProjectSelector={true}
                             primary={true}
+                            initialTaskName={pendingWebShareTarget?.taskName}
+                            autoOpenKey={pendingWebShareTarget?.id}
+                            onAutoOpen={consumeWebShareTarget}
                         />
                         <TaskHeaderMoreButton
                             userId={loggedUserId}

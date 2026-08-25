@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import { colors, PROJECT_LINE_TAG_HEIGHT, PROJECT_LINE_TAG_MOBILE_WIDTH } from '../styles/global'
@@ -161,6 +161,43 @@ describe('AddTaskTag', () => {
 
         expect(popover.props.align).toBe('start')
         expect(tree.root.findByType('RichCreateTaskModal').props.wide).toBeFalsy()
+    })
+
+    it('opens automatically and prefills the existing popup for a shared link', () => {
+        const openPopover = jest.fn()
+        const onAutoOpen = jest.fn()
+        let tree
+
+        act(() => {
+            tree = renderer.create(
+                <AddTaskTag
+                    projectId="project-1"
+                    initialTaskName="https://example.com/shared"
+                    autoOpenKey="share-1"
+                    onAutoOpen={onAutoOpen}
+                    openPopover={openPopover}
+                />
+            )
+        })
+
+        expect(openPopover).toHaveBeenCalledTimes(1)
+        expect(onAutoOpen).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
+
+        act(() => {
+            tree.update(
+                <AddTaskTag
+                    projectId="project-1"
+                    autoOpenKey="share-1"
+                    onAutoOpen={onAutoOpen}
+                    openPopover={openPopover}
+                />
+            )
+        })
+
+        expect(openPopover).toHaveBeenCalledTimes(1)
+        expect(onAutoOpen).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
     })
 
     // The icon-only pill on the project lines IS its own tap target - there is no

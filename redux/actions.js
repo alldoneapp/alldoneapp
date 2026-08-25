@@ -453,6 +453,15 @@ export const setInitialUrl = url => {
     return action
 }
 
+export const setPendingWebShareTarget = payload => ({
+    type: 'Set pending web share target',
+    payload,
+})
+
+export const clearPendingWebShareTarget = () => ({
+    type: 'Clear pending web share target',
+})
+
 export const setTaskInDetailView = task => {
     const action = {
         type: 'Set task in detail view',
