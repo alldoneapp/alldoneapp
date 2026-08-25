@@ -234,10 +234,10 @@ const snapshotDocs = snapshot => {
 }
 
 /**
- * Live show-more availability with shared broad listeners for observed tasks
- * and goals, plus bounded `limit(1)` queries for assigned/workstream date
- * buckets. This avoids downloading an entire backlog merely to reduce listener
- * count while still removing the duplicated broad listeners.
+ * Show-more availability with shared broad queries for observed tasks and
+ * goals, plus bounded `limit(1)` queries for assigned/workstream date buckets.
+ * Selected-project views keep these live; All Projects uses one-shot reads so
+ * every visible project does not permanently add another listener fan-out.
  */
 export const watchOpenTasksShowMoreAvailability = ({
     projectId,
@@ -245,6 +245,7 @@ export const watchOpenTasksShowMoreAvailability = ({
     userWorkstreamIds = [],
     isAnonymous = false,
     watcherKey,
+    live = true,
 }) => {
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
@@ -348,15 +349,22 @@ export const watchOpenTasksShowMoreAvailability = ({
     const attach = (query, source, readAvailability, label) => {
         let initialized = false
         const applySnapshot = snapshot => {
+            if (disposed) return
             const firstSnapshot = !initialized
             initialized = true
             updateSource(source, readAvailability(snapshot), firstSnapshot)
         }
-        const unsubscribe = query.onSnapshot(applySnapshot, error => {
+        const handleError = error => {
             console.warn(`[OpenTasks] Could not watch ${label} show-more availability for ${projectId}:`, error)
             applySnapshot({ docs: [], forEach: () => {} })
-        })
-        unsubscribes.push(unsubscribe)
+        }
+
+        if (live) {
+            const unsubscribe = query.onSnapshot(applySnapshot, handleError)
+            unsubscribes.push(unsubscribe)
+        } else {
+            query.get().then(applySnapshot).catch(handleError)
+        }
     }
 
     const assignedBaseQuery = getDb()

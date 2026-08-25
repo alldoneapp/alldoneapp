@@ -4,7 +4,7 @@ import v4 from 'uuid/v4'
 
 import { watchOpenTasksShowMoreAvailability } from '../../../utils/backends/Tasks/tasksShowMoreButton'
 
-export default function NeedShowMoreOpenTasksButton({ projectId }) {
+export default function NeedShowMoreOpenTasksButton({ projectId, live = true }) {
     const userId = useSelector(state => state.currentUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const userWorkstream = useSelector(
@@ -22,8 +22,9 @@ export default function NeedShowMoreOpenTasksButton({ projectId }) {
             userWorkstreamIds,
             isAnonymous,
             watcherKey,
+            live,
         })
-    }, [projectId, userId, isAnonymous, JSON.stringify(userWorkstreamIds)])
+    }, [projectId, userId, isAnonymous, live, JSON.stringify(userWorkstreamIds)])
 
     return null
 }

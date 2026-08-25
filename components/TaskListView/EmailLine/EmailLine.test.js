@@ -6,12 +6,13 @@ import React from 'react'
 import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import EmailLine from './EmailLine'
+import EmailLine, { EMAIL_SUMMARY_LOAD_DELAY_MS } from './EmailLine'
 import { EMAIL_LINE_NO_LABEL_ID, getEmailLineTodayKey } from './emailLineHelper'
 import { buildConnectionId } from '../../../utils/IntegrationProviders'
 import SettingsHelper from '../../SettingsView/SettingsHelper'
 import NavigationService from '../../../utils/NavigationService'
 import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../utils/TabNavigationConstants'
+import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
@@ -65,6 +66,7 @@ const createState = ({
     apisConnected = { [projectId]: { email: true, emailProvider: 'google', gmailEmail: accountEmail } },
     summary,
     hiddenToday,
+    isLoadingData = 0,
 } = {}) => ({
     loggedUser: {
         uid: 'user-1',
@@ -73,6 +75,7 @@ const createState = ({
         emailLineHiddenTodayByConnection: hiddenToday ? { [connectionId]: hiddenToday } : {},
     },
     smallScreenNavigation: false,
+    isLoadingData,
     emailLineSummaryByProject: summary ? { [connectionId]: summary } : {},
 })
 
@@ -89,8 +92,35 @@ const hasLiveDot = tree => tree.root.findAllByProps({ accessibilityLabel: 'Email
 
 describe('EmailLine', () => {
     beforeEach(() => {
+        jest.useFakeTimers()
         jest.clearAllMocks()
         mockState = createState()
+    })
+
+    afterEach(() => {
+        act(() => jest.runOnlyPendingTimers())
+        jest.useRealTimers()
+    })
+
+    it('waits for visible task data before refreshing email summaries', () => {
+        mockState = createState({ isLoadingData: 1 })
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailLine />)
+        })
+
+        act(() => jest.advanceTimersByTime(EMAIL_SUMMARY_LOAD_DELAY_MS * 2))
+        expect(fetchEmailLineSummary).not.toHaveBeenCalled()
+
+        mockState = { ...mockState, isLoadingData: 0 }
+        act(() => tree.update(<EmailLine />))
+        act(() => jest.advanceTimersByTime(EMAIL_SUMMARY_LOAD_DELAY_MS - 1))
+        expect(fetchEmailLineSummary).not.toHaveBeenCalled()
+
+        act(() => jest.advanceTimersByTime(1))
+        expect(fetchEmailLineSummary).toHaveBeenCalledWith(connectionId)
+
+        tree.unmount()
     })
 
     it('renders nothing when email is not connected', () => {

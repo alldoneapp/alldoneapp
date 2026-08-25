@@ -33,9 +33,9 @@ describe('createCachedSnapshotGate', () => {
         jest.useRealTimers()
     })
 
-    const createHarness = ({ isOffline = () => false } = {}) => {
+    const createHarness = ({ isOffline = () => false, trackConnectionHealth = true } = {}) => {
         const delivered = []
-        const gate = createCachedSnapshotGate(() => handler, { isOffline })
+        const gate = createCachedSnapshotGate(() => handler, { isOffline, trackConnectionHealth })
         function handler(querySnapshot) {
             if (gate.shouldBuffer(querySnapshot)) return
             delivered.push(querySnapshot)
@@ -56,6 +56,18 @@ describe('createCachedSnapshotGate', () => {
         const { handler, delivered } = createHarness()
         handler(makeSnapshot({ fromCache: true }))
         expect(delivered).toHaveLength(0)
+    })
+
+    it('does not turn background listeners into slow-connection latency samples', () => {
+        const { handler, delivered } = createHarness({ trackConnectionHealth: false })
+
+        handler(makeSnapshot({ fromCache: true }))
+        handler(makeSnapshot({ fromCache: false }))
+
+        expect(delivered).toHaveLength(1)
+        expect(connectionHealth.startConnectionLatencySample).not.toHaveBeenCalled()
+        // A real server snapshot is still useful positive transport evidence.
+        expect(connectionHealth.markServerContact).toHaveBeenCalledWith('snapshot')
     })
 
     it('delivers cached snapshots immediately while offline', () => {

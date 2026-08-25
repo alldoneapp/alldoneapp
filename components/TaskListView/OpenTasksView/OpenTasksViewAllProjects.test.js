@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
-import useProgressiveReveal from '../../../hooks/useProgressiveReveal'
+import useNearViewportMount from '../../../hooks/useNearViewportMount'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -13,12 +13,13 @@ jest.mock('react-redux', () => ({
 jest.mock('./OpenTasksByProject', () => 'OpenTasksByProject')
 jest.mock('./AllProjectsEmptyInbox', () => 'AllProjectsEmptyInbox')
 jest.mock('./AllProjectsShowMoreButtonContainer', () => 'AllProjectsShowMoreButtonContainer')
+jest.mock('./AllProjectsShowMoreAvailability', () => 'AllProjectsShowMoreAvailability')
 jest.mock('../Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
 jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
 jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
 jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
 jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../../hooks/useProgressiveReveal', () => jest.fn())
+jest.mock('../../../hooks/useNearViewportMount', () => jest.fn())
 jest.mock('./openTasksViewProjectScope', () => ({
     getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
 }))
@@ -50,15 +51,24 @@ const renderView = state => {
 
 // react-native-web renders the container View as a host div, so read the
 // rendered order off the AllProjectsLine's parent instead of a 'View' lookup.
-const renderedChildTypes = tree => tree.root.findByType('AllProjectsLine').parent.children.map(child => child.type)
+const renderedChildTypes = tree => {
+    const types = []
+    const visit = node => {
+        if (!node || typeof node !== 'object') return
+        types.push(node.type)
+        node.children.forEach(visit)
+    }
+    tree.root.findByType('AllProjectsLine').parent.children.forEach(visit)
+    return types
+}
 
 describe('OpenTasksViewAllProjects', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         useDispatch.mockReturnValue(jest.fn())
-        useProgressiveReveal.mockImplementation(totalCount => ({
-            visibleAmount: totalCount,
-            complete: true,
+        useNearViewportMount.mockImplementation(() => ({
+            placeholderRef: { current: null },
+            shouldMount: true,
         }))
     })
 
@@ -178,24 +188,27 @@ describe('OpenTasksViewAllProjects', () => {
         })
     })
 
-    describe('progressive project mounting', () => {
-        it('keeps the tab-switch render to the first project block', () => {
-            useProgressiveReveal.mockReturnValue({ visibleAmount: 1, complete: false })
+    describe('viewport-gated project mounting', () => {
+        it('keeps offscreen project watchers dormant while mounting the first project eagerly', () => {
+            useNearViewportMount.mockImplementation(({ eager }) => ({
+                placeholderRef: { current: null },
+                shouldMount: eager,
+            }))
 
             const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
             const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
 
             expect(projectBlocks).toHaveLength(1)
             expect(projectBlocks[0].props.projectId).toBe('project-1')
-            expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(0)
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, { eager: true })
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, { eager: false })
         })
 
-        it('mounts the global show-more controls only after every project block is present', () => {
-            useProgressiveReveal.mockReturnValue({ visibleAmount: 2, complete: true })
-
+        it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
             const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
 
             expect(tree.root.findAllByType('OpenTasksByProject')).toHaveLength(2)
+            expect(tree.root.findAllByType('AllProjectsShowMoreAvailability')).toHaveLength(1)
             expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(1)
         })
     })
