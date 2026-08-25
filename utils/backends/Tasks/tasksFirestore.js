@@ -1014,9 +1014,9 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
 
 export async function updateTask(projectId, task, oldTask, oldAssignee, comment, commentMentions, isObservedTask) {
     // AT-2277 - every editor saves the whole task document from the copy it took when it opened, so
-    // a copy older than a background goal assignment would write `parentGoalId: null` straight over
-    // it. Restore the goal fields from the live task when this payload never saw the assignment;
-    // deliberate goal changes are untouched. See autoAssignedGoalGuard.js.
+    // a copy older than background Goal routing could remove an assignment or put `classifying`
+    // back after the classifier settled. Restore the Goal fields from the live task when this
+    // payload never saw the result; deliberate Goal changes are untouched. See autoAssignedGoalGuard.js.
     task = preserveAutoAssignedGoal(task, oldTask)
 
     const taskId = task.id

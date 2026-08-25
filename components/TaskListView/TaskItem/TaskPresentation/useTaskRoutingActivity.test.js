@@ -6,6 +6,7 @@ import useTaskRoutingActivity, {
     ROUTING_CONFIRMATION_VISIBLE_MS,
     resetPlayedRoutingConfirmations,
 } from './useTaskRoutingActivity'
+import { ROUTING_PROCESSING_WINDOW_MS } from '../../../../utils/taskRoutingActivity'
 
 /**
  * AT-2381 — the hook's whole job beyond the pure derivation is the once-per-decision latch.
@@ -99,10 +100,21 @@ describe('useTaskRoutingActivity', () => {
     })
 
     it('reports the sparkle while classification is still running', async () => {
-        await render({ id: 'task-2', projectRouting: { status: 'classifying' } }, HOST)
+        await render({ id: 'task-2', projectRouting: { status: 'classifying', startedAt: NOW } }, HOST)
 
         expect(latest.processing).toEqual({ subject: 'project' })
         expect(latest.confirmation).toBeNull()
+    })
+
+    it('retires a stranded processing indicator without waiting for another snapshot', async () => {
+        await render({ id: 'task-2', goalSuggestion: { status: 'classifying', createdAt: NOW } }, HOST)
+        expect(latest.processing).toEqual({ subject: 'goal' })
+
+        await act(async () => {
+            jest.advanceTimersByTime(ROUTING_PROCESSING_WINDOW_MS + 10)
+        })
+
+        expect(latest.processing).toBeNull()
     })
 
     it('never reports processing and confirmation at the same time', async () => {
@@ -111,7 +123,7 @@ describe('useTaskRoutingActivity', () => {
                 id: 'task-3',
                 parentGoalId: null,
                 projectRouting: { status: 'routed', resolvedAt: NOW - 200, movedFromProjectId: HOST },
-                goalSuggestion: { status: 'classifying' },
+                goalSuggestion: { status: 'classifying', createdAt: NOW },
             },
             TARGET
         )

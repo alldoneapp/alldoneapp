@@ -2,11 +2,13 @@ import {
     ROUTING_ACTIVITY_CONFIRMED,
     ROUTING_ACTIVITY_PROCESSING,
     ROUTING_CONFIRMATION_WINDOW_MS,
+    ROUTING_PROCESSING_WINDOW_MS,
     ROUTING_SUBJECT_GOAL,
     ROUTING_SUBJECT_PROJECT,
     getTaskRoutingActivity,
     getTaskRoutingConfirmation,
     getTaskRoutingProcessing,
+    getTaskRoutingProcessingExpiresAt,
 } from './taskRoutingActivity'
 
 /**
@@ -26,45 +28,65 @@ describe('getTaskRoutingProcessing', () => {
     it('sparkles while the project router has not picked the task up yet', () => {
         // 'pending' here is stamped CLIENT-side at creation (utils/automaticProjectRouting.js).
         // The user is already waiting at this point, so it must sparkle before the server claims it.
-        expect(getTaskRoutingProcessing(task({ projectRouting: { status: 'pending' } }))).toEqual({
+        expect(
+            getTaskRoutingProcessing(task({ projectRouting: { status: 'pending', requestedAt: NOW } }), NOW)
+        ).toEqual({
             subject: ROUTING_SUBJECT_PROJECT,
         })
     })
 
     it('sparkles while the project router is classifying', () => {
-        expect(getTaskRoutingProcessing(task({ projectRouting: { status: 'classifying' } }))).toEqual({
-            subject: ROUTING_SUBJECT_PROJECT,
-        })
+        expect(
+            getTaskRoutingProcessing(task({ projectRouting: { status: 'classifying', startedAt: NOW } }), NOW)
+        ).toEqual({ subject: ROUTING_SUBJECT_PROJECT })
     })
 
     it('sparkles while the goal router is classifying', () => {
-        expect(getTaskRoutingProcessing(task({ goalSuggestion: { status: 'classifying' } }))).toEqual({
-            subject: ROUTING_SUBJECT_GOAL,
-        })
+        expect(
+            getTaskRoutingProcessing(task({ goalSuggestion: { status: 'classifying', createdAt: NOW } }), NOW)
+        ).toEqual({ subject: ROUTING_SUBJECT_GOAL })
     })
 
     it('does NOT sparkle for a settled goal suggestion waiting on the user', () => {
         // The trap: goalSuggestion 'pending' means "settled, awaiting the USER" — the exact
         // opposite of projectRouting 'pending'. Treating the two vocabularies as one would leave
         // a permanent sparkle on every task carrying an un-actioned suggestion.
-        expect(getTaskRoutingProcessing(task({ goalSuggestion: { status: 'pending', goalId: 'g1' } }))).toBeNull()
+        expect(getTaskRoutingProcessing(task({ goalSuggestion: { status: 'pending', goalId: 'g1' } }), NOW)).toBeNull()
     })
 
     it.each(['routed', 'kept', 'failed'])('stops sparkling once project routing settles as %s', status => {
-        expect(getTaskRoutingProcessing(task({ projectRouting: { status } }))).toBeNull()
+        expect(getTaskRoutingProcessing(task({ projectRouting: { status } }), NOW)).toBeNull()
     })
 
     it('reports the project router first while both could be in flight', () => {
         const both = task({
-            projectRouting: { status: 'classifying' },
-            goalSuggestion: { status: 'classifying' },
+            projectRouting: { status: 'classifying', startedAt: NOW },
+            goalSuggestion: { status: 'classifying', createdAt: NOW },
         })
-        expect(getTaskRoutingProcessing(both).subject).toBe(ROUTING_SUBJECT_PROJECT)
+        expect(getTaskRoutingProcessing(both, NOW).subject).toBe(ROUTING_SUBJECT_PROJECT)
+    })
+
+    it.each([
+        ['project', { projectRouting: { status: 'classifying', startedAt: NOW - ROUTING_PROCESSING_WINDOW_MS - 1 } }],
+        ['goal', { goalSuggestion: { status: 'classifying', createdAt: NOW - ROUTING_PROCESSING_WINDOW_MS - 1 } }],
+    ])('stops sparkling for a stranded %s claim', (subject, fields) => {
+        expect(getTaskRoutingProcessing(task(fields), NOW)).toBeNull()
+        expect(getTaskRoutingProcessingExpiresAt(task(fields), NOW)).toBeNull()
+    })
+
+    it('exposes the fresh claim expiry so the row can retire it without another snapshot', () => {
+        const classifying = task({ goalSuggestion: { status: 'classifying', createdAt: NOW - 1000 } })
+
+        expect(getTaskRoutingProcessingExpiresAt(classifying, NOW)).toBe(NOW - 1000 + ROUTING_PROCESSING_WINDOW_MS)
+    })
+
+    it('does not animate an unverifiable classifying record with no start timestamp', () => {
+        expect(getTaskRoutingProcessing(task({ goalSuggestion: { status: 'classifying' } }), NOW)).toBeNull()
     })
 
     it('says nothing about a task that was never routed', () => {
-        expect(getTaskRoutingProcessing(task({}))).toBeNull()
-        expect(getTaskRoutingProcessing(null)).toBeNull()
+        expect(getTaskRoutingProcessing(task({}), NOW)).toBeNull()
+        expect(getTaskRoutingProcessing(null, NOW)).toBeNull()
     })
 })
 
@@ -201,7 +223,7 @@ describe('contract with the pieces either side', () => {
         const { buildPendingProjectRouting } = require('./automaticProjectRouting')
         const stamped = task({ projectRouting: buildPendingProjectRouting({ hostProjectId: HOST, now: NOW }) })
 
-        expect(getTaskRoutingProcessing(stamped)).toEqual({ subject: ROUTING_SUBJECT_PROJECT })
+        expect(getTaskRoutingProcessing(stamped, NOW)).toEqual({ subject: ROUTING_SUBJECT_PROJECT })
     })
 
     it('keeps projectRouting on the task shape mapTaskData produces', () => {
@@ -229,7 +251,7 @@ describe('getTaskRoutingActivity', () => {
         // router claims it. "It just arrived here" is the more useful thing to say first.
         const justArrived = task({
             projectRouting: { status: 'routed', resolvedAt: NOW - 200, movedFromProjectId: HOST },
-            goalSuggestion: { status: 'classifying' },
+            goalSuggestion: { status: 'classifying', createdAt: NOW - 100 },
         })
 
         expect(getTaskRoutingActivity(justArrived, TARGET, NOW)).toMatchObject({
@@ -239,10 +261,9 @@ describe('getTaskRoutingActivity', () => {
     })
 
     it('falls back to processing when there is nothing to confirm', () => {
-        expect(getTaskRoutingActivity(task({ goalSuggestion: { status: 'classifying' } }), HOST, NOW)).toMatchObject({
-            kind: ROUTING_ACTIVITY_PROCESSING,
-            subject: ROUTING_SUBJECT_GOAL,
-        })
+        expect(
+            getTaskRoutingActivity(task({ goalSuggestion: { status: 'classifying', createdAt: NOW - 100 } }), HOST, NOW)
+        ).toMatchObject({ kind: ROUTING_ACTIVITY_PROCESSING, subject: ROUTING_SUBJECT_GOAL })
     })
 
     it('is null for an ordinary task, which is the overwhelmingly common case', () => {
