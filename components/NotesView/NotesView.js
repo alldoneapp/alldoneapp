@@ -24,7 +24,6 @@ import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 import useNearViewportMount from '../../hooks/useNearViewportMount'
-import NotesListSkeleton from './NotesListSkeleton'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
@@ -36,11 +35,7 @@ function DeferredProjectReveal({ projectId, onNearViewport }) {
         if (isNearViewport) onNearViewport(projectId)
     }, [isNearViewport, onNearViewport, projectId])
 
-    return (
-        <View ref={placeholderRef} style={localStyles.deferredProjectReveal}>
-            <NotesListSkeleton rowCount={3} showProjectHeader />
-        </View>
-    )
+    return <View ref={placeholderRef} style={localStyles.deferredProjectReveal} />
 }
 
 function NotesView() {
@@ -195,7 +190,6 @@ function NotesView() {
                             maxNotesToRender={3}
                             onInitialSnapshot={markProjectReady}
                             setLastEditNoteDate={setLastEditNoteDate}
-                            showInitialSkeleton
                             trackInitialLoad={project.id === primaryProjectId}
                         />
                     ))
@@ -247,7 +241,7 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 56,
     },
     deferredProjectReveal: {
-        marginBottom: 25,
+        height: 1,
     },
 })
 

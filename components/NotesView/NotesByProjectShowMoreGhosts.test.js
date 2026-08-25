@@ -248,7 +248,6 @@ describe('NotesByProject "Show more" ghosts', () => {
                     maxNotesToRender={3}
                     onInitialSnapshot={onInitialSnapshot}
                     setLastEditNoteDate={jest.fn()}
-                    showInitialSkeleton
                     trackInitialLoad={false}
                 />
             )
@@ -256,8 +255,6 @@ describe('NotesByProject "Show more" ghosts', () => {
         })
 
         expect(startLoadingData).not.toHaveBeenCalled()
-        expect(findGhosts(tree)).toHaveLength(1)
-        expect(findGhosts(tree)[0].props.showProjectHeader).toBe(true)
         expect(Backend.watchAllTabNotesInAllProjects).toHaveBeenCalledWith('project-1', 3, expect.any(Function), {
             trackConnectionHealth: false,
         })
@@ -269,7 +266,6 @@ describe('NotesByProject "Show more" ghosts', () => {
         })
 
         expect(stopLoadingData).not.toHaveBeenCalled()
-        expect(findGhosts(tree)).toHaveLength(0)
         expect(onInitialSnapshot).toHaveBeenCalledWith('project-1')
         act(() => tree.unmount())
     })

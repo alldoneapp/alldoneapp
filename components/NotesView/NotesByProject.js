@@ -35,7 +35,6 @@ export default class NotesByProject extends PureComponent {
             hashtagFilteredNotes: {},
             hashtagFilteredStickyNotes: [],
             pressedShowMore: false,
-            initialLoading: props.showInitialSkeleton === true,
             // AT-2382 - drives the note-shaped ghosts under the list while an expansion is
             // in flight. It stays local because the global loading refcount represents the
             // page-level wait, while these ghosts represent one specific list expansion.
@@ -71,12 +70,7 @@ export default class NotesByProject extends PureComponent {
             this.datesForNotes = {}
             this.stickyCounter = 0
             this.notesCounter = 0
-            this.setState({
-                notes: {},
-                stickyNotes: [],
-                loadingMoreNotes: false,
-                initialLoading: this.props.showInitialSkeleton === true,
-            })
+            this.setState({ notes: {}, stickyNotes: [], loadingMoreNotes: false })
             this.watchUserNotes(pressedShowMore, true)
             this.watchNotesNeedShowMoreButton()
         }
@@ -226,7 +220,7 @@ export default class NotesByProject extends PureComponent {
 
                     // AT-2382 - the ghosts are retired by the same state update that puts the
                     // real rows in, so there is never a frame with both (or with neither).
-                    return { notes, loadingMoreNotes: false, initialLoading: false }
+                    return { notes, loadingMoreNotes: false }
                 },
                 () => {
                     // Side-effects moved out of updater to avoid React warning about updates inside update functions
@@ -417,16 +411,7 @@ export default class NotesByProject extends PureComponent {
 
     render() {
         const { selectedProjectIndex, currentUser } = store.getState()
-        const { maxNotesToRender, project } = this.props
-
-        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
-        if (this.state.initialLoading) {
-            return (
-                <View style={{ marginBottom: inAllProjects ? 25 : 32 }}>
-                    <NotesListSkeleton rowCount={resolveGhostRowCount(maxNotesToRender)} showProjectHeader />
-                </View>
-            )
-        }
+        const { project } = this.props
 
         const {
             filteredNotes,
@@ -445,6 +430,7 @@ export default class NotesByProject extends PureComponent {
         const todayNotes = filteredNotes[todayDateKey] ? filteredNotes[todayDateKey] : []
 
         const notesAmount = calcNotesAmountByProjectIndex(project.index)
+        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
         const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
         const showShowMoreButton = needShowMoreButton && notesAmount > 0
