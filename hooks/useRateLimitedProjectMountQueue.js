@@ -38,17 +38,21 @@ export default function useRateLimitedProjectMountQueue({
     }, [initialMountedCount, now, projectKey, queueState.projectKey])
 
     const markProjectNearViewport = useCallback(
-        (projectIndex, isNearViewport = true) => {
+        (projectIndex, isNearViewport = true, hasPassedViewport = false) => {
             if (projectIndex !== mountedProjectCount || projectIndex >= projectIds.length) return
 
             setNearProject(current => {
-                if (!isNearViewport) {
+                if (!isNearViewport && !hasPassedViewport) {
                     // Once this single prefetch has started, keep it alive even
                     // if layout movement pushes the ghost out of the viewport.
                     return current
                 }
-                if (current?.projectKey === projectKey && current.projectIndex === projectIndex) return current
-                return { projectKey, projectIndex, sinceAt: now() }
+                if (current?.projectKey === projectKey && current.projectIndex === projectIndex) {
+                    return hasPassedViewport && !current.hasPassedViewport
+                        ? { ...current, hasPassedViewport: true }
+                        : current
+                }
+                return { projectKey, projectIndex, sinceAt: now(), hasPassedViewport }
             })
         },
         [mountedProjectCount, now, projectIds.length, projectKey]
@@ -60,6 +64,7 @@ export default function useRateLimitedProjectMountQueue({
             : null
     const preloadingProjectReady =
         preloadingProjectIndex !== null && projectReadyStates[preloadingProjectIndex] === true
+    const preloadingProjectSkipped = preloadingProjectIndex !== null && nearProject?.hasPassedViewport === true
 
     useEffect(() => {
         if (
@@ -109,6 +114,7 @@ export default function useRateLimitedProjectMountQueue({
     return {
         mountedProjectCount,
         preloadingProjectIndex,
+        preloadingProjectSkipped,
         nextProjectIndex: mountedProjectCount < projectIds.length ? mountedProjectCount : null,
         markProjectNearViewport,
     }

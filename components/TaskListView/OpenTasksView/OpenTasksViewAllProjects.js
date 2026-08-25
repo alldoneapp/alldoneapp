@@ -19,23 +19,47 @@ import TaskListSkeleton from '../TaskListSkeleton'
 
 export const ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN = '0px'
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
+export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
 function DeferredProjectBlock({ projectIndex, mounted, preloading, observe, onNearViewport, children }) {
-    const { placeholderRef, isNearViewport } = useNearViewportMount({
+    const { placeholderRef, isNearViewport, hasPassedViewport } = useNearViewportMount({
         eager: mounted,
         enabled: observe,
         rootMargin: ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN,
         trackVisibility: true,
+        activateWhenPassed: true,
     })
 
     useEffect(() => {
-        if (observe) onNearViewport(projectIndex, isNearViewport)
-    }, [isNearViewport, observe, onNearViewport, projectIndex])
+        if (observe) onNearViewport(projectIndex, isNearViewport, hasPassedViewport)
+    }, [hasPassedViewport, isNearViewport, observe, onNearViewport, projectIndex])
 
     return (
         <View ref={placeholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
             {(mounted || preloading) && <View style={!mounted && localStyles.preloadedProject}>{children}</View>}
             {!mounted && observe && <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader />}
+        </View>
+    )
+}
+
+function SkippedProjectCatchUpSkeleton({ visible, style }) {
+    const [rendered, setRendered] = useState(visible)
+
+    useEffect(() => {
+        if (visible) {
+            setRendered(true)
+            return undefined
+        }
+
+        const timer = setTimeout(() => setRendered(false), SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS)
+        return () => clearTimeout(timer)
+    }, [visible])
+
+    if (!rendered) return null
+
+    return (
+        <View testID="task-list-skipped-project-skeleton" style={style}>
+            <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader />
         </View>
     )
 }
@@ -97,12 +121,17 @@ export default function OpenTasksViewAllProjects() {
             }),
         shallowEqual
     )
-    const { mountedProjectCount, preloadingProjectIndex, nextProjectIndex, markProjectNearViewport } =
-        useRateLimitedProjectMountQueue({
-            projectIds: sortedLoggedUserProjectIds,
-            projectReadyStates,
-            minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
-        })
+    const {
+        mountedProjectCount,
+        preloadingProjectIndex,
+        preloadingProjectSkipped,
+        nextProjectIndex,
+        markProjectNearViewport,
+    } = useRateLimitedProjectMountQueue({
+        projectIds: sortedLoggedUserProjectIds,
+        projectReadyStates,
+        minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
+    })
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -140,6 +169,15 @@ export default function OpenTasksViewAllProjects() {
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
+            <SkippedProjectCatchUpSkeleton
+                visible={preloadingProjectSkipped}
+                style={[
+                    localStyles.skippedProjectCatchUpSkeleton,
+                    smallScreenNavigation
+                        ? localStyles.skippedProjectCatchUpSkeletonMobile
+                        : isMiddleScreen && localStyles.skippedProjectCatchUpSkeletonTablet,
+                ]}
+            />
             {sortedLoggedUserProjectIds.map((projectId, index) => {
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {
@@ -192,5 +230,24 @@ const localStyles = StyleSheet.create({
     },
     preloadedProject: {
         display: 'none',
+    },
+    skippedProjectCatchUpSkeleton: {
+        position: 'fixed',
+        pointerEvents: 'none',
+        zIndex: 10,
+        top: 56,
+        left: 104,
+        right: 104,
+        minHeight: 360,
+        paddingTop: 16,
+        backgroundColor: 'white',
+    },
+    skippedProjectCatchUpSkeletonMobile: {
+        left: 16,
+        right: 16,
+    },
+    skippedProjectCatchUpSkeletonTablet: {
+        left: 56,
+        right: 56,
     },
 })
