@@ -112,8 +112,36 @@ describe('connectionHealth', () => {
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
     })
 
-    it('offers the slow-connection choice after five seconds', () => {
-        expect(SLOW_CONNECTION_THRESHOLD_MS).toBe(5000)
+    it('offers the slow-connection choice after ten seconds', () => {
+        expect(SLOW_CONNECTION_THRESHOLD_MS).toBe(10000)
+    })
+
+    // Behavioural counterpart to the constant above: an operation that is merely
+    // sluggish must ride out the old five-second mark in silence and only be called
+    // slow at ten. Asserted against literals on purpose — a test written in terms of
+    // SLOW_CONNECTION_THRESHOLD_MS passes at any threshold, including a reverted one.
+    it('stays live through the previous five-second threshold and only turns slow at ten', () => {
+        jest.useFakeTimers()
+        let clock = 1000
+        const { stop } = install({
+            db: createFakeDb(['ok']),
+            now: () => clock,
+            slowConnectionLingerMs: 30000,
+        })
+
+        const finish = startConnectionLatencySample('write_ack')
+
+        clock += 5000
+        jest.advanceTimersByTime(5000)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
+
+        clock += 5000
+        jest.advanceTimersByTime(5000)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
+
+        finish()
+        stop()
+        jest.useRealTimers()
     })
 
     it('offers offline work when a real server operation stays slow despite other server traffic', () => {

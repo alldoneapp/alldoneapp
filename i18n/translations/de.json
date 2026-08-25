@@ -461,6 +461,7 @@
     "Select the user this task will assign to": "Wähle einen verantwortlichen Nutzer aus",
     "Switch project": "Wähle das Projekt aus",
     "Select the project to switch to": "Wähle das Projekt aus, zu dem Du wechselst",
+    "Select project": "Projekt auswählen",
     "Select search scope": "Wähle Suche aus",
     "Select an option to define the search scope": "Wähle eine Option us, um die Suche einzuschränken",
     "There are no search results yet": "Bisher wurden Suchergebnisse gefunden",
@@ -2329,5 +2330,8 @@
     "Finding a matching goal": "Passendes Ziel wird gesucht",
     "Added to goal": "Zum Ziel hinzugefügt",
     "Moved to project": "Verschoben nach {{project}}",
-    "this project": "dieses Projekt"
+    "this project": "dieses Projekt",
+    "Switch assistant": "Assistent wechseln",
+    "Select assistant": "Assistent auswählen",
+    "Select the assistant that will help you": "Wähle den Assistenten, der dir helfen soll"
 }
