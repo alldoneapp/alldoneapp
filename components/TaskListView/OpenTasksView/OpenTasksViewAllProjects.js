@@ -18,9 +18,9 @@ import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjec
 import TaskListSkeleton from '../TaskListSkeleton'
 
 export const ALL_PROJECTS_TASK_REVEAL_ROOT_MARGIN = '0px'
-export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 1500
+export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 
-function DeferredProjectBlock({ projectIndex, mounted, observe, onNearViewport, children }) {
+function DeferredProjectBlock({ projectIndex, mounted, preloading, observe, onNearViewport, children }) {
     const { placeholderRef, isNearViewport } = useNearViewportMount({
         eager: mounted,
         enabled: observe,
@@ -34,7 +34,8 @@ function DeferredProjectBlock({ projectIndex, mounted, observe, onNearViewport, 
 
     return (
         <View ref={placeholderRef} style={!mounted && localStyles.deferredProjectPlaceholder}>
-            {mounted ? children : observe ? <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader /> : null}
+            {(mounted || preloading) && <View style={!mounted && localStyles.preloadedProject}>{children}</View>}
+            {!mounted && observe && <TaskListSkeleton rowCount={6} showDateHeader showProjectHeader />}
         </View>
     )
 }
@@ -96,11 +97,12 @@ export default function OpenTasksViewAllProjects() {
             }),
         shallowEqual
     )
-    const { mountedProjectCount, nextProjectIndex, markProjectNearViewport } = useRateLimitedProjectMountQueue({
-        projectIds: sortedLoggedUserProjectIds,
-        projectReadyStates,
-        minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
-    })
+    const { mountedProjectCount, preloadingProjectIndex, nextProjectIndex, markProjectNearViewport } =
+        useRateLimitedProjectMountQueue({
+            projectIds: sortedLoggedUserProjectIds,
+            projectReadyStates,
+            minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
+        })
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -150,6 +152,7 @@ export default function OpenTasksViewAllProjects() {
                         key={projectId}
                         projectIndex={index}
                         mounted={index < mountedProjectCount}
+                        preloading={index === preloadingProjectIndex}
                         observe={index === nextProjectIndex}
                         onNearViewport={markProjectNearViewport}
                     >
@@ -186,5 +189,8 @@ const localStyles = StyleSheet.create({
     },
     deferredProjectPlaceholder: {
         minHeight: 360,
+    },
+    preloadedProject: {
+        display: 'none',
     },
 })
