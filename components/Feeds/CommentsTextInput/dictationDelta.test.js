@@ -140,4 +140,32 @@ describe('placeDictationCaret', () => {
         expect(editor.setSelection).toHaveBeenCalledTimes(1)
         expect(editor.focus).not.toHaveBeenCalled()
     })
+
+    // AT-2422. The deferred call re-focuses as well as re-positioning — Quill's setSelection ends
+    // in setNativeRange, which focuses the root when the editor does not already have focus. A
+    // dictation that submits itself therefore has to be able to drop it, or the send's blur is
+    // undone a macrotask later.
+    test('returns a canceller that drops the deferred re-focus', () => {
+        const editor = buildEditor()
+
+        const cancel = placeDictationCaret(editor, 12, () => true)
+        expect(typeof cancel).toBe('function')
+        cancel()
+
+        jest.runAllTimers()
+        // The synchronous set still happened; only the deferred one was dropped.
+        expect(editor.setSelection).toHaveBeenCalledTimes(1)
+        expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    test('cancelling twice is harmless', () => {
+        const editor = buildEditor()
+
+        const cancel = placeDictationCaret(editor, 3, () => true)
+        cancel()
+        cancel()
+
+        jest.runAllTimers()
+        expect(editor.focus).not.toHaveBeenCalled()
+    })
 })
