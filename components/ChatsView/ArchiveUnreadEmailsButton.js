@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 
 import { translate } from '../../i18n/TranslationService'
 import { useUnreadLinkedEmailsScope } from './unreadEmailArchiveContext'
@@ -23,27 +23,31 @@ import ProjectLineActionButton from './ProjectLineActionButton'
  */
 export default function ArchiveUnreadEmailsButton({ projectId, containerStyle }) {
     const scope = useUnreadLinkedEmailsScope(projectId)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState(false)
 
     const linkedEmails = scope?.linkedEmails || []
     const archive = scope?.archive
     const pendingEmails = linkedEmails.filter(linkedEmail => !archive?.isArchivedEmail(linkedEmail.key))
     const archivingElsewhere = pendingEmails.some(linkedEmail => archive?.isArchivingEmail(linkedEmail.key))
+    // Read from the shared archive rather than from local state (AT-2424). Clearing the unread
+    // state optimistically unmounts the previewed rows - and this button with them - so a failure
+    // arriving seconds later has nowhere local to land. Scoping it to the emails currently pending
+    // also means the row only says "try again" about emails that are actually back and retryable.
+    const error = pendingEmails.some(linkedEmail => archive?.isFailedEmail(linkedEmail.key))
     const completed = linkedEmails.length > 0 && pendingEmails.length === 0
-    const disabled = loading || archivingElsewhere || pendingEmails.length === 0
+    const disabled = archivingElsewhere || pendingEmails.length === 0
     const label = projectId ? 'Archive emails' : 'Archive all emails'
 
-    const archiveEmails = async () => {
+    // Deliberately no local loading state (AT-2424). The shared archive marks these emails
+    // archived on the press, so `completed` flips to the check mark in the same frame the rows
+    // leave the unread list. Holding a spinner here for the 4-8s the mailbox round trips take
+    // would be the one thing on screen still saying the bulk archive had not happened.
+    const archiveEmails = () => {
         if (disabled) return
 
-        setLoading(true)
-        setError(false)
         // The hook reports failure instead of alerting, because this button shows the failure
-        // itself - an alert on top of a red "try again" row would say the same thing twice.
-        const archived = await archive.archiveLinkedEmails(pendingEmails, { notifyOnError: false })
-        if (!archived) setError(true)
-        setLoading(false)
+        // itself - an alert on top of a red "try again" row would say the same thing twice. It
+        // records the failed keys in the shared state, which is what `error` above reads.
+        return archive.archiveLinkedEmails(pendingEmails, { notifyOnError: false })
     }
 
     // Nothing previewed in this scope has an email behind it: no button at all, rather than a
@@ -60,7 +64,7 @@ export default function ArchiveUnreadEmailsButton({ projectId, containerStyle })
             accessibilityLabel={translate(
                 error ? "Emails couldn't be archived. Try again" : completed ? 'Archived' : label
             )}
-            loading={loading || archivingElsewhere}
+            loading={archivingElsewhere}
             error={error}
             disabled={disabled}
             onPress={archiveEmails}
