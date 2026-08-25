@@ -79,7 +79,6 @@ describe('OpenTasksViewAllProjects', () => {
         }))
         useRateLimitedProjectMountQueue.mockReturnValue({
             mountedProjectCount: 2,
-            preloadingProjectIndex: null,
             nextProjectIndex: null,
             markProjectNearViewport: jest.fn(),
         })
@@ -205,7 +204,6 @@ describe('OpenTasksViewAllProjects', () => {
         it('keeps offscreen project watchers dormant while mounting the first project eagerly', () => {
             useRateLimitedProjectMountQueue.mockReturnValue({
                 mountedProjectCount: 1,
-                preloadingProjectIndex: null,
                 nextProjectIndex: 1,
                 markProjectNearViewport: jest.fn(),
             })
@@ -237,21 +235,6 @@ describe('OpenTasksViewAllProjects', () => {
             )
         })
 
-        it('mounts one upcoming project behind the ghost as soon as preloading starts', () => {
-            useRateLimitedProjectMountQueue.mockReturnValue({
-                mountedProjectCount: 1,
-                preloadingProjectIndex: 1,
-                nextProjectIndex: 1,
-                markProjectNearViewport: jest.fn(),
-            })
-
-            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
-            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
-
-            expect(projectBlocks.map(block => block.props.projectId)).toEqual(['project-1', 'project-2'])
-            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
-        })
-
         it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
             const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
 
@@ -270,7 +253,7 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
-                minIntervalMs: 200,
+                minIntervalMs: 1500,
             })
         })
     })
