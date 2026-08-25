@@ -50,6 +50,14 @@ describe('NotesListSkeleton', () => {
         expect(paddingTop + paddingBottom).toBe(16)
     })
 
+    it('can reserve the real project-header height for progressive loading', async () => {
+        const tree = await render(<NotesListSkeleton rowCount={3} showProjectHeader />)
+        const header = tree.root.findByProps({ testID: 'notes-project-loading-skeleton-header' })
+
+        expect(header.props.style.height).toBe(56)
+        expect(tree.root.findAllByProps({ testID: 'note-loading-skeleton-row' })).toHaveLength(3)
+    })
+
     it('drops the shimmer sweep when the user prefers reduced motion', async () => {
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
 

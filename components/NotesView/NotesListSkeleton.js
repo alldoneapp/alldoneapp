@@ -5,6 +5,7 @@ import GhostBlock from '../UIComponents/Ghosts/GhostBlock'
 import { useGhostPulse } from '../UIComponents/Ghosts/ghostAnimation'
 import { GHOST_DEFAULT_ROWS } from '../UIComponents/Ghosts/ghostRowCount'
 import { translate } from '../../i18n/TranslationService'
+import { colors } from '../styles/global'
 
 // Cycled so a multi-row ghost does not look like a stack of identical bars. The pairs are
 // (title, preview) widths; the meta line is fixed because the real one always renders the
@@ -24,7 +25,7 @@ const ROW_WIDTHS = [
  * ghost with the real row moves nothing on screen. When these numbers are touched,
  * `NotesItem.js`'s `localStyles` is the source of truth to re-check against.
  */
-export default function NotesListSkeleton({ rowCount = GHOST_DEFAULT_ROWS, noteKeys = [] }) {
+export default function NotesListSkeleton({ rowCount = GHOST_DEFAULT_ROWS, noteKeys = [], showProjectHeader = false }) {
     const { pulse, reducedMotion } = useGhostPulse()
     const rows = Array.from({ length: Math.max(0, rowCount) })
 
@@ -34,6 +35,15 @@ export default function NotesListSkeleton({ rowCount = GHOST_DEFAULT_ROWS, noteK
             accessibilityRole="progressbar"
             accessibilityLabel={translate('Loading notes')}
         >
+            {showProjectHeader && (
+                <View testID="notes-project-loading-skeleton-header" style={localStyles.projectHeader}>
+                    <View style={localStyles.projectIdentity}>
+                        <GhostBlock style={localStyles.projectIcon} pulse={pulse} reducedMotion={reducedMotion} />
+                        <GhostBlock style={localStyles.projectName} pulse={pulse} reducedMotion={reducedMotion} />
+                    </View>
+                    <GhostBlock style={localStyles.projectAction} pulse={pulse} reducedMotion={reducedMotion} soft />
+                </View>
+            )}
             {rows.map((_, index) => {
                 const [titleWidth, previewWidth] = ROW_WIDTHS[index % ROW_WIDTHS.length]
                 return (
@@ -68,6 +78,43 @@ export default function NotesListSkeleton({ rowCount = GHOST_DEFAULT_ROWS, noteK
 }
 
 const localStyles = StyleSheet.create({
+    // Mirrors ProjectHeader's 56px bordered row so the deferred sentinel and the
+    // mounted project occupy the same space while the first snapshot is pending.
+    projectHeader: {
+        height: 56,
+        minHeight: 56,
+        maxHeight: 56,
+        paddingTop: 25,
+        paddingBottom: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.Grey400,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    projectIdentity: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    projectIcon: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+    },
+    projectName: {
+        width: '42%',
+        height: 12,
+        marginLeft: 8,
+        borderRadius: 6,
+    },
+    projectAction: {
+        width: 48,
+        height: 16,
+        marginLeft: 12,
+        borderRadius: 8,
+    },
     // NotesItem.localStyles.container, minus the swipe/press affordances a ghost has no
     // use for. The negative horizontal margin + matching padding is what keeps the ghost
     // aligned with the real rows inside the notes list's own padding.

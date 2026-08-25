@@ -12,6 +12,7 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('./NotesHeader', () => 'NotesHeader')
 jest.mock('./NotesByProject', () => 'NotesByProject')
+jest.mock('./NotesListSkeleton', () => 'NotesListSkeleton')
 jest.mock('./EmptyNotesAllProjects', () => 'EmptyNotesAllProjects')
 jest.mock('../HashtagFilters/HashtagFiltersView', () => 'HashtagFiltersView')
 jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
@@ -99,7 +100,11 @@ describe('NotesView progressive project mounting', () => {
         expect(projectBlocks).toHaveLength(1)
         expect(projectBlocks[0].props.project.id).toBe('project-1')
         expect(projectBlocks[0].props.firstProject).toBe(true)
+        expect(projectBlocks[0].props.showInitialSkeleton).toBe(true)
         expect(projectBlocks[0].props.trackInitialLoad).toBe(true)
+        expect(tree.root.findByType('NotesListSkeleton').props).toEqual(
+            expect.objectContaining({ rowCount: 3, showProjectHeader: true })
+        )
         expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith({
             projectIds: ['project-1', 'project-2', 'project-3'],
             readyProjectIds: [],
