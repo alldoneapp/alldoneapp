@@ -2,8 +2,8 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
-import NotesView, { INITIAL_PROJECTS_TO_RENDER, PROJECT_RENDER_BATCH_SIZE } from './NotesView'
-import useProgressiveReveal from '../../hooks/useProgressiveReveal'
+import NotesView from './NotesView'
+import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -14,7 +14,7 @@ jest.mock('./NotesByProject', () => 'NotesByProject')
 jest.mock('./EmptyNotesAllProjects', () => 'EmptyNotesAllProjects')
 jest.mock('../HashtagFilters/HashtagFiltersView', () => 'HashtagFiltersView')
 jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
-jest.mock('../../hooks/useProgressiveReveal', () => jest.fn())
+jest.mock('../../hooks/useRateLimitedProjectReveal', () => jest.fn())
 jest.mock('../../redux/store', () => ({
     getState: () => ({ loggedUser: { uid: 'user-1' } }),
 }))
@@ -78,26 +78,34 @@ describe('NotesView progressive project mounting', () => {
         jest.clearAllMocks()
         useDispatch.mockReturnValue(jest.fn())
         useSelector.mockImplementation(selector => selector(state))
+        useRateLimitedProjectReveal.mockReturnValue({
+            revealedProjectIds: ['project-1'],
+            primaryProjectId: 'project-1',
+            complete: false,
+        })
     })
 
     it('keeps the first all-projects render to one NotesByProject block', () => {
-        useProgressiveReveal.mockReturnValue({ visibleAmount: 1, complete: false })
-
         const tree = renderView()
         const projectBlocks = tree.root.findAllByType('NotesByProject')
 
         expect(projectBlocks).toHaveLength(1)
         expect(projectBlocks[0].props.project.id).toBe('project-1')
         expect(projectBlocks[0].props.firstProject).toBe(true)
-        expect(useProgressiveReveal).toHaveBeenLastCalledWith(3, {
-            initialAmount: INITIAL_PROJECTS_TO_RENDER,
-            batchSize: PROJECT_RENDER_BATCH_SIZE,
+        expect(projectBlocks[0].props.trackInitialLoad).toBe(true)
+        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith({
+            projectIds: ['project-1', 'project-2', 'project-3'],
+            readyProjectIds: [],
             resetKey: expect.stringContaining('project-1'),
         })
     })
 
     it('renders only the number of project blocks the hook has revealed', () => {
-        useProgressiveReveal.mockReturnValue({ visibleAmount: 2, complete: false })
+        useRateLimitedProjectReveal.mockReturnValue({
+            revealedProjectIds: ['project-1', 'project-2'],
+            primaryProjectId: 'project-1',
+            complete: false,
+        })
 
         const tree = renderView()
 
@@ -105,17 +113,26 @@ describe('NotesView progressive project mounting', () => {
             'project-1',
             'project-2',
         ])
+        expect(tree.root.findAllByType('NotesByProject').map(node => node.props.trackInitialLoad)).toEqual([
+            true,
+            false,
+        ])
     })
 
     it('does not schedule background project reveals in a selected-project view', () => {
         const selectedProjectState = { ...state, selectedProjectIndex: 0 }
         useSelector.mockImplementation(selector => selector(selectedProjectState))
-        useProgressiveReveal.mockReturnValue({ visibleAmount: 0, complete: true })
+        useRateLimitedProjectReveal.mockReturnValue({
+            revealedProjectIds: [],
+            primaryProjectId: null,
+            complete: true,
+        })
 
         const tree = renderView()
 
-        expect(useProgressiveReveal).toHaveBeenLastCalledWith(0, expect.any(Object))
+        expect(useRateLimitedProjectReveal).toHaveBeenLastCalledWith(expect.objectContaining({ projectIds: [] }))
         expect(tree.root.findAllByType('NotesByProject')).toHaveLength(1)
         expect(tree.root.findByType('NotesByProject').props.project.id).toBe('project-1')
+        expect(tree.root.findByType('NotesByProject').props.trackInitialLoad).toBe(true)
     })
 })

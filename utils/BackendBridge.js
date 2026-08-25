@@ -404,12 +404,12 @@ export default class Backend {
         bridge.watchFollowedTabNotesExpanded(projectId, callback)
     }
 
-    static watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
-        bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback)
+    static watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
+        bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
-        bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback)
+    static watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options) {
+        bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchFollowedTabStickyNotes(projectId, callback) {
@@ -424,12 +424,12 @@ export default class Backend {
         bridge.watchAllTabNotesExpanded(projectId, callback)
     }
 
-    static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
-        bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback)
+    static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
+        bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchAllTabNotesExpandedInAllProjects(projectId, callback) {
-        bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback)
+    static watchAllTabNotesExpandedInAllProjects(projectId, callback, options) {
+        bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchAllTabStickyNotes(projectId, callback) {
