@@ -1,6 +1,5 @@
 import { ROOT_ROUTES } from '../TabNavigationConstants'
 import { getAnalyticsPagePath } from '../analytics/analytics'
-import { startConnectionLatencySample } from '../connectionHealth'
 import { schedulePerformanceAfterPaint, startPerformanceTrace } from './performanceLogger'
 
 const PAGE_SETTLE_GRACE_MS = 250
@@ -25,7 +24,6 @@ export const installStorePerformanceObserver = store => {
         activePage.cancelAfterPaint?.()
         clearTimeout(activePage.settleTimer)
         clearTimeout(activePage.timeout)
-        activePage.finishConnectionWait()
         activePage.trace.end(phase, metadata)
         activePage = null
     }
@@ -58,11 +56,14 @@ export const installStorePerformanceObserver = store => {
                 ? currentState.loggedUser.projectIds.length
                 : 0,
         })
+        // This trace deliberately stays performance-only. It includes React rendering,
+        // paints, and loading-refcount settlement, so using it as a connection sample can
+        // label a CPU-heavy page (notably All Projects Notes) as "Slow connection" even
+        // after Firestore already answered. Individual snapshot gates own network health.
         trace.mark('navigation_started', { watcher_count: currentState.isLoadingData || 0 })
         activePage = {
             pagePath,
             trace,
-            finishConnectionWait: startConnectionLatencySample('page_load'),
             timeout: setTimeout(() => closeActivePage('page_timeout', { outcome: 'timeout' }), PAGE_TRACE_TIMEOUT_MS),
             settleTimer: null,
             cancelAfterPaint: null,

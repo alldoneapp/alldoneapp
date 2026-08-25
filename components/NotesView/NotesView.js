@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import NotesHeader from './NotesHeader'
 import ProjectHelper, {
@@ -22,12 +22,10 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
-import useProgressiveReveal from '../../hooks/useProgressiveReveal'
+import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 
 export const DEFAULT_MAX_NOTES_TO_RENDER = 10
 export const FILTERED_MAX_NOTES_TO_RENDER = 50
-export const INITIAL_PROJECTS_TO_RENDER = 1
-export const PROJECT_RENDER_BATCH_SIZE = 1
 
 function NotesView() {
     const dispatch = useDispatch()
@@ -48,19 +46,31 @@ function NotesView() {
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const projectMembershipKey = sortedLoggedUserProjects
-        .map(project => project.id)
-        .sort()
-        .join('\u001f')
-    const projectsToReveal = inAllProjects ? sortedLoggedUserProjects.length : 0
-    const { visibleAmount: visibleProjectCount } = useProgressiveReveal(projectsToReveal, {
-        initialAmount: INITIAL_PROJECTS_TO_RENDER,
-        batchSize: PROJECT_RENDER_BATCH_SIZE,
-        // Project note snapshots reorder this list by last edit date. That must not
-        // restart the reveal and collapse the view back to one project each time.
-        resetKey: `${notesActiveTab}:${selectedProjectIndex}:${projectMembershipKey}`,
+    const sortedProjectIds = useMemo(
+        () => sortedLoggedUserProjects.map(project => project.id),
+        [sortedLoggedUserProjects]
+    )
+    const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
+    const projectRevealKey = `${notesActiveTab}:${selectedProjectIndex}:${projectMembershipKey}`
+    const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
+    const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
+    const markProjectReady = useCallback(
+        projectId => {
+            setProjectReadiness(current => {
+                const projectIds = current.key === projectRevealKey ? current.projectIds : []
+                if (projectIds.includes(projectId)) return current
+                return { key: projectRevealKey, projectIds: [...projectIds, projectId] }
+            })
+        },
+        [projectRevealKey]
+    )
+    const { revealedProjectIds, primaryProjectId } = useRateLimitedProjectReveal({
+        projectIds: inAllProjects ? sortedProjectIds : [],
+        readyProjectIds,
+        resetKey: projectRevealKey,
     })
-    const visibleProjects = sortedLoggedUserProjects.slice(0, visibleProjectCount)
+    const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
+    const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
 
     // The owner filter runs client-side over the notes already loaded, so widen the fetch
     // window while one is active. Without this, filtering a 10-note window by owner can show
@@ -149,6 +159,7 @@ function NotesView() {
                         project={loggedUserProjects[selectedProjectIndex]}
                         filterBy={notesActiveTab}
                         maxNotesToRender={maxNotesToRender}
+                        trackInitialLoad
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
                 ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
@@ -159,7 +170,9 @@ function NotesView() {
                             filterBy={notesActiveTab}
                             firstProject={index === 0}
                             maxNotesToRender={3}
+                            onInitialSnapshot={markProjectReady}
                             setLastEditNoteDate={date => setLastEditNoteDate(project, date)}
+                            trackInitialLoad={project.id === primaryProjectId}
                         />
                     ))
                 ) : (

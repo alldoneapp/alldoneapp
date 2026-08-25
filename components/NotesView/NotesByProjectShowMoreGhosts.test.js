@@ -4,6 +4,7 @@ import renderer, { act } from 'react-test-renderer'
 import store from '../../redux/store'
 import Backend from '../../utils/BackendBridge'
 import NotesByProject from './NotesByProject'
+import { startLoadingData, stopLoadingData } from '../../redux/actions'
 
 /**
  * AT-2382 — the notes list's "Show more" ghosts.
@@ -36,10 +37,16 @@ jest.mock('../../utils/BackendBridge', () => ({
         watchAllTabNotesExpanded: jest.fn(),
         watchAllTabStickyNotes: jest.fn(),
         watchAllTabNotesNeedShowMore: jest.fn(),
+        watchAllTabNotesInAllProjects: jest.fn(),
+        watchAllTabNotesExpandedInAllProjects: jest.fn(),
+        watchAllTabNotesNeedShowMoreInAllProjects: jest.fn(),
         watchFollowedTabNotes: jest.fn(),
         watchFollowedTabNotesExpanded: jest.fn(),
         watchFollowedTabStickyNotes: jest.fn(),
         watchFollowedTabNotesNeedShowMore: jest.fn(),
+        watchFollowedTabNotesInAllProjects: jest.fn(),
+        watchFollowedTabNotesExpandedInAllProjects: jest.fn(),
+        watchFollowedTabNotesNeedShowMoreInAllProjects: jest.fn(),
         unwatchNotes2: jest.fn(),
         unwatchStickyNotes: jest.fn(),
         unwatchNotesNeedShowMore: jest.fn(),
@@ -49,8 +56,8 @@ jest.mock('../../utils/BackendBridge', () => ({
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: {},
-    checkIfSelectedAllProjects: () => false,
-    checkIfSelectedProject: () => true,
+    checkIfSelectedAllProjects: index => index === -1,
+    checkIfSelectedProject: index => index >= 0,
 }))
 
 // NotesByProject sits on top of the whole app graph — `NotesHelper` alone reaches
@@ -197,5 +204,69 @@ describe('NotesByProject "Show more" ghosts', () => {
         // A second subscription would tear the first listener down and restart the wait,
         // with the ghosts already up making it look like progress.
         expect(Backend.watchAllTabNotesExpanded).toHaveBeenCalledTimes(1)
+    })
+
+    it('balances the selected project loading wait after its first committed snapshot', async () => {
+        const onInitialSnapshot = jest.fn()
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <NotesByProject
+                    project={PROJECT}
+                    filterBy={0}
+                    maxNotesToRender={10}
+                    onInitialSnapshot={onInitialSnapshot}
+                    setLastEditNoteDate={jest.fn()}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(startLoadingData).toHaveBeenCalledTimes(1)
+        expect(stopLoadingData).not.toHaveBeenCalled()
+
+        const updateNotes = Backend.watchAllTabNotes.mock.calls[0][2]
+        await act(async () => {
+            updateNotes([noteChange('note-1')])
+            await Promise.resolve()
+        })
+
+        expect(stopLoadingData).toHaveBeenCalledTimes(1)
+        expect(onInitialSnapshot).toHaveBeenCalledWith('project-1')
+        act(() => tree.unmount())
+    })
+
+    it('keeps background all-project listeners out of page loading and connection health', async () => {
+        store.getState.mockReturnValue({ ...baseState, selectedProjectIndex: -1 })
+        const onInitialSnapshot = jest.fn()
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <NotesByProject
+                    project={PROJECT}
+                    filterBy={0}
+                    maxNotesToRender={3}
+                    onInitialSnapshot={onInitialSnapshot}
+                    setLastEditNoteDate={jest.fn()}
+                    trackInitialLoad={false}
+                />
+            )
+            await Promise.resolve()
+        })
+
+        expect(startLoadingData).not.toHaveBeenCalled()
+        expect(Backend.watchAllTabNotesInAllProjects).toHaveBeenCalledWith('project-1', 3, expect.any(Function), {
+            trackConnectionHealth: false,
+        })
+
+        const updateNotes = Backend.watchAllTabNotesInAllProjects.mock.calls[0][2]
+        await act(async () => {
+            updateNotes([])
+            await Promise.resolve()
+        })
+
+        expect(stopLoadingData).not.toHaveBeenCalled()
+        expect(onInitialSnapshot).toHaveBeenCalledWith('project-1')
+        act(() => tree.unmount())
     })
 })

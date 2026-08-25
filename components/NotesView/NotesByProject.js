@@ -36,11 +36,8 @@ export default class NotesByProject extends PureComponent {
             hashtagFilteredStickyNotes: [],
             pressedShowMore: false,
             // AT-2382 - drives the note-shaped ghosts under the list while an expansion is
-            // in flight. It has to be local component state: the global `isLoadingData`
-            // refcount is not usable as a per-list signal, because an expand dispatches
-            // `startLoadingData()` once (watchUserNotes) but `stopLoadingData()` twice (the
-            // snapshot handler in firestore.js AND the updateNotes callback below), so the
-            // refcount clamps at 0 and the flag drops before the notes have arrived.
+            // in flight. It stays local because the global loading refcount represents the
+            // page-level wait, while these ghosts represent one specific list expansion.
             loadingMoreNotes: false,
             needShowMoreButton: false,
             hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
@@ -52,6 +49,7 @@ export default class NotesByProject extends PureComponent {
         this.datesForNotes = {}
         this.stickyCounter = 0
         this.notesCounter = 0
+        this.finishTrackedLoading = null
     }
 
     componentDidMount() {
@@ -94,6 +92,7 @@ export default class NotesByProject extends PureComponent {
     }
 
     componentWillUnmount() {
+        this.finishTrackedLoading?.()
         this.unwatchUserNotes()
         this.state.unsubscribe()
     }
@@ -129,14 +128,25 @@ export default class NotesByProject extends PureComponent {
     }
 
     watchUserNotes = (pressedShowMore, watchStickyNotes) => {
-        setTimeout(() => {
-            store.dispatch(startLoadingData())
-        })
-        const { project, filterBy, setLastEditNoteDate, maxNotesToRender } = this.props
+        this.finishTrackedLoading?.()
+        this.finishTrackedLoading = null
+
+        const { project, filterBy, setLastEditNoteDate, maxNotesToRender, onInitialSnapshot } = this.props
         const { selectedProjectIndex } = store.getState()
         const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        const trackInitialLoad = this.props.trackInitialLoad !== false || pressedShowMore
+        if (trackInitialLoad) {
+            store.dispatch(startLoadingData())
+            let loadingActive = true
+            this.finishTrackedLoading = () => {
+                if (!loadingActive) return
+                loadingActive = false
+                store.dispatch(stopLoadingData())
+            }
+        }
 
         let lastEditedDate = 0
+        let initialSnapshotDelivered = false
         this.notesCounter = 0
 
         const updateNotes = changes => {
@@ -217,7 +227,12 @@ export default class NotesByProject extends PureComponent {
                     if (inAllProjects) {
                         setLastEditNoteDate(finalLastEditedDate)
                     }
-                    store.dispatch(stopLoadingData())
+                    this.finishTrackedLoading?.()
+                    this.finishTrackedLoading = null
+                    if (!initialSnapshotDelivered) {
+                        initialSnapshotDelivered = true
+                        onInitialSnapshot?.(project.id)
+                    }
                     store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
                     // Debug: validate side-effects run post state update
                     console.debug(
@@ -276,14 +291,20 @@ export default class NotesByProject extends PureComponent {
         }
 
         if (inAllProjects) {
+            const watcherOptions = { trackConnectionHealth: trackInitialLoad }
             if (filterBy === ALL_TAB) {
                 pressedShowMore
-                    ? Backend.watchAllTabNotesExpandedInAllProjects(project.id, updateNotes)
-                    : Backend.watchAllTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchAllTabNotesExpandedInAllProjects(project.id, updateNotes, watcherOptions)
+                    : Backend.watchAllTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes, watcherOptions)
             } else {
                 pressedShowMore
-                    ? Backend.watchFollowedTabNotesExpandedInAllProjects(project.id, updateNotes)
-                    : Backend.watchFollowedTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchFollowedTabNotesExpandedInAllProjects(project.id, updateNotes, watcherOptions)
+                    : Backend.watchFollowedTabNotesInAllProjects(
+                          project.id,
+                          maxNotesToRender,
+                          updateNotes,
+                          watcherOptions
+                      )
             }
         } else {
             if (filterBy === ALL_TAB) {
