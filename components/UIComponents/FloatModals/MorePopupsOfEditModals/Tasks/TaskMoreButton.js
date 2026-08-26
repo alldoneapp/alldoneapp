@@ -125,7 +125,7 @@ export default function TaskMoreButton({
     }
 
     const hideEstimationPopup = () => {
-        hidePopups(setShowEstimation, ESTIMATIONS_MODAL_ID)
+        hidePopups(setShowEstimation)
         dismissModal()
     }
 
@@ -209,11 +209,6 @@ export default function TaskMoreButton({
         if (showWorkflow) {
             setShowWorkflow(false)
             removeModal(TASK_WORKFLOW_MODAL_ID)
-            popupLock.release()
-        }
-        if (showEstimation) {
-            setShowEstimation(false)
-            removeModal(ESTIMATIONS_MODAL_ID)
             popupLock.release()
         }
         if (showHighlight) {

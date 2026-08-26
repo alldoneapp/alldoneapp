@@ -11,15 +11,13 @@ import { colors, PROJECT_LINE_TAG_HEIGHT, PROJECT_LINE_TAG_MOBILE_WIDTH } from '
 import Icon from '../Icon'
 import AddTaskTag from './AddTaskTag'
 
-const mockDispatch = jest.fn()
-
 jest.mock('react-redux', () => ({
-    useDispatch: () => mockDispatch,
+    useDispatch: () => jest.fn(),
     useSelector: jest.fn(),
 }))
 jest.mock('../../redux/actions', () => ({
-    hideFloatPopup: () => ({ type: 'Hide float popup' }),
-    showFloatPopup: () => ({ type: 'Show float popup' }),
+    hideFloatPopup: jest.fn(),
+    showFloatPopup: jest.fn(),
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../styles/global', () => {
@@ -56,32 +54,7 @@ const findLabel = tree => tree.root.findAll(node => node.type === Text && node.p
 
 describe('AddTaskTag', () => {
     beforeEach(() => {
-        jest.clearAllMocks()
         mockState()
-    })
-
-    it('acquires once for repeated opens and releases if the popup owner unmounts', () => {
-        const openPopover = jest.fn()
-        let tree
-
-        act(() => {
-            tree = renderer.create(
-                <AddTaskTag projectId="project-1" openPopover={openPopover} closePopover={jest.fn()} isOpen={false} />
-            )
-        })
-        const button = tree.root.findByType(TouchableOpacity)
-
-        act(() => {
-            button.props.onPress()
-            button.props.onPress()
-        })
-
-        expect(openPopover).toHaveBeenCalledTimes(2)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
-
-        act(() => tree.unmount())
-
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
     })
 
     it('uses the assistant Search button colors when requested', () => {

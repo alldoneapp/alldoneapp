@@ -12,7 +12,6 @@ const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = requir
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
 const { vmThreadKey, isQueuedVmJobReferencedBySession } = require('../Assistant/vmThreadQueue')
-const { TASK_EXECUTION_MODE_DIRECT } = require('../shared/taskExecutionMode')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
@@ -94,22 +93,12 @@ const getWorkflow = (owner, projectId) => (owner && owner.workflow && owner.work
 
 const isAssistantWorkflowTask = task => task?.workflowTask === true
 
-const buildDirectFallbackWorkflow = run => ({
-    [run.stepId]: {
-        reviewerUid: run.assistantId,
-        reviewerType: 'assistant',
-        description: 'Execute task',
-    },
-})
-
 const getWorkflowOwnerRef = (projectId, ownerType, ownerId) =>
     ownerType === 'assistant'
         ? admin.firestore().doc(`assistants/${projectId}/items/${ownerId}`)
         : admin.firestore().doc(`users/${ownerId}`)
 
 const loadRunWorkflow = async run => {
-    if (run.bypassWorkflow) return buildDirectFallbackWorkflow(run)
-
     const workflowOwnerType = run.workflowOwnerType || 'user'
     const workflowOwnerId = run.workflowOwnerId || run.assigneeUserId
     const owner = await getWorkflowOwnerRef(run.projectId, workflowOwnerType, workflowOwnerId).get()
@@ -179,18 +168,7 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     if (!workflowOwner.exists) return null
 
     const step = getWorkflow(workflowOwner.data(), projectId)[stepId]
-
-    const persistedOverride = newTask.workflowAiPromptOverride
-    const promptOverride =
-        persistedOverride &&
-        persistedOverride.stepId === stepId &&
-        typeof persistedOverride.prompt === 'string' &&
-        persistedOverride.prompt.trim()
-            ? persistedOverride
-            : null
-    const bypassWorkflow =
-        workflowOwnerType === 'assistant' && !!promptOverride && (!isAiWorkflowStep(step) || !step.reviewerUid)
-    if (!bypassWorkflow && (!isAiWorkflowStep(step) || !step.reviewerUid)) return null
+    if (!isAiWorkflowStep(step) || !step.reviewerUid) return null
 
     const payerUserId =
         workflowOwnerType === 'assistant'
@@ -203,6 +181,14 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     // move stamps `completed`; the stepHistory depth is the deterministic fallback.
     const enteredAt = Number(newTask.completed) || `s${newTask.stepHistory.length}`
     const runId = buildRunId(projectId, taskId, stepId, enteredAt)
+    const persistedOverride = newTask.workflowAiPromptOverride
+    const promptOverride =
+        persistedOverride &&
+        persistedOverride.stepId === stepId &&
+        typeof persistedOverride.prompt === 'string' &&
+        persistedOverride.prompt.trim()
+            ? persistedOverride
+            : null
 
     // Whether the assistant is already working this task has to be decided HERE, in the task
     // trigger, because this is the only moment that is synchronous with the task landing on the
@@ -222,12 +208,11 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                 projectId,
                 taskId,
                 stepId,
-                assistantId: bypassWorkflow ? newTask.assistantId || workflowOwnerId : step.reviewerUid,
+                assistantId: step.reviewerUid,
                 assigneeUserId: payerUserId,
                 workflowOwnerId,
                 workflowOwnerType,
                 payerUserId,
-                ...(bypassWorkflow ? { bypassWorkflow: true } : {}),
                 ...(promptOverride
                     ? {
                           promptOverride: promptOverride.prompt,
@@ -252,12 +237,6 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                 taskId,
                 assistantRunIds: liveWork.assistantRunIds,
                 vmCorrelationIds: liveWork.vmCorrelationIds,
-            })
-        } else if (bypassWorkflow) {
-            console.warn('[workflowAiStep] Assistant has no usable workflow step; running task directly', {
-                runId,
-                taskId,
-                assistantId: newTask.assistantId || workflowOwnerId,
             })
         }
         return runId
@@ -473,10 +452,11 @@ const runWorkflowAiStep = async (runId, run) => {
         return
     }
 
-    const [workflow, payer] = await Promise.all([
-        loadRunWorkflow(run),
+    const [workflowOwner, payer] = await Promise.all([
+        getWorkflowOwnerRef(projectId, workflowOwnerType, workflowOwnerId).get(),
         admin.firestore().doc(`users/${payerUserId}`).get(),
     ])
+    const workflow = getWorkflow(workflowOwner.exists ? workflowOwner.data() : null, projectId)
     const step = workflow[stepId]
 
     const taskRunLock = await acquireAssistantTaskRunLock(admin.firestore(), {
@@ -703,21 +683,10 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
         }
 
         const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
-        const baseTransition =
+        const transition =
             !failureReason && latest && getCurrentStepId(latest) === stepId
                 ? buildWorkflowStepAdvanceUpdate(latest, stepId, workflow)
                 : null
-        const transition =
-            baseTransition && run.bypassWorkflow
-                ? {
-                      ...baseTransition,
-                      updateData: {
-                          ...baseTransition.updateData,
-                          executionMode: TASK_EXECUTION_MODE_DIRECT,
-                          workflowTask: false,
-                      },
-                  }
-                : baseTransition
         const workflowAiStatus = {
             runId,
             stepId,
