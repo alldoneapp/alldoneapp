@@ -163,10 +163,31 @@ export default function ChatInputButtons({
 }
 
 const localStyles = StyleSheet.create({
+    // The action row is fixed chrome, not a flexible half of the composer: 1px top border
+    // + 7px padding + a 40px button + 7px padding = 55.
+    //
+    // It used to say `flex: 1` next to `height: 55`, which is self-contradicting — in RN
+    // `flex: 1` expands to `flexGrow: 1, flexShrink: 1, flexBasis: 0%`, so the declared 55
+    // was never the row's size. The row simply took a SHARE of the composer card, and
+    // since the text area above it is `flex: 1` too (CustomScrollView), the two split the
+    // card in half: typing a second line grew the grey band to 69px, a third to 86px, six
+    // to 137px, with the buttons left at the top and a growing empty band beneath them.
+    // In the other direction — a card whose height is pinned while the text area holds its
+    // own minimum — the same share arithmetic squeezed the row BELOW its content, and
+    // because react-native-web's base `View` sets `min-height: 0` there is no
+    // content-based floor to stop it: the 40px buttons then hung out of the 36px band and
+    // past the bottom of the card. That is the screenshot on AT-2438.
+    //
+    // Rigid (`flexGrow: 0, flexShrink: 0`) makes the row exactly its own content in every
+    // layout, and leaves the text area — which has `minHeight: 40` and can flex — as the
+    // part that gives way. `minHeight` rather than `height` so a taller control or a
+    // wrapped label grows the band instead of being clipped by it.
     buttonContainer: {
-        flex: 1,
-        height: 55,
+        flexGrow: 0,
+        flexShrink: 0,
+        minHeight: 55,
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
         backgroundColor: colors.Grey100,
         borderTopWidth: 1,
