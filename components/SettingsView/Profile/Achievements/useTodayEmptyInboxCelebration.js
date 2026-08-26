@@ -52,9 +52,10 @@ export default function useTodayEmptyInboxCelebration(emptyInboxDays, enabled, u
     const todayKey = moment().format(EMPTY_INBOX_DATE_FORMAT)
     const achievedToday = emptyInboxDays.includes(todayKey)
     const [celebrationRunId, setCelebrationRunId] = useState(0)
-    // AT-2445: a run that was claimed but torn down before it finished hands the day back, so the
-    // next genuine view of the empty inbox still gets its celebration. `played` flips as soon as the
-    // motion has had its full duration on screen; after that the day is spent for real.
+    // AT-2445: holds the day this mount claimed and has not yet watched play out. It is cleared once
+    // the run has been on screen for the settle window — at which point the day is spent for real —
+    // and a teardown while it is still set hands the day back, so the next genuine view of the empty
+    // inbox still gets its celebration.
     const claimedRef = useRef(null)
 
     useLayoutEffect(() => {
