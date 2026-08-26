@@ -34,6 +34,17 @@ const renderedText = node => {
     return renderedText(node.children)
 }
 
+// The headings and lists of the section, in the order they render. `ParentGoalSection` and
+// `TasksList` are mocked to host elements, so `findAll` walks them in document order.
+const SECTION_TYPES = ['SwipeableGeneralTasksHeader', 'TasksList', 'ParentGoalSection']
+const renderedSections = tree => tree.root.findAll(node => SECTION_TYPES.includes(node.type)).map(node => node.type)
+
+// Every meeting the section renders, in the order the user reads them.
+const renderedTaskIds = tree =>
+    tree.root
+        .findAll(node => node.type === 'TasksList' || node.type === 'ParentGoalSection')
+        .flatMap(node => node.props.taskList.map(task => task.id))
+
 const meeting = (id, start) => ({ id, calendarData: { email: 'karsten@alldone.app', start } })
 const timed = (id, isoStart) => meeting(id, { dateTime: isoStart })
 const allDay = (id, day) => meeting(id, { date: day })
@@ -120,6 +131,88 @@ describe('CalendarSection', () => {
 
         const renderedGroups = tree.root.findAll(node => node.type === 'TasksList' || node.type === 'ParentGoalSection')
         expect(renderedGroups.map(group => group.props.taskList[0].id)).toEqual(['goal-nine', 'general-noon'])
+    })
+
+    // AT-2436 - a goal must not pull its meeting out of the clock order, nor drag the meetings
+    // around it along with it. This is the reported case: the 11:30 meeting carries a goal and used
+    // to render below the 17:15 one, at the bottom of the section.
+    describe('chronological order across goals (AT-2436)', () => {
+        const reportedDay = [
+            [
+                GENERAL_TASKS,
+                [
+                    timed('ten', '2026-08-26T10:00:00+02:00'),
+                    timed('fourteen', '2026-08-26T14:00:00+02:00'),
+                    timed('seventeen', '2026-08-26T17:15:00+02:00'),
+                ],
+            ],
+            ['goal-1', [timed('eleven-thirty', '2026-08-26T11:30:00+02:00')]],
+        ]
+
+        it('renders every meeting of the day in start order, whatever its goal', () => {
+            const tree = renderSection(reportedDay)
+
+            expect(renderedTaskIds(tree)).toEqual(['ten', 'eleven-thirty', 'fourteen', 'seventeen'])
+        })
+
+        it('cuts the goal heading into the list and resumes General afterwards', () => {
+            const tree = renderSection(reportedDay)
+
+            expect(renderedSections(tree)).toEqual([
+                'SwipeableGeneralTasksHeader',
+                'TasksList',
+                'ParentGoalSection',
+                'SwipeableGeneralTasksHeader',
+                'TasksList',
+            ])
+        })
+
+        // Same rule as the main list: the header only means something once a goal heading exists to
+        // tell it apart from.
+        it('shows no General header on a day where nothing has a goal', () => {
+            const tree = renderSection([
+                [
+                    GENERAL_TASKS,
+                    [timed('ten', '2026-08-26T10:00:00+02:00'), timed('fourteen', '2026-08-26T14:00:00+02:00')],
+                ],
+            ])
+
+            expect(renderedSections(tree)).toEqual(['TasksList'])
+        })
+
+        it('gives each run of a split goal its own card and its own ref key', () => {
+            const tree = renderSection([
+                [
+                    'goal-1',
+                    [timed('goal-ten', '2026-08-26T10:00:00+02:00'), timed('goal-four', '2026-08-26T16:00:00+02:00')],
+                ],
+                [GENERAL_TASKS, [timed('general-noon', '2026-08-26T12:00:00+02:00')]],
+            ])
+
+            expect(renderedTaskIds(tree)).toEqual(['goal-ten', 'general-noon', 'goal-four'])
+
+            const goalSections = tree.root.findAll(node => node.type === 'ParentGoalSection')
+            expect(goalSections.map(section => section.props.goalId)).toEqual(['goal-1', 'goal-1'])
+            // `ParentGoalSection` builds GoalItem's refKey out of `nestedTaskListIndex`; two cards
+            // sharing one would share a dismissible ref and open each other's edit popup.
+            expect(goalSections.map(section => section.props.nestedTaskListIndex)).toEqual([undefined, 1])
+        })
+
+        // The bucket index addresses the store, not the rendered run, so both runs of a goal keep it.
+        it('keeps addressing the store bucket each run came from', () => {
+            const tree = renderSection([
+                [
+                    'goal-1',
+                    [timed('goal-ten', '2026-08-26T10:00:00+02:00'), timed('goal-four', '2026-08-26T16:00:00+02:00')],
+                ],
+                [GENERAL_TASKS, [timed('general-noon', '2026-08-26T12:00:00+02:00')]],
+            ])
+
+            const renderedGroups = tree.root.findAll(
+                node => node.type === 'TasksList' || node.type === 'ParentGoalSection'
+            )
+            expect(renderedGroups.map(group => group.props.goalIndex)).toEqual([0, 1, 0])
+        })
     })
 
     // Being outside MAIN_TASK_INDEX is what keeps priority sorting and dragging off these rows.
