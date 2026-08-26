@@ -1594,6 +1594,211 @@ describe('VM runner timeout handling', () => {
     })
 })
 
+// A warm sandbox reused inside the keep-alive window does NOT get a fresh hour: E2B pins the
+// expiry to the start of the sandbox's current session (create or resume) and ignores the
+// `setTimeout()` the runner issues on reuse. Assuming a full hour scheduled the protective
+// lease rotation up to ~an hour after E2B had already killed the sandbox, so the agent died
+// mid-run and every following command 404'd. Measured in production on 7/7 sandbox deaths:
+// each landed 3598.7-3599.4s after that sandbox's last resume, never after its creation.
+describe('VM sandbox lease is measured, not assumed', () => {
+    const HOUR_MS = 60 * 60 * 1000
+
+    test('reads the real expiry E2B reports for the sandbox', async () => {
+        const now = 1_000_000
+        const endAt = new Date(now + 18 * 60 * 1000)
+        const sandbox = { getInfo: jest.fn(async () => ({ endAt, startedAt: new Date(now - 42 * 60 * 1000) })) }
+
+        await expect(__private__.readSandboxLeaseDeadlineMs(sandbox, now + HOUR_MS)).resolves.toBe(endAt.getTime())
+        expect(sandbox.getInfo).toHaveBeenCalledTimes(1)
+        // Bounded: it sits on the run's startup path.
+        expect(sandbox.getInfo).toHaveBeenCalledWith(expect.objectContaining({ requestTimeoutMs: expect.any(Number) }))
+    })
+
+    test('falls back to the caller assumption rather than failing a run', async () => {
+        const fallback = 5_000_000
+        // No getInfo at all (older SDK / injected test double).
+        await expect(__private__.readSandboxLeaseDeadlineMs({}, fallback)).resolves.toBe(fallback)
+        // getInfo throws.
+        await expect(
+            __private__.readSandboxLeaseDeadlineMs(
+                {
+                    getInfo: async () => {
+                        throw new Error('E2B unreachable')
+                    },
+                },
+                fallback
+            )
+        ).resolves.toBe(fallback)
+        // getInfo answers without a usable expiry.
+        await expect(
+            __private__.readSandboxLeaseDeadlineMs({ getInfo: async () => ({ endAt: undefined }) }, fallback)
+        ).resolves.toBe(fallback)
+        await expect(__private__.readSandboxLeaseDeadlineMs(null, fallback)).resolves.toBe(fallback)
+    })
+
+    test('keeps a genuinely fresh warm sandbox on its instant path', async () => {
+        const now = 2_000_000
+        // The control case from the incident: created ~9 minutes earlier, 51 minutes left.
+        const endAt = new Date(now + 51 * 60 * 1000)
+        const sandbox = { sandboxId: 'sandbox-warm', getInfo: async () => ({ endAt }) }
+        const pauseSandbox = jest.fn(async () => {})
+        const resumeSandbox = jest.fn(async () => {})
+
+        const lease = await __private__.prepareReusedSandboxLease({
+            Sandbox: { connect: jest.fn() },
+            sandbox,
+            sandboxId: 'sandbox-warm',
+            e2bApiKey: 'test-key',
+            nowMs: now,
+            pauseSandbox,
+            resumeSandbox,
+        })
+
+        expect(lease.rotated).toBe(false)
+        expect(lease.sandbox).toBe(sandbox)
+        expect(lease.leaseDeadlineMs).toBe(endAt.getTime())
+        expect(pauseSandbox).not.toHaveBeenCalled()
+        expect(resumeSandbox).not.toHaveBeenCalled()
+    })
+
+    test('rotates a warm sandbox that cannot hold a normal run instead of dying mid-run', async () => {
+        const now = 3_000_000
+        // The incident shape: reused 41.5 minutes into its hour, so 18.4 minutes remain while
+        // the run needs more. Before the fix this reported a full hour of lease.
+        const inheritedEndAt = new Date(now + 18.4 * 60 * 1000)
+        const staleSandbox = { sandboxId: 'sandbox-stale', getInfo: async () => ({ endAt: inheritedEndAt }) }
+        const rotatedSandbox = {
+            sandboxId: 'sandbox-stale',
+            setTimeout: jest.fn(async () => {}),
+            commands: { run: jest.fn(async () => ({ exitCode: 0 })) },
+            getInfo: jest.fn(async () => ({ endAt: new Date(Date.now() + HOUR_MS) })),
+        }
+        const Sandbox = { connect: jest.fn(async () => rotatedSandbox) }
+        const pauseSandbox = jest.fn(async () => {})
+        const resumeSandbox = jest.fn(async () => {})
+        const probeSandbox = jest.fn(async () => {})
+
+        const lease = await __private__.prepareReusedSandboxLease({
+            Sandbox,
+            sandbox: staleSandbox,
+            sandboxId: 'sandbox-stale',
+            e2bApiKey: 'test-key',
+            nowMs: now,
+            pauseSandbox,
+            resumeSandbox,
+            probeSandbox,
+        })
+
+        expect(lease.rotated).toBe(true)
+        expect(lease.previousLeaseRemainingMs).toBeLessThan(19 * 60 * 1000)
+        // pause + resume is the only call that provably re-arms E2B's clock.
+        expect(pauseSandbox).toHaveBeenCalledWith('sandbox-stale', 'test-key')
+        expect(resumeSandbox).toHaveBeenCalledWith('sandbox-stale', 'test-key', 3600)
+        expect(Sandbox.connect).toHaveBeenCalledWith('sandbox-stale', {
+            apiKey: 'test-key',
+            allowInternetAccess: true,
+        })
+        expect(rotatedSandbox.setTimeout).toHaveBeenCalledWith(HOUR_MS)
+        // A rotation is a resume, so it inherits the dead-envd hazard (E2B #884).
+        expect(probeSandbox).toHaveBeenCalledWith(rotatedSandbox)
+        expect(lease.sandbox).toBe(rotatedSandbox)
+        expect(lease.leaseDeadlineMs - Date.now()).toBeGreaterThan(55 * 60 * 1000)
+    })
+
+    test('budgets the agent slice inside the inherited lease when no rotation happens', () => {
+        const now = 4_000_000
+        // A warm sandbox with 40 minutes left must not be budgeted a 55-minute slice: the
+        // rotation has to be scheduled before E2B's own termination, not after it.
+        const leaseDeadlineMs = now + 40 * 60 * 1000
+        const totalDeadline = now + 5 * HOUR_MS
+        const slice = __private__.resolveVmAgentSliceRuntimeMs(leaseDeadlineMs, totalDeadline, now)
+
+        expect(slice).toBe(39.5 * 60 * 1000)
+        expect(now + slice).toBeLessThan(leaseDeadlineMs)
+    })
+
+    test('lets a failed rotation surface so the caller starts a fresh sandbox', async () => {
+        const now = 5_000_000
+        const staleSandbox = { getInfo: async () => ({ endAt: new Date(now + 60 * 1000) }) }
+
+        await expect(
+            __private__.prepareReusedSandboxLease({
+                Sandbox: { connect: jest.fn() },
+                sandbox: staleSandbox,
+                sandboxId: 'sandbox-dead',
+                e2bApiKey: 'test-key',
+                nowMs: now,
+                pauseSandbox: jest.fn(async () => {
+                    throw new Error('E2B pause 404: sandbox not found')
+                }),
+                resumeSandbox: jest.fn(),
+            })
+        ).rejects.toThrow(/pause 404/)
+    })
+
+    test('re-reads the lease after a mid-run slice rotation', async () => {
+        const rotatedDeadline = 9_999_999_999
+        const readLeaseDeadline = jest.fn(async () => rotatedDeadline)
+        const resolveSliceRuntime = jest.fn(() => 1)
+        const firstHandle = {
+            pid: 7,
+            wait: jest.fn(() => new Promise(() => {})),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const secondHandle = { pid: 7, wait: jest.fn(async () => ({ exitCode: 0 })), disconnect: jest.fn() }
+        const resumedSandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+
+        await __private__.superviseVmCommand({
+            Sandbox: { connect: jest.fn(async () => resumedSandbox) },
+            sandbox: { sandboxId: 'sandbox-1' },
+            commandHandle: firstHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            pauseSandbox: jest.fn(async () => {}),
+            resumeSandbox: jest.fn(async () => {}),
+            resolveSliceRuntime,
+            readLeaseDeadline,
+        })
+
+        expect(readLeaseDeadline).toHaveBeenCalledWith(resumedSandbox, expect.any(Number))
+        // The slice after the rotation is budgeted against E2B's reported expiry, not against
+        // the deadline the runner asked for.
+        expect(resolveSliceRuntime).toHaveBeenCalledTimes(2)
+        expect(resolveSliceRuntime.mock.calls[1][0]).toBe(rotatedDeadline)
+    })
+
+    test('treats a vanished sandbox as an unhealthy session', () => {
+        // Verbatim from the production incidents.
+        const vanished = new Error(`404: Sandbox "ixc8oy056mnc074n3gmyv" doesn't exist or you don't have access to it`)
+
+        expect(__private__.isE2bSandboxMissing(vanished)).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError(vanished)).toBe(true)
+        // A sandbox that is gone can never be kept alive, so it must not take the keep-alive
+        // branch and rely on the pause/kill cascade to discover that.
+        expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 1'))).toBe(false)
+        expect(__private__.isE2bSandboxMissing(new Error('repository not found'))).toBe(false)
+        expect(__private__.isE2bSandboxMissing(null)).toBe(false)
+        // An agent-exit error carries the assistant's own narration; the model writing about a
+        // sandbox must never cost the session.
+        expect(
+            __private__.isE2bSandboxMissing(
+                new Error('Claude exited. I checked whether the sandbox was not found and it is fine.')
+            )
+        ).toBe(false)
+        // Our own pause/resume wrapper surfaces the E2B body behind a status prefix.
+        expect(
+            __private__.isE2bSandboxMissing(
+                new Error(`E2B pause 404: Sandbox "iqx76qos2eb5xq2xjaq53" doesn't exist or you don't have access to it`)
+            )
+        ).toBe(true)
+    })
+})
+
 describe('VM session isolation', () => {
     test('only reuses explicitly paused or safely idle leased sessions', () => {
         expect(__private__.isReusableVmSession({ status: 'paused' })).toBe(true)
