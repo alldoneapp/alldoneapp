@@ -1,8 +1,23 @@
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import moment from 'moment'
 
 import { EMPTY_INBOX_DATE_FORMAT } from './AchievementsHelper'
-import { hasCelebratedEmptyInboxDay, markEmptyInboxDayCelebrated } from './emptyInboxCelebrationMarker'
+import {
+    hasCelebratedEmptyInboxDay,
+    markEmptyInboxDayCelebrated,
+    releaseEmptyInboxDayCelebration,
+} from './emptyInboxCelebrationMarker'
+
+/**
+ * How long a claimed day stays refundable: a run torn down before this is treated as never having
+ * played, and the day is handed back.
+ *
+ * Deliberately a local constant rather than an import of the motion's own duration — this hook
+ * decides WHETHER to celebrate and is kept ignorant of the animation — but it must never be shorter
+ * than the celebration, or a run cut off halfway would count as seen. `emptyInboxCelebrationMarker`
+ * pins that relationship.
+ */
+export const CELEBRATION_CLAIM_SETTLE_MS = 1000
 
 /**
  * AT-2418 — decides WHETHER today's empty-inbox dot should be celebrated, and returns a run id the
@@ -37,13 +52,30 @@ export default function useTodayEmptyInboxCelebration(emptyInboxDays, enabled, u
     const todayKey = moment().format(EMPTY_INBOX_DATE_FORMAT)
     const achievedToday = emptyInboxDays.includes(todayKey)
     const [celebrationRunId, setCelebrationRunId] = useState(0)
+    // AT-2445: a run that was claimed but torn down before it finished hands the day back, so the
+    // next genuine view of the empty inbox still gets its celebration. `played` flips as soon as the
+    // motion has had its full duration on screen; after that the day is spent for real.
+    const claimedRef = useRef(null)
 
     useLayoutEffect(() => {
-        if (!enabled || !achievedToday) return
-        if (hasCelebratedEmptyInboxDay(userId, todayKey)) return
+        if (!enabled || !achievedToday) return undefined
+        if (claimedRef.current === todayKey) return undefined
+        if (hasCelebratedEmptyInboxDay(userId, todayKey)) return undefined
 
         markEmptyInboxDayCelebrated(userId, todayKey)
+        claimedRef.current = todayKey
         setCelebrationRunId(runId => runId + 1)
+
+        const playedTimer = setTimeout(() => {
+            claimedRef.current = null
+        }, CELEBRATION_CLAIM_SETTLE_MS)
+
+        return () => {
+            clearTimeout(playedTimer)
+            if (claimedRef.current !== todayKey) return
+            claimedRef.current = null
+            releaseEmptyInboxDayCelebration(userId, todayKey)
+        }
     }, [achievedToday, enabled, todayKey, userId])
 
     return celebrationRunId

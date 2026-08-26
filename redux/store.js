@@ -309,6 +309,10 @@ export const initialState = {
     laterTasksExpandState: 0,
     somedayTasksExpanded: false,
     openTasksAmount: 0,
+    // AT-2445: `openTasksAmount` starts at 0 and is reset to 0 every time the count watchers are
+    // rebuilt, so "0" on its own cannot tell an empty inbox apart from an inbox that has not been
+    // counted yet. This flag is the missing half — see `setOpenTasksAmountLoaded`.
+    openTasksAmountLoaded: false,
     doneTasksAmount: null,
     earlierDoneTasksAmount: null,
     workflowTasksAmount: { amount: 0, loaded: false },
@@ -1816,6 +1820,15 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 openTasksAmount: openTasksAmount ? openTasksAmount : 0,
+            }
+        }
+
+        case 'Set open tasks amount loaded': {
+            const { openTasksAmountLoaded } = action
+            if (state.openTasksAmountLoaded === openTasksAmountLoaded) return state
+            return {
+                ...state,
+                openTasksAmountLoaded,
             }
         }
 
