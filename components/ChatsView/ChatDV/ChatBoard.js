@@ -64,7 +64,7 @@ import {
     getChatFullscreenTolerances,
     resolveChatFullscreenChange,
 } from '../Utils/chatScrollFullscreen'
-import { resolveStickToBottom, shouldPinToBottom } from '../Utils/chatAutoScroll'
+import useChatAutoScroll from '../../../hooks/Chats/useChatAutoScroll'
 
 export default function ChatBoard({
     projectId,
@@ -100,11 +100,6 @@ export default function ChatBoard({
     // Shared with the chat list's unread previews (AT-2256) so both archive the same way.
     const { archivingEmailKeys, archivedEmailKeys, archiveLinkedEmails } = useLinkedEmailArchive()
     const scrollViewRef = useRef()
-    // AT-2439 - "is the reader parked at the newest message?". A ref rather than state on purpose:
-    // it is written on every scroll frame and read only by the three pin sites below, so keeping it
-    // out of the render cycle avoids re-rendering the whole message list while the user drags.
-    const stickToBottomRef = useRef(true)
-    const contentHeightRef = useRef(0)
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const isFullscreenRef = useRef(isFullscreen)
     isFullscreenRef.current = isFullscreen
@@ -130,6 +125,11 @@ export default function ChatBoard({
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
+    // AT-2439 - a streamed answer arrives as repeated updates to the SAME comment, so the newest
+    // message's text length is what moves while it is being written; its id covers a genuinely new
+    // message. Combined into one signal because the pin only cares that "the newest message moved".
+    const { handleScrollPosition, handleContentSizeChange, handleViewportLayout, pinToBottom, releasePin } =
+        useChatAutoScroll({ scrollViewRef, newestMessageSignal: `${lastMessageid}:${lastMessageLength}` })
 
     const startWaitingForBotAnswer = () => {
         assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
@@ -168,7 +168,7 @@ export default function ChatBoard({
         // the newest message, or sending, re-arms it. (It used to be a latch that killed
         // auto-scroll for the rest of the mount, including for messages the reader sent
         // themselves, which is the reported bug.)
-        stickToBottomRef.current = false
+        releasePin()
         // AT-2382 - `toRender` re-subscribes `watchComments` with a bigger limit, so the
         // older messages are a round trip away. Ghosts hold the top of the thread until
         // they land, which also keeps the scrollTo below landing on stable content.
@@ -180,17 +180,12 @@ export default function ChatBoard({
         } else setToRender(10000)
     }
 
-    const scrollToEnd = () => {
-        scrollViewRef.current?.scrollToEnd({ animated: false })
-    }
-
     const onMessageSent = () => {
         // Sending is the least ambiguous "show me what happens next" there is, so it re-arms the
         // pin no matter where the reader was — including after "show earlier". The comment itself
         // only exists once Firestore echoes it back, so this first hop just closes whatever gap the
-        // composer left; the content-size pin below is what lands on the real message.
-        stickToBottomRef.current = true
-        scrollToEnd()
+        // composer left; the content-size pin is what lands on the real message.
+        pinToBottom()
     }
 
     const archiveAllLinkedEmails = async () => {
@@ -253,7 +248,9 @@ export default function ChatBoard({
                 if (change.edge === CHAT_EDGE_TOP) {
                     scrollViewRef.current?.scrollTo({ x: 0, y: 0, animated: false })
                 } else {
-                    scrollToEnd()
+                    // Coming to rest on the newest message is also where the reader wants to be
+                    // kept, so re-anchoring here re-arms the pin rather than just moving once.
+                    pinToBottom()
                 }
             })
         }
@@ -263,12 +260,10 @@ export default function ChatBoard({
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         const currentScrollPosition = contentOffset.y
 
-        contentHeightRef.current = contentSize.height
-
         // AT-2439 - two-way, and derived purely from where the thread actually is. Scrolling up
         // stands the pin down and coming back to the newest message re-arms it, so a nudge of the
         // wheel mid-answer no longer stops the rest of that answer from being followed.
-        stickToBottomRef.current = resolveStickToBottom({
+        handleScrollPosition({
             scrollY: currentScrollPosition,
             contentHeight: contentSize.height,
             viewportHeight: layoutMeasurement.height,
@@ -279,27 +274,6 @@ export default function ChatBoard({
             contentHeight: contentSize.height,
             viewportHeight: layoutMeasurement.height,
         })
-    }
-
-    // AT-2439 - the load-bearing pin. A message's height is not known when it first renders —
-    // markdown, code blocks, images and attachments all settle a frame or more later, and a
-    // streaming answer grows for as long as it is being written — so scrolling on "a message
-    // changed" alone aims at the PREVIOUS content height and stops short. This fires after the
-    // height is real, and again for every later growth, which is what makes it reliable.
-    const handleContentSizeChange = (contentWidth, contentHeight) => {
-        const previousContentHeight = contentHeightRef.current
-        contentHeightRef.current = contentHeight
-        if (shouldPinToBottom({ stickToBottom: stickToBottomRef.current, contentHeight, previousContentHeight })) {
-            scrollToEnd()
-        }
-    }
-
-    // AT-2439 - the viewport can shrink instead of the content growing: the mobile keyboard opening
-    // (KeyboardAvoidingView takes the height off this scroller) and the composer growing to several
-    // lines both push the newest message out of view while firing neither a scroll nor a
-    // content-size event.
-    const handleScrollViewLayout = () => {
-        if (stickToBottomRef.current) scrollToEnd()
     }
 
     const writeBrowserURL = () => {
@@ -427,17 +401,6 @@ export default function ChatBoard({
         }
     }, [])
 
-    // AT-2439 - the immediate hop, kept alongside the content-size pin above rather than replaced
-    // by it. A message whose height happens to be final on first render (plain text, the common
-    // case) is at the bottom within a tick instead of waiting for a layout pass, and a re-render
-    // that reuses the exact same content height reports no content-size change at all. The pin is
-    // what makes the scroll land correctly; this is what makes it land quickly.
-    useEffect(() => {
-        if (!stickToBottomRef.current) return undefined
-        const timeout = setTimeout(scrollToEnd)
-        return () => clearTimeout(timeout)
-    }, [lastMessageid, lastMessageLength])
-
     return (
         <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
             <PagesAmountSubscriptionContainer projectId={projectId} chat={chat} />
@@ -447,7 +410,7 @@ export default function ChatBoard({
                 showIndicator={shouldShowAssistantScrollIndicator(smallScreenNavigation, assistantResponseIsLoading)}
                 onScroll={handleScroll}
                 onContentSizeChange={handleContentSizeChange}
-                scrollOnLayout={handleScrollViewLayout}
+                scrollOnLayout={handleViewportLayout}
                 scrollEventThrottle={16}
             >
                 {page < chatPagesAmount && messages.length > 0 && (
