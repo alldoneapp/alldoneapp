@@ -26,15 +26,53 @@ describe('calendar section header', () => {
 
     it('links a Google calendar to the account the events belong to', () => {
         expect(getCalendarProviderUrl({ email: 'karsten@alldone.app' })).toBe(
-            'https://calendar.google.com/calendar/u/?authuser=karsten@alldone.app'
+            'https://calendar.google.com/calendar/r?authuser=karsten%40alldone.app'
         )
     })
 
-    it('links a Microsoft calendar to the event link, or to Outlook when it has none', () => {
+    // AT-2437 - the whole bug. `/u/` is an account INDEX and must be followed by a number, so
+    // `/calendar/u/?authuser=…` is not a route at all and a signed-in click got Google's 404. This
+    // suite asserted that exact string before, which is how it shipped - so pin the shape of the
+    // path, not just today's spelling.
+    it('never builds a Google URL with an indexless account path', () => {
+        const urls = [
+            getCalendarProviderUrl({ email: 'karsten@alldone.app' }),
+            getCalendarProviderUrl({ provider: 'google', email: 'karsten@alldone.app' }),
+            getCalendarProviderUrl({}),
+            getCalendarProviderUrl(undefined),
+        ]
+
+        urls.forEach(url => {
+            expect(url).not.toContain('/calendar/u/?')
+            expect(url).toMatch(/^https:\/\/calendar\.google\.com\/calendar\/r(\?|$)/)
+            // An `/u/N` in the path would outrank `authuser` and silently open the wrong account.
+            expect(url).not.toMatch(/\/u\//)
+        })
+    })
+
+    it('encodes the account so a plus-addressed calendar still resolves', () => {
+        expect(getCalendarProviderUrl({ email: 'karsten+work@alldone.app' })).toBe(
+            'https://calendar.google.com/calendar/r?authuser=karsten%2Bwork%40alldone.app'
+        )
+    })
+
+    it('opens plain Google Calendar when the events carry no account', () => {
+        expect(getCalendarProviderUrl({})).toBe('https://calendar.google.com/calendar/r')
+        expect(getCalendarProviderUrl(undefined)).toBe('https://calendar.google.com/calendar/r')
+        expect(getCalendarProviderUrl({ email: '' })).toBe('https://calendar.google.com/calendar/r')
+    })
+
+    // A header labelled "Outlook Calendar" used to open `calendarData.link` - the FIRST MEETING's
+    // own event page, since `microsoftCalendarProvider` maps `htmlLink: event.webLink`. Both
+    // providers now open the calendar itself.
+    it('links a Microsoft calendar to Outlook, never to a single event', () => {
         expect(getCalendarProviderUrl({ provider: 'microsoft', link: 'https://outlook.office.com/x' })).toBe(
-            'https://outlook.office.com/x'
+            'https://outlook.office.com/calendar/'
         )
         expect(getCalendarProviderUrl({ provider: 'microsoft' })).toBe('https://outlook.office.com/calendar/')
+        expect(getCalendarProviderUrl({ provider: 'microsoft', email: 'karsten@alldone.app' })).toBe(
+            'https://outlook.office.com/calendar/'
+        )
     })
 })
 

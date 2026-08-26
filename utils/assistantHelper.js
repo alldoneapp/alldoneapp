@@ -19,7 +19,6 @@ import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../i18n/TranslationService'
 import {
-    getAssistantInProject,
     getAssistantInProjectObject,
     getAssistantProjectId,
 } from '../components/AdminPanel/Assistants/assistantsHelper'
@@ -36,11 +35,7 @@ import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinner
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
-import { ASSISTANT_WORKFLOW_FIRST_STEP_ID, resolveAssistantWorkflowExecutionMode } from './assistantWorkflow'
-import {
-    buildOnDemandAssistantTaskMetadata,
-    shouldUseClientTaskCompletionFallback,
-} from '../functions/shared/assistantTaskCompletionContract'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from './assistantWorkflow'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -378,7 +373,7 @@ const createTopicForPreConfigTask = async (
 
         try {
             const functionCallStartTime = Date.now()
-            const result = await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
+            await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
                 timeout: 540000, // 9 minutes (540 seconds) to match backend timeout
             })
             const clientCallCompleteTime = Date.now()
@@ -398,7 +393,6 @@ const createTopicForPreConfigTask = async (
                 })
             }
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
-            return result
         } catch (error) {
             console.error('Error in generatePreConfigTaskResultSecondGen:', {
                 error,
@@ -483,7 +477,7 @@ export const executePreConfigPromptForTask = ({
                 setObjectAssistantEnabled(projectId, taskId, 'tasks', true),
             ])
 
-            return await createTopicForPreConfigTask(
+            await createTopicForPreConfigTask(
                 projectId,
                 taskId,
                 isPublicFor,
@@ -492,6 +486,7 @@ export const executePreConfigPromptForTask = ({
                 resolvedAiSettings,
                 mergedTaskMetadata
             )
+            return true
         })
         .catch(error => {
             console.error('Failed to execute pre-config prompt for current task:', error)
@@ -515,34 +510,15 @@ export const generateTaskFromPreConfig = async (
     const { skipNavigation = false, waitForDirectRun = true } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     // Preconfigured prompts created before execution modes existed always ran directly.
-    const requestedExecutionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
-    const executionMode = resolveAssistantWorkflowExecutionMode(
-        getAssistantInProject(projectId, assistantId),
-        projectId,
-        requestedExecutionMode
-    )
-    const modeAdjustedTaskMetadata =
-        taskMetadata && executionMode !== requestedExecutionMode ? { ...taskMetadata, executionMode } : taskMetadata
-    const effectiveTaskMetadata =
-        executionMode === TASK_EXECUTION_MODE_DIRECT
-            ? buildOnDemandAssistantTaskMetadata(modeAdjustedTaskMetadata)
-            : modeAdjustedTaskMetadata
+    const executionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
     const { loggedUser } = store.getState()
-
-    if (executionMode !== requestedExecutionMode) {
-        console.warn('Assistant has no configured workflow step; running pre-configured task directly', {
-            projectId,
-            assistantId,
-            name,
-        })
-    }
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,
         name,
         assistantId,
         aiSettings: resolvedAiSettings,
-        taskMetadata: effectiveTaskMetadata,
+        taskMetadata,
         skipNavigation,
     })
 
@@ -584,10 +560,9 @@ export const generateTaskFromPreConfig = async (
         generatedTask.aiSystemMessage = resolvedAiSettings.systemMessage
     }
 
-    // Persist completion provenance with direct generated tasks so the callable can safely
-    // distinguish them from existing tasks that merely run an assistant prompt.
-    if (effectiveTaskMetadata) {
-        generatedTask.taskMetadata = effectiveTaskMetadata
+    // Add taskMetadata to the task if provided (for webhook tasks)
+    if (taskMetadata) {
+        generatedTask.taskMetadata = taskMetadata
     }
 
     console.log('Creating task with settings:', {
@@ -598,7 +573,7 @@ export const generateTaskFromPreConfig = async (
             reasoningEffort: generatedTask.aiReasoningEffort,
             systemMessage: generatedTask.aiSystemMessage,
         },
-        taskMetadata: effectiveTaskMetadata,
+        taskMetadata,
     })
 
     const task = await uploadNewTask(projectId, generatedTask, null, true, false, false, false)
@@ -623,24 +598,24 @@ export const generateTaskFromPreConfig = async (
             isPublicFor: taskWithPublicFor.isPublicFor,
             assistantId: taskWithPublicFor.assistantId,
             aiSettings: resolvedAiSettings,
-            taskMetadata: effectiveTaskMetadata,
+            taskMetadata,
             taskWithPublicForSendWhatsApp: taskWithPublicFor.sendWhatsApp,
             taskWithPublicForTaskMetadata: taskWithPublicFor.taskMetadata,
         })
 
         // Merge provided taskMetadata with task-specific metadata
         const mergedMetadata = {
-            ...(effectiveTaskMetadata || {}),
-            sendWhatsApp: taskWithPublicFor.sendWhatsApp ?? effectiveTaskMetadata?.sendWhatsApp,
+            ...(taskMetadata || {}),
+            sendWhatsApp: taskWithPublicFor.sendWhatsApp ?? taskMetadata?.sendWhatsApp,
             name: taskWithPublicFor.name,
             recurrence: taskWithPublicFor.recurrence,
         }
 
         console.log('Merged metadata for backend:', {
             mergedMetadata,
-            taskMetadataInput: effectiveTaskMetadata,
+            taskMetadataInput: taskMetadata,
             taskSendWhatsApp: taskWithPublicFor.sendWhatsApp,
-            taskMetadataSendWhatsApp: effectiveTaskMetadata?.sendWhatsApp,
+            taskMetadataSendWhatsApp: taskMetadata?.sendWhatsApp,
             taskTaskMetadataSendWhatsApp: taskWithPublicFor.taskMetadata?.sendWhatsApp,
         })
 
@@ -659,12 +634,12 @@ export const generateTaskFromPreConfig = async (
             store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
         }
 
-        if (effectiveTaskMetadata?.isWebhookTask) {
+        if (taskMetadata?.isWebhookTask) {
             await new Promise(resolve => setTimeout(resolve, 1000))
         }
 
         const runAndCompleteDirectTask = async () => {
-            const executionResult = await executePreConfigPromptForTask({
+            const succeeded = await executePreConfigPromptForTask({
                 projectId,
                 taskId: taskWithPublicFor.id,
                 task: taskWithPublicFor,
@@ -675,10 +650,7 @@ export const generateTaskFromPreConfig = async (
                 taskMetadata: mergedMetadata,
             })
 
-            // Old Functions deployments do not return taskCompletion, while a transient server
-            // completion failure can still be recovered by the live client. The server is the
-            // authoritative owner once it reports success, avoiding duplicate completion writes.
-            if (executionResult && shouldUseClientTaskCompletionFallback(executionResult.taskCompletion)) {
+            if (succeeded) {
                 await moveTasksFromOpen(
                     projectId,
                     taskWithPublicFor,

@@ -1,6 +1,5 @@
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../components/TaskListView/Utils/TasksHelper'
-import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from './taskExecutionMode'
 
 export const ASSISTANT_WORKFLOW_FIRST_STEP_ID = 'assistant-start'
 export const DEFAULT_ASSISTANT_WORKFLOW_PROMPT = 'Do this'
@@ -22,15 +21,6 @@ export const getAssistantWorkflow = (assistant, projectId) => assistant?.workflo
 
 export const getAssistantWorkflowFirstStep = (assistant, projectId) =>
     getAssistantWorkflow(assistant, projectId)[ASSISTANT_WORKFLOW_FIRST_STEP_ID] || null
-
-export const resolveAssistantWorkflowExecutionMode = (assistant, projectId, requestedExecutionMode) => {
-    if (requestedExecutionMode !== TASK_EXECUTION_MODE_WORKFLOW) return requestedExecutionMode
-
-    const firstStep = getAssistantWorkflowFirstStep(assistant, projectId)
-    return firstStep?.reviewerType === 'assistant' && firstStep?.reviewerUid
-        ? TASK_EXECUTION_MODE_WORKFLOW
-        : TASK_EXECUTION_MODE_DIRECT
-}
 
 export const assistantWorkflowFirstStepHasPrompt = (assistant, projectId) =>
     !!getAssistantWorkflowFirstStep(assistant, projectId)?.aiPrompt?.trim()
