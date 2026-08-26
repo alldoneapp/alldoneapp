@@ -25,7 +25,6 @@ import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../utils/Linkin
 import { cloneDeep } from 'lodash'
 import Backend from '../../../utils/BackendBridge'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
-import { getAppHistoryAction, HASHTAG_COLOR_HISTORY_TYPE } from './quillHistoryEntries'
 import {
     getAttachmentData,
     getImageData,
@@ -795,35 +794,17 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     event.preventDefault()
 }
 
-/**
- * Claims the top of the stack when it is one of the app's own marker entries (a hashtag colour
- * change, pushed by HashtagWrapper), applies that change through the backend instead of through
- * the document, and returns false so `HookedHistory` cancels quill's own undo/redo.
- *
- * AT-2440: this used to index the entry the QUILL 1 way — `stack[startAction][last][startAction]`
- * is `{ delta, range }.undo` under quill 2, i.e. `undefined`, so reading `.type` off it threw on
- * EVERY undo and redo in every editor. Because quill runs this from inside its keydown binding
- * and its `beforeinput` handler, and both reach `preventDefault()` only after `history.undo()`
- * returns, the throw handed the keystroke to the browser's native contenteditable undo — which
- * knows nothing about a programmatic paste and therefore reverted the user's earlier TYPING and
- * left the pasted text in place. See quillHistoryEntries.js for the full shape story.
- *
- * Anything that is not an app entry (i.e. every ordinary edit) must fall through untouched, so
- * this returns undefined rather than false for it.
- */
 export const beforeUndoRedo = (stack, startAction, endAction) => {
-    const entries = stack && stack[startAction]
-    if (!entries || entries.length === 0) return
-
-    const topEntry = entries[entries.length - 1]
-    const action = getAppHistoryAction(topEntry, startAction)
-    if (!action || action.type !== HASHTAG_COLOR_HISTORY_TYPE) return
-
-    entries.pop()
-    stack[endAction].push(topEntry)
-    const { objectId, text, colorKey } = action
-    Backend.updateHastagsColors(objectId, text, colorKey, true)
-    return false
+    if (
+        stack[startAction].length > 0 &&
+        stack[startAction][stack[startAction].length - 1][startAction].type === 'hashtagColor'
+    ) {
+        const hashtagColorAction = stack[startAction].pop()
+        stack[endAction].push(hashtagColorAction)
+        const { objectId, text, colorKey } = hashtagColorAction[startAction]
+        Backend.updateHastagsColors(objectId, text, colorKey, true)
+        return false
+    }
 }
 
 // Single-line inputs (task names, titles) must never receive line breaks: a programmatic '\n'
