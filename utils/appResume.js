@@ -85,7 +85,9 @@ const runBootIntegrityCheckSafely = () => {
         // test that touches a resume.
         // eslint-disable-next-line global-require
         const { runBootIntegrityCheck } = require('./InitialLoad/bootIntegrityHealer')
-        runBootIntegrityCheck().catch(error => console.warn('[AppResume] Integrity check failed:', error))
+        runBootIntegrityCheck({ trigger: 'app_resume' }).catch(error =>
+            console.warn('[AppResume] Integrity check failed:', error)
+        )
     } catch (error) {
         console.warn('[AppResume] Integrity check unavailable:', error)
     }

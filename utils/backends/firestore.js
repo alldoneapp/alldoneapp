@@ -148,6 +148,7 @@ import {
 
 import firebase from 'firebase/compat/app'
 import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
+import { resolveAdministratorUser } from './administratorUserResolver'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
 import { AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoArchiveProjectsAfterDaysHelper'
@@ -293,6 +294,7 @@ import { createBotDailyTopic } from '../assistantHelper'
 import {
     addProjectInvitationToUser,
     addUserToProject,
+    fetchUserDataResult,
     getUserData,
     getUsersByEmail,
     getUsersInvitedToProject,
@@ -3140,27 +3142,20 @@ export const addGuideToTemplateFeedsChain = async (template, guideId) => {
 }
 
 export const getAdministratorUser = async () => {
-    const userId = (await db.doc('roles/administrator').get()).data()?.userId
-    if (!userId) return {}
-    // The referenced user document can be absent (deleted account, or a roles/administrator
-    // pointer carried into an environment where that user was never created), which the app
-    // treats as optional rather than fatal — dereferencing the missing data used to throw out of
-    // the whole global-data load and send it into its five-attempt retry loop.
-    //
-    // It reads through getUserData so it inherits the server confirmation in
-    // `fetchUserDataResult`: a client read can report an existing user document as missing
-    // (production, 2026-08-13), and here that degrades in complete silence — `administratorUser`
-    // becomes `{}`, so `loggedUserId === administratorUserId` is false and the Admin entry
-    // disappears from the sidebar of the one person who is supposed to see it.
-    const administrator = await getUserData(userId, false)
-    if (!administrator) {
-        console.warn(
-            `[GlobalData] The administrator user document (/users/${userId}) could not be read. ` +
-                'Admin-only UI stays hidden for this session.'
-        )
-        return {}
-    }
-    return administrator
+    return resolveAdministratorUser({
+        readRoleFromClient: async () => {
+            const snapshot = await db.doc('roles/administrator').get()
+            return {
+                exists: snapshot.exists,
+                data: snapshot.data(),
+                fromCache: snapshot.metadata?.fromCache,
+            }
+        },
+        readRoleDirectly: () => readDocumentDirectlyFromServer('roles/administrator'),
+        readUserResult: userId => fetchUserDataResult(userId, false),
+        recoverRealtimeConnection: restartFirestoreNetwork,
+        warn: (...args) => console.warn(...args),
+    })
 }
 
 const addProjectArchivedStatus = (projectId, userId, batch) => {
