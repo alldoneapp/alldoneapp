@@ -28,6 +28,7 @@ const {
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
 const { Timestamp } = require('firebase-admin/firestore')
+const { completeOnDemandAssistantTaskAfterRun } = require('./Assistant/generatedAssistantTaskCompletion')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -2917,6 +2918,14 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 objectType,
                 { triggerMessageId: messageId }
             )
+            const taskCompletion = await completeOnDemandAssistantTaskAfterRun({
+                taskResult: result,
+                projectId,
+                taskId,
+                userId,
+                assistantId,
+                taskMetadata,
+            })
 
             const totalFunctionTime = Date.now() - functionEntryTime
             console.log('🎯 [TIMING] generatePreConfigTaskResultSecondGen COMPLETE', {
@@ -2925,7 +2934,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 completionTime: Date.now(),
             })
 
-            return result
+            return taskCompletion ? { ...result, taskCompletion } : result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
