@@ -32,10 +32,11 @@ jest.mock('../../../redux/actions', () => ({
     setLaterTasksExpandState: jest.fn(state => ({ type: 'Set later tasks expand state', state })),
 }))
 
-const buildState = ({ openTasksAmount, todayEmptyGoalsTotal }) => ({
+const buildState = ({ openTasksAmount, todayEmptyGoalsTotal, openTasksAmountLoaded = true }) => ({
     smallScreenNavigation: false,
     isMiddleScreen: false,
     openTasksAmount,
+    openTasksAmountLoaded,
     todayEmptyGoalsTotalAmountInOpenTasksView: { total: todayEmptyGoalsTotal },
     loggedUserProjectsMap: {},
     currentUser: { uid: 'user-1' },
@@ -159,6 +160,37 @@ describe('OpenTasksViewAllProjects', () => {
         expect(
             renderedChildTypes(renderView(buildState({ openTasksAmount: 5, todayEmptyGoalsTotal: 0 })))
         ).not.toContain('AllProjectsEmptyInbox')
+    })
+
+    /**
+     * AT-2445 — the reason the empty-inbox celebration never reached anyone.
+     *
+     * `openTasksAmount` is a running total accumulated across one Firestore listener per project,
+     * it starts at 0, and `unwatchOpenTasksAmount` forces it back to 0 every time those listeners
+     * are rebuilt — which happens on every mount of this board (`TasksAmountContainers` registers
+     * an empty project list for one pass first) and again on every Later/Someday toggle. So a bare
+     * `!openTasksAmount` was true for the whole loading window of every visit.
+     *
+     * That is not just a congrats flashing during load: the flash mounts
+     * `EmptyInboxOverview celebrateNewDay`, which claims the once-per-day celebration marker in a
+     * `useLayoutEffect`. The day was therefore spent by a frame nobody saw, and the real
+     * empty-inbox moment later that day animated nothing.
+     *
+     * My Day has always had this guard (`tasksLoaded && …`); this board was the outlier.
+     */
+    it('AT-2445: does not claim an empty inbox before the counts have loaded', () => {
+        expect(
+            renderedChildTypes(
+                renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false }))
+            )
+        ).not.toContain('AllProjectsEmptyInbox')
+
+        // ...and shows it as soon as they have, with the same zero counts.
+        expect(
+            renderedChildTypes(
+                renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: true }))
+            )
+        ).toContain('AllProjectsEmptyInbox')
     })
 
     // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer

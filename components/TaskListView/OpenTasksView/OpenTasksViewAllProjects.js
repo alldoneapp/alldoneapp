@@ -131,6 +131,7 @@ export default function OpenTasksViewAllProjects() {
     const projectIds = useSelector(state => state.loggedUser.projectIds)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const openTasksAmount = useSelector(state => state.openTasksAmount)
+    const openTasksAmountLoaded = useSelector(state => state.openTasksAmountLoaded)
     const todayEmptyGoalsTotal = useSelector(state => state.todayEmptyGoalsTotalAmountInOpenTasksView.total)
     const inFocusTaskProjectId = useSelector(state => state.loggedUser.inFocusTaskProjectId)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
@@ -248,7 +249,20 @@ export default function OpenTasksViewAllProjects() {
 
     let areFirstProject = false
 
-    const needToShowEmptyBoardPicture = !openTasksAmount && !todayEmptyGoalsTotal
+    // AT-2445: `openTasksAmount` is a running total accumulated across one Firestore listener per
+    // project, and `unwatchOpenTasksAmount` forces it back to 0 every time those listeners are
+    // rebuilt — which happens on every mount of this board (`TasksAmountContainers` registers an
+    // empty project list for one pass first), and again on every Later/Someday toggle. So `!amount`
+    // is true for the whole loading window and CANNOT mean "empty inbox" on its own.
+    //
+    // The cost of getting this wrong was not only the congrats flashing during load: that flash
+    // mounted `EmptyInboxOverview celebrateNewDay`, whose `useLayoutEffect` spends the once-per-day
+    // celebration marker. The day's celebration was therefore routinely consumed by a frame nobody
+    // saw, and the real empty-inbox moment later that day showed no animation at all.
+    //
+    // My Day has always gated this the same way (`tasksLoaded && …` in `MyDayOpenTasks`); the
+    // all-projects board was the outlier.
+    const needToShowEmptyBoardPicture = openTasksAmountLoaded && !openTasksAmount && !todayEmptyGoalsTotal
 
     return (
         <View
