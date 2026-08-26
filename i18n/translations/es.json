@@ -2744,5 +2744,7 @@
     "Added to goal": "Añadida al objetivo",
     "Moved to project": "Movida a {{project}}",
     "this project": "este proyecto",
-    "Switch assistant": "Cambiar de asistente"
+    "Switch assistant": "Cambiar de asistente",
+    "New message": "Mensaje nuevo",
+    "Jump to newest message": "Ir al mensaje más reciente"
 }

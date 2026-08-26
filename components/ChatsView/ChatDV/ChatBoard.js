@@ -65,6 +65,7 @@ import {
     resolveChatFullscreenChange,
 } from '../Utils/chatScrollFullscreen'
 import useChatAutoScroll from '../../../hooks/Chats/useChatAutoScroll'
+import NewMessagesPill from './NewMessagesPill'
 
 export default function ChatBoard({
     projectId,
@@ -128,8 +129,14 @@ export default function ChatBoard({
     // AT-2439 - a streamed answer arrives as repeated updates to the SAME comment, so the newest
     // message's text length is what moves while it is being written; its id covers a genuinely new
     // message. Combined into one signal because the pin only cares that "the newest message moved".
-    const { handleScrollPosition, handleContentSizeChange, handleViewportLayout, pinToBottom, releasePin } =
-        useChatAutoScroll({ scrollViewRef, newestMessageSignal: `${lastMessageid}:${lastMessageLength}` })
+    const {
+        handleScrollPosition,
+        handleContentSizeChange,
+        handleViewportLayout,
+        pinToBottom,
+        releasePin,
+        hasNewMessagesBelow,
+    } = useChatAutoScroll({ scrollViewRef, newestMessageSignal: `${lastMessageid}:${lastMessageLength}` })
 
     const startWaitingForBotAnswer = () => {
         assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
@@ -185,7 +192,11 @@ export default function ChatBoard({
         // pin no matter where the reader was — including after "show earlier". The comment itself
         // only exists once Firestore echoes it back, so this first hop just closes whatever gap the
         // composer left; the content-size pin is what lands on the real message.
-        pinToBottom()
+        //
+        // Animated here and only here: sending from further up the thread is a jump the reader
+        // should be able to follow with their eyes. The automatic follow while an answer streams
+        // stays instant — smoothing three to ten scrolls a second would smear the text being read.
+        pinToBottom({ animated: true })
     }
 
     const archiveAllLinkedEmails = async () => {
@@ -412,6 +423,9 @@ export default function ChatBoard({
                 onContentSizeChange={handleContentSizeChange}
                 scrollOnLayout={handleViewportLayout}
                 scrollEventThrottle={16}
+                fixedChildren={
+                    hasNewMessagesBelow ? <NewMessagesPill onPress={() => pinToBottom({ animated: true })} /> : null
+                }
             >
                 {page < chatPagesAmount && messages.length > 0 && (
                     <ShowMoreButton expand={showEarlier} expandText={'show earlier'} loading={loadingMoreMessages} />
