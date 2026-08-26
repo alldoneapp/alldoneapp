@@ -234,11 +234,8 @@ export default function AssistantOptions({
     return (
         <View style={localStyles.container}>
             <HeaderContainer style={localStyles.headerRow} {...headerContainerProps}>
-                {/* Kept short on purpose (AT-2442): the header is a single centred line
-                    (numberOfLines={1}) that also carries the assistant's display name, so a
-                    longer greeting ellipsises on narrow phones. */}
                 <Text style={localStyles.headerText} numberOfLines={1}>
-                    {`${assistant.displayName}: ${translate('How can I help?')}`}
+                    {`${assistant.displayName}: ${translate('What can I do for you today?')}`}
                 </Text>
                 {!!onCollapse && (
                     <View style={localStyles.collapseButton}>
