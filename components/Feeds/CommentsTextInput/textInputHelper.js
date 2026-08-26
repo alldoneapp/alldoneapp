@@ -32,6 +32,7 @@ import {
     getMilestoneTagData,
     getVideoData,
 } from '../../../functions/Utils/parseTextUtils'
+import { addFilesAsAttachments } from './attachmentFileUtils'
 
 export const MENTION_MODAL_TASKS_TAB = 0
 export const MENTION_MODAL_GOALS_TAB = 1
@@ -121,6 +122,40 @@ export const insertAttachmentInsideEditor = (inputCursorIndex, editor, text, uri
         insertAttachmentTag(inputCursorIndex, editor, text, uri, id, isLoading)
     }
 }
+
+/**
+ * Put a list of picked/dropped/pasted files into an editor as the app's own attachment
+ * embeds, advancing the cursor between them (AT-2441).
+ *
+ * The one place that stepping lives: `AttachmentDropZone` (drop) and `CustomTextInput3`'s
+ * `appManagedFileUpload` (paste, see quill2Setup) both go through here, so a file reaches a
+ * comment identically however it arrives.
+ */
+export const insertFilesAsAttachments = ({ files, editor, startIndex = 0 }) => {
+    let nextCursorIndex = startIndex
+    const addedFiles = addFilesAsAttachments(files, (name, uri) => {
+        insertAttachmentInsideEditor(nextCursorIndex, editor, name, uri)
+        nextCursorIndex += 3
+    })
+    return { addedFiles, nextCursorIndex }
+}
+
+/**
+ * The `quill.appManagedFileUpload` an attachment-capable input declares (AT-2441).
+ *
+ * Quill hands it `(range, files)` from `Uploader.upload`, which since quill 2 is also how a
+ * PASTED image file arrives (`Clipboard.onCapturePaste`). Insert at the range quill resolved
+ * — the caret for a paste — rather than at a cursor the caller remembered, and apply the same
+ * traffic limit the drop zone does.
+ */
+export const createAppManagedFileUpload =
+    ({ editor, projectId, setInputCursorIndex }) =>
+    (range, files) => {
+        if (!editor || checkIsLimitedByTraffic(projectId)) return
+        const startIndex = range && range.index != null ? range.index : editor.getLength()
+        const { addedFiles, nextCursorIndex } = insertFilesAsAttachments({ files, editor, startIndex })
+        if (addedFiles.length > 0) setInputCursorIndex?.(nextCursorIndex)
+    }
 
 // The editorMeta module (quill2Setup) decodes the app-encoded placeholder during init and
 // then overwrites `options.placeholder` with the visible text only, so reading the raw

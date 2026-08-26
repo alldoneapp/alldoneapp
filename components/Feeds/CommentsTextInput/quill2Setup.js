@@ -7,6 +7,7 @@ const Clipboard = Quill.import('modules/clipboard')
 const CodeBlock = Quill.import('formats/code-block')
 const History = Quill.import('modules/history')
 const SnowTheme = Quill.import('themes/snow')
+const Uploader = Quill.import('modules/uploader')
 
 // The chevron the old patched dist used for picker labels (replaces quill's sort-arrows icon).
 export const PICKER_CHEVRON_SVG = `<svg
@@ -140,6 +141,33 @@ class GatedClipboard extends Clipboard {
         const inserted = this.quill.getLength() - lengthBefore + range.length
         this.quill.setSelection(range.index + inserted, Quill.sources.SILENT)
         this.quill.scrollSelectionIntoView()
+    }
+}
+
+// AT-2441. Quill 2 sends a PASTED image file through the uploader as well — see
+// `Clipboard.onCapturePaste`, which calls `quill.uploader.upload(range, files)` whenever the
+// clipboard carries files — and the uploader's default handler inserts a base64 data-URL
+// `image` embed. The app's editors do not know that embed: `CustomTextInput3.updateText`
+// serializes `attachment` / `customImageFormat` / `videoFormat` and nothing else, so a pasted
+// screenshot appeared in the composer and was then silently dropped when the comment was
+// posted. (Quill 1 had no such interception: the browser's own paste put an <img> in the
+// contenteditable, which the autoformat matcher turned into a real attachment. This regressed
+// at the quill 2 migration.)
+//
+// An editor that owns its attachments declares `quill.appManagedFileUpload` and gets the same
+// named attachment a dropped file produces. Everything else — headless editors, the notes
+// editor (which switches the module off entirely) — keeps quill's behaviour untouched.
+class GatedUploader extends Uploader {
+    upload(range, files) {
+        const handleFiles = this.quill.appManagedFileUpload
+        if (typeof handleFiles !== 'function') {
+            super.upload(range, files)
+            return
+        }
+        // Deliberately not filtered by `options.mimetypes` (png/jpeg): the app supports every
+        // image type it can name plus arbitrary files, and a pasted pdf currently inserts
+        // nothing at all because quill drops it here.
+        handleFiles(range, files)
     }
 }
 
@@ -295,4 +323,5 @@ Quill.prototype.scrollRectIntoView = confineScrollRectIntoView(Quill.prototype.s
 Quill.register('modules/editorMeta', EditorMeta, true)
 Quill.register('modules/clipboard', GatedClipboard, true)
 Quill.register('modules/history', HookedHistory, true)
+Quill.register('modules/uploader', GatedUploader, true)
 Quill.register('themes/snow', CustomSnowTheme, true)

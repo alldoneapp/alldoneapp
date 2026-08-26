@@ -20,6 +20,7 @@ import {
     CREATE_SUBTASK_MODAL_THEME,
     CREATE_TASK_MODAL_THEME,
     createPlaceholder,
+    createAppManagedFileUpload,
     getElementOffset,
     GOAL_THEME,
     MENTION_MODAL_CONTACTS_TAB,
@@ -1078,6 +1079,11 @@ function CustomTextInput3(
         )
     }
 
+    // Which inputs may hold a file at all — the chat composer, the rich comment modal and the
+    // task description ask for these formats; a title or search field does not (AT-2441).
+    const supportsAttachments =
+        !!otherFormats && otherFormats.some(format => format === 'attachment' || format === 'customImageFormat')
+
     const getFormats = () => {
         if (!disabledTags && !inMentionsEditionTag) {
             const formats = otherFormats ? [...ALLOWED_FORMATS, ...otherFormats] : [...ALLOWED_FORMATS]
@@ -1355,6 +1361,24 @@ function CustomTextInput3(
         }
         return unmountComponent
     }, [])
+
+    // AT-2441. Quill routes a PASTED image file through its uploader, which would insert a
+    // base64 `image` embed this input cannot serialize — it is lost the moment the comment is
+    // posted (see GatedUploader in quill2Setup). Declare the app's own insert instead, so a
+    // pasted file becomes exactly what a dropped one does. Only for inputs that actually accept
+    // attachments: a title or search field has no such format and keeps quill's behaviour.
+    // Reassigned on every render on purpose — the handler closes over the project and the
+    // cursor setter, both of which can change under a live editor.
+    useEffect(() => {
+        if (!quillRef.current) return
+        quillRef.current.appManagedFileUpload = supportsAttachments
+            ? createAppManagedFileUpload({
+                  editor: quillRef.current,
+                  projectId: innerProjectId,
+                  setInputCursorIndex,
+              })
+            : undefined
+    })
 
     useImperativeHandle(ref, () => ({
         getEditorId: () => {

@@ -7,11 +7,17 @@ import renderer, { act } from 'react-test-renderer'
 import { Platform, Text } from 'react-native'
 
 import AttachmentDropZone, { addDroppedFilesToEditor } from './AttachmentDropZone'
-import { insertAttachmentInsideEditor } from './textInputHelper'
+import { insertFilesAsAttachments } from './textInputHelper'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 
+// The per-file cursor stepping now lives in `insertFilesAsAttachments` (AT-2441), shared with
+// the paste path; it is driven for real against a Quill document in
+// attachmentDropDuplicate.test.js. Here it is a seam, so these stay tests of the drop zone.
 jest.mock('./textInputHelper', () => ({
-    insertAttachmentInsideEditor: jest.fn(),
+    insertFilesAsAttachments: jest.fn(({ files, startIndex = 0 }) => ({
+        addedFiles: Array.from(files || []),
+        nextCursorIndex: startIndex + 3 * Array.from(files || []).length,
+    })),
 }))
 
 jest.mock('../../Premium/PremiumHelper', () => ({
@@ -60,18 +66,9 @@ describe('AttachmentDropZone', () => {
         })
 
         expect(addedFiles).toEqual(files)
-        expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(
-            1,
-            7,
-            editor,
-            'first_image.png',
-            'blob:first image.png'
-        )
-        expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(2, 10, editor, 'second.jpg', 'blob:second.jpg')
-        expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(3, 13, editor, 'notes.pdf', 'blob:notes.pdf')
+        expect(insertFilesAsAttachments).toHaveBeenCalledWith({ files, editor, startIndex: 7 })
         expect(setInputCursorIndex).toHaveBeenCalledWith(16)
         expect(editor.focus).toHaveBeenCalled()
-        expect(global.alert).not.toHaveBeenCalled()
     })
 
     it('shows drag feedback, prevents browser file navigation, and inserts the drop', () => {
@@ -105,21 +102,28 @@ describe('AttachmentDropZone', () => {
         act(() => getDropZone().props.onDropCapture(dragEvent))
 
         expect(checkIsLimitedByTraffic).toHaveBeenCalledWith('project-1')
-        expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, editor, 'screen.webp', 'blob:screen.webp')
+        expect(insertFilesAsAttachments).toHaveBeenCalledWith({ files: [file], editor, startIndex: 0 })
         expect(tree.root.findAllByProps({ testID: 'attachment-drop-feedback' })).toHaveLength(0)
     })
 
-    it('blocks oversized files using the same limit as click-to-upload', () => {
+    // The 50 MB guard itself lives in `addFilesAsAttachments` and is pinned in
+    // attachmentFileUtils.test.js; what matters here is that a drop which added nothing
+    // leaves the composer alone.
+    it('does not move the cursor or steal focus when nothing was added', () => {
         const editor = { focus: jest.fn() }
+        const setInputCursorIndex = jest.fn()
+        insertFilesAsAttachments.mockReturnValueOnce({ addedFiles: [], nextCursorIndex: 4 })
 
         const addedFiles = addDroppedFilesToEditor({
             files: [{ name: 'huge.zip', size: 51 * 1024 * 1024 }],
             editor,
+            inputCursorIndex: 4,
+            setInputCursorIndex,
         })
 
         expect(addedFiles).toEqual([])
-        expect(insertAttachmentInsideEditor).not.toHaveBeenCalled()
-        expect(global.alert).toHaveBeenCalledWith(expect.stringContaining('File size exceeds'))
+        expect(setInputCursorIndex).not.toHaveBeenCalled()
+        expect(editor.focus).not.toHaveBeenCalled()
     })
 
     it('still prevents browser navigation while the editor is unavailable', () => {
@@ -143,6 +147,6 @@ describe('AttachmentDropZone', () => {
 
         expect(dropEvent.preventDefault).toHaveBeenCalled()
         expect(dropEvent.stopPropagation).toHaveBeenCalled()
-        expect(insertAttachmentInsideEditor).not.toHaveBeenCalled()
+        expect(insertFilesAsAttachments).not.toHaveBeenCalled()
     })
 })

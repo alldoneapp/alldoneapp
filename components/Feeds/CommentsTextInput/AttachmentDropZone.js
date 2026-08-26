@@ -4,8 +4,8 @@ import { Platform, StyleSheet, Text, View } from 'react-native'
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
-import { addFilesAsAttachments, eventContainsFiles, getDroppedFiles } from './attachmentFileUtils'
-import { insertAttachmentInsideEditor } from './textInputHelper'
+import { eventContainsFiles, getDroppedFiles } from './attachmentFileUtils'
+import { insertFilesAsAttachments } from './textInputHelper'
 
 const WEB_CONTAINER_STYLE = {
     display: 'contents',
@@ -16,11 +16,11 @@ const WEB_CONTAINER_STYLE = {
 export { eventContainsFiles, getDroppedFiles }
 
 export const addDroppedFilesToEditor = ({ files, editor, inputCursorIndex = 0, setInputCursorIndex }) => {
-    let nextCursorIndex = inputCursorIndex
-    const addedFiles = addFilesAsAttachments(files, (name, uri) => {
-        // Use the regular editor embed so save/submit uses the existing upload and persistence path.
-        insertAttachmentInsideEditor(nextCursorIndex, editor, name, uri)
-        nextCursorIndex += 3
+    // Use the regular editor embed so save/submit uses the existing upload and persistence path.
+    const { addedFiles, nextCursorIndex } = insertFilesAsAttachments({
+        files,
+        editor,
+        startIndex: inputCursorIndex,
     })
 
     if (addedFiles.length > 0) {
