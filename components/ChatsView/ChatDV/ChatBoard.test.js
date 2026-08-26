@@ -16,6 +16,7 @@ const TASK_CHAT_ID = 'task-1'
 const mockDispatch = jest.fn()
 let mockState = {}
 let mockMessages = []
+let mockAccessGranted = false
 
 jest.mock('react-redux', () => ({
     shallowEqual: jest.fn(),
@@ -59,7 +60,7 @@ jest.mock('../../../hooks/Chats/useGetMessages', () => () => mockMessages)
 jest.mock('../../../utils/BackendBridge', () => ({
     getFirebaseTimestampDirectly: () => new Promise(() => {}),
 }))
-jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: () => false }))
+jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: () => mockAccessGranted }))
 jest.mock('../../AdminPanel/Assistants/assistantsHelper', () => ({
     getAssistant: creatorId => (creatorId === 'assistant-1' ? { id: creatorId } : null),
 }))
@@ -74,7 +75,16 @@ jest.mock('../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
 }))
 jest.mock('./useNewEmailCommentIds', () => () => new Set())
 jest.mock('./PagesAmountSubscriptionContainer', () => () => null)
-jest.mock('./EditorView/ChatInput', () => () => null)
+// The ghosts animate off an async AccessibilityInfo read, whose resolution lands outside act();
+// they have their own coverage (AT-2382) and are not what these tests are about.
+jest.mock('./MessagesSkeleton', () => () => null)
+// AT-2439 - reaching the real `onMessageSent` is the point of the "sending re-arms the pin" test,
+// so the mock has to surface the prop rather than render nothing.
+jest.mock('./EditorView/ChatInput', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return props => React.createElement(View, { testID: 'chat-input', onMessageSent: props.onMessageSent })
+})
 jest.mock('./EditorView/MessageItem', () => () => null)
 const mockScrollToEnd = jest.fn()
 const mockScrollTo = jest.fn()
@@ -85,7 +95,15 @@ jest.mock('../../UIControls/CustomScrollView', () => {
         React.useImperativeHandle(ref, () => ({ scrollToEnd: mockScrollToEnd, scrollTo: mockScrollTo }))
         return React.createElement(
             View,
-            { testID: 'chat-scroll-view', showIndicator: props.showIndicator, onScroll: props.onScroll },
+            {
+                testID: 'chat-scroll-view',
+                showIndicator: props.showIndicator,
+                onScroll: props.onScroll,
+                // AT-2439 - the auto-scroll pin is driven by these two, not by onScroll, so the
+                // mock has to hand them back for the tests to be about the real mechanism.
+                onContentSizeChange: props.onContentSizeChange,
+                scrollOnLayout: props.scrollOnLayout,
+            },
             props.children
         )
     })
@@ -353,6 +371,240 @@ describe('ChatBoard placeholder safety timeout', () => {
         })
 
         expect(hasPlaceholder(tree)).toBe(false)
+    })
+})
+
+// AT-2439 - "when I answer in the DV chat it should scroll down so I always see the reply without
+// scrolling myself". Auto-scroll is a STATE ("is the reader parked at the newest message?") that
+// every producer of height re-pins against, not an event fired when a message changes — see the
+// header of components/ChatsView/Utils/chatAutoScroll.js for the four ways the event model failed.
+// These tests drive the mechanism the app actually uses: the content-size and layout reports, not
+// just the message-changed effect.
+describe('ChatBoard auto-scroll to the newest message', () => {
+    const VIEWPORT = 800
+    const CONTENT = 4000
+    const MAX_SCROLL = CONTENT - VIEWPORT
+
+    const scrollView = tree => tree.root.findByProps({ testID: 'chat-scroll-view' })
+
+    // The bottom MOVES as the thread grows, which is the whole reason the pin is derived from
+    // geometry rather than remembered: a position that was the bottom one chunk ago is not.
+    const bottomOf = (contentHeight = CONTENT) => contentHeight - VIEWPORT
+
+    const scrollTo = (tree, scrollY, contentHeight = CONTENT) => {
+        act(() => {
+            scrollView(tree).props.onScroll({
+                nativeEvent: {
+                    contentOffset: { y: scrollY },
+                    contentSize: { height: contentHeight },
+                    layoutMeasurement: { height: VIEWPORT },
+                },
+            })
+        })
+    }
+
+    // What a growing message actually reports: markdown/images settling, or a streamed chunk.
+    const growContentTo = (tree, contentHeight) => {
+        act(() => {
+            scrollView(tree).props.onContentSizeChange(600, contentHeight)
+        })
+    }
+
+    const relayout = tree => {
+        act(() => {
+            scrollView(tree).props.scrollOnLayout({ nativeEvent: { layout: { height: VIEWPORT } } })
+        })
+    }
+
+    const sendMessage = tree => {
+        act(() => {
+            tree.root.findByProps({ testID: 'chat-input' }).props.onMessageSent()
+        })
+    }
+
+    const pressShowEarlier = tree => {
+        act(() => {
+            tree.root.findByProps({ expandText: 'show earlier' }).props.expand()
+        })
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers()
+        mockDispatch.mockClear()
+        mockScrollToEnd.mockClear()
+        mockScrollTo.mockClear()
+        mockAccessGranted = true
+        mockMessages = [
+            { id: 'm-1', creatorId: 'user-2', commentText: 'Older question' },
+            { id: 'm-2', creatorId: 'assistant-1', commentText: 'Answer' },
+        ]
+        mockState = {
+            triggerBotSpinner: null,
+            assistantEnabled: false,
+            assistantEnabledScope: null,
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: false,
+            isMiddleScreen: false,
+            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
+        }
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
+        mockAccessGranted = false
+    })
+
+    it('lands on the newest message when the chat opens', () => {
+        const tree = renderChatBoard()
+
+        act(() => {
+            jest.runOnlyPendingTimers()
+        })
+
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    // The load-bearing one. A message's height is not final on the render that introduced it, so
+    // the message-changed effect alone aims at the previous content height and stops short.
+    it('follows content that grows after the message rendered', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL)
+        mockScrollToEnd.mockClear()
+
+        growContentTo(tree, CONTENT + 300)
+
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    it('keeps following a streamed answer through every growth step', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL)
+        mockScrollToEnd.mockClear()
+
+        growContentTo(tree, CONTENT + 120)
+        growContentTo(tree, CONTENT + 260)
+        growContentTo(tree, CONTENT + 410)
+
+        expect(mockScrollToEnd).toHaveBeenCalledTimes(3)
+    })
+
+    it('leaves a reader who scrolled up to read older messages alone', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL / 2)
+        mockScrollToEnd.mockClear()
+
+        growContentTo(tree, CONTENT + 300)
+
+        expect(mockScrollToEnd).not.toHaveBeenCalled()
+    })
+
+    // The one-way-flag bug: nudging the wheel once mid-answer used to stop the follow for the rest
+    // of that answer, and coming back to the newest message by hand did NOT bring it back.
+    it('resumes following once the reader returns to the newest message', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL / 2)
+        growContentTo(tree, CONTENT + 100)
+        expect(mockScrollToEnd).not.toHaveBeenCalled()
+
+        scrollTo(tree, bottomOf(CONTENT + 100), CONTENT + 100)
+        mockScrollToEnd.mockClear()
+        growContentTo(tree, CONTENT + 400)
+
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    it('still counts as parked a few pixels short of the exact bottom', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL - 8)
+        mockScrollToEnd.mockClear()
+
+        growContentTo(tree, CONTENT + 300)
+
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    // React Native Web re-reports the content size on layout passes that resized nothing; acting
+    // on those would fight a reader dragging at the very bottom of the thread.
+    it('ignores a content-size report that changed nothing', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL)
+        mockScrollToEnd.mockClear()
+
+        growContentTo(tree, CONTENT)
+
+        expect(mockScrollToEnd).not.toHaveBeenCalled()
+    })
+
+    // The mobile keyboard (KeyboardAvoidingView takes the height off this scroller) and a composer
+    // growing to several lines push the newest message out of view without changing the content or
+    // firing a scroll event.
+    it('re-pins when the viewport shrinks under a parked reader', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL)
+        mockScrollToEnd.mockClear()
+
+        relayout(tree)
+
+        expect(mockScrollToEnd).toHaveBeenCalled()
+    })
+
+    it('does not re-pin on layout while the reader is up in the thread', () => {
+        const tree = renderChatBoard()
+        scrollTo(tree, MAX_SCROLL / 2)
+        mockScrollToEnd.mockClear()
+
+        relayout(tree)
+
+        expect(mockScrollToEnd).not.toHaveBeenCalled()
+    })
+
+    describe('after opening older messages', () => {
+        beforeEach(() => {
+            mockState.chatPagesAmount = 3
+        })
+
+        // The arriving page is a round trip behind the press, so the pin has to stand down at the
+        // press itself — otherwise that content re-pins to the bottom before any scroll event can
+        // report where the reader went.
+        it('does not yank the reader back down when the older page lands', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL)
+            pressShowEarlier(tree)
+            mockScrollToEnd.mockClear()
+
+            growContentTo(tree, CONTENT * 2)
+
+            expect(mockScrollToEnd).not.toHaveBeenCalled()
+        })
+
+        // The reported bug: "show earlier" used to be a latch that killed auto-scroll for the rest
+        // of the mount — so the reply the user then typed themselves never scrolled into view.
+        it('follows again as soon as the user sends a message', () => {
+            const tree = renderChatBoard()
+            pressShowEarlier(tree)
+            growContentTo(tree, CONTENT * 2)
+            expect(mockScrollToEnd).not.toHaveBeenCalled()
+
+            sendMessage(tree)
+            expect(mockScrollToEnd).toHaveBeenCalled()
+
+            mockScrollToEnd.mockClear()
+            growContentTo(tree, CONTENT * 2 + 300)
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
+
+        it('follows again as soon as the reader scrolls back to the newest message', () => {
+            const tree = renderChatBoard()
+            pressShowEarlier(tree)
+            mockScrollToEnd.mockClear()
+
+            scrollTo(tree, MAX_SCROLL)
+            growContentTo(tree, CONTENT + 300)
+
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
     })
 })
 
