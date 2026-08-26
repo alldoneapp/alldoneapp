@@ -45,7 +45,15 @@ const Metric = ({ label, value, celebration }) => (
     </View>
 )
 
-export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false }) {
+/**
+ * @param {number} [props.celebrationRunId] AT-2445 — a run id owned by the CALLER. The empty-inbox
+ *   board celebrates in several places at once now (the congratulation, the confetti, the picture,
+ *   and this card's dot), and they are one event, so the board decides once and hands the answer
+ *   down. When it is absent the card falls back to deciding for itself, which is what keeps
+ *   `celebrateNewDay` working for any other caller and keeps the Settings → Profile copy — which
+ *   passes neither — unable to spend the day.
+ */
+export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false, celebrationRunId }) {
     const [contentWidth, setContentWidth] = useState(0)
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(
@@ -53,10 +61,18 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
         [user.emptyInboxDays, user.lastDayEmptyInbox]
     )
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
-    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay, user.uid)
+    // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
+    // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
+    // day twice.
+    const ownCelebrationRunId = useTodayEmptyInboxCelebration(
+        emptyInboxDays,
+        celebrateNewDay && celebrationRunId == null,
+        user.uid
+    )
+    const resolvedRunId = celebrationRunId == null ? ownCelebrationRunId : celebrationRunId
     // AT-2418: one bundle of Animated.Values drives the dot AND the streak number, so the two beats
     // are one event rather than two animations that happen to overlap.
-    const celebration = useEmptyInboxDotCelebration(celebrationRunId, stats.currentStreak)
+    const celebration = useEmptyInboxDotCelebration(resolvedRunId, stats.currentStreak)
     const numberOfWeeks = contentWidth ? getNumberOfWeeks(contentWidth) : MIN_WEEKS
     const weeks = useMemo(
         () => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks),
@@ -88,7 +104,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 <Metric
                     label={translate('Current streak')}
                     value={stats.currentStreak}
-                    celebration={celebrationRunId ? celebration : null}
+                    celebration={resolvedRunId ? celebration : null}
                 />
                 <Metric label={translate('Longest streak')} value={stats.longestStreak} />
                 <Metric label={translate('Total days')} value={stats.totalDays} />
@@ -129,7 +145,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                                         // celebrating it. Every other cell keeps the plain View it
                                         // has always rendered, so the 370 squares around it cost
                                         // nothing extra.
-                                        return celebrationRunId && day.isToday && day.achieved ? (
+                                        return resolvedRunId && day.isToday && day.achieved ? (
                                             <EmptyInboxTodayDot
                                                 key={day.dateKey}
                                                 celebration={celebration}

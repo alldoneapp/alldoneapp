@@ -38,7 +38,13 @@ export default function MyDayOpenTasks() {
         <>
             <AllProjectsLine />
             <AllProjectsAssistantLine />
-            {showEmptyInbox && <AllProjectsEmptyInbox />}
+            {/* AT-2445: My Day is where the last task of the day is usually ticked off, and until
+                now clearing it here celebrated nothing — the congratulation appeared silently and
+                the achievement card is not shown on this board at all. It celebrates on the same
+                once-per-day marker as the all-projects board, so whichever you reach first plays it
+                and the other does not repeat it. `tasksLoaded` has always guarded this render, which
+                is what keeps a loading flash from spending the day. */}
+            {showEmptyInbox && <AllProjectsEmptyInbox celebrateNewDay />}
             {!showEmptyInbox && (
                 <DragDropContext onDragEnd={onDragEnd} onBeforeCapture={onBeforeCapture}>
                     <View style={{ marginTop: 16, marginBottom: 32 }}>

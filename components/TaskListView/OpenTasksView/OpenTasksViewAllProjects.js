@@ -280,7 +280,7 @@ export default function OpenTasksViewAllProjects() {
                 task filters. The assistant composer + last comment must keep the top of
                 the page — the congrats is a reward, not the primary control — but it is
                 still high enough to be visible without scrolling when the inbox is empty. */}
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
+            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
             <SkippedProjectCatchUpSkeleton
