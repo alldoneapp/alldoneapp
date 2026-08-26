@@ -95,6 +95,7 @@ import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCol
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
 import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
+import { isolatePasteInHistory } from '../../../Feeds/CommentsTextInput/quillHistoryEntries'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -727,20 +728,13 @@ const NotesEditorView = ({
                 const textData = (event.clipboardData || window.clipboardData).getData('text')
                 const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
 
-                console.log('[NotesEditorView PASTE] ========== START ==========')
-                console.log('[NotesEditorView PASTE] Raw text data:', JSON.stringify(textData))
-                console.log('[NotesEditorView PASTE] Has HTML data:', !!htmlData)
-                console.log('[NotesEditorView PASTE] Contains markdown:', textData ? containsMarkdown(textData) : false)
-
                 // Check if plain text contains markdown - if so, prioritize markdown conversion
                 if (textData && containsMarkdown(textData)) {
-                    console.log('[NotesEditorView PASTE] Processing as markdown...')
                     const parsedDelta = markdownToDelta(textData, Delta)
 
                     if (parsedDelta) {
                         const editor = exportRef.getEditor()
                         const selection = editor.getSelection(true)
-                        console.log('[NotesEditorView PASTE] Selection:', JSON.stringify(selection))
 
                         if (selection.length > 0) {
                             parsedDelta.ops.unshift({ delete: selection.length })
@@ -749,23 +743,10 @@ const NotesEditorView = ({
                             parsedDelta.ops.unshift({ retain: selection.index })
                         }
 
-                        console.log(
-                            '[NotesEditorView PASTE] Final delta to apply:',
-                            JSON.stringify(parsedDelta.ops, null, 2)
-                        )
-
                         const previousLenght = editor.getLength()
-                        editor.updateContents(parsedDelta, 'user')
+                        isolatePasteInHistory(editor, () => editor.updateContents(parsedDelta, 'user'))
                         const newLenght = editor.getLength()
                         editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
-
-                        console.log(
-                            '[NotesEditorView PASTE] Applied markdown delta, length changed from',
-                            previousLenght,
-                            'to',
-                            newLenght
-                        )
-                        console.log('[NotesEditorView PASTE] ========== END ==========')
 
                         event.preventDefault()
                         return
@@ -815,7 +796,7 @@ const NotesEditorView = ({
                     }
 
                     const previousLenght = editor.getLength()
-                    editor.updateContents(finalDelta, 'user')
+                    isolatePasteInHistory(editor, () => editor.updateContents(finalDelta, 'user'))
                     const newLenght = editor.getLength()
                     editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
 
@@ -847,7 +828,7 @@ const NotesEditorView = ({
                     }
 
                     const previousLenght = editor.getLength()
-                    editor.updateContents(parsedDelta, 'user')
+                    isolatePasteInHistory(editor, () => editor.updateContents(parsedDelta, 'user'))
                     const newLenght = editor.getLength()
                     editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
 
