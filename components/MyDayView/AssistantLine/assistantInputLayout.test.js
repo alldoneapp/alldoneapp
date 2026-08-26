@@ -111,3 +111,58 @@ describe('assistant input display height', () => {
         expect(getAssistantInputDisplayHeight(120, true)).toBe(120)
     })
 })
+
+// AT-2444 — a composer holding a dropped/pasted attachment is allowed past the text cap so the
+// image preview is visible instead of half-shown inside a scroller. The cap is a parameter, so
+// every assertion above (which passes none) is also the proof that the text path is unchanged.
+describe('assistant input layout with a raised cap for attachments', () => {
+    const MEDIA_MAX = 260
+
+    it('grows past the text cap when a taller cap is passed', () => {
+        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, MEDIA_MAX)).toEqual({
+            height: 220,
+            scrollEnabled: false,
+        })
+        // The same measurement against the default cap still clamps and scrolls.
+        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT)).toEqual({
+            height: ASSISTANT_INPUT_MAX_HEIGHT,
+            scrollEnabled: true,
+        })
+    })
+
+    it('moves the scroll threshold and the clamp with the cap', () => {
+        expect(getAssistantInputLayout(300, INITIAL_ASSISTANT_INPUT_LAYOUT, MEDIA_MAX)).toEqual({
+            height: MEDIA_MAX,
+            scrollEnabled: true,
+        })
+    })
+
+    it('collapses back below the text cap when the attachment is removed', () => {
+        const expanded = { height: MEDIA_MAX, scrollEnabled: false }
+        expect(getAssistantInputLayout(40, expanded, ASSISTANT_INPUT_MAX_HEIGHT)).toEqual({
+            height: 40,
+            scrollEnabled: false,
+        })
+    })
+
+    it('falls back to the text cap for a missing or nonsensical cap', () => {
+        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, undefined)).toEqual({
+            height: ASSISTANT_INPUT_MAX_HEIGHT,
+            scrollEnabled: true,
+        })
+        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, NaN)).toEqual({
+            height: ASSISTANT_INPUT_MAX_HEIGHT,
+            scrollEnabled: true,
+        })
+        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, 5)).toEqual({
+            height: ASSISTANT_INPUT_MAX_HEIGHT,
+            scrollEnabled: true,
+        })
+    })
+
+    it('lets the stacked display height follow the raised cap too', () => {
+        expect(getAssistantInputDisplayHeight(220, true, MEDIA_MAX)).toBe(220)
+        expect(getAssistantInputDisplayHeight(300, true, MEDIA_MAX)).toBe(MEDIA_MAX)
+        expect(getAssistantInputDisplayHeight(220, true)).toBe(ASSISTANT_INPUT_MAX_HEIGHT)
+    })
+})

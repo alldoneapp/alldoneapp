@@ -22,15 +22,23 @@ import Spinner from '../../../UIComponents/Spinner'
 import Icon from '../../../Icon'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
+import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
+import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import {
-    ASSISTANT_INPUT_MAX_HEIGHT,
     getAssistantControlsStacked,
     getAssistantInputDisplayHeight,
     getAssistantInputLayout,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
+import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
+
+// The formats an attachment-capable input must declare. `CustomTextInput3.supportsAttachments`
+// keys on `attachment` / `customImageFormat` being present, and that predicate is what installs
+// `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
+// as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
+const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
 
 export default function AssistantOptions({
     amountOfButtonOptions,
@@ -57,6 +65,10 @@ export default function AssistantOptions({
     const [controlsStacked, setControlsStacked] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
+    // AT-2444: the live Quill instance and caret the drop zone inserts at. The zone stays disabled
+    // until `setEditor` has handed the editor over, so an early drop can never be half-applied.
+    const [editor, setEditor] = useState(null)
+    const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
@@ -114,7 +126,19 @@ export default function AssistantOptions({
             isSendingRef.current = true
             setIsSending(true)
             try {
-                const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
+                // AT-2444: a dropped or pasted file is only a `blob:` object URL in the editor
+                // until here — this is the step that uploads it to Storage and rewrites the token
+                // to the real download URL, exactly as the chat composer does before
+                // `createObjectMessage`. It must run BEFORE the topic is created: the comment
+                // `createBotQuickTopic` writes is the one that gets its `mediaContext` extracted
+                // from this text, and that is how the assistant gets to see the image at all.
+                //
+                // Called unconditionally, like ChatInput: with no attachment tokens the helper
+                // takes no `await` at all, so its loading-spinner refcount opens and closes in the
+                // same tick and a plain text send is not delayed or made async by it.
+                const messageToSend = await updateNewAttachmentsData(conversationProjectId, trimmedMessage)
+
+                const topicData = await createBotQuickTopic(assistant, messageToSend, {
                     skipNavigation: true,
                     enableAssistant: true,
                     projectId: conversationProjectId,
@@ -128,6 +152,7 @@ export default function AssistantOptions({
 
                 setMessage('')
                 setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+                setInputCursorIndex(0)
                 inputRef.current?.clear()
 
                 // Unblock the input now that the thread has been created
@@ -155,9 +180,18 @@ export default function AssistantOptions({
         [assistant, conversationProject, conversationProjectId, message, gold]
     )
 
-    const updateInputHeight = useCallback(contentHeight => {
-        setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
-    }, [])
+    // A composer holding an attachment is allowed to grow past the text cap so the image it is
+    // previewing is actually visible (AT-2444). Derived from the serialized text rather than from
+    // a separate attachment state, so it cannot drift from what will be submitted.
+    const composerHasMedia = assistantComposerHasMedia(message)
+    const composerMaxHeight = getAssistantComposerMaxHeight(composerHasMedia)
+
+    const updateInputHeight = useCallback(
+        contentHeight => {
+            setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout, composerMaxHeight))
+        },
+        [composerMaxHeight]
+    )
 
     // Stack the voice + send buttons into a column as soon as the field grows
     // past one line, and release that only when the field is emptied again. See
@@ -222,8 +256,10 @@ export default function AssistantOptions({
     )
 
     const hasQuickActions = true
+    // An image on its own is a complete message — the serialized embed token IS the text, so this
+    // is already non-empty for an attachment-only composer and needs no separate condition.
     const canSend = message.trim().length > 0 && !isSending
-    const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked)
+    const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked, composerMaxHeight)
 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
@@ -232,7 +268,22 @@ export default function AssistantOptions({
     const headerContainerProps = onCollapse ? { onPress: onCollapse, activeOpacity: 0.8 } : {}
 
     return (
-        <View style={localStyles.container}>
+        // AT-2444 — the whole assistant card is the drop target, not just the field. The composer
+        // is a 40px line inside a ~128px card, so an input-only target is easy to miss; dropping
+        // onto the avatar, the send button or the quick-action row all mean the same thing.
+        //
+        // The zone must stay a CAPTURE-phase claim (see AttachmentDropZone): Quill's own uploader
+        // listens on `quill.root`, a descendant of this node, so a bubble-phase handler here would
+        // run second and the file would land twice.
+        <AttachmentDropZone
+            testID="assistant-line-attachment-drop-zone"
+            style={localStyles.container}
+            disabled={isSending}
+            editor={editor}
+            inputCursorIndex={inputCursorIndex}
+            projectId={conversationProjectId}
+            setInputCursorIndex={setInputCursorIndex}
+        >
             <HeaderContainer style={localStyles.headerRow} {...headerContainerProps}>
                 {/* Kept short on purpose (AT-2442): the header is a single centred line
                     (numberOfLines={1}) that also carries the assistant's display name, so a
@@ -254,7 +305,7 @@ export default function AssistantOptions({
                     ref={inputRef}
                     containerStyle={localStyles.messageInput}
                     fixedHeight={inputDisplayHeight}
-                    maxHeight={ASSISTANT_INPUT_MAX_HEIGHT}
+                    maxHeight={composerMaxHeight}
                     onChangeText={updateMessage}
                     onContentSizeChange={(width, height) => updateInputHeight(height)}
                     placeholder={translate('Start a new chat')}
@@ -262,6 +313,12 @@ export default function AssistantOptions({
                     styleTheme={TASK_THEME}
                     disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
+                    // AT-2444: hands the live editor + caret to the drop zone above, and declares
+                    // the attachment formats. Declaring them is also what gives this composer
+                    // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
+                    setEditor={setEditor}
+                    setInputCursorIndex={setInputCursorIndex}
+                    otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
                     keepBreakLines={true}
                     scrollEnabled={inputLayout.scrollEnabled}
                     showScrollIndicator={inputLayout.scrollEnabled}
@@ -326,7 +383,7 @@ export default function AssistantOptions({
                     )}
                 </View>
             )}
-        </View>
+        </AttachmentDropZone>
     )
 }
 

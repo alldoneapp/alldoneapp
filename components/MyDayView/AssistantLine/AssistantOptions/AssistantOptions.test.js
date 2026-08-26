@@ -43,7 +43,21 @@ jest.mock('react-tiny-popover', () => {
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: key => key,
+    getDeviceLanguage: () => 'en',
 }))
+
+// AttachmentDropZone (AT-2444) reaches PremiumHelper -> usersFirestore -> the whole backend graph,
+// which this suite has no business loading. The real zone is exercised against a real Quill in
+// AssistantOptionsAttachments.test.js; here it only has to render its children.
+jest.mock('../../../Feeds/CommentsTextInput/AttachmentDropZone', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return ({ children, ...props }) => (
+        <View testID="assistant-line-attachment-drop-zone" {...props}>
+            {children}
+        </View>
+    )
+})
 
 jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
     watchAssistantTasks: jest.fn((projectId, assistantId, watcherKey, callback) => {
@@ -68,6 +82,13 @@ jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({
 
 jest.mock('../../../Feeds/CommentsTextInput/textInputHelper', () => ({
     TASK_THEME: 'TASK_THEME',
+    insertFilesAsAttachments: jest.fn(() => ({ addedFiles: [], nextCursorIndex: 0 })),
+}))
+
+// Real module pulls the whole backend bridge in through HelperFunctions' import chain. The
+// attachment upload step itself is covered by AssistantOptionsAttachments.test.js (AT-2444).
+jest.mock('../../../Feeds/Utils/HelperFunctions', () => ({
+    updateNewAttachmentsData: jest.fn(async (projectId, text) => text),
 }))
 
 jest.mock('../../../../redux/actions', () => ({
