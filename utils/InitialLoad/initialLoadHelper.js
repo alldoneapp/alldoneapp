@@ -32,6 +32,7 @@ import { forceCloseModals } from '../HelperFunctions'
 import { ROOT_ROUTES } from '../TabNavigationConstants'
 import NavigationService from '../NavigationService'
 import { watchChatNotifications } from '../backends/Chats/chatsComments'
+import { isBrowserOffline } from '../connectionState'
 import { pruneStaleProjectIds } from './staleProjectSelfHeal'
 import { recoverDroppedProject } from './projectRecovery'
 import { forgetProjectData } from './projectDataLoader'
@@ -191,6 +192,9 @@ export function watchLoggedUserData(loggedUser) {
 }
 
 export function watchGlobalAssistants() {
+    // Repairs can call loadGlobalData after the initial watcher was armed. Replace
+    // the existing subscription instead of leaking it under the same registry key.
+    unwatch('globalAssistants')
     watchAssistants(GLOBAL_PROJECT_ID, 'globalAssistants', assistants => {
         store.dispatch(setGlobalAssistants(assistants))
     })
@@ -198,11 +202,47 @@ export function watchGlobalAssistants() {
 
 export function watchAdministratorUser(userId) {
     if (!userId) return
+
+    // A single false-missing server snapshot must not revoke Administrator state.
+    // Keep the last valid value while the independent read used by
+    // getAdministratorUser decides whether the role/user is really gone.
+    unwatch('administratorUser')
+    let verificationVersion = 0
     watchUserData(
         userId,
         false,
         user => {
-            store.dispatch(setAdministratorUser(user))
+            const currentVersion = ++verificationVersion
+            if (user) {
+                store.dispatch(setAdministratorUser(user))
+                return
+            }
+
+            getAdministratorUser()
+                .then(verifiedAdministrator => {
+                    // A newer snapshot already superseded this missing event.
+                    if (currentVersion !== verificationVersion) return
+
+                    if (verifiedAdministrator?.uid) {
+                        store.dispatch(setAdministratorUser(verifiedAdministrator))
+                        // The role may genuinely have moved to another user. Follow
+                        // the authoritative pointer instead of retaining the old watcher.
+                        if (verifiedAdministrator.uid !== userId) {
+                            watchAdministratorUser(verifiedAdministrator.uid)
+                        }
+                    } else {
+                        store.dispatch(setAdministratorUser({}))
+                    }
+                })
+                .catch(error => {
+                    // Unverifiable is not absent. Preserve the last valid user and
+                    // let the watcher/integrity healer retry when transport recovers.
+                    console.warn(
+                        `[GlobalData] Could not verify missing Administrator /users/${userId}; ` +
+                            'preserving the last valid state.',
+                        error
+                    )
+                })
         },
         'administratorUser'
     )
@@ -231,6 +271,13 @@ export const loadGlobalData = async (retryCount = 0) => {
             }
         } catch (error) {
             console.error('Failed to load global data:', error)
+            if (isBrowserOffline()) {
+                // Offline cache incompleteness is not deletion. Do not hold boot
+                // in a 25-second retry loop; the integrity healer re-runs when
+                // connectivity is proven live again.
+                console.warn('[GlobalData] Global data is unavailable offline; preserving the last valid state.')
+                return
+            }
             if (retryCount < MAX_RETRIES) {
                 console.log(
                     `Retrying loadGlobalData in ${RETRY_DELAY_MS / 1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`
@@ -238,7 +285,10 @@ export const loadGlobalData = async (retryCount = 0) => {
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
                 return loadGlobalData(retryCount + 1)
             }
-            store.dispatch(setAdministratorAndGlobalAssistants({}, []))
+            // Exhausted retries still mean "unverifiable", not "absent". Keep
+            // whatever valid global state Redux already has; the integrity
+            // healer will retry after connectivity recovers.
+            console.warn('[GlobalData] Global data is still unavailable; preserving the last valid state.')
         }
     }
 }

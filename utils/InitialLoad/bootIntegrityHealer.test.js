@@ -2,6 +2,7 @@ import store from '../../redux/store'
 import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
 import { loadGlobalData, watchProjectData } from './initialLoadHelper'
+import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
 import {
     resetBootIntegrityHealerForTests,
     runBootIntegrityCheck,
@@ -25,6 +26,10 @@ jest.mock('./projectRecovery', () => ({
 jest.mock('./initialLoadHelper', () => ({
     loadGlobalData: jest.fn(),
     watchProjectData: jest.fn(),
+}))
+
+jest.mock('../backends/firestoreDirectRead', () => ({
+    readDocumentDirectlyFromServer: jest.fn(),
 }))
 
 // The synchronous browser-level tell; the redux slice is still '' during early boot.
@@ -58,6 +63,11 @@ describe('runBootIntegrityCheck', () => {
         store.subscribe.mockReset()
         store.subscribe.mockImplementation(() => jest.fn())
         getDb.mockReturnValue(buildDbMock())
+        readDocumentDirectlyFromServer.mockReset()
+        readDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { userId: 'admin-1' },
+        })
         recoverDroppedProject.mockReset()
         recoverDroppedProject.mockImplementation(async projectId => {
             state.loggedUserProjectsMap[projectId] = { id: projectId }
@@ -223,14 +233,29 @@ describe('runBootIntegrityCheck', () => {
     it('reloads global data when the administrator user is empty but the role names one', async () => {
         state.administratorUser = {}
 
+        await runBootIntegrityCheck({ settleMs: 0, trigger: 'app_resume' })
+
+        expect(loadGlobalData).toHaveBeenCalledTimes(1)
+        expect(consoleWarn).toHaveBeenCalledWith(
+            '[BootIntegrity] Client state is missing expected data, repairing:',
+            expect.objectContaining({ administratorMissing: true, trigger: 'app_resume' })
+        )
+    })
+
+    it('detects the missing administrator when only the direct role read finds it', async () => {
+        state.administratorUser = {}
+        getDb.mockReturnValue(buildDbMock({ roleUserId: null }))
+
         await runBootIntegrityCheck({ settleMs: 0 })
 
+        expect(readDocumentDirectlyFromServer).toHaveBeenCalledWith('roles/administrator')
         expect(loadGlobalData).toHaveBeenCalledTimes(1)
     })
 
     it('does not treat a missing administrator as an anomaly when no role is configured', async () => {
         state.administratorUser = {}
         getDb.mockReturnValue(buildDbMock({ roleUserId: null }))
+        readDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
 
         await runBootIntegrityCheck({ settleMs: 0 })
 

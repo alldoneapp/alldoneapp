@@ -21,7 +21,14 @@ async function loadInitialData(projectId) {
     const promises = []
     promises.push(getInitialProjectData(projectId))
     promises.push(getGlobalAssistants())
-    promises.push(getAdministratorUser())
+    // Administrator data is optional for a shared anonymous view. A transient
+    // inability to verify it must not prevent the shared project itself from opening.
+    promises.push(
+        getAdministratorUser().catch(error => {
+            console.warn('[GlobalData] Administrator unavailable in anonymous session:', error)
+            return {}
+        })
+    )
     const [projectInitialData, globalAssistants, administratorUser] = await Promise.all(promises)
 
     const { project, users, workstreams, contacts, assistants } = projectInitialData
