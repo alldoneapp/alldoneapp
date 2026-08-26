@@ -1,6 +1,6 @@
 import React from 'react'
 import { TouchableOpacity } from 'react-native'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 
 import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
@@ -117,5 +117,31 @@ describe('PreConfigTaskGeneratorWrapper custom execution control', () => {
         expect(button.props.disabled).toBe(true)
         button.props.onPress()
         expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
+    })
+
+    it('acquires once for repeated popup opens and releases when the task control unmounts', () => {
+        const taskWithVariables = { ...task, variables: [{ name: 'customer' }] }
+        const tree = renderer.create(
+            <PreConfigTaskGeneratorWrapper
+                projectId="project-1"
+                task={taskWithVariables}
+                assistant={{ uid: 'assistant-1' }}
+                skipNavigation
+            >
+                {props => <TouchableOpacity testID="play-task" {...props} />}
+            </PreConfigTaskGeneratorWrapper>
+        )
+        const button = tree.root.findByProps({ testID: 'play-task' })
+
+        act(() => {
+            button.props.onPress()
+            button.props.onPress()
+        })
+
+        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'show-float-popup')).toHaveLength(1)
+
+        act(() => tree.unmount())
+
+        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'hide-float-popup')).toHaveLength(1)
     })
 })
