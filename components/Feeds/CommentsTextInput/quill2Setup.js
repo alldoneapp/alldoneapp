@@ -1,6 +1,6 @@
 import Quill from 'quill'
 
-import { getPlaceholderData, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
+import { getPlaceholderData, isEncodedPlaceholder, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
 
 const Module = Quill.import('core/module')
 const Clipboard = Quill.import('modules/clipboard')
@@ -36,7 +36,51 @@ class EditorMeta extends Module {
         // Quill writes options.placeholder into the root's data-placeholder attribute
         // after module init, so stripping the metadata here keeps the visible text clean.
         quill.options.placeholder = meta.placeholderText || ''
+        keepPlaceholderAttributeDecoded(quill)
     }
+}
+
+// AT-2438. Decoding at construction is NOT enough, because this module is not the only
+// writer of the attribute the placeholder is actually rendered from
+// (`.ql-editor.ql-blank::before { content: attr(data-placeholder) }`): react-quill-new's
+// componentDidUpdate does
+//
+//     if (this.editor && prevProps.placeholder !== this.props.placeholder)
+//         this.editor.root.dataset.placeholder = this.props.placeholder || ''
+//
+// which puts the RAW app-encoded prop (`text#editorType#editorId#…`) straight into the
+// DOM, behind this module's back — the constructor never runs again for a live editor.
+// So any change of the placeholder prop made the encoding visible to the user, e.g.
+// "Type to add new comment#0#d53db6ac-e144-4fee-8fab-…". The chat composer changes it on
+// every login whose device locale differs from the account language: `translate()` is
+// resolved at render time against `i18n.locale`, which starts as the DEVICE language and
+// is switched to `loggedUser.language` by `useTranslator` once the user doc arrives — so
+// a German browser signed in to an English account re-renders the composer with a
+// different placeholder string, and it leaked from that moment on.
+//
+// The encoding has to stay on the React prop: `EditorToolbar` and `getQuillEditorRef`
+// read `<ReactQuill>.props.placeholder` to recover the editorId. So own the attribute
+// instead — this module already owns "the encoding never becomes visible".
+const decodePlaceholderAttribute = root => {
+    const raw = root.getAttribute('data-placeholder')
+    // Idempotent by construction: a decoded value is no longer encoded, so the write this
+    // makes cannot re-trigger the observer into a loop.
+    if (!isEncodedPlaceholder(raw)) return
+    root.setAttribute('data-placeholder', getPlaceholderData(raw).placeholderText || '')
+}
+
+const keepPlaceholderAttributeDecoded = quill => {
+    const root = quill.root
+    if (!root || typeof root.getAttribute !== 'function') return
+    decodePlaceholderAttribute(root)
+    if (typeof MutationObserver === 'undefined') return
+    // Scoped to the one attribute, and unreachable once the editor's DOM is dropped (the
+    // observer is referenced only by this module, which hangs off the quill instance that
+    // hangs off the detached node), so there is nothing to tear down — quill 2 gives a
+    // module no destroy hook anyway.
+    const observer = new MutationObserver(() => decodePlaceholderAttribute(root))
+    observer.observe(root, { attributes: true, attributeFilter: ['data-placeholder'] })
+    quill.placeholderAttributeObserver = observer
 }
 
 // Reads editor metadata whether or not the editorMeta module ran (headless editors
