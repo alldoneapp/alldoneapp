@@ -307,6 +307,41 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
+    it('queues a direct fallback when a project assistant has no configured workflow step', async () => {
+        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
+            uid: ASSISTANT,
+            workflow: {},
+        })
+        const task = taskOnAiStep({
+            userId: ASSISTANT,
+            userIds: [ASSISTANT],
+            stepHistory: [AI_STEP],
+            currentReviewerId: ASSISTANT,
+            assistantId: ASSISTANT,
+            assigneeType: 'ASSISTANT',
+            workflowTask: true,
+            workflowPayerUserId: ASSIGNEE,
+            creatorId: ASSIGNEE,
+            completed: 1000,
+            workflowAiPromptOverride: {
+                stepId: AI_STEP,
+                prompt: 'Create the product KPIs',
+            },
+        })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)
+
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            assistantId: ASSISTANT,
+            workflowOwnerId: ASSISTANT,
+            workflowOwnerType: 'assistant',
+            payerUserId: ASSIGNEE,
+            promptOverride: 'Create the product KPIs',
+            bypassWorkflow: true,
+            status: 'pending',
+        })
+    })
+
     it('does not apply an assistant workflow to an ordinary assistant task', async () => {
         mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
             uid: ASSISTANT,
@@ -697,6 +732,43 @@ describe('runWorkflowAiStep', () => {
         expect(args[7]).toBe('de')
         expect(mockPostUserRequestComment).toHaveBeenCalledWith(expect.objectContaining({ creatorId: ASSIGNEE }))
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+    })
+
+    it('executes and completes an assistant task when its configured workflow is missing', async () => {
+        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, { uid: ASSISTANT, workflow: {} })
+        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'en' })
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({
+                userId: ASSISTANT,
+                userIds: [ASSISTANT],
+                stepHistory: [AI_STEP],
+                currentReviewerId: ASSISTANT,
+                assistantId: ASSISTANT,
+                workflowTask: true,
+                executionMode: 'workflow',
+                workflowPayerUserId: ASSIGNEE,
+            })
+        )
+
+        await runWorkflowAiStep(RUN_ID, {
+            ...run,
+            workflowOwnerId: ASSISTANT,
+            workflowOwnerType: 'assistant',
+            payerUserId: ASSIGNEE,
+            promptOverride: 'Create the product KPIs',
+            bypassWorkflow: true,
+        })
+
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Create the product KPIs')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            currentReviewerId: -2,
+            done: true,
+            inDone: true,
+            executionMode: 'direct',
+            workflowTask: false,
+        })
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
     it('parks in the pre-VM window when a chat-triggered assistant run already owns the task', async () => {

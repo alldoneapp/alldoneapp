@@ -25,10 +25,8 @@ import {
 import {
     clearTaskPriorityFilters,
     clearTaskVmStateFilters,
-    hideFloatPopup,
     setTaskPriorityFilters,
     setTaskVmStateFilters,
-    showFloatPopup,
     updateTaskVmState,
 } from '../../../redux/actions'
 import {
@@ -38,6 +36,7 @@ import {
 } from './taskPriorityFilterHelper'
 import AutoPostponeTasksModal from '../AutoPostpone/AutoPostponeTasksModal'
 import { AUTO_POSTPONE_TASKS_MODAL_ID, removeModal, storeModal } from '../../ModalsManager/modalsManager'
+import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
 
 const FILTER_PRIORITY_KEYS = [
     TASK_PRIORITY_MUST_DO,
@@ -67,6 +66,8 @@ export default function TaskFiltersLine({ projectId }) {
     const [showAutoPostpone, setShowAutoPostpone] = useState(false)
     const closeTimeoutRef = useRef()
     const subscriptionsRef = useRef(new Map())
+    const ownsAutoPostponeModalRef = useRef(false)
+    const popupLock = useFloatPopupLock()
 
     const instances = useMemo(() => {
         const buildInstance = pid => ({
@@ -107,8 +108,38 @@ export default function TaskFiltersLine({ projectId }) {
         dispatch(clearTaskVmStateFilters())
     }
 
+    const openAutoPostpone = () => {
+        if (popupLock.isAcquired()) return
+
+        storeModal(AUTO_POSTPONE_TASKS_MODAL_ID)
+        ownsAutoPostponeModalRef.current = true
+        popupLock.acquire()
+        setShowAutoPostpone(true)
+    }
+
+    const closeAutoPostpone = () => {
+        if (closeTimeoutRef.current) {
+            clearTimeout(closeTimeoutRef.current)
+            closeTimeoutRef.current = null
+        }
+        if (ownsAutoPostponeModalRef.current) {
+            ownsAutoPostponeModalRef.current = false
+            removeModal(AUTO_POSTPONE_TASKS_MODAL_ID)
+        }
+        popupLock.release()
+        setShowAutoPostpone(false)
+    }
+
+    const delayCloseAutoPostpone = e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
+        if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = setTimeout(closeAutoPostpone)
+    }
+
     useEffect(() => {
         clearAllFilters()
+        closeAutoPostpone()
     }, [currentUserId, selectedProjectIndex])
 
     useEffect(() => {
@@ -127,11 +158,21 @@ export default function TaskFiltersLine({ projectId }) {
                 dispatch(updateTaskVmState(taskKey, null))
             })
             subscriptionsRef.current.clear()
+            if (ownsAutoPostponeModalRef.current) {
+                ownsAutoPostponeModalRef.current = false
+                removeModal(AUTO_POSTPONE_TASKS_MODAL_ID)
+            }
             clearAllFilters()
         }
     }, [])
 
-    if (priorityData.prioritized === 0 && vmStateData.available === 0) return null
+    const hasAvailableFilters = priorityData.prioritized > 0 || vmStateData.available > 0
+
+    useEffect(() => {
+        if (!hasAvailableFilters && popupLock.isAcquired()) closeAutoPostpone()
+    }, [hasAvailableFilters])
+
+    if (!hasAvailableFilters) return null
 
     const togglePriority = priorityKey => {
         const next = taskPriorityFilters.includes(priorityKey)
@@ -145,22 +186,6 @@ export default function TaskFiltersLine({ projectId }) {
             : [...taskVmStateFilters, vmState]
         dispatch(setTaskVmStateFilters(next))
     }
-    const openAutoPostpone = () => {
-        storeModal(AUTO_POSTPONE_TASKS_MODAL_ID)
-        dispatch(showFloatPopup())
-        setShowAutoPostpone(true)
-    }
-    const closeAutoPostpone = () => {
-        removeModal(AUTO_POSTPONE_TASKS_MODAL_ID)
-        dispatch(hideFloatPopup())
-        setShowAutoPostpone(false)
-    }
-    const delayCloseAutoPostpone = e => {
-        e?.preventDefault?.()
-        e?.stopPropagation?.()
-        closeTimeoutRef.current = setTimeout(closeAutoPostpone)
-    }
-
     const activeFilterCount = taskPriorityFilters.length + taskVmStateFilters.length
     const total = Math.max(priorityData.total, vmStateData.total)
 
