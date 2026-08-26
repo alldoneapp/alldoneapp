@@ -242,6 +242,15 @@ export const createPlaceholder = (
     }`
 }
 
+// createPlaceholder always emits exactly six separators, so an app-encoded placeholder
+// splits into exactly this many fields. Used to tell an encoded placeholder apart from a
+// plain one that merely happens to contain a '#' (a hashtag in a note title, say), which
+// must be left alone.
+export const PLACEHOLDER_FIELD_COUNT = 7
+
+export const isEncodedPlaceholder = placeholder =>
+    typeof placeholder === 'string' && placeholder.split('#').length === PLACEHOLDER_FIELD_COUNT
+
 export const getPlaceholderData = placeholder => {
     const data = placeholder.split('#')
     return {
