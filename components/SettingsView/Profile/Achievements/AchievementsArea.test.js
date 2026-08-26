@@ -5,6 +5,7 @@ import moment from 'moment'
 
 import AchievementsArea, { EmptyInboxOverview, getGridWidth } from './AchievementsArea'
 import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebrationMarker'
+import { CELEBRATION_CLAIM_SETTLE_MS } from './useTodayEmptyInboxCelebration'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
@@ -49,6 +50,12 @@ describe('AchievementsArea', () => {
     beforeEach(() => {
         resetEmptyInboxCelebrationSessionMarkers()
         localStorage.clear()
+        // AT-2445: `Date` stays real — the suite reads "today" through moment.
+        jest.useFakeTimers({ doNotFake: ['Date', 'performance'] })
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
     })
 
     it('renders empty inbox achievement metrics and activity', () => {
@@ -157,6 +164,9 @@ describe('AchievementsArea', () => {
                 celebrateNewDay: true,
             })
             expect(todayDotsIn(firstVisit)).toHaveLength(1)
+            // AT-2445: a day is only spent once its run has been on screen long enough to be seen.
+            // Tabbing away mid-run hands it back, so a "tab switch" has to actually let it play.
+            renderer.act(() => jest.advanceTimersByTime(CELEBRATION_CLAIM_SETTLE_MS))
             renderer.act(() => firstVisit.unmount())
 
             const secondVisit = renderOverview({

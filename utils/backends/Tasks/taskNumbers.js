@@ -7,6 +7,7 @@ import {
     setWorkflowTasksAmount,
     setDoneTasksAmount,
     setOpenTasksAmount,
+    setOpenTasksAmountLoaded,
     setSidebarNumbers,
 } from '../../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
@@ -96,13 +97,28 @@ export const unwatchDoneTasksAmount = watcherKeys => {
     }
 }
 
+/**
+ * AT-2445 — every open-task count watcher reports its FIRST snapshot through this callback so the
+ * board can tell "the inbox is empty" apart from "the inbox has not been counted yet".
+ *
+ * It is handed a token that is unique per QUERY, not per project: the workstream watcher opens one
+ * query per workstream id, and counting projects there would report ready while queries are still
+ * outstanding. The error branch reports too — a listener that was rejected is never going to
+ * contribute a count, and leaving it outstanding would keep a genuinely empty board from ever
+ * showing its congrats.
+ */
+const reportWatcherSettled = (onQuerySettled, token) => {
+    if (typeof onQuerySettled === 'function') onQuerySettled(token)
+}
+
 export const watchOpenTasksAmount = (
     projectIds,
     userId,
     countLaterTasks,
     countSomedayTasks,
     amountsByProject,
-    watcherKeys
+    watcherKeys,
+    onQuerySettled
 ) => {
     const { loggedUser } = store.getState()
     const { uid: loggedUserId, isAnonymous } = loggedUser
@@ -120,19 +136,25 @@ export const watchOpenTasksAmount = (
         if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
         if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
 
-        globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(snapshot => {
-            if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-            const newAmount = snapshot.docs.length
-            const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
+        globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(
+            snapshot => {
+                if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
+                const newAmount = snapshot.docs.length
+                const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
 
-            if (newAmount !== previousAmount) {
-                amountsByProject.total -= previousAmount
-                amountsByProject.total += newAmount
-                amountsByProject[projectId].normal = newAmount
-                store.dispatch(setOpenTasksAmount(amountsByProject.total))
-            }
-        })
+                if (newAmount !== previousAmount) {
+                    amountsByProject.total -= previousAmount
+                    amountsByProject.total += newAmount
+                    amountsByProject[projectId].normal = newAmount
+                    store.dispatch(setOpenTasksAmount(amountsByProject.total))
+                }
+                reportWatcherSettled(onQuerySettled, watcherKeys[index])
+            },
+            () => reportWatcherSettled(onQuerySettled, watcherKeys[index])
+        )
     })
+
+    return watcherKeys.slice()
 }
 
 export const unwatchOpenTasksAmount = watcherKeys => {
@@ -140,6 +162,10 @@ export const unwatchOpenTasksAmount = watcherKeys => {
         globalWatcherUnsub[watcherKey]()
     })
     store.dispatch(setOpenTasksAmount(null))
+    // AT-2445: the total is about to be rebuilt from zero, so the board must stop trusting it until
+    // the new watchers have reported. Resetting the amount without resetting this flag is exactly
+    // the hole this change closes.
+    store.dispatch(setOpenTasksAmountLoaded(false))
 }
 
 export const watchObservedOpenTasksAmount = (
@@ -148,7 +174,8 @@ export const watchObservedOpenTasksAmount = (
     countLaterTasks,
     countSomedayTasks,
     amountsByProject,
-    watcherKeys
+    watcherKeys,
+    onQuerySettled
 ) => {
     projectIds.forEach((projectId, index) => {
         globalWatcherUnsub[watcherKeys[index]] = getDb()
@@ -156,29 +183,37 @@ export const watchObservedOpenTasksAmount = (
             .where('done', '==', false)
             .where('parentId', '==', null)
             .where('observersIds', 'array-contains-any', [userId])
-            .onSnapshot(snapshot => {
-                let newAmount = 0
-                snapshot.forEach(taskDoc => {
-                    const needToCountTheTask = checkIfNeedCountObservedTasks(
-                        mapTaskData(taskDoc.id, taskDoc.data()),
-                        userId,
-                        countLaterTasks,
-                        countSomedayTasks
-                    )
-                    if (needToCountTheTask) newAmount++
-                })
+            .onSnapshot(
+                snapshot => {
+                    let newAmount = 0
+                    snapshot.forEach(taskDoc => {
+                        const needToCountTheTask = checkIfNeedCountObservedTasks(
+                            mapTaskData(taskDoc.id, taskDoc.data()),
+                            userId,
+                            countLaterTasks,
+                            countSomedayTasks
+                        )
+                        if (needToCountTheTask) newAmount++
+                    })
 
-                if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-                const previousAmount = amountsByProject[projectId].observed ? amountsByProject[projectId].observed : 0
+                    if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
+                    const previousAmount = amountsByProject[projectId].observed
+                        ? amountsByProject[projectId].observed
+                        : 0
 
-                if (newAmount !== previousAmount) {
-                    amountsByProject.total -= previousAmount
-                    amountsByProject.total += newAmount
-                    amountsByProject[projectId].observed = newAmount
-                    store.dispatch(setOpenTasksAmount(amountsByProject.total))
-                }
-            })
+                    if (newAmount !== previousAmount) {
+                        amountsByProject.total -= previousAmount
+                        amountsByProject.total += newAmount
+                        amountsByProject[projectId].observed = newAmount
+                        store.dispatch(setOpenTasksAmount(amountsByProject.total))
+                    }
+                    reportWatcherSettled(onQuerySettled, watcherKeys[index])
+                },
+                () => reportWatcherSettled(onQuerySettled, watcherKeys[index])
+            )
     })
+
+    return watcherKeys.slice()
 }
 
 const checkIfNeedCountObservedTasks = (task, userId, countLaterTasks, countSomedayTasks) => {
@@ -202,12 +237,14 @@ export const watchUserWorkstreamsOpenTasksAmount = (
     countLaterTasks,
     countSomedayTasks,
     amountsByProject,
-    watcherKeys
+    watcherKeys,
+    onQuerySettled
 ) => {
     const { loggedUser } = store.getState()
     const { uid: loggedUserId, isAnonymous } = loggedUser
 
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+    const queryTokens = []
 
     projectIds.forEach((projectId, index) => {
         const userWorkstreamIdsInProject =
@@ -227,22 +264,35 @@ export const watchUserWorkstreamsOpenTasksAmount = (
             if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
             if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
 
-            globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(snapshot => {
-                const newAmount = snapshot.docs.length
-                if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-                if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
-                if (!amountsByProject[projectId].workstreams[wsId]) amountsByProject[projectId].workstreams[wsId] = 0
-                const previousAmount = amountsByProject[projectId].workstreams[wsId]
+            // One token per QUERY: this watcher opens one listener per workstream id but stores them
+            // all under a single watcher key, so a per-project token would report ready while other
+            // workstreams of the same project were still outstanding.
+            const queryToken = `${watcherKeys[index]}:${wsId}`
+            queryTokens.push(queryToken)
 
-                if (newAmount !== previousAmount) {
-                    amountsByProject.total -= previousAmount
-                    amountsByProject.total += newAmount
-                    amountsByProject[projectId].workstreams[wsId] = newAmount
-                    store.dispatch(setOpenTasksAmount(amountsByProject.total))
-                }
-            })
+            globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(
+                snapshot => {
+                    const newAmount = snapshot.docs.length
+                    if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
+                    if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
+                    if (!amountsByProject[projectId].workstreams[wsId])
+                        amountsByProject[projectId].workstreams[wsId] = 0
+                    const previousAmount = amountsByProject[projectId].workstreams[wsId]
+
+                    if (newAmount !== previousAmount) {
+                        amountsByProject.total -= previousAmount
+                        amountsByProject.total += newAmount
+                        amountsByProject[projectId].workstreams[wsId] = newAmount
+                        store.dispatch(setOpenTasksAmount(amountsByProject.total))
+                    }
+                    reportWatcherSettled(onQuerySettled, queryToken)
+                },
+                () => reportWatcherSettled(onQuerySettled, queryToken)
+            )
         })
     })
+
+    return queryTokens
 }
 
 export const watchSidebarTasksAmount = (

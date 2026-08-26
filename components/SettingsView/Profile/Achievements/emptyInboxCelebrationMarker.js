@@ -84,6 +84,43 @@ export const markEmptyInboxDayCelebrated = (userId, dayKey) => {
     }
 }
 
+/**
+ * AT-2445 — give the day back when the celebration was claimed but never played.
+ *
+ * The marker is claimed in a `useLayoutEffect`, i.e. BEFORE the first frame of the animation, which
+ * is deliberate (AT-2418: a passive effect would paint the finished green dot and then jump it back
+ * to scale 0). The consequence is that a mount which is torn down again before the run finishes has
+ * still spent the day. That used to happen on every visit to the all-projects board, because the
+ * board rendered its empty-inbox block throughout the loading window; the board no longer does that,
+ * and this is the second line of defence for every other way a mount can be cut short — a route
+ * change, a tab switch, the last task being un-completed.
+ *
+ * Releasing is only ever safe for a marker this session claimed and did not play out. It therefore
+ * checks the session map first: a marker restored from a previous session's localStorage means the
+ * animation demonstrably ran, and must not be handed back.
+ */
+export const releaseEmptyInboxDayCelebration = (userId, dayKey) => {
+    if (!userId || !dayKey) return
+    if (sessionMarkers[userId] !== dayKey) return
+
+    delete sessionMarkers[userId]
+
+    const storage = safeStorage()
+    if (!storage) return
+
+    const markers = readStoredMarkers()
+    if (markers[userId] !== dayKey) return
+
+    delete markers[userId]
+
+    try {
+        storage.setItem(STORAGE_KEY, JSON.stringify(markers))
+    } catch (error) {
+        // Quota or private mode. The session map above is already released, which is what answers
+        // for this tab.
+    }
+}
+
 // Tests only: the session map is module state by design, so it outlives a component tree.
 export const resetEmptyInboxCelebrationSessionMarkers = () => {
     Object.keys(sessionMarkers).forEach(key => delete sessionMarkers[key])

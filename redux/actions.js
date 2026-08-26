@@ -2041,6 +2041,22 @@ export const setOpenTasksAmount = openTasksAmount => {
     return action
 }
 
+/**
+ * AT-2445 — "has every open-task count watcher delivered its first snapshot?".
+ *
+ * `openTasksAmount` is a running total accumulated across one Firestore listener per project, and
+ * it is forced back to 0 whenever those listeners are rebuilt. Without this flag, `!openTasksAmount`
+ * is true for the whole loading window of every visit to the all-projects board, which is
+ * indistinguishable from a genuinely empty inbox.
+ */
+export const setOpenTasksAmountLoaded = openTasksAmountLoaded => {
+    const action = {
+        type: 'Set open tasks amount loaded',
+        openTasksAmountLoaded,
+    }
+    return action
+}
+
 export const setDoneTasksAmount = doneTasksAmount => {
     const action = {
         type: 'Set done tasks amount',

@@ -5,6 +5,7 @@ import { AccessibilityInfo } from 'react-native'
 
 import { EmptyInboxOverview } from './AchievementsArea'
 import { CELEBRATION_TOTAL_MS, STREAK_TICK_DELAY_MS } from './emptyInboxDotMotion'
+import { CELEBRATION_CLAIM_SETTLE_MS } from './useTodayEmptyInboxCelebration'
 import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebrationMarker'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
@@ -153,8 +154,11 @@ describe('the empty-inbox day celebration, end to end', () => {
         const firstVisit = await renderBoard([yesterdayKey, todayKey])
         expect(countOf(firstVisit, 'empty-inbox-today-dot')).toBe(1)
 
+        // AT-2445: the day is spent once the run has been on screen for the refund window, which is
+        // deliberately a little longer than the motion itself. A visit that ends sooner is treated
+        // as never having been seen and the celebration is still owed.
         await act(async () => {
-            jest.advanceTimersByTime(CELEBRATION_TOTAL_MS)
+            jest.advanceTimersByTime(CELEBRATION_CLAIM_SETTLE_MS)
             firstVisit.unmount()
         })
 
