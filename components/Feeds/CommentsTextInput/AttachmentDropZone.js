@@ -72,6 +72,22 @@ export default function AttachmentDropZone({
         if (dragDepth.current === 0) setIsDraggingFiles(false)
     }
 
+    // AT-2441 — this MUST stay a capture-phase handler (`onDropCapture` below).
+    //
+    // Quill 2 ships an `uploader` module, enabled by default, whose constructor adds its own
+    // `drop` listener on `quill.root` and inserts png/jpeg as base64 `image` embeds
+    // (node_modules/quill/modules/uploader.js). That node is a DESCENDANT of this drop zone, so
+    // in the bubble phase Quill's listener runs FIRST and this one's `stopPropagation` comes far
+    // too late to cancel it: a dropped screenshot landed twice — once as Quill's base64 image and
+    // once as the app's named attachment. Capture runs outside-in, so claiming the event here
+    // means it never reaches the editor at all.
+    //
+    // Deliberately NOT fixed with `uploader: false` (the notes editor's fix, EditorToolbar.js):
+    // these editors let Quill's Clipboard handle paste, and `Clipboard.onCapturePaste` routes a
+    // pasted image file through `quill.uploader.upload(...)` — switching the module off would
+    // throw on paste. Nor is it fixed by dropping the listener: Quill's `preventDefault` is what
+    // stops the browser from navigating away to the file when a drop lands on an editor that has
+    // no drop zone above it.
     const onDrop = event => {
         const files = getDroppedFiles(event)
         if (files.length === 0) return
@@ -110,7 +126,7 @@ export default function AttachmentDropZone({
             onDragEnter={onDragEnter}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
-            onDrop={onDrop}
+            onDropCapture={onDrop}
         >
             {content}
         </div>

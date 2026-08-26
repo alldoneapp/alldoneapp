@@ -102,7 +102,7 @@ describe('AttachmentDropZone', () => {
         expect(dataTransfer.dropEffect).toBe('copy')
         expect(tree.root.findByProps({ testID: 'attachment-drop-feedback' })).toBeTruthy()
 
-        act(() => getDropZone().props.onDrop(dragEvent))
+        act(() => getDropZone().props.onDropCapture(dragEvent))
 
         expect(checkIsLimitedByTraffic).toHaveBeenCalledWith('project-1')
         expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, editor, 'screen.webp', 'blob:screen.webp')
@@ -139,7 +139,7 @@ describe('AttachmentDropZone', () => {
             )
         })
 
-        act(() => tree.root.findByProps({ 'data-testid': 'drop-zone' }).props.onDrop(dropEvent))
+        act(() => tree.root.findByProps({ 'data-testid': 'drop-zone' }).props.onDropCapture(dropEvent))
 
         expect(dropEvent.preventDefault).toHaveBeenCalled()
         expect(dropEvent.stopPropagation).toHaveBeenCalled()
