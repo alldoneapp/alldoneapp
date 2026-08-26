@@ -26,6 +26,21 @@ const MAX_VM_RUNTIME_MS = resolveMaxVmRuntimeMs()
 const E2B_SANDBOX_TERMINATION_GRACE_MS = 30 * 1000
 const E2B_SANDBOX_TIMEOUT_MS = 60 * 60 * 1000
 const E2B_SANDBOX_SLICE_MS = 55 * 60 * 1000
+
+// E2B pins a sandbox's expiry to the start of its CURRENT session — the create call, or the
+// last POST /sandboxes/{id}/resume — and `sandbox.setTimeout()` does not move it afterwards.
+// Measured across 7/7 production sandbox deaths: every one landed 3598.7-3599.4s after its
+// last resume, while both the keep-alive `setTimeout(15min)` and the reuse
+// `setTimeout(60min)` issued in between left no trace in the actual expiry.
+//
+// So a sandbox reused inside the keep-alive window (status `idle_running`, never paused)
+// carries whatever is LEFT of that hour, not a fresh one. The runner must read the real
+// expiry rather than assume, and when too little of it remains to hold a normal agent run it
+// must rotate the sandbox (pause + resume — the only call that provably re-arms the clock)
+// BEFORE starting the agent. This threshold sits above a typical ~40-minute agent run, so a
+// genuinely fresh warm sandbox still starts instantly while one that cannot finish the work
+// is rotated up front instead of dying mid-run.
+const E2B_SANDBOX_MIN_REUSE_LEASE_MS = 30 * 60 * 1000
 // E2B command timeout is independent of the sandbox lease. Disable it so the
 // original process survives lease rotations; the runner's five-hour supervisor
 // remains the authoritative execution limit.
@@ -52,6 +67,7 @@ module.exports = {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
+    E2B_SANDBOX_MIN_REUSE_LEASE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
     resolveMaxVmRuntimeMs,
 }
