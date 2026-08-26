@@ -19,6 +19,7 @@ import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../i18n/TranslationService'
 import {
+    getAssistantInProject,
     getAssistantInProjectObject,
     getAssistantProjectId,
 } from '../components/AdminPanel/Assistants/assistantsHelper'
@@ -35,7 +36,7 @@ import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinner
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
-import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from './assistantWorkflow'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID, resolveAssistantWorkflowExecutionMode } from './assistantWorkflow'
 import {
     buildOnDemandAssistantTaskMetadata,
     shouldUseClientTaskCompletionFallback,
@@ -514,10 +515,27 @@ export const generateTaskFromPreConfig = async (
     const { skipNavigation = false, waitForDirectRun = true } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     // Preconfigured prompts created before execution modes existed always ran directly.
-    const executionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const requestedExecutionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const executionMode = resolveAssistantWorkflowExecutionMode(
+        getAssistantInProject(projectId, assistantId),
+        projectId,
+        requestedExecutionMode
+    )
+    const modeAdjustedTaskMetadata =
+        taskMetadata && executionMode !== requestedExecutionMode ? { ...taskMetadata, executionMode } : taskMetadata
     const effectiveTaskMetadata =
-        executionMode === TASK_EXECUTION_MODE_DIRECT ? buildOnDemandAssistantTaskMetadata(taskMetadata) : taskMetadata
+        executionMode === TASK_EXECUTION_MODE_DIRECT
+            ? buildOnDemandAssistantTaskMetadata(modeAdjustedTaskMetadata)
+            : modeAdjustedTaskMetadata
     const { loggedUser } = store.getState()
+
+    if (executionMode !== requestedExecutionMode) {
+        console.warn('Assistant has no configured workflow step; running pre-configured task directly', {
+            projectId,
+            assistantId,
+            name,
+        })
+    }
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,

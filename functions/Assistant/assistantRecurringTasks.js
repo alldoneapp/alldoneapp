@@ -22,6 +22,7 @@ const {
     TASK_EXECUTION_MODE_DIRECT,
     TASK_EXECUTION_MODE_WORKFLOW,
     getTaskExecutionMode,
+    resolveAssistantWorkflowExecutionMode,
 } = require('../shared/taskExecutionMode')
 const { completeGeneratedAssistantTask, finalizeGeneratedAssistantTask } = require('./generatedAssistantTaskCompletion')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
@@ -404,7 +405,8 @@ async function ensureTaskChatExists(
     assistantId,
     prompt,
     activatorUserId,
-    executionProjectId = projectId
+    executionProjectId = projectId,
+    executionModeOverride = null
 ) {
     try {
         const assistantTasksProjectId = projectId
@@ -418,7 +420,7 @@ async function ensureTaskChatExists(
             console.error('Task not found when creating chat:', { taskId, projectId })
             return { uniqueId: null }
         }
-        const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+        const executionMode = executionModeOverride || getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
         // Determine the follower(s) for the task - prioritize activator, then creator, then first user
         const followerIds = []
@@ -748,7 +750,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         recurrence: recurrenceForUser,
         lastExecuted: previousLastExecutedByUser ?? task.lastExecuted ?? null,
     }
-    const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+    const requestedExecutionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
     // Get activator data from cache or fetch from DB
     let activatorData
@@ -789,6 +791,24 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     // This ensures we target the project where the task was activated by the user
     const executionProjectId =
         task?.activatedInProjectIdByUser?.[activatorUserId] || task.activatedInProjectId || projectId
+
+    let executionMode = requestedExecutionMode
+    if (requestedExecutionMode === TASK_EXECUTION_MODE_WORKFLOW) {
+        const assistantDoc = await admin.firestore().doc(`assistants/${executionProjectId}/items/${assistantId}`).get()
+        executionMode = resolveAssistantWorkflowExecutionMode(
+            assistantDoc.exists ? assistantDoc.data() : null,
+            executionProjectId,
+            requestedExecutionMode
+        )
+        if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
+            console.warn('Scheduled assistant has no configured workflow step; running task directly', {
+                assistantProjectId: projectId,
+                executionProjectId,
+                assistantId,
+                taskId: task.id,
+            })
+        }
+    }
 
     if (executionProjectId !== projectId) {
         console.log('Using different project ID for execution:', {
@@ -849,7 +869,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             task.prompt,
             activatorUserId,
-            executionProjectId
+            executionProjectId,
+            executionMode
         )
         if (!uniqueId) throw new Error('Could not create the scheduled assistant task')
 
