@@ -22,9 +22,7 @@ const {
     TASK_EXECUTION_MODE_DIRECT,
     TASK_EXECUTION_MODE_WORKFLOW,
     getTaskExecutionMode,
-    resolveAssistantWorkflowExecutionMode,
 } = require('../shared/taskExecutionMode')
-const { completeGeneratedAssistantTask, finalizeGeneratedAssistantTask } = require('./generatedAssistantTaskCompletion')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
@@ -405,8 +403,7 @@ async function ensureTaskChatExists(
     assistantId,
     prompt,
     activatorUserId,
-    executionProjectId = projectId,
-    executionModeOverride = null
+    executionProjectId = projectId
 ) {
     try {
         const assistantTasksProjectId = projectId
@@ -420,7 +417,7 @@ async function ensureTaskChatExists(
             console.error('Task not found when creating chat:', { taskId, projectId })
             return { uniqueId: null }
         }
-        const executionMode = executionModeOverride || getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+        const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
         // Determine the follower(s) for the task - prioritize activator, then creator, then first user
         const followerIds = []
@@ -750,7 +747,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         recurrence: recurrenceForUser,
         lastExecuted: previousLastExecutedByUser ?? task.lastExecuted ?? null,
     }
-    const requestedExecutionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
+    const executionMode = getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT)
 
     // Get activator data from cache or fetch from DB
     let activatorData
@@ -791,24 +788,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     // This ensures we target the project where the task was activated by the user
     const executionProjectId =
         task?.activatedInProjectIdByUser?.[activatorUserId] || task.activatedInProjectId || projectId
-
-    let executionMode = requestedExecutionMode
-    if (requestedExecutionMode === TASK_EXECUTION_MODE_WORKFLOW) {
-        const assistantDoc = await admin.firestore().doc(`assistants/${executionProjectId}/items/${assistantId}`).get()
-        executionMode = resolveAssistantWorkflowExecutionMode(
-            assistantDoc.exists ? assistantDoc.data() : null,
-            executionProjectId,
-            requestedExecutionMode
-        )
-        if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
-            console.warn('Scheduled assistant has no configured workflow step; running task directly', {
-                assistantProjectId: projectId,
-                executionProjectId,
-                assistantId,
-                taskId: task.id,
-            })
-        }
-    }
 
     if (executionProjectId !== projectId) {
         console.log('Using different project ID for execution:', {
@@ -869,8 +848,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             task.prompt,
             activatorUserId,
-            executionProjectId,
-            executionMode
+            executionProjectId
         )
         if (!uniqueId) throw new Error('Could not create the scheduled assistant task')
 
@@ -1055,6 +1033,84 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
         throw error
     }
+}
+
+async function completeGeneratedAssistantTask(projectId, generatedTaskId, activatorUserId, activatorData = {}) {
+    if (!generatedTaskId) {
+        throw new Error('Cannot complete recurring assistant task because the generated task ID is missing')
+    }
+
+    const database = admin.firestore()
+    const taskRef = database.doc(`items/${projectId}/tasks/${generatedTaskId}`)
+    const taskSnapshot = await taskRef.get()
+
+    if (!taskSnapshot.exists) {
+        throw new Error(`Generated recurring assistant task ${generatedTaskId} was not found`)
+    }
+
+    const currentTask = { id: generatedTaskId, ...taskSnapshot.data() }
+    if (currentTask.done === true && currentTask.inDone === true) {
+        return { success: true, persisted: false, alreadyCompleted: true, taskId: generatedTaskId }
+    }
+
+    const { TaskService } = require('../shared/TaskService')
+    const taskService = new TaskService({
+        database,
+        moment,
+        enableFeeds: true,
+        enableValidation: false,
+        isCloudFunction: true,
+    })
+    await taskService.initialize()
+
+    const feedUser = {
+        uid: activatorUserId,
+        id: activatorUserId,
+        creatorId: activatorUserId,
+        name: activatorData.name || activatorData.displayName || 'User',
+        displayName: activatorData.displayName || activatorData.name || 'User',
+        email: activatorData.email || '',
+    }
+
+    const result = await taskService.updateAndPersistTask(
+        {
+            taskId: generatedTaskId,
+            projectId,
+            currentTask,
+            completed: true,
+            feedUser,
+            initiatorId: activatorUserId,
+        },
+        {
+            projectId,
+            userId: activatorUserId,
+            lastEditorId: activatorUserId,
+        },
+        {
+            projectId,
+            feedUser,
+        }
+    )
+
+    console.log('Marked generated recurring assistant task as done:', {
+        projectId,
+        generatedTaskId,
+        activatorUserId,
+        persisted: result.persisted,
+    })
+
+    return result
+}
+
+async function finalizeGeneratedAssistantTask(
+    { taskResult, projectId, generatedTaskId, activatorUserId, activatorData },
+    completeTask = completeGeneratedAssistantTask
+) {
+    if (!taskResult || taskResult.success !== true) {
+        throw new Error('Recurring assistant task did not return a successful execution result')
+    }
+
+    return completeTask(projectId, generatedTaskId, activatorUserId, activatorData)
 }
 
 /**

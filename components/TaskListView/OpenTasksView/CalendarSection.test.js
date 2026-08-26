@@ -247,6 +247,55 @@ describe('CalendarSection', () => {
         expect(tree.root.findAllByType('ReloadCalendar')).toHaveLength(0)
     })
 
+    // AT-2437 - clicking the header 404'd. The helper owns the URL, but only this level proves the
+    // header is wired to it AND that it hands over the calendar payload of a real rendered meeting,
+    // which is the half that decides whether the right account is opened.
+    describe('opening the provider from the header (AT-2437)', () => {
+        let openSpy
+
+        beforeEach(() => {
+            openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+        })
+
+        afterEach(() => {
+            openSpy.mockRestore()
+        })
+
+        const pressHeaderLink = tree => {
+            const link = tree.root.find(node => typeof node.props.onPress === 'function')
+            act(() => {
+                link.props.onPress()
+            })
+        }
+
+        it('opens the Google calendar of the account the meetings came from', () => {
+            const tree = renderSection([[GENERAL_TASKS, [timed('a', '2026-08-21T09:00:00+02:00')]]])
+
+            pressHeaderLink(tree)
+
+            expect(openSpy).toHaveBeenCalledWith(
+                'https://calendar.google.com/calendar/r?authuser=karsten%40alldone.app',
+                '_blank'
+            )
+        })
+
+        it('opens Outlook for a Microsoft calendar instead of the first meeting', () => {
+            const microsoftMeeting = {
+                id: 'a',
+                calendarData: {
+                    provider: 'microsoft',
+                    link: 'https://outlook.office.com/calendar/item/one-meeting',
+                    start: { dateTime: '2026-08-21T09:00:00+02:00' },
+                },
+            }
+            const tree = renderSection([[GENERAL_TASKS, [microsoftMeeting]]])
+
+            pressHeaderLink(tree)
+
+            expect(openSpy).toHaveBeenCalledWith('https://outlook.office.com/calendar/', '_blank')
+        })
+    })
+
     it('renders nothing until the goal ordering is known', () => {
         mockSortGoalTasksGorups.mockReturnValue(undefined)
         const tree = renderSection([[GENERAL_TASKS, [timed('a', '2026-08-21T09:00:00+02:00')]]])

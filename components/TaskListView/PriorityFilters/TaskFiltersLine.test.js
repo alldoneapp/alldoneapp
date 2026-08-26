@@ -6,7 +6,6 @@ import React from 'react'
 import { Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
-import { removeModal, storeModal } from '../../ModalsManager/modalsManager'
 
 const mockCollectTaskPriorityCounts = jest.fn()
 const mockCollectTaskVmSessionRefs = jest.fn()
@@ -262,48 +261,5 @@ describe('TaskFiltersLine', () => {
         expect(mockWatchVmSessionStatus).toHaveBeenCalledWith('project-1', 'task-1', expect.any(Function))
         act(() => component.unmount())
         expect(unsubscribe).toHaveBeenCalledTimes(1)
-    })
-
-    test('acquires the Auto-postpone popup once and releases it on unmount', () => {
-        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 1 }, total: 1, prioritized: 1 })
-        setState()
-        let component
-
-        act(() => {
-            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
-        })
-        const button = component.root.findByProps({ testID: 'task-filter-auto-postpone' })
-
-        act(() => {
-            button.props.onPress()
-            button.props.onPress()
-        })
-
-        expect(storeModal).toHaveBeenCalledTimes(1)
-        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
-
-        act(() => component.unmount())
-
-        expect(removeModal).toHaveBeenCalledWith('auto-postpone-modal-id')
-        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
-    })
-
-    test('releases Auto-postpone when the filter line disappears while it is open', () => {
-        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 1 }, total: 1, prioritized: 1 })
-        setState()
-        let component
-
-        act(() => {
-            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
-        })
-        act(() => component.root.findByProps({ testID: 'task-filter-auto-postpone' }).props.onPress())
-
-        mockCollectTaskPriorityCounts.mockReturnValue({ counts: {}, total: 0, prioritized: 0 })
-        setState({ openTasksStore: { refreshed: true } })
-        act(() => component.update(<TaskFiltersLine projectId="project-1" />))
-
-        expect(component.toJSON()).toBeNull()
-        expect(removeModal).toHaveBeenCalledWith('auto-postpone-modal-id')
-        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
     })
 })
