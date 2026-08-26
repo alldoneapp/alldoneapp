@@ -957,6 +957,61 @@ yields two bars" are assertions about the code rather than restatements of a stu
 answers for whatever element it is handed cannot tell that the wrong element is being measured;
 that is exactly how the empty-marker defect passed a green suite.
 
+### Empty-inbox celebration (AT-2445)
+
+**A count of 0 does not mean "empty" — it also means "not counted yet", and telling them apart is
+the whole bug.** `openTasksAmount` is a running total accumulated across one Firestore listener per
+project (`watchOpenTasksAmount` and its observed/workstream siblings in `taskNumbers.js`), it starts
+at 0, and `unwatchOpenTasksAmount` forces it back to 0 whenever those listeners are rebuilt — which
+happens on **every** mount of the all-projects board, because `TasksAmountContainers` registers an
+empty project list for one pass before the real one arrives, and again on every Later/Someday
+toggle. `OpenTasksViewAllProjects` nonetheless decided with a bare `!openTasksAmount`, so it rendered
+the empty-inbox congrats through the whole loading window of every visit. My Day never had this
+problem (`tasksLoaded && …` in `MyDayOpenTasks`); the all-projects board was the outlier.
+
+That flash is not cosmetic, and this is why three previous tasks about the animation all "worked"
+and were never seen. The block mounts `EmptyInboxOverview`, whose `useTodayEmptyInboxCelebration`
+claims the **once-per-day** celebration marker in a `useLayoutEffect` — before paint, deliberately
+(AT-2418: a passive effect would paint the finished green dot and then jump it back to scale 0). So
+the day was routinely spent by a frame nobody saw, and the genuine empty-inbox moment later that day
+animated nothing. `openTasksAmountLoaded` is the missing half: every count listener reports its
+first snapshot (**and its error branch**) through a per-query token, `OpenTasksAmountContainer`
+announces readiness once that generation's listeners have all reported, and it **fails open** after
+`OPEN_TASKS_AMOUNT_READY_TIMEOUT_MS` — "the congrats never appears again" is far worse than "it
+appears a few seconds late". The token is per QUERY, not per project: the workstream watcher opens
+one listener per workstream id under a single watcher key. Second line of defence in the hook
+itself: a day claimed but torn down before its run has been on screen for
+`CELEBRATION_CLAIM_SETTLE_MS` is **handed back** (`releaseEmptyInboxDayCelebration`), and only a
+marker this session claimed can be refunded — one restored from localStorage means the animation
+demonstrably ran.
+
+**The celebration is staged where the eye already is.** AT-2418 put it on the one element that
+genuinely changes — an 11px square in the streak grid — which is correct and invisible: the grid is
+inside a card several blocks down the page and today's cell is at the far right of a 53-column year.
+The congratulation headline now pops in with a confetti burst thrown from behind it
+(`emptyInboxCongratsMotion.js` + `EmptyInboxConfetti.js`), and the dot keeps its beat as the detail
+you find when you look down. **One** run id drives both, so they are one event; the decision
+therefore moved up to `AllProjectsEmptyInbox`, which owns it and passes `celebrationRunId` down to
+`EmptyInboxOverview` (the card falls back to deciding for itself when no run id is passed, which is
+what keeps the Settings → Profile copy unable to spend the day). Owning it there is also what lets
+**My Day** celebrate at all — it renders this block without the achievement card, and clearing your
+last task there is where it usually happens.
+
+`celebrateNewDay` means "this surface may SPEND the day" and defaults to **off**; only the two
+open-task boards opt in. The Done, Pending and Workflow all-projects boards render the same block
+and must not — an empty Done list means you completed nothing today — and if they could celebrate
+they could also spend the day out from under the board that should have. Confetti trajectories are
+hashed from the piece index, never `Math.random()`: this board is subscribed to the task counts and
+re-renders constantly, and a random value read during render would teleport every piece onto a new
+trajectory mid-flight. The layer is an absolutely-positioned `pointerEvents: none` overlay so it can
+never move the Add task button or intercept a tap on it. Reduced motion renders no decorative layer
+at all. Pinned by `OpenTasksAmountContainer.test.js`, the AT-2445 blocks in
+`OpenTasksViewAllProjects.test.js` / `AllProjectsEmptyInbox.test.js` /
+`useTodayEmptyInboxCelebration.test.js`, and `EmptyInboxCongratsCelebration.test.js` — which, like
+AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and reduced motion, because
+the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
+static branch forever.
+
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
 On macOS, `getUserMedia({ audio: true })` enables Chrome's default processing chain
