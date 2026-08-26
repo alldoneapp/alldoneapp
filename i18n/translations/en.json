@@ -2796,5 +2796,7 @@
     "Added to goal": "Added to goal",
     "Moved to project": "Moved to {{project}}",
     "this project": "this project",
-    "Switch assistant": "Switch assistant"
+    "Switch assistant": "Switch assistant",
+    "New message": "New message",
+    "Jump to newest message": "Jump to newest message"
 }
