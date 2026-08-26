@@ -48,6 +48,7 @@ const {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
+    E2B_SANDBOX_MIN_REUSE_LEASE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
@@ -114,6 +115,11 @@ const KEEP_ALIVE_KILL_MS = 15 * 60 * 1000 // sandbox self-kill timeout (> grace 
 // doesn't respond we discard the zombie and fall through to a fresh sandbox instead of burning
 // minutes and refunding Gold on a doomed run.
 const RESUME_HEALTHCHECK_TIMEOUT_MS = 15 * 1000
+
+// Upper bound for the E2B control-plane read that reports a sandbox's real expiry. It runs
+// once per run on the startup path, and every failure (including this timeout) degrades to
+// the caller's assumed deadline rather than failing the run.
+const SANDBOX_INFO_REQUEST_TIMEOUT_MS = 10 * 1000
 
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
@@ -475,9 +481,24 @@ function shouldResumeVmSession(session) {
     return !!session && (session.status || 'paused') === 'paused'
 }
 
+// E2B answers every operation on an expired, killed or paused sandbox with a 404 whose body
+// reads `Sandbox "<id>" doesn't exist or you don't have access to it`. A sandbox that has
+// vanished can never be kept alive or paused, so recognizing it lets the runner discard the
+// session deterministically instead of discovering it through the keep-alive/pause/kill
+// cascade (the `keep-alive failed — pausing instead` line every one of these incidents left).
+function isE2bSandboxMissing(error) {
+    const message = String(error?.message || error || '')
+    // Deliberately keyed on E2B's exact shape — the quoted sandbox id — rather than on a bare
+    // "not found". An agent-exit error carries the assistant's own narration, and a loose
+    // match there would discard a perfectly healthy warm session because the model happened to
+    // write the words.
+    if (/sandbox\s+["'`][^"'`]+["'`]\s+(?:doesn'?t|does not)\s+exist/i.test(message)) return true
+    return Number(error?.status || error?.statusCode) === 404 && /\bsandbox\b/i.test(message)
+}
+
 function isUnhealthyVmSessionError(error) {
     const message = String(error?.message || error || '')
-    return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
+    return isE2bSandboxTimeout(error) || isE2bSandboxMissing(error) || /exited with exit status -1\b/i.test(message)
 }
 
 // Probe a just-resumed sandbox's command channel with a trivial command under a short timeout.
@@ -2595,6 +2616,67 @@ async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
     return true
 }
 
+// Ask E2B when this sandbox actually expires instead of assuming the runner's own
+// `setTimeout()` decided it. E2B pins the expiry to the start of the sandbox's current
+// session (create or resume) and a later `setTimeout()` does not move it, so a warm sandbox
+// reused inside the keep-alive window holds only the REMAINDER of that hour. Assuming a full
+// hour is what schedules the protective lease rotation after the sandbox is already dead.
+// Every failure path falls back to the caller's assumption: a missing/failing `getInfo` must
+// never break a run, it only costs the accuracy this read is meant to add.
+async function readSandboxLeaseDeadlineMs(sandbox, fallbackDeadlineMs) {
+    if (!sandbox || typeof sandbox.getInfo !== 'function') return fallbackDeadlineMs
+    try {
+        // Bounded: this sits on the run's startup path, and a hung control-plane request must
+        // cost the accuracy, never the run.
+        const info = await sandbox.getInfo({ requestTimeoutMs: SANDBOX_INFO_REQUEST_TIMEOUT_MS })
+        const endAtMs = new Date(info?.endAt).getTime()
+        return Number.isFinite(endAtMs) ? endAtMs : fallbackDeadlineMs
+    } catch (error) {
+        return fallbackDeadlineMs
+    }
+}
+
+// Give a reused sandbox a lease the runner can actually rely on.
+//
+// The caller has already connected to the session (and, for a paused one, resumed it). Read
+// the real expiry; if too little of it is left to hold a normal agent run, rotate the sandbox
+// through pause + resume — the only call that provably re-arms E2B's clock — so the run
+// starts with a genuine full hour instead of dying part-way through. A rotation preserves the
+// filesystem and the agent's session store exactly like the ordinary paused-resume path, and
+// any failure here propagates to the caller, which discards the session and starts fresh.
+async function prepareReusedSandboxLease({
+    Sandbox,
+    sandbox,
+    sandboxId,
+    e2bApiKey,
+    nowMs = Date.now(),
+    minLeaseMs = E2B_SANDBOX_MIN_REUSE_LEASE_MS,
+    pauseSandbox = pauseE2bSandbox,
+    resumeSandbox = resumeE2bSandbox,
+    readLeaseDeadline = readSandboxLeaseDeadlineMs,
+    probeSandbox = probeResumedVmSandbox,
+}) {
+    const leaseDeadlineMs = await readLeaseDeadline(sandbox, nowMs + E2B_SANDBOX_TIMEOUT_MS)
+    if (Number(leaseDeadlineMs) - nowMs >= minLeaseMs) {
+        return { sandbox, leaseDeadlineMs, rotated: false, previousLeaseRemainingMs: leaseDeadlineMs - nowMs }
+    }
+
+    await pauseSandbox(sandboxId, e2bApiKey)
+    await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
+    const rotatedSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
+    await rotatedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+    // A rotation is a resume, so it inherits the dead-envd hazard the ordinary resume path
+    // probes for (E2B #884). Probe before committing the paid run to it.
+    await probeSandbox(rotatedSandbox)
+    const rotatedAtMs = Date.now()
+    return {
+        sandbox: rotatedSandbox,
+        leaseDeadlineMs: await readLeaseDeadline(rotatedSandbox, rotatedAtMs + E2B_SANDBOX_TIMEOUT_MS),
+        rotated: true,
+        previousLeaseRemainingMs: leaseDeadlineMs - nowMs,
+    }
+}
+
 function startVmSliceTimer(runtimeMs) {
     let timer = null
     const promise = new Promise(resolve => {
@@ -2625,6 +2707,7 @@ async function superviseVmCommand({
     pauseSandbox = pauseE2bSandbox,
     resumeSandbox = resumeE2bSandbox,
     resolveSliceRuntime = resolveVmAgentSliceRuntimeMs,
+    readLeaseDeadline = readSandboxLeaseDeadlineMs,
     now = Date.now,
 }) {
     let activeSandbox = sandbox
@@ -2688,7 +2771,10 @@ async function superviseVmCommand({
         await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
         activeSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
         await activeSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-        leaseDeadlineMs = now() + E2B_SANDBOX_TIMEOUT_MS
+        // The resume above genuinely re-arms E2B's clock, so `now + timeout` is right here —
+        // but read the reported expiry anyway (falling back to it) so the next slice is
+        // budgeted against what E2B will actually enforce rather than what we asked for.
+        leaseDeadlineMs = await readLeaseDeadline(activeSandbox, now() + E2B_SANDBOX_TIMEOUT_MS)
         sliceCount += 1
         try {
             activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
@@ -3081,13 +3167,25 @@ async function runAgentInSandbox(
                 // fresh sandbox — instead of hanging the first real command (git clone / skill
                 // mount / CLI bootstrap) for its full multi-minute budget and failing the run.
                 await probeResumedVmSandbox(resumedSandbox)
-                sandboxLeaseDeadlineMs = Date.now() + E2B_SANDBOX_TIMEOUT_MS
-                sandbox = resumedSandbox
+                // Never assume this connect bought a fresh hour. E2B pins the expiry to the
+                // start of the sandbox's current session and ignores the setTimeout above, so
+                // a keep-alive reuse (`wasPaused: false`) inherits only what is left of it.
+                const lease = await prepareReusedSandboxLease({
+                    Sandbox,
+                    sandbox: resumedSandbox,
+                    sandboxId: sess.sandboxId,
+                    e2bApiKey,
+                })
+                sandboxLeaseDeadlineMs = lease.leaseDeadlineMs
+                sandbox = lease.sandbox
                 isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
                     wasPaused,
+                    leaseRotated: lease.rotated,
+                    inheritedLeaseRemainingMs: lease.previousLeaseRemainingMs,
+                    leaseRemainingMs: sandboxLeaseDeadlineMs - Date.now(),
                 })
             } catch (error) {
                 console.warn('🖥️ VM JOB: resume failed, starting fresh', {
@@ -3167,7 +3265,13 @@ async function runAgentInSandbox(
         }
         // Record that a valid golden was actually seeded (drives the unused-TTL cleanup).
         if (goldenSnapshotId) require('./vmGolden').touchGoldenUsage(vmJob.projectId)
-        sandboxLeaseDeadlineMs = sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
+        // A fresh create really does start a full lease, so the computed value is already
+        // correct here; read E2B's own expiry anyway so every path downstream reasons about a
+        // measured deadline rather than an assumed one, and falls back to the assumption.
+        sandboxLeaseDeadlineMs = await readSandboxLeaseDeadlineMs(
+            sandbox,
+            sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
+        )
     }
     console.log('🖥️ VM JOB: sandbox ready', {
         correlationId: vmJob.correlationId,
@@ -4649,6 +4753,9 @@ module.exports = {
         shouldResumeVmSession,
         resumeE2bSandbox,
         isUnhealthyVmSessionError,
+        isE2bSandboxMissing,
+        readSandboxLeaseDeadlineMs,
+        prepareReusedSandboxLease,
         probeResumedVmSandbox,
         RESUME_HEALTHCHECK_TIMEOUT_MS,
         formatVmRuntimeDuration,
