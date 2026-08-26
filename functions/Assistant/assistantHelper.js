@@ -10092,6 +10092,22 @@ async function storeChunks(
         // awaited ensureCommitted() before invoking this.
         const commentRefRawUpdate = data => commentRef.update(data)
 
+        // Firestore updates can resolve out of order. A timer-triggered batch write may still be
+        // in flight when the stream finishes and flushes its final few tokens; if the older write
+        // lands last, it silently replaces the complete answer with its shorter snapshot. Keep all
+        // writes to this comment in one chain so the newest accumulated text always wins.
+        let commentUpdateWriteChain = Promise.resolve()
+        const queueCommentUpdate = updateData => {
+            const writePromise = commentUpdateWriteChain
+                .catch(() => {})
+                .then(async () => {
+                    await ensureCommitted()
+                    await commentRefRawUpdate(updateData)
+                })
+            commentUpdateWriteChain = writePromise
+            return writePromise
+        }
+
         // In silent mode, decide whether the current state should still be hidden from
         // Firestore. We defer ANY write while:
         //   - we're in thinking mode (thinking text isn't the final answer), or
@@ -10124,7 +10140,10 @@ async function storeChunks(
         }
 
         const flushPendingUpdate = async () => {
-            if (!pendingUpdate) return
+            if (!pendingUpdate) {
+                await commentUpdateWriteChain
+                return
+            }
             if (shouldDeferSilentWrite()) {
                 // Keep the timeout and pendingUpdate in place so it fires again later;
                 // actually, we drop it — the next chunk will reschedule if needed.
@@ -10141,16 +10160,14 @@ async function storeChunks(
                 clearTimeout(updateTimeout)
                 updateTimeout = null
             }
-            await ensureCommitted()
-            await commentRefRawUpdate(updateData)
+            await queueCommentUpdate(updateData)
         }
 
         // Wrapper that guarantees the Firestore comment doc exists before updating.
         // Safe to use even outside silent mode (in which case `ensureCommitted()` is a no-op).
         const safeCommentUpdate = async updateData => {
             if (shouldDeferSilentWrite()) return
-            await ensureCommitted()
-            await commentRefRawUpdate(updateData)
+            await queueCommentUpdate(updateData)
         }
 
         finalizeCancelledComment = async () => {
@@ -10160,8 +10177,7 @@ async function storeChunks(
             }
             pendingUpdate = null
             commentText = 'Stopped.'
-            await ensureCommitted()
-            await commentRefRawUpdate({
+            await queueCommentUpdate({
                 commentText,
                 isLoading: false,
                 isThinking: false,
@@ -10198,7 +10214,6 @@ async function storeChunks(
             }
             pendingUpdate = null
             if (failureMessage) commentText = failureMessage
-            await ensureCommitted()
             const updateData = {
                 isLoading: false,
                 isThinking: false,
@@ -10211,7 +10226,7 @@ async function storeChunks(
                     failedAt: Date.now(),
                 }
             }
-            await commentRefRawUpdate(updateData).catch(() => {})
+            await queueCommentUpdate(updateData).catch(() => {})
         }
 
         const scheduleUpdate = async (updateData, immediate = false) => {
@@ -10981,7 +10996,7 @@ async function storeChunks(
                     completedAt: Date.now(),
                 }
             }
-            await commentRefRawUpdate(finalUpdate)
+            await queueCommentUpdate(finalUpdate)
         }
 
         if (ENABLE_DETAILED_LOGGING) {
