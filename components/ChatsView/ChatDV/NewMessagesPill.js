@@ -4,8 +4,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import useHomeIndicatorLift from '../../../hooks/useHomeIndicatorLift'
-import { CHAT_BOARD_CONTENT_OFFSET, getNewMessagesPillBottom } from './chatComposerLayout'
 
 // White on Primary100, the same literal the primary `Button` uses for its own label — there is no
 // white token in the palette.
@@ -23,18 +21,10 @@ const PILL_FOREGROUND = '#FFFFFF'
  * It renders through the scroller's `fixedChildren`, so it floats over the messages instead of
  * taking part in their layout — a pill that pushed the thread down as it appeared would move the
  * text the reader is in the middle of, which is exactly what the pin is careful not to do.
- *
- * Floating over the messages is the point; floating over the COMPOSER is not. Its `bottom` comes
- * from `chatComposerLayout` because the scroller's own bottom edge is not the edge the user sees —
- * the composer is lifted over it by a relative offset (and further on an iOS standalone PWA), so a
- * pill anchored to the scroller alone lands underneath an opaque box. See that module's header.
  */
 export default function NewMessagesPill({ onPress }) {
-    // 0 on desktop, Android and browser tabs, so this only moves where the composer itself moves.
-    const homeIndicatorLift = useHomeIndicatorLift()
-
     return (
-        <View style={[localStyles.container, { bottom: getNewMessagesPillBottom(homeIndicatorLift) }]}>
+        <View style={localStyles.container}>
             <TouchableOpacity
                 style={localStyles.pill}
                 onPress={onPress}
@@ -51,11 +41,11 @@ export default function NewMessagesPill({ onPress }) {
 const localStyles = StyleSheet.create({
     container: {
         position: 'absolute',
-        // Cancels the scroller's own -13 margin so the pill centres on the composer frame below it
-        // rather than on the message column, which is pulled left of it. `bottom` is applied by the
-        // component, because it depends on the home-indicator lift.
-        left: CHAT_BOARD_CONTENT_OFFSET,
+        left: 0,
         right: 0,
+        // Clear of the scroller's own 32px bottom padding, so the pill sits above the last message
+        // rather than on top of it.
+        bottom: 12,
         alignItems: 'center',
         // The strip spans the full width but must not swallow taps on the messages behind it; the
         // pill itself opts back in below. (CSS `none` on a parent still lets a child re-enable it —

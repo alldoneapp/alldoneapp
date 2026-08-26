@@ -66,7 +66,6 @@ import {
 } from '../Utils/chatScrollFullscreen'
 import useChatAutoScroll from '../../../hooks/Chats/useChatAutoScroll'
 import NewMessagesPill from './NewMessagesPill'
-import { CHAT_BOARD_CONTENT_OFFSET } from './chatComposerLayout'
 
 export default function ChatBoard({
     projectId,
@@ -515,9 +514,7 @@ const localStyles = StyleSheet.create({
     scrollView: {
         paddingTop: 8,
         paddingBottom: 32,
-        // Shared with the pill, which adds it back to centre on the composer instead of on this
-        // (leftward-shifted) message column. See chatComposerLayout.js.
-        marginLeft: -CHAT_BOARD_CONTENT_OFFSET,
+        marginLeft: -13,
     },
     emailActionsBar: {
         alignItems: 'flex-end',
