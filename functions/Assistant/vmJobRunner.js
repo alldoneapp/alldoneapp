@@ -48,7 +48,6 @@ const {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
-    E2B_SANDBOX_MIN_REUSE_LEASE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
@@ -2636,44 +2635,58 @@ async function readSandboxLeaseDeadlineMs(sandbox, fallbackDeadlineMs) {
     }
 }
 
-// Give a reused sandbox a lease the runner can actually rely on.
+// Reuse a thread's sandbox on a FRESH lease — every time, whatever state it was left in.
 //
-// The caller has already connected to the session (and, for a paused one, resumed it). Read
-// the real expiry; if too little of it is left to hold a normal agent run, rotate the sandbox
-// through pause + resume — the only call that provably re-arms E2B's clock — so the run
-// starts with a genuine full hour instead of dying part-way through. A rotation preserves the
-// filesystem and the agent's session store exactly like the ordinary paused-resume path, and
-// any failure here propagates to the caller, which discards the session and starts fresh.
-async function prepareReusedSandboxLease({
+// E2B pins a sandbox's expiry to the start of its current session and `setTimeout()` cannot
+// move it afterwards, so the only way to give a reused sandbox the full hour is to start a
+// new session. A paused sandbox gets one from the resume it needs anyway; a still-running
+// keep-alive sandbox has to be paused first. Both paths therefore end in the same REST
+// resume, and every run starts on the same predictable 60 minutes instead of inheriting an
+// unknown remainder of somebody else's hour.
+//
+// Pausing costs a few seconds of startup latency on a warm reuse. That is the deliberate
+// trade: a keep-alive reuse used to start instantly and then die mid-run once the inherited
+// lease ran out, which is far more expensive than the pause.
+async function resumeVmSessionWithFreshLease({
     Sandbox,
-    sandbox,
     sandboxId,
     e2bApiKey,
-    nowMs = Date.now(),
-    minLeaseMs = E2B_SANDBOX_MIN_REUSE_LEASE_MS,
+    wasPaused,
     pauseSandbox = pauseE2bSandbox,
     resumeSandbox = resumeE2bSandbox,
     readLeaseDeadline = readSandboxLeaseDeadlineMs,
     probeSandbox = probeResumedVmSandbox,
 }) {
-    const leaseDeadlineMs = await readLeaseDeadline(sandbox, nowMs + E2B_SANDBOX_TIMEOUT_MS)
-    if (Number(leaseDeadlineMs) - nowMs >= minLeaseMs) {
-        return { sandbox, leaseDeadlineMs, rotated: false, previousLeaseRemainingMs: leaseDeadlineMs - nowMs }
+    let pauseError = null
+    if (!wasPaused) {
+        // Pausing is what ENDS the running session; the resume below then starts a new one.
+        try {
+            await pauseSandbox(sandboxId, e2bApiKey)
+        } catch (error) {
+            // A pause that lost a race — the idle pauser got there first, or the sandbox is
+            // already gone — must not fail the run; the resume decides. If it really is still
+            // running, resume answers 409 and we continue on the inherited lease, degraded but
+            // correctly budgeted, because the deadline below is measured rather than assumed.
+            pauseError = error
+        }
     }
-
-    await pauseSandbox(sandboxId, e2bApiKey)
-    await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
-    const rotatedSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
-    await rotatedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-    // A rotation is a resume, so it inherits the dead-envd hazard the ordinary resume path
-    // probes for (E2B #884). Probe before committing the paid run to it.
-    await probeSandbox(rotatedSandbox)
-    const rotatedAtMs = Date.now()
+    const sessionRestarted =
+        (await resumeSandbox(sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))) !== false
+    const sandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
+    await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+    // Verify the command channel actually executes before we commit to it. connect() and
+    // setTimeout() both succeed on a resume that came back with a dead envd (E2B #884); this
+    // trivial command hangs instead, so the caller can discard the zombie and fall through to
+    // a fresh sandbox rather than hanging the first real command for its full budget.
+    await probeSandbox(sandbox)
     return {
-        sandbox: rotatedSandbox,
-        leaseDeadlineMs: await readLeaseDeadline(rotatedSandbox, rotatedAtMs + E2B_SANDBOX_TIMEOUT_MS),
-        rotated: true,
-        previousLeaseRemainingMs: leaseDeadlineMs - nowMs,
+        sandbox,
+        // A genuine resume really does start a full hour, so this should be `now + timeout` —
+        // read it anyway so a lost pause race or a change in E2B's semantics shows up as a
+        // shorter budgeted run instead of a sandbox that dies under a running agent.
+        leaseDeadlineMs: await readLeaseDeadline(sandbox, Date.now() + E2B_SANDBOX_TIMEOUT_MS),
+        sessionRestarted,
+        pauseError,
     }
 }
 
@@ -3149,42 +3162,32 @@ async function runAgentInSandbox(
             isReusableVmSession(sess)
         ) {
             try {
-                // A paused sandbox must be explicitly resumed first (connect alone won't
-                // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
+                // Every reuse starts a NEW E2B session, so the run always gets the full hour:
+                // a paused sandbox from the resume it needs anyway, a still-running keep-alive
+                // one by being paused first. `setTimeout()` cannot do this — it reports success
+                // and leaves the expiry pinned to the session that is already running.
                 const wasPaused = shouldResumeVmSession(sess)
-                if (wasPaused) {
-                    await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
-                }
-                const resumedSandbox = await Sandbox.connect(sess.sandboxId, {
-                    apiKey: e2bApiKey,
-                    allowInternetAccess: true,
-                })
-                await resumedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-                // Verify the resumed sandbox's command channel actually executes before we commit
-                // to it. connect()/setTimeout() succeed even on a resume that came back with a dead
-                // envd; this trivial command hangs (→ deadline_exceeded under the short timeout) in
-                // that case, so we discard the zombie via the catch below and fall through to a
-                // fresh sandbox — instead of hanging the first real command (git clone / skill
-                // mount / CLI bootstrap) for its full multi-minute budget and failing the run.
-                await probeResumedVmSandbox(resumedSandbox)
-                // Never assume this connect bought a fresh hour. E2B pins the expiry to the
-                // start of the sandbox's current session and ignores the setTimeout above, so
-                // a keep-alive reuse (`wasPaused: false`) inherits only what is left of it.
-                const lease = await prepareReusedSandboxLease({
+                const lease = await resumeVmSessionWithFreshLease({
                     Sandbox,
-                    sandbox: resumedSandbox,
                     sandboxId: sess.sandboxId,
                     e2bApiKey,
+                    wasPaused,
                 })
                 sandboxLeaseDeadlineMs = lease.leaseDeadlineMs
                 sandbox = lease.sandbox
                 isResume = true
+                if (lease.pauseError) {
+                    console.warn('🖥️ VM JOB: could not pause a running session before reuse', {
+                        correlationId: vmJob.correlationId,
+                        sandboxId: sess.sandboxId,
+                        error: lease.pauseError.message,
+                    })
+                }
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
                     wasPaused,
-                    leaseRotated: lease.rotated,
-                    inheritedLeaseRemainingMs: lease.previousLeaseRemainingMs,
+                    sessionRestarted: lease.sessionRestarted,
                     leaseRemainingMs: sandboxLeaseDeadlineMs - Date.now(),
                 })
             } catch (error) {
@@ -4755,7 +4758,7 @@ module.exports = {
         isUnhealthyVmSessionError,
         isE2bSandboxMissing,
         readSandboxLeaseDeadlineMs,
-        prepareReusedSandboxLease,
+        resumeVmSessionWithFreshLease,
         probeResumedVmSandbox,
         RESUME_HEALTHCHECK_TIMEOUT_MS,
         formatVmRuntimeDuration,
