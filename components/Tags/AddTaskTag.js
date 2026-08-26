@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import styles, {
     colors,
     PROJECT_LINE_TAG_HEIGHT,
@@ -8,7 +8,6 @@ import styles, {
     windowTagStyle,
 } from '../styles/global'
 import Icon from '../Icon'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCreateTaskModal from '../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { translate } from '../../i18n/TranslationService'
@@ -16,6 +15,7 @@ import withSafePopover from '../UIComponents/HOC/withSafePopover'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import useModalSizing from '../../hooks/useModalSizing'
 import useLiftAboveKeyboard from '../../hooks/useLiftAboveKeyboard'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 function AddTaskTag({
     projectId,
@@ -43,7 +43,6 @@ function AddTaskTag({
     closePopover,
     isOpen,
 }) {
-    const dispatch = useDispatch()
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const openModals = useSelector(state => state.openModals)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -57,6 +56,7 @@ function AddTaskTag({
     const popupCardRef = useRef(null)
     const autoOpenedKeyRef = useRef(null)
     const autoOpenInitialTaskNameRef = useRef('')
+    const popupLock = useFloatPopupLock()
     const { maxHeight: popupMaxHeight, isSheet } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
 
@@ -68,19 +68,19 @@ function AddTaskTag({
         // React batch as opening the (lazily mounted) popover content.
         autoOpenInitialTaskNameRef.current = initialTaskName || ''
         openPopover()
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         if (onAutoOpen) onAutoOpen()
-    }, [autoOpenKey, dispatch, initialTaskName, onAutoOpen, openPopover])
+    }, [autoOpenKey, initialTaskName, onAutoOpen, openPopover, popupLock])
 
     const handleOpen = () => {
         openPopover()
-        dispatch(showFloatPopup())
+        popupLock.acquire()
     }
 
     const handleClose = () => {
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
             closePopover()
-            dispatch(hideFloatPopup())
+            popupLock.release()
             autoOpenInitialTaskNameRef.current = ''
         }
     }
