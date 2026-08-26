@@ -25,7 +25,6 @@ import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../utils/Linkin
 import { cloneDeep } from 'lodash'
 import Backend from '../../../utils/BackendBridge'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
-import { getAppHistoryAction, HASHTAG_COLOR_HISTORY_TYPE } from './quillHistoryEntries'
 import {
     getAttachmentData,
     getImageData,
@@ -33,6 +32,7 @@ import {
     getMilestoneTagData,
     getVideoData,
 } from '../../../functions/Utils/parseTextUtils'
+import { addFilesAsAttachments } from './attachmentFileUtils'
 
 export const MENTION_MODAL_TASKS_TAB = 0
 export const MENTION_MODAL_GOALS_TAB = 1
@@ -122,6 +122,40 @@ export const insertAttachmentInsideEditor = (inputCursorIndex, editor, text, uri
         insertAttachmentTag(inputCursorIndex, editor, text, uri, id, isLoading)
     }
 }
+
+/**
+ * Put a list of picked/dropped/pasted files into an editor as the app's own attachment
+ * embeds, advancing the cursor between them (AT-2441).
+ *
+ * The one place that stepping lives: `AttachmentDropZone` (drop) and `CustomTextInput3`'s
+ * `appManagedFileUpload` (paste, see quill2Setup) both go through here, so a file reaches a
+ * comment identically however it arrives.
+ */
+export const insertFilesAsAttachments = ({ files, editor, startIndex = 0 }) => {
+    let nextCursorIndex = startIndex
+    const addedFiles = addFilesAsAttachments(files, (name, uri) => {
+        insertAttachmentInsideEditor(nextCursorIndex, editor, name, uri)
+        nextCursorIndex += 3
+    })
+    return { addedFiles, nextCursorIndex }
+}
+
+/**
+ * The `quill.appManagedFileUpload` an attachment-capable input declares (AT-2441).
+ *
+ * Quill hands it `(range, files)` from `Uploader.upload`, which since quill 2 is also how a
+ * PASTED image file arrives (`Clipboard.onCapturePaste`). Insert at the range quill resolved
+ * — the caret for a paste — rather than at a cursor the caller remembered, and apply the same
+ * traffic limit the drop zone does.
+ */
+export const createAppManagedFileUpload =
+    ({ editor, projectId, setInputCursorIndex }) =>
+    (range, files) => {
+        if (!editor || checkIsLimitedByTraffic(projectId)) return
+        const startIndex = range && range.index != null ? range.index : editor.getLength()
+        const { addedFiles, nextCursorIndex } = insertFilesAsAttachments({ files, editor, startIndex })
+        if (addedFiles.length > 0) setInputCursorIndex?.(nextCursorIndex)
+    }
 
 // The editorMeta module (quill2Setup) decodes the app-encoded placeholder during init and
 // then overwrites `options.placeholder` with the visible text only, so reading the raw
@@ -795,35 +829,17 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     event.preventDefault()
 }
 
-/**
- * Claims the top of the stack when it is one of the app's own marker entries (a hashtag colour
- * change, pushed by HashtagWrapper), applies that change through the backend instead of through
- * the document, and returns false so `HookedHistory` cancels quill's own undo/redo.
- *
- * AT-2440: this used to index the entry the QUILL 1 way — `stack[startAction][last][startAction]`
- * is `{ delta, range }.undo` under quill 2, i.e. `undefined`, so reading `.type` off it threw on
- * EVERY undo and redo in every editor. Because quill runs this from inside its keydown binding
- * and its `beforeinput` handler, and both reach `preventDefault()` only after `history.undo()`
- * returns, the throw handed the keystroke to the browser's native contenteditable undo — which
- * knows nothing about a programmatic paste and therefore reverted the user's earlier TYPING and
- * left the pasted text in place. See quillHistoryEntries.js for the full shape story.
- *
- * Anything that is not an app entry (i.e. every ordinary edit) must fall through untouched, so
- * this returns undefined rather than false for it.
- */
 export const beforeUndoRedo = (stack, startAction, endAction) => {
-    const entries = stack && stack[startAction]
-    if (!entries || entries.length === 0) return
-
-    const topEntry = entries[entries.length - 1]
-    const action = getAppHistoryAction(topEntry, startAction)
-    if (!action || action.type !== HASHTAG_COLOR_HISTORY_TYPE) return
-
-    entries.pop()
-    stack[endAction].push(topEntry)
-    const { objectId, text, colorKey } = action
-    Backend.updateHastagsColors(objectId, text, colorKey, true)
-    return false
+    if (
+        stack[startAction].length > 0 &&
+        stack[startAction][stack[startAction].length - 1][startAction].type === 'hashtagColor'
+    ) {
+        const hashtagColorAction = stack[startAction].pop()
+        stack[endAction].push(hashtagColorAction)
+        const { objectId, text, colorKey } = hashtagColorAction[startAction]
+        Backend.updateHastagsColors(objectId, text, colorKey, true)
+        return false
+    }
 }
 
 // Single-line inputs (task names, titles) must never receive line breaks: a programmatic '\n'

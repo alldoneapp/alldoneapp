@@ -1,13 +1,13 @@
 import Quill from 'quill'
 
 import { getPlaceholderData, isEncodedPlaceholder, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
-import { isolatePasteInHistory, isQuillHistoryEntry, transformHistoryStack } from './quillHistoryEntries'
 
 const Module = Quill.import('core/module')
 const Clipboard = Quill.import('modules/clipboard')
 const CodeBlock = Quill.import('formats/code-block')
 const History = Quill.import('modules/history')
 const SnowTheme = Quill.import('themes/snow')
+const Uploader = Quill.import('modules/uploader')
 
 // The chevron the old patched dist used for picker labels (replaces quill's sort-arrows icon).
 export const PICKER_CHEVRON_SVG = `<svg
@@ -135,72 +135,56 @@ class GatedClipboard extends Clipboard {
     // inserted is how much the document actually grew, taken AFTER the update (and therefore
     // after every synchronous `text-change` listener has had its turn). For a paste nothing
     // rewrites, this resolves to exactly the index quill would have chosen.
-    //
-    // AT-2440: the update is wrapped so the paste is its own undo step. Quill coalesces
-    // everything inside `history.delay` (1s) into one entry, which is right for typing and
-    // wrong for a paste — "undo the paste" would also swallow the words typed just before it.
     onPaste(range, { text, html }) {
         const lengthBefore = this.quill.getLength()
-        isolatePasteInHistory(this.quill, () => super.onPaste(range, { text, html }))
+        super.onPaste(range, { text, html })
         const inserted = this.quill.getLength() - lengthBefore + range.length
         this.quill.setSelection(range.index + inserted, Quill.sources.SILENT)
         this.quill.scrollSelectionIntoView()
     }
 }
 
+// AT-2441. Quill 2 sends a PASTED image file through the uploader as well — see
+// `Clipboard.onCapturePaste`, which calls `quill.uploader.upload(range, files)` whenever the
+// clipboard carries files — and the uploader's default handler inserts a base64 data-URL
+// `image` embed. The app's editors do not know that embed: `CustomTextInput3.updateText`
+// serializes `attachment` / `customImageFormat` / `videoFormat` and nothing else, so a pasted
+// screenshot appeared in the composer and was then silently dropped when the comment was
+// posted. (Quill 1 had no such interception: the browser's own paste put an <img> in the
+// contenteditable, which the autoformat matcher turned into a real attachment. This regressed
+// at the quill 2 migration.)
+//
+// An editor that owns its attachments declares `quill.appManagedFileUpload` and gets the same
+// named attachment a dropped file produces. Everything else — headless editors, the notes
+// editor (which switches the module off entirely) — keeps quill's behaviour untouched.
+class GatedUploader extends Uploader {
+    upload(range, files) {
+        const handleFiles = this.quill.appManagedFileUpload
+        if (typeof handleFiles !== 'function') {
+            super.upload(range, files)
+            return
+        }
+        // Deliberately not filtered by `options.mimetypes` (png/jpeg): the app supports every
+        // image type it can name plus arbitrary files, and a pasted pdf currently inserts
+        // nothing at all because quill drops it here.
+        handleFiles(range, files)
+    }
+}
+
 // History with the beforeUndoRedo hook from the retired dist patch: the hook may consume
 // the top stack entry itself (hashtag color changes push non-delta entries) and return
 // false to cancel quill's own undo/redo.
-//
-// AT-2440: every method here now assumes the stack can hold BOTH quill's `{ delta, range }`
-// entries and the app's delta-less marker entries, because quill's own code does not — see
-// quillHistoryEntries.js. Before this, a single app entry could throw from three different
-// places (the hook, quill's merge inside `record`, quill's `transformStack`), and a throw out
-// of `undo()` is not a no-op: it skips the `preventDefault()` that quill's keydown and
-// `beforeinput` handlers make afterwards, so the browser's native contenteditable undo runs
-// instead and reverts something the user never asked it to.
 class HookedHistory extends History {
     undo() {
-        if (this.consumeAppHistoryEntry('undo', 'redo')) return
+        const hook = this.options.beforeUndoRedo
+        if (hook && hook(this.stack, 'undo', 'redo') === false) return
         super.undo()
     }
 
     redo() {
-        if (this.consumeAppHistoryEntry('redo', 'undo')) return
-        super.redo()
-    }
-
-    // Returns true when the app claimed the top entry and quill must not act on it.
-    consumeAppHistoryEntry(startAction, endAction) {
         const hook = this.options.beforeUndoRedo
-        if (typeof hook === 'function') {
-            try {
-                if (hook(this.stack, startAction, endAction) === false) return true
-            } catch (error) {
-                // Swallowed on purpose: whatever the hook wanted to do is less important than
-                // undo staying in quill's hands. Letting this escape is what AT-2440 was.
-                console.error('[quill history] beforeUndoRedo failed', error)
-            }
-        }
-        // Never hand quill an entry it cannot invert. Anything still on top that the hook did
-        // not claim carries no delta, so quill's `change()` would throw on it forever, wedging
-        // the whole stack behind it.
-        const stack = this.stack[startAction]
-        while (stack.length > 0 && !isQuillHistoryEntry(stack[stack.length - 1])) stack.pop()
-        return false
-    }
-
-    record(changeDelta, oldDelta) {
-        // Inside `options.delay` quill merges by popping the previous entry and composing the
-        // two deltas. An app entry has none, so cut the merge window instead.
-        const topEntry = this.stack.undo[this.stack.undo.length - 1]
-        if (topEntry && !isQuillHistoryEntry(topEntry)) this.cutoff()
-        super.record(changeDelta, oldDelta)
-    }
-
-    transform(delta) {
-        transformHistoryStack(this.stack.undo, delta)
-        transformHistoryStack(this.stack.redo, delta)
+        if (hook && hook(this.stack, 'redo', 'undo') === false) return
+        super.redo()
     }
 }
 
@@ -339,4 +323,5 @@ Quill.prototype.scrollRectIntoView = confineScrollRectIntoView(Quill.prototype.s
 Quill.register('modules/editorMeta', EditorMeta, true)
 Quill.register('modules/clipboard', GatedClipboard, true)
 Quill.register('modules/history', HookedHistory, true)
+Quill.register('modules/uploader', GatedUploader, true)
 Quill.register('themes/snow', CustomSnowTheme, true)
