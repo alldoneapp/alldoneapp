@@ -4,6 +4,7 @@ import { recoverDroppedProject } from './projectRecovery'
 import { loadGlobalData, watchProjectData } from './initialLoadHelper'
 import { isBrowserOffline } from '../connectionState'
 import { runExclusiveFirestoreRestart } from '../backends/firestoreRestartLease'
+import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
 
 /**
  * Post-boot integrity check for data a degraded initial load left behind.
@@ -19,11 +20,13 @@ import { runExclusiveFirestoreRestart } from '../backends/firestoreRestartLease'
  * compares what the user is entitled to with what redux actually holds:
  *   - every id in `loggedUser.projectIds` should be in `loggedUserProjectsMap`,
  *   - `administratorUser` should be populated whenever `roles/administrator` names a user.
- * On anomalies it first simply re-fetches (recoverDroppedProject / loadGlobalData). If data is
- * still missing after that, it cycles the Firestore network (disableNetwork → enableNetwork,
- * which tears down and re-establishes every stream — the reload-equivalent) and re-fetches
- * once more. Network cycles are bounded per session; a check never runs concurrently with
- * itself; and everything here only ever ADDS missing data, so a false anomaly is harmless.
+ * On anomalies it first performs targeted authoritative recovery (recoverDroppedProject /
+ * loadGlobalData), which can restart a client proven to have returned a false absence. If data
+ * is still missing after that, the healer cycles the Firestore network itself (disableNetwork →
+ * enableNetwork, which tears down and re-establishes every stream — the reload-equivalent) and
+ * re-fetches once more. Healer-owned network cycles are bounded per session; a check never runs
+ * concurrently with itself; and everything here only ever ADDS missing data, so a false anomaly
+ * is harmless.
  */
 
 const CHECK_DELAYS_MS = [1000, 5000, 15000, 60000]
@@ -75,7 +78,9 @@ const scheduleRecheckWhenBackOnline = () => {
         removeRecheckListener()
         // Let the transport settle before deciding what is "missing".
         setTimeout(() => {
-            runBootIntegrityCheck().catch(error => console.warn('[BootIntegrity] Check failed:', error))
+            runBootIntegrityCheck({ trigger: 'connectivity_recovered' }).catch(error =>
+                console.warn('[BootIntegrity] Check failed:', error)
+            )
         }, RECHECK_AFTER_RECONNECT_MS)
     }
     if (typeof window !== 'undefined' && window.addEventListener) {
@@ -104,7 +109,14 @@ const findAnomalies = async () => {
     if (!administratorUser?.uid) {
         try {
             const roleDoc = await getDb().doc('roles/administrator').get()
-            administratorMissing = !!roleDoc.data()?.userId
+            let roleUserId = roleDoc.data()?.userId
+            if (!roleUserId) {
+                // The exact failure this healer covers can also omit the role
+                // document itself. Confirm the apparent absence independently.
+                const directRole = await readDocumentDirectlyFromServer('roles/administrator')
+                roleUserId = directRole.data?.userId
+            }
+            administratorMissing = !!roleUserId
         } catch (error) {
             // The role doc could not be read right now — nothing actionable this pass.
         }
@@ -170,7 +182,7 @@ const cycleFirestoreNetwork = async () => {
     })
 }
 
-export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
+export const runBootIntegrityCheck = async ({ settleMs = 1500, trigger = 'manual' } = {}) => {
     if (running) return
     // Offline (OFFLINE_SUPPORT_PLAN.md Stage 3), "missing" data is just whatever the
     // IndexedDB cache has not seen — every pass would report anomalies, and the
@@ -191,9 +203,10 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
         const anomalies = await findAnomalies()
         if (!anomalies) return
 
-        console.warn('[BootIntegrity] The initial load left data behind, repairing:', {
+        console.warn('[BootIntegrity] Client state is missing expected data, repairing:', {
             missingProjectIds: anomalies.missingProjectIds,
             administratorMissing: anomalies.administratorMissing,
+            trigger,
         })
 
         // First try plain re-fetches — often the transport has recovered on its own by now.
@@ -201,7 +214,9 @@ export const runBootIntegrityCheck = async ({ settleMs = 1500 } = {}) => {
 
         const remaining = await findAnomalies()
         if (!remaining) {
-            console.warn('[BootIntegrity] Repaired without reconnecting')
+            // A targeted resolver may itself have restarted a proven-bad
+            // Firestore client, so do not claim that no reconnect occurred.
+            console.warn('[BootIntegrity] Repaired during targeted recovery')
             return
         }
 
@@ -243,7 +258,9 @@ export const scheduleBootIntegrityChecks = () => {
 
     scheduledTimers = CHECK_DELAYS_MS.map(delay =>
         setTimeout(() => {
-            runBootIntegrityCheck().catch(error => console.warn('[BootIntegrity] Check failed:', error))
+            runBootIntegrityCheck({ trigger: `boot_timer_${delay}ms` }).catch(error =>
+                console.warn('[BootIntegrity] Check failed:', error)
+            )
         }, delay)
     )
 }
