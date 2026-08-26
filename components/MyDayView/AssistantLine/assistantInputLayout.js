@@ -63,28 +63,38 @@ export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked =
 // While stacked, the cluster is ASSISTANT_CONTROLS_STACKED_HEIGHT tall. Grow the
 // input to at least that height so the two layouts are exactly the same height
 // and the button column cannot overhang the field it belongs to.
-export const getAssistantInputDisplayHeight = (inputHeight, isStacked) => {
+//
+// `maxHeight` is a parameter rather than the constant because a composer holding a dropped or
+// pasted attachment is allowed to grow taller than a text-only one (AT-2444, see
+// assistantComposerMedia.js). It defaults to the text cap, so every existing caller and every
+// text-only render is unchanged.
+export const getAssistantInputDisplayHeight = (inputHeight, isStacked, maxHeight = ASSISTANT_INPUT_MAX_HEIGHT) => {
     if (!Number.isFinite(inputHeight)) return ASSISTANT_INPUT_MIN_HEIGHT
     if (!isStacked) return inputHeight
-    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), ASSISTANT_INPUT_MAX_HEIGHT)
+    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), resolveMaxHeight(maxHeight))
 }
 
-export const getAssistantInputLayout = (contentHeight, previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT) => {
+const resolveMaxHeight = maxHeight =>
+    Number.isFinite(maxHeight) && maxHeight >= ASSISTANT_INPUT_MIN_HEIGHT ? maxHeight : ASSISTANT_INPUT_MAX_HEIGHT
+
+export const getAssistantInputLayout = (
+    contentHeight,
+    previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT,
+    maxHeight = ASSISTANT_INPUT_MAX_HEIGHT
+) => {
     if (!Number.isFinite(contentHeight) || contentHeight < 0) return previousLayout
 
+    const effectiveMaxHeight = resolveMaxHeight(maxHeight)
     const roundedContentHeight = Math.ceil(contentHeight)
     const scrollEnabled = previousLayout.scrollEnabled
-        ? roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT - ASSISTANT_INPUT_SCROLL_HYSTERESIS
-        : roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT
+        ? roundedContentHeight > effectiveMaxHeight - ASSISTANT_INPUT_SCROLL_HYSTERESIS
+        : roundedContentHeight > effectiveMaxHeight
 
     let height
     if (scrollEnabled) {
-        height = ASSISTANT_INPUT_MAX_HEIGHT
+        height = effectiveMaxHeight
     } else {
-        const targetHeight = Math.min(
-            Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight),
-            ASSISTANT_INPUT_MAX_HEIGHT
-        )
+        const targetHeight = Math.min(Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight), effectiveMaxHeight)
         const previousHeight = previousLayout.height
 
         if (targetHeight > previousHeight) {
