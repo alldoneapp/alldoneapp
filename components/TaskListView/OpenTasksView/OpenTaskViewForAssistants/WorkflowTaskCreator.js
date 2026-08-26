@@ -10,7 +10,7 @@ import TaskInputArea from '../../TaskItem/TaskInputArea'
 import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
 import CheckboxAndIcon from '../../TaskItem/CheckboxAndIcon'
 import { translate } from '../../../../i18n/TranslationService'
-import { assistantWorkflowFirstStepHasPrompt } from '../../../../utils/assistantWorkflow'
+import { assistantWorkflowFirstStepHasPrompt, getAssistantWorkflowFirstStep } from '../../../../utils/assistantWorkflow'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_WORKFLOW } from '../../../../utils/TabNavigationConstants'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_WORKFLOW } from '../../../../URLSystem/Assistants/URLsAssistants'
@@ -72,6 +72,7 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
 
         if (
             executionMode === TASK_EXECUTION_MODE_WORKFLOW &&
+            getAssistantWorkflowFirstStep(assistant, projectId) &&
             !assistantWorkflowFirstStepHasPrompt(assistant, projectId)
         ) {
             setShowWorkflowWarning(true)
