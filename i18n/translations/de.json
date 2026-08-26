@@ -2333,5 +2333,7 @@
     "this project": "dieses Projekt",
     "Switch assistant": "Assistent wechseln",
     "Select assistant": "Assistent auswählen",
-    "Select the assistant that will help you": "Wähle den Assistenten, der dir helfen soll"
+    "Select the assistant that will help you": "Wähle den Assistenten, der dir helfen soll",
+    "New message": "Neue Nachricht",
+    "Jump to newest message": "Zur neuesten Nachricht springen"
 }

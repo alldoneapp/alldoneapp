@@ -64,6 +64,9 @@ import {
     getChatFullscreenTolerances,
     resolveChatFullscreenChange,
 } from '../Utils/chatScrollFullscreen'
+import useChatAutoScroll from '../../../hooks/Chats/useChatAutoScroll'
+import NewMessagesPill from './NewMessagesPill'
+import { CHAT_BOARD_CONTENT_OFFSET } from './chatComposerLayout'
 
 export default function ChatBoard({
     projectId,
@@ -93,17 +96,12 @@ export default function ChatBoard({
     const [amountOfNewCommentsToHighligth, setAmountOfNewCommentsToHighligth] = useState(0)
     const [page, setPage] = useState(1)
     const [toRender, setToRender] = useState(LIMIT_SHOW_EARLIER)
-    const [showingEarlier, setShowingEarlier] = useState(false)
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
-    const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
     const [archivingAllEmails, setArchivingAllEmails] = useState(false)
     // Shared with the chat list's unread previews (AT-2256) so both archive the same way.
     const { archivingEmailKeys, archivedEmailKeys, archiveLinkedEmails } = useLinkedEmailArchive()
     const scrollViewRef = useRef()
-    const lastScrollPositionRef = useRef(0)
-    const contentHeightRef = useRef(0)
-    const scrollViewHeightRef = useRef(0)
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const isFullscreenRef = useRef(isFullscreen)
     isFullscreenRef.current = isFullscreen
@@ -129,6 +127,17 @@ export default function ChatBoard({
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
+    // AT-2439 - a streamed answer arrives as repeated updates to the SAME comment, so the newest
+    // message's text length is what moves while it is being written; its id covers a genuinely new
+    // message. Combined into one signal because the pin only cares that "the newest message moved".
+    const {
+        handleScrollPosition,
+        handleContentSizeChange,
+        handleViewportLayout,
+        pinToBottom,
+        releasePin,
+        hasNewMessagesBelow,
+    } = useChatAutoScroll({ scrollViewRef, newestMessageSignal: `${lastMessageid}:${lastMessageLength}` })
 
     const startWaitingForBotAnswer = () => {
         assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
@@ -160,7 +169,14 @@ export default function ChatBoard({
     const amountOfCommentsToNotHighligth = messages.length - amountOfNewCommentsToHighligth
 
     const showEarlier = () => {
-        setShowingEarlier(true)
+        // AT-2439 - opening older messages is an explicit move away from the newest one, and the
+        // page lands a round trip later: without standing the pin down here, that arriving content
+        // would be re-pinned to the bottom before any scroll event could report where the reader
+        // actually went. It stands down for exactly as long as they stay up there — coming back to
+        // the newest message, or sending, re-arms it. (It used to be a latch that killed
+        // auto-scroll for the rest of the mount, including for messages the reader sent
+        // themselves, which is the reported bug.)
+        releasePin()
         // AT-2382 - `toRender` re-subscribes `watchComments` with a bigger limit, so the
         // older messages are a round trip away. Ghosts hold the top of the thread until
         // they land, which also keeps the scrollTo below landing on stable content.
@@ -172,12 +188,16 @@ export default function ChatBoard({
         } else setToRender(10000)
     }
 
-    const scrollToEnd = () => {
-        scrollViewRef.current?.scrollToEnd({ animated: false })
-    }
-
     const onMessageSent = () => {
-        setAutoScrollEnabled(true)
+        // Sending is the least ambiguous "show me what happens next" there is, so it re-arms the
+        // pin no matter where the reader was — including after "show earlier". The comment itself
+        // only exists once Firestore echoes it back, so this first hop just closes whatever gap the
+        // composer left; the content-size pin is what lands on the real message.
+        //
+        // Animated here and only here: sending from further up the thread is a jump the reader
+        // should be able to follow with their eyes. The automatic follow while an answer streams
+        // stays instant — smoothing three to ten scrolls a second would smear the text being read.
+        pinToBottom({ animated: true })
     }
 
     const archiveAllLinkedEmails = async () => {
@@ -240,7 +260,9 @@ export default function ChatBoard({
                 if (change.edge === CHAT_EDGE_TOP) {
                     scrollViewRef.current?.scrollTo({ x: 0, y: 0, animated: false })
                 } else {
-                    scrollToEnd()
+                    // Coming to rest on the newest message is also where the reader wants to be
+                    // kept, so re-anchoring here re-arms the pin rather than just moving once.
+                    pinToBottom()
                 }
             })
         }
@@ -249,28 +271,21 @@ export default function ChatBoard({
     const handleScroll = event => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         const currentScrollPosition = contentOffset.y
-        const maxScrollPosition = contentSize.height - layoutMeasurement.height
 
-        // Update refs for tracking
-        lastScrollPositionRef.current = currentScrollPosition
-        contentHeightRef.current = contentSize.height
-        scrollViewHeightRef.current = layoutMeasurement.height
-
-        // If user scrolls up (away from bottom by more than 50px threshold), disable auto-scroll
-        const distanceFromBottom = maxScrollPosition - currentScrollPosition
-        if (distanceFromBottom > 50) {
-            setAutoScrollEnabled(false)
-        }
+        // AT-2439 - two-way, and derived purely from where the thread actually is. Scrolling up
+        // stands the pin down and coming back to the newest message re-arms it, so a nudge of the
+        // wheel mid-answer no longer stops the rest of that answer from being followed.
+        handleScrollPosition({
+            scrollY: currentScrollPosition,
+            contentHeight: contentSize.height,
+            viewportHeight: layoutMeasurement.height,
+        })
 
         updateFullscreenMode({
             scrollY: currentScrollPosition,
             contentHeight: contentSize.height,
             viewportHeight: layoutMeasurement.height,
         })
-    }
-
-    const handleContentSizeChange = (contentWidth, contentHeight) => {
-        contentHeightRef.current = contentHeight
     }
 
     const writeBrowserURL = () => {
@@ -398,14 +413,6 @@ export default function ChatBoard({
         }
     }, [])
 
-    useEffect(() => {
-        if (!showingEarlier && autoScrollEnabled) {
-            setTimeout(() => {
-                scrollToEnd()
-            })
-        }
-    }, [lastMessageid, lastMessageLength, autoScrollEnabled])
-
     return (
         <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
             <PagesAmountSubscriptionContainer projectId={projectId} chat={chat} />
@@ -415,7 +422,11 @@ export default function ChatBoard({
                 showIndicator={shouldShowAssistantScrollIndicator(smallScreenNavigation, assistantResponseIsLoading)}
                 onScroll={handleScroll}
                 onContentSizeChange={handleContentSizeChange}
+                scrollOnLayout={handleViewportLayout}
                 scrollEventThrottle={16}
+                fixedChildren={
+                    hasNewMessagesBelow ? <NewMessagesPill onPress={() => pinToBottom({ animated: true })} /> : null
+                }
             >
                 {page < chatPagesAmount && messages.length > 0 && (
                     <ShowMoreButton expand={showEarlier} expandText={'show earlier'} loading={loadingMoreMessages} />
@@ -504,7 +515,9 @@ const localStyles = StyleSheet.create({
     scrollView: {
         paddingTop: 8,
         paddingBottom: 32,
-        marginLeft: -13,
+        // Shared with the pill, which adds it back to centre on the composer instead of on this
+        // (leftward-shifted) message column. See chatComposerLayout.js.
+        marginLeft: -CHAT_BOARD_CONTENT_OFFSET,
     },
     emailActionsBar: {
         alignItems: 'flex-end',
