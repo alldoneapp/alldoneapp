@@ -29,7 +29,6 @@ import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
 import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
-import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -397,7 +396,7 @@ export default function ChatInput({
                 // Keep the floating composer clear of the iOS home indicator
                 // now that #root no longer reserves that region (0 elsewhere,
                 // and 0 while the keyboard is open — see useHomeIndicatorLift).
-                homeIndicatorLift > 0 && { bottom: getChatComposerLift(homeIndicatorLift) },
+                homeIndicatorLift > 0 && { bottom: 24 + homeIndicatorLift },
                 containerStyle,
             ]}
             disabled={disabledEdition}
@@ -466,9 +465,7 @@ export default function ChatInput({
 
 const localStyles = StyleSheet.create({
     inputContainer: {
-        // Shared, because the "New message ↓" pill has to stay clear of where this actually paints
-        // — a relative offset leaves the layout box behind. See chatComposerLayout.js.
-        bottom: CHAT_COMPOSER_LIFT,
+        bottom: 24,
         left: 0,
         right: 0,
         backgroundColor: '#ffffff',

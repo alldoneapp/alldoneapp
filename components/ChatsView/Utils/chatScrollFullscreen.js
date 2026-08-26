@@ -36,12 +36,7 @@ export const getChatFullscreenTolerances = ({ mobile, tablet } = {}) => ({
     exit: mobile ? CHAT_NORMAL_TOLERANCE_MOBILE : tablet ? CHAT_NORMAL_TOLERANCE_TABLET : CHAT_NORMAL_TOLERANCE_DESKTOP,
 })
 
-/**
- * Shared by the fullscreen switch and the auto-scroll pin (`chatAutoScroll.js`) so both read the
- * same geometry from one clamped source — they answer different questions about the same two
- * distances, and a second copy of the overscroll clamp below is exactly how they would drift.
- */
-export const getChatScrollDistances = ({ scrollY, contentHeight, viewportHeight }) => {
+const getScrollDistances = ({ scrollY, contentHeight, viewportHeight }) => {
     const maxScroll = Math.max(0, (contentHeight || 0) - (viewportHeight || 0))
     // Web overscroll (rubber banding) reports positions outside the range; clamp so a bounce at
     // the bottom cannot read as "somewhere in the middle".
@@ -53,7 +48,7 @@ export const getChatScrollDistances = ({ scrollY, contentHeight, viewportHeight 
  * Names the resting position the reader is sitting at, or `null` in the middle of the thread.
  */
 export const getChatEdgeAtPosition = ({ scrollY, contentHeight, viewportHeight, exit }) => {
-    const { distanceFromTop, distanceFromBottom } = getChatScrollDistances({ scrollY, contentHeight, viewportHeight })
+    const { distanceFromTop, distanceFromBottom } = getScrollDistances({ scrollY, contentHeight, viewportHeight })
 
     // Bottom first: with a thread too short to scroll both distances are 0, and the newest
     // message is the resting position a chat belongs at.
@@ -74,7 +69,7 @@ export const resolveChatFullscreenChange = ({ scrollY, contentHeight, viewportHe
         return edge ? { fullscreen: false, edge } : null
     }
 
-    const { distanceFromTop, distanceFromBottom } = getChatScrollDistances({ scrollY, contentHeight, viewportHeight })
+    const { distanceFromTop, distanceFromBottom } = getScrollDistances({ scrollY, contentHeight, viewportHeight })
     // Requiring both distances implicitly requires a thread longer than 2x the tolerance, so a
     // barely-scrollable chat never expands.
     if (distanceFromTop > enter && distanceFromBottom > enter) return { fullscreen: true, edge: null }

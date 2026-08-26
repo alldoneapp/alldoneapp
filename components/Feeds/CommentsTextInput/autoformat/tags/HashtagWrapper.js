@@ -9,6 +9,7 @@ import { setSearchText, showGlobalSearchPopup, startLoadingData, stopLoadingData
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputRefs } from '../../CustomTextInput3'
 import { getQuillEditorRef } from '../../textInputHelper'
+import { buildHashtagColorHistoryEntry } from '../../quillHistoryEntries'
 import { COLOR_KEY_4 } from '../../../../NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import Backend from '../../../../../utils/BackendBridge'
 import { removeColor } from '../../../../../functions/Utils/hashtagUtils'
@@ -85,20 +86,16 @@ export default function HashtagWrapper({ data }) {
             }
 
             if (colorKey !== newColorKey) {
-                editor.history.stack.undo.push({
-                    redo: {
+                // A marker entry, not a document change: it carries no delta, and `beforeUndoRedo`
+                // consumes it instead of letting quill invert it. See quillHistoryEntries.js.
+                editor.history.stack.undo.push(
+                    buildHashtagColorHistoryEntry({
                         objectId: projectId,
-                        type: 'hashtagColor',
+                        text: newText,
                         colorKey: newColorKey,
-                        text: newText,
-                    },
-                    undo: {
-                        objectId: projectId,
-                        type: 'hashtagColor',
-                        colorKey: colorKey,
-                        text: newText,
-                    },
-                })
+                        previousColorKey: colorKey,
+                    })
+                )
             }
         }, 400)
     }
