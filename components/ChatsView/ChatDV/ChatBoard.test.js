@@ -104,7 +104,9 @@ jest.mock('../../UIControls/CustomScrollView', () => {
                 onContentSizeChange: props.onContentSizeChange,
                 scrollOnLayout: props.scrollOnLayout,
             },
-            props.children
+            props.children,
+            // The pill renders through `fixedChildren`, outside the scrolled content.
+            props.fixedChildren
         )
     })
 })
@@ -422,6 +424,22 @@ describe('ChatBoard auto-scroll to the newest message', () => {
         })
     }
 
+    // `deep: false` matters: TouchableOpacity passes the label straight through to the host View it
+    // renders, so a deep search counts one pill three times.
+    const pill = tree =>
+        tree.root.findAll(node => node.props?.accessibilityLabel === 'Jump to newest message', { deep: false })
+
+    const pressPill = tree => {
+        act(() => {
+            pill(tree)[0].props.onPress()
+        })
+    }
+
+    const lastScrollAnimated = () => {
+        const call = mockScrollToEnd.mock.calls[mockScrollToEnd.mock.calls.length - 1]
+        return !!(call && call[0] && call[0].animated)
+    }
+
     const pressShowEarlier = tree => {
         act(() => {
             tree.root.findByProps({ expandText: 'show earlier' }).props.expand()
@@ -558,6 +576,152 @@ describe('ChatBoard auto-scroll to the newest message', () => {
         relayout(tree)
 
         expect(mockScrollToEnd).not.toHaveBeenCalled()
+    })
+
+    // A message arriving below the fold while the reader is up in the thread must not move them —
+    // but it must not be invisible either, or there is no way to know there is anything to come
+    // back to. Sending is the exception the user asked for explicitly: writing an answer yourself
+    // always scrolls, from anywhere in the thread.
+    describe('the "new message" pill', () => {
+        const receiveMessage = (tree, message) => {
+            mockMessages = [...mockMessages, message]
+            act(() => {
+                tree.update(
+                    <ChatBoard
+                        projectId={PROJECT_ID}
+                        chat={CHAT}
+                        parentObject={{ id: TASK_CHAT_ID, isAssistantEnabled: false }}
+                        assistantId="assistant-1"
+                        chatTitle="Task"
+                        members={[]}
+                        objectType="tasks"
+                    />
+                )
+            })
+            act(() => {
+                jest.runOnlyPendingTimers()
+            })
+        }
+
+        const ANSWER = { id: 'm-3', creatorId: 'assistant-1', commentText: 'A fresh answer' }
+
+        it('appears when an answer arrives while the reader is up in the thread', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+            mockScrollToEnd.mockClear()
+
+            receiveMessage(tree, ANSWER)
+
+            expect(pill(tree)).toHaveLength(1)
+            // and the reader was left exactly where they were
+            expect(mockScrollToEnd).not.toHaveBeenCalled()
+        })
+
+        it('stays away while the reader is already at the newest message', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL)
+
+            receiveMessage(tree, ANSWER)
+
+            expect(pill(tree)).toHaveLength(0)
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
+
+        it('goes away when the reader scrolls back to the newest message themselves', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+            receiveMessage(tree, ANSWER)
+            expect(pill(tree)).toHaveLength(1)
+
+            scrollTo(tree, MAX_SCROLL)
+
+            expect(pill(tree)).toHaveLength(0)
+        })
+
+        it('returns to the newest message when pressed, and resumes following', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+            receiveMessage(tree, ANSWER)
+            mockScrollToEnd.mockClear()
+
+            pressPill(tree)
+
+            expect(mockScrollToEnd).toHaveBeenCalled()
+            expect(lastScrollAnimated()).toBe(true)
+            expect(pill(tree)).toHaveLength(0)
+
+            // the pin is armed again, so the rest of the answer is followed
+            mockScrollToEnd.mockClear()
+            growContentTo(tree, CONTENT + 300)
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
+
+        // "wenn der Nutzer selber eine Antwort schreibt, sollte der Chat automatisch scrollen"
+        it('never appears for a message the user sent themselves', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+
+            sendMessage(tree)
+            receiveMessage(tree, { id: 'm-3', creatorId: 'user-1', commentText: 'My own reply' })
+
+            expect(pill(tree)).toHaveLength(0)
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
+    })
+
+    // Smooth for the deliberate jumps the reader should be able to follow with their eyes; instant
+    // for the automatic follow, because animating three to ten scrolls a second while an answer
+    // streams would smear the text being read.
+    describe('scroll style', () => {
+        it('scrolls smoothly when the user sends a message', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+
+            sendMessage(tree)
+
+            expect(lastScrollAnimated()).toBe(true)
+        })
+
+        it('follows a streamed answer instantly', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL)
+            mockScrollToEnd.mockClear()
+
+            growContentTo(tree, CONTENT + 200)
+
+            expect(lastScrollAnimated()).toBe(false)
+        })
+
+        // A smooth scroll reports a frame per step on the way down, none of them at the bottom yet.
+        // Left unguarded they read as "the reader moved away" and switch the follow off during the
+        // very scroll that was meant to arm it.
+        it('does not let its own animation frames switch the follow off', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL / 2)
+            sendMessage(tree)
+
+            // mid-flight frames: heading down, not there yet
+            scrollTo(tree, MAX_SCROLL - 900)
+            scrollTo(tree, MAX_SCROLL - 400)
+            mockScrollToEnd.mockClear()
+            growContentTo(tree, CONTENT + 300)
+
+            expect(mockScrollToEnd).toHaveBeenCalled()
+        })
+
+        // Browsers cancel a smooth scroll on wheel/touch input, so a frame that moved UP is the
+        // reader taking over. Control must go back immediately, not after the grace runs out.
+        it('hands control back the moment the reader scrolls up during it', () => {
+            const tree = renderChatBoard()
+            scrollTo(tree, MAX_SCROLL)
+            sendMessage(tree)
+
+            scrollTo(tree, 1000)
+            mockScrollToEnd.mockClear()
+            growContentTo(tree, CONTENT + 300)
+
+            expect(mockScrollToEnd).not.toHaveBeenCalled()
+        })
     })
 
     describe('after opening older messages', () => {
