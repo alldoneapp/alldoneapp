@@ -92,6 +92,42 @@ Suppressing that scroll is only half of AT-2220. A task line **quadruples in hei
 
 **Never read editor metadata back off `quill.options.placeholder` (AT-2227).** The `editorMeta` module decodes the encoded placeholder in its constructor and then _overwrites_ `quill.options.placeholder` with the visible text only, so every later read returns a bare string with no `editorId`/`editorType`. Under the quill-1 dist patch the encoding survived, which is why the call sites read fine and broke silently at Stage 4. Use `getEditorMetaFromEditor(editor)` / `getEditorId(editor)` from `textInputHelper.js` (they prefer the decoded `quill.editorMeta` and fall back to the raw placeholder for headless editors built with plain `new Quill(node)`). The failure is invisible rather than loud: `insertAttachmentInsideEditor` stamped every embed with `editorId: undefined`, so `CustomImageContainer`/`CustomVideoContainer` could not resolve the editor's project in `quillTextInputProjectIdsByEditorId` and fell through to `<LoadingImageVideo />` — a full-width grey slab with a spinner that never went away, on a file that had uploaded perfectly. Both containers now fall back to `state.quillEditorProjectId` so an unresolvable id can never mean "spin forever" again, and the blots no longer `setAttribute` a literal `'undefined'` that would round-trip through `static value()`. Pinned by `components/Feeds/CommentsTextInput/attachmentEditorId.test.js` (drives a REAL quill 2 + the REAL `editorMeta` module — a mocked placeholder cannot reproduce the stripping) and `autoformat/tags/CustomImageContainer.test.js`.
 
+**A throw inside `history.undo()` hands the keystroke to the BROWSER (AT-2440).** Quill runs
+`history.undo()` from inside its keydown binding and its `beforeinput` handler, and both reach
+`event.preventDefault()` only _after_ that call returns — so an exception does not merely fail to
+undo, it lets the event through to the browser's own contenteditable undo. That native stack holds
+only edits the browser itself made, i.e. typing: every paste in this app is `preventDefault()`ed and
+applied programmatically (quill's `Clipboard.onPaste`, and `NotesEditorView`'s markdown/HTML/plain
+pipeline). So the visible symptom of a crash in undo is not "undo is broken" but "undo skipped my
+paste and deleted what I typed before it", which reads as a paste bug and is not one. The same is
+true of the browser/OS **Undo command** (menu item, mobile keyboard undo, macOS Edit menu): it
+arrives as `beforeinput` with `inputType: 'historyUndo'` and takes the identical path.
+
+What threw was `beforeUndoRedo` indexing a **quill 1** stack entry. Quill 1 stored
+`{ undo: Delta, redo: Delta }`; quill 2 stores `{ delta, range }` and derives the other direction by
+inverting `delta` against the live document — so `stack.undo[last].undo.type` was `undefined.type` on
+every undo and redo, in every editor, from Stage 4 until AT-2440. Two entry shapes now coexist in
+that stack and `quillHistoryEntries.js` is the one place that tells them apart: quill's own
+delta-bearing entries, and the app's **delta-less marker entries** (hashtag colour changes, pushed
+straight onto `history.stack.undo` by `HashtagWrapper`). Quill's own code assumes the first shape
+everywhere, so a marker entry can throw from three places, and only one of them is undo: the merge
+inside `record()` pops the previous entry and composes deltas with it, and `transformStack()` (run
+for every non-`user` change, which with `userOnly: true` means every programmatic edit and every
+remote Yjs update in a shared note) dereferences `.delta` on all of them — that one breaks **typing**,
+not undo. `HookedHistory` overrides `record`/`transform` for exactly this, and never hands quill an
+entry it cannot invert.
+
+Related and deliberate: a **paste is its own undo step**. Quill coalesces everything inside
+`history.delay` (1000ms) into one stack entry, which is right for typing and wrong for a paste —
+type a word, paste, undo, and both would vanish. `isolatePasteInHistory` cuts the window on both
+sides of the paste in both pipelines. The trailing cut is safe for the autoformat rewrites that ride
+along with a paste (a pasted task URL collapsing to a chip): those run synchronously from the
+`text-change` the paste emits, so they have already merged into the paste's entry. Pinned by
+`components/Feeds/CommentsTextInput/pasteUndoHistory.test.js`, which drives a REAL quill 2 with the
+REAL `quill2Setup` modules and asserts on `defaultPrevented` — a mocked history module cannot
+reproduce any of this, because the defect lives in how the app's hook and quill's stack shape
+compose.
+
 **A task tag in a note is rendered with NO `taskId` half the time (AT-2428).** `TaskTagWrapper` has two entry points and they look nothing alike. `taskTagFormat.js` mounts it per embed with a real `taskId`; the note toolbar's add-task button mounts it with **none at all** — `NotesEditorView.renderTask` only calls `storeModal(MANAGE_TASK_MODAL_ID)`, and `DvContainer`/`NoteIntegration` render a bare `<TaskTagWrapper editorId={note.id} />` whose `useState(!taskId)` opens `ManageTaskModal` in create mode. So `taskId` is legitimately `undefined` and every guard in the component has to survive it. The trap is comparing against it: `recoveredTask?.taskId === taskId` is **true** when both sides are `undefined`, which is how a missing-task recovery guard came to dereference a null `recoveredTask` and crash the editor on every press of the button (`Cannot read properties of null (reading 'task')`). Guard on the record, not on a comparison two `undefined` operands satisfy. Tests must render it the way the toolbar does — passing a placeholder id instead of omitting the prop is exactly what hid this. Pinned by the `opened from the note toolbar` block in `components/Feeds/CommentsTextInput/autoformat/tags/TaskTagWrapper.test.js`.
 
 **`replacement_node_modules/` full inventory** (the blanket `cp -R -f replacement_node_modules/* node_modules/` applies ALL of these after every install — when upgrading any of these packages, the patch must be re-derived or retired first, never blindly re-copied over the new version):
