@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Keyboard, StyleSheet, TextInput, TouchableOpacity } from 'react-native'
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
@@ -435,5 +435,47 @@ describe('AssistantOptions search button', () => {
                 projectId: 'selected-project',
             }
         )
+    })
+})
+
+// AT-2442: the greeting shares one centred `numberOfLines={1}` line with the assistant's
+// display name, so it ellipsises on narrow phones as soon as it grows. These pin BOTH
+// halves of a copy change — the rendered string and the localisation — because the header
+// is the app's only consumer of the key, so dropping a locale would silently ship the raw
+// English key to German and Spanish users instead of failing anywhere.
+describe('AssistantOptions greeting', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('renders the short greeting on a single line next to the assistant name', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        // translate() is mocked to the identity, so this is the en source string.
+        const header = tree.root
+            .findAllByType(Text)
+            .find(node => typeof node.props.children === 'string' && node.props.children.startsWith('Assistant: '))
+
+        expect(header).toBeTruthy()
+        expect(header.props.children).toBe('Assistant: How can I help?')
+        expect(header.props.numberOfLines).toBe(1)
+        expect(JSON.stringify(tree.toJSON())).not.toContain('What can I do for you today?')
+    })
+
+    it('is translated in every supported locale', () => {
+        const locales = {
+            en: require('../../../../i18n/translations/en.json'),
+            de: require('../../../../i18n/translations/de.json'),
+            es: require('../../../../i18n/translations/es.json'),
+        }
+
+        Object.values(locales).forEach(translations => {
+            expect(typeof translations['How can I help?']).toBe('string')
+            expect(translations['How can I help?'].length).toBeGreaterThan(0)
+            expect(translations['What can I do for you today?']).toBeUndefined()
+        })
     })
 })

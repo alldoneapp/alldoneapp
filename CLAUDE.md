@@ -95,6 +95,41 @@ Suppressing that scroll is only half of AT-2220. A task line **quadruples in hei
 **Quill 2 claims file drops on the editor itself, so an app drop zone must take them in the CAPTURE phase (AT-2441).** Quill's built-in `uploader` module is enabled by default and adds its own `drop` listener on `quill.root`, inserting png/jpeg as base64 `image` embeds (`node_modules/quill/modules/uploader.js`). `AttachmentDropZone` — the shared drop target of the rich comment modal, the chat composer and the task-description field — wraps that node, so in the bubble phase Quill's listener ran **first** and the zone's `stopPropagation` came far too late: every dropped screenshot landed twice, once as Quill's base64 image and once as the app's named attachment. Hence `onDropCapture`, not `onDrop`: capture runs outside-in, so an ancestor can still claim the event. (The notes editor fixes the same conflict with `uploader: false` because its own listener is on `quill.root` too — listeners on ONE node cannot `stopPropagation` each other.) Two reasons not to copy `uploader: false` here: `Clipboard.onCapturePaste` routes a **pasted** image file through `quill.uploader.upload(...)`, which would throw with the module off, and Quill's unconditional `preventDefault` on drop is what stops the browser navigating away to the file when a drop lands on an editor with no drop zone above it. The zone deliberately claims **only** drops carrying files, so dragging a text selection inside the editor still works. Pinned by `components/Feeds/CommentsTextInput/attachmentDropDuplicate.test.js`, which drives a REAL Quill inside the REAL zone through react-dom and dispatches a REAL `drop` — including through a `createPortal`, which is where the modal actually lives. A test that calls `props.onDrop` by hand cannot see this defect; the previous suite did exactly that and passed throughout.
 
 **That same uploader is also how a PASTED image arrives, and its embed does not survive submit (AT-2441).** `Clipboard.onCapturePaste` hands `clipboardData.files` to `quill.uploader.upload(...)`, whose default handler inserts a base64 data-URL `image` embed — and `CustomTextInput3.updateText` serializes `attachment` / `customImageFormat` / `videoFormat` and **nothing else**, so a pasted screenshot showed in the composer, looked posted, and was silently gone from the comment. Quill 1 never intercepted: the browser's own paste dropped an `<img>` into the contenteditable and autoformat's ELEMENT_NODE matcher turned it into a real attachment, so this regressed at the Stage 4 migration and only for a clipboard carrying **files** (copying an image off a web page still ships `text/html` and takes the working path — which is why it looks like it works). `quill2Setup`'s `GatedUploader` therefore routes `upload()` to `quill.appManagedFileUpload` when the editor declares one, and `CustomTextInput3` declares it — via `createAppManagedFileUpload` in `textInputHelper.js` — for inputs whose `otherFormats` actually accept attachments, never for a title or search field. Two consequences worth knowing: it inserts at the range **Quill resolved** (the caret for a paste, the drop point for a drop) rather than at a remembered cursor, and the attachment-capable inputs that have **no** drop zone above them (EditChat, the description modal, both topic composers) are fixed for drops too, because their drop is exactly what still reaches the uploader. `insertFilesAsAttachments` is now the single home of the `+3` per-file cursor stepping, shared by both paths. Pinned by `components/Feeds/CommentsTextInput/attachmentPaste.test.js` (a REAL Quill and the REAL GatedUploader — including that an editor declaring no handler still gets Quill's untouched behaviour).
+**A throw inside `history.undo()` hands the keystroke to the BROWSER (AT-2440).** Quill runs
+`history.undo()` from inside its keydown binding and its `beforeinput` handler, and both reach
+`event.preventDefault()` only _after_ that call returns — so an exception does not merely fail to
+undo, it lets the event through to the browser's own contenteditable undo. That native stack holds
+only edits the browser itself made, i.e. typing: every paste in this app is `preventDefault()`ed and
+applied programmatically (quill's `Clipboard.onPaste`, and `NotesEditorView`'s markdown/HTML/plain
+pipeline). So the visible symptom of a crash in undo is not "undo is broken" but "undo skipped my
+paste and deleted what I typed before it", which reads as a paste bug and is not one. The same is
+true of the browser/OS **Undo command** (menu item, mobile keyboard undo, macOS Edit menu): it
+arrives as `beforeinput` with `inputType: 'historyUndo'` and takes the identical path.
+
+What threw was `beforeUndoRedo` indexing a **quill 1** stack entry. Quill 1 stored
+`{ undo: Delta, redo: Delta }`; quill 2 stores `{ delta, range }` and derives the other direction by
+inverting `delta` against the live document — so `stack.undo[last].undo.type` was `undefined.type` on
+every undo and redo, in every editor, from Stage 4 until AT-2440. Two entry shapes now coexist in
+that stack and `quillHistoryEntries.js` is the one place that tells them apart: quill's own
+delta-bearing entries, and the app's **delta-less marker entries** (hashtag colour changes, pushed
+straight onto `history.stack.undo` by `HashtagWrapper`). Quill's own code assumes the first shape
+everywhere, so a marker entry can throw from three places, and only one of them is undo: the merge
+inside `record()` pops the previous entry and composes deltas with it, and `transformStack()` (run
+for every non-`user` change, which with `userOnly: true` means every programmatic edit and every
+remote Yjs update in a shared note) dereferences `.delta` on all of them — that one breaks **typing**,
+not undo. `HookedHistory` overrides `record`/`transform` for exactly this, and never hands quill an
+entry it cannot invert.
+
+Related and deliberate: a **paste is its own undo step**. Quill coalesces everything inside
+`history.delay` (1000ms) into one stack entry, which is right for typing and wrong for a paste —
+type a word, paste, undo, and both would vanish. `isolatePasteInHistory` cuts the window on both
+sides of the paste in both pipelines. The trailing cut is safe for the autoformat rewrites that ride
+along with a paste (a pasted task URL collapsing to a chip): those run synchronously from the
+`text-change` the paste emits, so they have already merged into the paste's entry. Pinned by
+`components/Feeds/CommentsTextInput/pasteUndoHistory.test.js`, which drives a REAL quill 2 with the
+REAL `quill2Setup` modules and asserts on `defaultPrevented` — a mocked history module cannot
+reproduce any of this, because the defect lives in how the app's hook and quill's stack shape
+compose.
 
 **A task tag in a note is rendered with NO `taskId` half the time (AT-2428).** `TaskTagWrapper` has two entry points and they look nothing alike. `taskTagFormat.js` mounts it per embed with a real `taskId`; the note toolbar's add-task button mounts it with **none at all** — `NotesEditorView.renderTask` only calls `storeModal(MANAGE_TASK_MODAL_ID)`, and `DvContainer`/`NoteIntegration` render a bare `<TaskTagWrapper editorId={note.id} />` whose `useState(!taskId)` opens `ManageTaskModal` in create mode. So `taskId` is legitimately `undefined` and every guard in the component has to survive it. The trap is comparing against it: `recoveredTask?.taskId === taskId` is **true** when both sides are `undefined`, which is how a missing-task recovery guard came to dereference a null `recoveredTask` and crash the editor on every press of the button (`Cannot read properties of null (reading 'task')`). Guard on the record, not on a comparison two `undefined` operands satisfy. Tests must render it the way the toolbar does — passing a placeholder id instead of omitting the prop is exactly what hid this. Pinned by the `opened from the note toolbar` block in `components/Feeds/CommentsTextInput/autoformat/tags/TaskTagWrapper.test.js`.
 

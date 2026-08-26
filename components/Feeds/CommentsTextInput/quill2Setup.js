@@ -1,6 +1,7 @@
 import Quill from 'quill'
 
 import { getPlaceholderData, isEncodedPlaceholder, QUILL_EDITOR_TEXT_INPUT_TYPE } from './textInputHelper'
+import { isolatePasteInHistory, isQuillHistoryEntry, transformHistoryStack } from './quillHistoryEntries'
 
 const Module = Quill.import('core/module')
 const Clipboard = Quill.import('modules/clipboard')
@@ -135,9 +136,13 @@ class GatedClipboard extends Clipboard {
     // inserted is how much the document actually grew, taken AFTER the update (and therefore
     // after every synchronous `text-change` listener has had its turn). For a paste nothing
     // rewrites, this resolves to exactly the index quill would have chosen.
+    //
+    // AT-2440: the update is wrapped so the paste is its own undo step. Quill coalesces
+    // everything inside `history.delay` (1s) into one entry, which is right for typing and
+    // wrong for a paste — "undo the paste" would also swallow the words typed just before it.
     onPaste(range, { text, html }) {
         const lengthBefore = this.quill.getLength()
-        super.onPaste(range, { text, html })
+        isolatePasteInHistory(this.quill, () => super.onPaste(range, { text, html }))
         const inserted = this.quill.getLength() - lengthBefore + range.length
         this.quill.setSelection(range.index + inserted, Quill.sources.SILENT)
         this.quill.scrollSelectionIntoView()
@@ -174,17 +179,56 @@ class GatedUploader extends Uploader {
 // History with the beforeUndoRedo hook from the retired dist patch: the hook may consume
 // the top stack entry itself (hashtag color changes push non-delta entries) and return
 // false to cancel quill's own undo/redo.
+//
+// AT-2440: every method here now assumes the stack can hold BOTH quill's `{ delta, range }`
+// entries and the app's delta-less marker entries, because quill's own code does not — see
+// quillHistoryEntries.js. Before this, a single app entry could throw from three different
+// places (the hook, quill's merge inside `record`, quill's `transformStack`), and a throw out
+// of `undo()` is not a no-op: it skips the `preventDefault()` that quill's keydown and
+// `beforeinput` handlers make afterwards, so the browser's native contenteditable undo runs
+// instead and reverts something the user never asked it to.
 class HookedHistory extends History {
     undo() {
-        const hook = this.options.beforeUndoRedo
-        if (hook && hook(this.stack, 'undo', 'redo') === false) return
+        if (this.consumeAppHistoryEntry('undo', 'redo')) return
         super.undo()
     }
 
     redo() {
-        const hook = this.options.beforeUndoRedo
-        if (hook && hook(this.stack, 'redo', 'undo') === false) return
+        if (this.consumeAppHistoryEntry('redo', 'undo')) return
         super.redo()
+    }
+
+    // Returns true when the app claimed the top entry and quill must not act on it.
+    consumeAppHistoryEntry(startAction, endAction) {
+        const hook = this.options.beforeUndoRedo
+        if (typeof hook === 'function') {
+            try {
+                if (hook(this.stack, startAction, endAction) === false) return true
+            } catch (error) {
+                // Swallowed on purpose: whatever the hook wanted to do is less important than
+                // undo staying in quill's hands. Letting this escape is what AT-2440 was.
+                console.error('[quill history] beforeUndoRedo failed', error)
+            }
+        }
+        // Never hand quill an entry it cannot invert. Anything still on top that the hook did
+        // not claim carries no delta, so quill's `change()` would throw on it forever, wedging
+        // the whole stack behind it.
+        const stack = this.stack[startAction]
+        while (stack.length > 0 && !isQuillHistoryEntry(stack[stack.length - 1])) stack.pop()
+        return false
+    }
+
+    record(changeDelta, oldDelta) {
+        // Inside `options.delay` quill merges by popping the previous entry and composing the
+        // two deltas. An app entry has none, so cut the merge window instead.
+        const topEntry = this.stack.undo[this.stack.undo.length - 1]
+        if (topEntry && !isQuillHistoryEntry(topEntry)) this.cutoff()
+        super.record(changeDelta, oldDelta)
+    }
+
+    transform(delta) {
+        transformHistoryStack(this.stack.undo, delta)
+        transformHistoryStack(this.stack.redo, delta)
     }
 }
 
