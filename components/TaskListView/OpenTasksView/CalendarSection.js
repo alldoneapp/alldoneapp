@@ -10,7 +10,7 @@ import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
-import { compareTasksByCalendarPlacement, orderCalendarTasksLast } from '../../../utils/CalendarTaskOrder'
+import { buildChronologicalCalendarRuns } from './calendarSectionGrouping'
 import {
     getCalendarConnectedProjectIds,
     getCalendarProviderUrl,
@@ -20,15 +20,20 @@ import {
 /**
  * AT-2377 - the dedicated "Calendar" section of one day on the open-tasks board.
  *
- * Meetings are shown here instead of inside the priority-sorted main list. They are still grouped
- * by goal, but both the meetings inside a group and the groups themselves are ordered by event
- * start rather than by goal position, priority or `sortIndex`: a meeting happens when it happens,
- * so the order the user cares about is the clock.
+ * Meetings are shown here instead of inside the priority-sorted main list, ordered by event start
+ * rather than by goal position, priority or `sortIndex`: a meeting happens when it happens, so the
+ * order the user cares about is the clock.
  *
- * The chronological order comes from `orderCalendarTasksLast`, the AT-2351 rule, rather than from
- * a local sort. Applied to a list that is entirely calendar tasks it reduces to exactly
- * "(calendar day, all-day first, start time, arrival)", and reusing it keeps this section, My Day
- * and the focus-task pick from disagreeing about which meeting is next.
+ * AT-2436 - the clock wins over the grouping, not the other way round. The whole day is sorted
+ * chronologically first and then cut into runs of consecutive meetings that share a goal
+ * (`buildChronologicalCalendarRuns`), so a goal card is a heading INSIDE the chronological list and
+ * the "General tasks" header resumes after it. Rendering the store's goal buckets as contiguous
+ * blocks - what this section did before - meant one meeting carrying a goal dragged the whole
+ * bucket to its position and left its own start time out of order.
+ *
+ * The chronological order itself comes from `compareTasksByCalendarPlacement`, the AT-2351 rule,
+ * rather than from a local sort: "(calendar day, all-day first, start time, arrival)". Reusing it
+ * keeps this section, My Day and the focus-task pick from disagreeing about which meeting is next.
  */
 export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
@@ -48,26 +53,12 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
 
     if (!goalsPositionId) return null
 
-    const sortedCalendarTasks = calendarEvents
-        .map((goalTasksData, index) => ({
-            goalId: goalTasksData[0],
-            taskList: orderCalendarTasksLast(goalTasksData[1]),
-            index,
-        }))
-        .sort((a, b) => {
-            const firstTaskA = a.taskList[0]
-            const firstTaskB = b.taskList[0]
+    const calendarRuns = buildChronologicalCalendarRuns(calendarEvents)
 
-            if (!firstTaskA || !firstTaskB) {
-                if (!firstTaskA && !firstTaskB) return a.index - b.index
-                return firstTaskA ? -1 : 1
-            }
-
-            return compareTasksByCalendarPlacement(firstTaskA, firstTaskB) || a.index - b.index
-        })
-        .map(({ goalId, taskList }) => [goalId, taskList])
-
-    const showGeneralTasksHeader = sortedCalendarTasks.length > 0 && sortedCalendarTasks[0][0] !== NOT_PARENT_GOAL_INDEX
+    // Same rule as the main list's `hasGoals` (MainSection): the "General tasks" header only means
+    // something once a goal heading is on screen to tell it apart from. When it does, EVERY run
+    // without a goal gets one - including the first - so the reading stays General -> goal -> General.
+    const showGeneralTasksHeader = calendarRuns.some(run => run.goalId !== NOT_PARENT_GOAL_INDEX)
 
     const allCalendarTasks = calendarEvents.flatMap(goalTasksData => goalTasksData[1])
     const firstCalendarData = allCalendarTasks[0]?.calendarData
@@ -91,14 +82,11 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                 </View>
             </View>
 
-            {sortedCalendarTasks.map((goalTasksData, index) => {
-                const goalId = goalTasksData[0]
-                const taskList = goalTasksData[1]
-                const isLastIndex = sortedCalendarTasks.length - 1 === index
-                const goalIndex = calendarEvents.findIndex(data => data[0] === goalId)
+            {calendarRuns.map(({ goalId, taskList, goalIndex, occurrence, key }, index) => {
+                const isLastIndex = calendarRuns.length - 1 === index
 
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <View key={goalId}>
+                    <View key={key}>
                         {showGeneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -120,7 +108,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                     </View>
                 ) : (
                     <ParentGoalSection
-                        key={goalId}
+                        key={key}
                         projectId={projectId}
                         dateIndex={dateIndex}
                         goalId={goalId}
@@ -128,6 +116,12 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         taskList={taskList}
                         taskListIndex={CALENDAR_TASK_INDEX}
+                        // A goal split across two runs renders two cards, so their `refKey`s - built
+                        // from `${goalId}${dateIndex}${taskListIndex}${nestedTaskListIndex}` - have to
+                        // differ, or the two cards share one dismissible ref and open each other's
+                        // edit popup. Only the second and later runs need it, so the single-run case
+                        // (every goal, almost always) keeps the exact key it had before.
+                        nestedTaskListIndex={occurrence > 0 ? occurrence : undefined}
                         containerStyle={isLastIndex ? null : { marginBottom: 16 }}
                         goalIndex={goalIndex}
                         instanceKey={instanceKey}
