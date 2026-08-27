@@ -17,6 +17,7 @@ import { FEED_CONTACT_OBJECT_TYPE, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/
 import SocialText from '../UIControls/SocialText/SocialText'
 import Icon from '../Icon'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
+import { createSwipeCloseGuard } from '../../hooks/useSwipeCloseGuard'
 import NavigationService from '../../utils/NavigationService'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import SwipeNewTaskWrapper from '../NotesView/SwipeNewTaskWrapper'
@@ -55,6 +56,9 @@ export default class ContactItem extends Component {
         }
 
         this.itemSwipe = React.createRef()
+        // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
+        // and leave the row permanently unopenable. See the hook module.
+        this.swipeCloseGuard = createSwipeCloseGuard(blockOpen => this.setState({ blockOpen }))
     }
 
     componentDidMount() {
@@ -276,12 +280,7 @@ export default class ContactItem extends Component {
                     friction={2}
                     containerStyle={{ overflow: 'visible' }}
                     failOffsetY={[-5, 5]}
-                    onSwipeableWillClose={() => {
-                        this.setState({ blockOpen: true })
-                    }}
-                    onSwipeableClose={() => {
-                        this.setState({ blockOpen: false })
-                    }}
+                    {...this.swipeCloseGuard}
                 >
                     <TouchableOpacity
                         onPress={blockOpen ? undefined : inCommentPopup ? onPress : this.onOpenDV}
