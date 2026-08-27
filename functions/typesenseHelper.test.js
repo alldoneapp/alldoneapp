@@ -16,7 +16,6 @@ const {
     COLLECTION_SCHEMAS,
     TASKS_COLLECTION,
     isTypesenseConfigured,
-    generateTypesenseScopedSearchKey,
     normalizeDocumentForTypesense,
     adaptTypesenseSearchHit,
     upsertTypesenseDocument,
@@ -38,7 +37,6 @@ const makeFakeClient = ({ collectionExists = true } = {}) => {
     const retrieve = collectionExists
         ? jest.fn().mockResolvedValue({})
         : jest.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { httpStatus: 404 }))
-    const generateScopedSearchKey = jest.fn().mockReturnValue('generated-scoped-key')
 
     const client = {
         collections: name => {
@@ -51,9 +49,8 @@ const makeFakeClient = ({ collectionExists = true } = {}) => {
                 },
             }
         },
-        keys: () => ({ generateScopedSearchKey }),
     }
-    return { client, upsert, importFn, deleteByFilter, deleteDoc, create, retrieve, generateScopedSearchKey }
+    return { client, upsert, importFn, deleteByFilter, deleteDoc, create, retrieve }
 }
 
 beforeEach(() => {
@@ -143,16 +140,6 @@ describe('search hit adaptation', () => {
 })
 
 describe('configured environment', () => {
-    it('generates a scoped key locally from the restricted parent search key', () => {
-        getEnvFunctions.mockReturnValue(CONFIGURED_ENV)
-        const { client, generateScopedSearchKey: generate } = makeFakeClient()
-        Typesense.Client.mockImplementation(() => client)
-
-        const parameters = { filter_by: 'projectId:=[`project-1`]', expires_at: 1234 }
-        expect(generateTypesenseScopedSearchKey('parent-search-key', parameters)).toBe('generated-scoped-key')
-        expect(generate).toHaveBeenCalledWith('parent-search-key', parameters)
-    })
-
     it('parses a full-origin TYPESENSE_HOST and a bare host', async () => {
         getEnvFunctions.mockReturnValue({ ...CONFIGURED_ENV, TYPESENSE_HOST: 'https://abc.a1.typesense.net:8443' })
         const { client } = makeFakeClient()
