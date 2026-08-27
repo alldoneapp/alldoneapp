@@ -861,8 +861,12 @@ export default class Backend {
         return bridge.unwatchHastagsColors(hashtagId)
     }
 
-    static getTypesenseSearchKeys() {
-        return bridge.getTypesenseSearchKeys()
+    static async getTypesenseScopedSearchCredentials() {
+        return await bridge.getTypesenseScopedSearchCredentials()
+    }
+
+    static getCurrentUserId() {
+        return bridge.getCurrentUserId()
     }
 
     static getFunctionsRegion() {

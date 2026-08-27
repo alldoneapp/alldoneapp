@@ -1,17 +1,34 @@
-import { multiSearchTypesense, searchTypesenseCollection, TYPESENSE_QUERY_CONFIG } from './typesenseSearch'
+import Backend from './BackendBridge'
+import {
+    __resetTypesenseCredentialCacheForTests,
+    multiSearchTypesense,
+    searchTypesenseCollection,
+    TYPESENSE_QUERY_CONFIG,
+} from './typesenseSearch'
 
 jest.mock('./BackendBridge', () => ({
-    getTypesenseSearchKeys: () => ({
-        TYPESENSE_HOST: 'search.example.com',
-        TYPESENSE_SEARCH_ONLY_API_KEY: 'test-key',
-    }),
+    getTypesenseScopedSearchCredentials: jest.fn(),
+    getCurrentUserId: jest.fn(),
 }))
+
+const VALID_CREDENTIALS = {
+    userId: 'user-1',
+    origin: 'https://search.example.com',
+    apiKey: 'test-scoped-key',
+    expiresAt: 4102444800,
+}
 
 const setNavigatorOnLine = value => {
     Object.defineProperty(window.navigator, 'onLine', { value, configurable: true })
 }
 
 describe('multiSearchTypesense offline fast-fail (OFFLINE_SUPPORT_PLAN.md Stage 7)', () => {
+    beforeEach(() => {
+        __resetTypesenseCredentialCacheForTests()
+        Backend.getCurrentUserId.mockReturnValue('user-1')
+        Backend.getTypesenseScopedSearchCredentials.mockResolvedValue(VALID_CREDENTIALS)
+    })
+
     afterEach(() => {
         setNavigatorOnLine(true)
         delete global.fetch
@@ -27,6 +44,7 @@ describe('multiSearchTypesense offline fast-fail (OFFLINE_SUPPORT_PLAN.md Stage 
             code: 'offline',
         })
         expect(global.fetch).not.toHaveBeenCalled()
+        expect(Backend.getTypesenseScopedSearchCredentials).not.toHaveBeenCalled()
     })
 
     it('searches normally while online', async () => {
@@ -40,6 +58,89 @@ describe('multiSearchTypesense offline fast-fail (OFFLINE_SUPPORT_PLAN.md Stage 
         const results = await multiSearchTypesense([{ collection: 'dev_tasks', query: 'x', filterBy: '' }])
         expect(results).toEqual([{ hits: [] }])
         expect(global.fetch).toHaveBeenCalledTimes(1)
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('scoped credentials and bounded payloads', () => {
+    const successResponse = () => ({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ results: [{ hits: [] }] }),
+    })
+
+    beforeEach(() => {
+        __resetTypesenseCredentialCacheForTests()
+        Backend.getCurrentUserId.mockReturnValue('user-1')
+        Backend.getTypesenseScopedSearchCredentials.mockReset().mockResolvedValue(VALID_CREDENTIALS)
+        global.fetch = jest.fn(() => Promise.resolve(successResponse()))
+    })
+
+    afterEach(() => {
+        delete global.fetch
+    })
+
+    it('uses a server-issued key, caps each collection at 20 results, and excludes large fields', async () => {
+        await multiSearchTypesense([{ collection: 'dev_notes', query: 'x', filterBy: 'projectId:=p' }])
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            'https://search.example.com/multi_search',
+            expect.objectContaining({
+                headers: expect.objectContaining({ 'X-TYPESENSE-API-KEY': 'test-scoped-key' }),
+            })
+        )
+        const [{ per_page, exclude_fields }] = JSON.parse(global.fetch.mock.calls[0][1].body).searches
+        expect(per_page).toBe(20)
+        expect(exclude_fields).toBe('content,cleanComments')
+    })
+
+    it('reuses one credential during its lifetime', async () => {
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'two', filterBy: 'projectId:=p' }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
+        expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('refreshes once after Typesense rejects an expired cached key', async () => {
+        Backend.getTypesenseScopedSearchCredentials
+            .mockResolvedValueOnce(VALID_CREDENTIALS)
+            .mockResolvedValueOnce({ ...VALID_CREDENTIALS, apiKey: 'refreshed-key' })
+        global.fetch.mockResolvedValueOnce({ ok: false, status: 401 }).mockResolvedValueOnce(successResponse())
+
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'x', filterBy: 'projectId:=p' }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(2)
+        expect(global.fetch).toHaveBeenCalledTimes(2)
+        expect(global.fetch.mock.calls[1][1].headers['X-TYPESENSE-API-KEY']).toBe('refreshed-key')
+    })
+
+    it('fails closed when the callable returns an expired or malformed credential', async () => {
+        Backend.getTypesenseScopedSearchCredentials.mockResolvedValue({
+            origin: 'https://search.example.com',
+            apiKey: 'expired-key',
+            expiresAt: 1,
+        })
+
+        await expect(
+            multiSearchTypesense([{ collection: 'dev_tasks', query: 'x', filterBy: 'projectId:=p' }])
+        ).rejects.toThrow('invalid, expired, or belong to another user')
+        expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('does not reuse a credential after the signed-in user changes', async () => {
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
+
+        Backend.getCurrentUserId.mockReturnValue('user-2')
+        Backend.getTypesenseScopedSearchCredentials.mockResolvedValue({
+            ...VALID_CREDENTIALS,
+            userId: 'user-2',
+            apiKey: 'user-2-key',
+        })
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'two', filterBy: 'projectId:=p' }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(2)
+        expect(global.fetch.mock.calls[1][1].headers['X-TYPESENSE-API-KEY']).toBe('user-2-key')
     })
 })
 
@@ -47,6 +148,9 @@ describe('per-search query_by override (AT-2393)', () => {
     const readSentSearches = () => JSON.parse(global.fetch.mock.calls[0][1].body).searches
 
     beforeEach(() => {
+        __resetTypesenseCredentialCacheForTests()
+        Backend.getCurrentUserId.mockReturnValue('user-1')
+        Backend.getTypesenseScopedSearchCredentials.mockReset().mockResolvedValue(VALID_CREDENTIALS)
         global.fetch = jest.fn(() =>
             Promise.resolve({
                 ok: true,
