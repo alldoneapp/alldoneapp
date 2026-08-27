@@ -199,6 +199,7 @@ describe('TaskPresentation swipe close guard (AT-2449)', () => {
     })
 
     it('leaves the row openable after a right swipe opens the postpone popup', async () => {
+        jest.useFakeTimers()
         const tree = await renderRow()
         const swipeable = swipeableInstances[0]
 
@@ -207,9 +208,8 @@ describe('TaskPresentation swipe close guard (AT-2449)', () => {
         // The gesture the user makes: drag left past the threshold and let go.
         // `TaskPresentation.onRightSwipe` closes the row from inside that handler,
         // which is the close that settles synchronously and inverts the pair.
-        await act(async () => {
+        act(() => {
             swipeable.releaseRightSwipe()
-            await Promise.resolve()
         })
 
         expect(swipeable.emitted).toEqual([
@@ -220,7 +220,20 @@ describe('TaskPresentation swipe close guard (AT-2449)', () => {
             'onSwipeableWillClose',
             'onSwipeableWillOpen',
         ])
+
+        // AT-2449 follow-up: the browser dispatches this drag's trailing `click`
+        // in the same task as the `mouseup` that produced the swipe. The row has
+        // to still be blocked when it lands, or the swipe is read as a tap on the
+        // row it just swiped.
+        expect(blockOpenOf(tree)).toBe(true)
+
+        // ... and it has to stop being blocked immediately afterwards. That is
+        // the whole of AT-2449: the flag may not outlive the gesture.
+        act(() => {
+            jest.runOnlyPendingTimers()
+        })
         expect(blockOpenOf(tree)).toBe(false)
+        jest.useRealTimers()
     })
 
     it('still blocks the press that closes a row the user left open', async () => {

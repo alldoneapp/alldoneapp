@@ -43,17 +43,58 @@ import { useRef, useState } from 'react'
  * wedges the row immediately, and the popup — which blocks the whole list while
  * it is up — is simply what hides it until then.
  *
- * The rule this guard applies: **a close that has already settled has nothing in
- * flight to block.** The two orderings are told apart by the microtask
- * checkpoint, because both callbacks of an inverted pair are emitted inside the
- * same synchronous `_animateRow` call, while a real animation resolves in a
- * later task. Nothing here is a timeout or a grace period; the flag can never
- * outlive the tick that set it.
+ * The two orderings are told apart by the microtask checkpoint, because both
+ * callbacks of an inverted pair are emitted inside the same synchronous
+ * `_animateRow` call, while a real animation resolves in a later task. A
+ * genuinely animated close therefore still blocks from `willClose` to `close`,
+ * exactly as it always did; what the inverted pair gets instead is described
+ * under the follow-up below. Nothing here is a grace period — the flag can
+ * never outlive the gesture that set it.
  *
  * `onSwipeableWillOpen` is handled too, as a second guarantee: a close whose
  * animation is INTERRUPTED by a new open gesture never delivers its completion
  * callback at all, which would otherwise leave the guard set until the row is
  * closed again. A row that is opening is by definition not closing.
+ *
+ * ---------------------------------------------------------------------------
+ * AT-2449 follow-up — a settled close still has a GESTURE to see out.
+ *
+ * The first version of this guard read "already settled" as "nothing to block"
+ * and left `blockOpen` false. That is right about the ANIMATION and wrong about
+ * the INTERACTION, and the difference is a browser fact: a mouse drag ends with
+ * `mouseup` AND a trailing `click`, dispatched in the same task, at the release
+ * point — i.e. on the row that was just swiped. Every row here turns that click
+ * into a press on its title, so the flag being stuck `true` was, by accident,
+ * also what stopped a swipe from being read as a tap on the row it swiped.
+ *
+ * With it gone, swiping a GOAL row in the task list opened the goal's edit mode
+ * instead of the postpone popup — and then made the popup impossible, because
+ * `GoalItemPresentation` schedules that dispatch on a `setTimeout` and clears
+ * `this.timeouts` in `componentWillUnmount`, so opening edit mode CANCELS the
+ * popup it was supposed to show. The same shape is latent on the contact and
+ * note rows, whose swipe handlers also defer their popup by a `setTimeout`
+ * while their press target navigates to a detailed view. The task row is the
+ * one that never showed it: `TaskPresentation.onRightSwipe` dispatches
+ * synchronously, and `TaskItem.toggleModal` refuses to open edit mode while
+ * `showSwipeDueDatePopup.visible` — so by the time the trailing click lands
+ * there is already a reason to ignore it.
+ *
+ * So the rule is not "settled ⇒ do not block" but "settled ⇒ block only for as
+ * long as the gesture lasts". That end is a real, observed boundary rather than
+ * a grace period: the trailing click rides in the same task as the `mouseup`
+ * that started all of this, so the FIRST MACROTASK after it is already past the
+ * click. It is the same boundary the rows themselves use — their deferred
+ * `setTimeout(...)` popups run in that turn too, scheduled just after this one,
+ * so the row unblocks and its popup opens in a fixed order rather than a raced
+ * one.
+ *
+ * This is a mouse-only hazard, which is why the release can be that tight. A
+ * browser only synthesises a `click` for a touch sequence it judges a TAP, and a
+ * swipe past `rightThreshold` (80px) is an order of magnitude past the tap slop,
+ * so a touch drag produces no trailing click to block. Note the direction of the
+ * risk if that were ever wrong: this holds the block strictly longer than the
+ * first version of the guard and strictly shorter than the behaviour that
+ * shipped for years before AT-2449, so it cannot be worse than either.
  */
 export const createSwipeCloseGuard = setBlockOpen => {
     // Set for the remainder of the current synchronous block whenever a close
@@ -61,6 +102,9 @@ export const createSwipeCloseGuard = setBlockOpen => {
     // a genuinely animated close can arrive.
     let settledInThisTick = false
     let releaseScheduled = false
+    // True while this tick's gesture — not an animation — is what is holding the
+    // block. Nothing that runs later in the same tick may clear it.
+    let gestureBlockActive = false
 
     const releaseAfterThisTick = () => {
         if (releaseScheduled) return
@@ -71,17 +115,38 @@ export const createSwipeCloseGuard = setBlockOpen => {
         })
     }
 
+    const blockUntilGestureEnds = () => {
+        if (gestureBlockActive) return
+        gestureBlockActive = true
+        setBlockOpen(true)
+        setTimeout(() => {
+            gestureBlockActive = false
+            setBlockOpen(false)
+        })
+    }
+
     return {
         onSwipeableWillClose: () => {
-            if (settledInThisTick) return
+            if (settledInThisTick) {
+                blockUntilGestureEnds()
+                return
+            }
             setBlockOpen(true)
         },
         onSwipeableClose: () => {
             settledInThisTick = true
             releaseAfterThisTick()
-            setBlockOpen(false)
+            // A close that arrives while this tick's gesture block is up is the
+            // very close that gesture performed; releasing here would undo the
+            // block before the trailing click it exists for.
+            if (!gestureBlockActive) setBlockOpen(false)
         },
         onSwipeableWillOpen: () => {
+            // The row is opening as part of the SAME gesture that just blocked
+            // it (`onSwipeableRightWillOpen` → the row's own `close()` →
+            // `onSwipeableWillClose`, all inside one `_animateRow`). Only a
+            // block left behind by an earlier, interrupted close is stale.
+            if (gestureBlockActive) return
             setBlockOpen(false)
         },
     }

@@ -32,12 +32,15 @@ import store from '../../redux/store'
 import { initFirebase } from '../../utils/backends/firestore'
 import CustomScrollView from '../../components/UIControls/CustomScrollView'
 import TaskItem from '../../components/TaskListView/TaskItem'
+import GoalItem from '../../components/GoalsView/GoalItem'
 import GlobalModalsContainerRootView from '../../components/UIComponents/GlobalModalsContainerRootView'
 import { OPEN_STEP, RECURRENCE_NEVER, TASK_ASSIGNEE_USER_TYPE } from '../../components/TaskListView/Utils/TasksHelper'
 import { TASK_PRIORITY_NONE } from '../../utils/TaskPriority'
 import { ESTIMATION_0_MIN } from '../../utils/EstimationHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import { TASK_EXECUTION_MODE_WORKFLOW } from '../../utils/taskExecutionMode'
+import { ALL_USERS, CAPACITY_NONE, DYNAMIC_PERCENT } from '../../components/GoalsView/GoalsHelper'
+import { GOAL_SCHEDULE_MODE_FIXED } from '../../utils/GoalMilestonesHelper'
 
 const PROJECT_ID = 'proj-1'
 const UID = 'user-1'
@@ -168,6 +171,72 @@ function TaskLine({ task }) {
     )
 }
 
+// AT-2449 follow-up — the GOAL row of the task list ("Parent goal" section
+// header). It is the same `Swipeable` pair as a task row, but a swipe on it
+// takes a different route to the same popup: `GoalItemPresentation.onRightSwipe`
+// closes the row and then dispatches `showSwipeDueDatePopup` from a `setTimeout`,
+// with `parentGoaltasks` (the section's tasks) as the payload. `inParentGoal`
+// is what makes it the postpone popup rather than the milestone modal — see
+// `isInTaskList` in that component.
+const GOAL_ID = 'goal-1'
+const GOAL = {
+    id: GOAL_ID,
+    name: 'Swiped goal charlie',
+    extendedName: 'Swiped goal charlie',
+    created: NOW,
+    creatorId: UID,
+    progress: DYNAMIC_PERCENT,
+    assigneesIds: [UID],
+    assigneesCapacity: { [UID]: CAPACITY_NONE },
+    assigneesReminderDate: { [UID]: NOW },
+    lastEditionDate: NOW,
+    lastEditorId: UID,
+    hasStar: '#FFFFFF',
+    description: '',
+    startingMilestoneDate: NOW,
+    completionMilestoneDate: NOW,
+    parentDoneMilestoneIds: [],
+    progressByDoneMilestone: {},
+    isPublicFor: [FEED_PUBLIC_FOR_ALL],
+    dateByDoneMilestone: {},
+    sortIndexByMilestone: {},
+    noteId: null,
+    dynamicProgress: 0,
+    ownerId: ALL_USERS,
+    isPremium: false,
+    lockKey: '',
+    assistantId: '',
+    commentsData: null,
+    scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
+    inDoneMilestone: false,
+}
+
+function GoalLine() {
+    const dismissibleRef = React.useRef(null)
+
+    return (
+        <View nativeID={`line-${GOAL_ID}`}>
+            <GoalItem
+                goal={GOAL}
+                projectId={PROJECT_ID}
+                setDismissibleRefs={ref => {
+                    dismissibleRef.current = ref
+                }}
+                openEdition={() => dismissibleRef.current && dismissibleRef.current.toggleModal()}
+                closeEdition={() => dismissibleRef.current && dismissibleRef.current.toggleModal()}
+                // Exactly how `ParentGoalSection` mounts it in the task list.
+                inParentGoal={true}
+                parentGoaltasks={TASKS}
+                areObservedTask={false}
+                refKey={`${GOAL_ID}-0-0`}
+                setEditing={() => {}}
+                showingTasks={true}
+                toggleTasksList={() => {}}
+            />
+        </View>
+    )
+}
+
 function Harness() {
     return (
         <View style={{ flex: 1 }}>
@@ -177,6 +246,7 @@ function Harness() {
             <View nativeID="empty-space" style={{ height: 90, backgroundColor: '#eef1f6' }} />
             <CustomScrollView nativeID="main-scroller">
                 <View>
+                    <GoalLine />
                     {TASKS.map(task => (
                         <TaskLine key={task.id} task={task} />
                     ))}
@@ -230,8 +300,15 @@ window.__popoverRects = () =>
         return { top: box.top, left: box.left, width: box.width, height: box.height, text: node.innerText.slice(0, 60) }
     })
 
-// Edit mode = the row was replaced by `EditTask`, i.e. a Quill editor exists.
+// Edit mode = the row was replaced by `EditTask`/`EditGoal`, i.e. a Quill editor
+// exists.
 window.__editorCount = () => document.querySelectorAll('.ql-editor').length
+
+// AT-2449 follow-up diagnostic: the goal row expresses "blocked" as a DISABLED
+// press target (`blockAction` feeds `TouchableOpacity.disabled`), which
+// react-native-web renders as `aria-disabled`.
+window.__blockedPressTargets = () =>
+    [...document.querySelectorAll('[aria-disabled="true"]')].map(node => (node.textContent || '').trim().slice(0, 40))
 
 // Viewport point of one word of a row's title — where the real mouse click goes.
 // `SocialText` renders one span per word, and react-native-web word spans can
