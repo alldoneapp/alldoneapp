@@ -6,6 +6,8 @@ const DEFAULT_WORKSTREAM_ID = 'ws@default'
 const PUBLIC_FOR_ALL = '0'
 const SCOPED_KEY_TTL_SECONDS = 5 * 60
 const EXCLUDED_RESPONSE_FIELDS = 'content,cleanComments'
+const MAX_MULTI_SEARCHES = 5
+const MAX_RESULTS_PER_COLLECTION = 20
 
 class TypesenseSearchCredentialsError extends Error {
     constructor(code, message) {
@@ -78,6 +80,8 @@ const createTypesenseScopedSearchCredentials = async ({ db, userId, isAnonymous 
     const apiKey = generateTypesenseScopedSearchKey(TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY, {
         filter_by: filterBy,
         exclude_fields: EXCLUDED_RESPONSE_FIELDS,
+        limit_multi_searches: MAX_MULTI_SEARCHES,
+        per_page: MAX_RESULTS_PER_COLLECTION,
         expires_at: expiresAt,
     })
 
@@ -95,6 +99,8 @@ module.exports = {
     PUBLIC_FOR_ALL,
     SCOPED_KEY_TTL_SECONDS,
     EXCLUDED_RESPONSE_FIELDS,
+    MAX_MULTI_SEARCHES,
+    MAX_RESULTS_PER_COLLECTION,
     TypesenseSearchCredentialsError,
     getAuthorizedProjectIds,
     getAuthorizedWorkstreamIds,

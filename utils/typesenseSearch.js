@@ -38,8 +38,54 @@ export const TYPESENSE_QUERY_CONFIG = {
     },
 }
 
-// Matches the Algolia hitsPerPage the index settings used to pin (AMOUNT_OF_SEARCH_BY_PROJECT).
-const PER_PAGE = 100
+// Global search queries five collections at once. Twenty results per collection is ample
+// for the modal while avoiding the old worst case of 500 full records per keystroke.
+const PER_PAGE = 20
+const CREDENTIAL_REFRESH_SKEW_SECONDS = 60
+
+let cachedCredentials = null
+let credentialsPromise = null
+
+const credentialsAreFresh = (credentials, userId) => {
+    return (
+        credentials &&
+        userId &&
+        credentials.userId === userId &&
+        credentials.origin &&
+        credentials.apiKey &&
+        Number(credentials.expiresAt) > Math.floor(Date.now() / 1000) + CREDENTIAL_REFRESH_SKEW_SECONDS
+    )
+}
+
+const getTypesenseScopedSearchCredentials = async ({ forceRefresh = false } = {}) => {
+    const userId = Backend.getCurrentUserId()
+    if (!userId) throw new Error('Typesense search requires an authenticated user')
+    if (!forceRefresh && credentialsAreFresh(cachedCredentials, userId)) return cachedCredentials
+    if (!forceRefresh && credentialsPromise) return credentialsPromise
+
+    const request = Backend.getTypesenseScopedSearchCredentials().then(credentials => {
+        if (!credentialsAreFresh(credentials, userId) || Backend.getCurrentUserId() !== userId) {
+            throw new Error('Typesense scoped search credentials are invalid, expired, or belong to another user')
+        }
+        cachedCredentials = {
+            ...credentials,
+            origin: credentials.origin.replace(/\/$/, ''),
+        }
+        return cachedCredentials
+    })
+    credentialsPromise = request
+
+    try {
+        return await request
+    } finally {
+        if (credentialsPromise === request) credentialsPromise = null
+    }
+}
+
+export const __resetTypesenseCredentialCacheForTests = () => {
+    cachedCredentials = null
+    credentialsPromise = null
+}
 
 export const adaptTypesenseHit = hit => {
     const document = hit.document || {}
@@ -80,11 +126,6 @@ export const multiSearchTypesense = async searches => {
         throw offlineError
     }
 
-    const { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY } = Backend.getTypesenseSearchKeys()
-    if (!TYPESENSE_HOST || !TYPESENSE_SEARCH_ONLY_API_KEY) {
-        throw new Error('Typesense search keys are not configured')
-    }
-
     const body = {
         searches: searches.map(({ collection, query, filterBy, queryBy }) => {
             const config = TYPESENSE_QUERY_CONFIG[collection]
@@ -106,14 +147,22 @@ export const multiSearchTypesense = async searches => {
         }),
     }
 
-    const response = await fetch(`https://${TYPESENSE_HOST}/multi_search`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-TYPESENSE-API-KEY': TYPESENSE_SEARCH_ONLY_API_KEY,
-        },
-        body: JSON.stringify(body),
-    })
+    const runSearch = async forceRefresh => {
+        const { origin, apiKey } = await getTypesenseScopedSearchCredentials({ forceRefresh })
+        return await fetch(`${origin}/multi_search`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-TYPESENSE-API-KEY': apiKey,
+            },
+            body: JSON.stringify(body),
+        })
+    }
+
+    let response = await runSearch(false)
+    // A cached scoped key can expire between the local freshness check and Typesense
+    // receiving the request. Refresh once; other failures must surface unchanged.
+    if (response.status === 401) response = await runSearch(true)
 
     if (!response.ok) {
         throw new Error(`Typesense multi_search failed with status ${response.status}`)
