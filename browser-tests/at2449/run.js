@@ -11,6 +11,14 @@
  *   3. Click the row's title → edit mode must open.
  *   4. Same for the NEIGHBOUR row — the reported symptom is about the list, and a
  *      global flag left set wedges every row, not just the swiped one.
+ *   5. Then the whole thing again on the task list's GOAL row (AT-2449
+ *      follow-up). A goal reaches the same popup by a different route — its
+ *      `onRightSwipe` DEFERS the dispatch to a `setTimeout` and its press target
+ *      is not gated on the popup being visible — which is why the first fix for
+ *      (3) regressed it and why (1)-(4) could not have caught that. This step is
+ *      the A/B that found it: run it against the commit before the fix and the
+ *      goal swipe opens the popup while the task click is dead; run it against
+ *      the fix alone and they swap over.
  *
  * Requirements (this does NOT run in CI's Jest jobs):
  *   nvm use 22
@@ -203,6 +211,39 @@ async function run() {
     const neighbour = await report('after clicking the neighbour task')
     if (neighbour.editors === 0) {
         failures.push('REPRO: after the swipe + outside dismiss, clicking a DIFFERENT task does nothing')
+    }
+
+    // --- 5. the GOAL row of the task list -----------------------------------
+    // AT-2449 follow-up: "swiping left on a goal in the task list no longer
+    // shows the postpone popup". A goal reaches the same popup by a different
+    // route than a task (`GoalItemPresentation.onRightSwipe` → `close()` →
+    // `setTimeout` → dispatch), so the task scenario above cannot cover it.
+    await page.keyboard.press('Escape')
+    await page.mouse.click(20, 20)
+    await page.waitForTimeout(400)
+    await report('before the goal swipe')
+
+    await swipeLeft(page, 'goal-1')
+    await page.waitForTimeout(600)
+    const goalSwiped = await report('after the goal swipe')
+    if (!goalSwiped.state.swipePopupVisible) {
+        failures.push('REPRO(goal): swiping left on a goal did not open the postpone popup')
+    }
+    if (goalSwiped.popovers === 0) failures.push('REPRO(goal): no popover portal was rendered for the goal')
+
+    // And the original AT-2449 symptom must not come back on the goal row
+    // either: dismissing the popup next to it must leave the row clickable.
+    await page.mouse.click(20, 20)
+    await page.waitForTimeout(600)
+    const goalDismissed = await report('after dismissing the goal popup')
+    if (goalDismissed.state.swipePopupVisible) failures.push('goal dismiss: the popup stayed visible')
+
+    if (debug) console.log('  goal blocked press targets:', await page.evaluate(() => window.__blockedPressTargets()))
+    await clickTitle(page, 'goal-1', 'charlie')
+    await page.waitForTimeout(500)
+    const goalReopened = await report('after clicking the swiped goal')
+    if (goalReopened.editors === 0) {
+        failures.push('REPRO(goal): after the swipe + outside dismiss, clicking the swiped goal does nothing')
     }
 
     await browser.close()
