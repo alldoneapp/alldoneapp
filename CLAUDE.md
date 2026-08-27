@@ -743,49 +743,6 @@ it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. Prefer
 
 **Nested `react-tiny-popover` dismisses its parent on tap (mobile tap/click timing)**: `react-tiny-popover` (v4) closes a popover by attaching a `window` `'click'` listener and calling `onClickOutside` whenever the click target is not inside **that** popover's own `document.body` portal. A nested popover (a dropdown/picker opened from inside a popover-based modal) renders in a **separate** portal, so tapping an item in the child is "outside" the parent — the parent's `onClickOutside` fires and the whole modal closes. This reproduces mainly on **mobile web**: a tap emits the touch press (`onPress`, which does the selection) and then a **synthesized `click` shortly after**, and it is that trailing click that reaches the parent's window listener — on desktop the RN-web press typically stops the click from bubbling to `window`, hiding the bug. The ordering is dependable: `onPress` (pointerup/touchend, or the click at the event target during bubbling) always runs before the trailing `click` reaches `window`, so a flag set in `onPress` is readable by the parent's `onClickOutside`. Fix (see `components/TaskListView/EmailLine/EmailLabelChip.js` + `EmailLabelModal/EmailRow.js` + `emailLineHelper.js`): on the child item's `onPress`, stamp a module-level interaction (`markEmailLabelPickerInteraction`); in the parent's `onClickOutside`, swallow the dismiss **once** (`shouldIgnoreEmailLabelModalDismiss` clears the stamp and returns true). Prefer this **consume-once** guard over a fixed time window so it does not depend on how far apart the tap and click land; keep a generous sanity cap (~2s) so a stamp whose dismiss never arrives (the desktop case) can't later swallow a genuine outside tap. Do not reach for `contentDestination` to re-parent the child into the modal DOM — it breaks the library's viewport-relative positioning math — and avoid an in-flow inline dropdown (it expands the modal) or an absolute in-modal overlay (it gets clipped by the modal's `CustomScrollView`).
 
-### A swipeable row is left permanently unopenable by its own swipe (AT-2449)
-
-**`Swipeable` can deliver `onSwipeableClose` BEFORE `onSwipeableWillClose`, and every swipeable row
-in the app assumed it could not.** Task, goal, contact, note and chat-message rows all carried the
-same pair — `onSwipeableWillClose → setBlockOpen(true)`, `onSwipeableClose → setBlockOpen(false)` —
-so that the tap which closes an open swipe row is not also read as a tap that opens it. But
-`react-native-gesture-handler@1.5.6`'s `_animateRow` (Swipeable.js:203-242) starts the spring
-**first** and calls the `will*` callbacks afterwards, and react-native-web's `SpringAnimation`
-runs its first frame **inside `.start()`** — so a close with no distance to travel completes before
-`start()` returns and the pair arrives inverted. `blockOpen` is then stuck `true` with no further
-event to clear it, and `SocialText`'s press gate (`shouldOnPressInput`) rejects every tap on the
-title from then on.
-
-A zero-distance close is not exotic here: it is what **every** one of those rows does on a swipe.
-They all call `itemSwipe.current.close()` synchronously from inside their own
-`onSwipeableRightWillOpen`, and at that moment the `setState({ rowState: -1 })` issued a few
-statements earlier in the outer `_animateRow` has not flushed (React 18 batches updates from native
-event handlers), so `_currentOffset()` still answers `0` and `close()` animates 0 → 0. The reported
-symptom — "after swiping a task and dismissing the postpone popup I can no longer click into the
-task" — is misleading in both halves: the swipe alone wedges the row, and the popup is merely what
-hides it, because `TaskItem.toggleModal` gates the whole list on `showSwipeDueDatePopup.visible`
-while it is up. Redux is clean afterwards; the dead state is per-row.
-
-`hooks/useSwipeCloseGuard.js` owns the pair for all five rows. The rule is **a close that has
-already settled has nothing in flight to block**, and the two orderings are told apart by the
-**microtask checkpoint** — both callbacks of an inverted pair are emitted inside the same
-synchronous `_animateRow` call, while a real animation resolves in a later task. It is deliberately
-not a timeout or a grace period: the marker cannot outlive the tick that set it, so a genuinely
-animated close still blocks exactly as before. It also handles `onSwipeableWillOpen`, because a
-close whose animation is interrupted by a new open gesture never delivers its completion callback
-at all. Class rows (`ContactItem`, `GoalItemPresentation`) use the exported
-`createSwipeCloseGuard(setBlockOpen)` factory — the closure is the whole state machine, so it must
-be created **once per row**, never per render.
-
-Pinned by `hooks/useSwipeCloseGuard.test.js` (the rule),
-`components/TaskListView/TaskItem/TaskPresentation/TaskPresentationSwipeGuard.test.js` (the wiring —
-its `Swipeable` double in `__swipeableAnimateRowDouble.js` reproduces `_animateRow`'s emission order
-and the batched `rowState` write, which is the only reason the defect is expressible in jsdom at
-all) and `browser-tests/at2449` (a real mouse swipe, a real popover dismiss and a real click, in
-real Chromium — jsdom has no Hammer recogniser, so the gesture itself cannot happen there and any
-jsdom-only test of this path would have to call the handlers by hand, which is exactly the step
-that hides the bug).
-
 ### Task completion animation (AT-2404)
 
 Ticking a task's checkbox punches the checkbox, bursts a ring and six sparks out of it, fills a slim

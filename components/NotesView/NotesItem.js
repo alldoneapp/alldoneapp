@@ -22,7 +22,6 @@ import SwipeNewTaskWrapper from './SwipeNewTaskWrapper'
 import { exitsOpenModals, removeModal, RICH_CREATE_TASK_MODAL_ID, storeModal } from '../ModalsManager/modalsManager'
 import { LINKED_OBJECT_TYPE_NOTE, getDvNoteTabLink } from '../../utils/LinkingHelper'
 import useBacklinks from '../../hooks/useBacklinks'
-import useSwipeCloseGuard from '../../hooks/useSwipeCloseGuard'
 import { openNoteDV } from './NotesDV/EditorView/notesHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getTheme } from '../../Themes/Themes'
@@ -51,9 +50,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         'linkedParentNotesIds',
         note.id
     )
-    // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-    // and leave the row permanently unopenable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const showNewTaskPopup = useRef(false)
     const isUnmountedRef = useRef(false)
@@ -247,7 +244,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 friction={2}
                 containerStyle={{ overflow: 'visible' }}
                 failOffsetY={[-5, 5]}
-                {...swipeCloseGuard}
+                onSwipeableWillClose={() => setBlockOpen(true)}
+                onSwipeableClose={() => setBlockOpen(false)}
             >
                 <Animated.View
                     style={[
