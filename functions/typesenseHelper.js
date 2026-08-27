@@ -153,6 +153,17 @@ const getTypesenseClient = () => {
     return cachedClient
 }
 
+// Scoped search keys are generated locally by typesense-js (HMAC); this does not
+// make a network request or reveal the parent search key to the caller. The parent
+// must itself be restricted to documents:search — Typesense rejects scoped keys
+// derived from an admin key.
+const generateTypesenseScopedSearchKey = (parentSearchKey, parameters) => {
+    if (!parentSearchKey) throw new Error('Typesense scoped-search parent key is not configured')
+    const client = getTypesenseClient()
+    if (!client) throw new Error('Typesense is not configured (TYPESENSE_HOST / TYPESENSE_ADMIN_API_KEY)')
+    return client.keys().generateScopedSearchKey(parentSearchKey, parameters)
+}
+
 // Millisecond-timestamp fields that legacy documents occasionally carry with garbage values.
 // Typesense auto-types a field from the first document it sees (int64 for these), then
 // rejects anything else with "Field `dueDate` must be an int64". Both shapes were found on
@@ -423,6 +434,7 @@ module.exports = {
     COLLECTION_SCHEMAS,
     isTypesenseConfigured,
     getTypesenseClient,
+    generateTypesenseScopedSearchKey,
     normalizeDocumentForTypesense,
     upsertTypesenseDocument,
     deleteTypesenseDocument,

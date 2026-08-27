@@ -138,6 +138,7 @@ const getEnvFunctions = () => {
                     GOOGLE_MAPS_API_KEY: envJson.GOOGLE_MAPS_API_KEY || '',
                     TYPESENSE_HOST: envJson.TYPESENSE_HOST || '',
                     TYPESENSE_ADMIN_API_KEY: envJson.TYPESENSE_ADMIN_API_KEY || '',
+                    TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: envJson.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -288,6 +289,7 @@ const getEnvFunctions = () => {
         'GOOGLE_MAPS_API_KEY',
         'TYPESENSE_HOST',
         'TYPESENSE_ADMIN_API_KEY',
+        'TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })
