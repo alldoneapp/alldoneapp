@@ -1,7 +1,6 @@
 import React, { PureComponent } from 'react'
 import { StyleSheet, TouchableOpacity, View, Animated } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { createSwipeCloseGuard } from '../../hooks/useSwipeCloseGuard'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 
@@ -68,9 +67,6 @@ export default class GoalItemPresentation extends PureComponent {
             tasksAmount: 0,
         }
         this.itemSwipe = React.createRef()
-        // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-        // and leave the row permanently unactionable. See the hook module.
-        this.swipeCloseGuard = createSwipeCloseGuard(blockAction => this.setStateIfMounted({ blockAction }))
         this.childrenTasksWatcherKey = v4()
         this.backlinksWatcherKey = v4()
     }
@@ -497,7 +493,12 @@ export default class GoalItemPresentation extends PureComponent {
                         friction={2}
                         containerStyle={{ overflow: 'visible' }}
                         failOffsetY={[-5, 5]}
-                        {...this.swipeCloseGuard}
+                        onSwipeableWillClose={() => {
+                            this.setState({ blockAction: true })
+                        }}
+                        onSwipeableClose={() => {
+                            this.setState({ blockAction: false })
+                        }}
                     >
                         <Animated.View
                             onLayout={this.onLayoutContainers}

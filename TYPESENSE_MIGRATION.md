@@ -53,6 +53,15 @@
 > "protected" in a project with **no protected branches**, so every pipeline saw empty
 > strings and the key-aware flag silently kept Algolia reads — the working variables here
 > are all unprotected; match that.
+> **Scoped-key hardening (2026-08-27):** the static browser key was found to be only
+> collection-scoped, so a caller could omit the UI's `filter_by` and search every indexed
+> record. The client now obtains a five-minute key from
+> `getTypesenseScopedSearchCredentialsSecondGen`. The callable derives projects and
+> workstreams from authoritative Firestore membership, embeds the access filter, excludes
+> `content` / `cleanComments`, caps multi-search at five collections and 20 results each,
+> and binds the client cache to the Firebase uid. The parent `documents:search` key is held
+> only in `TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY`; the legacy browser key must be revoked
+> after the new web bundle is verified.
 > **QA gate (run before Phase 4, two accounts A/B):**
 >
 > 1. B's private task/note never appears for A (isPublicFor).
@@ -181,13 +190,14 @@ same list, so widening scope automatically renders the extra project groups.
 ## Phase 0 — Provision (no code changes)
 
 1. Create Typesense Cloud cluster: **Frankfurt**, 1GB RAM / 2 vCPU, **non-HA** to start.
-2. Generate two keys: admin key (functions only) and a **search-only key scoped to
-   `documents:search` on the 5 collections** (client). Same trust model as today's
-   Algolia search-only key.
+2. Generate an admin key (functions only) and a parent **search-only key scoped to
+   `documents:search` on the 5 collections** (functions only). Browser clients receive
+   short-lived, user-scoped derivatives; never ship the parent key.
 3. Add env vars:
-    - Functions: `TYPESENSE_HOST`, `TYPESENSE_ADMIN_API_KEY` (wire through `envFunctionsHelper.js`
-      next to the Algolia entries)
-    - Client: `TYPESENSE_HOST`, `TYPESENSE_SEARCH_ONLY_API_KEY` (next to the Algolia keys)
+    - Functions: `TYPESENSE_HOST`, `TYPESENSE_ADMIN_API_KEY`,
+      `TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY` (wire through `envFunctionsHelper.js`)
+    - Client: no persistent Typesense credential or host; fetch both from the authenticated
+      callable.
 4. `npm i typesense` in both root and `functions/`.
 
 ## Phase 1 — Server-side dual-write
@@ -260,9 +270,8 @@ real run (it builds the full record lists to count them).
 
 ## Phase 3 — Client + server read cutover (behind a flag)
 
-1. `utils/typesense.js` — search client factory (search-only key). Add
-   `getTypesenseSearchKeys()` beside `getAlgoliaSearchOnlyKeys()` in `utils/backends/firestore.js`
-    - `BackendBridge.js`.
+1. `utils/typesenseSearch.js` fetches and caches short-lived scoped credentials through
+   `getTypesenseScopedSearchCredentials()` in `utils/backends/firestore.js` / `BackendBridge.js`.
 2. Port `searchFilters.js` → `buildTypesenseFilters` (keep the old file until decommission;
    port `searchFilters.test.js`):
 
@@ -352,9 +361,8 @@ current. After Phase 5, rollback = re-run the backfill in reverse (don't; just d
 
 ## Gotchas / decisions
 
-- **Privacy relies on filters** (today too — the Algolia search key doesn't enforce access).
-  The Typesense search-only key matches that posture. Optional later hardening: server-generated
-  **scoped search keys** with embedded `filter_by` per user; Typesense supports this natively.
+- **Privacy is enforced by the scoped key**, not the browser-supplied filter. The server embeds
+  the authoritative project/workstream `filter_by`; UI filters can only narrow that scope.
 - **`isPublicFor` mixes types** (numeric `FEED_PUBLIC_FOR_ALL` + string ids). Normalize to
   `string[]` in the Typesense mapper and stringify the constant in the filter builder.
 - **Typo tolerance is per-query** in Typesense (`num_typos`), not per-collection config —

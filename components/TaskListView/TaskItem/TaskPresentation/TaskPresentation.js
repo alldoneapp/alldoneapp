@@ -45,7 +45,6 @@ import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
 import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
 import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
-import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 
 function TaskPresentation(
     {
@@ -90,10 +89,7 @@ function TaskPresentation(
     const [taskItemWidth, setTaskItemWidth] = useState(0)
     const [taskTagsWidth, setTaskTagsWidth] = useState(0)
     const [taskTitleIsMultiline, setTaskTitleIsMultiline] = useState(false)
-    // AT-2449 — not a plain `useState(false)` toggled by the two Swipeable
-    // callbacks: `_animateRow` can deliver them the wrong way round and leave the
-    // row permanently unopenable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [tagsExpandedHeight, setTagsExpandedHeight] = useState(0)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const itemSwipe = useRef()
@@ -377,7 +373,12 @@ function TaskPresentation(
                     friction={2}
                     containerStyle={{ overflow: 'visible' }}
                     failOffsetY={[-5, 5]}
-                    {...swipeCloseGuard}
+                    onSwipeableWillClose={() => {
+                        setBlockOpen(true)
+                    }}
+                    onSwipeableClose={() => {
+                        setBlockOpen(false)
+                    }}
                 >
                     <View style={taskPresentationLayout.container}>
                         <View style={{ borderRadius: 4 }}>

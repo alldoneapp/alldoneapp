@@ -114,6 +114,36 @@ exports.setDefaultProjectSecondGen = onCall(
     }
 )
 
+exports.getTypesenseScopedSearchCredentialsSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const {
+            TypesenseSearchCredentialsError,
+            createTypesenseScopedSearchCredentials,
+        } = require('./Typesense/scopedSearchCredentials')
+
+        try {
+            return await createTypesenseScopedSearchCredentials({
+                db: admin.firestore(),
+                userId: request.auth.uid,
+                isAnonymous: request.auth.token?.firebase?.sign_in_provider === 'anonymous',
+            })
+        } catch (error) {
+            if (error instanceof TypesenseSearchCredentialsError) {
+                throw new HttpsError(error.code, error.message)
+            }
+            throw error
+        }
+    }
+)
+
 // Access check for account-level connection ids (email_… / calendar_…): the connection
 // must belong to the caller. Returns { userData, connection }.
 async function assertConnectionAccess(userId, connectionId) {

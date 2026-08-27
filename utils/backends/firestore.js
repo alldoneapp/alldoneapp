@@ -38,8 +38,6 @@ import {
     HOSTING_URL,
     CURRENT_ENVIORNMENT,
     NOTES_COLLABORATION_SERVER,
-    TYPESENSE_HOST,
-    TYPESENSE_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
 } from 'react-native-dotenv'
 // END-ENVS
@@ -7413,8 +7411,12 @@ export const inStagingEnvironment = () => {
     return CURRENT_ENVIORNMENT === 'Staging'
 }
 
-export function getTypesenseSearchKeys() {
-    return { TYPESENSE_HOST, TYPESENSE_SEARCH_ONLY_API_KEY }
+export function getTypesenseScopedSearchCredentials() {
+    return runHttpsCallableFunction('getTypesenseScopedSearchCredentialsSecondGen', {})
+}
+
+export function getCurrentUserId() {
+    return firebase.auth().currentUser?.uid || null
 }
 
 // The region every callable/onRequest function in this project is deployed to. It is a
