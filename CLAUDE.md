@@ -766,25 +766,54 @@ task" — is misleading in both halves: the swipe alone wedges the row, and the 
 hides it, because `TaskItem.toggleModal` gates the whole list on `showSwipeDueDatePopup.visible`
 while it is up. Redux is clean afterwards; the dead state is per-row.
 
-`hooks/useSwipeCloseGuard.js` owns the pair for all five rows. The rule is **a close that has
-already settled has nothing in flight to block**, and the two orderings are told apart by the
-**microtask checkpoint** — both callbacks of an inverted pair are emitted inside the same
-synchronous `_animateRow` call, while a real animation resolves in a later task. It is deliberately
-not a timeout or a grace period: the marker cannot outlive the tick that set it, so a genuinely
-animated close still blocks exactly as before. It also handles `onSwipeableWillOpen`, because a
-close whose animation is interrupted by a new open gesture never delivers its completion callback
-at all. Class rows (`ContactItem`, `GoalItemPresentation`) use the exported
-`createSwipeCloseGuard(setBlockOpen)` factory — the closure is the whole state machine, so it must
-be created **once per row**, never per render.
+`hooks/useSwipeCloseGuard.js` owns the pair for all five rows, and the two orderings are told apart
+by the **microtask checkpoint** — both callbacks of an inverted pair are emitted inside the same
+synchronous `_animateRow` call, while a real animation resolves in a later task. A genuinely
+animated close therefore still blocks from `willClose` to `close`, exactly as before. It also
+handles `onSwipeableWillOpen`, because a close whose animation is interrupted by a new open gesture
+never delivers its completion callback at all. Class rows (`ContactItem`, `GoalItemPresentation`)
+use the exported `createSwipeCloseGuard(setBlockOpen)` factory — the closure is the whole state
+machine, so it must be created **once per row**, never per render.
 
-Pinned by `hooks/useSwipeCloseGuard.test.js` (the rule),
-`components/TaskListView/TaskItem/TaskPresentation/TaskPresentationSwipeGuard.test.js` (the wiring —
-its `Swipeable` double in `__swipeableAnimateRowDouble.js` reproduces `_animateRow`'s emission order
-and the batched `rowState` write, which is the only reason the defect is expressible in jsdom at
-all) and `browser-tests/at2449` (a real mouse swipe, a real popover dismiss and a real click, in
-real Chromium — jsdom has no Hammer recogniser, so the gesture itself cannot happen there and any
-jsdom-only test of this path would have to call the handlers by hand, which is exactly the step
-that hides the bug).
+**A settled close still has a GESTURE to see out, and reading "settled" as "nothing to block" broke
+the goal row (AT-2449 follow-up).** The first version of this guard left `blockOpen` false for the
+inverted pair. That is right about the ANIMATION and wrong about the INTERACTION: a mouse drag ends
+with `mouseup` **and a trailing `click`, dispatched in the same task**, at the release point — i.e.
+on the row that was just swiped. Every row here turns that click into a press on its title, so the
+flag being stuck `true` had also, by accident, been the only thing stopping a swipe from being read
+as a tap on the row it swiped. With it gone, **swiping a goal in the task list opened the goal's
+edit mode instead of the postpone popup** — and then made the popup impossible, because
+`GoalItemPresentation.onRightSwipe` defers its `showSwipeDueDatePopup` dispatch to a `setTimeout`
+and `componentWillUnmount` clears `this.timeouts`, so opening edit mode **cancels the popup it was
+supposed to show**. Same shape is latent on the contact and note rows (deferred popup, press target
+navigates to a detailed view). The task row is the one that never showed it, for a reason worth
+copying: `TaskPresentation.onRightSwipe` dispatches **synchronously**, and `TaskItem.toggleModal`
+refuses to open edit mode while `showSwipeDueDatePopup.visible` — so by the time its trailing click
+lands there is already a reason to ignore it.
+
+So the rule is not "settled ⇒ do not block" but **"settled ⇒ block only for as long as the gesture
+lasts"**, and that end is an observed boundary rather than a grace period: the trailing click rides
+in the same task as the `mouseup`, so the **first macrotask** after it is already past the click.
+It is the same boundary the rows themselves use — their deferred `setTimeout(...)` popups run in
+that turn too, scheduled just after the guard's, so the row unblocks and its popup opens in a fixed
+order rather than a raced one. `onSwipeableWillOpen` must not clear a block established in the
+current tick (it fires later in the very same `_animateRow`), which is what `gestureBlockActive`
+is for. This is a **mouse-only** hazard, which is why the release can be that tight: a browser only
+synthesises a `click` for a touch sequence it judges a tap, and a swipe past `rightThreshold` (80px)
+is an order of magnitude past the tap slop. Note the direction of the risk if that were ever wrong —
+the block is held strictly longer than the first version of the guard and strictly shorter than the
+behaviour that shipped for years before AT-2449, so it cannot be worse than either.
+
+Pinned by `hooks/useSwipeCloseGuard.test.js` (the rule, both halves),
+`components/TaskListView/TaskItem/TaskPresentation/TaskPresentationSwipeGuard.test.js` and
+`components/GoalsView/GoalItemPresentationSwipeGuard.test.js` (the wiring — their `Swipeable` double
+in `__swipeableAnimateRowDouble.js` reproduces `_animateRow`'s emission order and the batched
+`rowState` write, which is the only reason the defect is expressible in jsdom at all) and
+`browser-tests/at2449` (a real mouse swipe, a real popover dismiss and a real click, in real
+Chromium, on a task row **and** a goal row — jsdom has no Hammer recogniser, so the gesture itself
+cannot happen there and any jsdom-only test of this path would have to call the handlers by hand,
+which is exactly the step that hides the bug; the goal regression was found by adding that row to
+the harness and A/B-ing it against the pre-fix commit).
 
 ### Task completion animation (AT-2404)
 

@@ -34,18 +34,56 @@ describe('createSwipeCloseGuard', () => {
     // answers 0 because the `rowState` setState has not flushed. The resulting
     // 0 → 0 spring settles INSIDE `.start()`, so the completion callback runs
     // before `_animateRow` reaches its `onSwipeableWillClose()` line.
-    it('never blocks for a close that has already settled in the same tick', async () => {
-        const setBlockOpen = jest.fn()
-        const guard = createSwipeCloseGuard(setBlockOpen)
+    //
+    // AT-2449 follow-up: the block may not be held by that close (it is over),
+    // but it may not be dropped either — the GESTURE is still running and owes
+    // the row a trailing click. So it is held to the end of the current turn,
+    // and released without anything else having to happen.
+    it('holds a settled close only until the end of the gesture', async () => {
+        jest.useFakeTimers()
+        try {
+            const setBlockOpen = jest.fn()
+            const guard = createSwipeCloseGuard(setBlockOpen)
 
-        guard.onSwipeableClose()
-        guard.onSwipeableWillClose()
+            guard.onSwipeableClose()
+            guard.onSwipeableWillClose()
 
-        expect(setBlockOpen).toHaveBeenCalledTimes(1)
-        expect(setBlockOpen).toHaveBeenLastCalledWith(false)
+            // The trailing click of the swipe arrives here, in this same task.
+            expect(setBlockOpen).toHaveBeenLastCalledWith(true)
 
+            jest.runOnlyPendingTimers()
+            expect(setBlockOpen).toHaveBeenLastCalledWith(false)
+        } finally {
+            jest.useRealTimers()
+        }
         await flushMicrotasks()
-        expect(setBlockOpen).toHaveBeenLastCalledWith(false)
+    })
+
+    // The whole point of AT-2449: the block must not be able to outlive the
+    // gesture, whatever else the row does. Nothing but the passage of a task is
+    // required to clear it — no later close, no re-open, no press.
+    it('cannot leave the row blocked once the gesture is over', async () => {
+        jest.useFakeTimers()
+        try {
+            const setBlockOpen = jest.fn()
+            const guard = createSwipeCloseGuard(setBlockOpen)
+
+            // Exactly `_animateRow`'s emission order for a swipe that opens the
+            // row and is closed from inside its own will-open handler.
+            guard.onSwipeableClose()
+            guard.onSwipeableWillClose()
+            guard.onSwipeableWillOpen()
+
+            // ... including the will-open that follows in the same `_animateRow`:
+            // it must NOT be read as "this block is stale".
+            expect(setBlockOpen).toHaveBeenLastCalledWith(true)
+
+            jest.runOnlyPendingTimers()
+            expect(setBlockOpen).toHaveBeenLastCalledWith(false)
+        } finally {
+            jest.useRealTimers()
+        }
+        await flushMicrotasks()
     })
 
     // The tick marker must not survive the tick that set it: a later, genuine
