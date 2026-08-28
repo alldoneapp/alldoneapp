@@ -35,9 +35,18 @@ export const CONFETTI_BURST_PIECE_COUNT = 16
 export const CONFETTI_PAGE_PIECE_COUNT = 30
 export const CONFETTI_PIECE_COUNT = CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT
 
-// Sits above page content but well under the modal/popover portals that append themselves to
-// `document.body` — a celebration must never paint over a dialog the user opened.
-const PAGE_LAYER_Z_INDEX = 30
+/**
+ * Lifts the fall above the page content it is falling over.
+ *
+ * It has to be applied in TWO places to mean anything, which is the part that is easy to get
+ * wrong: react-native-web gives every `View` `position: relative; z-index: 0`, so the block that
+ * renders this layer is already its own stacking context and a `z-index` set only here can never
+ * reach past it — the confetti would paint above the congratulation and the achievement card, and
+ * behind whatever the board renders BELOW the block (the email line, the task filters). So
+ * `AllProjectsEmptyInbox` raises the block itself by the same amount while it is celebrating, and
+ * puts it back the moment the run settles.
+ */
+export const CONFETTI_LAYER_Z_INDEX = 30
 
 // Brand accents. Green leads because it is the colour the rest of the completion vocabulary uses
 // (the checkbox burst, the task progress bar, the achievement dot), and the others are there to
@@ -249,9 +258,13 @@ const BurstPiece = ({ confetti, piece }) => {
  */
 export default function EmptyInboxConfetti({ confetti, visible }) {
     // `Dimensions.get('window')`, not `useWindowDimensions()` — the latter is not reliably provided
-    // by this RN/web setup and throws at runtime (see CLAUDE.md). Read once per size: the fall lasts
-    // ~3s, so a resize mid-flight is not worth re-deriving trajectories for, and re-deriving them
-    // would move every piece the moment the window moved.
+    // by this RN/web setup and throws at runtime (see CLAUDE.md).
+    //
+    // The `useMemo` is what matters here, and it is memoised on the SIZE rather than on nothing:
+    // the board re-renders constantly (it is subscribed to the task counts), and a trajectory
+    // rebuilt on each of those renders would teleport every piece mid-flight. A window actually
+    // being resized during the ~3s run does rebuild them, which is the right trade — a fall sized
+    // for the old viewport would leave a bald stripe or drop pieces off the edge.
     const { width, height } = Dimensions.get('window')
     const burstPieces = useMemo(() => buildBurstPieces(CONFETTI_BURST_PIECE_COUNT), [])
     const pagePieces = useMemo(() => buildPagePieces(CONFETTI_PAGE_PIECE_COUNT, width, height), [width, height])
@@ -286,7 +299,7 @@ const localStyles = StyleSheet.create({
         right: 0,
         bottom: 0,
         overflow: 'hidden',
-        zIndex: PAGE_LAYER_Z_INDEX,
+        zIndex: CONFETTI_LAYER_Z_INDEX,
         // In style, not as a prop: react-native-web 0.21 deprecates `props.pointerEvents`.
         pointerEvents: 'none',
     },

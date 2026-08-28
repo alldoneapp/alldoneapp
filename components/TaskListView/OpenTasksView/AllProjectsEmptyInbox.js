@@ -6,7 +6,7 @@ import AllProjectsEmptyInboxAddTask from './AllProjectsEmptyInboxAddTask'
 import AllProjectsEmptyInboxTags from './AllProjectsEmptyInboxTags'
 import AllProjectsEmptyInboxText from './AllProjectsEmptyInboxText'
 import AllProjectsEmptyInboxPicture from './AllProjectsEmptyInboxPicture'
-import EmptyInboxConfetti from './EmptyInboxConfetti'
+import EmptyInboxConfetti, { CONFETTI_LAYER_Z_INDEX } from './EmptyInboxConfetti'
 import useEmptyInboxCongratsCelebration from './emptyInboxCongratsMotion'
 import { EmptyInboxOverview } from '../../SettingsView/Profile/Achievements/AchievementsArea'
 import useTodayEmptyInboxCelebration from '../../SettingsView/Profile/Achievements/useTodayEmptyInboxCelebration'
@@ -89,10 +89,15 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false, 
         : undefined
 
     return (
-        <View style={localStyles.emptyInbox}>
-            {/* An overlay anchored to the top of the block, so the confetti can never move the
-                congratulation, the Add task button or the tags while it plays, and never intercepts
-                a tap on them. */}
+        // AT-2460: the block is lifted for exactly as long as it is celebrating. The confetti's own
+        // `zIndex` cannot reach past this View — react-native-web gives every View `z-index: 0`, so
+        // this block is already its own stacking context — and without the lift the page-wide fall
+        // would paint behind everything the board renders below the block. It is put back the
+        // moment the run settles, so the board's normal stacking is untouched the rest of the time.
+        <View style={[localStyles.emptyInbox, celebrating && localStyles.celebratingEmptyInbox]}>
+            {/* Overlays: one anchored to the top of the block and one over the whole viewport, so
+                the confetti can never move the congratulation, the Add task button or the tags
+                while it plays, and never intercepts a tap on them. */}
             <EmptyInboxConfetti confetti={confetti} visible={celebrating} />
             <Animated.View testID="empty-inbox-congrats-headline" style={headlineStyle}>
                 <AllProjectsEmptyInboxText />
@@ -124,6 +129,9 @@ const localStyles = {
         marginTop: 12,
         marginBottom: 24,
         alignItems: 'center',
+    },
+    celebratingEmptyInbox: {
+        zIndex: CONFETTI_LAYER_Z_INDEX,
     },
     emptyInboxOverview: {
         width: '100%',
