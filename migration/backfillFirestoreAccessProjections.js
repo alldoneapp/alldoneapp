@@ -8,6 +8,7 @@
 //   node migration/backfillFirestoreAccessProjections.js --firebase-project-id=alldonestaging
 //   node migration/backfillFirestoreAccessProjections.js --firebase-project-id=alldonestaging --execute
 //   node migration/backfillFirestoreAccessProjections.js --firebase-project-id=alldonestaging --project-id=<id> --execute
+//   node migration/backfillFirestoreAccessProjections.js --firebase-project-id=alldonestaging --project-concurrency=4
 //
 // The default is a read-only dry run. Application Default Credentials are used.
 
@@ -47,10 +48,14 @@ async function main() {
         getArgument('firebase-project-id') || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
     const scopeProjectId = getArgument('project-id')
     const startAfterProjectId = getArgument('start-after-project-id')
+    const projectConcurrency = Number(getArgument('project-concurrency') || 1)
     const execute = process.argv.includes('--execute')
 
     if (!firebaseProjectId) {
         throw new Error('Pass --firebase-project-id=<gcp-project-id>. Application Default Credentials are used.')
+    }
+    if (!Number.isInteger(projectConcurrency) || projectConcurrency < 1 || projectConcurrency > 25) {
+        throw new Error('Pass --project-concurrency=<integer> between 1 and 25.')
     }
     if (!admin.apps.length) {
         admin.initializeApp({
@@ -65,6 +70,7 @@ async function main() {
         firebaseProjectId,
         projectId: scopeProjectId || 'all',
         startAfterProjectId: startAfterProjectId || null,
+        projectConcurrency,
         execute,
     })
 
@@ -89,7 +95,9 @@ async function main() {
             if (cursor) query = query.startAfter(cursor)
             const snapshot = await query.get()
             if (snapshot.empty) break
-            for (const projectDoc of snapshot.docs) await processAndReport(projectDoc)
+            for (let index = 0; index < snapshot.docs.length; index += projectConcurrency) {
+                await Promise.all(snapshot.docs.slice(index, index + projectConcurrency).map(processAndReport))
+            }
             cursor = snapshot.docs[snapshot.docs.length - 1].id
             if (snapshot.size < pageSize) break
         }
