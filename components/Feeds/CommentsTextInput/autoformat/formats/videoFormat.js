@@ -1,11 +1,11 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
 import CustomVideoContainer from '../tags/CustomVideoContainer'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -31,11 +31,11 @@ export default class VideoFormat extends Embed {
             [id]: createRef(),
         }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <CustomVideoContainer editorId={editorId} uri={uri} isLoading={isLoading} />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

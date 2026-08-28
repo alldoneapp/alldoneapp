@@ -549,7 +549,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
             ['an expired assistant lock', () => liveChatRun('comment-run-1', { lockExpiresAt: Date.now() - 1 })],
             ['an answer in another project', () => liveChatRun('comment-run-1', { projectId: 'other-project' })],
             ['a terminal VM job', () => liveVmJob('live-vm-run', { status: 'completed' })],
-            ['an interrupted VM job', () => liveVmJob('live-vm-run', { status: 'interrupted' })],
         ])('keeps the configured prompt when the task only has %s', async (_label, seedWork) => {
             seedWork()
 
@@ -1306,9 +1305,9 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(RUN_STATUS_AWAITING_VM)
     })
 
-    it.each(['failed', 'interrupted'])('keeps the task active when the VM job settled as %s', async status => {
+    it('keeps the task active when the VM job failed', async () => {
         await runWorkflowAiStep(RUN_ID, run)
-        seedVmJob(status)
+        seedVmJob('failed')
 
         await resolveAwaitingVmRuns({ now: Date.now() })
 
@@ -1614,10 +1613,9 @@ describe('a step retried by a later VM job after its own run failed', () => {
         expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
     })
 
-    it('does not advance when the retry failed, was cancelled, or was interrupted too', async () => {
+    it('does not advance when the retry failed or was cancelled too', async () => {
         expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('failed'), Date.now())).toBe(0)
         expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('cancelled'), Date.now())).toBe(0)
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('interrupted'), Date.now())).toBe(0)
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('failed')

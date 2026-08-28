@@ -1,18 +1,3 @@
-// Firestore security rules.
-//
-// These are deployed to production by CI (`deploy:firestore:rules:production` in
-// .gitlab-ci.yml) on every master push that changes this file. Before AT-2450 nothing
-// deployed them at all and it was a manual `firebase deploy --only firestore:rules`,
-// which is how the file came to describe an authorization model production was not
-// actually running.
-//
-// Two consequences worth keeping in mind when editing:
-//   - A change here goes live on merge. There is no separate approval step.
-//   - A deploy publishes the WHOLE file, never just your hunk, so anything already
-//     committed here but not yet released ships alongside your change.
-//
-// Staging is NOT deployed by CI (`develop` is dormant); publish it by hand if you need
-// it: firebase deploy --only firestore:rules --project alldonestaging
 rules_version = '2';
 
 service cloud.firestore {

@@ -1,10 +1,10 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
 import EmailWrapper from '../tags/EmailWrapper'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -26,11 +26,11 @@ export default class Email extends Embed {
             [id]: createRef(),
         }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <EmailWrapper data={emailData} />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

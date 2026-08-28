@@ -3,7 +3,6 @@ export const VM_SESSION_STATUS_IDLE_RUNNING = 'idle_running'
 export const VM_SESSION_STATUS_RUNNING = 'running'
 export const VM_SESSION_STATUS_PAUSED = 'paused'
 export const VM_SESSION_STATUS_FAILED = 'failed'
-export const VM_SESSION_STATUS_INTERRUPTED = 'interrupted'
 
 export const VM_BADGE_STATE_IN_PROGRESS = 'in_progress'
 export const VM_BADGE_STATE_PAUSED = 'paused'
@@ -19,8 +18,7 @@ export function getVmSessionBadgeState(session) {
     if (status === VM_SESSION_STATUS_FAILED) return VM_BADGE_STATE_FAILED
     if (!RESUMABLE_VM_SESSION_STATUSES.has(status)) return null
 
-    return typeof session === 'object' &&
-        [VM_SESSION_STATUS_FAILED, VM_SESSION_STATUS_INTERRUPTED].includes(session.lastRunStatus)
+    return typeof session === 'object' && session.lastRunStatus === VM_SESSION_STATUS_FAILED
         ? VM_BADGE_STATE_FAILED
         : VM_BADGE_STATE_PAUSED
 }
