@@ -43,6 +43,18 @@ async function processProject(db, projectDoc, execute) {
     return stats
 }
 
+async function processWithConcurrency(items, concurrency, processItem) {
+    let nextIndex = 0
+    const workerCount = Math.min(concurrency, items.length)
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (nextIndex < items.length) {
+            const item = items[nextIndex++]
+            await processItem(item)
+        }
+    })
+    await Promise.all(workers)
+}
+
 async function main() {
     const firebaseProjectId =
         getArgument('firebase-project-id') || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
@@ -95,9 +107,7 @@ async function main() {
             if (cursor) query = query.startAfter(cursor)
             const snapshot = await query.get()
             if (snapshot.empty) break
-            for (let index = 0; index < snapshot.docs.length; index += projectConcurrency) {
-                await Promise.all(snapshot.docs.slice(index, index + projectConcurrency).map(processAndReport))
-            }
+            await processWithConcurrency(snapshot.docs, projectConcurrency, processAndReport)
             cursor = snapshot.docs[snapshot.docs.length - 1].id
             if (snapshot.size < pageSize) break
         }
