@@ -62,7 +62,7 @@ describe('TaskRoutingTag', () => {
     })
 
     it('announces the full sentence to screen readers, not the short visible token', async () => {
-        // The visible label is a glance-value abbreviation; "(goal?)" is a poor thing to hear
+        // The visible label is a glance-value abbreviation; "goal?" is a poor thing to hear
         // announced, so the accessibility label keeps the sentence it abbreviates.
         const tree = await render(
             <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
@@ -84,20 +84,20 @@ describe('TaskRoutingTag', () => {
     describe('the processing badge names its subject', () => {
         const subjectLabel = tree => tree.root.findByProps({ testID: 'task-routing-processing-subject' }).props.children
 
-        it('asks "(project?)" while the project router is deciding', async () => {
+        it('asks "project?" while the project router is deciding', async () => {
             const tree = await render(
                 <TaskRoutingTag processing={{ subject: 'project' }} confirmation={null} projectName="Alldone" />
             )
 
-            expect(subjectLabel(tree)).toBe('(project?)')
+            expect(subjectLabel(tree)).toBe('project?')
         })
 
-        it('asks "(goal?)" while the goal router is deciding', async () => {
+        it('asks "goal?" while the goal router is deciding', async () => {
             const tree = await render(
                 <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
             )
 
-            expect(subjectLabel(tree)).toBe('(goal?)')
+            expect(subjectLabel(tree)).toBe('goal?')
         })
 
         it('keeps the sparkle beside the label rather than replacing it', async () => {
@@ -116,7 +116,7 @@ describe('TaskRoutingTag', () => {
                 <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
             )
 
-            expect(subjectLabel(tree)).toBe('(goal?)')
+            expect(subjectLabel(tree)).toBe('goal?')
         })
 
         it('truncates to one line instead of widening the tag row without bound', async () => {
@@ -145,17 +145,44 @@ describe('TaskRoutingTag', () => {
         })
     })
 
-    it('translates the subject token as one phrase, brackets and all', () => {
-        // Spanish opens with "¿", so the punctuation is part of the phrase rather than something a
-        // template could wrap around a translated noun. Asserted against the real files so a
-        // half-added key fails here instead of shipping a literal "(project?)" to a German user.
+    it('translates the subject token as one phrase, punctuation and all', () => {
+        // Spanish opens the question with "¿", so the punctuation is part of the phrase rather than
+        // something a `translate(noun) + '?'` template could produce in code. Asserted against the
+        // real files so a half-added key fails here instead of shipping a literal "project?" to a
+        // German user.
         const de = require('../../i18n/translations/de.json')
         const es = require('../../i18n/translations/es.json')
 
-        expect(de['(project?)']).toBe('(Projekt?)')
-        expect(de['(goal?)']).toBe('(Ziel?)')
-        expect(es['(project?)']).toBe('(¿proyecto?)')
-        expect(es['(goal?)']).toBe('(¿objetivo?)')
+        expect(de['project?']).toBe('Projekt?')
+        expect(de['goal?']).toBe('Ziel?')
+        expect(es['project?']).toBe('¿proyecto?')
+        expect(es['goal?']).toBe('¿objetivo?')
+    })
+
+    it('wraps the subject in no brackets, in any language', () => {
+        // The bracketed form `(project?)` shipped first and was rejected on review: in a pill barely
+        // wider than the word itself, the brackets read as punctuation noise rather than as the
+        // aside they were meant to signal. Asserted across all three files — and on the KEY as well,
+        // since the English value is the key — so reinstating them anywhere fails here.
+        const en = require('../../i18n/translations/en.json')
+        const de = require('../../i18n/translations/de.json')
+        const es = require('../../i18n/translations/es.json')
+
+        for (const key of ['project?', 'goal?']) {
+            for (const file of [en, de, es]) {
+                expect(file[key]).toBeDefined()
+                expect(file[key]).not.toMatch(/[()]/)
+            }
+            expect(key).not.toMatch(/[()]/)
+        }
+
+        // The retired keys are gone rather than left behind as dead entries a future edit could
+        // resurrect by lookup.
+        for (const retired of ['(project?)', '(goal?)']) {
+            for (const file of [en, de, es]) {
+                expect(file[retired]).toBeUndefined()
+            }
+        }
     })
 
     it('names the project a moved task landed in', async () => {

@@ -19,7 +19,7 @@ import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRo
  * `useTaskRoutingActivity`'s ten-minute stale-state backstop — running across the title of the task
  * the user had just typed and was most likely still reading. Motion at the row level is a claim on
  * attention, and "we are thinking" does not earn one every time a task is created. The state it
- * reported is not lost: `TaskRoutingTag` now says `(project?)` / `(goal?)` in the trailing tag area,
+ * reported is not lost: `TaskRoutingTag` now says `project?` / `goal?` in the trailing tag area,
  * which is more specific than the sweep ever was and costs the row nothing.
  *
  * What remains is a ONE-SHOT, so it uses `Animated` with `useNativeDriver`, matching
