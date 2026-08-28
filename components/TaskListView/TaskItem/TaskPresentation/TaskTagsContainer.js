@@ -24,6 +24,7 @@ export default function TaskTagsContainer({
     forceTagsMobile,
     trailingTagsCrowdTitle,
     setTagsExpandedHeight,
+    trailingRoutingTag,
     inCommentPopup,
 }) {
     return (
@@ -34,6 +35,13 @@ export default function TaskTagsContainer({
                 nativeID={`social_tags_${projectId}_${task.id}`}
             >
                 {showVerticalEllipsis && <VerticalEllipsis isSubtask={task.isSubtask} task={task} />}
+                {/* AT-2453 — the routing badge leads the trailing tags. It sits INSIDE the measured
+                    `social_tags_…` node on purpose: that node is what `showWrappedTaskEllipsis` and
+                    `doTrailingTagsCrowdTaskTitle` measure, so keeping the badge in it is what lets
+                    the title truncate and the other tags summarize around it instead of the badge
+                    silently overlapping the title. It is a sibling of `TaskItemTags` rather than one
+                    of its tags so the summary chip can never swallow it. */}
+                {trailingRoutingTag}
                 <TaskItemTags
                     task={task}
                     isSubtask={task.isSubtask}
