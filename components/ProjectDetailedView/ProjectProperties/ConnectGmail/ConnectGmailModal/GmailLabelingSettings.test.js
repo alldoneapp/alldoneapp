@@ -169,6 +169,9 @@ describe('GmailLabelingSettings helpers', () => {
         expect(prompt).toContain('Do not include the Gmail web URL')
         expect(prompt).not.toContain('LINK: Email from')
         expect(prompt).toContain('hello@cal.com')
+        expect(prompt).toContain('only use update_note when the sender already exists as a contact')
+        expect(prompt).toContain('Set createIfMissing=false')
+        expect(prompt).toContain('a missing contact is never created')
         expect(prompt).toContain('with a space at the end')
     })
 
