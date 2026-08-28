@@ -259,7 +259,13 @@ describe('assistant skills project scoping (AT-2450)', () => {
         })
 
         it('collapses two project skills that share a name', () => {
-            const merged = mergeSkillsByName([], [{ name: 'dup', body: '1' }, { name: 'dup', body: '2' }])
+            const merged = mergeSkillsByName(
+                [],
+                [
+                    { name: 'dup', body: '1' },
+                    { name: 'dup', body: '2' },
+                ]
+            )
             expect(merged).toHaveLength(1)
             expect(merged[0].body).toBe('1')
         })
