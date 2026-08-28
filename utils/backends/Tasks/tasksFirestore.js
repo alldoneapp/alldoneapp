@@ -157,6 +157,7 @@ import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
 import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
+import { buildCalendarGoalRoutingFeedback, buildCalendarProjectRoutingFeedback } from '../../CalendarRoutingFeedback'
 import {
     buildFocusCandidateExclusions,
     finishFocusHandoff,
@@ -280,6 +281,48 @@ const updateEditionData = data => {
     const { loggedUser } = store.getState()
     data.lastEditionDate = Date.now()
     data.lastEditorId = loggedUser.uid
+}
+
+const buildManuallyPinnedCalendarData = (task, sourceProjectId, targetProjectId, requestedByUserId) => {
+    if (!task?.calendarData) return null
+
+    const projectRoutingFeedback = buildCalendarProjectRoutingFeedback({
+        task,
+        sourceProjectId,
+        targetProjectId,
+        requestedByUserId,
+        feedbackId: getId(),
+    })
+
+    return {
+        ...task.calendarData,
+        pinnedToProjectId: targetProjectId,
+        ...(projectRoutingFeedback ? { projectRoutingFeedback } : {}),
+    }
+}
+
+const buildCalendarDataWithGoalRoutingFeedback = (
+    task,
+    projectId,
+    previousGoalId,
+    selectedGoalId,
+    requestedByUserId
+) => {
+    const goalRoutingFeedback = buildCalendarGoalRoutingFeedback({
+        task,
+        projectId,
+        previousGoalId,
+        selectedGoalId,
+        requestedByUserId,
+        feedbackId: getId(),
+    })
+
+    return goalRoutingFeedback
+        ? {
+              ...task.calendarData,
+              goalRoutingFeedback,
+          }
+        : null
 }
 
 const isPlainObject = value => {
@@ -2178,10 +2221,12 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
-        taskCopy.calendarData = {
-            ...taskCopy.calendarData,
-            pinnedToProjectId: newProject.id,
-        }
+        taskCopy.calendarData = buildManuallyPinnedCalendarData(
+            taskCopy,
+            currentProject.id,
+            newProject.id,
+            loggedUser.uid
+        )
     }
 
     taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
@@ -2290,10 +2335,15 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
 
     // If this is a calendar task and the user manually moved it, pin it to the new project
     if (taskCopy.calendarData) {
-        taskCopy.calendarData = {
-            ...taskCopy.calendarData,
-            pinnedToProjectId: newProject.id,
-        }
+        taskCopy.calendarData = buildManuallyPinnedCalendarData(
+            taskCopy,
+            currentProject.id,
+            newProject.id,
+            loggedUser.uid
+        )
+        taskCopy.calendarData =
+            buildCalendarDataWithGoalRoutingFeedback(taskCopy, newProject.id, null, goal.id, loggedUser.uid) ||
+            taskCopy.calendarData
     }
 
     taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
@@ -2369,6 +2419,14 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
         sortIndex,
         ...(resolvedGoalSuggestion ? { goalSuggestion: resolvedGoalSuggestion } : {}),
     }
+    const calendarDataWithGoalRoutingFeedback = buildCalendarDataWithGoalRoutingFeedback(
+        task,
+        projectId,
+        task.parentGoalId,
+        goalId,
+        store.getState().loggedUser.uid
+    )
+    if (calendarDataWithGoalRoutingFeedback) updateData.calendarData = calendarDataWithGoalRoutingFeedback
 
     if (task.parentId) {
         await deleteSubTaskFromParent(projectId, taskId, task, batch)

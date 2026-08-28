@@ -45,6 +45,7 @@ function graphEventToGoogleEvent(event = {}) {
                   displayName: event.organizer.emailAddress.name || '',
               }
             : null,
+        recurringEventId: event.seriesMasterId || '',
         provider: 'microsoft',
     }
 }
