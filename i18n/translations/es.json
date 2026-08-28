@@ -167,6 +167,7 @@
     "Total days": "Días totales",
     "Empty inbox reached on": "Bandeja de entrada vacía alcanzada el %{date}",
     "Empty inbox streak day added": "Hoy se añadió a tu racha de bandeja vacía · Día %{count}.",
+    "Empty inbox day badge": "Día %{count}",
     "Monday short": "Lun",
     "Wednesday short": "Mié",
     "Friday short": "Vie",

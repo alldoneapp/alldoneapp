@@ -6,6 +6,9 @@ import useEmptyInboxDotCelebration, {
     BURST_DURATION_MS,
     CELEBRATION_TOTAL_MS,
     DOT_LAND_MS,
+    DOT_START_DELAY_MS,
+    DOT_ZOOM_MS,
+    SPOTLIGHT_MS,
     STREAK_TICK_DELAY_MS,
     STREAK_TICK_MS,
 } from './emptyInboxDotMotion'
@@ -65,10 +68,13 @@ describe('useEmptyInboxDotCelebration', () => {
         await render(0)
 
         expect(celebration.celebrating).toBe(false)
-        // Load-bearing: `land` rests at 1 so a cell that never celebrates renders pixel-identical
-        // to the plain achieved cell it replaces.
+        // Load-bearing: `land` rests at 1 and `zoom` at 0 (which every consumer interpolates to
+        // "cell size"), so a cell that never celebrates renders pixel-identical to the plain
+        // achieved cell it replaces.
         expect(valueOf(celebration.land)).toBe(1)
+        expect(valueOf(celebration.zoom)).toBe(0)
         expect(valueOf(celebration.burst)).toBe(0)
+        expect(valueOf(celebration.spotlight)).toBe(0)
         expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled()
     })
 
@@ -92,17 +98,49 @@ describe('useEmptyInboxDotCelebration', () => {
 
         expect(celebration.celebrating).toBe(false)
         expect(valueOf(celebration.land)).toBe(1)
+        expect(valueOf(celebration.zoom)).toBe(0)
         expect(valueOf(celebration.burst)).toBe(0)
+        expect(valueOf(celebration.spotlight)).toBe(0)
         expect(valueOf(celebration.tick)).toBe(0)
+    })
+
+    /**
+     * AT-2460 — the dot waits for the congratulation instead of competing with it.
+     *
+     * The two halves of the celebration used to start on the same frame, several blocks apart on
+     * the page, which is a large part of why nobody ever found the dot: it did its whole 760ms
+     * while the eye was on the headline.
+     *
+     * This is asserted on the SCHEDULE rather than on the animated values, and deliberately so.
+     * `Animated` is driven by `requestAnimationFrame`, which jest's fake timers do not advance in
+     * this setup — every value stays at whatever the hook last `setValue`d it to. A test that read
+     * `land` half a second in would therefore report 0 whether the staging was right, wrong or
+     * absent, which is precisely the kind of vacuous assertion the sibling suites of this feature
+     * exist to warn about. What a real browser does with these durations is covered by the
+     * relationships below plus the render-level suites.
+     */
+    it('stages the dot after the congratulation and the streak after the dot', () => {
+        // Nothing in the card moves until the congratulation has had the opening beat to itself.
+        expect(DOT_START_DELAY_MS).toBeGreaterThan(0)
+        // The card lights up on the same frame the dot starts, so there is something to follow
+        // from the headline down to an 11px cell.
+        expect(SPOTLIGHT_MS).toBeGreaterThan(DOT_LAND_MS)
+        // The swell is the beat that makes the dot findable, so it is the longest of them.
+        expect(DOT_ZOOM_MS).toBeGreaterThan(DOT_LAND_MS)
+        // The streak number is the consequence of the dot and must not move while the dot still is.
+        expect(STREAK_TICK_DELAY_MS).toBe(DOT_START_DELAY_MS + DOT_LAND_MS + DOT_ZOOM_MS)
     })
 
     it('outlasts every beat it schedules', () => {
         // A settle that lands before the last beat would freeze a half-expanded ring over the grid.
-        expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(DOT_LAND_MS)
-        expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(BURST_DURATION_MS)
+        expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(DOT_START_DELAY_MS + DOT_LAND_MS + DOT_ZOOM_MS)
+        expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(DOT_START_DELAY_MS + BURST_DURATION_MS)
+        expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(DOT_START_DELAY_MS + SPOTLIGHT_MS)
         expect(CELEBRATION_TOTAL_MS).toBeGreaterThan(STREAK_TICK_DELAY_MS + STREAK_TICK_MS)
-        // ...and stays short enough to read as a reward rather than as the card being busy.
-        expect(CELEBRATION_TOTAL_MS).toBeLessThan(1000)
+        // ...and stays a bounded moment rather than the card being busy. AT-2460 asked for longer,
+        // not for open-ended: past a few seconds a daily reward starts to read as something you
+        // are waiting for.
+        expect(CELEBRATION_TOTAL_MS).toBeLessThan(3500)
     })
 
     it('announces the new streak to screen readers', async () => {
@@ -126,10 +164,13 @@ describe('useEmptyInboxDotCelebration', () => {
         })
 
         expect(celebration.animated).toBe(false)
-        // Never enters the celebrating state at all, so no ring, no sparks, no held-back streak
-        // number — the dot is simply already green, which is also what a reload renders.
+        // Never enters the celebrating state at all, so no ring, no sparks, no swelling dot, no
+        // callout, no card outline, no held-back streak number — the dot is simply already green,
+        // which is also what a reload renders.
         expect(celebration.celebrating).toBe(false)
         expect(valueOf(celebration.land)).toBe(1)
+        expect(valueOf(celebration.zoom)).toBe(0)
+        expect(valueOf(celebration.spotlight)).toBe(0)
         // The announcement is information, not motion, so it still fires.
         expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalled()
     })
