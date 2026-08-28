@@ -15,6 +15,7 @@ const {
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
 const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
+const { appendCalendarLearnedRulesToPrompt } = require('./calendarProjectRoutingConfig')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
     "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
@@ -79,6 +80,7 @@ function extractJsonFromText(text = '') {
 function normalizeCalendarEventForClassifier(event = {}, calendarEmail = '') {
     return {
         id: event.id || '',
+        recurringEventId: event.recurringEventId || event.seriesMasterId || '',
         summary: event.summary || '',
         description: event.description || '',
         location: event.location || '',
@@ -196,7 +198,7 @@ function buildCalendarClassifierRequestParams({
     const supportsExplicitCaching = !isOpenRouter && selectedModel.startsWith('gpt-5.6')
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const staticUserContent =
-        `Prompt:\n${config.prompt}\n\n` +
+        `Prompt:\n${appendCalendarLearnedRulesToPrompt(config.prompt, config.learnedRules)}\n\n` +
         `Active projects:\n${JSON.stringify(definitions)}\n\n` +
         `Configured confidence threshold: ${config.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD}.`
     const dynamicUserContent =

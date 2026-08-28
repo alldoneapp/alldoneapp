@@ -1,14 +1,18 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
     GMAIL_LABELING_MODEL_KEYS,
+    MAX_LEARNED_RULES_LENGTH,
 } = require('../Gmail/gmailLabelingConfig')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const CALENDAR_PROJECT_ROUTING_CONFIG_TYPE = 'calendarProjectRoutingConfig'
+const MAX_CALENDAR_LEARNED_SERIES_ROUTES = 200
+const MAX_CALENDAR_LEARNED_GOAL_SERIES_ROUTES = 200
 const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
     'Choose exactly one active Alldone project for each Google Calendar event when the event clearly belongs to that project. Use the project descriptions as the primary context. Prefer precision over recall: if the event could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider the event title, description, attendees and their email addresses, organizer, creator, location, meeting links, timing, project names, client names, stakeholders, goals, tasks, decisions, updates, and deliverables. Pay particular attention to the attendees\' and organizer\'s email addresses and especially their domains: a shared company or client domain (for example everyone on "@acme.com") is a strong signal that the event belongs to the project tied to that company or client. Match those domains and individual addresses against the project descriptions, client names, and stakeholders to decide the project.'
 
@@ -45,6 +49,143 @@ function getCalendarProjectRoutingConfigRef(userId, projectId) {
         .doc(getCalendarProjectRoutingConfigDocId(projectId))
 }
 
+function appendCalendarLearnedRulesToPrompt(prompt = '', learnedRules = '') {
+    const rules = typeof learnedRules === 'string' ? learnedRules.trim() : ''
+    if (!rules) return prompt
+    return [prompt, `User routing feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
+}
+
+function appendCalendarGoalLearnedRulesToPrompt(prompt = '', learnedGoalRules = '') {
+    const rules = typeof learnedGoalRules === 'string' ? learnedGoalRules.trim() : ''
+    if (!rules) return prompt
+    return [prompt, `User calendar-to-Goal feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
+}
+
+function buildCalendarSeriesRouteKey(provider = '', recurringEventId = '') {
+    const normalizedProvider = typeof provider === 'string' ? provider.trim().toLowerCase() : ''
+    const normalizedRecurringEventId =
+        typeof recurringEventId === 'string' ? recurringEventId.trim() : String(recurringEventId || '').trim()
+    if (!normalizedRecurringEventId) return ''
+
+    return crypto
+        .createHash('sha256')
+        .update(`${normalizedProvider || 'google'}:${normalizedRecurringEventId}`)
+        .digest('hex')
+        .slice(0, 32)
+}
+
+function buildCalendarGoalSeriesRouteKey(provider = '', recurringEventId = '', projectId = '') {
+    const normalizedProvider = typeof provider === 'string' ? provider.trim().toLowerCase() : ''
+    const normalizedRecurringEventId =
+        typeof recurringEventId === 'string' ? recurringEventId.trim() : String(recurringEventId || '').trim()
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
+    if (!normalizedRecurringEventId || !normalizedProjectId) return ''
+
+    return crypto
+        .createHash('sha256')
+        .update(`${normalizedProvider || 'google'}:${normalizedRecurringEventId}:${normalizedProjectId}`)
+        .digest('hex')
+        .slice(0, 32)
+}
+
+function normalizeLearnedSeriesRoutes(routes = {}) {
+    if (!routes || typeof routes !== 'object' || Array.isArray(routes)) return {}
+
+    return Object.entries(routes)
+        .map(([key, route]) => {
+            const recurringEventId = typeof route?.recurringEventId === 'string' ? route.recurringEventId.trim() : ''
+            const targetProjectId = typeof route?.targetProjectId === 'string' ? route.targetProjectId.trim() : ''
+            if (!key || !recurringEventId || !targetProjectId) return null
+
+            return [
+                key,
+                {
+                    recurringEventId,
+                    provider: typeof route.provider === 'string' ? route.provider.trim().toLowerCase() : 'google',
+                    targetProjectId,
+                    targetProjectName:
+                        typeof route.targetProjectName === 'string' ? route.targetProjectName.trim() : '',
+                    eventSummary: typeof route.eventSummary === 'string' ? route.eventSummary.trim() : '',
+                    feedbackId: typeof route.feedbackId === 'string' ? route.feedbackId.trim() : '',
+                    learnedAt: Number.isFinite(route.learnedAt) ? Number(route.learnedAt) : 0,
+                },
+            ]
+        })
+        .filter(Boolean)
+        .sort((left, right) => right[1].learnedAt - left[1].learnedAt)
+        .slice(0, MAX_CALENDAR_LEARNED_SERIES_ROUTES)
+        .reduce((normalized, [key, route]) => {
+            normalized[key] = route
+            return normalized
+        }, {})
+}
+
+function normalizeLearnedGoalSeriesRoutes(routes = {}) {
+    if (!routes || typeof routes !== 'object' || Array.isArray(routes)) return {}
+
+    return Object.entries(routes)
+        .map(([key, route]) => {
+            const recurringEventId = typeof route?.recurringEventId === 'string' ? route.recurringEventId.trim() : ''
+            const projectId = typeof route?.projectId === 'string' ? route.projectId.trim() : ''
+            const targetGoalId = typeof route?.targetGoalId === 'string' ? route.targetGoalId.trim() : ''
+            const routeToNoGoal = route?.routeToNoGoal === true
+            if (!key || !recurringEventId || !projectId || (!targetGoalId && !routeToNoGoal)) return null
+
+            return [
+                key,
+                {
+                    recurringEventId,
+                    provider: typeof route.provider === 'string' ? route.provider.trim().toLowerCase() : 'google',
+                    projectId,
+                    projectName: typeof route.projectName === 'string' ? route.projectName.trim() : '',
+                    targetGoalId: routeToNoGoal ? '' : targetGoalId,
+                    targetGoalName:
+                        !routeToNoGoal && typeof route.targetGoalName === 'string' ? route.targetGoalName.trim() : '',
+                    routeToNoGoal,
+                    eventSummary: typeof route.eventSummary === 'string' ? route.eventSummary.trim() : '',
+                    feedbackId: typeof route.feedbackId === 'string' ? route.feedbackId.trim() : '',
+                    learnedAt: Number.isFinite(route.learnedAt) ? Number(route.learnedAt) : 0,
+                },
+            ]
+        })
+        .filter(Boolean)
+        .sort((left, right) => right[1].learnedAt - left[1].learnedAt)
+        .slice(0, MAX_CALENDAR_LEARNED_GOAL_SERIES_ROUTES)
+        .reduce((normalized, [key, route]) => {
+            normalized[key] = route
+            return normalized
+        }, {})
+}
+
+function findLearnedCalendarSeriesRoute(config = {}, event = {}) {
+    const recurringEventId =
+        typeof event.recurringEventId === 'string'
+            ? event.recurringEventId.trim()
+            : typeof event.seriesMasterId === 'string'
+              ? event.seriesMasterId.trim()
+              : ''
+    if (!recurringEventId) return null
+
+    const provider = typeof event.provider === 'string' ? event.provider : 'google'
+    const routeKey = buildCalendarSeriesRouteKey(provider, recurringEventId)
+    return normalizeLearnedSeriesRoutes(config.learnedSeriesRoutes)[routeKey] || null
+}
+
+function findLearnedCalendarGoalSeriesRoute(config = {}, event = {}, projectId = '') {
+    const recurringEventId =
+        typeof event.recurringEventId === 'string'
+            ? event.recurringEventId.trim()
+            : typeof event.seriesMasterId === 'string'
+              ? event.seriesMasterId.trim()
+              : ''
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
+    if (!recurringEventId || !normalizedProjectId) return null
+
+    const provider = typeof event.provider === 'string' ? event.provider : 'google'
+    const routeKey = buildCalendarGoalSeriesRouteKey(provider, recurringEventId, normalizedProjectId)
+    return normalizeLearnedGoalSeriesRoutes(config.learnedGoalSeriesRoutes)[routeKey] || null
+}
+
 function cleanProjectDescription(description = '') {
     return typeof description === 'string'
         ? description
@@ -73,6 +214,20 @@ function normalizeCalendarProjectRoutingConfigInput(projectId, input = {}, calen
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold)
             ? Math.min(Math.max(parsedConfidenceThreshold, 0), 1)
             : DEFAULT_CONFIDENCE_THRESHOLD,
+        learnedRules:
+            typeof input.learnedRules === 'string' ? input.learnedRules.trim().slice(0, MAX_LEARNED_RULES_LENGTH) : '',
+        learnedRulesRevision: Number.isFinite(input.learnedRulesRevision)
+            ? Math.max(0, Math.trunc(input.learnedRulesRevision))
+            : 0,
+        learnedSeriesRoutes: normalizeLearnedSeriesRoutes(input.learnedSeriesRoutes),
+        learnedGoalRules:
+            typeof input.learnedGoalRules === 'string'
+                ? input.learnedGoalRules.trim().slice(0, MAX_LEARNED_RULES_LENGTH)
+                : '',
+        learnedGoalRulesRevision: Number.isFinite(input.learnedGoalRulesRevision)
+            ? Math.max(0, Math.trunc(input.learnedGoalRulesRevision))
+            : 0,
+        learnedGoalSeriesRoutes: normalizeLearnedGoalSeriesRoutes(input.learnedGoalSeriesRoutes),
     }
 }
 
@@ -104,6 +259,80 @@ function buildCalendarProjectRoutingConfigWriteData(userId, projectId, configInp
     }
 
     const now = Timestamp.now()
+    const hasLearnedRules = Object.prototype.hasOwnProperty.call(configInput || {}, 'learnedRules')
+    const existingLearnedRules = typeof existingData?.learnedRules === 'string' ? existingData.learnedRules : ''
+    const existingLearnedRulesRevision = Number.isFinite(existingData?.learnedRulesRevision)
+        ? Math.max(0, Math.trunc(existingData.learnedRulesRevision))
+        : 0
+
+    if (!hasLearnedRules) {
+        normalizedConfig.learnedRules = existingLearnedRules
+        normalizedConfig.learnedRulesRevision = existingLearnedRulesRevision
+    } else {
+        const submittedLearnedRulesRevision = Number.isFinite(configInput.learnedRulesRevision)
+            ? Math.max(0, Math.trunc(configInput.learnedRulesRevision))
+            : existingLearnedRulesRevision
+        if (
+            existingData &&
+            submittedLearnedRulesRevision < existingLearnedRulesRevision &&
+            normalizedConfig.learnedRules !== existingLearnedRules
+        ) {
+            const error = new Error(
+                'Calendar routing learned rules changed while settings were open. Reload and try again.'
+            )
+            error.validationErrors = [error.message]
+            throw error
+        }
+        normalizedConfig.learnedRulesRevision =
+            normalizedConfig.learnedRules === existingLearnedRules
+                ? existingLearnedRulesRevision
+                : existingLearnedRulesRevision + 1
+    }
+
+    // Series mappings are written only by routing feedback. Settings saves from older or current
+    // clients must never erase them. Explicitly clearing a non-empty learned-rules block is the
+    // reset gesture for both the readable rules and the hidden exact recurring-series mappings.
+    const explicitlyClearedLearnedRules = hasLearnedRules && !!existingLearnedRules && !normalizedConfig.learnedRules
+    normalizedConfig.learnedSeriesRoutes = explicitlyClearedLearnedRules
+        ? {}
+        : normalizeLearnedSeriesRoutes(existingData?.learnedSeriesRoutes)
+
+    const hasLearnedGoalRules = Object.prototype.hasOwnProperty.call(configInput || {}, 'learnedGoalRules')
+    const existingLearnedGoalRules =
+        typeof existingData?.learnedGoalRules === 'string' ? existingData.learnedGoalRules : ''
+    const existingLearnedGoalRulesRevision = Number.isFinite(existingData?.learnedGoalRulesRevision)
+        ? Math.max(0, Math.trunc(existingData.learnedGoalRulesRevision))
+        : 0
+
+    if (!hasLearnedGoalRules) {
+        normalizedConfig.learnedGoalRules = existingLearnedGoalRules
+        normalizedConfig.learnedGoalRulesRevision = existingLearnedGoalRulesRevision
+    } else {
+        const submittedLearnedGoalRulesRevision = Number.isFinite(configInput.learnedGoalRulesRevision)
+            ? Math.max(0, Math.trunc(configInput.learnedGoalRulesRevision))
+            : existingLearnedGoalRulesRevision
+        if (
+            existingData &&
+            submittedLearnedGoalRulesRevision < existingLearnedGoalRulesRevision &&
+            normalizedConfig.learnedGoalRules !== existingLearnedGoalRules
+        ) {
+            const error = new Error(
+                'Calendar Goal routing learned rules changed while settings were open. Reload and try again.'
+            )
+            error.validationErrors = [error.message]
+            throw error
+        }
+        normalizedConfig.learnedGoalRulesRevision =
+            normalizedConfig.learnedGoalRules === existingLearnedGoalRules
+                ? existingLearnedGoalRulesRevision
+                : existingLearnedGoalRulesRevision + 1
+    }
+
+    const explicitlyClearedLearnedGoalRules =
+        hasLearnedGoalRules && !!existingLearnedGoalRules && !normalizedConfig.learnedGoalRules
+    normalizedConfig.learnedGoalSeriesRoutes = explicitlyClearedLearnedGoalRules
+        ? {}
+        : normalizeLearnedGoalSeriesRoutes(existingData?.learnedGoalSeriesRoutes)
 
     return {
         ...normalizedConfig,
@@ -222,17 +451,21 @@ async function loadCalendarProjectRoutingConfig(userId, projectId, calendarEmail
 }
 
 async function upsertCalendarProjectRoutingConfig(userId, projectId, configInput, calendarEmail = '') {
-    const { ref, config, exists } = await loadCalendarProjectRoutingConfig(userId, projectId, calendarEmail)
-    const writeData = buildCalendarProjectRoutingConfigWriteData(
-        userId,
-        projectId,
-        configInput,
-        calendarEmail,
-        exists ? config : null
-    )
+    const ref = getCalendarProjectRoutingConfigRef(userId, projectId)
+    return await admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(ref)
+        const existingData = snapshot.exists ? snapshot.data() || {} : null
+        const writeData = buildCalendarProjectRoutingConfigWriteData(
+            userId,
+            projectId,
+            configInput,
+            calendarEmail,
+            existingData
+        )
 
-    await ref.set(writeData, { merge: true })
-    return writeData
+        transaction.set(ref, writeData, { merge: true })
+        return writeData
+    })
 }
 
 async function getCalendarProjectRoutingConfigWithPreview(userId, projectId, calendarEmail = '', userData = {}) {
@@ -249,6 +482,12 @@ async function getCalendarProjectRoutingConfigWithPreview(userId, projectId, cal
 module.exports = {
     CALENDAR_PROJECT_ROUTING_CONFIG_TYPE,
     DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
+    MAX_CALENDAR_LEARNED_SERIES_ROUTES,
+    MAX_CALENDAR_LEARNED_GOAL_SERIES_ROUTES,
+    appendCalendarGoalLearnedRulesToPrompt,
+    appendCalendarLearnedRulesToPrompt,
+    buildCalendarGoalSeriesRouteKey,
+    buildCalendarSeriesRouteKey,
     buildCalendarProjectDefinitions,
     buildCalendarProjectRoutingConfigWriteData,
     buildProjectRoutingDescription,
@@ -256,9 +495,13 @@ module.exports = {
     getCalendarProjectRoutingConfigDocId,
     getCalendarProjectRoutingConfigRef,
     getCalendarProjectRoutingConfigWithPreview,
+    findLearnedCalendarSeriesRoute,
+    findLearnedCalendarGoalSeriesRoute,
     loadActiveProjectsForCalendarRouting,
     loadCalendarProjectRoutingConfig,
     normalizeCalendarProjectRoutingConfigInput,
+    normalizeLearnedGoalSeriesRoutes,
+    normalizeLearnedSeriesRoutes,
     upsertCalendarProjectRoutingConfig,
     validateCalendarProjectRoutingConfig,
 }

@@ -56,6 +56,7 @@ const {
     routeNewTaskToGoal,
     selectCandidateGoals,
 } = require('./taskGoalRouting')
+const { buildCalendarGoalSeriesRouteKey } = require('../GoogleCalendar/calendarProjectRoutingConfig')
 
 const createSnapshot = (id, data) => ({
     id,
@@ -250,6 +251,256 @@ describe('taskGoalRouting', () => {
                 }),
             })
         )
+    })
+
+    test('passes learned calendar Goal rules into classification for similar one-off events', async () => {
+        const { db, state } = createDb()
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            originalProjectId: 'calendar-project',
+        }
+        const classify = jest.fn(async () => ({
+            result: {
+                goalId: null,
+                confidence: 0,
+                alternativeGoalId: null,
+                alternativeConfidence: 0,
+                reason: '',
+            },
+            totalTokens: 10,
+        }))
+
+        await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Weekly customer reviews go to Goal Improve onboarding.',
+                    learnedGoalSeriesRoutes: {},
+                },
+            }),
+        })
+
+        expect(classify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                learnedRules: '- Weekly customer reviews go to Goal Improve onboarding.',
+            })
+        )
+    })
+
+    test('keeps Goals named by learned rules in the candidate set beyond the relevance limit', async () => {
+        const ordinaryGoals = Object.fromEntries(
+            Array.from({ length: 30 }, (_, index) => [
+                `goal-${String(index).padStart(2, '0')}`,
+                {
+                    name: `Operational Goal ${index}`,
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            ])
+        )
+        const { db, state } = createDb({
+            goals: {
+                ...ordinaryGoals,
+                'goal-z': {
+                    name: 'Remembered Goal',
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            },
+        })
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            originalProjectId: 'calendar-project',
+        }
+        let candidateIds = []
+
+        await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify: async ({ goals }) => {
+                candidateIds = goals.map(goal => goal.id)
+                return {
+                    result: {
+                        goalId: null,
+                        confidence: 0,
+                        alternativeGoalId: null,
+                        alternativeConfidence: 0,
+                        reason: '',
+                    },
+                    totalTokens: 10,
+                }
+            },
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Similar meetings go to Goal ID: "goal-z".',
+                    learnedGoalSeriesRoutes: {},
+                },
+            }),
+        })
+
+        expect(candidateIds).toContain('goal-z')
+        expect(candidateIds).toHaveLength(30)
+    })
+
+    test('auto-assigns an exact recurring learned Goal without a model call or Gold charge', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '',
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            targetGoalId: 'goal1',
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result).toEqual(expect.objectContaining({ action: 'auto_assign', learnedFromFeedback: true }))
+        expect(state.tasks.task1).toEqual(
+            expect.objectContaining({
+                parentGoalId: 'goal1',
+                goalSuggestion: expect.objectContaining({
+                    source: 'calendar_goal_learning',
+                    goldSpent: 0,
+                }),
+            })
+        )
+        expect(classify).not.toHaveBeenCalled()
+        expect(mockDeductGold).not.toHaveBeenCalled()
+    })
+
+    test('keeps an exact recurring learned Goal in the candidate set even beyond the relevance limit', async () => {
+        const ordinaryGoals = Object.fromEntries(
+            Array.from({ length: 30 }, (_, index) => [
+                `goal-${String(index).padStart(2, '0')}`,
+                {
+                    name: `Operational Goal ${index}`,
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            ])
+        )
+        const { db, state } = createDb({
+            mode: TASK_GOAL_ROUTING_AUTOMATIC,
+            goals: {
+                ...ordinaryGoals,
+                'goal-z': {
+                    name: 'Remembered Goal',
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            },
+        })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify: jest.fn(),
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            targetGoalId: 'goal-z',
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result.action).toBe('auto_assign')
+        expect(state.tasks.task1.parentGoalId).toBe('goal-z')
+    })
+
+    test('keeps an exact recurring learned no-Goal choice without a model call or Gold charge', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Leave this series without a Goal.',
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            routeToNoGoal: true,
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result).toEqual({ action: 'learned_no_goal', learnedFromFeedback: true })
+        expect(state.tasks.task1.parentGoalId).toBeNull()
+        expect(classify).not.toHaveBeenCalled()
+        expect(mockDeductGold).not.toHaveBeenCalled()
     })
 
     test('uses fixed and dynamic completion plus current-milestone semantics for eligibility', () => {

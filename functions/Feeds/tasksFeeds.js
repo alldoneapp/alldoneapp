@@ -689,7 +689,7 @@ async function createTaskUpdatedFeed(
     }
 
     const isSubtask = taskFeedObject.parentId ? true : false
-    const { feed, feedId } = generateFeedModel({
+    const { feed, feedId: generatedFeedId } = generateFeedModel({
         feedType: contextOverrides.feedType || FEED_TASK_UPDATED,
         lastChangeDate: currentMilliseconds,
         entryText: entryText,
@@ -697,6 +697,7 @@ async function createTaskUpdatedFeed(
         objectId: taskId,
         isPublicFor: taskFeedObject.isPublicFor,
     })
+    const feedId = contextOverrides.feedId || generatedFeedId
 
     // Set parentName if available (similar to createTaskCreatedFeed)
     if (task && task.parentName) {

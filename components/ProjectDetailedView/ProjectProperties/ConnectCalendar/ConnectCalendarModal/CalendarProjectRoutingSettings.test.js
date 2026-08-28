@@ -19,6 +19,10 @@ describe('CalendarProjectRoutingSettings helpers', () => {
         // recognises, so the stored value and the model actually invoked agree.
         expect(config.model).toBe('MODEL_GPT5_6_LUNA')
         expect(config.calendarEmail).toBe('person@example.com')
+        expect(config.learnedRules).toBe('')
+        expect(config.learnedRulesRevision).toBe(0)
+        expect(config.learnedGoalRules).toBe('')
+        expect(config.learnedGoalRulesRevision).toBe(0)
     })
 
     test('sanitizes config for save', () => {
@@ -26,12 +30,20 @@ describe('CalendarProjectRoutingSettings helpers', () => {
             enabled: true,
             calendarEmail: 'person@example.com',
             prompt: 'Route events',
+            learnedRules: '  - Acme weekly routes to Acme  ',
+            learnedRulesRevision: 4,
+            learnedGoalRules: '  - Acme weekly goes to Client delivery  ',
+            learnedGoalRulesRevision: 2,
             confidenceThreshold: '2',
         })
 
         expect(config.enabled).toBe(true)
         expect(config.confidenceThreshold).toBe(1)
         expect(config.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(config.learnedRules).toBe('- Acme weekly routes to Acme')
+        expect(config.learnedRulesRevision).toBe(4)
+        expect(config.learnedGoalRules).toBe('- Acme weekly goes to Client delivery')
+        expect(config.learnedGoalRulesRevision).toBe(2)
     })
 
     test('keeps a selectable model choice, including the OpenRouter-served one', () => {
