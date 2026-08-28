@@ -1,0 +1,6 @@
+# Paths whose change requires publishing Firestore security rules to production.
+#
+# firebase.json names the rules file (`firestore.rules`) and is what `--only
+# firestore:rules` reads to find it, so a change there has to republish them too.
+^firestore\.rules$
+^firebase\.json$
