@@ -1348,6 +1348,21 @@
             ]
         },
         {
+            "__comment__": "Reader-visible notes ordered by last edit (created in production 2026-08-28, outside this file)",
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "notes",
             "queryScope": "COLLECTION",
             "fields": [
@@ -3956,6 +3971,64 @@
                 },
                 {
                     "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Reader-visible open tasks by reviewer and due date (created in production 2026-08-28, outside this file)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Reader-visible open tasks by owner, reviewer and due date (created in production 2026-08-28, outside this file)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
                     "order": "ASCENDING"
                 }
             ]
