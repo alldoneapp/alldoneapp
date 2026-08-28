@@ -38,7 +38,7 @@ const MAX_RUNS_PER_TICK = 5
 // parks here instead of settling. The VM runner re-checks it after terminal finalization, with the
 // scheduled dispatcher retained as a recovery backstop.
 const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
-const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
+const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled', 'interrupted']
 // Chat execution is authoritative before execute_task_in_vm has created its pendingWebhooks record.
 // Include the admission states as well as the states currently written by assistantRunIdempotency so
 // this remains safe if chat dispatch starts persisting its queue explicitly.
@@ -906,7 +906,7 @@ const findTerminalVmFailure = async (projectId, taskId, run = {}) => {
                 job.kind === 'vm_job' &&
                 job.projectId === projectId &&
                 (job.objectType || 'tasks') === 'tasks' &&
-                ['failed', 'cancelled'].includes(job.status)
+                ['failed', 'cancelled', 'interrupted'].includes(job.status)
             )
         })
         return failedJob ? `vm_${failedJob.data().status}` : null

@@ -852,6 +852,32 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(error.message).not.toContain('super-secret')
     })
 
+    test('keeps the transport cause ahead of long partial agent output', () => {
+        const partialOutput = `Work completed before disconnect ${'x'.repeat(2000)}`
+        const error = __private__.buildAgentExitError(
+            'Claude',
+            null,
+            { finalResult: partialOutput, assistantText: '', bridgeError: null },
+            '',
+            new Error('command channel closed unexpectedly')
+        )
+
+        expect(error.message).toBe('Claude exited. command channel closed unexpectedly')
+        expect(error.vmTransportError).toBe('command channel closed unexpectedly')
+        expect(error.vmPartialOutput).toContain('Work completed before disconnect')
+        expect(error.message).not.toContain('Work completed before disconnect')
+    })
+
+    test('only treats explicit durable terminal events as recoverable', () => {
+        expect(__private__.hasRecoverableVmAgentTerminalState({ bridgeCompleted: true })).toBe(true)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ providerCompleted: true })).toBe(true)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ interaction: { kind: 'clarification' } })).toBe(true)
+        expect(
+            __private__.hasRecoverableVmAgentTerminalState({ bridgeCompleted: true, bridgeError: 'provider failed' })
+        ).toBe(false)
+        expect(__private__.hasRecoverableVmAgentTerminalState({ assistantText: 'partial response' })).toBe(false)
+    })
+
     test('recognizes provider-specific subscription authentication failures', () => {
         expect(
             __private__.isVmSubscriptionAuthError(
@@ -1592,6 +1618,115 @@ describe('VM runner timeout handling', () => {
         expect(supervision.result).toBe(resumedResult)
         expect(supervision.sliceCount).toBe(2)
     })
+
+    test('recovers a durable result when the command observer channel rejects', async () => {
+        const transportError = new Error('command channel closed unexpectedly')
+        const commandHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw transportError
+            }),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const durableResult = { exitCode: 0 }
+        const getCompletedResult = jest.fn(async () => durableResult)
+        const sandbox = { sandboxId: 'sandbox-1', commands: { connect: jest.fn() } }
+
+        const supervision = await __private__.superviseVmCommand({
+            Sandbox: {},
+            sandbox,
+            commandHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            getCompletedResult,
+            resolveSliceRuntime: () => 60000,
+        })
+
+        expect(supervision.result).toBe(durableResult)
+        expect(getCompletedResult).toHaveBeenCalledWith(sandbox)
+        expect(sandbox.commands.connect).not.toHaveBeenCalled()
+    })
+
+    test('reconnects once to the same PID after an observer-channel failure', async () => {
+        const transportError = new Error('command channel closed unexpectedly')
+        const firstHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw transportError
+            }),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const resumedResult = { exitCode: 0 }
+        const secondHandle = {
+            pid: 42,
+            wait: jest.fn(async () => resumedResult),
+            disconnect: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+        const getCompletedResult = jest.fn(async () => null)
+        const onCommandHandleChange = jest.fn()
+
+        const supervision = await __private__.superviseVmCommand({
+            Sandbox: {},
+            sandbox,
+            commandHandle: firstHandle,
+            e2bApiKey: 'test-key',
+            sandboxLeaseDeadlineMs: Date.now() + 60000,
+            getCompletedResult,
+            onCommandHandleChange,
+            resolveSliceRuntime: () => 60000,
+        })
+
+        expect(sandbox.commands.connect).toHaveBeenCalledTimes(1)
+        expect(sandbox.commands.connect).toHaveBeenCalledWith(42, expect.objectContaining({ timeoutMs: 0 }))
+        expect(onCommandHandleChange).toHaveBeenCalledWith(secondHandle)
+        expect(supervision.result).toBe(resumedResult)
+    })
+
+    test('stops after one unsuccessful observer-channel reconnect', async () => {
+        const firstError = new Error('first observer failure')
+        const secondError = new Error('second observer failure')
+        const firstHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw firstError
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const secondHandle = {
+            pid: 42,
+            wait: jest.fn(async () => {
+                throw secondError
+            }),
+            kill: jest.fn(async () => {}),
+        }
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            commands: { connect: jest.fn(async () => secondHandle) },
+        }
+
+        await expect(
+            __private__.superviseVmCommand({
+                Sandbox: {},
+                sandbox,
+                commandHandle: firstHandle,
+                e2bApiKey: 'test-key',
+                sandboxLeaseDeadlineMs: Date.now() + 60000,
+                getCompletedResult: jest.fn(async () => null),
+                resolveSliceRuntime: () => 60000,
+            })
+        ).rejects.toBe(firstError)
+        expect(sandbox.commands.connect).toHaveBeenCalledTimes(1)
+        expect(firstError.vmCommandReconnectAttempts).toBe(1)
+        expect(secondHandle.kill).toHaveBeenCalledTimes(1)
+        expect(firstError.vmUnobservedCommandStopped).toBe(true)
+    })
 })
 
 // A warm sandbox reused inside the keep-alive window does NOT get a fresh hour: E2B pins the
@@ -1881,6 +2016,7 @@ describe('VM session isolation', () => {
     test('treats command-channel timeouts and forced agent termination as unhealthy', () => {
         expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError({ vmCommandTerminationUncertain: true })).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 2.'))).toBe(false)
     })
 
@@ -2519,6 +2655,32 @@ describe('VM completion chat metadata', () => {
             })
         })
 
+        test('also assigns an interrupted run back to the user with its distinct reason', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '⚠️ The VM connection was interrupted.', {
+                assistantRunStatus: 'interrupted',
+                failureReason: 'execution_interrupted',
+            })
+
+            expect(taskUpdate(transaction, refs)).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({
+                    reason: 'failure',
+                    failureReason: 'execution_interrupted',
+                }),
+            })
+            expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    assistantRun: expect.objectContaining({
+                        status: 'interrupted',
+                        interruptedAt: expect.any(Number),
+                    }),
+                }),
+                { merge: true }
+            )
+        })
+
         test('leaves the reviewer alone when the run succeeds', async () => {
             const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
 
@@ -2717,6 +2879,7 @@ describe('VM completion chat metadata', () => {
         ['the final result', { isFinal: true, output: 'Finished VM result' }],
         ['a failed run', { assistantRunStatus: 'failed' }],
         ['a cancelled run', { assistantRunStatus: 'cancelled' }],
+        ['an interrupted run', { assistantRunStatus: 'interrupted' }],
     ])('writes the unread notification for %s', async (_label, options) => {
         const { transaction } = createFirestoreMock()
 
