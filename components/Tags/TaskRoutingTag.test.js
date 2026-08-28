@@ -62,8 +62,8 @@ describe('TaskRoutingTag', () => {
     })
 
     it('announces what is happening to screen readers even though it shows no text', async () => {
-        // The badge is deliberately icon-only — the leading slot is the tightest space on the row.
-        // That trade is only acceptable because the meaning survives in the accessibility label.
+        // The badge is deliberately icon-only — the trailing tag area is the tightest space on the
+        // row. That trade is only acceptable because the meaning survives in the accessibility label.
         const tree = await render(
             <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
         )
