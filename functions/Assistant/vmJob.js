@@ -1169,7 +1169,7 @@ async function launchQueuedVmJob(correlationId) {
     if (!snap.exists) return { success: false, reason: 'not_found' }
     const pending = snap.data() || {}
     if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
-    if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pending.status)) {
+    if (['completed', 'failed', 'cancelled', 'interrupted', 'cancel_requested'].includes(pending.status)) {
         return { success: false, reason: 'settled', status: pending.status }
     }
     // Gold short-circuit: if the user can no longer afford to make progress, don't launch a run that
@@ -1208,7 +1208,8 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
 
     for (const doc of snapshot.docs) {
         const pending = doc.data() || {}
-        if (pending.kind !== 'vm_job' || ['completed', 'failed', 'cancelled'].includes(pending.status)) continue
+        if (pending.kind !== 'vm_job' || ['completed', 'failed', 'cancelled', 'interrupted'].includes(pending.status))
+            continue
         result.checked += 1
         try {
             const execution = await findVmCloudRunExecution(pending.correlationId || doc.id, {
