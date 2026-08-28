@@ -63,7 +63,7 @@ describe('TaskRoutingActivityOverlay', () => {
      *
      * It was an INDEFINITE loop (bounded only by `useTaskRoutingActivity`'s ten-minute stale-state
      * backstop) travelling across the title of the task the user had just typed. What replaced it is
-     * `TaskRoutingTag`'s `(project?)` / `(goal?)` label, which says strictly more and moves nothing.
+     * `TaskRoutingTag`'s `project?` / `goal?` label, which says strictly more and moves nothing.
      *
      * Asserted behaviourally rather than by grepping the source: the guarantee that matters is that
      * a row being classified gets NO motion layer, however that ends up being implemented.

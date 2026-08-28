@@ -20,21 +20,22 @@ import { ROUTING_SUBJECT_GOAL, ROUTING_SUBJECT_PROJECT } from '../../utils/taskR
  * See `TaskPresentation.trailingRoutingTag` for why, and for why it is rendered as a sibling of
  * `TaskItemTags` rather than as one more entry in `TagsArea/Tags.js`.
  *
- * AT-2453 follow-up — the processing badge now names its SUBJECT: `(project?)` while the project
- * router is deciding, `(goal?)` while the goal router is. It used to be icon-only, and the reason
+ * AT-2453 follow-up — the processing badge now names its SUBJECT: `project?` while the project
+ * router is deciding, `goal?` while the goal router is. It used to be icon-only, and the reason
  * given for that was that a label would be redundant with the shimmer sweeping the title right next
  * to it. That reason died with the shimmer (see `TaskRoutingActivityOverlay`): a lone sparkle says
  * "something is happening" and nothing else, which is the weakest possible version of this feature —
  * the user cannot tell whether the app is about to move their task to a different PROJECT or merely
  * file it under a goal, and those have very different consequences.
  *
- * The wording is deliberately a parenthesised question rather than a sentence. `(project?)` is
- * short enough to survive the trailing tag area on a phone, and the question mark carries the
- * "still deciding" tense that a bare noun would lose — it reads as the app wondering aloud, which
- * is exactly what is going on. Because the parentheses and the `¿…?` of Spanish are part of that
- * punctuation, the whole token is translated rather than assembled from a noun in code.
+ * The wording is a bare noun plus a question mark, and nothing else. An earlier pass wrapped it in
+ * brackets — `(project?)` — on the reasoning that the badge is an aside; in the pill it read as
+ * punctuation noise around a two-word label, so the brackets are gone and the question mark alone
+ * carries the "still deciding" tense that a bare noun would lose. Each subject is still ONE
+ * translatable token rather than a noun a template punctuates in code, because the punctuation is
+ * language-specific: Spanish opens the question with `¿`.
  *
- * Screen readers still get the full sentence through `accessibilityLabel` — "(project?)" is a fine
+ * Screen readers still get the full sentence through `accessibilityLabel` — "project?" is a fine
  * glance-value and a poor thing to hear announced.
  */
 
@@ -135,10 +136,10 @@ const processingLabel = subject =>
     subject === ROUTING_SUBJECT_PROJECT ? translate('Finding the right project') : translate('Finding a matching goal')
 
 // The visible half of the same message. Kept as one translatable token per subject because the
-// brackets and the leading `¿` of the Spanish form are part of the phrase, not decoration a
-// template could add around a noun.
+// question mark is punctuation, and punctuation is language-specific — the Spanish form opens with
+// `¿`, which a `translate(noun) + '?'` template in code could never produce.
 const processingSubjectLabel = subject =>
-    subject === ROUTING_SUBJECT_PROJECT ? translate('(project?)') : translate('(goal?)')
+    subject === ROUTING_SUBJECT_PROJECT ? translate('project?') : translate('goal?')
 
 /**
  * Reads the reduced-motion preference itself rather than taking it as a prop, matching
@@ -219,8 +220,8 @@ const localStyles = StyleSheet.create({
         // already carries ~5px of empty margin before its first point (see SPARKLE_POINTS). 2 puts
         // that first point 7px from the pill's edge — exactly where the old 24px circle centred it —
         // so the two states start at the same place and the pill stays optically balanced against
-        // the 8px on the text side. The widest translation, Spanish "(¿proyecto?)", lands around
-        // 114px, so `maxWidth` is a backstop for an unexpectedly long future string, not a
+        // the 8px on the text side. The widest translation, Spanish "¿proyecto?", lands around
+        // 100px, so `maxWidth` is a backstop for an unexpectedly long future string, not a
         // day-to-day constraint.
         paddingLeft: 2,
         paddingRight: 8,
