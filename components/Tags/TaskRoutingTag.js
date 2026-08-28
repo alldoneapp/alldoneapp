@@ -20,10 +20,22 @@ import { ROUTING_SUBJECT_GOAL, ROUTING_SUBJECT_PROJECT } from '../../utils/taskR
  * See `TaskPresentation.trailingRoutingTag` for why, and for why it is rendered as a sibling of
  * `TaskItemTags` rather than as one more entry in `TagsArea/Tags.js`.
  *
- * The processing badge carries no text on purpose. The trailing tag area is where horizontal space
- * is scarcest on a phone — every chip there competes with the title for the same row — and a label
- * would be redundant with the shimmer sweeping the title right next to it. Screen readers get the
- * full sentence through `accessibilityLabel`, so nothing is lost where it actually matters.
+ * AT-2453 follow-up — the processing badge now names its SUBJECT: `(project?)` while the project
+ * router is deciding, `(goal?)` while the goal router is. It used to be icon-only, and the reason
+ * given for that was that a label would be redundant with the shimmer sweeping the title right next
+ * to it. That reason died with the shimmer (see `TaskRoutingActivityOverlay`): a lone sparkle says
+ * "something is happening" and nothing else, which is the weakest possible version of this feature —
+ * the user cannot tell whether the app is about to move their task to a different PROJECT or merely
+ * file it under a goal, and those have very different consequences.
+ *
+ * The wording is deliberately a parenthesised question rather than a sentence. `(project?)` is
+ * short enough to survive the trailing tag area on a phone, and the question mark carries the
+ * "still deciding" tense that a bare noun would lose — it reads as the app wondering aloud, which
+ * is exactly what is going on. Because the parentheses and the `¿…?` of Spanish are part of that
+ * punctuation, the whole token is translated rather than assembled from a noun in code.
+ *
+ * Screen readers still get the full sentence through `accessibilityLabel` — "(project?)" is a fine
+ * glance-value and a poor thing to hear announced.
  */
 
 // Three points, twinkling out of phase so the group reads as a shimmer rather than a blink.
@@ -122,6 +134,12 @@ export function RoutingSparkle({ animate }) {
 const processingLabel = subject =>
     subject === ROUTING_SUBJECT_PROJECT ? translate('Finding the right project') : translate('Finding a matching goal')
 
+// The visible half of the same message. Kept as one translatable token per subject because the
+// brackets and the leading `¿` of the Spanish form are part of the phrase, not decoration a
+// template could add around a noun.
+const processingSubjectLabel = subject =>
+    subject === ROUTING_SUBJECT_PROJECT ? translate('(project?)') : translate('(goal?)')
+
 /**
  * Reads the reduced-motion preference itself rather than taking it as a prop, matching
  * `TaskRoutingActivityOverlay`. The task row only mounts this component when there is routing
@@ -172,6 +190,13 @@ export default function TaskRoutingTag({ processing, confirmation, projectName, 
             style={[localStyles.container, localStyles.processingContainer, style]}
         >
             <RoutingSparkle animate={!reducedMotion && !animationsAreDisabled()} />
+            <Text
+                numberOfLines={1}
+                testID="task-routing-processing-subject"
+                style={[styles.subtitle2, localStyles.processingText, windowTagStyle()]}
+            >
+                {processingSubjectLabel(processing.subject)}
+            </Text>
         </View>
     )
 }
@@ -186,7 +211,30 @@ const localStyles = StyleSheet.create({
     },
     processingContainer: {
         backgroundColor: colors.UtilityBlue100,
-        width: 24,
+        // Was a fixed 24px circle when the badge was icon-only. It now sizes to its label, and
+        // shrinks like the confirmation chip so a narrow row truncates the label instead of pushing
+        // the tag row over the title.
+        //
+        // The left padding is 2 rather than the confirmation's 8 because the sparkle's own 20x18 box
+        // already carries ~5px of empty margin before its first point (see SPARKLE_POINTS). 2 puts
+        // that first point 7px from the pill's edge — exactly where the old 24px circle centred it —
+        // so the two states start at the same place and the pill stays optically balanced against
+        // the 8px on the text side. The widest translation, Spanish "(¿proyecto?)", lands around
+        // 114px, so `maxWidth` is a backstop for an unexpectedly long future string, not a
+        // day-to-day constraint.
+        paddingLeft: 2,
+        paddingRight: 8,
+        flexShrink: 1,
+        maxWidth: 140,
+    },
+    processingText: {
+        // `UtilityBlue300` on `UtilityBlue100` mirrors the confirmation's green-on-green: same
+        // contrast relationship, so the two states read as one component in two tenses rather than
+        // as two different chips. Deliberately not the saturated `Primary100` action blue — this is
+        // a status, and nothing here is clickable.
+        color: colors.UtilityBlue300,
+        marginLeft: 2,
+        flexShrink: 1,
     },
     confirmedContainer: {
         backgroundColor: colors.UtilityGreen100,

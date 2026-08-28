@@ -2336,6 +2336,8 @@
     "Still no connection. You can start the day anyway, your data will sync later": "Immer noch keine Verbindung. Du kannst den Tag trotzdem starten, deine Daten werden später synchronisiert",
     "Finding the right project": "Passendes Projekt wird gesucht",
     "Finding a matching goal": "Passendes Ziel wird gesucht",
+    "(project?)": "(Projekt?)",
+    "(goal?)": "(Ziel?)",
     "Added to goal": "Zum Ziel hinzugefügt",
     "Moved to project": "Verschoben nach {{project}}",
     "this project": "dieses Projekt",
