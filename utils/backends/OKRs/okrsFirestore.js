@@ -51,9 +51,12 @@ export function mapOKRData(okrId, okr) {
 
 export function watchProjectOKRs(projectId, ownerId, watcherKey) {
     if (!projectId || !ownerId) return
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`okrs/${projectId}/${OKRS_COLLECTION}`)
+        .where('readerIds', 'array-contains', accessReaderId)
         .where('ownerId', '==', ownerId)
         .where('status', '==', OKR_STATUS_ACTIVE)
         .onSnapshot(snapshot => {
@@ -76,9 +79,12 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
 // by periodEnd to avoid needing a composite Firestore index.
 export async function fetchProjectOKRsHistory(projectId, ownerId) {
     if (!projectId || !ownerId) return []
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     const snapshot = await getDb()
         .collection(`okrs/${projectId}/${OKRS_COLLECTION}`)
+        .where('readerIds', 'array-contains', accessReaderId)
         .where('ownerId', '==', ownerId)
         .get()
 

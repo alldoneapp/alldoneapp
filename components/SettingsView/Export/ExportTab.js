@@ -322,7 +322,7 @@ export default function ExportTab() {
                 allProjectIds.map(async projectId => {
                     const snap = await db
                         .collection(`/projectsContacts/${projectId}/contacts`)
-                        .where('isPublicFor', 'array-contains-any', allowUserIds)
+                        .where('readerIds', 'array-contains', uid)
                         .get()
                     snap.forEach(doc => {
                         allContacts.push({ id: doc.id, projectId, ...doc.data() })
@@ -379,7 +379,7 @@ export default function ExportTab() {
 
                 const chatsSnap = await db
                     .collection(`chatObjects/${projectId}/chats`)
-                    .where('isPublicFor', 'array-contains-any', allowUserIds)
+                    .where('readerIds', 'array-contains', uid)
                     .get()
 
                 const chatDocs = chatsSnap.docs

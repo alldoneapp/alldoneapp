@@ -3,7 +3,7 @@ const admin = require('firebase-admin')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 const { FocusTaskService } = require('../shared/FocusTaskService')
-const { canAccessObject, getAccessibleProjectIdsFromUserData } = require('../shared/privacyAccess')
+const { canAccessObject } = require('../shared/privacyAccess')
 const { mapProjectData, mapTaskData } = require('../Utils/MapDataFuncions')
 const { WORKSTREAM_ID_PREFIX } = require('../Utils/HelperFunctionsCloud')
 const { autoPostponeTaskCloud, getMomentInTimezone, resolveTimezoneContext } = require('./autoPostponeTasksCloud')
@@ -57,10 +57,7 @@ function normalizeTaskRequests(data = {}) {
 }
 
 function canAccessProject(userData, projectId, projectData = {}) {
-    return (
-        getAccessibleProjectIdsFromUserData(userData).includes(projectId) ||
-        (Array.isArray(projectData.userIds) && projectData.userIds.includes(userData.uid))
-    )
+    return Array.isArray(projectData.userIds) && projectData.userIds.includes(userData.uid)
 }
 
 async function getUserRecord(db, userId) {

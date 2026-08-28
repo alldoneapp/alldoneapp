@@ -46,7 +46,7 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
         .where('parentId', '==', null)
         .where('completed', '==', null)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     // This watcher rebuilds its whole output from the document list on every snapshot, so the
     // optimistic insert is simply an extra document in that list. Reconciliation is therefore
@@ -203,7 +203,7 @@ export const watchOpenGoalSubtasks = (projectId, goalId, watcherKey) => {
         .where('parentId', '!=', null)
         .where('completed', '==', null)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { openSubtasksByParent } = processSubtasks(snapshot.docs)

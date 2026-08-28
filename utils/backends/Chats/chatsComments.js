@@ -54,7 +54,12 @@ import {
     getAssistantInProject,
     resolveAssistantForProjectObject,
 } from '../../../components/AdminPanel/Assistants/assistantsHelper'
-import { setUserAssistant, updateUserLastCommentData, resetUserLastCommentData } from '../Users/usersFirestore'
+import {
+    resetUserLastCommentData,
+    setUserAssistant,
+    updateUserDataDirectly,
+    updateUserLastCommentData,
+} from '../Users/usersFirestore'
 import {
     setContactAssistant,
     updateContactLastCommentData,
@@ -320,23 +325,28 @@ const updateLastAssistantCommentData = async (
 
     activeFollowerIds.forEach(followerId => {
         const updateData = { objectType, objectId, creatorId, creatorType: 'user', date: moment().utc().valueOf() }
-        batch.update(getDb().doc(`users/${followerId}`), {
-            [`lastAssistantCommentData.${projectId}`]: updateData,
-            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                ...updateData,
-                projectId,
+        updateUserDataDirectly(
+            followerId,
+            {
+                [`lastAssistantCommentData.${projectId}`]: updateData,
+                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                    ...updateData,
+                    projectId,
+                },
+                ...(assistantId
+                    ? {
+                          [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
+                          [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
+                              {
+                                  ...updateData,
+                                  projectId,
+                              },
+                      }
+                    : {}),
             },
-            ...(assistantId
-                ? {
-                      [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
-                      [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
-                          {
-                              ...updateData,
-                              projectId,
-                          },
-                  }
-                : {}),
-        })
+            batch,
+            projectId
+        )
     })
 }
 

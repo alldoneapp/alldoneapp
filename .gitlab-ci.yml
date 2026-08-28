@@ -360,6 +360,47 @@ test:web:full:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
 
+# Behavioral authorization gate for Firestore rules. This runs against the
+# official emulator and exercises real get/list/write decisions; compilation
+# alone cannot detect a query that the rules engine cannot prove safe.
+test:firestore:rules:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:$APP_IMAGE_TAG
+    variables:
+        APP_IMAGE_TAG: latest
+    before_script:
+        - ln -s /app/node_modules node_modules
+    script:
+        - npm run test:firestore-rules
+    rules:
+        # Dependency-changing feature branches build a branch-scoped image.
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *branch-image-paths
+          variables:
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
+        # Keep the gate present on every production pipeline: the manual deploy
+        # names it in `needs`, including catch-up pipelines selected by markers.
+        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+        - if: '$CI_COMMIT_BRANCH == "develop"'
+          changes:
+              - firestore.rules
+              - firebase.json
+              - package.json
+              - package-lock.json
+              - ci/Dockerfile_base
+              - ci/check-firestore-rule-coverage.js
+              - __tests__/Firestore/**/*
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths:
+                  - firestore.rules
+                  - firebase.json
+                  - ci/check-firestore-rule-coverage.js
+                  - __tests__/Firestore/**/*
+
 build_web_staging:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_web_bundler:latest
@@ -798,15 +839,13 @@ deploy:cloud:runner:production:
 # hit the second case - the callables went live accepting project members while the live
 # rules still said `allow write: if isAdministrator()`, so every client write was denied.
 #
-# Unlike firestore:indexes, this is safe to automate. `--only firestore:rules` publishes a
-# single compiled file as one release; it has no desired-state diff and therefore none of
-# the index job's deletion hazard (see the long comment below), which is why that one is
-# read-only and this one is not. --force is deliberately NOT passed: it would buy nothing
-# here and is the exact flag that makes the indexes deploy destructive.
-#
-# The deploy is also the validation. firebase-tools compiles the rules and refuses to
-# release a file that does not parse, so a syntax error fails this job rather than
-# reaching production - which is why no separate lint job exists.
+# `--only firestore:rules` publishes one compiled file as one release; it has no
+# desired-state diff and therefore none of the index job's deletion hazard (see the
+# long comment below). It is still an authorization cutover for the whole application,
+# though, so production publication is deliberately manual. Syntax compilation alone
+# did not catch AT-2450's query/rule incompatibilities; the behavioral emulator suite is
+# the precondition for an operator-approved release. --force is deliberately NOT passed:
+# it buys nothing here and is the exact flag that makes the indexes deploy destructive.
 deploy:firestore:rules:production:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
@@ -814,10 +853,11 @@ deploy:firestore:rules:production:
     # pushes in quick succession otherwise publish two rule releases at once and the
     # newest-commit guard can only order deploys it sees one at a time.
     resource_group: firestore-rules-production-deploy
-    # Only the scope artifact is needed; without this the job would download the whole
-    # web-build/ bundle it has no use for.
-    dependencies:
+    # The authorization suite is a hard prerequisite even though publication
+    # itself still requires an explicit operator action.
+    needs:
         - 'deploy_scope'
+        - 'test:firestore:rules'
     script:
         # Same reasoning as deploy:web - the guard fails closed, so make sure its probe
         # can run on a cached image that predates git being added.
@@ -836,10 +876,12 @@ deploy:firestore:rules:production:
     environment:
         name: production
     interruptible: false
-    allow_failure:
-        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+          when: manual
+          # A rules change must not freeze every unrelated production deploy while it
+          # waits for its dedicated staging/browser verification and operator approval.
+          allow_failure: true
 
 # Report drift between firestore.indexes.json and the live Firestore indexes.
 #

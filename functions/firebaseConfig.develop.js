@@ -1,4 +1,3 @@
-const serviceAccount = require('./service_accounts/serviceAccountKey.json')
 const firebaseConfigData = require('./firebaseConfigDevelop.json')
 
 exports.app_name = 'AllDone Staging'
@@ -16,7 +15,7 @@ exports.init = admin => {
 
     try {
         const app = admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+            credential: admin.credential.applicationDefault(),
             databaseURL: firebaseConfigData.databaseURL,
             storageBucket: firebaseConfigData.storageBucket,
         })

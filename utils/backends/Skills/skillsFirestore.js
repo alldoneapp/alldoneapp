@@ -62,7 +62,7 @@ export function watchSkills(projectId, userId, watcherKey) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`skills/${projectId}/items`)
         .where('userId', '==', userId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .onSnapshot(skillsDocs => {
             let skills = []
             skillsDocs.forEach(doc => {

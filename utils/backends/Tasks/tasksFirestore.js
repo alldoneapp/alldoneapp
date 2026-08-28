@@ -147,6 +147,7 @@ import {
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, createObjectMessage } from '../Chats/chatsComments'
+import { updateUserDataDirectly } from '../Users/usersFirestore'
 import NavigationService from '../../NavigationService'
 import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../TabNavigationConstants'
 import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
@@ -1774,10 +1775,15 @@ export async function updateFocusedTask(
         // Always provide valid string values for these fields
         // REMOVE LOGGING HERE
         // console.log(`[updateFocusedTask] Updating user ${userId} focus state: inFocusTaskId=${taskToSetFocusOn ? taskToSetFocusOn.id : ''}`)
-        batch.update(getDb().doc(`users/${userId}`), {
-            inFocusTaskId: taskToSetFocusOn ? taskToSetFocusOn.id : '',
-            inFocusTaskProjectId: taskToSetFocusOn ? projectId : '', // Use projectId of taskToSetFocusOn
-        })
+        updateUserDataDirectly(
+            userId,
+            {
+                inFocusTaskId: taskToSetFocusOn ? taskToSetFocusOn.id : '',
+                inFocusTaskProjectId: taskToSetFocusOn ? projectId : '', // Use projectId of taskToSetFocusOn
+            },
+            batch,
+            projectId
+        )
 
         if (!externalBatch) {
             try {
@@ -3718,7 +3724,7 @@ const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
 
         const goalsSnapshot = await getDb()
             .collection(`goals/${projectId}/items`)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .where('ownerId', '==', ownerId)
             .get()
 
@@ -4723,10 +4729,15 @@ async function findAndSetNewFocusedTask(
         }
     }
 
-    batch.update(getDb().doc(`users/${userId}`), {
-        inFocusTaskId: '',
-        inFocusTaskProjectId: '',
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            inFocusTaskId: '',
+            inFocusTaskProjectId: '',
+        },
+        batch,
+        currentProjectId
+    )
     await batch.commit()
     if (__DEV__) {
         console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
@@ -4794,10 +4805,15 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
     })
 
     // Update user's focused task
-    batch.update(getDb().doc(`users/${userId}`), {
-        inFocusTaskId: task.id,
-        inFocusTaskProjectId: projectId,
-    })
+    updateUserDataDirectly(
+        userId,
+        {
+            inFocusTaskId: task.id,
+            inFocusTaskProjectId: projectId,
+        },
+        batch,
+        projectId
+    )
 
     // AT-2191: re-checked because assembling the batch above awaits. A postpone that arrived in the
     // meantime has already dispatched its own optimistic pick, and this write would overwrite it.

@@ -8,15 +8,17 @@
  * apparent absence must be confirmed by an independent Firestore Lite direct read before it may
  * be reported as `missing`.
  */
+const mockGetIdToken = jest.fn(() => Promise.resolve('token'))
 jest.mock('firebase/compat/app', () => ({
     __esModule: true,
     default: {
-        auth: () => ({ currentUser: { uid: 'user-1' } }),
+        auth: () => ({ currentUser: { uid: 'user-1', getIdToken: (...args) => mockGetIdToken(...args) } }),
         firestore: { FieldValue: { arrayRemove: jest.fn(), arrayUnion: jest.fn() } },
     },
 }))
 
 const mockGetDb = jest.fn()
+const mockGlobalWatcherUnsub = {}
 const mockRestartFirestoreNetwork = jest.fn(() => Promise.resolve())
 const mockMapUserData = jest.fn((uid, data, isLoggedUser) => ({ uid, ...data, isLoggedUser }))
 jest.mock('../firestore', () => ({
@@ -33,7 +35,7 @@ jest.mock('../firestore', () => ({
     getObjectFollowersIds: jest.fn(),
     getProjectData: jest.fn(),
     getUserDataByUidOrEmail: jest.fn(),
-    globalWatcherUnsub: {},
+    globalWatcherUnsub: mockGlobalWatcherUnsub,
     inProductionEnvironment: jest.fn(),
 }))
 
@@ -43,7 +45,11 @@ jest.mock('../firestoreDirectRead', () => ({
 }))
 
 // Heavy transitive imports the module pulls in at load time but does not use in this path.
-jest.mock('../../../redux/store', () => ({ __esModule: true, default: { getState: () => ({}), dispatch: jest.fn() } }))
+const mockStoreGetState = jest.fn(() => ({}))
+jest.mock('../../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: (...args) => mockStoreGetState(...args), dispatch: jest.fn() },
+}))
 jest.mock('../../../redux/actions', () => ({}))
 jest.mock('../../../functions/BatchWrapper/batchWrapper', () => ({ BatchWrapper: class {} }))
 jest.mock('../../BackendBridge', () => ({ __esModule: true, default: {} }))
@@ -75,7 +81,7 @@ jest.mock('../../../components/SettingsView/SettingsHelper', () => ({}))
 jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({ __esModule: true, default: {} }))
 jest.mock('../../../components/Workstreams/WorkstreamHelper', () => ({ DEFAULT_WORKSTREAM_ID: 'ws' }))
 
-const { fetchUserDataResult } = require('./usersFirestore')
+const { fetchUserDataResult, updateUserDataDirectly, watchProjectUsers } = require('./usersFirestore')
 
 const snapshot = ({ exists, data = null, fromCache = false, withMetadata = true }) => ({
     exists,
@@ -94,12 +100,139 @@ describe('fetchUserDataResult', () => {
     let consoleError
 
     beforeEach(() => {
+        mockStoreGetState.mockReset()
+        mockStoreGetState.mockReturnValue({})
         mockGetDb.mockReset()
         mockMapUserData.mockClear()
         mockRestartFirestoreNetwork.mockClear()
+        mockGetIdToken.mockClear()
+        mockGetIdToken.mockResolvedValue('token')
         mockReadDocumentDirectlyFromServer.mockReset()
+        Object.keys(mockGlobalWatcherUnsub).forEach(key => delete mockGlobalWatcherUnsub[key])
         consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
         consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    it('does not read Redux state for a personal update without a project mutation', async () => {
+        const update = jest.fn(() => Promise.resolve())
+        mockGetDb.mockReturnValue({ doc: jest.fn(() => ({ update })) })
+
+        await updateUserDataDirectly('user-1', { activeTaskId: 'task-1' })
+
+        expect(mockStoreGetState).not.toHaveBeenCalled()
+        expect(update).toHaveBeenCalledWith({ activeTaskId: 'task-1' })
+    })
+
+    it('watches the authoritative project member ids without an unsafe users collection query', async () => {
+        const listeners = {}
+        const unsubscribers = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                unsubscribers[path] = jest.fn()
+                return unsubscribers[path]
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+        listeners['projects/project-1'].next({ exists: true, data: () => ({ userIds: ['user-1', 'user-2'] }) })
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).not.toHaveBeenCalled()
+
+        listeners['users/user-2'].next(snapshot({ exists: true, data: { displayName: 'Two' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One', isLoggedUser: false },
+            { uid: 'user-2', displayName: 'Two', isLoggedUser: false },
+        ])
+
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One updated' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One updated', isLoggedUser: false },
+            { uid: 'user-2', displayName: 'Two', isLoggedUser: false },
+        ])
+
+        listeners['projects/project-1'].next({ exists: true, data: () => ({ userIds: ['user-1', 'user-3'] }) })
+        expect(unsubscribers['users/user-2']).toHaveBeenCalledTimes(1)
+        listeners['users/user-3'].next(snapshot({ exists: true, data: { displayName: 'Three' } }))
+        expect(callback).toHaveBeenLastCalledWith([
+            { uid: 'user-1', displayName: 'One updated', isLoggedUser: false },
+            { uid: 'user-3', displayName: 'Three', isLoggedUser: false },
+        ])
+
+        mockGlobalWatcherUnsub['project-1Users']()
+        expect(unsubscribers['projects/project-1']).toHaveBeenCalledTimes(1)
+        expect(unsubscribers['users/user-1']).toHaveBeenCalledTimes(1)
+        expect(unsubscribers['users/user-3']).toHaveBeenCalledTimes(1)
+        expect(doc).not.toHaveBeenCalledWith('users')
+    })
+
+    it('omits a stale unreadable member without stalling the project user list', async () => {
+        const listeners = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                return jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+        listeners['projects/project-1'].next({
+            exists: true,
+            data: () => ({ userIds: ['user-1', 'stale-user'] }),
+        })
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).not.toHaveBeenCalled()
+
+        listeners['users/stale-user'].error({ code: 'permission-denied' })
+
+        expect(callback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'One', isLoggedUser: false }])
+        expect(consoleWarn).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    it('starts member listeners from the project already loaded in redux', async () => {
+        const listeners = {}
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = { next, error }
+                return jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        mockStoreGetState.mockReturnValue({
+            loggedUserProjectsMap: { 'project-1': { userIds: ['user-1'] } },
+        })
+        const callback = jest.fn()
+
+        await watchProjectUsers('project-1', callback, 'project-1Users')
+
+        expect(listeners['users/user-1']).toBeDefined()
+        listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
+        expect(callback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'One', isLoggedUser: false }])
+    })
+
+    it('reports an authoritative project-listener failure to the loader', async () => {
+        const listeners = {}
+        mockGetDb.mockReturnValue({
+            doc: jest.fn(path => ({
+                onSnapshot: (next, error) => {
+                    listeners[path] = { next, error }
+                    return jest.fn()
+                },
+            })),
+        })
+        const onError = jest.fn()
+
+        await watchProjectUsers('project-1', jest.fn(), 'project-1Users', { onError })
+        const error = { code: 'permission-denied' }
+        listeners['projects/project-1'].error(error)
+
+        expect(onError).toHaveBeenCalledWith(error)
+        expect(consoleError).not.toHaveBeenCalled()
     })
 
     afterEach(() => {
@@ -217,6 +350,24 @@ describe('fetchUserDataResult', () => {
         const result = await fetchUserDataResult('user-1', true)
 
         expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+    })
+
+    it('refreshes the own-user token once when the first Firestore read is denied', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest
+            .fn()
+            .mockRejectedValueOnce(denied)
+            .mockResolvedValueOnce(snapshot({ exists: true, data: { email: 'a@b.c' } }))
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result.user).toEqual({ uid: 'user-1', email: 'a@b.c', isLoggedUser: true })
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(1)
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(2, true)
+        expect(get).toHaveBeenCalledTimes(2)
     })
 })
 

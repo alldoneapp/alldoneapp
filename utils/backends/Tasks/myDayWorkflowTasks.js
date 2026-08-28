@@ -4,6 +4,7 @@ import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
 import { setMyDayWorkflowTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
 import { compareTasksByPriorityThenCompleted } from '../../TaskPriority'
+import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
 function addTaskToContainers(tasks, subtasksMap, task) {
     const { parentId } = task
@@ -16,11 +17,14 @@ function addTaskToContainers(tasks, subtasksMap, task) {
 
 export async function watchPendingTasksToReview(projectId, userId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', userId)
         .where('inDone', '==', false)
+        .where('readerIds', 'array-contains', accessReaderId)
         .where('completed', '<=', endOfDay)
         .orderBy('completed', 'desc')
         .onSnapshot(docs => {
