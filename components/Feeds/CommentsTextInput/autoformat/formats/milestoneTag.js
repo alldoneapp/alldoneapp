@@ -1,9 +1,9 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
 import MilestoneTagWrapper from '../tags/MilestoneTagWrapper'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -26,11 +26,11 @@ export default class MilestoneTag extends Embed {
             [id]: createRef(),
         }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <MilestoneTagWrapper milestoneId={milestoneId} text={text} />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

@@ -1,11 +1,11 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CommentTagFormatContainer from '../tags/CommentTagFormatContainer'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -31,7 +31,8 @@ export default class CommentTagFormat extends Embed {
             [id]: createRef(),
         }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <CommentTagFormatContainer
                     projectId={projectId}
@@ -39,8 +40,7 @@ export default class CommentTagFormat extends Embed {
                     parentType={parentType}
                     assistantId={assistantId}
                 />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

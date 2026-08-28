@@ -1,12 +1,12 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import Backend from '../../../../../utils/BackendBridge'
 import UrlWrapper from '../tags/UrlWrapper'
 import store from '../../../../../redux/store'
 import { handleNestedLinks } from '../../../../../utils/LinkingHelper'
 import { isPrivateNote } from '../../../../NotesView/NotesHelper'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 const DEFAULT_URL = {
@@ -50,11 +50,11 @@ class Url extends Embed {
                 // Ignore URL parsing errors
             }
 
-            ReactDOM.render(
+            renderEmbedContent(
+                node,
                 <Provider store={store}>
                     <UrlWrapper value={value} objectName={taskName || 'Pre-configured Task'} isShared={false} />
-                </Provider>,
-                node
+                </Provider>
             )
         } else if (value.type !== 'plain' && value?.url) {
             Backend.getObjectFromUrl(value.type, value.url, ({ object, objectName }, externalContact) => {
@@ -63,7 +63,8 @@ class Url extends Embed {
                     (object?.hasOwnProperty('userIds') || object?.hasOwnProperty('stickyData')) &&
                     !isPrivateNote(object)
 
-                ReactDOM.render(
+                renderEmbedContent(
+                    node,
                     <Provider store={store}>
                         <UrlWrapper
                             value={object ? value : { ...value, type: 'plain' }}
@@ -71,16 +72,15 @@ class Url extends Embed {
                             isShared={object ? isShared : null}
                             externalContact={object ? externalContact : null}
                         />
-                    </Provider>,
-                    node
+                    </Provider>
                 )
             })
         } else {
-            ReactDOM.render(
+            renderEmbedContent(
+                node,
                 <Provider store={store}>
                     <UrlWrapper value={value} />
-                </Provider>,
-                node
+                </Provider>
             )
         }
         return node

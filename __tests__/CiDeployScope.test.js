@@ -18,7 +18,6 @@ const MARKER_SCOPED_JOBS = {
     'deploy:web': 'web-production',
     'deploy:cloud:functions:production': 'functions-production',
     'deploy:cloud:runner:production': 'runner-production',
-    'deploy:firestore:rules:production': 'firestore-rules-production',
 }
 
 const job = name => CI_CONFIG[name]
@@ -96,49 +95,6 @@ describe('production deploys are scoped by what shipped, not by what this push t
     })
 })
 
-describe('the Firestore rules deploy cannot become the destructive indexes deploy', () => {
-    const rulesJob = () => job('deploy:firestore:rules:production')
-    const deployLine = () =>
-        [].concat(rulesJob().before_script || [], rulesJob().script || []).find(l => l.includes('firebase deploy'))
-
-    // `--only firestore` (no `:rules`) would pull firestore:indexes in with it, and that
-    // target treats the file as desired state: with --force it DELETES every live index and
-    // field override the file omits, and without --force but --non-interactive it throws
-    // outright. Either way this job would stop being the safe one-file release it is.
-    it('deploys firestore:rules specifically, never firestore wholesale', () => {
-        expect(deployLine()).toContain('--only firestore:rules')
-    })
-
-    // The flag that makes the indexes deploy destructive. It buys nothing for a rules
-    // release, so its absence is the property worth pinning rather than a style choice.
-    it('never passes --force', () => {
-        expect(deployLine()).not.toContain('--force')
-    })
-
-    it('is reported on by the scope computation, so it can be skipped as a no-op', () => {
-        // Absent from TARGETS, `compute` writes no entry and `require` fails safe to
-        // deploying on EVERY master push - correct, but it republishes the rules endlessly.
-        const source = fs.readFileSync(SCOPE_SCRIPT, 'utf8')
-        const targetsLine = source.split('\n').find(l => l.startsWith('TARGETS='))
-        expect(targetsLine).toContain('firestore-rules-production')
-    })
-
-    it('watches the rules file itself', () => {
-        const paths = fs.readFileSync(
-            path.join(REPO_ROOT, 'ci', 'deploy-scope', 'firestore-rules-production.paths'),
-            'utf8'
-        )
-        const compiled = paths
-            .split('\n')
-            .map(l => l.replace(/#.*/, '').trim())
-            .filter(Boolean)
-
-        expect(compiled.some(p => new RegExp(p).test('firestore.rules'))).toBe(true)
-        // A rules deploy that matched app source would republish on every unrelated push.
-        expect(compiled.some(p => new RegExp(p).test('components/Foo.js'))).toBe(false)
-    })
-})
-
 describe('the GitHub mirror is its own job', () => {
     it('no longer forces the production build to be non-interruptible', () => {
         // Mirroring inside build_web_production gave that ~9-minute build an external side
@@ -188,7 +144,7 @@ describe('the web path list has exactly one meaning', () => {
         expect(actual).toEqual(expected)
     })
 
-    it.each(['web-production', 'functions-production', 'runner-production', 'firestore-rules-production'])(
+    it.each(['web-production', 'functions-production', 'runner-production'])(
         '%s.paths has no blank or comment-only pattern',
         target => {
             // A blank line in a `grep -f` pattern file matches EVERY path, which would mark

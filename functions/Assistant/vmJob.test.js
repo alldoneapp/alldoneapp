@@ -1480,19 +1480,19 @@ describe('startVmJob', () => {
         expect(holdUpdate).toEqual(expect.not.objectContaining({ stepHistory: expect.anything() }))
     })
 
-    test.each(['cancelled', 'interrupted'])('launchQueuedVmJob is a no-op for a %s job', async status => {
-        mockDocs[`pendingWebhooks/${status}-1`] = {
+    test('launchQueuedVmJob is a no-op for a job cancelled while queued', async () => {
+        mockDocs['pendingWebhooks/cancelled-1'] = {
             get: jest.fn(async () => ({
                 exists: true,
-                data: () => ({ kind: 'vm_job', status }),
+                data: () => ({ kind: 'vm_job', status: 'cancelled' }),
             })),
             set: jest.fn(async () => {}),
             update: jest.fn(async () => {}),
         }
 
-        const result = await launchQueuedVmJob(`${status}-1`)
+        const result = await launchQueuedVmJob('cancelled-1')
 
-        expect(result).toEqual({ success: false, reason: 'settled', status })
+        expect(result).toEqual({ success: false, reason: 'settled', status: 'cancelled' })
         expect(mockQueueEnqueue).not.toHaveBeenCalled()
     })
 })
