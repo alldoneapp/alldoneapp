@@ -48,7 +48,7 @@ import { translate } from '../../../../i18n/TranslationService'
 // The congratulation and its confetti own the first half-second. Everything in this file is
 // measured from the end of it, so the two halves of the celebration read as one sequence rather
 // than as two animations that happen to start together.
-export const DOT_START_DELAY_MS = 480
+export const DOT_START_DELAY_MS = 520
 // The pop. Long enough for the overshoot to be legible on an 11px target, short enough that the
 // ring is still expanding when it settles.
 export const DOT_LAND_MS = 380
@@ -60,7 +60,7 @@ export const DOT_ZOOM_MS = 1000
 export const BURST_DURATION_MS = 900
 // The card's green outline. Ends before the run does, so the card is plain again before the last
 // beat finishes rather than snapping off at the same instant.
-export const SPOTLIGHT_MS = 1900
+export const SPOTLIGHT_MS = 1800
 // The streak number waits for the dot to finish its whole trip — land, swell, settle — before it
 // moves, so it reads as the consequence and not as part of the burst.
 export const STREAK_TICK_DELAY_MS = DOT_START_DELAY_MS + DOT_LAND_MS + DOT_ZOOM_MS

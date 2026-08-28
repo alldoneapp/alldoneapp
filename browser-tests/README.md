@@ -298,3 +298,37 @@ ratcheted **both** ways: an overflow at an unlisted width fails, and a listed wi
 stopped overflowing in every state and language also fails, so the list cannot outlive the
 defect it documents. It is keyed on width alone on purpose — keying on (width, language,
 state) would encode today's exact translations and break on any copy edit.
+
+### `at2460/` — the empty-inbox celebration must be visible, and the new green dot must be findable
+
+"The celebration of empty inbox in All Projects > Tasks should be much more celebratory /
+longer. Also the new placement of the green dot should be a bigger deal."
+
+This case exists because of how the two previous passes at this feature failed. AT-2418 moved the
+celebration onto the one element that genuinely changes — an 11px cell in a 371-square grid — and
+nobody could find it; AT-2445 found that a loading flash had been spending the day's once-per-day
+marker before the animation was ever painted. Both were green throughout. The reason is
+structural: jsdom has no layout and jest never advances `requestAnimationFrame`, so in a Jest test
+every `Animated.Value` sits at whatever it was last `setValue`d to and every element is 0×0. A
+suite there can prove a layer is MOUNTED. It cannot prove the dot grows, that the confetti covers
+the page, or that the badge stays inside the card.
+
+The harness mounts the REAL `AllProjectsEmptyInbox` — real congrats block, real `EmptyInboxConfetti`,
+real `EmptyInboxOverview` with the real `EmptyInboxTodayDot` and the real motion hooks — against the
+real redux store, with today already in `emptyInboxDays` so that mounting IS the trigger.
+
+Two details are load-bearing:
+
+- **The frames are captured in the PAGE, not from the runner.** `waitForTimeout` + `evaluate`
+  drifts by a round trip per step and drifts cumulatively: marks of 300/950/1450ms were measured
+  here at 538/1204/1718ms. That is the difference between landing inside the dot's hold and
+  landing after it, so the assertions would silently describe a different beat than the one they
+  name — and would do it differently on a slower machine. The page schedules its own
+  `setTimeout`s from mount; the runner only reads the result.
+- **The pass that decides pass/fail never screenshots.** A `page.screenshot()` costs a few hundred
+  milliseconds, which is a large fraction of a beat. Pictures are taken on a second page load, so
+  they can be looked at without perturbing anything. `HARNESS_SHOT_DIR=<dir>` collects them.
+
+The reduced-motion half is run as a second context with `reducedMotion: 'reduce'`, where the rule
+inverts: the congratulation and the green dot are simply already there, and not one decorative
+layer is rendered.
