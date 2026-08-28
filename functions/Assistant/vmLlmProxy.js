@@ -466,7 +466,7 @@ async function checkProxyJobCanContinue({
             return { allowed: false, message: 'VM proxy credential route no longer matches this job' }
         }
     }
-    if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pendingData.status)) {
+    if (['completed', 'failed', 'cancelled', 'interrupted', 'cancel_requested'].includes(pendingData.status)) {
         return { allowed: false, message: 'VM job is no longer active' }
     }
     const currentGold = userSnap.exists ? Number(userSnap.data()?.gold) || 0 : 0

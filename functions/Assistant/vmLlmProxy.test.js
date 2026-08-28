@@ -357,6 +357,18 @@ describe('vmLlmProxy job authorization', () => {
             })
         ).resolves.toEqual({ allowed: true, currentGold: 10 })
     })
+
+    test('rejects proxy use after an interrupted job has settled', async () => {
+        const db = attachGets(buildDb({ userId: 'owner', credentialMode: 'byok', status: 'interrupted' }))
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                db,
+            })
+        ).resolves.toMatchObject({ allowed: false, message: 'VM job is no longer active' })
+    })
 })
 
 describe('vmLlmProxy token Gold charging', () => {
