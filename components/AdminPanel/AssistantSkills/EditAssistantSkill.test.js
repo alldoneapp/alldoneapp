@@ -159,7 +159,8 @@ describe('EditAssistantSkill — adding from a file or pasted text (AT-2431)', (
                 description: 'Extract text and tables from PDF files',
                 body: '# How to process a PDF\n1. Read it',
                 source: expect.objectContaining({ type: 'upload', fileName: 'SKILL.md' }),
-            })
+            }),
+            'globalProject'
         )
         expect(onClose).toHaveBeenCalled()
     })
@@ -221,7 +222,11 @@ describe('EditAssistantSkill — adding from a file or pasted text (AT-2431)', (
 
         await pressButtonAndSettle(component, 'Save')
 
-        expect(updateAssistantSkill).toHaveBeenCalledWith(expect.objectContaining({ uid: 'skill-1', version: 4 }))
+        expect(updateAssistantSkill).toHaveBeenCalledWith(
+            expect.objectContaining({ uid: 'skill-1', version: 4 }),
+            // AT-2450: the Admin Panel edits the curated global catalog, never a project's.
+            'globalProject'
+        )
     })
 })
 
@@ -319,7 +324,8 @@ describe('EditAssistantSkill — uploading a zip bundle (AT-2431)', () => {
             'preallocated-skill-id',
             1,
             'scripts/run.py',
-            Buffer.from('print("extract")').toString('base64')
+            Buffer.from('print("extract")').toString('base64'),
+            'globalProject'
         )
         expect(uploadNewAssistantSkill).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -332,7 +338,8 @@ describe('EditAssistantSkill — uploading a zip bundle (AT-2431)', () => {
                         size: 16,
                     },
                 ],
-            })
+            }),
+            'globalProject'
         )
         expect(onClose).toHaveBeenCalled()
     })
@@ -379,7 +386,10 @@ describe('EditAssistantSkill — uploading a zip bundle (AT-2431)', () => {
         // id its files were written under — re-allocating would orphan a full
         // copy of the bundle under a document that never existed.
         expect(uploadAssistantSkillBundleFile).toHaveBeenCalledTimes(1)
-        expect(uploadNewAssistantSkill).toHaveBeenLastCalledWith(expect.objectContaining({ uid: firstSkillId }))
+        expect(uploadNewAssistantSkill).toHaveBeenLastCalledWith(
+            expect.objectContaining({ uid: firstSkillId }),
+            'globalProject'
+        )
     })
 
     test('a failed bundle upload keeps the form open and explains itself', async () => {

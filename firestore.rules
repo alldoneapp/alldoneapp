@@ -198,17 +198,58 @@ service cloud.firestore {
       return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
     }
 
-    match /assistantSkills/{projectId}/items/{skillId} {
-      allow read: if signedIn();
-      allow write: if isAdministrator();
+    // A skill catalog is keyed by the project that owns it (AT-2450). Two kinds live
+    // in the same shape and they are NOT interchangeable:
+    //
+    //   assistantSkills/globalProject/items/*  — the curated catalog every user reads
+    //                                            and only the administrator may write.
+    //   assistantSkills/{realProjectId}/items/* — a project's own skills, readable and
+    //                                            writable by that project's members.
+    //
+    // Keying on the PATH rather than on a field is what keeps the collection queries
+    // legal: a query is rejected outright when any document it could return might be
+    // denied, so a field-scoped `creatorId`/`projectId` rule would break the
+    // unfiltered `.orderBy('lastEditionDate')` listing that both catalogs are read
+    // with. The path segment is known before the query runs, so each listing is
+    // provably safe on its own.
+    function isGlobalSkillCatalog(projectId) {
+      return projectId == 'globalProject';
     }
 
+    match /assistantSkills/{projectId}/items/{skillId} {
+      allow read: if (isGlobalSkillCatalog(projectId) && signedIn()) ||
+        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId));
+      // `creatorId` is pinned to the caller on create and frozen on update: it is the
+      // only attribution a project skill carries, and the write rule is the sole thing
+      // enforcing it now that clients other than the administrator can write here.
+      allow create: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
+        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId) &&
+          request.resource.data.creatorId == request.auth.uid);
+      allow update: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
+        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId) &&
+          request.resource.data.creatorId == resource.data.creatorId &&
+          request.resource.data.lastEditorId == request.auth.uid);
+      allow delete: if (isGlobalSkillCatalog(projectId) && isAdministrator()) ||
+        (!isGlobalSkillCatalog(projectId) && isProjectMember(projectId));
+    }
+
+    // Staged GitHub imports awaiting review. The flat collection is the administrator's
+    // global-catalog staging area and is deliberately left exactly as it was — it holds
+    // live documents in production, so moving it would strand them.
     match /assistantSkillImports/{importId} {
       allow read, write: if isAdministrator();
     }
 
+    // Project imports stage under their own project instead, for the same
+    // query-safety reason as the catalog above.
+    match /assistantSkillImports/{projectId}/items/{importId} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
     match /assistantSkillImportJobs/{jobId} {
-      allow read: if isAdministrator();
+      // Progress of one import run, watched by id (never queried), so the requester
+      // can be identified from the document itself.
+      allow read: if isAdministrator() || (signedIn() && resource.data.createdBy == request.auth.uid);
       allow write: if false;
     }
 

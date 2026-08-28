@@ -914,6 +914,7 @@ exports.importAssistantSkillsFromRepo = onCall(
         try {
             return await importAssistantSkillsFromRepo({
                 userId: auth.uid,
+                projectId: data && data.projectId,
                 repoUrl: data && data.repoUrl,
                 ref: data && data.ref,
                 jobId: data && data.jobId,
@@ -942,6 +943,7 @@ exports.uploadAssistantSkillFile = onCall(
         try {
             return await uploadAssistantSkillFile({
                 userId: auth.uid,
+                projectId: data && data.projectId,
                 skillId: data && data.skillId,
                 version: data && data.version,
                 relativePath: data && data.relativePath,

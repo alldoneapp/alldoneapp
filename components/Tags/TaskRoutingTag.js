@@ -11,19 +11,16 @@ import { ROUTING_SUBJECT_GOAL, ROUTING_SUBJECT_PROJECT } from '../../utils/taskR
  * AT-2381 — the in-row badge for "the server is still deciding where this task belongs" and for
  * "it just decided, and something changed".
  *
- * Shape deliberately copies `InProgressVmTag`: same 24px pill, same `windowTagStyle()` responsive
- * text. A new visual language for this would read as a different KIND of thing, when in fact it is
- * the same kind — a transient status the row is reporting about background work.
+ * Shape and placement deliberately copy `InProgressVmTag`: same 24px pill, same leading slot on
+ * the task row, same `windowTagStyle()` responsive text. A new visual language for this would
+ * read as a different KIND of thing, when in fact it is the same kind — a transient status the
+ * row is reporting about background work.
  *
- * AT-2453 moved it OUT of the leading slot in front of the title and into the row's trailing tag
- * area, next to the project and goal chips that answer the settled version of the same question.
- * See `TaskPresentation.trailingRoutingTag` for why, and for why it is rendered as a sibling of
- * `TaskItemTags` rather than as one more entry in `TagsArea/Tags.js`.
- *
- * The processing badge carries no text on purpose. The trailing tag area is where horizontal space
- * is scarcest on a phone — every chip there competes with the title for the same row — and a label
- * would be redundant with the shimmer sweeping the title right next to it. Screen readers get the
- * full sentence through `accessibilityLabel`, so nothing is lost where it actually matters.
+ * The processing badge carries no text on purpose. It sits at the start of the title line where
+ * horizontal space is scarcest (a task with a priority chip, a VM tag and a workflow tag is
+ * already crowded on a phone), and a label would be redundant with the shimmer sweeping the
+ * title right next to it. Screen readers get the full sentence through `accessibilityLabel`, so
+ * nothing is lost where it actually matters.
  */
 
 // Three points, twinkling out of phase so the group reads as a shimmer rather than a blink.
@@ -192,7 +189,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.UtilityGreen100,
         paddingHorizontal: 8,
         // The label is the one thing on the row that must not push the title around, so it is
-        // allowed to shrink and truncate rather than widen the tag area without bound.
+        // allowed to shrink and truncate rather than widen the leading slot.
         flexShrink: 1,
         maxWidth: 200,
     },

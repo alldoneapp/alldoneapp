@@ -25,16 +25,79 @@ function isVmOnlySkill(skill) {
     return Array.isArray(skill?.files) && skill.files.length > 0
 }
 
-// Every write into the skill catalog (repo import, direct file upload) is
+// A skill catalog is keyed by the project that owns it. `globalProject` is the
+// curated catalog; anything else is a project's own skills (AT-2450).
+function getSkillsCollectionPath(projectId) {
+    return `assistantSkills/${projectId || GLOBAL_PROJECT_ID}/items`
+}
+
+function isGlobalSkillCatalog(projectId) {
+    return !projectId || projectId === GLOBAL_PROJECT_ID
+}
+
+/**
+ * Storage prefix for one skill's bundled files.
+ *
+ * Scoped by project (AT-2450) so a member of project A cannot write bytes into
+ * — or exhaust the 20-file budget of — a skill belonging to project B or to the
+ * global catalog. The bundle upload has to authorize on the project the caller
+ * names rather than on the skill document, because the files are written BEFORE
+ * that document exists (every stored `storagePath` contains the id), so the
+ * prefix is the only thing that can isolate them.
+ *
+ * Existing skills keep working untouched: `mountSkillsInSandbox` downloads each
+ * file by the absolute `storagePath` recorded on the document, so bundles
+ * written under the old unscoped prefix still resolve.
+ */
+function getSkillStoragePrefix(projectId, skillId, version) {
+    return `${SKILL_STORAGE_ROOT}/${projectId || GLOBAL_PROJECT_ID}/${skillId}/${version}/`
+}
+
+function permissionDenied(message) {
+    const error = new Error(message)
+    error.code = 'permission-denied'
+    return error
+}
+
+// Every write into the GLOBAL catalog (repo import, direct file upload) is
 // administrator-only. Lives here rather than in one of the callers so the two
 // entry points cannot drift into two different definitions of "admin".
 async function requireSkillAdministrator(userId) {
     const roleDoc = await admin.firestore().doc('roles/administrator').get()
     const adminUserId = roleDoc.exists ? roleDoc.data().userId : null
     if (!adminUserId || adminUserId !== userId) {
-        const error = new Error('Only the administrator can manage skills')
-        error.code = 'permission-denied'
-        throw error
+        throw permissionDenied('Only the administrator can manage skills')
+    }
+}
+
+// Mirrors `isProjectMember()` in firestore.rules — the same four membership
+// lists, so a write the rules would allow from the client is also allowed
+// through the callables, and nothing else is.
+const PROJECT_MEMBERSHIP_FIELDS = ['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds']
+
+async function isProjectMember(userId, projectId) {
+    if (!userId || !projectId) return false
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+    if (!userDoc.exists) return false
+    const userData = userDoc.data() || {}
+    return PROJECT_MEMBERSHIP_FIELDS.some(
+        field => Array.isArray(userData[field]) && userData[field].includes(projectId)
+    )
+}
+
+/**
+ * Authorize a write into one project's skill catalog.
+ *
+ * The global catalog keeps its administrator-only gate untouched. A project
+ * catalog is governed by project membership, which is the same boundary that
+ * already governs that project's assistants (`assistants/{projectId}/items/*`
+ * is `isProjectMember` writable) — so a member can only ever add skills for
+ * assistants they already control, and never for a project they are not in.
+ */
+async function requireSkillWriteAccess(userId, projectId) {
+    if (isGlobalSkillCatalog(projectId)) return requireSkillAdministrator(userId)
+    if (!(await isProjectMember(userId, projectId))) {
+        throw permissionDenied('Only members of this project can manage its skills')
     }
 }
 
@@ -59,8 +122,56 @@ async function loadSkillsByIds(enabledSkillIds) {
     return skills
 }
 
+/**
+ * Every enabled skill a project owns (AT-2450).
+ *
+ * Project skills are NOT opt-in per assistant the way catalog skills are: a
+ * skill added to a project is immediately available to that project's
+ * assistants. That is the whole point of the feature — the project is the unit
+ * of sharing, so there is no second switch to forget to flip. The per-skill
+ * `enabled` flag is the off switch.
+ */
+async function loadProjectSkills(projectId) {
+    if (isGlobalSkillCatalog(projectId)) return []
+    const snapshot = await admin.firestore().collection(getSkillsCollectionPath(projectId)).get()
+    const skills = []
+    snapshot.forEach(doc => {
+        const skill = { ...doc.data(), uid: doc.id }
+        if (skill.enabled === false) return
+        // Same two guards `loadSkillsByIds` applies: an invalid name cannot be
+        // mounted (it becomes a directory name in the sandbox) and must never
+        // reach the index block either.
+        if (!isValidSkillName(skill.name)) return
+        skills.push(skill)
+    })
+    return skills
+}
+
+/**
+ * `name` is the identity a skill is addressed by — `load_skill` looks it up by
+ * name and `mountSkillsInSandbox` uses it as the sandbox directory — so two
+ * skills sharing one name are not merely redundant, they collide.
+ *
+ * The curated catalog wins. A project skill that shadows a catalog name is
+ * dropped rather than allowed to override it: silently replacing an
+ * admin-curated skill for everyone in the project is the more surprising of the
+ * two failures, and it would let a project member change behaviour that the
+ * administrator is responsible for.
+ */
+function mergeSkillsByName(catalogSkills, projectSkills) {
+    const merged = [...catalogSkills]
+    const takenNames = new Set(catalogSkills.map(skill => skill.name))
+    for (const skill of projectSkills) {
+        if (takenNames.has(skill.name)) continue
+        takenNames.add(skill.name)
+        merged.push(skill)
+    }
+    return merged
+}
+
 // Resolve the assistant doc the same way the chat runtime does (project-level
-// settings override the global assistant) and load its enabled skills.
+// settings override the global assistant) and load its enabled skills, plus
+// every skill the project itself owns.
 async function loadEnabledSkillsForAssistant(projectId, assistantId) {
     if (!assistantId) return []
     const db = admin.firestore()
@@ -70,7 +181,11 @@ async function loadEnabledSkillsForAssistant(projectId, assistantId) {
     )
     const assistant = projectDoc?.exists ? projectDoc.data() : globalDoc?.exists ? globalDoc.data() : null
     if (!assistant) return []
-    return loadSkillsByIds(assistant.enabledSkillIds)
+    const [catalogSkills, projectSkills] = await Promise.all([
+        loadSkillsByIds(assistant.enabledSkillIds),
+        loadProjectSkills(projectId),
+    ])
+    return mergeSkillsByName(catalogSkills, projectSkills)
 }
 
 // The chat runtime checks skill availability on every message, so cache the
@@ -192,7 +307,15 @@ async function mountSkillsInSandbox(sandbox, skills, agent, correlationId) {
 module.exports = {
     SKILLS_COLLECTION_PATH,
     SKILL_STORAGE_ROOT,
+    GLOBAL_PROJECT_ID,
+    getSkillsCollectionPath,
+    getSkillStoragePrefix,
+    isGlobalSkillCatalog,
     requireSkillAdministrator,
+    requireSkillWriteAccess,
+    isProjectMember,
+    loadProjectSkills,
+    mergeSkillsByName,
     isValidSkillName,
     isVmOnlySkill,
     loadSkillsByIds,
