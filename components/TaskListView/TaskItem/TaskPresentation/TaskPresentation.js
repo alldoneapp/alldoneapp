@@ -324,16 +324,36 @@ function TaskPresentation(
         <>
             <AssistantWorkflowRunTag projectId={projectId} task={task} />
             <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
-            {hasRoutingActivity && (
-                <TaskRoutingTag
-                    processing={routingProcessing}
-                    confirmation={routingConfirmation}
-                    projectName={ProjectHelper.getProjectNameById(projectId, '')}
-                    style={{ marginRight: 8 }}
-                />
-            )}
         </>
     )
+
+    /**
+     * AT-2453 — the routing badge belongs to the TRAILING tag area, not to the leading slot in
+     * front of the title. It shipped next to the VM/workflow tags because it is the same KIND of
+     * thing (a transient status the row reports about background work), but it is the only one of
+     * them that fires on an ordinary freshly created task — so in practice it was pushing the
+     * title of every new task sideways for the seconds the classifier took, and then again for the
+     * four seconds the confirmation is up. The tag area is where a task already says which project
+     * and goal it belongs to (`ProjectTag`, `GoalTag`, `SuggestedGoalTag` in `TagsArea/Tags.js`),
+     * which makes it the honest home for "…and we are still working that out".
+     *
+     * Deliberately built as its own element rather than folded into `Tags.js`: the trailing tags
+     * collapse into a single `TaskSummarizeTags` chip on crowded rows and on mobile
+     * (`shouldSummarizeTaskTags`), and a status that is invisible exactly when the row is busy is
+     * no status at all. Both containers therefore render it as a SIBLING of `TaskItemTags`, first
+     * in the tag row, where the summary logic cannot reach it.
+     *
+     * `marginLeft` rather than `marginRight`: trailing tags space themselves from the left
+     * (`tagAlignment` in `TagsArea/Tags.js`), the leading slot spaced itself from the right.
+     */
+    const trailingRoutingTag = hasRoutingActivity ? (
+        <TaskRoutingTag
+            processing={routingProcessing}
+            confirmation={routingConfirmation}
+            projectName={ProjectHelper.getProjectNameById(projectId, '')}
+            style={{ marginLeft: 8 }}
+        />
+    ) : null
 
     return (
         <TaskFileDropZone disabled={!fileDropAllowed} projectId={projectId} task={task}>
@@ -523,6 +543,7 @@ function TaskPresentation(
                                         onAlertTagPress={onLeftSwipe}
                                         leadingVmStatusTag={leadingVmStatusTag}
                                         leadingPriorityTag={leadingPriorityTag}
+                                        trailingRoutingTag={trailingRoutingTag}
                                         inCommentPopup={inCommentPopup}
                                     />
                                 )}
@@ -546,6 +567,7 @@ function TaskPresentation(
                                         forceTagsMobile={forceTagsMobile}
                                         trailingTagsCrowdTitle={trailingTagsCrowdTitle}
                                         setTagsExpandedHeight={setTagsExpandedHeight}
+                                        trailingRoutingTag={trailingRoutingTag}
                                         inCommentPopup={inCommentPopup}
                                     />
                                 )}
