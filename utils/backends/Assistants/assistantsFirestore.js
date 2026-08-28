@@ -48,6 +48,7 @@ import {
     getAssistantWorkflow,
 } from '../../assistantWorkflow'
 import { normalizeAssistantReasoningEffort } from '../../../functions/Assistant/selectableAssistantReasoningEfforts'
+import { getAssistantTemplateState, getTaskTemplateState } from '../../../functions/Assistants/templateMerge'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -65,33 +66,7 @@ export const DEFAULT_HEARTBEAT_PROMPT =
 const ASSISTANT_TASKS_CACHE_MAX_AGE = 120000
 const assistantTasksCache = {}
 
-const TEMPLATE_LOCAL_ASSISTANT_FIELDS = new Set([
-    'uid',
-    'creatorId',
-    'createdDate',
-    'lastEditorId',
-    'lastEditionDate',
-    'noteIdsByProject',
-    'lastVisitBoard',
-    'commentsData',
-    'isDefault',
-    'fromTemplate',
-    'instructionsHistory',
-    'heartbeatPromptHistory',
-    'copiedFromTemplateAssistantId',
-    'copiedFromTemplateAssistantDate',
-    'templateSyncSnapshot',
-    'templateSyncConflicts',
-    'templateSyncStatus',
-    'templateSyncedAt',
-    'workflow',
-])
-
-export const getAssistantTemplateSnapshot = assistant =>
-    Object.keys(assistant || {}).reduce((snapshot, field) => {
-        if (!TEMPLATE_LOCAL_ASSISTANT_FIELDS.has(field)) snapshot[field] = assistant[field]
-        return snapshot
-    }, {})
+export const getAssistantTemplateSnapshot = getAssistantTemplateState
 
 function getAssistantTasksCollectionPath(projectId, assistantId) {
     return isGlobalAssistant(assistantId)
@@ -1460,13 +1435,13 @@ export async function copyPreConfigTasksToNewAssistant(
             const newTaskId = getId()
 
             const taskCopy = {
-                ...task,
+                ...getTaskTemplateState(task),
                 assistantId: targetAssistantId,
                 id: newTaskId,
                 // Track source template task for update sync
                 copiedFromTemplateTaskId: doc.id,
                 copiedFromTemplateTaskDate: Date.now(),
-                templateTaskSnapshot: getTemplateTaskPayloadForClient(task),
+                templateTaskSnapshot: getTaskTemplateState(task),
                 templateTaskSyncConflicts: [],
                 templateSyncStatus: 'synced',
             }
@@ -1517,31 +1492,6 @@ export async function copyPreConfigTasksToNewAssistant(
             stack: error.stack,
         })
     }
-}
-
-const TEMPLATE_LOCAL_TASK_FIELDS = new Set([
-    'id',
-    'assistantId',
-    'copiedFromTemplateTaskId',
-    'copiedFromTemplateTaskDate',
-    'templateTaskSnapshot',
-    'templateTaskSyncConflicts',
-    'templateSyncStatus',
-    'templateTaskDeletedAt',
-    'activatedInProjectId',
-    'lastExecuted',
-    'lastExecutedByUser',
-    'creatorUserId',
-    'activatorUserId',
-    'recurrenceByUser',
-    'activatedUserIds',
-])
-
-function getTemplateTaskPayloadForClient(task) {
-    return Object.keys(task || {}).reduce((payload, field) => {
-        if (!TEMPLATE_LOCAL_TASK_FIELDS.has(field)) payload[field] = task[field]
-        return payload
-    }, {})
 }
 
 export async function resolveAssistantTemplateConflicts(projectId, assistantId, acceptedFields, resolvedFields) {
@@ -1616,27 +1566,6 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
         const syncTimestamp = Date.now()
 
         const normalizeOrder = value => (typeof value === 'number' && Number.isFinite(value) ? value : 9999)
-        const localOnlyFields = new Set([
-            'id',
-            'assistantId',
-            'copiedFromTemplateTaskId',
-            'copiedFromTemplateTaskDate',
-            'activatedInProjectId',
-            'lastExecuted',
-            'lastExecutedByUser',
-            'creatorUserId',
-            'activatorUserId',
-            'recurrenceByUser',
-            'activatedUserIds',
-        ])
-
-        const getTemplateTaskPayload = globalTask => {
-            const payload = {}
-            Object.keys(globalTask || {}).forEach(key => {
-                if (!localOnlyFields.has(key) && key !== 'aiModel') payload[key] = globalTask[key]
-            })
-            return payload
-        }
 
         // 1. Get global/template tasks
         const globalTasksSnapshot = await getDb()
@@ -1674,8 +1603,8 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
         // 4. For each global task, update or create local task
         globalTasks.forEach((globalTask, index) => {
             const localTask = localTasksByTemplateId[globalTask.id]
-            const templatePayload = getTemplateTaskPayload(globalTask)
             const templateOrder = index
+            const templatePayload = { ...getTaskTemplateState(globalTask), order: templateOrder }
 
             if (localTask) {
                 const shouldPreserveLocalRecurringTime =
@@ -1689,6 +1618,9 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     order: templateOrder,
                     // Update sync timestamp
                     copiedFromTemplateTaskDate: syncTimestamp,
+                    templateTaskSnapshot: templatePayload,
+                    templateTaskSyncConflicts: [],
+                    templateSyncStatus: 'synced',
                 }
 
                 // Preserve project-level recurring schedule time customizations.
@@ -1715,6 +1647,9 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     copiedFromTemplateTaskId: globalTask.id,
                     copiedFromTemplateTaskDate: syncTimestamp,
                     order: templateOrder,
+                    templateTaskSnapshot: templatePayload,
+                    templateTaskSyncConflicts: [],
+                    templateSyncStatus: 'synced',
                     activatedInProjectId: localProjectId,
                     lastExecuted: null,
                     lastExecutedByUser: {},
