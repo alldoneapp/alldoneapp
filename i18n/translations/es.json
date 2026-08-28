@@ -158,6 +158,7 @@
     "Achievements": "Logros",
     "Empty inbox": "Bandeja de entrada vacía",
     "Empty inbox achievement description": "Cada cuadrado marca un día en el que vaciaste la bandeja de entrada.",
+    "Empty inbox reached today at": "Hoy alcanzaste la bandeja de entrada vacía a las %{time} — ¡felicidades!",
     "Current streak": "Racha actual",
     "Current": "Actual",
     "Current workflow step": "Paso actual",

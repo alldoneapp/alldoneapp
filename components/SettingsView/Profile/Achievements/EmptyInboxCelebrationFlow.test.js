@@ -11,6 +11,10 @@ import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebratio
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
 }))
+// AT-2461: the card reports today's inbox-zero time in the user's own time format, which lives
+// behind the redux store. Mocking the module keeps this suite a leaf, the way every other suite
+// that reaches `getTimeFormat` already does.
+jest.mock('../../../UIComponents/FloatModals/DateFormatPickerModal', () => ({ getTimeFormat: () => 'HH:mm' }))
 
 /**
  * AT-2418 — drives the REAL card through the REAL animated branch, end to end.
