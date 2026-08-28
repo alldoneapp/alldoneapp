@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
@@ -12,7 +13,9 @@ import {
     buildEmptyInboxMonthSegments,
     getEmptyInboxAchievementStats,
     getEmptyInboxDaysWithLegacyFallback,
+    getTodayEmptyInboxTimestamp,
 } from './AchievementsHelper'
+import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 
 const CELL_SIZE = 11
 const CELL_GAP = 3
@@ -61,6 +64,31 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
         [user.emptyInboxDays, user.lastDayEmptyInbox]
     )
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
+    /**
+     * AT-2461 — on a day that has been cleared, the card reports WHEN it was cleared instead of
+     * explaining the grid.
+     *
+     * The grid legend is a fact about the squares below it and never changes; "Today you reached
+     * empty inbox at 18:34 — congrats!" is the one thing on this card that is about today, and the
+     * all-projects board renders the card precisely at the moment that sentence is true.
+     *
+     * The legend remains the fallback rather than being deleted, so the line is never empty and the
+     * squares are still explained on every day that has not been earned yet — which is every day for
+     * a user who has not cleared their inbox, and the state the Settings → Profile copy is usually
+     * in.
+     */
+    const todayEmptyInboxTimestamp = useMemo(
+        () => getTodayEmptyInboxTimestamp(user, emptyInboxDays),
+        [user.lastDayEmptyInbox, emptyInboxDays]
+    )
+    const description = todayEmptyInboxTimestamp
+        ? translate('Empty inbox reached today at', {
+              // The user's own date-format preference decides 18:34 vs 6:34 pm, exactly as it does
+              // for every other clock time in the app; the timestamp is rendered in local time,
+              // which is the timezone it was recorded in.
+              time: moment(todayEmptyInboxTimestamp).format(getTimeFormat()),
+          })
+        : translate('Empty inbox achievement description')
     // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
     // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
     // day twice.
@@ -98,7 +126,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 : {})}
         >
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
-            <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
+            <Text style={localStyles.description}>{description}</Text>
 
             <View style={localStyles.metricsContainer}>
                 <Metric
