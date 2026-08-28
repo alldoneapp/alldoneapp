@@ -2746,5 +2746,7 @@
     "this project": "este proyecto",
     "Switch assistant": "Cambiar de asistente",
     "New message": "Mensaje nuevo",
-    "Jump to newest message": "Ir al mensaje más reciente"
+    "Jump to newest message": "Ir al mensaje más reciente",
+    "Project skills description": "Las skills son paquetes de instrucciones reutilizables (formato Agent Skills) que los asistentes cargan cuando los necesitan. Las skills que añadas aquí pertenecen a este proyecto y están disponibles de inmediato para los asistentes de este proyecto.",
+    "Manage": "Gestionar"
 }

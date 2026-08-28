@@ -21,9 +21,10 @@ import {
     uploadNewAssistantSkill,
 } from '../../../utils/backends/AssistantSkills/assistantSkillsFirestore'
 import SkillSourceInput from './SkillSourceInput'
+import { GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID } from '../../../utils/AssistantSkills/skillCatalog'
 import { bytesToBase64 } from './skillDraftFromSource'
 
-export default function EditAssistantSkill({ adding, skill, onClose }) {
+export default function EditAssistantSkill({ adding, skill, onClose, projectId = GLOBAL_PROJECT_ID }) {
     const [tmpSkill, setTmpSkill] = useState(() => (adding ? getNewDefaultAssistantSkill() : { ...skill }))
     const [confirmingDelete, setConfirmingDelete] = useState(false)
     // Bundle files carry their bytes only in memory until Save is pressed, so
@@ -95,7 +96,8 @@ export default function EditAssistantSkill({ adding, skill, onClose }) {
                 skillId,
                 1,
                 file.relativePath,
-                bytesToBase64(file.bytes)
+                bytesToBase64(file.bytes),
+                projectId
             )
             uploadedByPath[file.relativePath] = {
                 relativePath: stored.relativePath,
@@ -129,10 +131,10 @@ export default function EditAssistantSkill({ adding, skill, onClose }) {
                     skillToSave.version = 1
                     skillToSave.files = files
                 }
-                await uploadNewAssistantSkill(skillToSave)
+                await uploadNewAssistantSkill(skillToSave, projectId)
             } else {
                 skillToSave.version = (Number(skill.version) || 1) + 1
-                await updateAssistantSkill(skillToSave)
+                await updateAssistantSkill(skillToSave, projectId)
             }
             onClose()
         } catch (error) {
@@ -147,7 +149,7 @@ export default function EditAssistantSkill({ adding, skill, onClose }) {
 
     const removeSkill = async () => {
         try {
-            await deleteAssistantSkill(skill.uid)
+            await deleteAssistantSkill(skill.uid, projectId)
             onClose()
         } catch (error) {
             setSaveError(`${translate('Saving skill failed')}: ${error?.message || error}`)

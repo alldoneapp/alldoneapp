@@ -22,6 +22,9 @@ const { roleGet, save, getFiles } = admin.__mocks
 
 const ADMIN_ID = 'admin-user'
 const VALID_SKILL_ID = 'abcdef1234567890abcd'
+// Bundles are stored under the catalog that owns them (AT-2450), so a member of
+// one project can neither write into nor exhaust the file budget of another's.
+const GLOBAL_PREFIX = `assistantSkills/globalProject/${VALID_SKILL_ID}/1`
 
 const contentOf = text => Buffer.from(text).toString('base64')
 
@@ -53,7 +56,7 @@ describe('uploadAssistantSkillFile', () => {
 
         expect(result).toEqual({
             relativePath: 'scripts/run.py',
-            storagePath: `assistantSkills/${VALID_SKILL_ID}/1/scripts/run.py`,
+            storagePath: `${GLOBAL_PREFIX}/scripts/run.py`,
             size: 8,
         })
         expect(save).toHaveBeenCalledWith(Buffer.from('print(1)'))
@@ -122,7 +125,7 @@ describe('uploadAssistantSkillFile', () => {
     it('refuses to grow a bundle past the number of files the VM will mount', async () => {
         getFiles.mockResolvedValue([
             Array.from({ length: 20 }, (unused, index) => ({
-                name: `assistantSkills/${VALID_SKILL_ID}/1/file-${index}.txt`,
+                name: `${GLOBAL_PREFIX}/file-${index}.txt`,
             })),
         ])
 
@@ -134,9 +137,9 @@ describe('uploadAssistantSkillFile', () => {
         getFiles.mockResolvedValue([
             [
                 ...Array.from({ length: 19 }, (unused, index) => ({
-                    name: `assistantSkills/${VALID_SKILL_ID}/1/file-${index}.txt`,
+                    name: `${GLOBAL_PREFIX}/file-${index}.txt`,
                 })),
-                { name: `assistantSkills/${VALID_SKILL_ID}/1/scripts/run.py` },
+                { name: `${GLOBAL_PREFIX}/scripts/run.py` },
             ],
         ])
 
