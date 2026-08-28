@@ -18,13 +18,20 @@ import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
  * beat as the detail you find when you look down. Deliberately ONE event, not two: the same run id
  * drives both, so the confetti and the dot are the same celebration seen at two scales.
  *
- * Two beats, ~1500ms, in the order the eye travels:
+ * Two beats, ~3000ms, in the order the eye travels:
  *
- *   • HEADLINE — the congratulation scales up from just under full size and fades in. Small: it is
- *     a line of text, and text that bounces reads as a toast, not as an achievement.
- *   • CONFETTI — pieces thrown up and out from behind the headline, tumbling as they fall and
- *     fading before they reach the card below. This is the beat that is actually VISIBLE from across
- *     a room, and the one thing the previous passes did not have anywhere.
+ *   • HEADLINE — the congratulation rises, scales up from just under full size and fades in. Small:
+ *     it is a line of text, and text that bounces reads as a toast, not as an achievement.
+ *   • CONFETTI — a burst thrown up and out from behind the headline, plus a fall across the whole
+ *     page over it. This is the beat that is actually VISIBLE from across a room, and the one thing
+ *     the previous passes did not have anywhere.
+ *
+ * AT-2460 lengthened both. The 1500ms version was over before you had finished reading the line it
+ * was celebrating, and its confetti never left a block a few hundred pixels wide, so on a desktop
+ * board it read as a small flourish next to the headline rather than as an event. The budget is now
+ * ~3s: long enough for a piece launched at the top of the viewport to fall out of the bottom of it,
+ * short enough that the board is never something you are waiting on — nothing here blocks input,
+ * and every layer is `pointerEvents: none`.
  *
  * Anna's "all projects done" illustration is deliberately NOT animated. It is a 460px image sized by
  * its own `flex: 1` / `width: '100%'`, which any wrapper put around it would have to reproduce
@@ -39,11 +46,13 @@ import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
  */
 
 // The headline is on screen first and is the anchor everything else is timed against.
-export const HEADLINE_MS = 420
-// Long enough for a piece to be thrown, tumble and fall out of the block.
-export const CONFETTI_MS = 1500
+export const HEADLINE_MS = 520
+// Long enough for the slowest piece to cross a tall desktop viewport top to bottom. Everything the
+// page layer does is derived from this one value, so the fall speed is a property of the duration
+// rather than of a per-piece constant that could drift away from it.
+export const CONFETTI_MS = 2900
 // Everything is over by here, plus a buffer so the settle cannot clip the last frame.
-export const CONGRATS_TOTAL_MS = CONFETTI_MS + 80
+export const CONGRATS_TOTAL_MS = CONFETTI_MS + 100
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 

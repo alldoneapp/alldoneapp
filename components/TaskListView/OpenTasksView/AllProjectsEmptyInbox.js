@@ -64,14 +64,23 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false, 
     // important beat.
     const headlineStyle = celebrating
         ? {
-              opacity: entrance.interpolate({ inputRange: [0, 0.5], outputRange: [0, 1], extrapolate: 'clamp' }),
+              opacity: entrance.interpolate({ inputRange: [0, 0.4], outputRange: [0, 1], extrapolate: 'clamp' }),
               transform: [
                   {
-                      // Overshoot and settle. Small — this is a line of text, and text that bounces
-                      // reads as a toast rather than as an achievement.
+                      // Rises into place. A transform, so it moves nothing around it.
+                      translateY: entrance.interpolate({
+                          inputRange: [0, 0.75],
+                          outputRange: [10, 0],
+                          extrapolate: 'clamp',
+                      }),
+                  },
+                  {
+                      // Overshoot and settle. Still small — this is a line of text, and text that
+                      // bounces reads as a toast rather than as an achievement. The volume of
+                      // AT-2460 goes into the confetti and the dot, not into the typography.
                       scale: entrance.interpolate({
                           inputRange: [0, 0.7, 1],
-                          outputRange: [0.94, 1.03, 1],
+                          outputRange: [0.92, 1.05, 1],
                           extrapolate: 'clamp',
                       }),
                   },

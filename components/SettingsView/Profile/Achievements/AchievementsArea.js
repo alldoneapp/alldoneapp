@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
@@ -125,6 +125,27 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 ? { accessibilityRole: 'link', activeOpacity: 0.8, onPress: onOpenAchievements }
                 : {})}
         >
+            {/* AT-2460: while the day is being added, the card outlines itself in green. The dot is
+                11px in a field of 371 and lives several blocks below the congratulation that sent
+                the user looking for it — this is the thing that is visible from up there. It is a
+                border-only overlay with no fill, so it never tints the content it sits over, and it
+                is absolutely positioned so it cannot change the card's size or its layout. */}
+            {celebration.animated && celebration.celebrating && (
+                <Animated.View
+                    testID="empty-inbox-card-spotlight"
+                    style={[
+                        localStyles.cardSpotlight,
+                        {
+                            opacity: celebration.spotlight.interpolate({
+                                inputRange: [0, 0.1, 0.6, 1],
+                                outputRange: [0, 1, 0.9, 0],
+                                extrapolate: 'clamp',
+                            }),
+                        },
+                    ]}
+                />
+            )}
+
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
             <Text style={localStyles.description}>{description}</Text>
 
@@ -181,6 +202,12 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                                                 gap={CELL_GAP}
                                                 radius={CELL_RADIUS}
                                                 accessibilityLabel={achievedLabel}
+                                                // AT-2460: names what the dot is worth right next
+                                                // to it, a beat before the "Current streak" metric
+                                                // below flips to the same number.
+                                                streakLabel={translate('Empty inbox day badge', {
+                                                    count: stats.currentStreak,
+                                                })}
                                             />
                                         ) : (
                                             <View
@@ -231,6 +258,20 @@ const localStyles = StyleSheet.create({
     },
     profileCard: {
         marginTop: 16,
+    },
+    // Sits just outside the card's own 1px border so the green replaces it optically instead of
+    // doubling it. No background: a fill would tint every metric and label underneath.
+    cardSpotlight: {
+        position: 'absolute',
+        top: -1,
+        left: -1,
+        right: -1,
+        bottom: -1,
+        borderRadius: 9,
+        borderWidth: 2,
+        borderColor: colors.UtilityGreen200,
+        // In style, not as a prop: react-native-web 0.21 deprecates `props.pointerEvents`.
+        pointerEvents: 'none',
     },
     title: {
         ...styles.subtitle1,

@@ -159,6 +159,7 @@
     "Total days": "Tage insgesamt",
     "Empty inbox reached on": "Empty Inbox erreicht am %{date}",
     "Empty inbox streak day added": "Heute wurde zu deiner Empty-Inbox-Serie hinzugefügt · Tag %{count}.",
+    "Empty inbox day badge": "Tag %{count}",
     "Monday short": "Mo",
     "Wednesday short": "Mi",
     "Friday short": "Fr",
