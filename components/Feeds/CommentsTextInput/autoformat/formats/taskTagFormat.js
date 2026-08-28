@@ -1,10 +1,10 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
 import TaskTagWrapper from '../tags/TaskTagWrapper'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -28,11 +28,11 @@ export default class TaskTagFormat extends Embed {
             [id]: createRef(),
         }
 
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <TaskTagWrapper taskId={taskId} editorId={editorId} tagId={id} objectUrl={objectUrl} />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node

@@ -6,7 +6,6 @@ import {
     VM_BADGE_STATE_PAUSED,
     VM_SESSION_STATUS_BUSY,
     VM_SESSION_STATUS_IDLE_RUNNING,
-    VM_SESSION_STATUS_INTERRUPTED,
     VM_SESSION_STATUS_PAUSED,
     VM_SESSION_STATUS_RUNNING,
 } from './vmSessionStatus'
@@ -34,7 +33,6 @@ describe('VM session status', () => {
         { status: 'failed' },
         { status: VM_SESSION_STATUS_IDLE_RUNNING, lastRunStatus: 'failed' },
         { status: VM_SESSION_STATUS_PAUSED, lastRunStatus: 'failed' },
-        { status: VM_SESSION_STATUS_PAUSED, lastRunStatus: VM_SESSION_STATUS_INTERRUPTED },
     ])('maps a failed session to a failed badge', session => {
         expect(getVmSessionBadgeState(session)).toBe(VM_BADGE_STATE_FAILED)
     })

@@ -42,7 +42,6 @@ export default function TaskTagWrapper({
     const mobile = useSelector(state => state.smallScreenNavigation)
     const projectId = useSelector(state => selectTaskTagProjectId(state, editorId))
     const loggedUser = useSelector(state => state.loggedUser)
-    const activeNoteId = useSelector(state => state.activeNoteId)
     const taskFromRedux = useSelector(state => selectTaskForEditor(state, editorId, taskId))
 
     const activeNoteIsReadOnly = useSelector(state => state.activeNoteIsReadOnly)
@@ -151,7 +150,6 @@ export default function TaskTagWrapper({
             {taskId ? (
                 <TaskTag
                     editorId={editorId}
-                    activeNoteId={activeNoteId}
                     isDeleted={isDeleted}
                     taskId={taskId}
                     task={taskToRender}

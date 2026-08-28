@@ -1,12 +1,12 @@
 import React, { createRef } from 'react'
 import ReactQuill from 'react-quill-new'
-import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
 import CustomImageContainer from '../tags/CustomImageContainer'
 import { getPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
+import { renderEmbedContent } from './embedReactRoot'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
 
@@ -37,7 +37,8 @@ export default class CustomImageFormat extends Embed {
 
         // Get the editor width
         const maxWidth = getPopoverWidth() - 64
-        ReactDOM.render(
+        renderEmbedContent(
+            node,
             <Provider store={store}>
                 <CustomImageContainer
                     editorId={editorId}
@@ -46,8 +47,7 @@ export default class CustomImageFormat extends Embed {
                     isLoading={isLoading}
                     maxWidth={maxWidth}
                 />
-            </Provider>,
-            node
+            </Provider>
         )
 
         return node
