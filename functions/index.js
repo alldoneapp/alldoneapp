@@ -2491,7 +2491,7 @@ exports.cancelAssistantRunSecondGen = onCall(
                     const pending = snapshot.data() || {}
                     if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
                     if (pending.userId !== userId) return { success: false, reason: 'permission_denied' }
-                    if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
+                    if (['completed', 'failed', 'cancelled', 'interrupted'].includes(pending.status)) {
                         return { success: false, reason: 'already_settled', status: pending.status }
                     }
                     // A queued job has no running execution to interrupt — settle it as cancelled now.

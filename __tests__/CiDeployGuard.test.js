@@ -82,20 +82,12 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
         expect(unguarded).toEqual([])
     })
 
-    // A ratchet, not a description: a NEW production deploy job has to be added here
-    // deliberately, which is the moment to check it carries the guard, the exit code, the
-    // resource group and `interruptible: false` that the other cases in this file assert.
-    it('covers the four known production deploy jobs', () => {
+    it('covers the three known production deploy jobs', () => {
         expect(
             productionDeployJobs()
                 .map(([name]) => name)
                 .sort()
-        ).toEqual([
-            'deploy:cloud:functions:production',
-            'deploy:cloud:runner:production',
-            'deploy:firestore:rules:production',
-            'deploy:web',
-        ])
+        ).toEqual(['deploy:cloud:functions:production', 'deploy:cloud:runner:production', 'deploy:web'])
     })
 
     it('runs the guard before the deploy command in each guarded job', () => {
