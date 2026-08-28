@@ -2,7 +2,7 @@ import React from 'react'
 import { AccessibilityInfo } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import TaskRoutingTag from './TaskRoutingTag'
+import TaskRoutingTag, { RoutingSparkle } from './TaskRoutingTag'
 
 // Resolved through the REAL en.json rather than echoing the key back. That makes these
 // assertions fail if a string is ever removed from the translation file, or if the
@@ -61,9 +61,9 @@ describe('TaskRoutingTag', () => {
         expect(tree.root.findByProps({ testID: 'task-routing-processing-tag' })).toBeTruthy()
     })
 
-    it('announces what is happening to screen readers even though it shows no text', async () => {
-        // The badge is deliberately icon-only — the trailing tag area is the tightest space on the
-        // row. That trade is only acceptable because the meaning survives in the accessibility label.
+    it('announces the full sentence to screen readers, not the short visible token', async () => {
+        // The visible label is a glance-value abbreviation; "(goal?)" is a poor thing to hear
+        // announced, so the accessibility label keeps the sentence it abbreviates.
         const tree = await render(
             <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
         )
@@ -71,6 +71,91 @@ describe('TaskRoutingTag', () => {
 
         expect(tag.props.accessibilityLabel).toBe('Finding a matching goal')
         expect(tag.props.accessibilityLiveRegion).toBe('polite')
+    })
+
+    /**
+     * AT-2453 follow-up — the badge names what is being looked up.
+     *
+     * Before this it was a lone sparkle, which said "something is happening" and nothing else. The
+     * two subjects have very different consequences for the user — one MOVES the task to another
+     * project, the other only files it under a goal — so which one is running is the useful half of
+     * the message, and it is now the visible half.
+     */
+    describe('the processing badge names its subject', () => {
+        const subjectLabel = tree => tree.root.findByProps({ testID: 'task-routing-processing-subject' }).props.children
+
+        it('asks "(project?)" while the project router is deciding', async () => {
+            const tree = await render(
+                <TaskRoutingTag processing={{ subject: 'project' }} confirmation={null} projectName="Alldone" />
+            )
+
+            expect(subjectLabel(tree)).toBe('(project?)')
+        })
+
+        it('asks "(goal?)" while the goal router is deciding', async () => {
+            const tree = await render(
+                <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
+            )
+
+            expect(subjectLabel(tree)).toBe('(goal?)')
+        })
+
+        it('keeps the sparkle beside the label rather than replacing it', async () => {
+            const tree = await render(
+                <TaskRoutingTag processing={{ subject: 'project' }} confirmation={null} projectName="Alldone" />
+            )
+
+            expect(tree.root.findAllByType(RoutingSparkle)).toHaveLength(1)
+        })
+
+        it('still names its subject under reduced motion', async () => {
+            // The sparkle stops twinkling; the word is information and must survive.
+            AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+
+            const tree = await render(
+                <TaskRoutingTag processing={{ subject: 'goal' }} confirmation={null} projectName="Alldone" />
+            )
+
+            expect(subjectLabel(tree)).toBe('(goal?)')
+        })
+
+        it('truncates to one line instead of widening the tag row without bound', async () => {
+            // The trailing tag area is shared with the title on a phone. A label that wrapped or
+            // grew freely would push the tags over the title for the whole classification.
+            const tree = await render(
+                <TaskRoutingTag processing={{ subject: 'project' }} confirmation={null} projectName="Alldone" />
+            )
+            const label = tree.root.findByProps({ testID: 'task-routing-processing-subject' })
+            const tag = tree.root.findByProps({ testID: 'task-routing-processing-tag' })
+            const tagStyle = Object.assign({}, ...[].concat(tag.props.style).filter(Boolean))
+
+            expect(label.props.numberOfLines).toBe(1)
+            expect(tagStyle.flexShrink).toBe(1)
+            expect(tagStyle.maxWidth).toBeLessThanOrEqual(140)
+            // The old icon-only badge pinned itself to a 24px circle, which would now clip the label.
+            expect(tagStyle.width).toBeUndefined()
+        })
+
+        it('carries no subject label once the decision is confirmed', async () => {
+            const tree = await render(
+                <TaskRoutingTag processing={null} confirmation={{ subject: 'project' }} projectName="Alldone" />
+            )
+
+            expect(tree.root.findAllByProps({ testID: 'task-routing-processing-subject' })).toHaveLength(0)
+        })
+    })
+
+    it('translates the subject token as one phrase, brackets and all', () => {
+        // Spanish opens with "¿", so the punctuation is part of the phrase rather than something a
+        // template could wrap around a translated noun. Asserted against the real files so a
+        // half-added key fails here instead of shipping a literal "(project?)" to a German user.
+        const de = require('../../i18n/translations/de.json')
+        const es = require('../../i18n/translations/es.json')
+
+        expect(de['(project?)']).toBe('(Projekt?)')
+        expect(de['(goal?)']).toBe('(Ziel?)')
+        expect(es['(project?)']).toBe('(¿proyecto?)')
+        expect(es['(goal?)']).toBe('(¿objetivo?)')
     })
 
     it('names the project a moved task landed in', async () => {

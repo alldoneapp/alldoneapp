@@ -294,6 +294,41 @@ describe('routing badge placement (AT-2453)', () => {
         })
     })
 
+    /**
+     * AT-2453 follow-up — a task being classified gets no row-level motion at all.
+     *
+     * The overlay component refuses to render a sweep on its own (see its own suite), but the row is
+     * where the decision is actually visible: it used to mount the overlay for `hasRoutingActivity`,
+     * i.e. for processing as well. Gating it on the confirmation is what stops a merely-classifying
+     * row from paying for the component at all — including the `matchMedia` listener
+     * `useReducedMotion` opens inside it.
+     */
+    describe('no row motion while the server is deciding', () => {
+        it('mounts no motion overlay for a row that is only being classified', async () => {
+            mockRoutingActivity = { processing: { subject: 'project' }, confirmation: null }
+
+            const tree = await renderRow()
+
+            expect(tree.root.findAllByType('TaskRoutingActivityOverlay')).toHaveLength(0)
+            // The badge is the whole of the feedback now, and it is still there.
+            expect(contains(tree.root.findByType('TaskTagsContainer').props.trailingRoutingTag, 'TaskRoutingTag')).toBe(
+                true
+            )
+        })
+
+        it('still plays the one-shot confirmation once the decision landed', async () => {
+            mockRoutingActivity = { processing: null, confirmation: { subject: 'project' } }
+
+            const tree = await renderRow()
+            const overlays = tree.root.findAllByType('TaskRoutingActivityOverlay')
+
+            expect(overlays).toHaveLength(1)
+            expect(overlays[0].props.confirmation).toEqual({ subject: 'project' })
+            // The prop that used to drive the sweep is no longer handed down at all.
+            expect(overlays[0].props.processing).toBeUndefined()
+        })
+    })
+
     describe('the containers put it where the summary chip cannot hide it', () => {
         // Required by both containers, and irrelevant to placement.
         const containerProps = {
