@@ -1,11 +1,16 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import moment from 'moment'
-import { AccessibilityInfo, StyleSheet } from 'react-native'
+import { AccessibilityInfo, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
-import { CONFETTI_BURST_PIECE_COUNT, CONFETTI_PAGE_PIECE_COUNT, CONFETTI_PIECE_COUNT } from './EmptyInboxConfetti'
+import {
+    CONFETTI_BURST_PIECE_COUNT,
+    CONFETTI_LAYER_Z_INDEX,
+    CONFETTI_PAGE_PIECE_COUNT,
+    CONFETTI_PIECE_COUNT,
+} from './EmptyInboxConfetti'
 import { CONGRATS_TOTAL_MS, HEADLINE_MS } from './emptyInboxCongratsMotion'
 import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
 import { CELEBRATION_CLAIM_SETTLE_MS } from '../../SettingsView/Profile/Achievements/useTodayEmptyInboxCelebration'
@@ -137,13 +142,37 @@ describe('the empty-inbox congrats celebration, end to end (AT-2445)', () => {
     })
 
     /**
+     * The block is lifted for exactly as long as it celebrates.
+     *
+     * The confetti layer's own `zIndex` cannot reach past this View — react-native-web gives every
+     * View `z-index: 0`, so the block is already its own stacking context — and without the lift a
+     * page-wide fall paints behind everything the board renders below the block. Putting it back is
+     * the other half: an all-projects board permanently lifted above the email line and the task
+     * filters would be a stacking change nobody asked for.
+     */
+    it('lifts the block only while the confetti is falling', async () => {
+        const tree = await renderBoard([yesterdayKey, todayKey])
+        const blockZIndex = () => StyleSheet.flatten(tree.root.findByType(View).props.style).zIndex ?? 'unset'
+
+        expect(blockZIndex()).toBe(CONFETTI_LAYER_Z_INDEX)
+
+        await act(async () => {
+            jest.advanceTimersByTime(CONGRATS_TOTAL_MS)
+        })
+
+        expect(blockZIndex()).toBe('unset')
+    })
+
+    /**
      * The two halves of the celebration are one event on one run id, so their schedules have to
      * interlock: the dot waits out the headline, and the day is not spent until the longest of them
      * has been on screen. Asserted here because this is the one suite that can see both.
      */
     it('interlocks the headline, the dot and the once-per-day claim', () => {
-        // The dot starts after the congratulation has settled...
-        expect(DOT_START_DELAY_MS).toBeGreaterThanOrEqual(HEADLINE_MS - 100)
+        // The dot starts once the congratulation has settled, not while it is still arriving —
+        // the two competing for the same half-second, several blocks apart, is what made the dot
+        // impossible to find in the first place.
+        expect(DOT_START_DELAY_MS).toBeGreaterThanOrEqual(HEADLINE_MS)
         // ...and while the confetti is still falling, so the page never goes quiet mid-celebration.
         expect(DOT_START_DELAY_MS).toBeLessThan(CONGRATS_TOTAL_MS)
         // A day may only be counted as spent once the whole thing has had time to play. Too short
