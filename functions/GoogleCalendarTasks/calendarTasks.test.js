@@ -151,6 +151,24 @@ describe('calendarTasks routing', () => {
         )
     })
 
+    test('stores the recurring series id so a later manual move can teach future occurrences', async () => {
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            null,
+            { ...event, recurringEventId: 'series-1' },
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                calendarData: expect.objectContaining({ recurringEventId: 'series-1' }),
+            })
+        )
+    })
+
     test('moves unpinned existing tasks to the routed target project', async () => {
         const existingTask = {
             id: 'event-1',

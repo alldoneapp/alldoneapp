@@ -3390,6 +3390,66 @@ exports.onCreateTaskSecondGen = onDocumentCreated(
     }
 )
 
+// Manual calendar-task project and Goal moves carry durable feedback markers on the copied task.
+// A separate idempotent trigger turns those markers into learned routing rules without delaying or
+// endangering the move itself. `retry` is safe because each feedback document and config revision
+// is committed transactionally.
+exports.onCreateCalendarProjectRoutingFeedbackSecondGen = onDocumentCreated(
+    {
+        document: 'items/{projectId}/tasks/{taskId}',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+        retry: true,
+    },
+    async event => {
+        const taskData = event.data.data() || {}
+        const hasProjectFeedback = !!taskData?.calendarData?.projectRoutingFeedback
+        const hasGoalFeedback = !!taskData?.calendarData?.goalRoutingFeedback
+        if (!hasProjectFeedback && !hasGoalFeedback) return
+
+        const { projectId, taskId } = event.params
+        const task = { ...taskData, id: taskId }
+        const captures = []
+        if (hasProjectFeedback) {
+            const { captureCalendarProjectRoutingFeedback } = require('./GoogleCalendar/calendarProjectRoutingFeedback')
+            captures.push(captureCalendarProjectRoutingFeedback({ task, taskProjectId: projectId }))
+        }
+        if (hasGoalFeedback) {
+            const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
+            captures.push(captureCalendarGoalRoutingFeedback({ task, taskProjectId: projectId }))
+        }
+        await Promise.all(captures)
+    }
+)
+
+// Same-project Goal picker actions update an existing task rather than creating a copy. Consume a
+// new marker only when its feedback id changes; other task updates can safely pass through.
+exports.onUpdateCalendarGoalRoutingFeedbackSecondGen = onDocumentUpdated(
+    {
+        document: 'items/{projectId}/tasks/{taskId}',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+        retry: true,
+    },
+    async event => {
+        const previousTaskData = event.data.before.data() || {}
+        const taskData = event.data.after.data() || {}
+        const previousFeedbackId = previousTaskData?.calendarData?.goalRoutingFeedback?.feedbackId
+        const feedbackId = taskData?.calendarData?.goalRoutingFeedback?.feedbackId
+        if (!feedbackId || feedbackId === previousFeedbackId) return
+
+        const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
+        const { projectId, taskId } = event.params
+        await captureCalendarGoalRoutingFeedback({
+            task: { ...taskData, id: taskId },
+            previousTask: { ...previousTaskData, id: taskId },
+            taskProjectId: projectId,
+        })
+    }
+)
+
 exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
         document: 'items/{projectId}/tasks/{taskId}',

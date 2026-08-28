@@ -68,6 +68,14 @@ function normalizeCalendarProjectRoutingConfig(projectId, config = {}, calendarE
         prompt: config.prompt || DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
         model: normalizeCalendarRoutingModel(config.model),
         confidenceThreshold: Number.isFinite(config.confidenceThreshold) ? String(config.confidenceThreshold) : '0.7',
+        learnedRules: typeof config.learnedRules === 'string' ? config.learnedRules : '',
+        learnedRulesRevision: Number.isFinite(config.learnedRulesRevision)
+            ? Math.max(0, Math.trunc(config.learnedRulesRevision))
+            : 0,
+        learnedGoalRules: typeof config.learnedGoalRules === 'string' ? config.learnedGoalRules : '',
+        learnedGoalRulesRevision: Number.isFinite(config.learnedGoalRulesRevision)
+            ? Math.max(0, Math.trunc(config.learnedGoalRulesRevision))
+            : 0,
     }
 }
 
@@ -82,6 +90,15 @@ function sanitizeCalendarProjectRoutingConfigForSave(config = {}) {
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold)
             ? Math.min(Math.max(parsedConfidenceThreshold, 0), 1)
             : 0.7,
+        learnedRules: typeof config.learnedRules === 'string' ? config.learnedRules.trim().slice(0, 2000) : '',
+        learnedRulesRevision: Number.isFinite(config.learnedRulesRevision)
+            ? Math.max(0, Math.trunc(config.learnedRulesRevision))
+            : 0,
+        learnedGoalRules:
+            typeof config.learnedGoalRules === 'string' ? config.learnedGoalRules.trim().slice(0, 2000) : '',
+        learnedGoalRulesRevision: Number.isFinite(config.learnedGoalRulesRevision)
+            ? Math.max(0, Math.trunc(config.learnedGoalRulesRevision))
+            : 0,
     }
 }
 

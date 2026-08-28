@@ -29,4 +29,34 @@ describe('task project move completion', () => {
         expect(branch).not.toBeNull()
         expect(branch[1]).toMatch(/await awaitWriteAck\(batchFeed\.commit\(\), 'task project feed chain'\)/)
     })
+
+    it('stamps calendar project moves with durable routing feedback in both task move paths', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+        const normalMove = source.match(
+            /export async function setTaskProject\((([\s\S]*?))\n}\n\nexport async function setTaskProjectWithGoal/
+        )
+        const goalMove = source.match(
+            /export async function setTaskProjectWithGoal\((([\s\S]*?))\n}\n\nexport async function setTaskParentGoal/
+        )
+
+        expect(source).toMatch(/buildCalendarProjectRoutingFeedback\(/)
+        expect(normalMove?.[1]).toMatch(/buildManuallyPinnedCalendarData\(/)
+        expect(goalMove?.[1]).toMatch(/buildManuallyPinnedCalendarData\(/)
+    })
+
+    it('stamps manual calendar Goal additions and removals with durable routing feedback', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+        const goalMove = source.match(
+            /export async function setTaskProjectWithGoal\((([\s\S]*?))\n}\n\nexport async function setTaskParentGoal/
+        )
+        const sameProjectGoalChange = source.match(
+            /export async function setTaskParentGoal\((([\s\S]*?))\n}\n\nexport async function acceptTaskGoalSuggestion/
+        )
+
+        expect(source).toMatch(/buildCalendarGoalRoutingFeedback\(/)
+        expect(goalMove?.[1]).toMatch(/buildCalendarDataWithGoalRoutingFeedback\(/)
+        expect(sameProjectGoalChange?.[1]).toMatch(/buildCalendarDataWithGoalRoutingFeedback\(/)
+        expect(sameProjectGoalChange?.[1]).toMatch(/task\.parentGoalId/)
+        expect(sameProjectGoalChange?.[1]).toMatch(/goalId/)
+    })
 })

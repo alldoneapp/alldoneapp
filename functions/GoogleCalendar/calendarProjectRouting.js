@@ -7,6 +7,7 @@ const { deductGold } = require('../Gold/goldHelper')
 const { classifyCalendarEventProject } = require('./calendarProjectClassifier')
 const {
     buildCalendarProjectDefinitions,
+    findLearnedCalendarSeriesRoute,
     loadActiveProjectsForCalendarRouting,
     loadCalendarProjectRoutingConfig,
 } = require('./calendarProjectRoutingConfig')
@@ -59,6 +60,31 @@ async function routeCalendarEventsToProjects({
                 userId,
                 syncProjectId,
                 eventId: event.id,
+            })
+            continue
+        }
+
+        const learnedSeriesRoute = findLearnedCalendarSeriesRoute(config, event)
+        const learnedTargetProject = learnedSeriesRoute
+            ? projectDefinitionById.get(learnedSeriesRoute.targetProjectId)
+            : null
+        if (learnedTargetProject) {
+            routingDecisionsByEventId[event.id] = {
+                matched: true,
+                targetProjectId: learnedTargetProject.projectId,
+                confidence: 1,
+                reasoning: 'You previously moved another occurrence of this recurring event to this project.',
+                projectName: learnedTargetProject.name,
+                goldSpent: 0,
+                tokenUsage: null,
+                learnedFromFeedback: true,
+            }
+            logRouting('Applied learned recurring-event route', {
+                userId,
+                syncProjectId,
+                eventId: event.id,
+                recurringEventId: event.recurringEventId || event.seriesMasterId || '',
+                projectId: learnedTargetProject.projectId,
             })
             continue
         }
