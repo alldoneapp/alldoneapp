@@ -27,10 +27,14 @@ async function assertProjectAccess(db, userId, projectId) {
     if (!userId) throw new Error('Authenticated user is required')
     if (!projectId) throw new Error('projectId is required')
 
-    const userData = await getUserDataOrThrow(db, userId)
-    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
+    const [userData, projectDoc] = await Promise.all([
+        getUserDataOrThrow(db, userId),
+        db.collection('projects').doc(projectId).get(),
+    ])
+    const projectUserIds =
+        projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
 
-    if (!accessibleProjectIds.includes(projectId)) {
+    if (!projectUserIds.includes(userId)) {
         throw new Error('User does not have access to this project')
     }
 

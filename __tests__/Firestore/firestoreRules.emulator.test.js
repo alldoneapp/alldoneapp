@@ -1,0 +1,495 @@
+/**
+ * @jest-environment node
+ */
+
+const fs = require('fs')
+const path = require('path')
+const { assertFails, assertSucceeds, initializeTestEnvironment } = require('@firebase/rules-unit-testing')
+const {
+    FieldPath,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    query,
+    setDoc,
+    updateDoc,
+    writeBatch,
+    where,
+} = require('firebase/firestore')
+
+const PROJECT_ID = 'project-a'
+const OTHER_PROJECT_ID = 'project-b'
+const SHARED_PROJECT_ID = 'shared-project'
+const MEMBER_ID = 'member'
+const OUTSIDER_ID = 'outsider'
+const TEAMMATE_ID = 'teammate'
+const BACKLINK_FIELD = 'linkedParentTasksIds'
+const BACKLINK_OBJECT_ID = 'source-task'
+const BACKLINK_TOKEN = JSON.stringify([BACKLINK_FIELD, BACKLINK_OBJECT_ID])
+
+let testEnv
+
+const seed = async () => {
+    await testEnv.withSecurityRulesDisabled(async context => {
+        const db = context.firestore()
+
+        await setDoc(doc(db, `users/${MEMBER_ID}`), {
+            projectIds: [PROJECT_ID],
+            guideProjectIds: [],
+            templateProjectIds: [],
+            archivedProjectIds: [],
+        })
+        await setDoc(doc(db, `users/${OUTSIDER_ID}`), {
+            projectIds: [],
+            guideProjectIds: [],
+            templateProjectIds: [],
+            archivedProjectIds: [],
+        })
+        await setDoc(doc(db, `users/${TEAMMATE_ID}`), {
+            projectIds: [PROJECT_ID],
+            guideProjectIds: [],
+            templateProjectIds: [],
+            archivedProjectIds: [],
+            workflow: {},
+        })
+        await setDoc(doc(db, `projects/${PROJECT_ID}`), {
+            creatorId: MEMBER_ID,
+            isShared: 2,
+            userIds: [MEMBER_ID, TEAMMATE_ID],
+        })
+        await setDoc(doc(db, `projects/${OTHER_PROJECT_ID}`), {
+            creatorId: 'other-owner',
+            isShared: 2,
+            userIds: ['other-owner'],
+        })
+        await setDoc(doc(db, `projects/${SHARED_PROJECT_ID}`), {
+            creatorId: MEMBER_ID,
+            isShared: 1,
+            userIds: [MEMBER_ID],
+        })
+        await setDoc(doc(db, 'roles/administrator'), { userId: 'admin' })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/public-task`), {
+            isPublicFor: [0],
+            observersIds: [MEMBER_ID],
+            parentId: null,
+            linkedParentTasksIds: [BACKLINK_OBJECT_ID],
+            readerIds: [MEMBER_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID] },
+            backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN] },
+        })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/private-task`), {
+            isPublicFor: [MEMBER_ID],
+            observersIds: [MEMBER_ID],
+            parentId: null,
+            linkedParentTasksIds: [BACKLINK_OBJECT_ID],
+            readerIds: [MEMBER_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID] },
+            backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN] },
+        })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/focus-task`), {
+            userId: TEAMMATE_ID,
+            userIds: [TEAMMATE_ID],
+            isPublicFor: [0],
+            readerIds: [MEMBER_ID, TEAMMATE_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+        })
+        await setDoc(doc(db, `items/${OTHER_PROJECT_ID}/tasks/other-task`), {
+            isPublicFor: [0],
+            readerIds: ['other-owner'],
+            roleIdsVisibleTo: { 'other-owner': [] },
+        })
+        await setDoc(doc(db, `items/${SHARED_PROJECT_ID}/tasks/shared-task`), {
+            isPublicFor: [0],
+            observersIds: [MEMBER_ID],
+            readerIds: [0, MEMBER_ID],
+            roleIdsVisibleTo: { 0: [MEMBER_ID], [MEMBER_ID]: [MEMBER_ID] },
+            backlinkIdsVisibleTo: { 0: [], [MEMBER_ID]: [] },
+        })
+        await setDoc(doc(db, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
+            isPublicFor: [0],
+            usersFollowing: [MEMBER_ID],
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+            roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+            followedByVisibleTo: { [MEMBER_ID]: true },
+            followedReaderIds: [MEMBER_ID],
+            backlinkIdsVisibleTo: { [MEMBER_ID]: [] },
+        })
+        await setDoc(doc(db, `noteItems/${PROJECT_ID}/notes/followed-note`), {
+            isPublicFor: [MEMBER_ID],
+            isVisibleInFollowedFor: [MEMBER_ID],
+            readerIds: [MEMBER_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [] },
+            followedByVisibleTo: { [MEMBER_ID]: true },
+            followedReaderIds: [MEMBER_ID],
+        })
+    })
+}
+
+beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+        projectId: 'demo-alldone-rules',
+        firestore: {
+            host: '127.0.0.1',
+            port: 8080,
+            rules: fs.readFileSync(path.join(__dirname, '..', '..', 'firestore.rules'), 'utf8'),
+        },
+    })
+})
+
+beforeEach(async () => {
+    await testEnv.clearFirestore()
+    await seed()
+})
+
+afterAll(async () => {
+    await testEnv.cleanup()
+})
+
+describe('project membership authority', () => {
+    it('lets a real project member use project data and denies an outsider', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`)))
+        await assertSucceeds(
+            setDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/member-created`), {
+                isPublicFor: [0],
+                observersIds: [MEMBER_ID],
+            })
+        )
+        await assertFails(getDoc(doc(outsiderDb, `items/${PROJECT_ID}/tasks/public-task`)))
+    })
+
+    it('does not let an outsider self-enrol by editing their own denormalized projectIds', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertFails(updateDoc(doc(outsiderDb, `users/${OUTSIDER_ID}`), { projectIds: [OTHER_PROJECT_ID] }))
+        await assertFails(getDoc(doc(outsiderDb, `items/${OTHER_PROJECT_ID}/tasks/other-task`)))
+        await assertFails(getDoc(doc(outsiderDb, `users/${TEAMMATE_ID}`)))
+    })
+
+    it('allows ordinary owner edits while requiring proof for project navigation state', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(updateDoc(doc(memberDb, `users/${MEMBER_ID}`), { themeName: 'DARK' }))
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `users/${MEMBER_ID}`), {
+                archivedProjectIds: [PROJECT_ID],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'self-sync',
+                    actorId: MEMBER_ID,
+                    updatedAt: 1,
+                },
+            })
+        )
+    })
+
+    it('allows initial user and project creation only as one authoritative membership batch', async () => {
+        const creatorId = 'new-user'
+        const projectId = 'new-project'
+        const creatorDb = testEnv.authenticatedContext(creatorId).firestore()
+        const batch = writeBatch(creatorDb)
+        batch.set(doc(creatorDb, `projects/${projectId}`), {
+            creatorId,
+            isShared: 2,
+            userIds: [creatorId],
+        })
+        batch.set(doc(creatorDb, `users/${creatorId}`), {
+            defaultProjectId: projectId,
+            projectIds: [projectId],
+            guideProjectIds: [],
+            templateProjectIds: [],
+            archivedProjectIds: [],
+            copyProjectIds: [],
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('allows an existing member to add a user in one verified atomic membership change', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+        batch.update(doc(memberDb, `projects/${PROJECT_ID}`), { userIds: [MEMBER_ID, TEAMMATE_ID, OUTSIDER_ID] })
+        batch.update(doc(memberDb, `users/${OUTSIDER_ID}`), {
+            projectIds: [PROJECT_ID],
+            projectMembershipMutation: {
+                projectId: PROJECT_ID,
+                action: 'add',
+                actorId: MEMBER_ID,
+                updatedAt: 1,
+            },
+        })
+
+        await assertSucceeds(batch.commit())
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertSucceeds(getDoc(doc(outsiderDb, `projects/${PROJECT_ID}`)))
+    })
+
+    it('does not let a member smuggle a personal-field edit into a membership batch', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+        batch.update(doc(memberDb, `projects/${PROJECT_ID}`), { userIds: [MEMBER_ID, TEAMMATE_ID, OUTSIDER_ID] })
+        batch.update(doc(memberDb, `users/${OUTSIDER_ID}`), {
+            projectIds: [PROJECT_ID],
+            notificationEmail: 'attacker@example.com',
+            projectMembershipMutation: {
+                projectId: PROJECT_ID,
+                action: 'add',
+                actorId: MEMBER_ID,
+                updatedAt: 1,
+            },
+        })
+
+        await assertFails(batch.commit())
+    })
+
+    it('allows a project-scoped teammate workflow update without opening personal fields', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const proof = {
+            projectId: PROJECT_ID,
+            action: 'project-update',
+            actorId: MEMBER_ID,
+            updatedAt: 1,
+        }
+
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `users/${TEAMMATE_ID}`), {
+                [`workflow.${PROJECT_ID}`]: { step: { reviewerUid: MEMBER_ID } },
+                projectMembershipMutation: proof,
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${TEAMMATE_ID}`), {
+                notificationEmail: 'attacker@example.com',
+                projectMembershipMutation: proof,
+            })
+        )
+    })
+
+    it('allows only a real target task in a project-scoped teammate focus update', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const proof = {
+            projectId: PROJECT_ID,
+            action: 'project-update',
+            actorId: MEMBER_ID,
+            updatedAt: 1,
+        }
+
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `users/${TEAMMATE_ID}`), {
+                inFocusTaskId: 'focus-task',
+                inFocusTaskProjectId: PROJECT_ID,
+                projectMembershipMutation: proof,
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${TEAMMATE_ID}`), {
+                inFocusTaskId: 'missing-task',
+                inFocusTaskProjectId: PROJECT_ID,
+                projectMembershipMutation: proof,
+            })
+        )
+    })
+
+    it('allows a member to invite a user and lets the invitee remove the invitation', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `users/${OUTSIDER_ID}`), {
+                invitedProjectIds: [PROJECT_ID],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'invitation-add',
+                    actorId: MEMBER_ID,
+                    updatedAt: 1,
+                },
+            })
+        )
+
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertSucceeds(
+            updateDoc(doc(outsiderDb, `users/${OUTSIDER_ID}`), {
+                invitedProjectIds: [],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'invitation-remove',
+                    actorId: OUTSIDER_ID,
+                    updatedAt: 2,
+                },
+            })
+        )
+    })
+
+    it('allows atomic project deletion cleanup and scoped reload notification', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+        batch.delete(doc(memberDb, `projects/${PROJECT_ID}`))
+        ;[MEMBER_ID, TEAMMATE_ID].forEach(userId => {
+            batch.update(doc(memberDb, `users/${userId}`), {
+                projectIds: [],
+                projectMembershipMutation: {
+                    projectId: PROJECT_ID,
+                    action: 'delete-project',
+                    actorId: MEMBER_ID,
+                    updatedAt: 1,
+                },
+            })
+        })
+        batch.set(doc(memberDb, `userForceReloads/${TEAMMATE_ID}`), {
+            reload: true,
+            projectId: PROJECT_ID,
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+})
+
+describe('queries used by the web client', () => {
+    it('allows anonymous public-sentinel queries in a shared project', async () => {
+        const publicDb = testEnv.unauthenticatedContext().firestore()
+        const tasks = query(
+            collection(publicDb, `items/${SHARED_PROJECT_ID}/tasks`),
+            where('readerIds', 'array-contains', 0)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['shared-task'])
+
+        const observedTasks = query(
+            collection(publicDb, `items/${SHARED_PROJECT_ID}/tasks`),
+            where(new FieldPath('roleIdsVisibleTo', '0'), 'array-contains', MEMBER_ID)
+        )
+        await assertSucceeds(getDocs(observedTasks))
+    })
+
+    it('allows a followed-chat query only through the fixed server projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const chats = query(
+            collection(memberDb, `chatObjects/${PROJECT_ID}/chats`),
+            where('followedReaderIds', 'array-contains', MEMBER_ID)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(chats))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
+        await assertFails(
+            updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
+                followedByVisibleTo: { [OUTSIDER_ID]: true },
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
+                followedReaderIds: [OUTSIDER_ID],
+            })
+        )
+    })
+
+    it('allows followed-note queries through the same fixed projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const notes = query(
+            collection(memberDb, `noteItems/${PROJECT_ID}/notes`),
+            where('followedReaderIds', 'array-contains', MEMBER_ID)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(notes))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['followed-note'])
+    })
+
+    it('allows the query-shaped readerIds task query', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('readerIds', 'array-contains', MEMBER_ID)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+    })
+
+    it('allows backlink queries only through the per-reader server projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where(new FieldPath('backlinkIdsVisibleTo', MEMBER_ID), 'array-contains', BACKLINK_TOKEN)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual(['private-task', 'public-task'])
+    })
+
+    it('rejects an observer-only query that could return a task private to somebody else', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/not-readable`), {
+                isPublicFor: ['someone-else'],
+                observersIds: [MEMBER_ID],
+                readerIds: ['someone-else'],
+                roleIdsVisibleTo: { 'someone-else': [MEMBER_ID] },
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where(`roleIdsVisibleTo.${MEMBER_ID}`, 'array-contains', MEMBER_ID)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual(['private-task', 'public-task'])
+    })
+
+    it('does not let a client forge the server-owned access projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(
+            updateDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), {
+                readerIds: [MEMBER_ID, OUTSIDER_ID],
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), {
+                backlinkIdsVisibleTo: { [OUTSIDER_ID]: [BACKLINK_TOKEN] },
+            })
+        )
+    })
+})
+
+describe('server-only data', () => {
+    it.each([
+        `userSecrets/${MEMBER_ID}/providers/google`,
+        `assistants/${PROJECT_ID}/mcpSecrets/secret-a`,
+        'assistantHeartbeatSchedules/schedule-a',
+        'workflowAiRuns/run-a',
+        `firestoreAccessProjectionJobs/${PROJECT_ID}`,
+    ])('denies client reads and writes at %s', async documentPath => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(getDoc(doc(memberDb, documentPath)))
+        await assertFails(setDoc(doc(memberDb, documentPath), { secret: 'never-client-visible' }))
+    })
+})
+
+describe('explicit client collection coverage', () => {
+    it.each([
+        `projectsWorkstreams/${PROJECT_ID}/workstreams/default`,
+        `goalsMilestones/${PROJECT_ID}/milestonesItems/milestone-a`,
+        `feedsObjectsLastStates/${PROJECT_ID}/tasks/task-a`,
+    ])('allows project members and denies outsiders at %s', async documentPath => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(setDoc(doc(memberDb, documentPath), { value: true }))
+        await assertSucceeds(getDoc(doc(memberDb, documentPath)))
+        await assertFails(getDoc(doc(outsiderDb, documentPath)))
+    })
+
+    it.each([`subscriptionsPaidByOtherUser/${MEMBER_ID}`, `invoiceNumbers/customInvoiceNumber/users/${MEMBER_ID}`])(
+        'keeps user-scoped state owner-only at %s',
+        async documentPath => {
+            const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+            const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+            await assertSucceeds(setDoc(doc(memberDb, documentPath), { value: true }))
+            await assertSucceeds(getDoc(doc(memberDb, documentPath)))
+            await assertFails(getDoc(doc(outsiderDb, documentPath)))
+        }
+    )
+})

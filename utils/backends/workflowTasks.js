@@ -186,7 +186,7 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
         .where('userId', '==', currentUserId)
         .where('inDone', '==', false)
         .where('currentReviewerId', '!=', currentUserId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot)
     function handleWorkflowTasksSnapshot(querySnapshot) {

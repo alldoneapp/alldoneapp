@@ -119,6 +119,12 @@ describe('projectDataLoader', () => {
         await expect(loaded).resolves.toBe(true)
     })
 
+    it('forwards loader failures to the users watcher too', () => {
+        ensureProjectDataLoaded('p1', PROJECT_DATA_USERS)
+
+        expect(watchProjectUsers.mock.calls[0][3]).toEqual(expect.objectContaining({ onError: expect.any(Function) }))
+    })
+
     it('is idempotent - a second request never arms a second watcher', () => {
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)
@@ -159,6 +165,20 @@ describe('projectDataLoader', () => {
             projectId: 'p1',
             contacts: [{ uid: 'late' }],
         })
+    })
+
+    it('keeps routine production timeouts in telemetry instead of the console', async () => {
+        const previousNodeEnv = process.env.NODE_ENV
+        process.env.NODE_ENV = 'production'
+        try {
+            const loaded = ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)
+
+            jest.advanceTimersByTime(FIRST_SNAPSHOT_TIMEOUT_MS)
+            await expect(loaded).resolves.toBe(false)
+            expect(consoleWarn).not.toHaveBeenCalled()
+        } finally {
+            process.env.NODE_ENV = previousNodeEnv
+        }
     })
 
     it('forgets a project whose watcher throws, so a later render retries it', async () => {

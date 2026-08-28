@@ -196,6 +196,7 @@ describe('autoPostponeTasksCallable', () => {
 
         mockDocuments['users/actor-1'].projectIds = ['project-1']
         mockDocuments['users/target-1'].projectIds = ['project-1']
+        mockDocuments['projects/project-1'].userIds = ['actor-1', 'target-1']
         await expect(
             executeAutoPostponeTasks({
                 actorUserId: 'actor-1',

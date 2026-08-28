@@ -11,6 +11,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { setInitialUrl, setNavigationRoute } from '../../redux/actions'
 import { openAnalyticsConsentSettings } from '../../utils/analytics/analytics'
 import { translate } from '../../i18n/TranslationService'
+import { resolveLoginBootstrap } from './loginBootstrap'
 
 const LOADING_LOGIN = 'LOADING_LOGIN'
 const NORMAL_LOGIN = 'NORMAL_LOGIN'
@@ -71,13 +72,20 @@ export default function LoginScreenContent() {
     }
 
     useEffect(() => {
-        let url = ''
         if (initialUrl === '/') {
             const { pathname, search } = window.location
-            url = pathname.startsWith('/login') || pathname === '/' ? '/projects/tasks/open' : pathname + search
-            dispatch(setInitialUrl(url))
+            const { initialUrl: nextInitialUrl, shouldLoadProjectPreview } = resolveLoginBootstrap(pathname, search)
+            dispatch(setInitialUrl(nextInitialUrl))
+
+            if (shouldLoadProjectPreview) {
+                selectPictureToShow(nextInitialUrl)
+            } else {
+                setLoginType(NORMAL_LOGIN)
+            }
+            return
         }
-        url ? selectPictureToShow(url) : setLoginType(NORMAL_LOGIN)
+
+        setLoginType(NORMAL_LOGIN)
     }, [])
 
     useEffect(() => {

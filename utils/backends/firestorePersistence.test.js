@@ -1,5 +1,10 @@
 import { enableFirestorePersistence } from './firestorePersistence'
 
+jest.mock('firebase/firestore', () => ({
+    persistentLocalCache: jest.fn(options => ({ kind: 'persistent', options })),
+    persistentMultipleTabManager: jest.fn(() => ({ kind: 'multi-tab' })),
+}))
+
 describe('enableFirestorePersistence', () => {
     let consoleWarn
 
@@ -13,47 +18,40 @@ describe('enableFirestorePersistence', () => {
         consoleWarn.mockRestore()
     })
 
-    it('enables multi-tab persistence on the compat client', async () => {
-        const db = { enablePersistence: jest.fn(() => Promise.resolve()) }
+    it('configures a bounded multi-tab persistent cache on the compat client', async () => {
+        const db = { settings: jest.fn() }
 
         await expect(enableFirestorePersistence(db)).resolves.toBe(true)
-        expect(db.enablePersistence).toHaveBeenCalledWith({ synchronizeTabs: true })
+        expect(db.settings).toHaveBeenCalledWith({
+            merge: true,
+            localCache: {
+                kind: 'persistent',
+                options: {
+                    cacheSizeBytes: 100 * 1024 * 1024,
+                    tabManager: { kind: 'multi-tab' },
+                },
+            },
+        })
     })
 
     it('skips persistence under the emulator (its IndexedDB is wiped every boot)', async () => {
-        const db = { enablePersistence: jest.fn(() => Promise.resolve()) }
+        const db = { settings: jest.fn() }
 
         await expect(enableFirestorePersistence(db, { useEmulator: true })).resolves.toBe(false)
-        expect(db.enablePersistence).not.toHaveBeenCalled()
+        expect(db.settings).not.toHaveBeenCalled()
     })
 
     it('supports an explicit diagnostic run without persistent cache', async () => {
         window.history.replaceState({}, '', '/?perfDisablePersistence=1')
-        const db = { enablePersistence: jest.fn(() => Promise.resolve()) }
+        const db = { settings: jest.fn() }
 
         await expect(enableFirestorePersistence(db)).resolves.toBe(false)
-        expect(db.enablePersistence).not.toHaveBeenCalled()
+        expect(db.settings).not.toHaveBeenCalled()
     })
 
-    it.each(['failed-precondition', 'unimplemented'])(
-        'degrades to the in-memory cache on %s without throwing',
-        async code => {
-            const db = { enablePersistence: jest.fn(() => Promise.reject({ code })) }
-
-            await expect(enableFirestorePersistence(db)).resolves.toBe(false)
-            expect(consoleWarn).toHaveBeenCalled()
-        }
-    )
-
-    it('degrades on an unexpected rejection without throwing', async () => {
-        const db = { enablePersistence: jest.fn(() => Promise.reject(new Error('boom'))) }
-
-        await expect(enableFirestorePersistence(db)).resolves.toBe(false)
-    })
-
-    it('degrades when enablePersistence throws synchronously', async () => {
+    it('degrades when persistent cache configuration throws synchronously', async () => {
         const db = {
-            enablePersistence: jest.fn(() => {
+            settings: jest.fn(() => {
                 throw new Error('called after other operations')
             }),
         }
@@ -61,7 +59,7 @@ describe('enableFirestorePersistence', () => {
         await expect(enableFirestorePersistence(db)).resolves.toBe(false)
     })
 
-    it('degrades when the client has no enablePersistence at all', async () => {
+    it('degrades when the client has no settings API at all', async () => {
         await expect(enableFirestorePersistence({})).resolves.toBe(false)
         await expect(enableFirestorePersistence(undefined)).resolves.toBe(false)
     })

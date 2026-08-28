@@ -102,8 +102,10 @@ const processRambleSecondGen = onCall(
             throw new HttpsError('permission-denied', 'User not found')
         }
         const userData = userDoc.data() || {}
-        const { getAccessibleProjectIdsFromUserData } = require('./assistantHelper')
-        if (!getAccessibleProjectIdsFromUserData(userData).includes(projectId)) {
+        const projectDoc = await admin.firestore().doc(`projects/${projectId}`).get()
+        const projectUserIds =
+            projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
+        if (!projectUserIds.includes(auth.uid)) {
             throw new HttpsError('permission-denied', 'No access to project')
         }
         // Pre-check bounds API spend for empty accounts; the deduct below stays the real gate. Only

@@ -56,6 +56,7 @@ import {
 } from '../CapacitorShell'
 import { getServerTimestampNow } from '../serverClock'
 import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
+import { buildBacklinkToken, getBacklinkIdsVisibleToField } from './firestoreAccess'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -304,6 +305,7 @@ import {
     updateDefaultProjectIfNeeded,
     updateUserEditionData,
     updateUserData,
+    updateUserDataDirectly,
 } from './Users/usersFirestore'
 import { getContactData, updateContactEditionData, updateContactNote } from './Contacts/contactsFirestore'
 import { getAssistantData, updateAssistantEditionData, updateAssistantNote } from './Assistants/assistantsFirestore'
@@ -351,6 +353,11 @@ export let notesStorage
 let functions
 let messaging
 let db
+
+const getLoggedUserAccessReaderId = () => {
+    const loggedUser = store.getState().loggedUser
+    return loggedUser?.isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUser?.uid
+}
 let firestoreSettingsApplied = false
 let firestorePersistenceRequested = false
 let firestoreNetworkRestartPromise = null
@@ -496,9 +503,7 @@ export async function initFirebase(onComplete) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
             // which resets host and logs "You are overriding the original host".
-            // 100 MB cache with LRU GC: the feeds/chat collections are large, and
-            // unlimited would let the offline cache grow without bound.
-            db.settings({ ignoreUndefinedProperties: true, merge: true, cacheSizeBytes: 100 * 1024 * 1024 })
+            db.settings({ ignoreUndefinedProperties: true, merge: true })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
@@ -506,15 +511,13 @@ export async function initFirebase(onComplete) {
     }
     if (!firestorePersistenceRequested) {
         firestorePersistenceRequested = true
-        // Deliberately not awaited: the compat SDK queues every later Firestore call
-        // behind the enable, so correctness needs no await and boot stays fast. Must
-        // stay between db.settings() and the first real Firestore operation — see
-        // firestorePersistence.js for the failure modes and the emulator skip.
+        // Configure the persistent multi-tab cache before the first real Firestore
+        // operation. The helper is intentionally non-blocking and preserves the
+        // in-memory fallback for emulator and diagnostic sessions.
         enableFirestorePersistence(db, { useEmulator })
         // Offline is a designed state now, not an error: silence the SDK's WARN
-        // chatter (the enablePersistence deprecation notice, `WebChannelConnection
-        // RPC 'Listen' transport errored` on every reconnect attempt, BloomFilter
-        // warnings). Real errors still log at 'error'.
+        // chatter (`WebChannelConnection RPC 'Listen' transport errored` on every
+        // reconnect attempt, BloomFilter warnings). Real errors still log at 'error'.
         try {
             firebase.firestore.setLogLevel('error')
         } catch (error) {
@@ -1448,6 +1451,9 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     const { idsField, id: objectId } = linkedParentObject
     const { loggedUser } = store.getState()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
+    const accessReaderId = allowUserIds[allowUserIds.length - 1]
+    const backlinkField = getBacklinkIdsVisibleToField(accessReaderId)
+    const backlinkToken = buildBacklinkToken(idsField, objectId)
     const hasAccess = data => {
         const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
         return allowUserIds.some(userId => isPublicFor.includes(userId))
@@ -1457,10 +1463,9 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
 
     backlinksCounterUnsub[watcherKey || objectId].tasks = db
         .collection(`items/${projectId}/tasks`)
-        .where(idsField, 'array-contains', objectId)
-        .where('parentId', '==', null)
+        .where(backlinkField, 'array-contains', backlinkToken)
         .onSnapshot(snapshots => {
-            const tasksDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
+            const tasksDocs = snapshots.docs.filter(doc => doc.data().parentId === null && hasAccess(doc.data()))
             const tasksAmount = tasksDocs.length
             const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
             callback('tasks', tasksAmount, aloneTask)
@@ -1468,7 +1473,7 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
 
     backlinksCounterUnsub[watcherKey || objectId].notes = db
         .collection(`noteItems/${projectId}/notes`)
-        .where(idsField, 'array-contains', objectId)
+        .where(backlinkField, 'array-contains', backlinkToken)
         .onSnapshot(snapshots => {
             const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
             const notesAmount = notesDocs.length
@@ -1490,18 +1495,13 @@ export function unwatchBacklinksCount(objectId, watcherKey) {
 }
 
 export function watchLinkedTasks(projectId, linkedParentObject, callback) {
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken(linkedParentObject.idsField, linkedParentObject.id)
     const unsub = db
         .collection(`items/${projectId}/tasks`)
-        .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-        .where('parentId', '==', null)
-        .onSnapshot(() => {
-            db.collection(`items/${projectId}/tasks`)
-                .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-                .where('parentId', '==', null)
-                .get()
-                .then(res => {
-                    callback(res.docs)
-                })
+        .where(backlinkField, 'array-contains', backlinkToken)
+        .onSnapshot(snapshot => {
+            callback(snapshot.docs.filter(doc => doc.data().parentId === null))
         })
     linkedTasksUnsub = unsub
 }
@@ -1570,10 +1570,10 @@ export const watchForceReload = async (userId, deleteOldData) => {
     })
 }
 
-export const forceUsersToReloadApp = async (userIds, externalBatch) => {
+export const forceUsersToReloadApp = async (userIds, externalBatch, projectId) => {
     const batch = externalBatch ? externalBatch : new BatchWrapper(db)
     userIds.forEach(uid => {
-        batch.set(db.doc(`userForceReloads/${uid}`), { reload: true })
+        batch.set(db.doc(`userForceReloads/${uid}`), { reload: true, ...(projectId ? { projectId } : {}) })
     })
     if (!externalBatch) await batch.commit()
 }
@@ -1608,7 +1608,7 @@ export async function removeProject(projectId) {
     URLTrigger.processUrl(NavigationService, '/projects/tasks/open')
 
     const userIdsToReload = project.userIds.filter(userId => userId !== loggedUser.uid)
-    forceUsersToReloadApp(userIdsToReload, batch)
+    forceUsersToReloadApp(userIdsToReload, batch, projectId)
     await batch.commit()
     setTimeout(() => {
         window.location.reload()
@@ -1636,6 +1636,12 @@ export async function unlinkDeletedProjectFromMembers(projectId, batch, userIds)
             [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.delete(),
             [`commentsData.${projectId}`]: firebase.firestore.FieldValue.delete(),
             [`lastAssistantCommentData.${projectId}`]: firebase.firestore.FieldValue.delete(),
+            projectMembershipMutation: {
+                projectId,
+                action: 'delete-project',
+                actorId: store.getState().loggedUser.uid,
+                updatedAt: Date.now(),
+            },
         }
 
         const user = TasksHelper.getUserInProject(projectId, uid)
@@ -1905,7 +1911,7 @@ const getAllTasksFromGoalInBoardInTodayOrOverdue = async (projectId, goalId, use
             .where('completed', '==', null)
             .where('isSubtask', '==', false)
             .where('currentReviewerId', '==', userId)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUser.uid])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('dueDate', '<=', endOfDay)
             .get()
     ).docs
@@ -2494,7 +2500,7 @@ export function watchGoalLinkedTasks(projectId, goalId, callback, watcherKey) {
     globalWatcherUnsub[watcherKey] = db
         .collection(`/items/${projectId}/tasks`)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .orderBy('created', 'desc')
         .onSnapshot(snapshot => {
             const tasks = []
@@ -2511,7 +2517,7 @@ export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watc
     globalWatcherUnsub[watcherKey] = db
         .collection(`/items/${projectId}/tasks`)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('completed', '==', null)
         .where('isSubtask', '==', false)
         .onSnapshot(snapshot => {
@@ -2525,7 +2531,7 @@ export function watchSubtasksList(projectId, taskId, callback) {
     watchSubtaskList[taskId] = db
         .collection(`/items/${projectId}/tasks`)
         .where('parentId', '==', taskId)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .orderBy('sortIndex', 'desc')
         .onSnapshot(snapshot => {
             const subTasksList = []
@@ -3061,7 +3067,7 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
     }
     if (project.isTemplate) updateData.templateProjectIds = firebase.firestore.FieldValue.arrayUnion(projectId)
     if (setLikeDefaultProject) updateData.defaultProjectId = projectId
-    updateUserData(user.uid, updateData, batch)
+    updateUserData(user.uid, updateData, batch, projectId)
 
     const defaultStream = getDefaultMainWorkstream(projectId, user.uid)
     uploadNewMainWorkstream(projectId, defaultStream, batch)
@@ -3157,15 +3163,21 @@ export const getAdministratorUser = async () => {
 }
 
 const addProjectArchivedStatus = (projectId, userId, batch) => {
-    batch.update(db.doc(`users/${userId}`), {
-        archivedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { archivedProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId) },
+        batch,
+        projectId
+    )
 }
 
 const removeProjectArchivedStatus = (projectId, userId, batch) => {
-    batch.update(db.doc(`users/${userId}`), {
-        archivedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-    })
+    updateUserDataDirectly(
+        userId,
+        { archivedProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId) },
+        batch,
+        projectId
+    )
 }
 
 export async function convertToActiveProject(user, project) {
@@ -5120,7 +5132,7 @@ export async function watchFollowedTabNotesExpanded(projectId, callback) {
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5134,7 +5146,7 @@ export async function watchFollowedTabNotes(projectId, maxNotesToRender, callbac
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
@@ -5148,7 +5160,7 @@ export async function watchFollowedTabNotesExpandedInAllProjects(projectId, call
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
@@ -5161,7 +5173,7 @@ export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRe
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .limit(maxNotesToRender)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5174,7 +5186,7 @@ export async function watchFollowedTabStickyNotes(projectId, callback) {
     stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '>', 0)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5187,7 +5199,7 @@ export async function watchAllTabNotesExpanded(projectId, callback) {
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5201,7 +5213,7 @@ export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
@@ -5215,7 +5227,7 @@ export async function watchAllTabNotesExpandedInAllProjects(projectId, callback,
     notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
@@ -5228,7 +5240,7 @@ export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender,
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .limit(maxNotesToRender)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5241,7 +5253,7 @@ export async function watchAllTabStickyNotes(projectId, callback) {
     stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '>', 0)
             .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
@@ -5281,7 +5293,7 @@ export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, 
     unwatchNotesNeedShowMore(projectId)
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+        .where('followedReaderIds', 'array-contains', loggedUserId)
         .where('stickyData.days', '==', 0)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
@@ -5295,7 +5307,7 @@ export async function watchFollowedTabNotesNeedShowMoreInAllProjects(projectId, 
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+        .where('followedReaderIds', 'array-contains', loggedUserId)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
             callback(querySnapshot.docs.length)
@@ -5308,7 +5320,7 @@ export async function watchAllTabNotesNeedShowMore(projectId, notesToLoad, callb
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('stickyData.days', '==', 0)
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
@@ -5322,7 +5334,7 @@ export async function watchAllTabNotesNeedShowMoreInAllProjects(projectId, notes
     notesNeedsShowMoreUnsubs[projectId] = db
         .collection(`noteItems/${projectId}/notes`)
         .orderBy('lastEditionDate', 'desc')
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .limit(notesToLoad)
         .onSnapshot(querySnapshot => {
             callback(querySnapshot.docs.length)
@@ -5541,7 +5553,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
             const userId = link.split('/')[6]
             if (TasksHelper.getUserInProject(projectId, userId)) {
                 createBacklinkUserFeed(projectId, linkedObject.id, linkedObject.type, userId)
-                updateUserEditionData(userId, loggedUser.uid)
+                updateUserEditionData(projectId, userId, loggedUser.uid)
             } else {
                 createBacklinkContactFeed(projectId, linkedObject.id, linkedObject.type, userId)
                 updateContactEditionData(projectId, userId, loggedUser.uid)
@@ -5702,14 +5714,14 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     // })
 }
 
-export function watchNotesCollab(noteId, callback) {
-    db.doc(`notesCollab/${noteId}`).onSnapshot(doc => {
+export function watchNotesCollab(projectId, noteId, callback) {
+    db.doc(`notesCollab/${projectId}/notes/${noteId}`).onSnapshot(doc => {
         callback(doc.data())
     })
 }
 
-export function addNoteEditor(noteId, editor) {
-    db.doc(`notesCollab/${noteId}`).set(
+export function addNoteEditor(projectId, noteId, editor) {
+    db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayUnion(editor),
         },
@@ -5717,8 +5729,8 @@ export function addNoteEditor(noteId, editor) {
     )
 }
 
-export function removeNoteEditor(noteId, editor) {
-    db.doc(`notesCollab/${noteId}`).set(
+export function removeNoteEditor(projectId, noteId, editor) {
+    db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayRemove(editor),
         },
@@ -5871,7 +5883,7 @@ const updateEditonForFollowUnfollowAnObject = async (projectId, objectId, type, 
     } else if (type === FOLLOWER_CONTACTS_TYPE) {
         await updateContactEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_USERS_TYPE) {
-        await updateUserEditionData(objectId, editorId)
+        await updateUserEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_SKILLS_TYPE) {
         await updateSkillEditionData(projectId, objectId, editorId)
     } else if (type === FOLLOWER_TASKS_TYPE) {
@@ -6261,7 +6273,7 @@ function watchNewFeedsTabRedux(
     const query = db
         .collection(path)
         .limit(getFeedsQueryLimit(visibleAmount, needsClientSideFilter))
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .orderBy('lastChangeDate', 'desc')
 
     function handleSnapshot(feedsData) {
@@ -6383,7 +6395,7 @@ export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, cal
         return db
             .collection(`projectsInnerFeeds/${projectId}/${feedSource.objectTypes}/${feedSource.feedObjectId}/feeds/`)
             .limit(MAX_NUMBER_OF_FEEDS_TO_SHOW)
-            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .orderBy('lastChangeDate', 'desc')
             .onSnapshot(feedsData => {
                 const feeds = []
@@ -8038,6 +8050,7 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
         promises.push(
             db
                 .collection(`items/${projectId}/tasks`)
+                .where('readerIds', 'array-contains', userId)
                 .where('userId', '==', userId)
                 .where('completed', '==', null)
                 .where('recurrence', 'in', [

@@ -2,7 +2,13 @@ const { executeGoalPostpone } = require('./goalPostponeService')
 
 const snapshot = (exists, data) => ({ exists, data: () => data })
 
-function buildDb({ goal, tasks = [], existingAction = null, user = { projectIds: ['project-1'] } }) {
+function buildDb({
+    goal,
+    tasks = [],
+    existingAction = null,
+    user = { projectIds: ['project-1'] },
+    project = { userIds: ['user-1'] },
+}) {
     const writes = []
     const refs = new Map()
     const ref = path => {
@@ -31,16 +37,25 @@ function buildDb({ goal, tasks = [], existingAction = null, user = { projectIds:
     }
     const db = {
         doc: jest.fn(ref),
-        collection: jest.fn(() => ({
-            where: jest.fn(() => ({
-                where: jest.fn(() => taskQuery),
-            })),
-        })),
+        collection: jest.fn(path => {
+            if (path === 'users' || path === 'projects') {
+                return { doc: id => refs.get(`${path}/${id}`) }
+            }
+            return {
+                where: jest.fn(() => ({
+                    where: jest.fn(() => taskQuery),
+                })),
+            }
+        }),
         runTransaction: jest.fn(handler => handler(transaction)),
     }
     refs.set('users/user-1', {
         path: 'users/user-1',
         get: jest.fn(() => Promise.resolve(snapshot(true, user))),
+    })
+    refs.set('projects/project-1', {
+        path: 'projects/project-1',
+        get: jest.fn(() => Promise.resolve(snapshot(true, project))),
     })
     return { db, writes, transaction }
 }

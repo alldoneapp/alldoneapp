@@ -115,6 +115,13 @@ exports.init = admin => {
         if (process.env.FUNCTIONS_EMULATOR) {
             // In emulator mode, omit credentials entirely
             console.log('[alldone] Running in emulator mode - using default authentication')
+        } else if (process.env.K_SERVICE || process.env.FUNCTION_TARGET) {
+            // Gen2 runs as the environment's firebase-adminsdk service account
+            // (configured through setGlobalOptions in index.js). ADC keeps the
+            // same least-privilege identity without baking a long-lived JSON key
+            // into every Cloud Run revision.
+            console.log('[alldone] Using managed runtime service account credentials')
+            config.credential = admin.credential.applicationDefault()
         } else if (serviceAccount) {
             console.log('[alldone] Using service account credentials')
             config.credential = admin.credential.cert(serviceAccount)

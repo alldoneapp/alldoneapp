@@ -1080,6 +1080,21 @@
             ]
         },
         {
+            "__comment__": "Offline note prefetch - newest readable notes per project",
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "notes",
             "queryScope": "COLLECTION",
             "fields": [
@@ -4370,6 +4385,217 @@
                     "fieldPath": "createdAt",
                     "order": "ASCENDING"
                 }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "observersIds", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" },
+                { "fieldPath": "recurrence", "order": "ASCENDING" },
+                { "fieldPath": "timesDoneInExpectedDay", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "completed", "order": "ASCENDING" },
+                { "fieldPath": "isSubtask", "order": "ASCENDING" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "followedReaderIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "lastEdited.timestamp", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "followedReaderIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "lastEditionDate", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "followedReaderIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "stickyData.days", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "followedReaderIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "stickyData.days", "order": "ASCENDING" },
+                { "fieldPath": "lastEdited.timestamp", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "followedReaderIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "stickyData.days", "order": "ASCENDING" },
+                { "fieldPath": "lastEditionDate", "order": "DESCENDING" }
             ]
         }
     ],

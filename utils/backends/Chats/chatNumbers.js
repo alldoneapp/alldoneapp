@@ -1,6 +1,7 @@
 import { getDb, globalWatcherUnsub } from '../firestore'
 import store from '../../../redux/store'
 import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
+import { FOLLOWED_READER_IDS_FIELD } from '../firestoreAccess'
 
 /**
  * Caps the chats-amount query at `visibleAmount + 1` documents.
@@ -27,13 +28,14 @@ export const getChatsAmountQueryLimit = visibleAmount =>
 
 export const watchChatsAmount = (projectId, watcherKey, callback, activeTab, visibleAmount) => {
     const { loggedUser } = store.getState()
-    const { uid: loggedUserId } = loggedUser
+    const { uid: loggedUserId, isAnonymous } = loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     let query = getDb().collection(`chatObjects/${projectId}/chats`)
     query =
         activeTab === ALL_TAB
-            ? query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-            : query.where('usersFollowing', 'array-contains', loggedUserId)
+            ? query.where('readerIds', 'array-contains', accessReaderId)
+            : query.where(FOLLOWED_READER_IDS_FIELD, 'array-contains', loggedUserId)
 
     const limit = getChatsAmountQueryLimit(visibleAmount)
     if (limit !== null) query = query.limit(limit)

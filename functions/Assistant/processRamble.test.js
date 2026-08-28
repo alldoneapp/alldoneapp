@@ -5,7 +5,10 @@
  */
 
 const mockUserGet = jest.fn()
-const mockDoc = jest.fn(() => ({ get: mockUserGet }))
+const mockProjectGet = jest.fn()
+const mockDoc = jest.fn(path => ({
+    get: path.startsWith('projects/') ? mockProjectGet : mockUserGet,
+}))
 jest.mock('firebase-admin', () => ({
     firestore: jest.fn(() => ({ doc: mockDoc })),
 }))
@@ -77,6 +80,7 @@ const callHandler = (data = BASE_DATA, auth = AUTH) => processRambleSecondGen({ 
 beforeEach(() => {
     jest.clearAllMocks()
     mockUserGet.mockResolvedValue({ exists: true, data: () => ({ gold: 50, language: 'de' }) })
+    mockProjectGet.mockResolvedValue({ exists: true, data: () => ({ userIds: ['user-1'] }) })
     mockGetAccessibleProjectIds.mockReturnValue(['project-1'])
     mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
     mockGetAssistantForChat.mockResolvedValue({ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' })
@@ -123,7 +127,7 @@ describe('processRambleSecondGen', () => {
     })
 
     test('rejects a project the user cannot access before any API spend', async () => {
-        mockGetAccessibleProjectIds.mockReturnValue(['other-project'])
+        mockProjectGet.mockResolvedValue({ exists: true, data: () => ({ userIds: ['other-user'] }) })
         await expect(callHandler()).rejects.toMatchObject({ code: 'permission-denied' })
         expect(mockTranscribeAudioBase64).not.toHaveBeenCalled()
         expect(mockDeductGold).not.toHaveBeenCalled()

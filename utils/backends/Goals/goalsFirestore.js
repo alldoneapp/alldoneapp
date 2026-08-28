@@ -111,7 +111,7 @@ export function watchGoalsInDateRange(projectId, date1, date2, watcherKey, callb
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
         .where('completionMilestoneDate', '>=', date1)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
         .onSnapshot(goalsDocs => {
             const goals = []
@@ -129,7 +129,7 @@ export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .onSnapshot(goalsDocs => {
             const entries = []
 
@@ -169,7 +169,7 @@ export function watchAllGoals(
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
     const query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
     const snapshotPerformance = createFirstSnapshotPerformance(
         { object_type: 'goals', scope: 'project', source: 'goals_board' },
@@ -459,6 +459,7 @@ export function watchMilestoneTasksStatistics(
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', loggedUserId)
         .where('dueDate', '>', milestoneInitalDate)
         .where('dueDate', '<=', milestoneEndDate)
         .where('done', '==', inDone)

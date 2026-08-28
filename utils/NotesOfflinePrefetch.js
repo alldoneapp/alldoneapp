@@ -137,7 +137,7 @@ const fetchRecentNoteCandidates = async () => {
                 .collection(`noteItems/${projectId}/notes`)
                 // Same shape as watchAllTabNotes, so the composite index exists.
                 .orderBy('lastEditionDate', 'desc')
-                .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUser.uid])
+                .where('readerIds', 'array-contains', loggedUser.uid)
                 .limit(NOTES_PER_PROJECT)
                 .get()
                 .then(snapshot =>

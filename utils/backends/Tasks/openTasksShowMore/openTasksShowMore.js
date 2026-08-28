@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import { getDb, globalWatcherUnsub, mapGoalData, mapTaskData } from '../../firestore'
+import { getRoleIdsVisibleToField } from '../../firestoreAccess'
 import { FEED_PUBLIC_FOR_ALL } from '../../../../components/Feeds/Utils/FeedsConstants'
 import { BACKLOG_DATE_NUMERIC } from '../../../../components/TaskListView/Utils/TasksHelper'
 import { DYNAMIC_PERCENT, getOwnerId } from '../../../../components/GoalsView/GoalsHelper'
@@ -138,13 +139,13 @@ const getBaseQuery = projectId => {
 
 const getBaseQueryForTasksToAttend = (projectId, boardUserId, allowUserIds) => {
     return getBaseQuery(projectId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('currentReviewerId', '==', boardUserId)
 }
 
 const getBaseQueryForWorkstreamTasks = (projectId, workstreamId, allowUserIds) => {
     return getBaseQuery(projectId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('userId', '==', workstreamId)
 }
 
@@ -260,8 +261,9 @@ export async function watchIfThereAreFutureAndSomedayObservedTasks(
     let oldThereAreFutureTasks = null
     let oldThereAreSomedayTasks = null
 
-    globalWatcherUnsub[watcherKey] = getBaseQuery(projectId)
-        .where('observersIds', 'array-contains-any', [boardUserId])
+    globalWatcherUnsub[watcherKey] = getDb()
+        .collection(`items/${projectId}/tasks`)
+        .where(getRoleIdsVisibleToField(String(allowUserIds[allowUserIds.length - 1])), 'array-contains', boardUserId)
         .onSnapshot(snapshot => {
             let thereAreFutureTasks = false
             let thereAreSomedayTasks = false
@@ -269,6 +271,7 @@ export async function watchIfThereAreFutureAndSomedayObservedTasks(
             snapshot.forEach(doc => {
                 const task = mapTaskData(doc.id, doc.data())
                 const { isPublicFor, dueDateByObserversIds } = task
+                if (task.inDone !== false || task.parentId !== null) return
 
                 if (dueDateByObserversIds[boardUserId] === BACKLOG_DATE_NUMERIC) {
                     if (isPublicFor.some(item => allowUserIds.includes(item))) {
@@ -387,9 +390,7 @@ export const watchIfThereAreFutureAndSomedayEmptyGoals = (
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('progress', '!=', 100)
-        .where('assigneesIds', 'array-contains-any', [boardUserId])
-        .where('ownerId', '==', ownerId)
+        .where(getRoleIdsVisibleToField(String(allowUserIds[allowUserIds.length - 1])), 'array-contains', boardUserId)
         .onSnapshot(docs => {
             let thereAreFutureEmptyGoals = false
             let thereAreSomedayEmptyGoals = false
@@ -397,6 +398,7 @@ export const watchIfThereAreFutureAndSomedayEmptyGoals = (
                 if (!thereAreFutureEmptyGoals && !thereAreSomedayEmptyGoals) {
                     const goal = mapGoalData(doc.id, doc.data())
                     const { assigneesReminderDate, progress, dynamicProgress, isPublicFor } = goal
+                    if (progress === 100 || goal.ownerId !== ownerId) return
                     const isDynamicCompletedGoal = progress === DYNAMIC_PERCENT && dynamicProgress === 100
                     const isPublic = isPublicFor.some(item => allowUserIds.includes(item))
 

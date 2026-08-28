@@ -4,6 +4,7 @@ import { getDb, globalWatcherUnsub } from '../firestore'
 import store from '../../../redux/store'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { isBrowserOffline } from '../../connectionState'
+import { FOLLOWED_READER_IDS_FIELD } from '../firestoreAccess'
 
 const MAX_CONCURRENT_NOTE_COUNTS = 4
 
@@ -39,7 +40,9 @@ export const getAllNotesAmount = projectIds => {
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
     return countNotesByProject(projectIds, projectId =>
-        getDb().collection(`noteItems/${projectId}/notes`).where('isPublicFor', 'array-contains-any', allowUserIds)
+        getDb()
+            .collection(`noteItems/${projectId}/notes`)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
     )
 }
 
@@ -49,7 +52,7 @@ export const getFollowedNotesAmount = projectIds => {
     return countNotesByProject(projectIds, projectId =>
         getDb()
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where(FOLLOWED_READER_IDS_FIELD, 'array-contains', loggedUserId)
     )
 }
 
@@ -63,7 +66,7 @@ export const watchAllNotesAmount = (projectIds, watcherKeys, callback) => {
     projectIds.forEach((projectId, index) => {
         globalWatcherUnsub[watcherKeys[index]] = getDb()
             .collection(`noteItems/${projectId}/notes`)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .onSnapshot(snapshot => {
                 const newAmount = snapshot.docs.length
                 const previousAmount = amountsByProject[projectId]
@@ -86,7 +89,7 @@ export const watchFollowedNotesAmount = (projectIds, watcherKeys, callback) => {
     projectIds.forEach((projectId, index) => {
         globalWatcherUnsub[watcherKeys[index]] = getDb()
             .collection(`noteItems/${projectId}/notes`)
-            .where('isVisibleInFollowedFor', 'array-contains', loggedUserId)
+            .where(FOLLOWED_READER_IDS_FIELD, 'array-contains', loggedUserId)
             .onSnapshot(snapshot => {
                 const newAmount = snapshot.docs.length
                 const previousAmount = amountsByProject[projectId]

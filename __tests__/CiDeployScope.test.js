@@ -53,12 +53,15 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(recordIndex).toBeGreaterThan(deployIndex)
     })
 
-    it.each(Object.entries(MARKER_SCOPED_JOBS))('%s keeps superseded visible but handles no-op as success', name => {
-        const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
-        expect(codes).toContain(SUPERSEDED_EXIT_CODE)
-        expect(codes).not.toContain(NOT_NEEDED_EXIT_CODE)
-        expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
-    })
+    it.each(Object.entries(MARKER_SCOPED_JOBS).filter(([name]) => name !== 'deploy:firestore:rules:production'))(
+        '%s keeps superseded visible but handles no-op as success',
+        name => {
+            const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
+            expect(codes).toContain(SUPERSEDED_EXIT_CODE)
+            expect(codes).not.toContain(NOT_NEEDED_EXIT_CODE)
+            expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
+        }
+    )
 
     it('computes the scope exactly once and hands it to every consumer', () => {
         expect(job('deploy_scope')).toBeDefined()
@@ -113,6 +116,12 @@ describe('the Firestore rules deploy cannot become the destructive indexes deplo
     // release, so its absence is the property worth pinning rather than a style choice.
     it('never passes --force', () => {
         expect(deployLine()).not.toContain('--force')
+    })
+
+    it('requires an explicit operator action instead of publishing on merge', () => {
+        const defaultBranchRule = rulesJob().rules.find(rule => String(rule.if).includes('CI_DEFAULT_BRANCH'))
+
+        expect(defaultBranchRule).toMatchObject({ when: 'manual', allow_failure: true })
     })
 
     it('is reported on by the scope computation, so it can be skipped as a no-op', () => {
