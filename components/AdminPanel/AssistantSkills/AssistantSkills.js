@@ -60,6 +60,14 @@ export default function AssistantSkills({ projectId = GLOBAL_PROJECT_ID, disable
         }
     }, [projectId])
 
+    // `disabled` means the viewer cannot write to this catalog (a guide reader, or
+    // a project they have no edit access to). Gate ENTERING the editor rather than
+    // only the Add button: the security rule would reject the write anyway, but a
+    // form that accepts input and then fails on Save is a worse way to find out.
+    const openEditor = skillId => {
+        if (!disabled) setEditingSkillId(skillId)
+    }
+
     const filteredSkills = filter
         ? skills.filter(
               skill =>
@@ -99,7 +107,7 @@ export default function AssistantSkills({ projectId = GLOBAL_PROJECT_ID, disable
                     type={'ghost'}
                     icon={'plus-square'}
                     title={translate('Add skill')}
-                    onPress={() => setEditingSkillId('new')}
+                    onPress={() => openEditor('new')}
                     buttonStyle={localStyles.toolbarButton}
                     disabled={disabled}
                 />
@@ -130,7 +138,7 @@ export default function AssistantSkills({ projectId = GLOBAL_PROJECT_ID, disable
                         onClose={() => setEditingSkillId(null)}
                     />
                 ) : (
-                    <AssistantSkillItem key={skill.uid} skill={skill} onPress={() => setEditingSkillId(skill.uid)} />
+                    <AssistantSkillItem key={skill.uid} skill={skill} onPress={() => openEditor(skill.uid)} />
                 )
             )}
         </View>
