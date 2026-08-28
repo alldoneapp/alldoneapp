@@ -516,16 +516,16 @@ export default class Backend {
         bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options)
     }
 
-    static watchNotesCollab(noteId, callback) {
-        bridge.watchNotesCollab(noteId, callback)
+    static watchNotesCollab(projectId, noteId, callback) {
+        bridge.watchNotesCollab(projectId, noteId, callback)
     }
 
-    static addNoteEditor(noteId, editor) {
-        bridge.addNoteEditor(noteId, editor)
+    static addNoteEditor(projectId, noteId, editor) {
+        bridge.addNoteEditor(projectId, noteId, editor)
     }
 
-    static removeNoteEditor(noteId, editor) {
-        bridge.removeNoteEditor(noteId, editor)
+    static removeNoteEditor(projectId, noteId, editor) {
+        bridge.removeNoteEditor(projectId, noteId, editor)
     }
 
     static createGenericTasksForMentionsInNoteContent(projectId, noteId, mentionedUserIds, assistantId) {

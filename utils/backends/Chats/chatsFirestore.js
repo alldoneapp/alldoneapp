@@ -14,6 +14,7 @@ import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFir
 import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from './chatsComments'
+import { updateUserDataDirectly } from '../Users/usersFirestore'
 
 export const watchChat = (projectId, chatId, watcherKey, callback) => {
     globalWatcherUnsub[watcherKey] = getDb()
@@ -155,14 +156,14 @@ export async function moveChatOnMoveObjectFromProject(
     users.forEach(user => {
         if (user.lastAssistantCommentData?.[oldProjectId]?.objectId === chatId) {
             pointerUpdates.push(
-                getDb()
-                    .doc(`users/${user.uid}`)
-                    .update({
-                        [`lastAssistantCommentData.${oldProjectId}`]: firebase.firestore.FieldValue.delete(),
-                    })
-                    .catch(error => {
-                        console.warn('Unable to clear the source-project assistant comment pointer', error)
-                    })
+                updateUserDataDirectly(
+                    user.uid,
+                    { [`lastAssistantCommentData.${oldProjectId}`]: firebase.firestore.FieldValue.delete() },
+                    null,
+                    oldProjectId
+                ).catch(error => {
+                    console.warn('Unable to clear the source-project assistant comment pointer', error)
+                })
             )
         }
         if (
@@ -170,17 +171,19 @@ export async function moveChatOnMoveObjectFromProject(
             user.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.objectId === chatId
         ) {
             pointerUpdates.push(
-                getDb()
-                    .doc(`users/${user.uid}`)
-                    .update({
+                updateUserDataDirectly(
+                    user.uid,
+                    {
                         [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
                             ...user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
                             projectId: newProjectId,
                         },
-                    })
-                    .catch(error => {
-                        console.warn('Unable to move the all-projects assistant comment pointer', error)
-                    })
+                    },
+                    null,
+                    oldProjectId
+                ).catch(error => {
+                    console.warn('Unable to move the all-projects assistant comment pointer', error)
+                })
             )
         }
     })

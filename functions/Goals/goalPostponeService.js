@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 
-const { canAccessObject, getAccessibleProjectIdsFromUserData } = require('../shared/privacyAccess')
+const { assertProjectAccess, canAccessObject } = require('../shared/privacyAccess')
 const { createUndoActionRecord, MAX_OPERATIONS_PER_ACTION } = require('../shared/UndoActionService')
 
 const BACKLOG_DATE_NUMERIC = Number.MAX_SAFE_INTEGER
@@ -92,10 +92,9 @@ async function executeGoalPostpone({
 
     const request = normalizeRequest(data)
     const { projectId, goalId, targetUserId, requestId, date, endOfToday, cascadeToTasks } = request
-    const userRef = db.doc(`users/${actorUserId}`)
-    const userSnapshot = await userRef.get()
-    if (!userSnapshot.exists) throw new GoalPostponeError('permission-denied', 'User not found')
-    if (!getAccessibleProjectIdsFromUserData(userSnapshot.data()).includes(projectId)) {
+    try {
+        await assertProjectAccess(db, actorUserId, projectId)
+    } catch (_error) {
         throw new GoalPostponeError('permission-denied', 'No access to project')
     }
 

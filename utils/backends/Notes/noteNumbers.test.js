@@ -35,14 +35,22 @@ describe('aggregated note counts', () => {
             'noteItems/project-1/notes',
             'noteItems/project-2/notes',
         ])
-        expect(where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [0, 'user-1'])
+        expect(where).toHaveBeenCalledWith('readerIds', 'array-contains', 'user-1')
         expect(getCountFromServer).toHaveBeenCalledTimes(2)
+    })
+
+    it('uses the public projection sentinel for anonymous shared-project viewers', async () => {
+        store.getState.mockReturnValue({ loggedUser: { uid: 'anonymous-user', isAnonymous: true } })
+
+        await expect(getAllNotesAmount(['project-1'])).resolves.toBe(3)
+
+        expect(where).toHaveBeenCalledWith('readerIds', 'array-contains', 0)
     })
 
     it('uses the followed visibility query for the followed tab', async () => {
         await expect(getFollowedNotesAmount(['project-1'])).resolves.toBe(3)
 
-        expect(where).toHaveBeenCalledWith('isVisibleInFollowedFor', 'array-contains', 'user-1')
+        expect(where).toHaveBeenCalledWith('followedReaderIds', 'array-contains', 'user-1')
     })
 
     it('limits count fan-out so header work cannot monopolize startup', async () => {

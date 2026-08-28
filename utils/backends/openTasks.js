@@ -3,6 +3,7 @@ import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } f
 
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
+import { getRoleIdsVisibleToField } from './firestoreAccess'
 import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './Tasks/optimisticTaskCreate'
 import store from '../../redux/store'
 import {
@@ -357,15 +358,16 @@ const getOpenTasksQuery = (
     endOfTomorrow
 ) => {
     const { uid: loggedUserId, isAnonymous } = loggedUser
-    let query = getDb().collection(`items/${projectId}/tasks`).where('inDone', '==', false)
+    const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+    const accessReaderId = allowUserIds[allowUserIds.length - 1]
+    let query = getDb().collection(`items/${projectId}/tasks`)
     if (areObservedTasks) {
-        query = query.where('observersIds', 'array-contains-any', [currentUserId])
+        query = query.where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', currentUserId)
     } else {
-        const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-
         query = query
+            .where('inDone', '==', false)
             .where('currentReviewerId', '==', currentUserId)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', accessReaderId)
 
         // Support three expand states:
         // State 0 (both false): only today (dueDate <= endOfDay)
@@ -668,7 +670,7 @@ const processTaskChange = (
     const sortListKey = `${date}+${taskTypeIndex}+${innerGroupKey}+${taskParentGoalId}`
     const sortListValue = { date, taskTypeIndex, innerGroupKey, taskParentGoalId }
 
-    let needToProcessTheTask = true
+    let needToProcessTheTask = task.inDone === false
     if (taskTypeIndex === OBSERVED_TASKS_INDEX) {
         if (!Array.isArray(isPublicFor)) {
             console.warn('[OpenTasks] isPublicFor missing/invalid on task', { taskId: task && task.id, isPublicFor })
@@ -681,11 +683,11 @@ const processTaskChange = (
             (!loggedUser.isAnonymous && safeIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
-        needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
+        needToProcessTheTask = task.inDone === false && isPublicForLoggedUser && needToBeListedInThisDate
     }
 
     if (areStreamAndUserTasks) {
-        needToProcessTheTask = userIds.length === 1
+        needToProcessTheTask = task.inDone === false && userIds.length === 1
     }
 
     const addTask = () => {
@@ -994,7 +996,7 @@ const processSubtaskChange = (
 
     const { parentId, dueDateByObserversIds, isPublicFor } = subtask
 
-    let needToProcessTheTask = true
+    let needToProcessTheTask = subtask.inDone === false
     if (areObservedTasks) {
         const taskInBacklog = dueDateByObserversIds[currentUserId] === BACKLOG_DATE_NUMERIC
         const taskIsTodayOrOverdue = dueDateByObserversIds[currentUserId] <= endOfDay
@@ -1012,7 +1014,7 @@ const processSubtaskChange = (
             (!loggedUser.isAnonymous && safeObservedIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
-        needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
+        needToProcessTheTask = subtask.inDone === false && isPublicForLoggedUser && needToBeListedInThisDate
     }
 
     const addSubtask = () => {
@@ -1272,7 +1274,7 @@ const getOpenStreamAndUserTasksQuery = (
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('userId', '==', assigneeUserId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     // Support three expand states (same as getOpenTasksQuery)
     if (!showLaterTasks && !showSomedayTasks) {
@@ -1471,8 +1473,10 @@ function watchEmptyGoals(
     // is always falsy. It is currently harmless only because `watchOpenTasks` already
     // unwatched this same watcher correctly a few lines earlier; hoist the read so the
     // guard actually does what it says.
-    const { currentUser } = store.getState()
+    const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
+    const loggedUserId = loggedUser.uid
+    const accessReaderId = loggedUser.isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 
@@ -1487,9 +1491,7 @@ function watchEmptyGoals(
 
     let query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('progress', '!=', 100)
-        .where('assigneesIds', 'array-contains-any', [currentUserId])
-        .where('ownerId', '==', ownerId)
+        .where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', currentUserId)
 
     const gate = createCachedSnapshotGate(() => handleEmptyGoalsSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
@@ -1516,7 +1518,8 @@ function watchEmptyGoals(
                     goalsMap,
                     dayDateFormated,
                     showLaterTasks,
-                    showSomedayTasks
+                    showSomedayTasks,
+                    ownerId
                 )
                 // Empty goals update the combined board, but they are not the
                 // observed-task stream and must not complete its loading flag.
@@ -1549,7 +1552,8 @@ const processEmptyGoalChanges = (
     goalsMap,
     dayDateFormated,
     showLaterTasks,
-    showSomedayTasks
+    showSomedayTasks,
+    expectedOwnerId
 ) => {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
 
@@ -1557,7 +1561,7 @@ const processEmptyGoalChanges = (
         const goalId = change.id ? change.id : change.doc.id
         const type = change.type
         const goal = change.data ? change.data : mapGoalData(goalId, change.doc.data())
-        const { assigneesReminderDate, isPublicFor, progress, dynamicProgress } = goal
+        const { assigneesReminderDate, isPublicFor, progress, dynamicProgress, ownerId } = goal
         const userReminderDate = assigneesReminderDate[currentUserId]
         const goalInBacklog = userReminderDate === BACKLOG_DATE_NUMERIC
         const goalIsTodayOrOverdue = userReminderDate <= endOfDay
@@ -1580,7 +1584,7 @@ const processEmptyGoalChanges = (
         const isPublic =
             safeGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
             (!isAnonymous && safeGoalIsPublicFor.includes(loggedUserId))
-        const isNotDynamicCompleted = progress !== DYNAMIC_PERCENT || dynamicProgress !== 100
+        const isNotCompleted = progress !== 100 && (progress !== DYNAMIC_PERCENT || dynamicProgress !== 100)
 
         // Support three expand states:
         // State 0 (both false): only today/overdue
@@ -1591,7 +1595,7 @@ const processEmptyGoalChanges = (
             (showLaterTasks && !showSomedayTasks && goalIsTomorrow) ||
             (showLaterTasks && showSomedayTasks && goalIsLater) ||
             (showSomedayTasks && goalInBacklog)
-        let needToProcessTheGoal = isPublic && isNotDynamicCompleted && needToBeListedInThisDate
+        let needToProcessTheGoal = isPublic && ownerId === expectedOwnerId && isNotCompleted && needToBeListedInThisDate
         const addTask = () => {
             if (needToProcessTheGoal) {
                 if (!storedTasks[date]) {
@@ -1959,7 +1963,7 @@ export function watchAllGoals(projectId, watcherKey) {
 
     const query = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(goalsData => {

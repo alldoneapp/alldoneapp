@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, StyleSheet } from 'react-native'
+import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet } from 'react-native'
 
 import { colors, hexColorToRGBa } from '../../styles/global'
 
@@ -28,6 +28,7 @@ import { colors, hexColorToRGBa } from '../../styles/global'
 const PULSE_DURATION_MS = 700
 const PULSE_MIN_OPACITY = 0.55
 const PULSE_MAX_OPACITY = 1
+const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 // The value a frozen ghost rests at. Sitting between the two extremes reads as
 // "deliberately dimmed" rather than "half-rendered".
 export const GHOST_STATIC_OPACITY = 0.7
@@ -88,13 +89,13 @@ export const useGhostPulse = () => {
                     toValue: PULSE_MAX_OPACITY,
                     duration: PULSE_DURATION_MS,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: USE_NATIVE_DRIVER,
                 }),
                 Animated.timing(pulse, {
                     toValue: PULSE_MIN_OPACITY,
                     duration: PULSE_DURATION_MS,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: USE_NATIVE_DRIVER,
                 }),
             ])
         )

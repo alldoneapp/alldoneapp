@@ -127,7 +127,7 @@ export async function watchProjectContacts(
 
     const unsubscribe = getDb()
         .collection(`/projectsContacts/${projectId}/contacts`)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .onSnapshot({ includeMetadataChanges: true }, handleSnapshot, error => {
             gate.dispose()
             snapshotPerformance.fail()
@@ -159,7 +159,7 @@ export async function getProjectContacts(projectId) {
     const contactDocs = (
         await getDb()
             .collection(`/projectsContacts/${projectId}/contacts`)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .get()
     ).docs
 

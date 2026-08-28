@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
+import { getRoleIdsVisibleToField } from '../firestoreAccess'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setMyDayAllTodayTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
@@ -30,6 +31,8 @@ export const matchesTasksToAttendQuery = (taskData, userId, endOfDay) =>
 
 export async function watchTasksToAttend(projectId, userId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     // Same full-rebuild shape as the goal list: the optimistic task is one more document in the
     // list this watcher already re-derives from scratch, and it drops out again the moment the
@@ -70,6 +73,7 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('currentReviewerId', '==', userId)
+        .where('readerIds', 'array-contains', accessReaderId)
         .where('dueDate', '<=', endOfDay)
         .orderBy('dueDate', 'desc')
         .onSnapshot(querySnapshot => {
@@ -94,11 +98,12 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
 
 export async function watchObservedTasks(projectId, userId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
-        .where('inDone', '==', false)
-        .where('observersIds', 'array-contains-any', [userId])
+        .where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', userId)
         .onSnapshot(docs => {
             const tasks = []
             const subtasksMap = {}
@@ -107,6 +112,7 @@ export async function watchObservedTasks(projectId, userId, watcherKey) {
                 const task = mapTaskData(doc.id, doc.data())
                 const { isPublicFor, dueDateByObserversIds } = task
                 if (
+                    task.inDone === false &&
                     dueDateByObserversIds[userId] <= endOfDay &&
                     (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId))
                 ) {
@@ -120,14 +126,14 @@ export async function watchObservedTasks(projectId, userId, watcherKey) {
 
 export async function watchWorkstreamTasks(projectId, userId, workstreamId, watcherKey) {
     const endOfDay = moment().endOf('day').valueOf()
-
-    const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('inDone', '==', false)
         .where('userId', '==', workstreamId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', accessReaderId)
         .where('dueDate', '<=', endOfDay)
         .orderBy('dueDate', 'desc')
         .onSnapshot(docs => {

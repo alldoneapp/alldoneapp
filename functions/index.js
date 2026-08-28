@@ -10,10 +10,16 @@
 // This also applies when the deploy jobs were created but skipped because an
 // earlier stage failed: the fix push needs its own functions/** diff.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
+const { setGlobalOptions } = require('firebase-functions/v2')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onTaskDispatched } = require('firebase-functions/v2/tasks')
 const { log } = require('firebase-functions/logger')
-const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('firebase-functions/v2/firestore')
+const {
+    onDocumentCreated,
+    onDocumentUpdated,
+    onDocumentDeleted,
+    onDocumentWritten,
+} = require('firebase-functions/v2/firestore')
 
 const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
@@ -29,6 +35,24 @@ const {
 } = require('./Assistant/assistantRunLimits')
 const { Timestamp } = require('firebase-admin/firestore')
 const { completeOnDemandAssistantTaskAfterRun } = require('./Assistant/generatedAssistantTaskCompletion')
+
+function getDeploymentProjectId() {
+    if (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) {
+        return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    }
+    try {
+        return process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG).projectId : null
+    } catch (_) {
+        return null
+    }
+}
+
+const ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS = {
+    alldonestaging: 'firebase-adminsdk-9idaq@alldonestaging.iam.gserviceaccount.com',
+    alldonealeph: 'firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com',
+}
+const adminSdkRuntimeServiceAccount = ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS[getDeploymentProjectId()]
+if (adminSdkRuntimeServiceAccount) setGlobalOptions({ serviceAccount: adminSdkRuntimeServiceAccount })
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -81,17 +105,82 @@ function getAccessibleProjectIdsFromUserData(userData = {}) {
 }
 
 async function assertProjectAccess(userId, projectId) {
-    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-    if (!userDoc.exists) {
-        throw new HttpsError('permission-denied', 'User not found')
-    }
+    const [userDoc, projectDoc] = await Promise.all([
+        admin.firestore().doc(`users/${userId}`).get(),
+        admin.firestore().doc(`projects/${projectId}`).get(),
+    ])
+    if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
 
-    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userDoc.data() || {})
-    if (!accessibleProjectIds.includes(projectId)) {
+    const projectUserIds =
+        projectDoc.exists && Array.isArray(projectDoc.data()?.userIds) ? projectDoc.data().userIds : []
+    if (!projectUserIds.includes(userId)) {
         throw new HttpsError('permission-denied', 'No access to project')
     }
 
     return userDoc.data() || {}
+}
+
+async function synchronizeAccessProjection(event, roleField, followerField) {
+    const { synchronizeObjectAccessProjection } = require('./shared/objectAccessProjection')
+    return synchronizeObjectAccessProjection({
+        db: admin.firestore(),
+        documentSnapshot: event.data.after || event.data,
+        projectId: event.params.projectId,
+        roleField,
+        followerField,
+    })
+}
+
+function accessProjectionOnly(event) {
+    const { isAccessProjectionOnlyChange } = require('./shared/objectAccessProjection')
+    return isAccessProjectionOnlyChange(event.data.before.data() || {}, event.data.after.data() || {})
+}
+
+const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
+const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
+
+async function queueProjectAccessProjectionSync(db, projectId, projectUserIds, generation) {
+    const { getInitialProjectionCursor } = require('./shared/objectAccessProjection')
+    await db.doc(`${ACCESS_PROJECTION_JOBS_COLLECTION}/${projectId}`).set({
+        projectId,
+        projectUserIds: Array.isArray(projectUserIds) ? projectUserIds : [],
+        generation,
+        status: 'pending',
+        cursor: getInitialProjectionCursor(),
+        scanned: 0,
+        updated: 0,
+        queuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+}
+
+async function acquireAccessProjectionJob(db, jobRef, leaseId) {
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(jobRef)
+        if (!snapshot.exists || snapshot.data()?.status !== 'pending') return null
+        const job = snapshot.data() || {}
+        transaction.update(jobRef, {
+            status: 'processing',
+            leaseId,
+            leaseExpiresAt: Timestamp.fromMillis(Date.now() + ACCESS_PROJECTION_JOB_LEASE_MS),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        return job
+    })
+}
+
+async function releaseAccessProjectionJob(db, jobRef, leaseId, update) {
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(jobRef)
+        if (!snapshot.exists || snapshot.data()?.leaseId !== leaseId) return false
+        transaction.update(jobRef, {
+            ...update,
+            leaseId: admin.firestore.FieldValue.delete(),
+            leaseExpiresAt: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        return true
+    })
 }
 
 exports.setDefaultProjectSecondGen = onCall(
@@ -109,6 +198,45 @@ exports.setDefaultProjectSecondGen = onCall(
             return await setDefaultProjectForUser(admin.firestore(), request.auth.uid, request.data?.projectId)
         } catch (error) {
             if (error instanceof DefaultProjectError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.awardXpSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+        const { projectId, userId, xpEarned, increaseProjectQuota } = request.data || {}
+        const { awardUserXp, validateXpAward } = require('./Users/userXpService')
+        try {
+            validateXpAward({ projectId, userId, xpEarned, increaseProjectQuota })
+        } catch (error) {
+            throw new HttpsError('invalid-argument', error.message)
+        }
+
+        await assertProjectAccess(request.auth.uid, projectId)
+        try {
+            return await awardUserXp({
+                db: admin.firestore(),
+                FieldValue: admin.firestore.FieldValue,
+                projectId,
+                userId,
+                xpEarned,
+                increaseProjectQuota,
+            })
+        } catch (error) {
+            if (error.message === 'XP recipient is not a project member') {
+                throw new HttpsError('permission-denied', error.message)
+            }
+            if (error.message === 'Project not found' || error.message === 'User not found') {
+                throw new HttpsError('not-found', error.message)
+            }
             throw error
         }
     }
@@ -205,14 +333,17 @@ async function assertAssistantProjectAccess(userId, projectId, assistantId) {
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
     if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
     const userData = userDoc.data() || {}
-    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
-
     if (projectId !== 'globalProject') {
-        if (!accessibleProjectIds.includes(projectId)) {
-            throw new HttpsError('permission-denied', 'No access to project')
-        }
+        await assertProjectAccess(userId, projectId)
         return
     }
+
+    const memberProjects = await admin
+        .firestore()
+        .collection('projects')
+        .where('userIds', 'array-contains', userId)
+        .get()
+    const accessibleProjectIds = memberProjects.docs.map(doc => doc.id)
 
     const assistantDoc = await admin.firestore().doc(`assistants/globalProject/items/${assistantId}`).get()
     if (!assistantDoc.exists) throw new HttpsError('not-found', 'Assistant not found')
@@ -3261,7 +3392,86 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
         const projectId = event.params.projectId
         const oldProject = mapProjectData(projectId, event.data.before.data())
         const newProject = mapProjectData(projectId, event.data.after.data())
-        await onUpdateProject(projectId, oldProject, newProject)
+        const work = [onUpdateProject(projectId, oldProject, newProject)]
+        if (JSON.stringify(oldProject.userIds || []) !== JSON.stringify(newProject.userIds || [])) {
+            work.push(
+                queueProjectAccessProjectionSync(admin.firestore(), projectId, newProject.userIds || [], event.id)
+            )
+        }
+        await Promise.all(work)
+    }
+)
+
+exports.processFirestoreAccessProjectionJobSecondGen = onDocumentWritten(
+    {
+        document: `${ACCESS_PROJECTION_JOBS_COLLECTION}/{projectId}`,
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const after = event.data?.after
+        if (!after?.exists || after.data()?.status !== 'pending') return
+
+        const db = admin.firestore()
+        const leaseId = `${event.id}:${Date.now()}`
+        const job = await acquireAccessProjectionJob(db, after.ref, leaseId)
+        if (!job) return
+
+        try {
+            const { synchronizeProjectAccessProjectionPage } = require('./shared/objectAccessProjection')
+            const result = await synchronizeProjectAccessProjectionPage(
+                db,
+                job.projectId || event.params.projectId,
+                job.projectUserIds || [],
+                job.cursor
+            )
+            await releaseAccessProjectionJob(db, after.ref, leaseId, {
+                status: result.done ? 'complete' : 'pending',
+                cursor: result.cursor,
+                scanned: admin.firestore.FieldValue.increment(result.scanned),
+                updated: admin.firestore.FieldValue.increment(result.updated),
+                completedAt: result.done ? admin.firestore.FieldValue.serverTimestamp() : null,
+                lastError: admin.firestore.FieldValue.delete(),
+            })
+        } catch (error) {
+            await releaseAccessProjectionJob(db, after.ref, leaseId, {
+                status: 'pending',
+                lastError: String(error?.message || error).slice(0, 1000),
+            })
+            throw error
+        }
+    }
+)
+
+exports.resumeStalledFirestoreAccessProjectionJobsSecondGen = onSchedule(
+    {
+        schedule: '*/10 * * * *',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const db = admin.firestore()
+        const snapshot = await db
+            .collection(ACCESS_PROJECTION_JOBS_COLLECTION)
+            .where('leaseExpiresAt', '<=', Timestamp.now())
+            .limit(25)
+            .get()
+        if (snapshot.empty) return
+
+        const writer = db.bulkWriter()
+        snapshot.docs.forEach(jobDoc => {
+            if (jobDoc.data()?.status !== 'processing') return
+            writer.update(jobDoc.ref, {
+                status: 'pending',
+                leaseId: admin.firestore.FieldValue.delete(),
+                leaseExpiresAt: admin.firestore.FieldValue.delete(),
+                lastError: 'Projection page lease expired and was resumed',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
+        await writer.close()
     }
 )
 
@@ -3338,7 +3548,7 @@ exports.onCreateChatSecondGen = onDocumentCreated(
         const { onCreateChat } = require('./Chats/onCreateChatFunctions')
         const { projectId, chatId } = event.params
         const chat = { ...event.data.data(), id: chatId }
-        await onCreateChat(projectId, chat)
+        await Promise.all([onCreateChat(projectId, chat), synchronizeAccessProjection(event, null, 'usersFollowing')])
     }
 )
 
@@ -3352,9 +3562,13 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateChat } = require('./Chats/onUpdateChatFunctions')
         const { projectId, chatId } = event.params
-        await onUpdateChat(projectId, chatId, event.data)
+        await Promise.all([
+            onUpdateChat(projectId, chatId, event.data),
+            synchronizeAccessProjection(event, null, 'usersFollowing'),
+        ])
     }
 )
 
@@ -3386,7 +3600,7 @@ exports.onCreateTaskSecondGen = onDocumentCreated(
         const { onCreateTask } = require('./Tasks/onCreateTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await onCreateTask(task, projectId)
+        await Promise.all([onCreateTask(task, projectId), synchronizeAccessProjection(event, 'observersIds')])
     }
 )
 
@@ -3458,9 +3672,13 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateTask } = require('./Tasks/onUpdateTaskFunctions')
         const { projectId, taskId } = event.params
-        await onUpdateTask(taskId, projectId, event.data)
+        await Promise.all([
+            onUpdateTask(taskId, projectId, event.data),
+            synchronizeAccessProjection(event, 'observersIds'),
+        ])
     }
 )
 
@@ -3701,7 +3919,7 @@ exports.onCreateContactSecondGen = onDocumentCreated(
         const { onCreateContact } = require('./Contacts/onCreateContactFunctions')
         const { projectId, contactId } = event.params
         const contact = { ...event.data.data(), uid: contactId }
-        await onCreateContact(projectId, contact)
+        await Promise.all([onCreateContact(projectId, contact), synchronizeAccessProjection(event)])
     }
 )
 
@@ -3713,9 +3931,10 @@ exports.onUpdateContactSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateContact } = require('./Contacts/onUpdateContactFunctions')
         const { projectId, contactId } = event.params
-        await onUpdateContact(projectId, contactId, event.data)
+        await Promise.all([onUpdateContact(projectId, contactId, event.data), synchronizeAccessProjection(event)])
     }
 )
 
@@ -3747,7 +3966,7 @@ exports.onCreateGoalSecondGen = onDocumentCreated(
         const { onCreateGoal } = require('./Goals/onCreateGoalFunctions')
         const { projectId, goalId } = event.params
         const goal = { ...event.data.data(), id: goalId }
-        await onCreateGoal(projectId, goal)
+        await Promise.all([onCreateGoal(projectId, goal), synchronizeAccessProjection(event, 'assigneesIds')])
     }
 )
 
@@ -3759,9 +3978,13 @@ exports.onUpdateGoalSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateGoal } = require('./Goals/onUpdateGoalFunctions')
         const { projectId, goalId } = event.params
-        await onUpdateGoal(projectId, goalId, event.data)
+        await Promise.all([
+            onUpdateGoal(projectId, goalId, event.data),
+            synchronizeAccessProjection(event, 'assigneesIds'),
+        ])
     }
 )
 
@@ -3781,6 +4004,98 @@ exports.onDeleteGoalSecondGen = onDocumentDeleted(
 )
 
 //SKILLS
+
+exports.onCreateSkillAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'skills/{projectId}/items/{skillId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateSkillAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'skills/{projectId}/items/{skillId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateOkrAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'okrs/{projectId}/projectOkrs/{okrId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateOkrAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'okrs/{projectId}/projectOkrs/{okrId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateProjectFeedAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'projectsFeeds/{projectId}/{dateId}/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateProjectFeedAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'projectsFeeds/{projectId}/{dateId}/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateInnerFeedAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateInnerFeedAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
 
 exports.onDeleteSkillSecondGen = onDocumentDeleted(
     {
@@ -3810,7 +4125,10 @@ exports.onCreateNoteSecondGen = onDocumentCreated(
         const { onCreateNote } = require('./Notes/onCreateNoteFunctions')
         const { projectId, noteId } = event.params
         const note = { ...event.data.data(), id: noteId }
-        await onCreateNote(projectId, note)
+        await Promise.all([
+            onCreateNote(projectId, note),
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+        ])
     }
 )
 
@@ -3822,9 +4140,13 @@ exports.onUpdateNoteSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
+        if (accessProjectionOnly(event)) return
         const { onUpdateNote } = require('./Notes/onUpdateNoteFunctions')
         const { projectId, noteId } = event.params
-        await onUpdateNote(projectId, noteId, event.data)
+        await Promise.all([
+            onUpdateNote(projectId, noteId, event.data),
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+        ])
     }
 )
 
@@ -3858,10 +4180,16 @@ exports.deleteUserSecondGen = onCall(
             const admin = require('firebase-admin')
             try {
                 const { userId } = data
+                if (!userId || typeof userId !== 'string') {
+                    throw new HttpsError('invalid-argument', 'userId is required')
+                }
+                if (auth.uid !== userId) await assertAdministrator(auth.uid)
                 await admin.auth().deleteUser(userId)
                 console.log('Successfully deleted user')
             } catch (e) {
-                console.log('Error deleting user:', e.message)
+                console.error('Error deleting user:', e.message)
+                if (e instanceof HttpsError) throw e
+                throw new HttpsError('internal', 'Unable to delete user')
             }
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')

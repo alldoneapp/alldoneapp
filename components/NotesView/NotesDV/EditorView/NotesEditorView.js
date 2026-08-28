@@ -639,7 +639,7 @@ const NotesEditorView = ({
             uid: loggedUser.uid,
             id: note.id,
         })
-        Backend.removeNoteEditor(note.id, { id: loggedUser.uid, color: color.current })
+        Backend.removeNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current })
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
@@ -852,8 +852,8 @@ const NotesEditorView = ({
             return null
         }
 
-        Backend.addNoteEditor(note.id, { id: loggedUser.uid, color: color.current })
-        Backend.watchNotesCollab(note.id, editors => {
+        Backend.addNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current })
+        Backend.watchNotesCollab(projectId, note.id, editors => {
             if (editors) {
                 setEditors(editors.editors)
             }

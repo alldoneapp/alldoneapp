@@ -105,8 +105,8 @@ export const WARM_UP_STAGGER_MS = 50
 const KIND_DESCRIPTORS = {
     [PROJECT_DATA_USERS]: {
         watcherKey: projectId => `${projectId}Users`,
-        watch: (projectId, watcherKey, callback) =>
-            require('../backends/Users/usersFirestore').watchProjectUsers(projectId, callback, watcherKey),
+        watch: (projectId, watcherKey, callback, options) =>
+            require('../backends/Users/usersFirestore').watchProjectUsers(projectId, callback, watcherKey, options),
         // Preserved from the original `updateUsers`: an empty snapshot is not written. A project
         // always has at least its owner, so `[]` here means a degraded read, and overwriting a
         // good list with it would strip every avatar in that project.
@@ -205,7 +205,15 @@ function ensureOneKind(projectId, kind, options) {
         timeoutId = null
         // The watcher stays armed on purpose - it will still fill redux when it eventually
         // delivers. Only the promise stops blocking whoever awaited it.
-        console.warn(`[InitialLoad] ${kind} of project ${projectId} did not arrive within the first-snapshot budget`)
+        // This is a bounded fallback, not a failed read: the listener stays live
+        // and applies its snapshot whenever it arrives. Keep the performance
+        // signal below, but do not turn an expected slow/offline production path
+        // into a user-visible console warning.
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn(
+                `[InitialLoad] ${kind} of project ${projectId} did not arrive within the first-snapshot budget`
+            )
+        }
         performanceTrace.end('snapshot_timeout', { outcome: 'timeout' })
         settle(false)
     }, FIRST_SNAPSHOT_TIMEOUT_MS)

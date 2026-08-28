@@ -1,13 +1,14 @@
 // Firestore security rules.
 //
-// These are deployed to production by CI (`deploy:firestore:rules:production` in
-// .gitlab-ci.yml) on every master push that changes this file. Before AT-2450 nothing
-// deployed them at all and it was a manual `firebase deploy --only firestore:rules`,
-// which is how the file came to describe an authorization model production was not
-// actually running.
+// These are compiled and offered as a MANUAL production deployment by CI
+// (`deploy:firestore:rules:production` in .gitlab-ci.yml) when this file changes.
+// Before AT-2450 nothing deployed them at all and it was a manual
+// `firebase deploy --only firestore:rules`, which is how the file came to describe an
+// authorization model production was not actually running.
 //
 // Two consequences worth keeping in mind when editing:
-//   - A change here goes live on merge. There is no separate approval step.
+//   - A merge does not publish the rules. Production requires the manual CI job after
+//     emulator, staging and browser validation.
 //   - A deploy publishes the WHOLE file, never just your hunk, so anything already
 //     committed here but not yet released ships alongside your change.
 //
@@ -41,6 +42,13 @@ service cloud.firestore {
       return getAfter(/databases/$(database)/documents/projects/$(projectId));
     }
 
+    function isProjectMemberBeforeOrAfter(projectId) {
+      let projectPath = /databases/$(database)/documents/projects/$(projectId);
+      let beforeIds = exists(projectPath) ? get(projectPath).data.get('userIds', []) : [];
+      let afterIds = existsAfter(projectPath) ? getAfter(projectPath).data.get('userIds', []) : [];
+      return signedIn() && (request.auth.uid in beforeIds || request.auth.uid in afterIds);
+    }
+
     function hasValidDefaultProject(userId, userData) {
       return !('defaultProjectId' in userData) ||
         userData.defaultProjectId == '' ||
@@ -50,36 +58,185 @@ service cloud.firestore {
         );
     }
 
-    function userHasProjectIn(uid, fieldName, projectId) {
-      return userDoc(uid).data[fieldName] is list && projectId in userDoc(uid).data[fieldName];
+    function hasValidInitialProjectMembership(userId, userData) {
+      let projectId = userData.get('defaultProjectId', '');
+      return projectId is string && projectId != '' &&
+        userData.get('projectIds', []).toSet() == [projectId].toSet() &&
+        userData.get('guideProjectIds', []).toSet().hasOnly([projectId]) &&
+        userData.get('templateProjectIds', []).toSet().hasOnly([projectId]) &&
+        userData.get('archivedProjectIds', []).toSet().hasOnly([projectId]) &&
+        userData.get('copyProjectIds', []).toSet().hasOnly([projectId]) &&
+        userData.get('invitedProjectIds', []).size() == 0 &&
+        userId in projectDocAfter(projectId).data.get('userIds', []);
+    }
+
+    function ownerUpdatePreservesProjectMembership() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'projectIds', 'guideProjectIds', 'templateProjectIds',
+        'archivedProjectIds', 'copyProjectIds', 'invitedProjectIds',
+        'projectMembershipMutation'
+      ]);
+    }
+
+    function listChangedOnlyByProjectId(beforeList, afterList, projectId) {
+      return beforeList.toSet().difference(afterList.toSet()).hasOnly([projectId]) &&
+        afterList.toSet().difference(beforeList.toSet()).hasOnly([projectId]);
+    }
+
+    function projectMapChangedOnlyAt(fieldName, projectId) {
+      return resource.data.get(fieldName, {}).diff(request.resource.data.get(fieldName, {}))
+        .affectedKeys().hasOnly([projectId]);
+    }
+
+    function projectMapChangedOnlyAtWithGlobal(fieldName, projectId) {
+      return resource.data.get(fieldName, {}).diff(request.resource.data.get(fieldName, {}))
+        .affectedKeys().hasOnly([projectId, 'allProjects']);
+    }
+
+    function validFocusChange(userId, projectId) {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let focusTaskId = request.resource.data.get('inFocusTaskId', '');
+      let focusProjectId = request.resource.data.get('inFocusTaskProjectId', '');
+      return !affected.hasAny(['inFocusTaskId', 'inFocusTaskProjectId']) ||
+        (focusTaskId == '' && focusProjectId == '') ||
+        (
+          focusTaskId is string && focusTaskId != '' &&
+          focusProjectId == projectId &&
+          exists(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)) &&
+          (
+            get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('userId', '') == userId ||
+            userId in get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('userIds', []) ||
+            userId in get(/databases/$(database)/documents/items/$(projectId)/tasks/$(focusTaskId)).data.get('observersIds', [])
+          )
+        );
+    }
+
+    function isValidProjectMembershipMutation(userId) {
+      let mutation = request.resource.data.get('projectMembershipMutation', {});
+      let projectId = mutation.get('projectId', '');
+      let action = mutation.get('action', '');
+      let projectPath = /databases/$(database)/documents/projects/$(projectId);
+      let projectBefore = exists(projectPath) ? get(projectPath).data.get('userIds', []) : [];
+      let projectAfter = existsAfter(projectPath) ? getAfter(projectPath).data.get('userIds', []) : [];
+      let membershipFieldsValid =
+        listChangedOnlyByProjectId(resource.data.get('projectIds', []), request.resource.data.get('projectIds', []), projectId) &&
+        listChangedOnlyByProjectId(resource.data.get('guideProjectIds', []), request.resource.data.get('guideProjectIds', []), projectId) &&
+        listChangedOnlyByProjectId(resource.data.get('templateProjectIds', []), request.resource.data.get('templateProjectIds', []), projectId) &&
+        listChangedOnlyByProjectId(resource.data.get('archivedProjectIds', []), request.resource.data.get('archivedProjectIds', []), projectId) &&
+        listChangedOnlyByProjectId(resource.data.get('copyProjectIds', []), request.resource.data.get('copyProjectIds', []), projectId) &&
+        listChangedOnlyByProjectId(resource.data.get('invitedProjectIds', []), request.resource.data.get('invitedProjectIds', []), projectId);
+      let projectMapsValid =
+        projectMapChangedOnlyAt('lastVisitBoard', projectId) &&
+        projectMapChangedOnlyAt('lastVisitBoardInGoals', projectId) &&
+        projectMapChangedOnlyAt('workstreams', projectId) &&
+        projectMapChangedOnlyAt('quotaWarnings', projectId) &&
+        projectMapChangedOnlyAt('apisConnected', projectId) &&
+        projectMapChangedOnlyAt('statisticsSelectedUsersIds', projectId) &&
+        projectMapChangedOnlyAt('workflow', projectId) &&
+        projectMapChangedOnlyAt('noteIdsByProject', projectId) &&
+        projectMapChangedOnlyAt('unlockedKeysByGuides', projectId) &&
+        projectMapChangedOnlyAt('commentsData', projectId) &&
+        projectMapChangedOnlyAtWithGlobal('lastAssistantCommentData', projectId) &&
+        validFocusChange(userId, projectId);
+      return signedIn() &&
+        projectId is string && projectId != '' &&
+        mutation.get('actorId', '') == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds',
+          'copyProjectIds', 'invitedProjectIds', 'lastVisitBoard', 'lastVisitBoardInGoals', 'workstreams',
+          'quotaWarnings', 'apisConnected', 'statisticsSelectedUsersIds', 'workflow',
+          'noteIdsByProject', 'unlockedKeysByGuides', 'commentsData', 'projectMembershipMutation',
+          'lastAssistantCommentData', 'lastAssistantCommentDataByAssistant',
+          'lastEditionDate', 'lastEditorId', 'assistantId',
+          'inFocusTaskId', 'inFocusTaskProjectId'
+        ]) &&
+        membershipFieldsValid && projectMapsValid &&
+        (
+          (
+            action == 'add' &&
+            request.auth.uid in projectBefore &&
+            request.auth.uid in projectAfter &&
+            userId in projectAfter &&
+            projectId in request.resource.data.get('projectIds', [])
+          ) ||
+          (
+            action == 'remove' &&
+            request.auth.uid in projectBefore &&
+            userId in projectBefore &&
+            userId != request.auth.uid &&
+            request.auth.uid in projectAfter &&
+            !(userId in projectAfter) &&
+            !(projectId in request.resource.data.get('projectIds', []))
+          ) ||
+          (
+            action == 'project-update' &&
+            request.auth.uid in projectBefore &&
+            userId in projectBefore &&
+            request.auth.uid in projectAfter &&
+            userId in projectAfter
+          ) ||
+          (
+            action == 'self-sync' &&
+            request.auth.uid == userId &&
+            userId in projectAfter
+          ) ||
+          (
+            action == 'delete-project' &&
+            request.auth.uid in projectBefore &&
+            projectAfter.size() == 0 &&
+            !(projectId in request.resource.data.get('projectIds', []))
+          ) ||
+          (
+            action == 'invitation-add' &&
+            request.auth.uid in projectBefore &&
+            request.auth.uid in projectAfter &&
+            projectId in request.resource.data.get('invitedProjectIds', [])
+          ) ||
+          (
+            action == 'invitation-remove' &&
+            (request.auth.uid in projectBefore || request.auth.uid == userId) &&
+            !(projectId in request.resource.data.get('invitedProjectIds', []))
+          )
+        );
     }
 
     function isProjectMember(projectId) {
-      return signedIn() && (
-        userHasProjectIn(request.auth.uid, 'projectIds', projectId) ||
-        userHasProjectIn(request.auth.uid, 'guideProjectIds', projectId) ||
-        userHasProjectIn(request.auth.uid, 'templateProjectIds', projectId) ||
-        userHasProjectIn(request.auth.uid, 'archivedProjectIds', projectId)
-      );
+      // projects/{projectId}.userIds is the authority. The arrays on users/{uid}
+      // are denormalized navigation state and are owner-writable, so using them
+      // for authorization lets an account add an arbitrary project id to itself.
+      return signedIn() &&
+        projectDoc(projectId).data.userIds is list &&
+        request.auth.uid in projectDoc(projectId).data.userIds;
     }
 
     function isPublicSharedProject(projectId) {
       return projectDoc(projectId).data.isShared != privateProject();
     }
 
-    function isObjectPublic(data) {
-      return data.isPublicFor is list && publicForAll() in data.isPublicFor;
-    }
-
     function canReadObject(projectId, data) {
+      // isPublicFor uses 0 as a project-public sentinel. A query with
+      // array-contains-any [0, uid] cannot prove that OR to the rules engine, so
+      // the Admin SDK maintains query-shaped projection fields instead:
+      //   readerIds                  every caller allowed to read the object
+      //   roleIdsVisibleTo.{uid}     observer/assignee ids visible to caller
+      //   followedReaderIds          followers who are also allowed to read it
+      //   backlinkIdsVisibleTo       linked-object tokens visible to each caller
+      // Clients may query these fields but may never change them.
       return isProjectMember(projectId) && (
-        isObjectPublic(data) ||
-        (data.isPublicFor is list && request.auth.uid in data.isPublicFor)
+        request.auth.uid in data.get('readerIds', []) ||
+        request.auth.uid in data.get('roleIdsVisibleTo', {}) ||
+        request.auth.uid in data.get('backlinkIdsVisibleTo', {}) ||
+        request.auth.uid in data.get('followedReaderIds', []) ||
+        data.get('followedByVisibleTo', {}).get(request.auth.uid, false) == true
       );
     }
 
     function canReadSharedObject(projectId, data) {
-      return isPublicSharedProject(projectId) && isObjectPublic(data);
+      return isPublicSharedProject(projectId) && (
+        publicForAll() in data.get('readerIds', []) ||
+        '0' in data.get('roleIdsVisibleTo', {}) ||
+        '0' in data.get('backlinkIdsVisibleTo', {})
+      );
     }
 
     function canReadProject(projectId) {
@@ -87,10 +244,22 @@ service cloud.firestore {
     }
 
     function canWriteObject(projectId, data) {
-      return isProjectMember(projectId) && (
-        isObjectPublic(data) ||
-        (data.isPublicFor is list && request.auth.uid in data.isPublicFor)
-      );
+      return isProjectMember(projectId) &&
+        data.isPublicFor is list &&
+        data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
+    }
+
+    function accessProjectionAbsent(data) {
+      return !('readerIds' in data) &&
+        !('roleIdsVisibleTo' in data) &&
+        !('followedByVisibleTo' in data) &&
+        !('followedReaderIds' in data) &&
+        !('backlinkIdsVisibleTo' in data);
+    }
+
+    function accessProjectionUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['readerIds', 'roleIdsVisibleTo', 'followedByVisibleTo', 'followedReaderIds', 'backlinkIdsVisibleTo']);
     }
 
     function canReadUserScopedProjectData(projectId, userId) {
@@ -107,16 +276,22 @@ service cloud.firestore {
         )
       );
       allow create: if signedIn() && request.auth.uid == userId &&
-        hasValidDefaultProject(userId, request.resource.data);
+        hasValidDefaultProject(userId, request.resource.data) &&
+        hasValidInitialProjectMembership(userId, request.resource.data);
       allow update: if signedIn() && request.auth.uid == userId &&
+        ownerUpdatePreservesProjectMembership() &&
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['defaultProjectId']) ||
           hasValidDefaultProject(userId, request.resource.data)
-        );
-      allow delete: if signedIn() && request.auth.uid == userId;
+        ) || isValidProjectMembershipMutation(userId) || isAdministrator();
+      allow delete: if signedIn() && (request.auth.uid == userId || isAdministrator());
     }
 
-    match /users/{userId}/{document=**} {
+    // Include one named segment before the recursive wildcard. In rules v2 a
+    // `{document=**}` wildcard can match zero segments, so the old shape also
+    // matched users/{userId} itself and silently bypassed every field-level
+    // restriction in the rule above.
+    match /users/{userId}/{userSubcollection}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
@@ -130,20 +305,22 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow read: if canReadProject(projectId);
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
-      allow update, delete: if isProjectMember(projectId);
+      allow update: if isProjectMember(projectId);
+      allow delete: if signedIn() &&
+        request.auth.uid in resource.data.get('userIds', []);
     }
 
     match /items/{projectId}/tasks/{taskId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
@@ -157,29 +334,36 @@ service cloud.firestore {
 
     match /goals/{projectId}/items/{goalId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /chatObjects/{projectId}/chats/{chatId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /projectsContacts/{projectId}/contacts/{contactId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /skills/{projectId}/items/{skillId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow create: if canWriteObject(projectId, request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canReadObject(projectId, resource.data);
+    }
+
+    match /okrs/{projectId}/projectOkrs/{okrId} {
+      allow read: if canReadObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
     }
 
@@ -206,6 +390,13 @@ service cloud.firestore {
     // redelivered task update from paying for the same assistant run twice, so clients must never
     // be able to read or forge one.
     match /workflowAiRuns/{runId} {
+      allow read, write: if false;
+    }
+
+    // Resumable server-owned jobs used to reconcile query projections after a
+    // project's membership changes. They contain the authoritative member list
+    // and processing cursors, so no client may observe or alter them.
+    match /firestoreAccessProjectionJobs/{projectId} {
       allow read, write: if false;
     }
 
@@ -324,12 +515,16 @@ service cloud.firestore {
 
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow write: if isProjectMember(projectId);
+      allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
+      allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
+      allow delete: if isProjectMember(projectId);
     }
 
     match /projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow write: if isProjectMember(projectId);
+      allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
+      allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
+      allow delete: if isProjectMember(projectId);
     }
 
     match /feedsStore/{projectId}/{userId}/{document=**} {
@@ -360,12 +555,28 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
+    match /subscriptionsPaidByOtherUser/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /invoiceNumbers/customInvoiceNumber/users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
     match /invoiceData/{projectId}/{userId}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
     match /userForceReloads/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow read, delete: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && (
+        request.auth.uid == userId ||
+        isAdministrator() ||
+        (
+          request.resource.data.projectId is string &&
+          isProjectMemberBeforeOrAfter(request.resource.data.projectId)
+        )
+      );
     }
 
     match /emailNotifications/{notificationId} {
@@ -389,6 +600,43 @@ service cloud.firestore {
     match /workstreams/{projectId}/items/{workstreamId} {
       allow read: if isProjectMember(projectId);
       allow write: if isProjectMember(projectId);
+    }
+
+    // The active web client uses these legacy collection names/shapes. Keep
+    // them explicit so a renamed backend path cannot silently fall through to
+    // the final deny rule.
+    match /projectsWorkstreams/{projectId}/workstreams/{workstreamId} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
+    match /goalsMilestones/{projectId}/milestonesItems/{milestoneId} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
+    match /feedsObjectsLastStates/{projectId}/{objectType}/{objectId} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
+    match /notesCollab/{projectId}/notes/{noteId} {
+      allow read, write: if canReadObject(
+        projectId,
+        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
+      );
+    }
+
+    // Client writes a lightweight marker; the scheduled revision-history
+    // worker reads and deletes it through the Admin SDK.
+    match /notesEditedDaily/{noteId} {
+      allow create, update: if request.resource.data.projectId is string &&
+        isProjectMember(request.resource.data.projectId);
+      allow read, delete: if false;
+    }
+
+    // Legacy feed history is still produced by the client and consumed only by
+    // trusted backend jobs. It must never be client-readable.
+    match /oldFeeds/{projectId}/{document=**} {
+      allow write: if isProjectMember(projectId);
+      allow read: if false;
     }
 
     match /projectsInvitation/{projectId}/invitations/{invitationId} {

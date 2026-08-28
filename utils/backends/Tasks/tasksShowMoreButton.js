@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import { getDb, globalWatcherUnsub, mapGoalData, mapTaskData } from '../firestore'
+import { getRoleIdsVisibleToField } from '../firestoreAccess'
 import store from '../../../redux/store'
 import {
     addThereAreLaterEmptyGoals,
@@ -76,7 +77,7 @@ export const watchIfNeedShowLaterOpenTasksButton = (
         .where('done', '==', false)
         .where('parentId', '==', null)
         .where('currentReviewerId', '==', userId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     if (checkLaterTasks) {
         normalQuery = normalQuery.where('dueDate', '>', endOfDay).where('dueDate', '<', BACKLOG_DATE_NUMERIC)
@@ -92,15 +93,13 @@ export const watchIfNeedShowLaterOpenTasksButton = (
     if (!isWorkstream(userId)) {
         globalWatcherUnsub[observedWatcherKey] = getDb()
             .collection(`items/${projectId}/tasks`)
-            .where('done', '==', false)
-            .where('parentId', '==', null)
-            .where('observersIds', 'array-contains-any', [userId])
-            .orderBy('dueDate', 'asc')
+            .where(getRoleIdsVisibleToField(String(allowUserIds[allowUserIds.length - 1])), 'array-contains', userId)
             .onSnapshot(snapshot => {
                 futureTasksData.thereAreObservedTasks = false
                 for (let i = 0; i < snapshot.docs.length; i++) {
                     const task = mapTaskData(snapshot.docs[i].id, snapshot.docs[i].data())
                     const { isPublicFor, dueDateByObserversIds } = task
+                    if (task.done !== false || task.parentId !== null) continue
                     const isPublicForLoggedUser =
                         isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
                         (!isAnonymous && isPublicFor.includes(loggedUserId))
@@ -128,7 +127,7 @@ export const watchIfNeedShowLaterOpenTasksButton = (
                 .where('done', '==', false)
                 .where('parentId', '==', null)
                 .where('userId', '==', wsId)
-                .where('isPublicFor', 'array-contains-any', allowUserIds)
+                .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
             if (checkLaterTasks) {
                 userWorkstreamsQuery = userWorkstreamsQuery
@@ -190,15 +189,18 @@ export const watchIfNeedShowLaterEmptyGoalsButton = (
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('progress', '!=', 100)
-        .where('assigneesIds', 'array-contains-any', [userId])
-        .where('ownerId', '==', ownerId)
+        .where(
+            getRoleIdsVisibleToField(String(isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId)),
+            'array-contains',
+            userId
+        )
         .onSnapshot(docs => {
             let needToShowButton = false
             docs.forEach(doc => {
                 if (!needToShowButton) {
                     const goal = mapGoalData(doc.id, doc.data())
                     const { assigneesReminderDate, progress, dynamicProgress, isPublicFor } = goal
+                    if (progress === 100 || goal.ownerId !== ownerId) return
                     const isDynamicCompletedGoal = progress === DYNAMIC_PERCENT && dynamicProgress === 100
                     const isLaterGoal =
                         assigneesReminderDate[userId] > endOfDay && assigneesReminderDate[userId] < BACKLOG_DATE_NUMERIC
@@ -372,7 +374,7 @@ export const watchOpenTasksShowMoreAvailability = ({
         .where('inDone', '==', false)
         .where('parentId', '==', null)
         .where('currentReviewerId', '==', userId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
     attach(
         assignedBaseQuery
             .where('dueDate', '>', endOfDay)
@@ -405,9 +407,7 @@ export const watchOpenTasksShowMoreAvailability = ({
     if (!isWorkstream(userId)) {
         const observedQuery = getDb()
             .collection(`items/${projectId}/tasks`)
-            .where('inDone', '==', false)
-            .where('parentId', '==', null)
-            .where('observersIds', 'array-contains-any', [userId])
+            .where(getRoleIdsVisibleToField(String(allowUserIds[allowUserIds.length - 1])), 'array-contains', userId)
         attach(
             observedQuery,
             sources.observed,
@@ -415,6 +415,7 @@ export const watchOpenTasksShowMoreAvailability = ({
                 classifyShowMoreDueDates(
                     snapshotDocs(snapshot)
                         .map(doc => doc.data())
+                        .filter(task => task.inDone === false && task.parentId === null)
                         .filter(
                             task =>
                                 Array.isArray(task.isPublicFor) &&
@@ -433,7 +434,7 @@ export const watchOpenTasksShowMoreAvailability = ({
                 .where('inDone', '==', false)
                 .where('parentId', '==', null)
                 .where('userId', '==', workstreamId)
-                .where('isPublicFor', 'array-contains-any', allowUserIds)
+                .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             attach(
                 workstreamBaseQuery
                     .where('dueDate', '>', endOfDay)
@@ -466,9 +467,7 @@ export const watchOpenTasksShowMoreAvailability = ({
     const ownerId = getOwnerId(projectId, userId)
     const goalsQuery = getDb()
         .collection(`goals/${projectId}/items`)
-        .where('progress', '!=', 100)
-        .where('assigneesIds', 'array-contains-any', [userId])
-        .where('ownerId', '==', ownerId)
+        .where(getRoleIdsVisibleToField(String(allowUserIds[allowUserIds.length - 1])), 'array-contains', userId)
     attach(
         goalsQuery,
         sources.goals,
@@ -476,6 +475,7 @@ export const watchOpenTasksShowMoreAvailability = ({
             classifyShowMoreDueDates(
                 snapshotDocs(snapshot)
                     .map(doc => mapGoalData(doc.id, doc.data()))
+                    .filter(goal => goal.progress !== 100 && goal.ownerId === ownerId)
                     .filter(goal => goal.progress !== DYNAMIC_PERCENT || goal.dynamicProgress !== 100)
                     .filter(
                         goal =>

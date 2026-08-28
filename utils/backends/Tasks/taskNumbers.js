@@ -2,6 +2,7 @@ import moment from 'moment'
 import { cloneDeep, isEqual } from 'lodash'
 
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
+import { getRoleIdsVisibleToField } from '../firestoreAccess'
 import store from '../../../redux/store'
 import {
     setWorkflowTasksAmount,
@@ -30,7 +31,7 @@ export const watchWorkflowTasksAmount = (projectIds, userId, watcherKeys) => {
             .where('done', '==', false)
             .where('parentId', '==', null)
             .where('currentReviewerId', '!=', userId)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
         globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(snapshot => {
             const newAmount = assistantOwner
@@ -74,7 +75,7 @@ export const watchDoneTasksAmount = (projectIds, userId, watcherKeys) => {
             .where('completed', '<=', dateEndToday)
             .where('completed', '>=', dateStartToday)
             .where('parentId', '==', null)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .onSnapshot(snapshot => {
                 const newAmount = snapshot.docs.length
                 const previousAmount = amountsByProject[projectId]
@@ -132,7 +133,7 @@ export const watchOpenTasksAmount = (
             .where('done', '==', false)
             .where('parentId', '==', null)
             .where('currentReviewerId', '==', userId)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
         if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
 
@@ -177,22 +178,21 @@ export const watchObservedOpenTasksAmount = (
     watcherKeys,
     onQuerySettled
 ) => {
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
     projectIds.forEach((projectId, index) => {
         globalWatcherUnsub[watcherKeys[index]] = getDb()
             .collection(`items/${projectId}/tasks`)
-            .where('done', '==', false)
-            .where('parentId', '==', null)
-            .where('observersIds', 'array-contains-any', [userId])
+            .where(getRoleIdsVisibleToField(String(accessReaderId)), 'array-contains', userId)
             .onSnapshot(
                 snapshot => {
                     let newAmount = 0
                     snapshot.forEach(taskDoc => {
-                        const needToCountTheTask = checkIfNeedCountObservedTasks(
-                            mapTaskData(taskDoc.id, taskDoc.data()),
-                            userId,
-                            countLaterTasks,
-                            countSomedayTasks
-                        )
+                        const task = mapTaskData(taskDoc.id, taskDoc.data())
+                        const needToCountTheTask =
+                            task.done === false &&
+                            task.parentId === null &&
+                            checkIfNeedCountObservedTasks(task, userId, countLaterTasks, countSomedayTasks)
                         if (needToCountTheTask) newAmount++
                     })
 
@@ -260,7 +260,7 @@ export const watchUserWorkstreamsOpenTasksAmount = (
                 .where('parentId', '==', null)
                 .where('userId', '==', wsId)
                 .where('currentReviewerId', '==', wsId)
-                .where('isPublicFor', 'array-contains-any', allowUserIds)
+                .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
             if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
 
@@ -405,7 +405,7 @@ export const watchSidebarTasksAmount = (
             .where('done', '==', false)
             .where('dueDate', '<=', dateEndToday)
             .where('parentId', '==', null)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .onSnapshot(snapshot => {
                 const oldUsersTasksAmountByProject = cloneDeep(usersTasksAmountByProject)
                 usersTasksAmountByProject[projectId].loadedRegular = true
@@ -461,7 +461,7 @@ export const watchSidebarTasksAmount = (
             .where('done', '==', false)
             .where('parentId', '==', null)
             .where('observersIds', '!=', [])
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .onSnapshot(snapshot => {
                 const oldUsersTasksAmountByProject = cloneDeep(usersTasksAmountByProject)
                 usersTasksAmountByProject[projectId].loadedObserved = true
