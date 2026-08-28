@@ -96,7 +96,7 @@ NOT_NEEDED_EXIT_CODE=76
 # Every target the `compute` step reports on. Staging is deliberately absent: `develop`
 # is dormant (roughly 1,660 commits behind master), so two pushes never race there, and
 # keeping it on plain `rules: changes:` keeps this mechanism to the branch that needs it.
-TARGETS="web-production functions-production runner-production"
+TARGETS="web-production functions-production runner-production firestore-rules-production"
 
 log() {
     echo "deploy-scope${TARGET:+ [$TARGET]}: $1"
