@@ -420,12 +420,13 @@ function TaskPresentation(
                                 {/* AT-2381 — decoration only, and deliberately a sibling rather than
                                     a wrapper: it fills the row absolutely with `pointerEvents="none"`,
                                     so it can never change the row's height or swallow a tap. The task
-                                    stays completable, draggable and editable while it sparkles. */}
-                                {hasRoutingActivity && (
-                                    <TaskRoutingActivityOverlay
-                                        processing={routingProcessing}
-                                        confirmation={routingConfirmation}
-                                    />
+                                    stays completable, draggable and editable while it plays.
+                                    AT-2453 follow-up — gated on the CONFIRMATION alone, not on
+                                    `hasRoutingActivity`: the in-progress sweep is gone, so a row that
+                                    is merely being classified has no motion layer to mount, and does
+                                    not pay for the `matchMedia` listener `useReducedMotion` opens. */}
+                                {routingConfirmation && (
+                                    <TaskRoutingActivityOverlay confirmation={routingConfirmation} />
                                 )}
                                 {/* AT-2404 — the green wash, and the reason it SWEEPS rather than
                                     fades: it scales on X from the same `Animated.Value` and the
