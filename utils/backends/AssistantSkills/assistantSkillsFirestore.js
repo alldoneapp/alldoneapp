@@ -10,11 +10,13 @@ const updateEditionData = data => {
     data.lastEditorId = loggedUser.uid
 }
 
+// Re-exported so a caller that already imports this module does not need a
+// second import for the predicate that goes with these paths.
+export { isGlobalSkillCatalog }
+
 // A skill catalog is keyed by the project that owns it (AT-2450). `globalProject`
 // is the administrator-curated catalog every user reads; any other id is that
 // project's own skills, readable and writable by its members.
-export { isGlobalSkillCatalog }
-
 function getSkillsCollectionPath(projectId = GLOBAL_PROJECT_ID) {
     return `assistantSkills/${projectId || GLOBAL_PROJECT_ID}/items`
 }

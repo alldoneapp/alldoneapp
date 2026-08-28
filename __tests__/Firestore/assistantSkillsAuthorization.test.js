@@ -74,7 +74,9 @@ describe('assistant skills Firestore authorization', () => {
 
     test("the administrator's flat import staging area is untouched", () => {
         // It holds live documents in production; moving it would strand them.
-        expect(rules).toMatch(/match \/assistantSkillImports\/\{importId\} \{\s*allow read, write: if isAdministrator\(\);/)
+        expect(rules).toMatch(
+            /match \/assistantSkillImports\/\{importId\} \{\s*allow read, write: if isAdministrator\(\);/
+        )
     })
 
     test('project imports stage under their own project and need membership', () => {
