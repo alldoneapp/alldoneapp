@@ -24,9 +24,9 @@ import { ROUTING_GLOW_DURATION_MS, ROUTING_BURST_DURATION_MS } from './useTaskRo
  *   - Confirmation is a ONE-SHOT of known length, so it uses `Animated` with `useNativeDriver`,
  *     matching `emptyInboxDotMotion` and the rest of the codebase's celebration idiom.
  *
- * Both stand down entirely under `prefers-reduced-motion` — the badge in the trailing tag area
- * still appears, so the INFORMATION survives while the motion does not. That split is the point:
- * this overlay is decoration, and `TaskRoutingTag` is the message.
+ * Both stand down entirely under `prefers-reduced-motion` — the badge in the leading slot still
+ * appears, so the INFORMATION survives while the motion does not. That split is the point: this
+ * overlay is decoration, and `TaskRoutingTag` is the message.
  */
 
 /**
@@ -83,11 +83,8 @@ const sweepStop = alpha => {
 export const SWEEP_TINT = sweepStop(SWEEP_PEAK_ALPHA)
 export const SWEEP_TRANSPARENT = sweepStop(0)
 
-// Radiates from the row's leading edge, just right of the checkbox. AT-2453 moved the badge itself
-// into the trailing tag area and deliberately left this where it is: the burst is a one-shot
-// celebration for the WHOLE row (it plays over the row-wide green glow, not over the chip), and
-// anchoring it to the right-hand tags would fire it into the crowded corner the tags already
-// occupy, where the dots have nowhere to travel and read as clipped rather than as a burst.
+// Placed to radiate from the leading slot, where the sparkle badge sits — so the burst reads as
+// coming FROM the badge that was just spinning rather than from nowhere.
 const BURST_DOTS = [
     { x: -9, y: -13, size: 4, color: colors.UtilityGreen200 },
     { x: 10, y: -15, size: 3, color: colors.UtilityBlue200 },
@@ -242,8 +239,7 @@ const localStyles = StyleSheet.create({
     },
     burstOrigin: {
         position: 'absolute',
-        // Sits over the row's leading edge, just right of the checkbox. See BURST_DOTS above for
-        // why this stayed put when the badge moved to the trailing tags.
+        // Sits over the leading slot, just right of the checkbox.
         left: 34,
         top: '50%',
         width: 0,

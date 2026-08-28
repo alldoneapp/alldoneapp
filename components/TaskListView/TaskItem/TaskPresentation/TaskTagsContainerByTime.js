@@ -30,7 +30,6 @@ export default function TaskTagsContainerByTime({
     blockOpen,
     leadingVmStatusTag,
     leadingPriorityTag,
-    trailingRoutingTag,
     inCommentPopup,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
@@ -95,12 +94,6 @@ export default function TaskTagsContainerByTime({
                         {leadingPriorityTag}
                     </View>
                     <View onLayout={onLayoutInRightArea} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {/* AT-2453 — same move as the regular row: the routing badge belongs with the
-                            trailing tags on the right, not in the leading area beside the time and
-                            priority chips. It stays outside `TaskItemTags` so the summary chip cannot
-                            hide it, and inside the measured right area so `showSummarizeTag` still
-                            accounts for its width. */}
-                        {trailingRoutingTag}
                         <TaskItemTags
                             task={task}
                             projectId={projectId}

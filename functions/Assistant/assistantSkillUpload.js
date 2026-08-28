@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 
-const { requireSkillAdministrator, SKILL_STORAGE_ROOT } = require('./assistantSkills')
+const { requireSkillWriteAccess, getSkillStoragePrefix } = require('./assistantSkills')
 
 // Kept in step with the client caps in components/AdminPanel/AssistantSkills/skillDraftFromSource.js
 // and with the mount-time caps in assistantSkills.js. A file that passes here
@@ -65,12 +65,16 @@ function resolveVersion(version) {
 }
 
 /**
- * Store one bundled file for a skill the admin is composing in the Add-skill
- * form (AT-2431). Mirrors what the GitHub import writes, so an uploaded bundle
- * and an imported one are indistinguishable downstream.
+ * Store one bundled file for a skill being composed in the Add-skill form
+ * (AT-2431). Mirrors what the GitHub import writes, so an uploaded bundle and
+ * an imported one are indistinguishable downstream.
+ *
+ * `projectId` selects the catalog being written to and is what the call is
+ * authorized against (AT-2450): the global catalog stays administrator-only,
+ * a project catalog needs membership of that project.
  */
-async function uploadAssistantSkillFile({ userId, skillId, version, relativePath, contentBase64 }) {
-    await requireSkillAdministrator(userId)
+async function uploadAssistantSkillFile({ userId, projectId, skillId, version, relativePath, contentBase64 }) {
+    await requireSkillWriteAccess(userId, projectId)
 
     if (typeof skillId !== 'string' || !SKILL_ID_REGEX.test(skillId)) throw invalidArgument('Invalid skill id')
     const resolvedVersion = resolveVersion(version)
@@ -78,7 +82,7 @@ async function uploadAssistantSkillFile({ userId, skillId, version, relativePath
     const content = decodeContent(contentBase64)
 
     const bucket = admin.storage().bucket()
-    const prefix = `${SKILL_STORAGE_ROOT}/${skillId}/${resolvedVersion}/`
+    const prefix = getSkillStoragePrefix(projectId, skillId, resolvedVersion)
     const storagePath = `${prefix}${relativePath}`
 
     // Bounded so a runaway client loop cannot fill the bucket. The listing is
@@ -91,7 +95,12 @@ async function uploadAssistantSkillFile({ userId, skillId, version, relativePath
 
     await bucket.file(storagePath).save(content)
 
-    console.log('🧩 SKILL UPLOAD: stored bundled file', { skillId, relativePath, size: content.length })
+    console.log('🧩 SKILL UPLOAD: stored bundled file', {
+        projectId: projectId || 'globalProject',
+        skillId,
+        relativePath,
+        size: content.length,
+    })
     return { relativePath, storagePath, size: content.length }
 }
 
