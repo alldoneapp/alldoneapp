@@ -97,7 +97,12 @@ describe('the empty-inbox day celebration, end to end', () => {
         expect(countOf(tree, 'empty-inbox-today-dot')).toBe(1)
         expect(countOf(tree, 'empty-inbox-dot-halo')).toBe(1)
         expect(countOf(tree, 'empty-inbox-dot-ring')).toBe(1)
-        expect(countOf(tree, 'empty-inbox-dot-spark')).toBe(6)
+        expect(countOf(tree, 'empty-inbox-dot-spark')).toBe(8)
+        // AT-2460: the card outlines itself in green for the length of the moment, and the swelling
+        // dot carries a "Day N" badge. Both are what make an 11px cell findable from a
+        // congratulation several blocks above it.
+        expect(countOf(tree, 'empty-inbox-card-spotlight')).toBe(1)
+        expect(countOf(tree, 'empty-inbox-dot-callout')).toBe(1)
         // Yesterday's streak is still on screen while the dot lands.
         expect(streakValue(tree)).toBe(1)
 
@@ -110,11 +115,13 @@ describe('the empty-inbox day celebration, end to end', () => {
             jest.advanceTimersByTime(CELEBRATION_TOTAL_MS)
         })
 
-        // Settled: the dot stays green, every decorative layer is gone.
+        // Settled: the dot stays green, every decorative layer is gone and the card is plain again.
         expect(countOf(tree, 'empty-inbox-today-dot')).toBe(1)
         expect(countOf(tree, 'empty-inbox-dot-fill')).toBe(1)
         expect(countOf(tree, 'empty-inbox-dot-ring')).toBe(0)
         expect(countOf(tree, 'empty-inbox-dot-spark')).toBe(0)
+        expect(countOf(tree, 'empty-inbox-dot-callout')).toBe(0)
+        expect(countOf(tree, 'empty-inbox-card-spotlight')).toBe(0)
         expect(streakValue(tree)).toBe(2)
     })
 
@@ -147,10 +154,12 @@ describe('the empty-inbox day celebration, end to end', () => {
         const tree = await renderBoard([yesterdayKey, todayKey])
 
         // The information survives — the day is green and the streak is correct — and no beat of
-        // the motion is rendered at all.
+        // the motion is rendered at all, including everything AT-2460 added.
         expect(countOf(tree, 'empty-inbox-dot-fill')).toBe(1)
         expect(countOf(tree, 'empty-inbox-dot-ring')).toBe(0)
         expect(countOf(tree, 'empty-inbox-dot-spark')).toBe(0)
+        expect(countOf(tree, 'empty-inbox-dot-callout')).toBe(0)
+        expect(countOf(tree, 'empty-inbox-card-spotlight')).toBe(0)
         expect(streakValue(tree)).toBe(2)
     })
 

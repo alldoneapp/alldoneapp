@@ -14,10 +14,16 @@ import {
  *
  * Deliberately a local constant rather than an import of the motion's own duration — this hook
  * decides WHETHER to celebrate and is kept ignorant of the animation — but it must never be shorter
- * than the celebration, or a run cut off halfway would count as seen. `emptyInboxCelebrationMarker`
- * pins that relationship.
+ * than the celebration, or a run cut off halfway would count as seen. The suites of both motions
+ * pin that relationship from their side, which is what keeps this number honest without giving this
+ * file a dependency on either of them.
+ *
+ * AT-2460 raised it from 1000ms because the celebration itself grew to ~3s. The direction of the
+ * error matters: too long only means a day is occasionally handed back and celebrated again, while
+ * too short means a user who navigated away mid-animation has silently spent the day and will never
+ * see it.
  */
-export const CELEBRATION_CLAIM_SETTLE_MS = 1000
+export const CELEBRATION_CLAIM_SETTLE_MS = 3200
 
 /**
  * AT-2418 — decides WHETHER today's empty-inbox dot should be celebrated, and returns a run id the

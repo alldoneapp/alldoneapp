@@ -1,13 +1,15 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import moment from 'moment'
-import { AccessibilityInfo } from 'react-native'
+import { AccessibilityInfo, StyleSheet } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
-import { CONFETTI_PIECE_COUNT } from './EmptyInboxConfetti'
-import { CONGRATS_TOTAL_MS } from './emptyInboxCongratsMotion'
+import { CONFETTI_BURST_PIECE_COUNT, CONFETTI_PAGE_PIECE_COUNT, CONFETTI_PIECE_COUNT } from './EmptyInboxConfetti'
+import { CONGRATS_TOTAL_MS, HEADLINE_MS } from './emptyInboxCongratsMotion'
 import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
+import { CELEBRATION_CLAIM_SETTLE_MS } from '../../SettingsView/Profile/Achievements/useTodayEmptyInboxCelebration'
+import { CELEBRATION_TOTAL_MS, DOT_START_DELAY_MS } from '../../SettingsView/Profile/Achievements/emptyInboxDotMotion'
 
 /**
  * AT-2445 — drives the REAL congrats block through the REAL animated branch.
@@ -90,8 +92,13 @@ describe('the empty-inbox congrats celebration, end to end (AT-2445)', () => {
             tree.update(<AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />)
         })
 
+        // AT-2460: two layers. The burst is thrown from behind the headline, so the celebration is
+        // visibly caused by the line being read; the page layer covers the whole viewport, which is
+        // what makes it an event rather than a flourish next to a headline on a wide board.
         expect(countOf(tree, 'empty-inbox-confetti')).toBe(1)
+        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(1)
         expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(CONFETTI_PIECE_COUNT)
+        expect(CONFETTI_PIECE_COUNT).toBe(CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT)
 
         await act(async () => {
             jest.advanceTimersByTime(CONGRATS_TOTAL_MS)
@@ -99,7 +106,50 @@ describe('the empty-inbox congrats celebration, end to end (AT-2445)', () => {
 
         // Settled: every decorative layer is gone and the block is the block a reload paints.
         expect(countOf(tree, 'empty-inbox-confetti')).toBe(0)
+        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(0)
         expect(countOf(tree, 'empty-inbox-congrats-headline')).toBe(1)
+    })
+
+    /**
+     * AT-2460 — the page layer is the reason this is "much more celebratory", so the two properties
+     * that keep it acceptable are pinned rather than left to review.
+     *
+     * It is the same class of overlay as the full-screen Giphy animation AT-2404 removed, and the
+     * difference is entirely in these two attributes: it cannot receive a tap, and it never covers
+     * content opaquely. Losing either would reintroduce the thing that was deleted on purpose.
+     */
+    it('cannot swallow a tap and paints nothing opaque over the page', async () => {
+        const tree = await renderBoard([yesterdayKey, todayKey])
+        const layerStyle = testId => {
+            const layer = tree.root.findByProps({ testID: testId }, { deep: false })
+            return StyleSheet.flatten(layer.props.style)
+        }
+
+        const page = layerStyle('empty-inbox-confetti')
+        expect(page.pointerEvents).toBe('none')
+        expect(page.backgroundColor).toBeUndefined()
+        // Escapes the scroll container it is rendered inside without a portal, and clips itself so
+        // a piece travelling past the bottom edge cannot add a scrollbar to the app shell.
+        expect(page.position).toBe('fixed')
+        expect(page.overflow).toBe('hidden')
+
+        expect(layerStyle('empty-inbox-confetti-burst').pointerEvents).toBe('none')
+    })
+
+    /**
+     * The two halves of the celebration are one event on one run id, so their schedules have to
+     * interlock: the dot waits out the headline, and the day is not spent until the longest of them
+     * has been on screen. Asserted here because this is the one suite that can see both.
+     */
+    it('interlocks the headline, the dot and the once-per-day claim', () => {
+        // The dot starts after the congratulation has settled...
+        expect(DOT_START_DELAY_MS).toBeGreaterThanOrEqual(HEADLINE_MS - 100)
+        // ...and while the confetti is still falling, so the page never goes quiet mid-celebration.
+        expect(DOT_START_DELAY_MS).toBeLessThan(CONGRATS_TOTAL_MS)
+        // A day may only be counted as spent once the whole thing has had time to play. Too short
+        // and a user who navigated away mid-run has silently lost the celebration for good.
+        expect(CELEBRATION_CLAIM_SETTLE_MS).toBeGreaterThanOrEqual(CONGRATS_TOTAL_MS)
+        expect(CELEBRATION_CLAIM_SETTLE_MS).toBeGreaterThanOrEqual(CELEBRATION_TOTAL_MS)
     })
 
     // The case AT-2418 already fixed for the dot and which must hold for the whole block: the inbox
@@ -134,14 +184,36 @@ describe('the empty-inbox congrats celebration, end to end (AT-2445)', () => {
         const firstVisit = await renderBoard([yesterdayKey, todayKey])
         expect(countOf(firstVisit, 'empty-inbox-confetti')).toBe(1)
 
+        // The day is spent once the run has been on screen for the refund window, which is
+        // deliberately a little longer than the motion itself — a visit that ends sooner is treated
+        // as never having been seen and the celebration is still owed (AT-2445).
         await act(async () => {
-            jest.advanceTimersByTime(CONGRATS_TOTAL_MS)
+            jest.advanceTimersByTime(CELEBRATION_CLAIM_SETTLE_MS)
             firstVisit.unmount()
         })
 
         const secondVisit = await renderBoard([yesterdayKey, todayKey])
 
         expect(countOf(secondVisit, 'empty-inbox-confetti')).toBe(0)
+    })
+
+    /**
+     * The other half of that rule, and the one AT-2460 could have broken silently: the celebration
+     * got two and a half times longer, so a claim window left at its old length would have started
+     * counting runs the user never saw as spent.
+     */
+    it('hands the day back when the board is left before the celebration has played', async () => {
+        const interrupted = await renderBoard([yesterdayKey, todayKey])
+        expect(countOf(interrupted, 'empty-inbox-confetti')).toBe(1)
+
+        await act(async () => {
+            jest.advanceTimersByTime(CONGRATS_TOTAL_MS - 100)
+            interrupted.unmount()
+        })
+
+        const secondVisit = await renderBoard([yesterdayKey, todayKey])
+
+        expect(countOf(secondVisit, 'empty-inbox-confetti')).toBe(1)
     })
 
     /**

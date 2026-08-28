@@ -174,6 +174,7 @@
     "Total days": "Total days",
     "Empty inbox reached on": "Empty inbox reached on %{date}",
     "Empty inbox streak day added": "Today was added to your Empty Inbox streak · Day %{count}.",
+    "Empty inbox day badge": "Day %{count}",
     "Monday short": "Mon",
     "Wednesday short": "Wed",
     "Friday short": "Fri",
