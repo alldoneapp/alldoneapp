@@ -8,8 +8,13 @@ import { resetEmptyInboxCelebrationSessionMarkers } from './emptyInboxCelebratio
 import { CELEBRATION_CLAIM_SETTLE_MS } from './useTodayEmptyInboxCelebration'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
-    translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
+    translate: (key, values = {}) =>
+        values.date ? `${key} ${values.date}` : values.time ? `${key} ${values.time}` : key,
 }))
+// AT-2461: the card reports today's inbox-zero time in the user's own time format, which lives
+// behind the redux store. Mocking the module keeps this suite a leaf, the way every other suite
+// that reaches `getTimeFormat` already does.
+jest.mock('../../../UIComponents/FloatModals/DateFormatPickerModal', () => ({ getTimeFormat: () => 'HH:mm' }))
 
 const flattenStyle = style =>
     []
@@ -175,6 +180,65 @@ describe('AchievementsArea', () => {
             })
 
             expect(todayDotsIn(secondVisit)).toHaveLength(0)
+        })
+
+        /**
+         * AT-2461 — on a day that has been cleared the card names the time instead of explaining the
+         * squares. The grid legend never changes and is the only line on this card that is not about
+         * the user, so on the one day it is worth saying something, it says that.
+         */
+        describe('today’s inbox-zero time (AT-2461)', () => {
+            const LEGEND = 'Empty inbox achievement description'
+            // Built from the local start of day so the rendered time is the same string in every
+            // timezone a CI runner might have.
+            const reachedAt = moment().startOf('day').add(18, 'hours').add(34, 'minutes')
+            const textsIn = tree => tree.root.findAllByType(Text).map(item => item.props.children)
+
+            it('reports when the inbox was cleared on the all-projects board', () => {
+                const tree = renderOverview({
+                    user: { uid: 'user-1', emptyInboxDays: [todayKey], lastDayEmptyInbox: reachedAt.valueOf() },
+                    celebrateNewDay: true,
+                })
+                const texts = textsIn(tree)
+
+                expect(texts).toContain('Empty inbox reached today at 18:34')
+                expect(texts).not.toContain(LEGEND)
+            })
+
+            // The same card renders in Settings → Profile, where the sentence is just as true.
+            // That copy still must not celebrate, so this also pins that naming the time does not
+            // quietly spend the once-per-day marker the board is waiting on.
+            it('reports it in the profile card too, without celebrating', () => {
+                const tree = renderOverview({
+                    user: { uid: 'user-1', emptyInboxDays: [todayKey], lastDayEmptyInbox: reachedAt.valueOf() },
+                })
+
+                expect(textsIn(tree)).toContain('Empty inbox reached today at 18:34')
+                expect(todayDotsIn(tree)).toHaveLength(0)
+            })
+
+            it('keeps the grid legend on a day that has not been reached', () => {
+                const yesterday = moment().subtract(1, 'day')
+                const tree = renderOverview({
+                    user: {
+                        uid: 'user-1',
+                        emptyInboxDays: [yesterday.format('YYYY-MM-DD')],
+                        lastDayEmptyInbox: yesterday.startOf('day').add(9, 'hours').valueOf(),
+                    },
+                })
+                const texts = textsIn(tree)
+
+                expect(texts).toContain(LEGEND)
+                expect(texts.some(text => String(text).startsWith('Empty inbox reached today at'))).toBe(false)
+            })
+
+            // The line must never be empty, and it must never invent a time: an account with no
+            // recorded moment falls all the way back to the copy that shipped before this.
+            it('keeps the grid legend when no time was ever recorded', () => {
+                const tree = renderOverview({ user: { uid: 'user-1', emptyInboxDays: [todayKey] } })
+
+                expect(textsIn(tree)).toContain(LEGEND)
+            })
         })
 
         it('ticks the current streak through the celebration, not the other metrics', () => {
