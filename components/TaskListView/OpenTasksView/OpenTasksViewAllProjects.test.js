@@ -2,7 +2,10 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
-import OpenTasksViewAllProjects, { getViewportPriorityProjectState } from './OpenTasksViewAllProjects'
+import OpenTasksViewAllProjects, {
+    getProjectTaskStreamReadyState,
+    getViewportPriorityProjectState,
+} from './OpenTasksViewAllProjects'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
@@ -103,6 +106,16 @@ describe('getViewportPriorityProjectState', () => {
                 viewportBottom: 841,
             })
         ).toEqual({ projectIndexes: [13], hasVisibleProject: true })
+    })
+})
+
+describe('getProjectTaskStreamReadyState', () => {
+    it('allows a project ghost to retire after either independent stream publishes', () => {
+        const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+        state.initialLoadingEndOpenTasks['project-1user-1'] = true
+
+        expect(getProjectTaskStreamReadyState(state, 'project-1', 'user-1')).toBe(true)
+        expect(getProjectTaskStreamReadyState(state, 'project-2', 'user-1')).toBe(false)
     })
 })
 
@@ -426,6 +439,25 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
+                minIntervalMs: 200,
+                preloadConcurrency: 2,
+            })
+        })
+
+        it('does not serialize a ten-project morning behind the slower stream', () => {
+            const projectIds = Array.from({ length: 10 }, (_, index) => `project-${index}`)
+            getProjectIdsForAllProjectsTasks.mockReturnValue(projectIds)
+            const state = buildState({ openTasksAmount: 100, todayEmptyGoalsTotal: 0 })
+            state.loggedUser.projectIds = projectIds
+            projectIds.forEach(projectId => {
+                state.initialLoadingEndOpenTasks[`${projectId}user-1`] = true
+            })
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds,
+                projectReadyStates: Array(10).fill(true),
                 minIntervalMs: 200,
                 preloadConcurrency: 2,
             })

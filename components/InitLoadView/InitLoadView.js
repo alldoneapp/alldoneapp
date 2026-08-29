@@ -20,8 +20,9 @@ import {
 import useSideBarTasksAmount from '../../hooks/Tasks/useSideBarTasksAmount'
 import SharedProjectsUnmountLogic from './SharedProjectsUnmountLogic'
 import ObservedForWatchOutsideNewProjectsChats from './ObservedForWatchOutsideNewProjectsChats'
+import useDeferredStartupWork from '../../hooks/useDeferredStartupWork'
 
-export default function InitLoadView({}) {
+function InitLoadWatchers() {
     const dispatch = useDispatch()
     const followedFeedsData = useSelector(state => state.followedFeedsData)
     const selectedTypeOfProject = useSelector(state => state.selectedTypeOfProject)
@@ -136,4 +137,9 @@ export default function InitLoadView({}) {
             <ObservedForWatchOutsideNewProjectsChats />
         </View>
     )
+}
+
+export default function InitLoadView() {
+    const deferredStartupWorkReady = useDeferredStartupWork()
+    return deferredStartupWorkReady ? <InitLoadWatchers /> : null
 }

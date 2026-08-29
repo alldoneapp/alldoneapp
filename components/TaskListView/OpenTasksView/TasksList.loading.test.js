@@ -60,16 +60,14 @@ describe('TasksList initial loading', () => {
             />
         )
 
-    it('keeps the final render budget while showing ghost rows', () => {
+    it('shows available task rows without waiting for the slower task stream', () => {
         let tree
         act(() => {
             tree = renderList()
         })
 
-        const skeleton = tree.root.findByType('TaskListSkeleton')
-        expect(skeleton.props.rowCount).toBe(2)
-        expect(skeleton.props.taskKeys).toEqual(['task-1', 'task-2'])
-        expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(0)
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(2)
     })
 
     it('uses the shared task-list gutter', () => {
@@ -105,5 +103,25 @@ describe('TasksList initial loading', () => {
 
         expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
         expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(2)
+    })
+
+    it('keeps a dense 100-task morning list within the initial render budget', () => {
+        const denseTasks = Array.from({ length: 100 }, (_, index) => ({ id: `task-${index}` }))
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <TasksList
+                    projectId="project-1"
+                    dateIndex={0}
+                    taskList={denseTasks}
+                    taskListIndex={3}
+                    amountToRender={6}
+                    instanceKey="instance"
+                />
+            )
+        })
+
+        expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ParentTaskContainer')).toHaveLength(6)
     })
 })

@@ -10,6 +10,8 @@ import MainTasksView from '../../components/TaskListView/MainTasksView'
 import { setNavigationRoute, setSelectedSidebarTab } from '../../redux/actions'
 import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
+let mockDeferredStartupWorkReady = true
+
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
     useSelector: jest.fn(),
@@ -19,6 +21,10 @@ jest.mock('../../components/HashtagFilters/HashtagFiltersView', () => 'HashtagFi
 jest.mock('../../components/TaskListView/TasksAmountContainers/TasksAmountContainers', () => 'TasksAmountContainers')
 jest.mock('../../components/TaskListView/WriteTasksUrl', () => 'WriteTasksUrl')
 jest.mock('../../components/TaskListView/TasksSections', () => 'TasksSections')
+jest.mock('../../hooks/useDeferredStartupWork', () => ({
+    __esModule: true,
+    default: () => mockDeferredStartupWorkReady,
+}))
 jest.mock('../../redux/actions', () => ({
     setNavigationRoute: jest.fn(route => ({ type: 'Set navigation route', route })),
     setSelectedSidebarTab: jest.fn(tab => ({ type: 'Set selected sidebar tab', tab })),
@@ -38,6 +44,7 @@ describe('MainTasksView component', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         useDispatch.mockReturnValue(dispatch)
+        mockDeferredStartupWorkReady = true
     })
 
     it('renders the task sections and their surrounding controls', () => {
@@ -53,6 +60,14 @@ describe('MainTasksView component', () => {
         const tree = renderMainTasksView()
 
         expect(tree.root.findAllByType('HashtagFiltersView')[0].props.handleSpaces).toBe(true)
+    })
+
+    it('keeps project-wide counters off the critical task-stream window', () => {
+        mockDeferredStartupWorkReady = false
+        const tree = renderMainTasksView()
+
+        expect(tree.root.findAllByType('TasksAmountContainers')).toHaveLength(0)
+        expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
     })
 
     it('selects the tasks tab on mount', () => {

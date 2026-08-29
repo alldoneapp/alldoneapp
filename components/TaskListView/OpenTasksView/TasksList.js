@@ -14,7 +14,6 @@ import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
-import TaskListSkeleton from '../TaskListSkeleton'
 import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
 
 export default function TasksList({
@@ -35,10 +34,6 @@ export default function TasksList({
 }) {
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
-    const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
-    const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
-
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
@@ -83,18 +78,9 @@ export default function TasksList({
     const visibleTasks = sortedTaskList.filter(
         (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
     )
-    const initialTaskDataIsLoading =
-        !singleTaskIsLoading && (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
-
     return (
         <View style={[taskPresentationLayout.listContainer, containerStyle]}>
-            {initialTaskDataIsLoading && visibleTasks.length > 0 ? (
-                <TaskListSkeleton
-                    rowCount={visibleTasks.length}
-                    taskKeys={visibleTasks.map(task => task.id)}
-                    embedded
-                />
-            ) : isActiveOrganizeMode ? (
+            {isActiveOrganizeMode ? (
                 <DroppableTaskList
                     projectId={projectId}
                     taskList={sortedTaskList}

@@ -111,6 +111,7 @@ jest.mock('../../../utils/backends/Premium/stripePremiumFirestore', () => ({
 jest.mock('../../../utils/analytics/analytics', () => ({ trackEvent: jest.fn() }))
 
 const {
+    CACHED_USER_REFRESH_BOOT_BUDGET_MS,
     loadGlobalDataAndGetUserResult,
     loadInitialDataForLoggedUser,
 } = require('../../../utils/InitialLoad/loggedUserHelper')
@@ -174,6 +175,36 @@ describe('loadGlobalDataAndGetUserResult', () => {
             missing: true,
             error: null,
         })
+    })
+
+    it('boots from a valid cache when the authoritative user read exceeds its budget', async () => {
+        jest.useFakeTimers()
+        const cachedUser = { uid: 'user-1', projectIds: ['p1'] }
+        const freshUser = { uid: 'user-1', projectIds: ['p1', 'p2'] }
+        mockCachedUserData = cachedUser
+        let resolveFreshResult
+        fetchUserDataResult.mockReturnValue(
+            new Promise(resolve => {
+                resolveFreshResult = resolve
+            })
+        )
+
+        const bootResultPromise = loadGlobalDataAndGetUserResult('user-1')
+        await Promise.resolve()
+        jest.advanceTimersByTime(CACHED_USER_REFRESH_BOOT_BUDGET_MS)
+        const bootResult = await bootResultPromise
+
+        expect(bootResult).toEqual(expect.objectContaining({ user: cachedUser, missing: false, error: null }))
+        expect(bootResult.deferredUserResult).toBeInstanceOf(Promise)
+
+        resolveFreshResult({ user: freshUser, missing: false, error: null })
+        await expect(bootResult.deferredUserResult).resolves.toEqual({
+            user: freshUser,
+            missing: false,
+            error: null,
+        })
+        expect(mockSetCachedUserData).toHaveBeenCalledWith(freshUser)
+        jest.useRealTimers()
     })
 })
 
