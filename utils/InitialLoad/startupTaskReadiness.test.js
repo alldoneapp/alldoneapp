@@ -96,4 +96,17 @@ describe('scheduleAfterInitialTaskData', () => {
         expect(callback).toHaveBeenCalledTimes(1)
         expect(mockListeners).toHaveLength(0)
     })
+
+    it('accepts a longer settle window for expensive background maintenance', () => {
+        const callback = jest.fn()
+        scheduleAfterInitialTaskData(callback, { settleMs: 8000 })
+
+        mockState.filteredOpenTasksStore['p1user-1'] = [['TODAY', 1]]
+        mockListeners.forEach(listener => listener())
+        jest.advanceTimersByTime(7999)
+        expect(callback).not.toHaveBeenCalled()
+
+        jest.advanceTimersByTime(1)
+        expect(callback).toHaveBeenCalledTimes(1)
+    })
 })

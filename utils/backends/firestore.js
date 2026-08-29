@@ -8058,38 +8058,59 @@ export const generateCustomInvoiceNumber = async userId => {
     return invoiceNumber
 }
 
+export const POST_LOGIN_FIRESTORE_CONCURRENCY = 3
+
+const mapWithBoundedConcurrency = async (items, worker, concurrency = POST_LOGIN_FIRESTORE_CONCURRENCY) => {
+    const values = Array.isArray(items) ? items : []
+    const results = new Array(values.length)
+    const errors = []
+    let nextIndex = 0
+
+    const runWorker = async () => {
+        while (nextIndex < values.length) {
+            const index = nextIndex++
+            try {
+                results[index] = await worker(values[index], index)
+            } catch (error) {
+                errors.push(error)
+            }
+        }
+    }
+
+    const workerCount = Math.min(Math.max(1, concurrency), values.length)
+    await Promise.all(Array.from({ length: workerCount }, runWorker))
+    if (errors.length > 0) throw errors[0]
+    return results
+}
+
 export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
     const { loggedUser } = store.getState()
     const { uid: userId, projectIds } = loggedUser
 
     const endOfToday = moment().endOf('day').valueOf()
 
-    let promises = []
-    projectIds.forEach(projectId => {
-        promises.push(
-            db
-                .collection(`items/${projectId}/tasks`)
-                .where('readerIds', 'array-contains', userId)
-                .where('userId', '==', userId)
-                .where('completed', '==', null)
-                .where('recurrence', 'in', [
-                    RECURRENCE_DAILY,
-                    RECURRENCE_EVERY_WORKDAY,
-                    RECURRENCE_WEEKLY,
-                    RECURRENCE_EVERY_2_WEEKS,
-                    RECURRENCE_EVERY_3_WEEKS,
-                    RECURRENCE_MONTHLY,
-                    RECURRENCE_EVERY_3_MONTHS,
-                    RECURRENCE_EVERY_6_MONTHS,
-                    RECURRENCE_ANNUALLY,
-                ])
-                .where('timesDoneInExpectedDay', '>', 0)
-                .get()
-        )
-    })
-    const results = await Promise.all(promises)
+    const results = await mapWithBoundedConcurrency(projectIds, projectId =>
+        db
+            .collection(`items/${projectId}/tasks`)
+            .where('readerIds', 'array-contains', userId)
+            .where('userId', '==', userId)
+            .where('completed', '==', null)
+            .where('recurrence', 'in', [
+                RECURRENCE_DAILY,
+                RECURRENCE_EVERY_WORKDAY,
+                RECURRENCE_WEEKLY,
+                RECURRENCE_EVERY_2_WEEKS,
+                RECURRENCE_EVERY_3_WEEKS,
+                RECURRENCE_MONTHLY,
+                RECURRENCE_EVERY_3_MONTHS,
+                RECURRENCE_EVERY_6_MONTHS,
+                RECURRENCE_ANNUALLY,
+            ])
+            .where('timesDoneInExpectedDay', '>', 0)
+            .get()
+    )
 
-    promises = []
+    const promises = []
     results.forEach((tasksDocs, index) => {
         const projectId = projectIds[index]
         tasksDocs.forEach(doc => {
@@ -8105,6 +8126,22 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
         })
     })
     await Promise.all(promises)
+}
+
+/*
+ * Keep the old per-project semantics (one inaccessible historical project must not roll back
+ * every other project's activity marker), but cap the number of writes placed on Firestore's
+ * startup queue at once. Heavy accounts can retain more than a hundred archived/template ids.
+ */
+export function updateLastLoggedUserDate() {
+    const { projectIds, realArchivedProjectIds, realTemplateProjectIds } = store.getState().loggedUser
+    const uniqProjects = new Set([...projectIds, ...realArchivedProjectIds, ...realTemplateProjectIds])
+
+    const lastLoggedUserDate = Date.now()
+
+    return mapWithBoundedConcurrency([...uniqProjects], projectId =>
+        db.doc(`projects/${projectId}`).update({ lastLoggedUserDate, active: true })
+    )
 }
 
 export async function runHttpsCallableFunction(functionName, data, options = {}) {
@@ -8233,15 +8270,4 @@ export function watchTemplates(userId, watcherKey, callback) {
             })
             callback(templates)
         })
-}
-
-export function updateLastLoggedUserDate() {
-    const { projectIds, realArchivedProjectIds, realTemplateProjectIds } = store.getState().loggedUser
-    const uniqProjects = new Set([...projectIds, ...realArchivedProjectIds, ...realTemplateProjectIds])
-
-    const lastLoggedUserDate = Date.now()
-
-    uniqProjects.forEach(projectId => {
-        db.doc(`projects/${projectId}`).update({ lastLoggedUserDate, active: true })
-    })
 }

@@ -77,8 +77,8 @@ const deferredSecondaryTaskStreamTimers = {}
 // secondary task sources are allowed to fill the Firestore connection. The assigned query is the
 // common morning path; observed tasks follow shortly afterwards, while workstream tasks and empty
 // goals wait until the first task rows have had time to commit.
-export const DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS = 600
-export const DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS = 2000
+export const DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS = 1000
+export const DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS = 4500
 
 export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
     observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
