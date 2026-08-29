@@ -440,7 +440,7 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
                 minIntervalMs: 200,
-                preloadConcurrency: 2,
+                preloadConcurrency: 8,
             })
         })
 
@@ -459,7 +459,7 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds,
                 projectReadyStates: Array(10).fill(true),
                 minIntervalMs: 200,
-                preloadConcurrency: 2,
+                preloadConcurrency: 8,
             })
         })
     })
