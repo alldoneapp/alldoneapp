@@ -38,6 +38,7 @@ function GlobalProject({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const allFeeds = useSelector(state => state.allFeeds[projectId])
     const followedFeeds = useSelector(state => state.followedFeeds[projectId])
+    const activeTabFeeds = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
     // Read straight from the store rather than through props. `followedFeedsData` / `allFeedsData`
     // are written by mutating the map in place (InitLoadView), so the map's identity never changes
     // and a parent re-render was the only thing that ever delivered a fresh counter. Selecting the
@@ -85,10 +86,10 @@ function GlobalProject({
     }, [])
 
     useEffect(() => {
-        if (allFeeds && followedFeeds && switchingBetweenUsers) {
+        if (activeTabFeeds && switchingBetweenUsers) {
             setSwitchingBetweenUsers(false)
         }
-    }, [allFeeds, followedFeeds])
+    }, [activeTabFeeds, switchingBetweenUsers])
 
     useEffect(() => {
         if (switchingBetweenUsers === null) {

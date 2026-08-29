@@ -46,6 +46,21 @@
             ]
         },
         {
+            "__comment__": "Activity feed - server-projected readers ordered by last activity",
+            "collectionGroup": "all",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "allComments",
             "queryScope": "COLLECTION",
             "fields": [
@@ -486,6 +501,21 @@
             "fields": [
                 {
                     "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Followed activity feed - server-projected readers ordered by last activity",
+            "collectionGroup": "followed",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
                     "arrayConfig": "CONTAINS"
                 },
                 {

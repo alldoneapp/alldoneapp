@@ -527,8 +527,20 @@ service cloud.firestore {
       allow delete: if isProjectMember(projectId);
     }
 
-    match /feedsStore/{projectId}/{userId}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
+    match /feedsStore/{projectId}/all/{feedId} {
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canReadObject(projectId, resource.data);
+    }
+
+    match /feedsStore/{projectId}/{userId}/feeds/followed/{feedId} {
+      allow read: if signedIn() && request.auth.uid == userId && canReadObject(projectId, resource.data);
+      allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
+      allow update: if canReadObject(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canReadObject(projectId, resource.data);
     }
 
     match /feedsCount/{projectId}/{userId}/{document=**} {

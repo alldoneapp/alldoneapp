@@ -6304,6 +6304,7 @@ function watchNewFeedsTabRedux(
         gate.dispose()
         snapshotPerformance.fail()
         console.error('watchNewFeedsTabRedux: onSnapshot error', { projectId, tab, error })
+        callback(projectId, [])
         finishInitialSnapshot()
     })
     feedsReduxStoreUnsub[tab][projectId] = gate.wrapUnsubscribe(() => {
