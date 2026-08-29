@@ -440,12 +440,12 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
                 minIntervalMs: 200,
-                preloadConcurrency: 8,
+                preloadConcurrency: 20,
             })
         })
 
-        it('does not serialize a ten-project morning behind the slower stream', () => {
-            const projectIds = Array.from({ length: 10 }, (_, index) => `project-${index}`)
+        it('covers a fourteen-project morning in one foreground discovery wave', () => {
+            const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
             getProjectIdsForAllProjectsTasks.mockReturnValue(projectIds)
             const state = buildState({ openTasksAmount: 100, todayEmptyGoalsTotal: 0 })
             state.loggedUser.projectIds = projectIds
@@ -457,9 +457,9 @@ describe('OpenTasksViewAllProjects', () => {
 
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds,
-                projectReadyStates: Array(10).fill(true),
+                projectReadyStates: Array(14).fill(true),
                 minIntervalMs: 200,
-                preloadConcurrency: 8,
+                preloadConcurrency: 20,
             })
         })
     })
