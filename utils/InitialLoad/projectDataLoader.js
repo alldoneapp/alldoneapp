@@ -127,19 +127,25 @@ const KIND_DESCRIPTORS = {
     },
     [PROJECT_DATA_WORKSTREAMS]: {
         watcherKey: projectId => `${projectId}Workstreams`,
-        watch: (projectId, watcherKey, callback) =>
+        watch: (projectId, watcherKey, callback, options) =>
             require('../backends/Workstreams/workstreamsFirestore').watchProjectWorkstreams(
                 projectId,
                 callback,
-                watcherKey
+                watcherKey,
+                options
             ),
         apply: (projectId, workstreams) => store.dispatch(setWorkstreamsInProject(projectId, workstreams)),
     },
     [PROJECT_DATA_ASSISTANTS]: {
         watcherKey: projectId => `${projectId}Assistants`,
         // Note the argument order: `watchAssistants(projectId, watcherKey, callback)`.
-        watch: (projectId, watcherKey, callback) =>
-            require('../backends/Assistants/assistantsFirestore').watchAssistants(projectId, watcherKey, callback),
+        watch: (projectId, watcherKey, callback, options) =>
+            require('../backends/Assistants/assistantsFirestore').watchAssistants(
+                projectId,
+                watcherKey,
+                callback,
+                options
+            ),
         apply: (projectId, assistants) => store.dispatch(setAssistantsInProject(projectId, assistants)),
     },
 }

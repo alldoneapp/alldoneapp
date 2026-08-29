@@ -86,6 +86,7 @@ import {
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
 } from '../../GoalMilestonesHelper'
+import { handleOptionalSnapshotError } from '../optionalSnapshotError'
 
 //ACCESS FUNCTIONS
 
@@ -113,14 +114,17 @@ export function watchGoalsInDateRange(projectId, date1, date2, watcherKey, callb
         .where('completionMilestoneDate', '>=', date1)
         .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
         .where('ownerId', '==', ownerId)
-        .onSnapshot(goalsDocs => {
-            const goals = []
-            goalsDocs.forEach(doc => {
-                const goal = mapGoalData(doc.id, doc.data())
-                if (goal.startingMilestoneDate <= date2) goals.push(goal)
-            })
-            callback(goals)
-        })
+        .onSnapshot(
+            goalsDocs => {
+                const goals = []
+                goalsDocs.forEach(doc => {
+                    const goal = mapGoalData(doc.id, doc.data())
+                    if (goal.startingMilestoneDate <= date2) goals.push(goal)
+                })
+                callback(goals)
+            },
+            error => handleOptionalSnapshotError('goals in date range', error, () => callback([]))
+        )
 }
 
 export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, watcherKey, callback) {
@@ -321,9 +325,12 @@ export async function watchBaseGoalsAmountInOpenMilestone(projectId, milestoneDa
         .collection(`goals/${projectId}/items`)
         .where('completionMilestoneDate', '==', milestoneDate)
         .where('ownerId', '==', ownerId)
-        .onSnapshot(goalsDocs => {
-            callback(goalsDocs.docs.length)
-        })
+        .onSnapshot(
+            goalsDocs => {
+                callback(goalsDocs.docs.length)
+            },
+            error => handleOptionalSnapshotError('goals in milestone count', error, () => callback(0))
+        )
 }
 
 export const getPreviousMilestone = async (projectId, ownerId, date) => {
@@ -464,26 +471,29 @@ export function watchMilestoneTasksStatistics(
         .where('dueDate', '<=', milestoneEndDate)
         .where('done', '==', inDone)
         .where('parentId', '==', null)
-        .onSnapshot(tasksData => {
-            let amountOfTasks = 0
-            let amountOfPoints = 0
-            tasksData.forEach(doc => {
-                const task = mapTaskData(doc.id, doc.data())
-                const { isPublicFor, estimations } = task
-                const loggedUserHaveAccess =
-                    !isPublicFor ||
-                    isPublicFor.length === 0 ||
-                    isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
-                    isPublicFor.includes(loggedUserId)
-                if (loggedUserHaveAccess) {
-                    amountOfTasks++
-                    if (estimations && estimations[OPEN_STEP]) {
-                        amountOfPoints += estimations[OPEN_STEP]
+        .onSnapshot(
+            tasksData => {
+                let amountOfTasks = 0
+                let amountOfPoints = 0
+                tasksData.forEach(doc => {
+                    const task = mapTaskData(doc.id, doc.data())
+                    const { isPublicFor, estimations } = task
+                    const loggedUserHaveAccess =
+                        !isPublicFor ||
+                        isPublicFor.length === 0 ||
+                        isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+                        isPublicFor.includes(loggedUserId)
+                    if (loggedUserHaveAccess) {
+                        amountOfTasks++
+                        if (estimations && estimations[OPEN_STEP]) {
+                            amountOfPoints += estimations[OPEN_STEP]
+                        }
                     }
-                }
-            })
-            callback(amountOfTasks, amountOfPoints)
-        })
+                })
+                callback(amountOfTasks, amountOfPoints)
+            },
+            error => handleOptionalSnapshotError('milestone task statistics', error, () => callback(0, 0))
+        )
 }
 
 async function getNextMilestoneAfterDate(projectId, milestoneDate, ownerId, milestoneType = null) {
@@ -678,14 +688,17 @@ export function watchOpenMilestonesInDateRange(projectId, date1, date2, watcherK
         .where('done', '==', false)
         .where('ownerId', '==', ownerId)
         .orderBy('date', 'asc')
-        .onSnapshot(milestoneDocs => {
-            const milestones = []
-            milestoneDocs.forEach(doc => {
-                const milestone = mapMilestoneData(doc.id, doc.data())
-                milestones.push(milestone)
-            })
-            callback(milestones)
-        })
+        .onSnapshot(
+            milestoneDocs => {
+                const milestones = []
+                milestoneDocs.forEach(doc => {
+                    const milestone = mapMilestoneData(doc.id, doc.data())
+                    milestones.push(milestone)
+                })
+                callback(milestones)
+            },
+            error => handleOptionalSnapshotError('open milestones in date range', error, () => callback([]))
+        )
 }
 
 //EDTION AND ADITION FUNCTIONS
