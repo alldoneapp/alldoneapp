@@ -86,9 +86,9 @@ export function watchProjectData(projectId, likeProjectMember, watchChatNotifica
         }
     }
     // AT-2386: only the project DOCUMENT is watched here now. Users, contacts, workstreams and
-    // assistants are armed by `projectDataLoader` - awaited for the priority projects, warmed in
-    // the background for the rest, and pulled on demand by whatever renders them. Arming them here
-    // as well would defeat that entirely, since this runs for every project at login.
+    // assistants are armed by `projectDataLoader` - awaited only for the route project/default
+    // assistant dependency, then pulled on demand by whatever renders them. Arming them here as
+    // well would defeat that entirely, since this runs for every project at login.
     //
     // `watchProjectData` is still the right place to keep the project doc: it is what feeds the
     // sidebar name/colour and the dropped-project recovery below, it is one document rather than a
