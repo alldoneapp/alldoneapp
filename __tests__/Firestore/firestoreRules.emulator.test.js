@@ -83,6 +83,9 @@ const seed = async () => {
             isPublicFor: [MEMBER_ID],
             observersIds: [MEMBER_ID],
             parentId: null,
+            dueDate: 253402214400000,
+            done: false,
+            currentReviewerId: MEMBER_ID,
             linkedParentTasksIds: [BACKLINK_OBJECT_ID],
             readerIds: [MEMBER_ID],
             roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID] },
@@ -431,6 +434,21 @@ describe('queries used by the web client', () => {
 
         const snapshot = await assertSucceeds(getDocs(tasks))
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+    })
+
+    it('allows the projected random Someday task query', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            where('dueDate', '==', 253402214400000),
+            where('done', '==', false),
+            where('currentReviewerId', '==', MEMBER_ID),
+            where('parentId', '==', null)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['private-task'])
     })
 
     it('allows only projection-shaped Updates queries on the all and followed stores', async () => {

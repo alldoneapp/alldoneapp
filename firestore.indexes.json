@@ -398,6 +398,74 @@
             ]
         },
         {
+            "__comment__": "Chats - secure visible chats ordered by last activity",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Chats - secure visible sticky chats",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "readerIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Chats - secure followed chats ordered by last activity",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "followedReaderIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Chats - secure followed sticky chats",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "followedReaderIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "comments",
             "queryScope": "COLLECTION",
             "fields": [

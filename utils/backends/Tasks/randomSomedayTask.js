@@ -49,6 +49,7 @@ export async function selectRandomSomedayTask(userId) {
             // Query for Someday tasks assigned to the user
             const tasksSnapshot = await getDb()
                 .collection(`items/${projectId}/tasks`)
+                .where('readerIds', 'array-contains', userId)
                 .where('dueDate', '==', BACKLOG_DATE_NUMERIC)
                 .where('done', '==', false)
                 .where('currentReviewerId', '==', userId)
