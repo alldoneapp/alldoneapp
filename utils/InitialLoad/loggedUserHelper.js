@@ -52,8 +52,14 @@ import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
 // path), then continue it in the background instead of holding the loading
 // screen on a multi-second Firestore read.
 export const CACHED_USER_REFRESH_BOOT_BUDGET_MS = 250
+export const CACHED_PROJECT_REFRESH_SETTLE_MS = 10000
+export const CACHED_PROJECT_REFRESH_FALLBACK_MS = 30000
+export const POST_LOGIN_MAINTENANCE_SETTLE_MS = 6000
+export const POST_LOGIN_MAINTENANCE_FALLBACK_MS = 20000
 const CACHED_USER_REFRESH_BUDGET_ELAPSED = Symbol('cached-user-refresh-budget-elapsed')
 let cancelDeferredProjectWatchers = null
+let cancelDeferredCachedProjectRefresh = null
+let cancelDeferredLoginMaintenance = null
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
@@ -74,23 +80,37 @@ async function getInitialProjectsData(projectIds) {
         if (isCompleteProjectsInitialData(cachedData.projectsInitialData, cachedData.projectIds.length)) {
             if (__DEV__) console.log('Using cached project data for faster startup')
 
-            // Refresh cache in background
-            setTimeout(async () => {
-                try {
-                    const freshData = await loadProjectsDataFromFirebase(projectIds)
-                    if (!isCompleteProjectsInitialData(freshData, projectIds.length)) {
-                        // A partially failed load must never overwrite a good cache: the bad
-                        // payload would be replayed on every startup for the next 24h.
-                        console.warn('[InitialLoad] Background project refresh incomplete, keeping previous cache')
-                        return
+            // A heavy account can have more than one hundred historical project memberships.
+            // Refreshing every project document at a fixed two-second delay starved the task
+            // listeners on Firestore's IndexedDB queue precisely while the first rows were being
+            // discovered. The cached project shell is already complete, so refresh it only after
+            // the task board has painted and received a generous quiet window.
+            if (cancelDeferredCachedProjectRefresh) cancelDeferredCachedProjectRefresh()
+            const scheduledUserId = store.getState().loggedUser?.uid
+            cancelDeferredCachedProjectRefresh = scheduleAfterInitialTaskData(
+                async () => {
+                    cancelDeferredCachedProjectRefresh = null
+                    if (store.getState().loggedUser?.uid !== scheduledUserId) return
+                    try {
+                        const freshData = await loadProjectsDataFromFirebase(projectIds)
+                        if (!isCompleteProjectsInitialData(freshData, projectIds.length)) {
+                            // A partially failed load must never overwrite a good cache: the bad
+                            // payload would be replayed on every startup for the next 24h.
+                            console.warn('[InitialLoad] Background project refresh incomplete, keeping previous cache')
+                            return
+                        }
+                        if (!isEqual(freshData, cachedData.projectsInitialData)) {
+                            UserDataCache.setCachedGlobalData({ projectsInitialData: freshData, projectIds })
+                        }
+                    } catch (error) {
+                        console.warn('Error refreshing project data:', error)
                     }
-                    if (!isEqual(freshData, cachedData.projectsInitialData)) {
-                        UserDataCache.setCachedGlobalData({ projectsInitialData: freshData, projectIds })
-                    }
-                } catch (error) {
-                    console.warn('Error refreshing project data:', error)
+                },
+                {
+                    fallbackMs: CACHED_PROJECT_REFRESH_FALLBACK_MS,
+                    settleMs: CACHED_PROJECT_REFRESH_SETTLE_MS,
                 }
-            }, 2000)
+            )
 
             return cachedData.projectsInitialData
         }
@@ -304,12 +324,14 @@ async function loadInitialData() {
         } catch (error) {
             console.warn('[InitialLoad] Failed to start project watchers:', error)
         }
+        scheduleBootIntegrityChecks()
     })
 
     // A degraded boot can leave projects (and the administrator user) out of redux for the whole
     // session — the wedged streams never deliver, so the watcher-based recovery never triggers.
     // These checks re-fetch what is missing and, if needed, rebuild the Firestore connection.
-    scheduleBootIntegrityChecks()
+    // They are armed with the project watchers above so the first 1s integrity probe cannot get
+    // ahead of the task queries on a healthy boot.
 
     store.dispatch(updateLoadingStep(5, getProgressLoadingMessage()))
 }
@@ -371,20 +393,29 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
     store.dispatch(updateLoadingStep(2, getProgressLoadingMessage()))
     await loadInitialData()
 
-    try {
-        initFCMonLoad()
-    } catch (e) {
-        console.warn('initFCMonLoad failed:', e)
-    }
-    try {
-        updateLastLoggedUserDate()
-    } catch (e) {
-        console.warn('updateLastLoggedUserDate failed:', e)
-    }
-    // Disabled daily recap - will be replaced with recurring assistant task
-    // proccessAssistantDialyTopicIfNeeded()
-    resetTimesDoneInExpectedDayPropertyInTasksIfNeeded().catch(e =>
-        console.warn('resetTimesDoneInExpectedDay failed:', e)
+    if (cancelDeferredLoginMaintenance) cancelDeferredLoginMaintenance()
+    cancelDeferredLoginMaintenance = scheduleAfterInitialTaskData(
+        () => {
+            cancelDeferredLoginMaintenance = null
+            if (store.getState().loggedUser?.uid !== loggedUser.uid) return
+            try {
+                initFCMonLoad()
+            } catch (e) {
+                console.warn('initFCMonLoad failed:', e)
+            }
+            Promise.resolve()
+                .then(() => updateLastLoggedUserDate())
+                .catch(e => console.warn('updateLastLoggedUserDate failed:', e))
+            // Disabled daily recap - will be replaced with recurring assistant task
+            // proccessAssistantDialyTopicIfNeeded()
+            resetTimesDoneInExpectedDayPropertyInTasksIfNeeded().catch(e =>
+                console.warn('resetTimesDoneInExpectedDay failed:', e)
+            )
+        },
+        {
+            fallbackMs: POST_LOGIN_MAINTENANCE_FALLBACK_MS,
+            settleMs: POST_LOGIN_MAINTENANCE_SETTLE_MS,
+        }
     )
 
     //handleCookies()
