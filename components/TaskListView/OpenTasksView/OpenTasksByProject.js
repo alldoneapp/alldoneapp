@@ -88,8 +88,14 @@ function OpenTasksByProject({
     // AT-2430: which assistant this project's line speaks as — the project's own, the default
     // project's, or one the user picked with the line's switch — plus the switch's own options.
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
-    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
+    // All Projects already owns one global assistant line. Passing every preloaded project into
+    // this hook armed an assistant collection watcher even though its line could never render.
+    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(inSelectedProject ? project : null)
     const showAssistantLine = !assistantProfileMode && !isAnonymous && inSelectedProject && hasAssistantLine
+    const projectDecorationsReady =
+        inSelectedProject ||
+        (initialLoadingEndOpenTasks && initialLoadingEndObservedTasks) ||
+        ((initialLoadingEndOpenTasks || initialLoadingEndObservedTasks) && hasMatchingFilteredTasks)
     const showInitialSkeleton =
         inSelectedProject &&
         filteredOpenTasksDates.length === 0 &&
@@ -98,6 +104,7 @@ function OpenTasksByProject({
     const showSingleTaskSkeleton = singleTaskIsLoading && filteredOpenTasksDates.length === 0
 
     useEffect(() => {
+        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchAllMilestones(projectId, watcherKey)
         return () => {
@@ -107,25 +114,27 @@ function OpenTasksByProject({
                 setDoneMilestonesInProjectInTasks(projectId, null),
             ])
         }
-    }, [projectId])
+    }, [projectDecorationsReady, projectId])
 
     useEffect(() => {
+        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchAllGoals(projectId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
             dispatch(setGoalsInProjectInTasks(projectId, null))
         }
-    }, [projectId])
+    }, [projectDecorationsReady, projectId])
 
     useEffect(() => {
+        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchProjectOKRs(projectId, currentUserId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
             dispatch(setOKRsInProjectInTasks(projectId, null))
         }
-    }, [projectId, currentUserId])
+    }, [currentUserId, projectDecorationsReady, projectId])
 
     useEffect(() => {
         if (currentUserId) {

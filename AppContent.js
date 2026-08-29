@@ -1,7 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 
-import { LogOut, setInitialUrl, setPendingWebShareTarget, setResolvingSharedResource } from './redux/actions'
+import {
+    LogOut,
+    setInitialUrl,
+    setPendingWebShareTarget,
+    setResolvingSharedResource,
+    storeLoggedUser,
+} from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
@@ -38,6 +44,8 @@ import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentMana
 import UndoActionBar from './components/Undo/UndoActionBar'
 import { cleanWebShareTargetParamsFromCurrentUrl, loadPendingWebShareTarget } from './utils/webShareTarget'
 import { ensureIosShareExtensionCredential } from './utils/iosShareExtensionCredential'
+import { runBootIntegrityCheck } from './utils/InitialLoad/bootIntegrityHealer'
+import useDeferredStartupWork, { useInitialTaskDataPublished } from './hooks/useDeferredStartupWork'
 
 // A failing initial data load is retried a few times before the user is told about it - and the
 // session is kept in every case (see handleLoginFailure).
@@ -78,6 +86,8 @@ export default function AppContent() {
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [publicPageUrl] = useState(resolvePublicPageUrl)
     const [connectingMessage] = useState(() => getConnectingMessage())
+    const initialTaskDataPublished = useInitialTaskDataPublished()
+    const deferredStartupWorkReady = useDeferredStartupWork({ enabled: loggedIn && processedInitialURL })
     // onAuthStateChanged can fire again while an initial load (incl. its retries) is still
     // running. Two concurrent loads race on the same watchers and redux state, so the second one
     // for the same user is ignored.
@@ -255,11 +265,12 @@ export default function AppContent() {
             await processNewUser(firebaseUser)
         } else {
             try {
-                const { user, missing, error } = await loadGlobalDataAndGetUserResult(userId)
+                const { user, missing, error, deferredUserResult } = await loadGlobalDataAndGetUserResult(userId)
 
                 if (user) {
                     markNamedPerformanceTrace('app_boot', 'user_loaded', {
                         project_count: Array.isArray(user.projectIds) ? user.projectIds.length : 0,
+                        from_cache: !!deferredUserResult,
                     })
                     await loadInitialDataForLoggedUser(user)
                     markNamedPerformanceTrace('app_boot', 'initial_data_loaded', {
@@ -278,6 +289,32 @@ export default function AppContent() {
                     // the first note save already has it. Fire-and-forget: every
                     // caller falls back to the client clock (AT-2340).
                     syncServerClock().catch(() => {})
+
+                    if (deferredUserResult) {
+                        deferredUserResult
+                            .then(async freshResult => {
+                                // A sign-out or account switch supersedes this boot's refresh.
+                                const currentState = store.getState()
+                                if (currentState.loggedUser?.uid !== userId) return
+
+                                if (freshResult.user) {
+                                    store.dispatch(storeLoggedUser({ ...currentState.loggedUser, ...freshResult.user }))
+                                    await runBootIntegrityCheck({ trigger: 'cached_user_refresh' })
+                                } else if (freshResult.missing) {
+                                    // Preserve the old authoritative-missing behavior. The cache
+                                    // accelerates rendering; it never masks a deleted user doc.
+                                    await handleMissingUserDocument(firebaseUser)
+                                } else if (freshResult.error) {
+                                    console.warn(
+                                        'Current user data could not be refreshed after cached startup.',
+                                        freshResult.error
+                                    )
+                                }
+                            })
+                            .catch(refreshError =>
+                                console.warn('Current user background refresh failed:', refreshError)
+                            )
+                    }
                 } else if (error) {
                     // The read failed (offline, transient permission error). This is NOT a missing
                     // account, so never run the account-recovery/delete path for it.
@@ -371,22 +408,24 @@ export default function AppContent() {
         }
     }, [navigationRoute])
 
-    // Defer loading of heavy components for better initial performance
+    // My Day mirrors start several task listeners per active project. Keep them
+    // out of the first task board's network window and release them when the
+    // first task stream publishes (or the bounded non-task-route fallback).
     useEffect(() => {
-        if (loggedIn && processedInitialURL) {
+        if (loggedIn && processedInitialURL && deferredStartupWorkReady) {
             // Delay mounting heavy components by 100ms to allow UI to render first
             const timer = setTimeout(() => {
                 setHeavyComponentsLoaded(true)
             }, 100)
             return () => clearTimeout(timer)
         }
-    }, [loggedIn, processedInitialURL])
+        setHeavyComponentsLoaded(false)
+    }, [deferredStartupWorkReady, loggedIn, processedInitialURL])
 
     useEffect(() => {
         if (!loggedIn || !processedInitialURL) return undefined
         return schedulePerformanceAfterPaint(() => {
-            endNamedPerformanceTrace('app_boot', 'app_ready', {
-                outcome: 'success',
+            markNamedPerformanceTrace('app_boot', 'app_shell_ready', {
                 project_count: Array.isArray(store.getState().loggedUser?.projectIds)
                     ? store.getState().loggedUser.projectIds.length
                     : 0,
@@ -394,6 +433,19 @@ export default function AppContent() {
             finishAppBootConnectionWait()
         })
     }, [loggedIn, processedInitialURL])
+
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL || !deferredStartupWorkReady) return undefined
+        return schedulePerformanceAfterPaint(() => {
+            endNamedPerformanceTrace('app_boot', 'task_data_ready', {
+                outcome: 'success',
+                source: initialTaskDataPublished ? 'task_stream' : 'fallback',
+                project_count: Array.isArray(store.getState().loggedUser?.projectIds)
+                    ? store.getState().loggedUser.projectIds.length
+                    : 0,
+            })
+        })
+    }, [deferredStartupWorkReady, initialTaskDataPublished, loggedIn, processedInitialURL])
 
     return (
         <>

@@ -45,6 +45,15 @@ import { getMissingProjectEntriesIds, pruneStaleProjectIds } from './staleProjec
 import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
 import { trackEvent } from '../analytics/analytics'
+import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
+
+// A valid local user snapshot is enough to construct the project list. Give an
+// authoritative read a small chance to win (preserving the zero-staleness fast
+// path), then continue it in the background instead of holding the loading
+// screen on a multi-second Firestore read.
+export const CACHED_USER_REFRESH_BOOT_BUDGET_MS = 250
+const CACHED_USER_REFRESH_BUDGET_ELAPSED = Symbol('cached-user-refresh-budget-elapsed')
+let cancelDeferredProjectWatchers = null
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
@@ -283,15 +292,19 @@ async function loadInitialData() {
     // snapshot budget instead of hanging it.
     await Promise.all(bootCriticalLoads)
 
-    // Defer non-critical watchers to improve initial load time
-    setTimeout(() => {
+    // Project-document and chat-notification listeners are important for the live session but
+    // irrelevant to painting the first task rows. Fourteen active projects used to add all of
+    // those listeners only 200ms after routing, right in the task-query window.
+    if (cancelDeferredProjectWatchers) cancelDeferredProjectWatchers()
+    cancelDeferredProjectWatchers = scheduleAfterInitialTaskData(() => {
+        if (store.getState().loggedUser?.uid !== loggedUser.uid) return
         try {
             watchProjectsData(projectIds)
             watchProjectsChatNotifications()
         } catch (error) {
             console.warn('[InitialLoad] Failed to start project watchers:', error)
         }
-    }, 200)
+    })
 
     // A degraded boot can leave projects (and the administrator user) out of redux for the whole
     // session — the wedged streams never deliver, so the watcher-based recovery never triggers.
@@ -396,16 +409,39 @@ export const loadGlobalDataAndGetUserResult = async userId => {
         // but do not let it delay loading the user's projects.
         loadGlobalData().catch(error => console.warn('Error refreshing global data:', error))
 
-        // The cache is an offline fallback, not the authority for project membership. Previously
-        // its up-to-24-hour-old projectIds drove the whole initial load; the background refresh
-        // updated redux but never loaded newly listed projects, so only the NEXT reload was
-        // complete. Await one current read before choosing which projects to initialize.
-        const freshResult = await fetchUserDataResult(userId, true)
-        if (freshResult.user) {
-            if (!isEqual(freshResult.user, cachedUserData)) {
-                if (__DEV__) console.log('Updating cached user data before loading projects')
+        // Start the authoritative membership refresh immediately. A fast read still wins this
+        // boot; a slow read is handed to AppContent so it can reconcile additions through the
+        // boot integrity healer after cached projects are already visible.
+        const freshResultPromise = fetchUserDataResult(userId, true).then(freshResult => {
+            if (freshResult.user && !isEqual(freshResult.user, cachedUserData)) {
+                if (__DEV__) console.log('Updating cached user data from the background refresh')
                 UserDataCache.setCachedUserData(freshResult.user)
             }
+            return freshResult
+        })
+        let budgetTimer
+        const budgetResult = await Promise.race([
+            freshResultPromise,
+            new Promise(resolve => {
+                budgetTimer = setTimeout(
+                    () => resolve(CACHED_USER_REFRESH_BUDGET_ELAPSED),
+                    CACHED_USER_REFRESH_BOOT_BUDGET_MS
+                )
+            }),
+        ])
+
+        if (budgetResult === CACHED_USER_REFRESH_BUDGET_ELAPSED) {
+            return {
+                user: cachedUserData,
+                missing: false,
+                error: null,
+                deferredUserResult: freshResultPromise,
+            }
+        }
+
+        clearTimeout(budgetTimer)
+        const freshResult = budgetResult
+        if (freshResult.user) {
             return freshResult
         }
         if (freshResult.error) {
