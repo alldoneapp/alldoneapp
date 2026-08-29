@@ -75,6 +75,7 @@ import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assista
 import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 import { getShortExternalUrlText } from './linkTextUtils'
+import { getPeopleDocumentDescriptor } from '../../utils/People/peopleDocumentPath'
 
 export const MIN_WIDTH_LINK_TAG = 100
 
@@ -212,7 +213,6 @@ export default function LinkTag({
         const watchId = Backend.getId()
         setTitle(initialTitle || getDomain(link))
         let { objectType, path, projectId, objectId } = processUrl(getPathname(link))
-        let newPath = false
 
         // Handle preConfigTask separately - no Firestore watching needed
         if (objectType === 'preConfigTask') {
@@ -229,6 +229,7 @@ export default function LinkTag({
         if (objectType !== '' && path !== '') {
             Backend.watchObjectLTag(objectType, path, watchId, data => {
                 if (data != null) {
+                    const peopleDocumentIsMember = objectType === 'people' && path.startsWith('users/')
                     setTitleFromObject(objectType, data)
                     setSharedFromObject(objectType, data)
                     setObjectId(objectId)
@@ -241,44 +242,15 @@ export default function LinkTag({
                     objectType === 'people' || objectType === 'assistant'
                         ? setObjectData?.({ ...data, uid: objectId })
                         : setObjectData?.({ ...data, id: objectId })
-                    setIsPrivate?.(getIsPrivate(objectType, data, projectId))
+                    setIsPrivate?.(
+                        objectType === 'people' && !peopleDocumentIsMember
+                            ? ContactsHelper.isPrivateContact(data)
+                            : getIsPrivate(objectType, data, projectId)
+                    )
                 } else {
                     Backend.unwatchObjectLTag(objectType, path, watchId)
-
-                    if (objectType === 'people') {
-                        const parts = path.split('/')
-                        const userPath = `projectsContacts/${projectId}/contacts/${parts[parts.length - 1]}`
-                        newPath = userPath
-
-                        Backend.watchObjectLTag(objectType, userPath, watchId, data => {
-                            if (data) {
-                                const isPrivate =
-                                    ContactsHelper.findUserInProject(projectId, loggedUser.uid) ||
-                                    ContactsHelper.isPrivateContact(data)
-
-                                setTitleFromObject(objectType, data)
-                                setSharedFromObject(objectType, data)
-                                setObjectId(objectId)
-                                setType(objectType)
-                                setLinkUrl(getPathname(link))
-                                setInternalLink(true)
-                                setEnableLink(true)
-                                setTagIcon('user-aster')
-                                setObjectType?.(objectType)
-                                setObjectProjectId?.(projectId)
-                                setObjectData?.({ ...data, uid: objectId })
-                                setIsPrivate?.(isPrivate)
-                                setUserIsMember?.(false)
-                            } else {
-                                Backend.unwatchObjectLTag(objectType, userPath, watchId)
-                                setTitle(getDomain(link))
-                                setLinkUrl(addProtocol(link))
-                            }
-                        })
-                    } else {
-                        setTitle(getDomain(link))
-                        setLinkUrl(addProtocol(link))
-                    }
+                    setTitle(initialTitle || getDomain(link))
+                    setLinkUrl(addProtocol(link))
                 }
             })
         } else {
@@ -301,7 +273,7 @@ export default function LinkTag({
 
         return () => {
             if (objectType !== '' && path !== '') {
-                Backend.unwatchObjectLTag(objectType, newPath || path, watchId)
+                Backend.unwatchObjectLTag(objectType, path, watchId)
             }
         }
     }, [link, initialTitle])
@@ -397,8 +369,12 @@ export default function LinkTag({
                     setTagIcon('user')
                     objectType = 'people'
                     objectId = params.userId
-                    path = `users/${params.userId}`
                     projectId = params.projectId
+                    const projectUserIds = ProjectHelper.getProjectById(projectId)?.userIds
+                    const descriptor = getPeopleDocumentDescriptor(projectId, params.userId, projectUserIds)
+                    path = descriptor.path
+                    setUserIsMember?.(descriptor.isMember)
+                    if (!descriptor.isMember) setTagIcon('user-aster')
 
                     const user = TasksHelper.getUserInProject(projectId, params.userId)
                     if (user?.displayName != null && user?.displayName !== '') {

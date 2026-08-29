@@ -31,6 +31,7 @@ import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelp
 import TasksHelper from '../../../../TaskListView/Utils/TasksHelper'
 import { getAssistant } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvMainTabLink } from '../../../../../utils/LinkingHelper'
+import { getPeopleDocumentDescriptor } from '../../../../../utils/People/peopleDocumentPath'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -38,6 +39,7 @@ export default function MentionWrapper({ data }) {
     const { text = '', id: tagId = '', editorId = '', userIdAllowedToEditTags = '', userId = '' } = data
     const loggedUser = useSelector(state => state.loggedUser)
     const projectId = useSelector(state => state.quillTextInputProjectIdsByEditorId[editorId])
+    const projectUserIds = useSelector(state => state.loggedUserProjectsMap[projectId]?.userIds)
     const activeNoteIsReadOnly = useSelector(state => state.activeNoteIsReadOnly)
     const activeNoteId = useSelector(state => state.activeNoteId)
     const { editorRef } = getQuillEditorRef(exportRef, quillTextInputRefs, editorId)
@@ -51,35 +53,27 @@ export default function MentionWrapper({ data }) {
     useEffect(() => {
         if (projectId && data && !getAssistant(data.userId)) {
             const watchId = Backend.getId()
-            let userPath = `users/${userId}`
-            Backend.watchObjectLTag('people', userPath, watchId, data => {
+            const { isMember, path } = getPeopleDocumentDescriptor(projectId, userId, projectUserIds)
+            Backend.watchObjectLTag('people', path, watchId, data => {
                 if (data != null) {
                     const projectIndex = ProjectHelper.getProjectIndexById(projectId)
-                    const contact = Backend.mapUserData(userId, data)
+                    const contact = isMember ? Backend.mapUserData(userId, data) : Backend.mapContactData(userId, data)
                     setContact(contact)
-                    setIsMember(true)
-                    setIsPrivate(ContactsHelper.isPrivateUser(projectIndex, contact))
+                    setIsMember(isMember)
+                    setIsPrivate(
+                        isMember
+                            ? ContactsHelper.isPrivateUser(projectIndex, contact)
+                            : ContactsHelper.isPrivateContact(contact)
+                    )
                 } else {
-                    Backend.unwatchObjectLTag('people', userPath, watchId)
-                    userPath = `projectsContacts/${projectId}/contacts/${userId}`
-
-                    Backend.watchObjectLTag('people', userPath, watchId, data => {
-                        if (data != null) {
-                            const contact = Backend.mapContactData(userId, data)
-                            setContact(contact)
-                            setIsMember(false)
-                            setIsPrivate(ContactsHelper.isPrivateContact(contact))
-                        } else {
-                            setContact(null)
-                            Backend.unwatchObjectLTag('people', userPath, watchId)
-                        }
-                    })
+                    setContact(null)
+                    Backend.unwatchObjectLTag('people', path, watchId)
                 }
             })
 
-            return () => contact != null && Backend.unwatchObjectLTag('people', userPath, watchId)
+            return () => Backend.unwatchObjectLTag('people', path, watchId)
         }
-    }, [projectId])
+    }, [projectId, userId, projectUserIds])
 
     useEffect(() => {
         if (contact && contact.displayName !== text.replaceAll(MENTION_SPACE_CODE, ' ')) {

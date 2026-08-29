@@ -480,8 +480,8 @@ export default class Backend {
         bridge.unwatchNote(projectId, noteId)
     }
 
-    static watchObjectLTag(objectType, path, watchId, callback) {
-        bridge.watchObjectLTag(objectType, path, watchId, callback)
+    static watchObjectLTag(objectType, path, watchId, callback, onError) {
+        bridge.watchObjectLTag(objectType, path, watchId, callback, onError)
     }
 
     static unwatchObjectLTag(objectType, path, watchId) {

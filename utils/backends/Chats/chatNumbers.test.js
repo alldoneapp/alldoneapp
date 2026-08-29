@@ -130,4 +130,15 @@ describe('watchChatsAmount', () => {
         unwatchChatsAmount('watcher-1')
         expect(unsubscribe).toHaveBeenCalledTimes(1)
     })
+
+    it('degrades a permanently failed amount listener to zero', () => {
+        const { query } = setupDb()
+        const callback = jest.fn()
+
+        watchChatsAmount('project-1', 'watcher-1', callback, ALL_TAB, 3)
+
+        const handleError = query.onSnapshot.mock.calls[0][1]
+        handleError({ code: 'permission-denied' })
+        expect(callback).toHaveBeenCalledWith(0)
+    })
 })
