@@ -4097,6 +4097,52 @@ exports.onUpdateInnerFeedAccessProjectionSecondGen = onDocumentUpdated(
     }
 )
 
+exports.onCreateAllFeedStoreAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'feedsStore/{projectId}/all/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateAllFeedStoreAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'feedsStore/{projectId}/all/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
+exports.onCreateFollowedFeedStoreAccessProjectionSecondGen = onDocumentCreated(
+    {
+        document: 'feedsStore/{projectId}/{userId}/feeds/followed/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    synchronizeAccessProjection
+)
+
+exports.onUpdateFollowedFeedStoreAccessProjectionSecondGen = onDocumentUpdated(
+    {
+        document: 'feedsStore/{projectId}/{userId}/feeds/followed/{feedId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        if (accessProjectionOnly(event)) return
+        await synchronizeAccessProjection(event)
+    }
+)
+
 exports.onDeleteSkillSecondGen = onDocumentDeleted(
     {
         document: 'skills/{projectId}/items/{skillId}',

@@ -280,10 +280,10 @@ export default function FeedsGlobalList({
     }, [counterNewFeedsData])
 
     useEffect(() => {
-        if (allFeeds && followedFeeds && counterNewFeedsData && activeMode === LOADING_MODE) {
+        if (feedsForActiveTab && counterNewFeedsData && activeMode === LOADING_MODE) {
             processInitialFeedsInTab()
         }
-    }, [allFeeds, followedFeeds, counterNewFeedsData])
+    }, [feedsForActiveTab, counterNewFeedsData])
 
     // Top the expanded list up once the widened listener delivers the feeds that were beyond the
     // first page. Only runs after "show more" was pressed, and only while the incoming snapshot

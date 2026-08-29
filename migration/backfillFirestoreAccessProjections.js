@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 // Populates the server-owned access fields used by Firestore Security Rules,
-// including the per-reader backlink projection. Run after deploying the
-// projection triggers and before publishing rules or a client that queries them.
+// including the per-reader backlink projection and the denormalized all/followed
+// Updates stores. Run after deploying the projection triggers and before publishing
+// rules or a client that queries them.
 //
 // Usage:
 //   node migration/backfillFirestoreAccessProjections.js --firebase-project-id=alldonestaging

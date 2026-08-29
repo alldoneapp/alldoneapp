@@ -168,6 +168,15 @@ async function listProjectProjectionGroups(db, projectId) {
         }
     }
 
+    const feedStoreCollections = await db.doc(`feedsStore/${projectId}`).listCollections()
+    for (const feedStoreCollection of feedStoreCollections) {
+        const snapshot =
+            feedStoreCollection.id === 'all'
+                ? await feedStoreCollection.get()
+                : await feedStoreCollection.doc('feeds').collection('followed').get()
+        groups.push({ spec: {}, snapshot })
+    }
+
     return groups
 }
 
@@ -370,6 +379,59 @@ async function synchronizeProjectAccessProjectionPage(
                 }
             }
             if (current.typeId && nestedCollectionsVisited >= MAX_NESTED_COLLECTIONS_PER_PAGE) {
+                return continueAt(current)
+            }
+        }
+        current = { phase: 'feed-store-all', documentId: null }
+    }
+
+    if (current.phase === 'feed-store-all') {
+        const remaining = pageSize - totals.scanned
+        const snapshot = await getDocumentPage(
+            db.collection(`feedsStore/${projectId}/all`),
+            current.documentId,
+            remaining
+        )
+        const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+        addStats(stats)
+        if (snapshot.size === remaining) {
+            return continueAt({
+                phase: 'feed-store-all',
+                documentId: snapshot.docs[snapshot.docs.length - 1].id,
+            })
+        }
+        current = { phase: 'feed-store-followed', userId: null, documentId: null }
+    }
+
+    if (current.phase === 'feed-store-followed') {
+        const userCollections = (await db.doc(`feedsStore/${projectId}`).listCollections())
+            .filter(collection => collection.id !== 'all')
+            .sort((a, b) => a.id.localeCompare(b.id))
+        let userIndex = collectionIndex(userCollections, current.userId)
+
+        while (userIndex >= 0 && userIndex < userCollections.length) {
+            const userCollection = userCollections[userIndex]
+            const followedRef = userCollection.doc('feeds').collection('followed')
+            const remaining = pageSize - totals.scanned
+            const snapshot = await getDocumentPage(followedRef, current.documentId, remaining)
+            const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+            addStats(stats)
+            nestedCollectionsVisited++
+            if (snapshot.size === remaining) {
+                return continueAt({
+                    phase: 'feed-store-followed',
+                    userId: userCollection.id,
+                    documentId: snapshot.docs[snapshot.docs.length - 1].id,
+                })
+            }
+
+            userIndex++
+            current = {
+                phase: 'feed-store-followed',
+                userId: userCollections[userIndex]?.id || null,
+                documentId: null,
+            }
+            if (current.userId && nestedCollectionsVisited >= MAX_NESTED_COLLECTIONS_PER_PAGE) {
                 return continueAt(current)
             }
         }
