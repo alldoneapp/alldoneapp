@@ -386,11 +386,17 @@ describe('queries used by the web client', () => {
 
     it('allows a followed-chat query only through the fixed server projection', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const allChats = query(
+            collection(memberDb, `chatObjects/${PROJECT_ID}/chats`),
+            where('readerIds', 'array-contains', MEMBER_ID)
+        )
         const chats = query(
             collection(memberDb, `chatObjects/${PROJECT_ID}/chats`),
             where('followedReaderIds', 'array-contains', MEMBER_ID)
         )
 
+        const allSnapshot = await assertSucceeds(getDocs(allChats))
+        expect(allSnapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
         const snapshot = await assertSucceeds(getDocs(chats))
         expect(snapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
         await assertFails(

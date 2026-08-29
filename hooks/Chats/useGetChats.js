@@ -3,14 +3,14 @@ import moment from 'moment'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { startLoadingData, stopLoadingData } from '../../redux/actions'
-import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import useSelectorHashtagFilters from '../../components/HashtagFilters/UseSelectorHashtagFilters'
 import { filterChats } from '../../components/HashtagFilters/FilterHelpers/FilterChats'
 import { getDb } from '../../utils/backends/firestore'
+import { getChatAccessQueryArgs } from '../../utils/backends/Chats/chatAccessQuery'
 
 export default function useGetChats(projectId, toRender, chatsActiveTab) {
     const dispatch = useDispatch()
-    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const { uid: loggedUserId, isAnonymous } = useSelector(state => state.loggedUser)
     const [chats, setChats] = useState({})
     const [filters, filtersArray] = useSelectorHashtagFilters()
     const isLoadingStartedRef = useRef(false)
@@ -25,10 +25,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
         dispatch(startLoadingData())
         isLoadingStartedRef.current = true
         let query = getDb().collection(`chatObjects/${projectId}/chats/`)
-        query =
-            chatsActiveTab === ALL_TAB
-                ? query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-                : query.where('usersFollowing', 'array-contains', loggedUserId)
+        query = query.where(...getChatAccessQueryArgs({ activeTab: chatsActiveTab, loggedUserId, isAnonymous }))
         query = query.where('stickyData.days', '==', 0).orderBy('lastEditionDate', 'desc').limit(toRender)
         const unsubscribe = query.onSnapshot(handleSnapshot, error => {
             console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
@@ -45,7 +42,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
             }
             unsubscribe()
         }
-    }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
+    }, [projectId, toRender, chatsActiveTab, loggedUserId, isAnonymous, JSON.stringify(filtersArray)])
 
     async function handleSnapshot(chatDocs) {
         const chatsByDate = {}
