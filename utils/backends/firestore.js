@@ -57,6 +57,7 @@ import {
 import { getServerTimestampNow } from '../serverClock'
 import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { buildBacklinkToken, getBacklinkIdsVisibleToField } from './firestoreAccess'
+import { handleOptionalSnapshotError } from './optionalSnapshotError'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import store from '../../redux/store'
 
@@ -1464,22 +1465,28 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     backlinksCounterUnsub[watcherKey || objectId].tasks = db
         .collection(`items/${projectId}/tasks`)
         .where(backlinkField, 'array-contains', backlinkToken)
-        .onSnapshot(snapshots => {
-            const tasksDocs = snapshots.docs.filter(doc => doc.data().parentId === null && hasAccess(doc.data()))
-            const tasksAmount = tasksDocs.length
-            const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
-            callback('tasks', tasksAmount, aloneTask)
-        })
+        .onSnapshot(
+            snapshots => {
+                const tasksDocs = snapshots.docs.filter(doc => doc.data().parentId === null && hasAccess(doc.data()))
+                const tasksAmount = tasksDocs.length
+                const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
+                callback('tasks', tasksAmount, aloneTask)
+            },
+            error => handleOptionalSnapshotError('goal task backlinks', error, () => callback('tasks', 0, null))
+        )
 
     backlinksCounterUnsub[watcherKey || objectId].notes = db
         .collection(`noteItems/${projectId}/notes`)
         .where(backlinkField, 'array-contains', backlinkToken)
-        .onSnapshot(snapshots => {
-            const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
-            const notesAmount = notesDocs.length
-            const aloneNote = notesAmount === 1 ? mapNoteData(notesDocs[0].id, notesDocs[0].data()) : null
-            callback('notes', notesAmount, aloneNote)
-        })
+        .onSnapshot(
+            snapshots => {
+                const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
+                const notesAmount = notesDocs.length
+                const aloneNote = notesAmount === 1 ? mapNoteData(notesDocs[0].id, notesDocs[0].data()) : null
+                callback('notes', notesAmount, aloneNote)
+            },
+            error => handleOptionalSnapshotError('goal note backlinks', error, () => callback('notes', 0, null))
+        )
 }
 
 export function unwatchBacklinksCount(objectId, watcherKey) {
@@ -2520,9 +2527,12 @@ export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watc
         .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('completed', '==', null)
         .where('isSubtask', '==', false)
-        .onSnapshot(snapshot => {
-            callback(snapshot.docs.length)
-        })
+        .onSnapshot(
+            snapshot => {
+                callback(snapshot.docs.length)
+            },
+            error => handleOptionalSnapshotError('goal open task count', error, () => callback(0))
+        )
 }
 
 export function watchSubtasksList(projectId, taskId, callback) {

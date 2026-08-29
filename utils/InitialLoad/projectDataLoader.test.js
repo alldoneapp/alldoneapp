@@ -125,6 +125,15 @@ describe('projectDataLoader', () => {
         expect(watchProjectUsers.mock.calls[0][3]).toEqual(expect.objectContaining({ onError: expect.any(Function) }))
     })
 
+    it('forwards loader failures to workstream and assistant watchers', () => {
+        ensureProjectDataLoaded('p1', [PROJECT_DATA_WORKSTREAMS, PROJECT_DATA_ASSISTANTS])
+
+        expect(watchProjectWorkstreams.mock.calls[0][3]).toEqual(
+            expect.objectContaining({ onError: expect.any(Function) })
+        )
+        expect(watchAssistants.mock.calls[0][3]).toEqual(expect.objectContaining({ onError: expect.any(Function) }))
+    })
+
     it('is idempotent - a second request never arms a second watcher', () => {
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)
         ensureProjectDataLoaded('p1', PROJECT_DATA_CONTACTS)

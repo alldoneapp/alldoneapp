@@ -9,17 +9,20 @@ import { addWorkstreamToUser, removeWorkstreamFromUser } from '../Users/usersFir
 
 //ACCESS FUNCTIONS
 
-export async function watchProjectWorkstreams(projectId, callback, watcherKey) {
+export async function watchProjectWorkstreams(projectId, callback, watcherKey, { onError } = {}) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`projectsWorkstreams/${projectId}/workstreams`)
-        .onSnapshot(async docs => {
-            const workstreams = []
-            docs.forEach(doc => {
-                workstreams.push(mapWorkstreamData(doc.id, doc.data()))
-            })
+        .onSnapshot(
+            async docs => {
+                const workstreams = []
+                docs.forEach(doc => {
+                    workstreams.push(mapWorkstreamData(doc.id, doc.data()))
+                })
 
-            callback(workstreams)
-        })
+                callback(workstreams)
+            },
+            error => onError?.(error)
+        )
 }
 
 export async function getWorkstreamData(projectId, workstreamId) {

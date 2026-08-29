@@ -165,25 +165,34 @@ export async function getGlobalAssistants() {
     return assistants
 }
 
-export function watchAssistants(projectId, watcherKey, callback) {
+export function watchAssistants(projectId, watcherKey, callback, { onError } = {}) {
     let firstSnap = true
     store.dispatch(startLoadingData())
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`assistants/${projectId}/items`)
         .orderBy('lastEditionDate', 'desc')
-        .onSnapshot(assistantDocs => {
-            let assistants = []
-            assistantDocs.forEach(doc => {
-                const assistant = doc.data()
-                assistant.uid = doc.id
-                assistants.push(assistant)
-            })
-            callback(assistants)
-            if (firstSnap) {
-                firstSnap = false
-                store.dispatch(stopLoadingData())
+        .onSnapshot(
+            assistantDocs => {
+                let assistants = []
+                assistantDocs.forEach(doc => {
+                    const assistant = doc.data()
+                    assistant.uid = doc.id
+                    assistants.push(assistant)
+                })
+                callback(assistants)
+                if (firstSnap) {
+                    firstSnap = false
+                    store.dispatch(stopLoadingData())
+                }
+            },
+            error => {
+                if (firstSnap) {
+                    firstSnap = false
+                    store.dispatch(stopLoadingData())
+                }
+                onError?.(error)
             }
-        })
+        )
 }
 
 export function watchAssistant(projectId, assistantId, watcherKey, callback) {
