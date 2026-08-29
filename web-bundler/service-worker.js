@@ -50,6 +50,11 @@ const NAVIGATION_DENYLIST = [
 const navigationStrategy = new NetworkFirst({
     cacheName: 'app-navigations',
     networkTimeoutSeconds: 5,
+    // A service-worker "network" request can otherwise be satisfied by Chrome's HTTP cache.
+    // That made NetworkFirst return an old index.html even after a deploy, despite Firebase's
+    // no-cache header. Hashed assets remain cache-first below; only the tiny navigation document
+    // must actually revalidate against hosting.
+    fetchOptions: { cache: 'no-store' },
 })
 
 registerRoute(
