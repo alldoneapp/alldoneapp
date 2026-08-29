@@ -6,6 +6,7 @@ import { useAllProjectsAssistantLine } from './useAllProjectsAssistantLine'
 const mockDispatch = jest.fn()
 const mockUpdateShowAllProjectsByTime = jest.fn()
 const mockUseProjectsData = jest.fn()
+const mockUseDeferredStartupWork = jest.fn(() => true)
 let mockState
 
 jest.mock('react-redux', () => ({
@@ -18,6 +19,10 @@ jest.mock('../../../hooks/useProjectData', () => ({
     __esModule: true,
     default: () => {},
     useProjectsData: (...args) => mockUseProjectsData(...args),
+}))
+jest.mock('../../../hooks/useDeferredStartupWork', () => ({
+    __esModule: true,
+    default: () => mockUseDeferredStartupWork(),
 }))
 jest.mock('../../../utils/backends/Users/usersFirestore', () => ({
     updateShowAllProjectsByTime: (...args) => mockUpdateShowAllProjectsByTime(...args),
@@ -119,6 +124,7 @@ beforeEach(() => {
     mockDispatch.mockClear()
     mockUpdateShowAllProjectsByTime.mockClear()
     mockUseProjectsData.mockClear()
+    mockUseDeferredStartupWork.mockClear()
 })
 
 describe('useAllProjectsAssistantLine', () => {
@@ -133,7 +139,9 @@ describe('useAllProjectsAssistantLine', () => {
     it('asks for the assistants of every active project, since the option count decides the control', () => {
         renderHook(useAllProjectsAssistantLine)
 
-        expect(mockUseProjectsData).toHaveBeenCalledWith([DEFAULT_PROJECT_ID, 'p-alldone', 'p-jtl'], 'assistants')
+        expect(mockUseProjectsData).toHaveBeenCalledWith([DEFAULT_PROJECT_ID, 'p-alldone', 'p-jtl'], 'assistants', {
+            enabled: true,
+        })
     })
 
     it('leaves archived, template and guide projects out', () => {

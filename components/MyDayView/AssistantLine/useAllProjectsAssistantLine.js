@@ -21,6 +21,7 @@ import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import { useProjectsData } from '../../../hooks/useProjectData'
 import { PROJECT_DATA_ASSISTANTS } from '../../../utils/InitialLoad/projectDataLoader'
 import { buildAllProjectsAssistantGroups } from './assistantSwitchOptions'
+import useDeferredStartupWork from '../../../hooks/useDeferredStartupWork'
 
 const EMPTY_ARRAY = []
 const EMPTY_OBJECT = {}
@@ -110,17 +111,17 @@ export const useAllProjectsAssistantLine = () => {
     const assistantsByProject = useSelector(state => state.projectAssistants || EMPTY_OBJECT)
     const projects = useActiveProjects()
     const switchToProjectWithAssistant = useSwitchToProjectWithAssistant()
+    const deferredStartupWorkReady = useDeferredStartupWork()
 
     const projectIds = useMemo(() => projects.map(project => project.id), [projects])
 
     // AT-2386 left `projectAssistants` loaded per project on demand, so a list that spans every
-    // project has to say it needs them. Deliberately armed from the line's own mount rather than
-    // when the popup opens: the button's very existence depends on the option COUNT, and a
-    // control that only appears after you have pressed it is not a control. The cost is bounded
-    // and small — one watcher per ACTIVE project (14 on the reporting account, 33 documents in
-    // total), armed after first paint and idempotent process-wide, not the 56 login-blocking
-    // collection reads that ticket removed.
-    useProjectsData(projectIds, PROJECT_DATA_ASSISTANTS)
+    // project has to say it needs them. This used to fan out at the same moment as the task
+    // listeners (14 extra collection reads on the reporting account). Keep the default
+    // assistant, which was loaded during boot, immediately usable and fill the switch only after
+    // the first task stream has published. The fallback in useDeferredStartupWork also covers a
+    // direct route that never mounts a task board.
+    useProjectsData(projectIds, PROJECT_DATA_ASSISTANTS, { enabled: deferredStartupWorkReady })
 
     const groups = useMemo(
         () =>

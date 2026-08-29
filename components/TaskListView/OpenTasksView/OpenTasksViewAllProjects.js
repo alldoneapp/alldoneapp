@@ -24,6 +24,15 @@ export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 2
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
+export const getProjectTaskStreamReadyState = (state, projectId, currentUserId) => {
+    const instanceKey = `${projectId}${currentUserId}`
+    // The two task streams are independent. Once either has produced its first snapshot the
+    // project can render whatever is already known and the mount queue can continue. Waiting for
+    // both made one slow observed-task query hold every following project behind a ghost (or the
+    // five-second queue fallback), even when assigned tasks were already in Redux.
+    return !!state.initialLoadingEndOpenTasks?.[instanceKey] || !!state.initialLoadingEndObservedTasks?.[instanceKey]
+}
+
 const uniqueProjectIndexes = indexes => [...new Set(indexes.filter(index => index !== null))]
 
 export const getViewportPriorityProjectState = ({
@@ -172,13 +181,9 @@ export default function OpenTasksViewAllProjects() {
     )
     const projectReadyStates = useSelector(
         state =>
-            sortedLoggedUserProjectIds.map(projectId => {
-                const instanceKey = projectId + currentUserId
-                return (
-                    !!state.initialLoadingEndOpenTasks?.[instanceKey] &&
-                    !!state.initialLoadingEndObservedTasks?.[instanceKey]
-                )
-            }),
+            sortedLoggedUserProjectIds.map(projectId =>
+                getProjectTaskStreamReadyState(state, projectId, currentUserId)
+            ),
         shallowEqual
     )
     const {

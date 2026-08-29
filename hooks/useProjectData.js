@@ -31,14 +31,14 @@ export default function useProjectData(projectId, kinds) {
  * Same, for a list of projects — the all-projects boards. The ids are joined into a stable key so
  * a freshly derived array of the same ids does not re-run the effect.
  */
-export function useProjectsData(projectIds, kinds) {
+export function useProjectsData(projectIds, kinds, { enabled = true } = {}) {
     const ids = useMemo(() => (Array.isArray(projectIds) ? projectIds.filter(Boolean) : []), [projectIds])
     const idsKey = ids.join('|')
     const kindsKey = Array.isArray(kinds) ? kinds.join('|') : kinds || ''
 
     useEffect(() => {
-        if (ids.length === 0) return
+        if (!enabled || ids.length === 0) return
         ensureProjectsDataLoaded(ids, kinds)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [idsKey, kindsKey])
+    }, [enabled, idsKey, kindsKey])
 }
