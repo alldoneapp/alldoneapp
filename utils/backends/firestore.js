@@ -5395,15 +5395,23 @@ export async function unwatchNote(projectId, noteId) {
     }
 }
 
-export async function watchObjectLTag(objectType, path, watchId, callback) {
+export async function watchObjectLTag(objectType, path, watchId, callback, onError) {
     if (!hasProperty(linkTagsUnsubs, [objectType, path, watchId])) {
-        const unsub = db.doc(path).onSnapshot(doc => {
-            const data = doc.data()
-            if (shouldProcessObjectLinkSnapshot(data, doc.metadata)) {
-                const objectData = data != null ? { ...data, id: doc.id, uid: doc.id } : null
-                callback(objectData, path, watchId)
+        const unsub = db.doc(path).onSnapshot(
+            doc => {
+                const data = doc.data()
+                if (shouldProcessObjectLinkSnapshot(data, doc.metadata)) {
+                    const objectData = data != null ? { ...data, id: doc.id, uid: doc.id } : null
+                    callback(objectData, path, watchId)
+                }
+            },
+            error => {
+                // A stale/deleted/private internal link must degrade like a missing document,
+                // not become an uncaught Firestore listener error for the whole page.
+                if (onError) onError(error, path, watchId)
+                else callback(null, path, watchId, error)
             }
-        })
+        )
 
         setProperty(linkTagsUnsubs, [objectType, path, watchId], unsub)
     }
