@@ -268,11 +268,11 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         expect(listeners).toHaveLength(1)
     })
 
-    it('keeps a nine-project discovery window to one foreground query per project', () => {
+    it('keeps a fourteen-project discovery window to one foreground query per project', () => {
         jest.useFakeTimers()
         unwatchOpenTasks(PROJECT_ID, 'user-1')
         listeners.length = 0
-        const projectIds = Array.from({ length: 9 }, (_, index) => `project-${index}`)
+        const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
 
         projectIds.forEach(projectId =>
             watchOpenTasks(projectId, jest.fn(), false, false, false, `${projectId}user-1`, false, {
@@ -280,13 +280,13 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             })
         )
 
-        expect(listeners).toHaveLength(9)
-        Array.from({ length: 9 }, (_, index) => index).forEach(listenerIndex => deliverSnapshot(listenerIndex, []))
+        expect(listeners).toHaveLength(14)
+        Array.from({ length: 14 }, (_, index) => index).forEach(listenerIndex => deliverSnapshot(listenerIndex, []))
 
         jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
-        expect(listeners).toHaveLength(18)
+        expect(listeners).toHaveLength(28)
         jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
-        expect(listeners).toHaveLength(36)
+        expect(listeners).toHaveLength(56)
 
         projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
     })
