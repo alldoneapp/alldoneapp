@@ -17,10 +17,12 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-// Start a bounded two-project preload roughly two deferred blocks ahead. This
-// overlaps network latency without mounting the full All Projects board.
+// The first useful project on a large account is often not one of the first two
+// projects in sidebar order. Start a bounded morning-sized discovery window so
+// those task listeners run together, while the mount queue still reveals project
+// blocks in order and keeps the rest of the board dormant.
 export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
-export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 2
+export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 8
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 

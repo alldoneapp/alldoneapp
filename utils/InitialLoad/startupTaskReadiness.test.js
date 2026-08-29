@@ -18,8 +18,16 @@ const { DEFERRED_STARTUP_WORK_FALLBACK_MS, scheduleAfterInitialTaskData } = requ
 
 const buildState = () => ({
     currentUser: { uid: 'user-1' },
-    loggedUser: { uid: 'user-1', projectIds: ['p1'] },
+    loggedUser: {
+        uid: 'user-1',
+        projectIds: ['p1'],
+        archivedProjectIds: [],
+        templateProjectIds: [],
+        guideProjectIds: [],
+    },
     loggedUserProjects: [{ id: 'p1' }],
+    selectedProjectIndex: -1,
+    filteredOpenTasksStore: {},
     initialLoadingEndOpenTasks: {},
     initialLoadingEndObservedTasks: {},
 })
@@ -33,7 +41,7 @@ describe('scheduleAfterInitialTaskData', () => {
 
     afterEach(() => jest.useRealTimers())
 
-    it('runs deferred fan-out as soon as the first task stream publishes', () => {
+    it('runs deferred fan-out once the scoped task board has settled', () => {
         const callback = jest.fn()
         scheduleAfterInitialTaskData(callback)
 
@@ -41,9 +49,30 @@ describe('scheduleAfterInitialTaskData', () => {
         mockState.initialLoadingEndOpenTasks['p1user-1'] = true
         mockListeners.forEach(listener => listener())
 
+        expect(callback).not.toHaveBeenCalled()
+        mockState.initialLoadingEndObservedTasks['p1user-1'] = true
+        mockListeners.forEach(listener => listener())
+
         expect(callback).toHaveBeenCalledTimes(1)
         expect(mockListeners).toHaveLength(0)
         jest.advanceTimersByTime(DEFERRED_STARTUP_WORK_FALLBACK_MS)
+        expect(callback).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not release fan-out for the first empty project on a multi-project board', () => {
+        mockState.loggedUser.projectIds = ['p1', 'p2']
+        mockState.loggedUserProjects = [{ id: 'p1' }, { id: 'p2' }]
+        const callback = jest.fn()
+        scheduleAfterInitialTaskData(callback)
+
+        mockState.initialLoadingEndOpenTasks['p1user-1'] = true
+        mockListeners.forEach(listener => listener())
+        expect(callback).not.toHaveBeenCalled()
+
+        mockState.initialLoadingEndObservedTasks['p1user-1'] = true
+        mockState.initialLoadingEndOpenTasks['p2user-1'] = true
+        mockState.initialLoadingEndObservedTasks['p2user-1'] = true
+        mockListeners.forEach(listener => listener())
         expect(callback).toHaveBeenCalledTimes(1)
     })
 
