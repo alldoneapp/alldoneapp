@@ -21,6 +21,7 @@ describe('Alldone Web Share Target configuration', () => {
         expect(manifest.share_target).toEqual({
             action: '/projects/tasks/open',
             method: 'GET',
+            enctype: 'application/x-www-form-urlencoded',
             params: expectedParams,
         })
     })
@@ -31,6 +32,7 @@ describe('Alldone Web Share Target configuration', () => {
         expect(manifest.shareTarget).toEqual({
             action: 'https://my.alldone.app/projects/tasks/open',
             method: 'GET',
+            enctype: 'application/x-www-form-urlencoded',
             params: expectedParams,
         })
     })
