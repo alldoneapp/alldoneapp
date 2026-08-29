@@ -11,9 +11,8 @@
  *   2. every project is still seeded with EMPTY ARRAYS - a dozen consumers read
  *      `state.projectUsers[projectId].length` and friends without a guard, so the key must exist
  *      from the first frame even though the content is deferred,
- *   3. the priority projects are awaited BEFORE URL routing, because `processURLProjectsUserTasks`
- *      resolves a `/projects/<id>/user/<uid>/tasks` deep link out of `projectUsers[projectId]`,
- *   4. the rest stay lazy until a visible screen resolves their data, and
+ *   3. an ordinary All Projects boot awaits only the default project's assistants,
+ *   4. a project deep link still awaits that route project's complete bundle, and
  *   5. nothing outside `loggedUser.projectIds` is ever loaded - which is what makes "only active
  *      projects" a guarantee rather than a side effect of `updateInactiveProjectsData`.
  */
@@ -105,13 +104,14 @@ jest.mock('../../../utils/InitialLoad/initialLoadHelper', () => ({
 // The ordering assertions need a recorder, so the loader is mocked here rather than exercised;
 // its own behaviour is covered by `utils/InitialLoad/projectDataLoader.test.js`.
 const callLog = []
-const mockEnsureProjectsDataLoaded = jest.fn(projectIds => {
-    callLog.push(['ensure', [...projectIds]])
+const mockEnsureProjectDataLoaded = jest.fn((projectId, kinds) => {
+    callLog.push(['ensure', projectId, kinds])
     return Promise.resolve(true)
 })
 jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({
-    ensureProjectsDataLoaded: (...args) => mockEnsureProjectsDataLoaded(...args),
+    ensureProjectDataLoaded: (...args) => mockEnsureProjectDataLoaded(...args),
     forgetAllProjectData: jest.fn(),
+    PROJECT_DATA_ASSISTANTS: 'assistants',
 }))
 
 jest.mock('../../../utils/FunnyLoadingMessages', () => ({ getProgressLoadingMessage: () => 'loading' }))
@@ -148,6 +148,7 @@ describe("AT-2386 login no longer loads every project's people", () => {
     beforeEach(() => {
         jest.clearAllMocks()
         callLog.length = 0
+        mockState.initialUrl = '/'
         mockGetProjectData.mockImplementation(projectId =>
             Promise.resolve({ project: project(projectId), missingFromCache: false })
         )
@@ -178,17 +179,11 @@ describe("AT-2386 login no longer loads every project's people", () => {
         })
     })
 
-    it('awaits only priority projects before URL routing and leaves the rest lazy', async () => {
+    it("awaits only the default project's assistants before an ordinary All Projects route", async () => {
         await login()
 
         expect(callLog.map(entry => entry[0])).toEqual(['ensure', 'processUrl'])
-
-        const [, ensured] = callLog[0]
-
-        // Booting into "All projects" leaves no selected project, so the default project leads.
-        expect(ensured[0]).toBe('p2')
-        expect(ensured.sort()).toEqual(['p1', 'p2'])
-        expect(ensured).not.toContain('p3')
+        expect(callLog[0]).toEqual(['ensure', 'p2', 'assistants'])
     })
 
     it("never loads a project outside the logged user's project ids", async () => {
@@ -197,12 +192,25 @@ describe("AT-2386 login no longer loads every project's people", () => {
         // guarantee of the loader rather than an accident of that reducer.
         await login()
 
-        const requested = callLog.filter(([kind]) => kind === 'ensure').flatMap(([, ids]) => ids)
+        const requested = callLog.filter(([kind]) => kind === 'ensure').map(([, projectId]) => projectId)
 
         requested.forEach(projectId => expect(mockState.loggedUser.projectIds).toContain(projectId))
     })
 
-    it('does not request data for a project whose document could not be read', async () => {
+    it("awaits a deep-linked project's complete bundle before routing", async () => {
+        mockState.initialUrl = '/projects/p3/user/user-1/tasks/open'
+
+        await login()
+
+        expect(callLog).toEqual([
+            ['ensure', 'p3', undefined],
+            ['ensure', 'p2', 'assistants'],
+            ['processUrl', []],
+        ])
+    })
+
+    it('does not request data for a deep-linked project whose document could not be read', async () => {
+        mockState.initialUrl = '/projects/p3/user/user-1/tasks/open'
         mockGetProjectData.mockImplementation(projectId =>
             Promise.resolve(
                 projectId === 'p3'
@@ -213,9 +221,9 @@ describe("AT-2386 login no longer loads every project's people", () => {
 
         await login()
 
-        const requested = callLog.filter(([kind]) => kind === 'ensure').flatMap(([, ids]) => ids)
+        const requested = callLog.filter(([kind]) => kind === 'ensure').map(([, projectId]) => projectId)
 
         expect(requested).not.toContain('p3')
-        expect(requested.sort()).toEqual(['p1', 'p2'])
+        expect(requested).toEqual(['p2'])
     })
 })

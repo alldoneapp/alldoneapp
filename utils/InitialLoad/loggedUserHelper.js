@@ -30,8 +30,8 @@ import {
 import { getProjectDataResult } from '../backends/firestore'
 import { storeVersion } from '../Observers'
 import { checkIfUrlBelongsToProjectInTheList } from '../LinkingHelper'
-import { orderProjectsForDataWarmUp } from './projectDataPriority'
-import { ensureProjectsDataLoaded, forgetAllProjectData } from './projectDataLoader'
+import { resolveBootCriticalProjectIds } from './projectDataPriority'
+import { ensureProjectDataLoaded, forgetAllProjectData, PROJECT_DATA_ASSISTANTS } from './projectDataLoader'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
@@ -257,25 +257,31 @@ async function loadInitialData() {
 
     watchLoggedUserData(loggedUser)
 
-    // AT-2386: the per-project collections start here instead of inside the login bundle.
+    // AT-2386: the per-project collections start here instead of inside the login bundle. Await
+    // only the exact data that initial URL routing reads synchronously:
     //
-    // The app boots into "All projects", so there is no current project to prefer; the priority
-    // list resolves one anyway (URL project -> in-focus project -> default project -> first). Those
-    // few are AWAITED because two boot decisions read them synchronously right after this:
-    // `TasksHelper.processURLProjectsUserTasks` resolves a `/projects/<id>/user/<uid>/tasks` deep
-    // link out of `projectUsers[projectId]`, and `getDefaultAssistant` reads
-    // `projectAssistants[defaultProjectId]`. Everything else stays lazy and is loaded by the
-    // existing synchronous lookup funnels when a visible screen actually needs it.
+    // - a route project needs its complete bundle because a project URL can resolve a user,
+    //   contact, workstream or assistant from redux;
+    // - the default project needs only assistants for `getDefaultAssistant`.
+    //
+    // In-focus/first projects are rendering priorities, not routing dependencies. Their existing
+    // lookup funnels request data on demand after the first frame.
     const loadedProjectIds = projects.map(project => project.id)
-    const { priorityProjectIds } = orderProjectsForDataWarmUp({
+    const { routeProjectId, defaultAssistantProjectId } = resolveBootCriticalProjectIds({
         urlProjectId: checkIfUrlBelongsToProjectInTheList(getInitialRoutingUrl(), loadedProjectIds),
         loggedUser,
         projectIds: loadedProjectIds,
     })
 
-    // Bounded inside the loader, so a wedged stream delays login by at most one snapshot budget
-    // instead of hanging it.
-    await ensureProjectsDataLoaded(priorityProjectIds)
+    const bootCriticalLoads = []
+    if (routeProjectId) bootCriticalLoads.push(ensureProjectDataLoaded(routeProjectId))
+    if (defaultAssistantProjectId && defaultAssistantProjectId !== routeProjectId) {
+        bootCriticalLoads.push(ensureProjectDataLoaded(defaultAssistantProjectId, PROJECT_DATA_ASSISTANTS))
+    }
+
+    // Each load is bounded inside the loader, so a wedged stream delays routing by at most one
+    // snapshot budget instead of hanging it.
+    await Promise.all(bootCriticalLoads)
 
     // Defer non-critical watchers to improve initial load time
     setTimeout(() => {
