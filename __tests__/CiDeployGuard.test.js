@@ -26,6 +26,11 @@ const EXEMPT_JOBS = {
         'pings a version-bump endpoint rather than deploying source; replaying it from an older pipeline is idempotent',
 }
 
+// This authorization cutover is deliberately operator-approved and optional so it
+// cannot hold unrelated production releases. Its manual rule therefore allows all
+// outcomes; the newest-commit guard still prevents a stale ruleset from being published.
+const OPTIONAL_MANUAL_DEPLOY_JOBS = new Set(['deploy:firestore:rules:production'])
+
 const jobEntries = () =>
     Object.entries(CI_CONFIG).filter(
         ([name, job]) => job && typeof job === 'object' && !name.startsWith('.') && Array.isArray(job.script)
@@ -115,9 +120,19 @@ describe('production deploy jobs are protected against out-of-order pipelines', 
     it('declares the superseded exit code as an allowed failure', () => {
         for (const [name, job] of productionDeployJobs()) {
             if (EXEMPT_JOBS[name]) continue
+            if (OPTIONAL_MANUAL_DEPLOY_JOBS.has(name)) continue
             const exitCodes = [].concat((job.allow_failure && job.allow_failure.exit_codes) || [])
             expect(`${name}:${exitCodes.includes(SUPERSEDED_EXIT_CODE)}`).toBe(`${name}:true`)
             expect(`${name}:${job.allow_failure === true}`).toBe(`${name}:false`)
+        }
+    })
+
+    it('keeps authorization cutovers explicitly manual and optional', () => {
+        for (const name of OPTIONAL_MANUAL_DEPLOY_JOBS) {
+            const job = CI_CONFIG[name]
+            const productionRule = job.rules.find(rule => RUNS_ON_DEFAULT_BRANCH.test(JSON.stringify(rule.if || '')))
+
+            expect(productionRule).toMatchObject({ when: 'manual', allow_failure: true })
         }
     })
 
