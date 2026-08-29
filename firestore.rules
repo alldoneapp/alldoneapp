@@ -221,6 +221,7 @@ service cloud.firestore {
       //   roleIdsVisibleTo.{uid}     observer/assignee ids visible to caller
       //   followedReaderIds          followers who are also allowed to read it
       //   backlinkIdsVisibleTo       linked-object tokens visible to each caller
+      // Followed queries must use followedReaderIds; usersFollowing is client-writable legacy data.
       // Clients may query these fields but may never change them.
       return isProjectMember(projectId) && (
         request.auth.uid in data.get('readerIds', []) ||
