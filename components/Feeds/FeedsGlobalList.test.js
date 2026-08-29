@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux'
 
 import FeedsGlobalList from './FeedsGlobalList'
 import { getInitialData, processInitialFeeds } from './Utils/FeedsHelper'
-import { ALL_TAB } from './Utils/FeedsConstants'
+import { ALL_TAB, FOLLOWED_TAB } from './Utils/FeedsConstants'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
 
@@ -24,7 +24,7 @@ jest.mock('./Utils/FeedsHelper', () => {
         getLimitFeedAmountToDisplay: jest.fn(() => 5),
         getInitialData: jest.fn((tab, counterNewFeedsData, followedFeeds, allFeeds) => ({
             mode: HISTORICAL,
-            feedsToProcess: allFeeds.slice(0, 5),
+            feedsToProcess: (tab === 0 ? followedFeeds : allFeeds).slice(0, 5),
         })),
         // Stands in for the real async grouping: records the feeds it was handed and mirrors the
         // one state update the component's own logic depends on.
@@ -188,5 +188,15 @@ describe('FeedsGlobalList "show more" with a capped listener', () => {
         expect(getInitialData).toHaveBeenCalled()
         expect(processInitialFeeds.mock.calls[0][0]).toBe(HISTORICAL_MODE)
         expect(processInitialFeeds.mock.calls[0][3]).toHaveLength(5)
+    })
+
+    it('renders the active tab without waiting for the inactive subscription', () => {
+        renderList(undefined, {
+            feedActiveTab: FOLLOWED_TAB,
+            followedFeeds: makeFeeds(2),
+        })
+
+        expect(getInitialData).toHaveBeenCalledWith(FOLLOWED_TAB, [], makeFeeds(2), undefined)
+        expect(processInitialFeeds.mock.calls[0][3]).toHaveLength(2)
     })
 })

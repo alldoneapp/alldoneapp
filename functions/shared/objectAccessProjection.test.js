@@ -14,7 +14,12 @@ function createPagingDb(documentsByPath, collectionPathsByDoc = {}) {
 
     const makeCollection = (path, documents = []) => ({
         id: path.split('/').pop(),
-        doc: id => ({ collection: child => makeCollection(`${path}/${id}/${child}`, []) }),
+        doc: id => ({
+            collection: child => {
+                const childPath = `${path}/${id}/${child}`
+                return makeCollection(childPath, documentsByPath[childPath] || [])
+            },
+        }),
         orderBy: () => {
             let afterId = null
             let limit = Infinity
@@ -225,5 +230,52 @@ describe('object access projection', () => {
         const second = await synchronizeProjectAccessProjectionPage(db, 'project-1', ['member-1'], first.cursor, 400)
         expect(second).toMatchObject({ scanned: 5, updated: 5, done: true, cursor: null })
         expect(db.writes).toHaveLength(30)
+    })
+
+    it('reconciles the all and per-user followed Updates stores', async () => {
+        const db = createPagingDb(
+            {
+                'feedsStore/project-1/all': [{ id: 'all-feed', data: { isPublicFor: [0] } }],
+                'feedsStore/project-1/member-1/feeds/followed': [
+                    { id: 'followed-feed', data: { isPublicFor: ['member-1'] } },
+                ],
+                'feedsStore/project-1/member-2/feeds/followed': [
+                    { id: 'private-feed', data: { isPublicFor: ['member-2'] } },
+                ],
+            },
+            {
+                'feedsStore/project-1': [
+                    'feedsStore/project-1/all',
+                    'feedsStore/project-1/member-1',
+                    'feedsStore/project-1/member-2',
+                ],
+            }
+        )
+
+        const result = await synchronizeProjectAccessProjectionPage(
+            db,
+            'project-1',
+            ['member-1', 'member-2'],
+            { phase: 'feed-store-all', documentId: null },
+            400
+        )
+
+        expect(result).toMatchObject({ scanned: 3, updated: 3, done: true, cursor: null })
+        expect(db.writes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    ref: { path: 'feedsStore/project-1/all/all-feed' },
+                    data: expect.objectContaining({ readerIds: [0, 'member-1', 'member-2'] }),
+                }),
+                expect.objectContaining({
+                    ref: { path: 'feedsStore/project-1/member-1/feeds/followed/followed-feed' },
+                    data: expect.objectContaining({ readerIds: ['member-1'] }),
+                }),
+                expect.objectContaining({
+                    ref: { path: 'feedsStore/project-1/member-2/feeds/followed/private-feed' },
+                    data: expect.objectContaining({ readerIds: ['member-2'] }),
+                }),
+            ])
+        )
     })
 })

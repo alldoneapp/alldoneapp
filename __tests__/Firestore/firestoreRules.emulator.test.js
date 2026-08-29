@@ -11,6 +11,7 @@ const {
     doc,
     getDoc,
     getDocs,
+    orderBy,
     query,
     setDoc,
     updateDoc,
@@ -122,6 +123,26 @@ const seed = async () => {
             roleIdsVisibleTo: { [MEMBER_ID]: [] },
             followedByVisibleTo: { [MEMBER_ID]: true },
             followedReaderIds: [MEMBER_ID],
+        })
+        await setDoc(doc(db, `feedsStore/${PROJECT_ID}/all/public-feed`), {
+            isPublicFor: [0],
+            lastChangeDate: 3,
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+        })
+        await setDoc(doc(db, `feedsStore/${PROJECT_ID}/all/private-feed`), {
+            isPublicFor: [MEMBER_ID],
+            lastChangeDate: 2,
+            readerIds: [MEMBER_ID],
+        })
+        await setDoc(doc(db, `feedsStore/${PROJECT_ID}/all/hidden-feed`), {
+            isPublicFor: [TEAMMATE_ID],
+            lastChangeDate: 1,
+            readerIds: [TEAMMATE_ID],
+        })
+        await setDoc(doc(db, `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed/followed-feed`), {
+            isPublicFor: [0],
+            lastChangeDate: 3,
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
         })
     })
 }
@@ -404,6 +425,79 @@ describe('queries used by the web client', () => {
 
         const snapshot = await assertSucceeds(getDocs(tasks))
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+    })
+
+    it('allows only projection-shaped Updates queries on the all and followed stores', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        const allUpdates = query(
+            collection(memberDb, `feedsStore/${PROJECT_ID}/all`),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            orderBy('lastChangeDate', 'desc')
+        )
+        const allSnapshot = await assertSucceeds(getDocs(allUpdates))
+        expect(allSnapshot.docs.map(item => item.id)).toEqual(['public-feed', 'private-feed'])
+
+        const followedUpdates = query(
+            collection(memberDb, `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed`),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            orderBy('lastChangeDate', 'desc')
+        )
+        const followedSnapshot = await assertSucceeds(getDocs(followedUpdates))
+        expect(followedSnapshot.docs.map(item => item.id)).toEqual(['followed-feed'])
+
+        await assertFails(
+            getDocs(
+                query(
+                    collection(teammateDb, `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed`),
+                    where('readerIds', 'array-contains', TEAMMATE_ID)
+                )
+            )
+        )
+        await assertFails(getDoc(doc(outsiderDb, `feedsStore/${PROJECT_ID}/all/public-feed`)))
+        await assertFails(getDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/hidden-feed`)))
+    })
+
+    it('keeps Updates projections server-owned while allowing ordinary member feed writes', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(
+            setDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/client-created`), {
+                creatorId: MEMBER_ID,
+                isPublicFor: [0],
+                lastChangeDate: 4,
+            })
+        )
+        await assertSucceeds(
+            setDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/${TEAMMATE_ID}/feeds/followed/client-created`), {
+                creatorId: MEMBER_ID,
+                isPublicFor: [0],
+                lastChangeDate: 4,
+            })
+        )
+        await assertFails(
+            setDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/forged`), {
+                creatorId: MEMBER_ID,
+                isPublicFor: [0],
+                lastChangeDate: 4,
+                readerIds: [OUTSIDER_ID],
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/public-feed`), {
+                readerIds: [MEMBER_ID, OUTSIDER_ID],
+            })
+        )
+        await assertFails(
+            setDoc(doc(outsiderDb, `feedsStore/${PROJECT_ID}/all/outsider-created`), {
+                creatorId: OUTSIDER_ID,
+                isPublicFor: [0],
+                lastChangeDate: 4,
+            })
+        )
     })
 
     it('allows backlink queries only through the per-reader server projection', async () => {
