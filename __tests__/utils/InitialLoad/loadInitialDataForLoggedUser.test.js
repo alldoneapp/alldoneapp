@@ -7,6 +7,11 @@
  */
 
 const mockDispatch = jest.fn()
+const mockDeferredStartupCallbacks = []
+const mockScheduleAfterInitialTaskData = jest.fn((callback, options) => {
+    mockDeferredStartupCallbacks.push({ callback, options })
+    return jest.fn()
+})
 const mockState = {
     loggedUser: { uid: 'user-1', projectIds: ['p1', 'p2'], dateFormat: 'DD/MM/YYYY', language: 'en' },
     initialUrl: '/',
@@ -18,6 +23,10 @@ jest.mock('../../../redux/store', () => ({
         getState: () => mockState,
         dispatch: (...args) => mockDispatch(...args),
     },
+}))
+
+jest.mock('../../../utils/InitialLoad/startupTaskReadiness', () => ({
+    scheduleAfterInitialTaskData: (...args) => mockScheduleAfterInitialTaskData(...args),
 }))
 
 const mockSetCachedGlobalData = jest.fn()
@@ -111,9 +120,11 @@ jest.mock('../../../utils/backends/Premium/stripePremiumFirestore', () => ({
 jest.mock('../../../utils/analytics/analytics', () => ({ trackEvent: jest.fn() }))
 
 const {
+    CACHED_PROJECT_REFRESH_SETTLE_MS,
     CACHED_USER_REFRESH_BOOT_BUDGET_MS,
     loadGlobalDataAndGetUserResult,
     loadInitialDataForLoggedUser,
+    POST_LOGIN_MAINTENANCE_SETTLE_MS,
 } = require('../../../utils/InitialLoad/loggedUserHelper')
 const { fetchUserDataResult } = require('../../../utils/backends/Users/usersFirestore')
 
@@ -126,6 +137,7 @@ const getProjectsInitialDataDispatch = () => {
 
 beforeEach(() => {
     jest.clearAllMocks()
+    mockDeferredStartupCallbacks.length = 0
     mockCachedUserData = null
     mockCachedGlobalData = null
     mockState.loggedUser = { uid: 'user-1', projectIds: ['p1', 'p2'], dateFormat: 'DD/MM/YYYY', language: 'en' }
@@ -209,6 +221,52 @@ describe('loadGlobalDataAndGetUserResult', () => {
 })
 
 describe('loadInitialDataForLoggedUser', () => {
+    it('keeps post-login Firestore maintenance out of the first task render', async () => {
+        mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
+        const {
+            initFCMonLoad,
+            resetTimesDoneInExpectedDayPropertyInTasksIfNeeded,
+            updateLastLoggedUserDate,
+        } = require('../../../utils/backends/firestore')
+
+        await loadInitialDataForLoggedUser(mockState.loggedUser)
+
+        expect(initFCMonLoad).not.toHaveBeenCalled()
+        expect(updateLastLoggedUserDate).not.toHaveBeenCalled()
+        expect(resetTimesDoneInExpectedDayPropertyInTasksIfNeeded).not.toHaveBeenCalled()
+
+        const maintenance = mockDeferredStartupCallbacks.find(
+            deferred => deferred.options?.settleMs === POST_LOGIN_MAINTENANCE_SETTLE_MS
+        )
+        expect(maintenance).toBeDefined()
+        await maintenance.callback()
+
+        expect(initFCMonLoad).toHaveBeenCalledTimes(1)
+        expect(updateLastLoggedUserDate).toHaveBeenCalledTimes(1)
+        expect(resetTimesDoneInExpectedDayPropertyInTasksIfNeeded).toHaveBeenCalledTimes(1)
+    })
+
+    it('refreshes a complete project shell only after the task-first quiet window', async () => {
+        mockCachedGlobalData = {
+            projectIds: ['p1', 'p2'],
+            projectsInitialData: [
+                { projectId: 'p1', project: project('p1'), users: [], contacts: [], workstreams: [], assistants: [] },
+                { projectId: 'p2', project: project('p2'), users: [], contacts: [], workstreams: [], assistants: [] },
+            ],
+        }
+        mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
+
+        await loadInitialDataForLoggedUser(mockState.loggedUser)
+
+        expect(mockGetProjectData).not.toHaveBeenCalled()
+        const refresh = mockDeferredStartupCallbacks.find(
+            deferred => deferred.options?.settleMs === CACHED_PROJECT_REFRESH_SETTLE_MS
+        )
+        expect(refresh).toBeDefined()
+        await refresh.callback()
+        expect(mockGetProjectData).toHaveBeenCalledTimes(2)
+    })
+
     it('completes the login when a project document cannot be read', async () => {
         // p2 was deleted / is no longer accessible -> mockGetProjectData resolves null
         mockGetProjectData.mockImplementation(id => Promise.resolve(id === 'p1' ? project('p1') : null))
