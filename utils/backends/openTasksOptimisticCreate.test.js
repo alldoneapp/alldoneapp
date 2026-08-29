@@ -90,7 +90,15 @@ jest.mock('./firestore', () => ({
     mapTaskData: (id, data) => ({ id, ...data }),
 }))
 
-import { MAIN_TASK_INDEX, AMOUNT_TASKS_INDEX, matchesOpenTasksQuery, watchOpenTasks } from './openTasks'
+import {
+    AMOUNT_TASKS_INDEX,
+    DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS,
+    DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS,
+    MAIN_TASK_INDEX,
+    matchesOpenTasksQuery,
+    unwatchOpenTasks,
+    watchOpenTasks,
+} from './openTasks'
 import {
     publishOptimisticTaskCreateFailed,
     publishOptimisticTaskCreated,
@@ -146,6 +154,8 @@ describe('AT-2342 optimistic task insert in the open board', () => {
 
         watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1')
     })
+
+    afterEach(() => jest.useRealTimers())
 
     const deliverSnapshot = (listenerIndex, changes) => {
         listeners[listenerIndex]({
@@ -218,6 +228,67 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             instanceKey: 'project-1user-1',
             initialLoadingEndOpenTasks: true,
         })
+    })
+
+    it('stages secondary All Projects streams behind the first assigned snapshot', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+
+        watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
+            deferSecondaryStreams: true,
+        })
+
+        expect(listeners).toHaveLength(1)
+        deliverSnapshot(0, [])
+
+        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS - 1)
+        expect(listeners).toHaveLength(1)
+        jest.advanceTimersByTime(1)
+        expect(listeners).toHaveLength(2)
+
+        jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(4)
+
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+    })
+
+    it('cancels staged streams when the project leaves the board', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+
+        watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
+            deferSecondaryStreams: true,
+        })
+        deliverSnapshot(0, [])
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        jest.runAllTimers()
+
+        expect(listeners).toHaveLength(1)
+    })
+
+    it('keeps a nine-project discovery window to one foreground query per project', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        const projectIds = Array.from({ length: 9 }, (_, index) => `project-${index}`)
+
+        projectIds.forEach(projectId =>
+            watchOpenTasks(projectId, jest.fn(), false, false, false, `${projectId}user-1`, false, {
+                deferSecondaryStreams: true,
+            })
+        )
+
+        expect(listeners).toHaveLength(9)
+        Array.from({ length: 9 }, (_, index) => index).forEach(listenerIndex => deliverSnapshot(listenerIndex, []))
+
+        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(18)
+        jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(36)
+
+        projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
     })
 
     it('removes the row again when the write is rejected', () => {

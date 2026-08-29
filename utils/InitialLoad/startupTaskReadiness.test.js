@@ -14,7 +14,11 @@ jest.mock('../../redux/store', () => ({
     },
 }))
 
-const { DEFERRED_STARTUP_WORK_FALLBACK_MS, scheduleAfterInitialTaskData } = require('./startupTaskReadiness')
+const {
+    DEFERRED_STARTUP_WORK_FALLBACK_MS,
+    TASK_DATA_SETTLE_GRACE_MS,
+    scheduleAfterInitialTaskData,
+} = require('./startupTaskReadiness')
 
 const buildState = () => ({
     currentUser: { uid: 'user-1' },
@@ -53,6 +57,8 @@ describe('scheduleAfterInitialTaskData', () => {
         mockState.initialLoadingEndObservedTasks['p1user-1'] = true
         mockListeners.forEach(listener => listener())
 
+        expect(callback).not.toHaveBeenCalled()
+        jest.advanceTimersByTime(TASK_DATA_SETTLE_GRACE_MS)
         expect(callback).toHaveBeenCalledTimes(1)
         expect(mockListeners).toHaveLength(0)
         jest.advanceTimersByTime(DEFERRED_STARTUP_WORK_FALLBACK_MS)
@@ -73,6 +79,9 @@ describe('scheduleAfterInitialTaskData', () => {
         mockState.initialLoadingEndOpenTasks['p2user-1'] = true
         mockState.initialLoadingEndObservedTasks['p2user-1'] = true
         mockListeners.forEach(listener => listener())
+
+        expect(callback).not.toHaveBeenCalled()
+        jest.advanceTimersByTime(TASK_DATA_SETTLE_GRACE_MS)
         expect(callback).toHaveBeenCalledTimes(1)
     })
 

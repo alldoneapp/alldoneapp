@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import {
     DEFERRED_STARTUP_WORK_FALLBACK_MS,
     selectInitialTaskDataPublished,
+    TASK_DATA_SETTLE_GRACE_MS,
 } from '../utils/InitialLoad/startupTaskReadiness'
 
 export { DEFERRED_STARTUP_WORK_FALLBACK_MS, selectInitialTaskDataPublished }
@@ -15,6 +16,15 @@ export default function useDeferredStartupWork({
 } = {}) {
     const taskDataPublished = useInitialTaskDataPublished()
     const [fallbackElapsed, setFallbackElapsed] = useState(false)
+    const [taskDataSettled, setTaskDataSettled] = useState(false)
+
+    useEffect(() => {
+        setTaskDataSettled(false)
+        if (!enabled || !taskDataPublished) return undefined
+
+        const timer = setTimeout(() => setTaskDataSettled(true), TASK_DATA_SETTLE_GRACE_MS)
+        return () => clearTimeout(timer)
+    }, [enabled, taskDataPublished])
 
     useEffect(() => {
         setFallbackElapsed(false)
@@ -24,5 +34,5 @@ export default function useDeferredStartupWork({
         return () => clearTimeout(timer)
     }, [enabled, fallbackMs, taskDataPublished])
 
-    return enabled && (taskDataPublished || fallbackElapsed)
+    return enabled && (taskDataSettled || fallbackElapsed)
 }
