@@ -175,7 +175,10 @@ export default function OpenTasksByProjectHandler({
                 false,
                 instanceKey,
                 assistantProfileMode,
-                { trackConnectionHealth: inSelectedProject }
+                {
+                    trackConnectionHealth: inSelectedProject,
+                    deferSecondaryStreams: !inSelectedProject,
+                }
             )
 
             return () => {

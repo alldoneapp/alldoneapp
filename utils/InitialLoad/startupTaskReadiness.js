@@ -7,6 +7,7 @@ import store from '../../redux/store'
 // answered, several seconds before the project containing the first real task.
 // Direct non-task routes still get a bounded fallback.
 export const DEFERRED_STARTUP_WORK_FALLBACK_MS = 12000
+export const TASK_DATA_SETTLE_GRACE_MS = 1000
 
 const getTaskBoardProjectIds = state => {
     const loadedProjects = Array.isArray(state.loggedUserProjects) ? state.loggedUserProjects : []
@@ -65,16 +66,20 @@ export const scheduleAfterInitialTaskData = (callback, { fallbackMs = DEFERRED_S
     let finished = false
     let unsubscribe = null
     let timer = null
+    let settleTimer = null
 
     const finish = () => {
         if (finished) return
         finished = true
         if (timer) clearTimeout(timer)
+        if (settleTimer) clearTimeout(settleTimer)
         if (unsubscribe) unsubscribe()
         callback()
     }
     const check = () => {
-        if (selectInitialTaskDataPublished(store.getState())) finish()
+        if (selectInitialTaskDataPublished(store.getState()) && !settleTimer) {
+            settleTimer = setTimeout(finish, TASK_DATA_SETTLE_GRACE_MS)
+        }
     }
 
     if (typeof store.subscribe === 'function') unsubscribe = store.subscribe(check)
@@ -85,6 +90,7 @@ export const scheduleAfterInitialTaskData = (callback, { fallbackMs = DEFERRED_S
         if (finished) return
         finished = true
         clearTimeout(timer)
+        clearTimeout(settleTimer)
         if (unsubscribe) unsubscribe()
     }
 }

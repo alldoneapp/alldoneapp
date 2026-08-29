@@ -71,6 +71,14 @@ export const NOT_PARENT_GOAL_INDEX = '0'
 let userOpenTasks = {}
 let userObservedTasks = {}
 let streamAndUserOpenTasks = {}
+const deferredSecondaryTaskStreamTimers = {}
+
+// All Projects needs to discover the logged user's own tasks across several projects before
+// secondary task sources are allowed to fill the Firestore connection. The assigned query is the
+// common morning path; observed tasks follow shortly afterwards, while workstream tasks and empty
+// goals wait until the first task rows have had time to commit.
+export const DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS = 600
+export const DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS = 2000
 
 export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
     observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
@@ -101,6 +109,15 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
     unwatch(projectId, currentUserId, userObservedTasks)
     unwatch(projectId, currentUserId, streamAndUserOpenTasks)
 
+    const pendingTimers = deferredSecondaryTaskStreamTimers[projectId]?.[currentUserId] || []
+    pendingTimers.forEach(clearTimeout)
+    if (deferredSecondaryTaskStreamTimers[projectId]) {
+        delete deferredSecondaryTaskStreamTimers[projectId][currentUserId]
+        if (Object.keys(deferredSecondaryTaskStreamTimers[projectId]).length === 0) {
+            delete deferredSecondaryTaskStreamTimers[projectId]
+        }
+    }
+
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 }
 
@@ -112,7 +129,7 @@ export const watchOpenTasks = (
     keepMainDayData,
     instanceKey,
     assistantProfileMode = false,
-    { trackConnectionHealth = true } = {}
+    { trackConnectionHealth = true, deferSecondaryStreams = false } = {}
 ) =>
     // AT-2337: mounting "All projects" calls this once per project (~78x) and each
     // call fired 4 separate store notifications before a single task had loaded.
@@ -127,7 +144,8 @@ export const watchOpenTasks = (
             keepMainDayData,
             instanceKey,
             assistantProfileMode,
-            trackConnectionHealth
+            trackConnectionHealth,
+            deferSecondaryStreams
         )
     })
 
@@ -139,7 +157,8 @@ const watchOpenTasksInternal = (
     keepMainDayData,
     instanceKey,
     assistantProfileMode = false,
-    trackConnectionHealth = true
+    trackConnectionHealth = true,
+    deferSecondaryStreams = false
 ) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
@@ -230,6 +249,72 @@ const watchOpenTasksInternal = (
 
     batchDispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
 
+    const startObservedTasks = () =>
+        watchUserOpenTasks(
+            projectId,
+            callback,
+            storedTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            tasksMap,
+            true,
+            instanceKey,
+            showLaterTasks,
+            showSomedayTasks,
+            subtasksByParentId,
+            subtasksMap,
+            false,
+            trackConnectionHealth
+        )
+
+    const startRemainingStreams = () => {
+        watchStreamAndUserOpenTasksInBatches(
+            projectId,
+            callback,
+            storedTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            tasksMap,
+            showLaterTasks,
+            showSomedayTasks,
+            subtasksByParentId,
+            subtasksMap,
+            trackConnectionHealth
+        )
+
+        watchEmptyGoals(
+            projectId,
+            callback,
+            storedTasks,
+            goalsMap,
+            showLaterTasks,
+            showSomedayTasks,
+            estimationByDate,
+            amountOfTasksByDate,
+            trackConnectionHealth
+        )
+    }
+
+    const scheduleSecondaryStreams = () => {
+        const timers = []
+        const schedule = (streamStarter, delay) => {
+            const timer = setTimeout(() => {
+                const activeTimers = deferredSecondaryTaskStreamTimers[projectId]?.[currentUser.uid]
+                if (!activeTimers?.includes(timer)) return
+                deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = activeTimers.filter(
+                    activeTimer => activeTimer !== timer
+                )
+                streamStarter()
+            }, delay)
+            timers.push(timer)
+        }
+
+        schedule(startObservedTasks, DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        schedule(startRemainingStreams, DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS)
+        if (!deferredSecondaryTaskStreamTimers[projectId]) deferredSecondaryTaskStreamTimers[projectId] = {}
+        deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = timers
+    }
+
     watchUserOpenTasks(
         projectId,
         callback,
@@ -244,50 +329,14 @@ const watchOpenTasksInternal = (
         subtasksByParentId,
         subtasksMap,
         assistantProfileMode,
-        trackConnectionHealth
-    )
-    watchUserOpenTasks(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        true,
-        instanceKey,
-        showLaterTasks,
-        showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap,
-        false,
-        trackConnectionHealth
+        trackConnectionHealth,
+        deferSecondaryStreams ? scheduleSecondaryStreams : undefined
     )
 
-    watchStreamAndUserOpenTasksInBatches(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        showLaterTasks,
-        showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap,
-        trackConnectionHealth
-    )
-
-    watchEmptyGoals(
-        projectId,
-        callback,
-        storedTasks,
-        goalsMap,
-        showLaterTasks,
-        showSomedayTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        trackConnectionHealth
-    )
+    if (!deferSecondaryStreams) {
+        startObservedTasks()
+        startRemainingStreams()
+    }
 
     // Save vars at the end
     batchDispatch(
@@ -404,7 +453,8 @@ const watchUserOpenTasks = (
     subtasksByParentId,
     subtasksMap,
     assistantProfileMode = false,
-    trackConnectionHealth = true
+    trackConnectionHealth = true,
+    onInitialSnapshotDelivered
 ) => {
     if (!areObservedTasks)
         setTimeout(() => {
@@ -431,6 +481,7 @@ const watchUserOpenTasks = (
     )
 
     let cacheChanges = []
+    let initialSnapshotDelivered = false
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
@@ -452,6 +503,10 @@ const watchUserOpenTasks = (
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             deliverOpenTasksChanges(changes)
+            if (!initialSnapshotDelivered) {
+                initialSnapshotDelivered = true
+                onInitialSnapshotDelivered?.()
+            }
         }
     }
 
