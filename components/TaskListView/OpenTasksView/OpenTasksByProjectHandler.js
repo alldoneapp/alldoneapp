@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import moment from 'moment'
 import { difference, isEmpty } from 'lodash'
 import { useDispatch, useSelector, shallowEqual } from 'react-redux'
@@ -8,16 +8,8 @@ import {
     clearOpenTasksMap,
     clearOpenSubtasksMap,
     setTaskListWatchersVars,
-    setTodayEmptyGoalsTotalAmountInOpenTasksView,
     setLaterTasksExpandedForNavigateFromAllProjects,
     setSomedayTasksExpandedForNavigateFromAllProjects,
-    updateOpenTasks,
-    updateThereAreHiddenNotMainTasks,
-    updateFilteredOpenTasks,
-    updateSubtaskByTask,
-    updateThereAreNotTasksInFirstDay,
-    updateInitialLoadingEndOpenTasks,
-    updateInitialLoadingEndObservedTasks,
 } from '../../../redux/actions'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -76,9 +68,11 @@ export default function OpenTasksByProjectHandler({
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
-    const clearTasksAndWatchers = () => {
-        dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
-        unwatchOpenTasks(projectId, currentUserId)
+    const stopTasksWatchers = ({ preserveSessionSnapshot = false } = {}) => {
+        if (!preserveSessionSnapshot) {
+            dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
+        }
+        unwatchOpenTasks(projectId, currentUserId, { preserveData: preserveSessionSnapshot })
     }
 
     const updateTaks = (initialTasks, initialLoadingInOpenTasks) => {
@@ -91,6 +85,28 @@ export default function OpenTasksByProjectHandler({
             inSelectedProject
         )
     }
+
+    useLayoutEffect(() => {
+        const {
+            openTasksStore,
+            laterTasksExpandedForNavigateFromAllProjects,
+            somedayTasksExpandedForNavigateFromAllProjects,
+        } = store.getState()
+        const retainedTasks = openTasksStore[instanceKey]
+        if (!retainedTasks) return
+
+        const keepExpandedDays =
+            laterTasksExpanded ||
+            somedayTasksExpanded ||
+            laterTasksExpandedForNavigateFromAllProjects ||
+            somedayTasksExpandedForNavigateFromAllProjects
+        const tasksForCurrentView = keepExpandedDays ? retainedTasks : retainedTasks.slice(0, 1)
+
+        // A selected-project snapshot contains sections that All Projects deliberately hides.
+        // Re-apply the current view projection before paint so navigating selected -> All Projects
+        // cannot flash observed/workstream rows from the previous task-board context.
+        updateOpTasks(projectId, instanceKey, tasksForCurrentView, undefined, null, inSelectedProject)
+    }, [])
 
     // Keep integration refreshes out of the All Projects mount fan-out. The
     // unified Email line refreshes connected accounts once, while calendar is
@@ -159,9 +175,16 @@ export default function OpenTasksByProjectHandler({
 
     useEffect(() => {
         if (currentUserId) {
-            const { laterTasksExpandedForNavigateFromAllProjects, somedayTasksExpandedForNavigateFromAllProjects } =
-                store.getState()
-            clearTasksAndWatchers()
+            const {
+                laterTasksExpandedForNavigateFromAllProjects,
+                somedayTasksExpandedForNavigateFromAllProjects,
+                openTasksStore,
+                globalDataByProject,
+            } = store.getState()
+            const hasRenderedSessionSnapshot = openTasksStore[instanceKey] !== undefined
+            const canReuseWatcherData = hasRenderedSessionSnapshot && !!globalDataByProject[projectId]
+
+            stopTasksWatchers({ preserveSessionSnapshot: hasRenderedSessionSnapshot })
             dispatch([
                 setTaskListWatchersVars(WATCHER_VARS_DEFAULT),
                 setLaterTasksExpandedForNavigateFromAllProjects(false),
@@ -172,7 +195,7 @@ export default function OpenTasksByProjectHandler({
                 updateTaks,
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
-                false,
+                canReuseWatcherData,
                 instanceKey,
                 assistantProfileMode,
                 {
@@ -182,8 +205,10 @@ export default function OpenTasksByProjectHandler({
             )
 
             return () => {
-                dispatch([setTodayEmptyGoalsTotalAmountInOpenTasksView(projectId, 0)])
-                clearTasksAndWatchers()
+                // Keep the last published task/decorator snapshot in Redux and the mutable watcher
+                // indexes in globalDataByProject. Returning from Notes/Goals/etc. can paint those
+                // rows immediately; the newly attached listeners reconcile them in the background.
+                stopTasksWatchers({ preserveSessionSnapshot: true })
             }
         }
     }, [])
@@ -259,18 +284,6 @@ export default function OpenTasksByProjectHandler({
             dispatch(setLastAddNewTaskDate({ projectId: projectId, date }))
         }
     }, [firstProject])
-
-    useEffect(() => {
-        return () => {
-            dispatch(updateOpenTasks(instanceKey, null))
-            dispatch(updateThereAreHiddenNotMainTasks(instanceKey, null))
-            dispatch(updateFilteredOpenTasks(instanceKey, null))
-            dispatch(updateSubtaskByTask(instanceKey, null))
-            dispatch(updateThereAreNotTasksInFirstDay(instanceKey, null))
-            dispatch(updateInitialLoadingEndOpenTasks(instanceKey, null))
-            dispatch(updateInitialLoadingEndObservedTasks(instanceKey, null))
-        }
-    }, [])
 
     return null
 }
