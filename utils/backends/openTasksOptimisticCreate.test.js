@@ -17,7 +17,7 @@ const mockDispatch = jest.fn()
 
 const mockState = {
     currentUser: { uid: 'user-1', workstreams: {} },
-    loggedUser: { uid: 'user-1', isAnonymous: false },
+    loggedUser: { uid: 'user-1', isAnonymous: false, numberTodayTasks: 10 },
     globalDataByProject: {},
     taskListWatchersVars: {},
     hashtagFilters: new Map(),
@@ -65,17 +65,29 @@ jest.mock('../EstimationHelper', () => ({
 
 // Every listener registered by watchOpenTasks lands here so a test can drive the one it wants.
 const listeners = []
+const listenerUnsubscribes = []
+const queryRegistrations = []
 
 const buildQuery = () => {
+    const registration = { limits: [], where: [] }
+    queryRegistrations.push(registration)
     const query = {
-        where: () => query,
+        where: (...args) => {
+            registration.where.push(args)
+            return query
+        },
         orderBy: () => query,
-        limit: () => query,
+        limit: value => {
+            registration.limits.push(value)
+            return query
+        },
         onSnapshot: (...args) => {
             // Called either as (handler) or as (options, handler).
             const handler = typeof args[0] === 'function' ? args[0] : args[1]
+            const unsubscribe = jest.fn()
             listeners.push(handler)
-            return () => {}
+            listenerUnsubscribes.push(unsubscribe)
+            return unsubscribe
         },
     }
     return query
@@ -92,6 +104,7 @@ jest.mock('./firestore', () => ({
 
 import {
     AMOUNT_TASKS_INDEX,
+    DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS,
     DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS,
     DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS,
     MAIN_TASK_INDEX,
@@ -99,6 +112,7 @@ import {
     unwatchOpenTasks,
     watchOpenTasks,
 } from './openTasks'
+import { resetOpenTasksBackgroundHydrationQueue } from './openTasksBackgroundQueue'
 import {
     publishOptimisticTaskCreateFailed,
     publishOptimisticTaskCreated,
@@ -147,10 +161,14 @@ describe('AT-2342 optimistic task insert in the open board', () => {
 
     beforeEach(() => {
         listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
         published = []
         mockDispatch.mockClear()
         resetOptimisticTaskCreates()
         mockState.globalDataByProject = {}
+        mockState.loggedUser.numberTodayTasks = 10
+        resetOpenTasksBackgroundHydrationQueue()
 
         watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1')
     })
@@ -234,6 +252,8 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         jest.useFakeTimers()
         unwatchOpenTasks(PROJECT_ID, 'user-1')
         listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
 
         watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
             deferSecondaryStreams: true,
@@ -242,13 +262,24 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         expect(listeners).toHaveLength(1)
         deliverSnapshot(0, [])
 
-        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS - 1)
+        expect(queryRegistrations[0].where).toContainEqual(['parentId', '==', null])
+        expect(queryRegistrations[0].limits).toEqual([10])
+
+        jest.advanceTimersByTime(DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS - 1)
         expect(listeners).toHaveLength(1)
         jest.advanceTimersByTime(1)
         expect(listeners).toHaveLength(2)
+        expect(queryRegistrations[1].where).not.toContainEqual(['parentId', '==', null])
+        expect(queryRegistrations[1].limits).toEqual([])
+
+        deliverSnapshot(1, [])
+        expect(listenerUnsubscribes[0]).toHaveBeenCalledTimes(1)
+
+        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(3)
 
         jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
-        expect(listeners).toHaveLength(4)
+        expect(listeners).toHaveLength(5)
 
         unwatchOpenTasks(PROJECT_ID, 'user-1')
     })
@@ -257,6 +288,8 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         jest.useFakeTimers()
         unwatchOpenTasks(PROJECT_ID, 'user-1')
         listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
 
         watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
             deferSecondaryStreams: true,
@@ -268,10 +301,59 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         expect(listeners).toHaveLength(1)
     })
 
+    it('publishes the small foreground page before merging the complete project in the background', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        published = []
+
+        watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
+            deferSecondaryStreams: true,
+        })
+
+        const firstTask = buildRawTask({ name: 'foreground' })
+        const secondTask = buildRawTask({ name: 'background', sortIndex: 90 })
+        deliverSnapshot(0, [realAddedChange('task-1', firstTask)])
+        expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+        jest.advanceTimersByTime(DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        deliverSnapshot(1, [realAddedChange('task-1', firstTask), realAddedChange('task-2', secondTask)])
+
+        expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1', 'task-2'])
+        expect(listenerUnsubscribes[0]).toHaveBeenCalledTimes(1)
+
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+    })
+
+    it('keeps unlimited mode on one complete assigned-task query', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        mockState.loggedUser.numberTodayTasks = 0
+
+        watchOpenTasks(PROJECT_ID, jest.fn(), false, false, false, 'project-1user-1', false, {
+            deferSecondaryStreams: true,
+        })
+
+        expect(queryRegistrations[0].where).not.toContainEqual(['parentId', '==', null])
+        expect(queryRegistrations[0].limits).toEqual([])
+        deliverSnapshot(0, [])
+        jest.advanceTimersByTime(DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(1)
+
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+    })
+
     it('keeps a fourteen-project discovery window to one foreground query per project', () => {
         jest.useFakeTimers()
         unwatchOpenTasks(PROJECT_ID, 'user-1')
         listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
         const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
 
         projectIds.forEach(projectId =>
@@ -283,10 +365,17 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         expect(listeners).toHaveLength(14)
         Array.from({ length: 14 }, (_, index) => index).forEach(listenerIndex => deliverSnapshot(listenerIndex, []))
 
-        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        jest.advanceTimersByTime(DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(16)
+
+        // Completing one background snapshot releases exactly one slot for the next project.
+        for (let index = 0; index < 14; index++) deliverSnapshot(14 + index, [])
         expect(listeners).toHaveLength(28)
+
+        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(42)
         jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
-        expect(listeners).toHaveLength(56)
+        expect(listeners).toHaveLength(70)
 
         projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
     })

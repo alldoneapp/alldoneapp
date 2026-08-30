@@ -42,6 +42,7 @@ import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
+import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
 
 export const TODAY_DATE = '0'
 
@@ -79,6 +80,28 @@ const deferredSecondaryTaskStreamTimers = {}
 // goals wait until the first task rows have had time to commit.
 export const DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS = 1000
 export const DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS = 4500
+export const DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS = 750
+
+export const getForegroundOpenTasksLimit = ({
+    deferSecondaryStreams,
+    showLaterTasks,
+    showSomedayTasks,
+    assistantProfileMode,
+    numberTodayTasks,
+}) => {
+    if (
+        !deferSecondaryStreams ||
+        showLaterTasks ||
+        showSomedayTasks ||
+        assistantProfileMode ||
+        !Number.isFinite(numberTodayTasks) ||
+        numberTodayTasks <= 0
+    ) {
+        return null
+    }
+
+    return Math.max(1, Math.floor(numberTodayTasks))
+}
 
 export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
     observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
@@ -110,7 +133,7 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
     unwatch(projectId, currentUserId, streamAndUserOpenTasks)
 
     const pendingTimers = deferredSecondaryTaskStreamTimers[projectId]?.[currentUserId] || []
-    pendingTimers.forEach(clearTimeout)
+    pendingTimers.forEach(cancel => cancel())
     if (deferredSecondaryTaskStreamTimers[projectId]) {
         delete deferredSecondaryTaskStreamTimers[projectId][currentUserId]
         if (Object.keys(deferredSecondaryTaskStreamTimers[projectId]).length === 0) {
@@ -249,8 +272,8 @@ const watchOpenTasksInternal = (
 
     batchDispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
 
-    const startObservedTasks = () =>
-        watchUserOpenTasks(
+    const startObservedTasks = () => {
+        const unsubscribe = watchUserOpenTasks(
             projectId,
             callback,
             storedTasks,
@@ -263,9 +286,13 @@ const watchOpenTasksInternal = (
             showSomedayTasks,
             subtasksByParentId,
             subtasksMap,
-            false,
-            trackConnectionHealth
+            {
+                assistantProfileMode: false,
+                trackConnectionHealth,
+            }
         )
+        setProperty(userObservedTasks, [projectId, currentUser.uid, 'observed'], unsubscribe)
+    }
 
     const startRemainingStreams = () => {
         watchStreamAndUserOpenTasksInBatches(
@@ -295,47 +322,165 @@ const watchOpenTasksInternal = (
         )
     }
 
-    const scheduleSecondaryStreams = () => {
-        const timers = []
-        const schedule = (streamStarter, delay) => {
-            const timer = setTimeout(() => {
-                const activeTimers = deferredSecondaryTaskStreamTimers[projectId]?.[currentUser.uid]
-                if (!activeTimers?.includes(timer)) return
-                deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = activeTimers.filter(
-                    activeTimer => activeTimer !== timer
-                )
-                streamStarter()
-            }, delay)
-            timers.push(timer)
-        }
-
-        schedule(startObservedTasks, DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
-        schedule(startRemainingStreams, DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS)
+    const deferredCancels = []
+    const rememberDeferredCancel = cancel => {
+        deferredCancels.push(cancel)
         if (!deferredSecondaryTaskStreamTimers[projectId]) deferredSecondaryTaskStreamTimers[projectId] = {}
-        deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = timers
+        deferredSecondaryTaskStreamTimers[projectId][currentUser.uid] = deferredCancels
+        return cancel
+    }
+    const forgetDeferredCancel = cancel => {
+        const index = deferredCancels.indexOf(cancel)
+        if (index >= 0) deferredCancels.splice(index, 1)
+    }
+    const schedule = (streamStarter, delay) => {
+        let timer
+        let cancelled = false
+        const cancel = () => {
+            if (cancelled) return
+            cancelled = true
+            clearTimeout(timer)
+            forgetDeferredCancel(cancel)
+        }
+        timer = setTimeout(() => {
+            if (cancelled) return
+            cancelled = true
+            forgetDeferredCancel(cancel)
+            streamStarter()
+        }, delay)
+        return rememberDeferredCancel(cancel)
     }
 
-    watchUserOpenTasks(
-        projectId,
-        callback,
-        storedTasks,
-        estimationByDate,
-        amountOfTasksByDate,
-        tasksMap,
-        false,
-        instanceKey,
+    let secondaryStreamsScheduled = false
+    const scheduleSecondaryStreams = () => {
+        if (secondaryStreamsScheduled) return
+        secondaryStreamsScheduled = true
+        schedule(startObservedTasks, DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        schedule(startRemainingStreams, DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS)
+    }
+
+    // Keep one assigned-task owner in the watcher map even while its implementation transitions
+    // from a small top-level query to the complete realtime query. Unmounting the project cancels a
+    // queued hydration and every listener that has already started.
+    const assignedUnsubscribers = new Set()
+    let assignedWatchersDisposed = false
+    const registerAssignedUnsubscriber = unsubscribe => {
+        if (assignedWatchersDisposed) unsubscribe()
+        else assignedUnsubscribers.add(unsubscribe)
+        return unsubscribe
+    }
+    const stopAssignedUnsubscriber = unsubscribe => {
+        if (!assignedUnsubscribers.delete(unsubscribe)) return
+        unsubscribe()
+    }
+    const stopAssignedWatchers = () => {
+        if (assignedWatchersDisposed) return
+        assignedWatchersDisposed = true
+        assignedUnsubscribers.forEach(unsubscribe => unsubscribe())
+        assignedUnsubscribers.clear()
+    }
+    setProperty(userOpenTasks, [projectId, currentUser.uid, 'assigned'], stopAssignedWatchers)
+
+    const foregroundLimit = getForegroundOpenTasksLimit({
+        deferSecondaryStreams,
         showLaterTasks,
         showSomedayTasks,
-        subtasksByParentId,
-        subtasksMap,
         assistantProfileMode,
-        trackConnectionHealth,
-        deferSecondaryStreams ? scheduleSecondaryStreams : undefined
-    )
+        numberTodayTasks: store.getState().loggedUser.numberTodayTasks,
+    })
 
-    if (!deferSecondaryStreams) {
-        startObservedTasks()
-        startRemainingStreams()
+    if (foregroundLimit) {
+        let foregroundUnsubscribe
+        let hydrationScheduled = false
+        const scheduleCompleteAssignedTasks = () => {
+            if (hydrationScheduled) return
+            hydrationScheduled = true
+            schedule(() => {
+                const cancelHydration = enqueueOpenTasksBackgroundHydration(releaseHydrationSlot => {
+                    const completeUnsubscribe = registerAssignedUnsubscriber(
+                        watchUserOpenTasks(
+                            projectId,
+                            callback,
+                            storedTasks,
+                            estimationByDate,
+                            amountOfTasksByDate,
+                            tasksMap,
+                            false,
+                            instanceKey,
+                            showLaterTasks,
+                            showSomedayTasks,
+                            subtasksByParentId,
+                            subtasksMap,
+                            {
+                                assistantProfileMode,
+                                trackConnectionHealth: false,
+                                affectsLoadingState: false,
+                                performanceSource: 'assigned_open_tasks_background',
+                                onInitialSnapshotDelivered: () => {
+                                    releaseHydrationSlot()
+                                    stopAssignedUnsubscriber(foregroundUnsubscribe)
+                                    scheduleSecondaryStreams()
+                                },
+                            }
+                        )
+                    )
+                    return completeUnsubscribe
+                })
+                rememberDeferredCancel(cancelHydration)
+            }, DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        }
+
+        foregroundUnsubscribe = registerAssignedUnsubscriber(
+            watchUserOpenTasks(
+                projectId,
+                callback,
+                storedTasks,
+                estimationByDate,
+                amountOfTasksByDate,
+                tasksMap,
+                false,
+                instanceKey,
+                showLaterTasks,
+                showSomedayTasks,
+                subtasksByParentId,
+                subtasksMap,
+                {
+                    assistantProfileMode,
+                    trackConnectionHealth,
+                    onInitialSnapshotDelivered: scheduleCompleteAssignedTasks,
+                    queryLimit: foregroundLimit,
+                    topLevelOnly: true,
+                    performanceSource: 'assigned_open_tasks_foreground',
+                }
+            )
+        )
+    } else {
+        registerAssignedUnsubscriber(
+            watchUserOpenTasks(
+                projectId,
+                callback,
+                storedTasks,
+                estimationByDate,
+                amountOfTasksByDate,
+                tasksMap,
+                false,
+                instanceKey,
+                showLaterTasks,
+                showSomedayTasks,
+                subtasksByParentId,
+                subtasksMap,
+                {
+                    assistantProfileMode,
+                    trackConnectionHealth,
+                    onInitialSnapshotDelivered: deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
+                }
+            )
+        )
+
+        if (!deferSecondaryStreams) {
+            startObservedTasks()
+            startRemainingStreams()
+        }
     }
 
     // Save vars at the end
@@ -404,7 +549,8 @@ const getOpenTasksQuery = (
     currentUserId,
     loggedUser,
     endOfDay,
-    endOfTomorrow
+    endOfTomorrow,
+    { queryLimit = null, topLevelOnly = false } = {}
 ) => {
     const { uid: loggedUserId, isAnonymous } = loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
@@ -417,6 +563,10 @@ const getOpenTasksQuery = (
             .where('inDone', '==', false)
             .where('currentReviewerId', '==', currentUserId)
             .where('readerIds', 'array-contains', accessReaderId)
+
+        // The foreground All Projects query needs rows, not child documents. Subtasks are loaded by
+        // the complete background listener and then appear underneath their already-visible parent.
+        if (topLevelOnly) query = query.where('parentId', '==', null)
 
         // Support three expand states:
         // State 0 (both false): only today (dueDate <= endOfDay)
@@ -436,6 +586,7 @@ const getOpenTasksQuery = (
         }
         // State 2 (both true): No date filter, fetch all tasks including someday
     }
+    if (Number.isInteger(queryLimit) && queryLimit > 0) query = query.limit(queryLimit)
     return query
 }
 
@@ -452,11 +603,17 @@ const watchUserOpenTasks = (
     showSomedayTasks,
     subtasksByParentId,
     subtasksMap,
-    assistantProfileMode = false,
-    trackConnectionHealth = true,
-    onInitialSnapshotDelivered
+    {
+        assistantProfileMode = false,
+        trackConnectionHealth = true,
+        onInitialSnapshotDelivered,
+        queryLimit = null,
+        topLevelOnly = false,
+        affectsLoadingState = true,
+        performanceSource,
+    } = {}
 ) => {
-    if (!areObservedTasks)
+    if (!areObservedTasks && affectsLoadingState)
         setTimeout(() => {
             store.dispatch(startLoadingData())
         })
@@ -477,7 +634,8 @@ const watchUserOpenTasks = (
         currentUserId,
         loggedUser,
         endOfDay,
-        endOfTomorrow
+        endOfTomorrow,
+        { queryLimit, topLevelOnly }
     )
 
     let cacheChanges = []
@@ -487,7 +645,7 @@ const watchUserOpenTasks = (
         {
             object_type: 'tasks',
             scope: 'project',
-            source: areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks',
+            source: performanceSource || (areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks'),
         },
         { sampleRate: 0.02 }
     )
@@ -566,7 +724,7 @@ const watchUserOpenTasks = (
                 batchDispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
             }
 
-            if (!optimistic) batchDispatch(stopLoadingData())
+            if (!optimistic && (!areObservedTasks ? affectsLoadingState : true)) batchDispatch(stopLoadingData())
 
             batchDispatch(
                 setOpenSubtasksMap(projectId, {
@@ -612,14 +770,15 @@ const watchUserOpenTasks = (
     })
 
     const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
+    let unsubscribed = false
     const unsubAll = () => {
+        if (unsubscribed) return
+        unsubscribed = true
         unsubOptimistic()
         unsub()
     }
 
-    areObservedTasks
-        ? (userObservedTasks[projectId] = { [currentUserId]: [unsubAll] })
-        : (userOpenTasks[projectId] = { [currentUserId]: [unsubAll] })
+    return unsubAll
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
