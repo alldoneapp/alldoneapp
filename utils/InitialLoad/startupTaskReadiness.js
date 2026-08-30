@@ -50,7 +50,14 @@ export const selectInitialTaskDataPublished = state => {
 
     // Real task content is enough to release background work: at that point the
     // foreground query has done its job and React only has to commit the rows.
-    if (projectIds.some(projectId => projectHasPublishedTaskContent(state, projectId, userId))) return true
+    if (
+        projectIds.some(projectId => {
+            const instanceKey = `${projectId}${userId}`
+            const liveTaskStreamReady = !!openReady[instanceKey] || !!observedReady[instanceKey]
+            return liveTaskStreamReady && projectHasPublishedTaskContent(state, projectId, userId)
+        })
+    )
+        return true
 
     // An empty account has no task row to provide the signal above. Wait until
     // every project in the current task-board scope has answered both independent

@@ -10,6 +10,7 @@ import useRateLimitedProjectMountQueue from './useRateLimitedProjectMountQueue'
 function Harness({
     projectIds,
     projectReadyStates,
+    preloadPriorityProjectIndexes,
     onUpdate,
     minIntervalMs = 500,
     maxReadyWaitMs = 5000,
@@ -19,6 +20,7 @@ function Harness({
     const queue = useRateLimitedProjectMountQueue({
         projectIds,
         projectReadyStates,
+        preloadPriorityProjectIndexes,
         minIntervalMs,
         maxReadyWaitMs,
         preloadConcurrency,
@@ -154,6 +156,47 @@ describe('useRateLimitedProjectMountQueue', () => {
         expect(queue.mountedProjectCount).toBe(3)
         expect(queue.preloadingProjectIndexes).toEqual([])
         expect(queue.nextProjectIndex).toBe(3)
+    })
+
+    it('reconnects a cached task-bearing project before sequential empty projects', () => {
+        let queue
+        let tree
+        const projectIds = ['project-1', 'project-2', 'project-3', 'project-4', 'project-5']
+        const onUpdate = value => {
+            queue = value
+        }
+        act(() => {
+            tree = renderer.create(
+                <Harness
+                    projectIds={projectIds}
+                    projectReadyStates={[true, false, false, false, false]}
+                    preloadPriorityProjectIndexes={[4]}
+                    minIntervalMs={0}
+                    preloadConcurrency={2}
+                    onUpdate={onUpdate}
+                />
+            )
+        })
+
+        act(() => queue.markProjectNearViewport(1))
+        expect(queue.preloadingProjectIndexes).toEqual([4, 1])
+
+        act(() => {
+            tree.update(
+                <Harness
+                    projectIds={projectIds}
+                    projectReadyStates={[true, false, false, false, true]}
+                    preloadPriorityProjectIndexes={[4]}
+                    minIntervalMs={0}
+                    preloadConcurrency={2}
+                    onUpdate={onUpdate}
+                />
+            )
+        })
+        act(() => jest.runOnlyPendingTimers())
+
+        expect(queue.mountedProjectIndexes).toEqual([0, 4])
+        expect(queue.preloadingProjectIndexes).toEqual([1])
     })
 
     it('keeps the ghost visible for the full interval after it reaches the viewport', () => {

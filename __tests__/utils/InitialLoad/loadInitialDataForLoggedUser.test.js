@@ -29,6 +29,13 @@ jest.mock('../../../utils/InitialLoad/startupTaskReadiness', () => ({
     scheduleAfterInitialTaskData: (...args) => mockScheduleAfterInitialTaskData(...args),
 }))
 
+const mockReadTaskColdStartCache = jest.fn(() => Promise.resolve(null))
+const mockGetRestorableTaskColdStartSnapshot = jest.fn(() => null)
+jest.mock('../../../utils/InitialLoad/taskColdStartCache', () => ({
+    readTaskColdStartCache: (...args) => mockReadTaskColdStartCache(...args),
+    getRestorableTaskColdStartSnapshot: (...args) => mockGetRestorableTaskColdStartSnapshot(...args),
+}))
+
 const mockSetCachedGlobalData = jest.fn()
 const mockSetCachedUserData = jest.fn()
 let mockCachedUserData = null
@@ -81,8 +88,38 @@ jest.mock('../../../utils/backends/Assistants/assistantsFirestore', () => ({
 const mockSetProjectsInitialData = jest.fn((...args) => ({ type: 'SET_PROJECTS_INITIAL_DATA', args }))
 jest.mock('../../../redux/actions', () => ({
     initLogInForLoggedUser: jest.fn(payload => ({ type: 'INIT_LOGIN', payload })),
+    setDoneMilestonesInProjectInTasks: jest.fn((projectId, value) => ({
+        type: 'SET_DONE_MILESTONES',
+        projectId,
+        value,
+    })),
+    setGoalsInProjectInTasks: jest.fn((projectId, value) => ({ type: 'SET_GOALS', projectId, value })),
+    setOpenMilestonesInProjectInTasks: jest.fn((projectId, value) => ({
+        type: 'SET_OPEN_MILESTONES',
+        projectId,
+        value,
+    })),
+    setOpenSubtasksMap: jest.fn((projectId, value) => ({ type: 'SET_OPEN_SUBTASKS_MAP', projectId, value })),
+    setOpenTasksMap: jest.fn((projectId, value) => ({ type: 'SET_OPEN_TASKS_MAP', projectId, value })),
     setProjectsInitialData: (...args) => mockSetProjectsInitialData(...args),
+    updateFilteredOpenTasks: jest.fn((instanceKey, value) => ({
+        type: 'UPDATE_FILTERED_OPEN_TASKS',
+        instanceKey,
+        value,
+    })),
     updateLoadingStep: jest.fn((step, message) => ({ type: 'UPDATE_LOADING_STEP', step, message })),
+    updateOpenTasks: jest.fn((instanceKey, value) => ({ type: 'UPDATE_OPEN_TASKS', instanceKey, value })),
+    updateSubtaskByTask: jest.fn((instanceKey, value) => ({ type: 'UPDATE_SUBTASK_BY_TASK', instanceKey, value })),
+    updateThereAreHiddenNotMainTasks: jest.fn((instanceKey, value) => ({
+        type: 'UPDATE_HIDDEN_TASKS',
+        instanceKey,
+        value,
+    })),
+    updateThereAreNotTasksInFirstDay: jest.fn((instanceKey, value) => ({
+        type: 'UPDATE_EMPTY_FIRST_DAY',
+        instanceKey,
+        value,
+    })),
     storeLoggedUser: jest.fn(user => ({ type: 'STORE_LOGGED_USER', user })),
 }))
 
@@ -140,6 +177,8 @@ beforeEach(() => {
     mockDeferredStartupCallbacks.length = 0
     mockCachedUserData = null
     mockCachedGlobalData = null
+    mockReadTaskColdStartCache.mockResolvedValue(null)
+    mockGetRestorableTaskColdStartSnapshot.mockReturnValue(null)
     mockState.loggedUser = { uid: 'user-1', projectIds: ['p1', 'p2'], dateFormat: 'DD/MM/YYYY', language: 'en' }
     jest.spyOn(console, 'warn').mockImplementation(() => {})
     jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -221,6 +260,40 @@ describe('loadGlobalDataAndGetUserResult', () => {
 })
 
 describe('loadInitialDataForLoggedUser', () => {
+    it('hydrates the render-ready task projection before routing', async () => {
+        mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
+        mockReadTaskColdStartCache.mockResolvedValue({ userId: 'user-1' })
+        mockGetRestorableTaskColdStartSnapshot.mockReturnValue({
+            projects: {
+                p1: {
+                    openTasks: [['0', 1]],
+                    subtaskByTask: {},
+                    openTasksMap: { task: { id: 'task' } },
+                    openSubtasksMap: {},
+                    openMilestones: [{ id: 'open-milestone' }],
+                    doneMilestones: [{ id: 'done-milestone' }],
+                    goalsById: { goal: { id: 'goal' } },
+                    thereAreNotTasksInFirstDay: false,
+                    thereAreHiddenNotMainTasks: false,
+                },
+            },
+        })
+
+        await loadInitialDataForLoggedUser(mockState.loggedUser)
+
+        expect(mockReadTaskColdStartCache).toHaveBeenCalledWith('user-1')
+        expect(mockDispatch).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'UPDATE_OPEN_TASKS', instanceKey: 'p1user-1' }),
+                expect.objectContaining({ type: 'UPDATE_FILTERED_OPEN_TASKS', instanceKey: 'p1user-1' }),
+                expect.objectContaining({ type: 'SET_OPEN_TASKS_MAP', projectId: 'p1' }),
+                expect.objectContaining({ type: 'SET_OPEN_MILESTONES', projectId: 'p1' }),
+                expect.objectContaining({ type: 'SET_DONE_MILESTONES', projectId: 'p1' }),
+                expect.objectContaining({ type: 'SET_GOALS', projectId: 'p1' }),
+            ])
+        )
+    })
+
     it('keeps post-login Firestore maintenance out of the first task render', async () => {
         mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
         const {

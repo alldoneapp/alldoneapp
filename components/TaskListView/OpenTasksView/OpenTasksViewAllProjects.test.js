@@ -439,9 +439,54 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
+                preloadPriorityProjectIndexes: [],
                 minIntervalMs: 200,
                 preloadConcurrency: 20,
             })
+        })
+
+        it('renders retained rows immediately while reconnecting task-bearing projects first', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            state.openTasksStore = {
+                'project-1user-1': [],
+                'project-2user-1': [['0', 2]],
+            }
+
+            const tree = renderView(state)
+            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
+
+            expect(projectBlocks.map(block => block.props.projectId)).toEqual(['project-1', 'project-2'])
+            expect(projectBlocks.map(block => block.props.taskWatchersEnabled)).toEqual([true, false])
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds: ['project-1', 'project-2'],
+                projectReadyStates: [false, false],
+                preloadPriorityProjectIndexes: [1],
+                minIntervalMs: 200,
+                preloadConcurrency: 3,
+            })
+        })
+
+        it('keeps broad discovery when the retained projection has no task-bearing hint', () => {
+            const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0 })
+            state.openTasksStore = {
+                'project-1user-1': [],
+                'project-2user-1': [],
+            }
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith(
+                expect.objectContaining({ preloadPriorityProjectIndexes: [], preloadConcurrency: 20 })
+            )
         })
 
         it('covers a fourteen-project morning in one foreground discovery wave', () => {
@@ -458,6 +503,7 @@ describe('OpenTasksViewAllProjects', () => {
             expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
                 projectIds,
                 projectReadyStates: Array(14).fill(true),
+                preloadPriorityProjectIndexes: [],
                 minIntervalMs: 200,
                 preloadConcurrency: 20,
             })

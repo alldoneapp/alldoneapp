@@ -136,4 +136,38 @@ describe('OpenTasksByProjectHandler same-session cache lifecycle', () => {
 
         act(() => tree.unmount())
     })
+
+    it('paints a retained projection without attaching Firestore until the mount queue admits it', () => {
+        mockState = buildState({ withSessionSnapshot: true })
+        let tree
+
+        act(() => {
+            tree = renderer.create(
+                <OpenTasksByProjectHandler
+                    projectIndex={0}
+                    firstProject={false}
+                    setProjectsHaveTasksInFirstDay={jest.fn()}
+                    taskWatchersEnabled={false}
+                />
+            )
+        })
+
+        expect(mockWatchOpenTasks).not.toHaveBeenCalled()
+        expect(mockUnwatchOpenTasks).not.toHaveBeenCalled()
+
+        act(() => {
+            tree.update(
+                <OpenTasksByProjectHandler
+                    projectIndex={0}
+                    firstProject={false}
+                    setProjectsHaveTasksInFirstDay={jest.fn()}
+                    taskWatchersEnabled
+                />
+            )
+        })
+
+        expect(mockWatchOpenTasks).toHaveBeenCalledTimes(1)
+        expect(mockUnwatchOpenTasks).toHaveBeenCalledWith('project-1', 'user-1', { preserveData: true })
+        act(() => tree.unmount())
+    })
 })
