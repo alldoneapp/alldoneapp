@@ -42,11 +42,6 @@ import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
-import {
-    MAX_PROJECT_IDS_PER_ASSIGNED_TASK_QUERY,
-    normalizeAssignedTaskProjectIds,
-    subscribeToAllProjectsAssignedTasks,
-} from './allProjectsAssignedTasks'
 
 export const TODAY_DATE = '0'
 
@@ -134,12 +129,7 @@ export const watchOpenTasks = (
     keepMainDayData,
     instanceKey,
     assistantProfileMode = false,
-    {
-        trackConnectionHealth = true,
-        deferSecondaryStreams = false,
-        shareAssignedTasksAcrossProjects = false,
-        sharedAssignedTaskProjectIds = [],
-    } = {}
+    { trackConnectionHealth = true, deferSecondaryStreams = false } = {}
 ) =>
     // AT-2337: mounting "All projects" calls this once per project (~78x) and each
     // call fired 4 separate store notifications before a single task had loaded.
@@ -155,9 +145,7 @@ export const watchOpenTasks = (
             instanceKey,
             assistantProfileMode,
             trackConnectionHealth,
-            deferSecondaryStreams,
-            shareAssignedTasksAcrossProjects,
-            sharedAssignedTaskProjectIds
+            deferSecondaryStreams
         )
     })
 
@@ -170,9 +158,7 @@ const watchOpenTasksInternal = (
     instanceKey,
     assistantProfileMode = false,
     trackConnectionHealth = true,
-    deferSecondaryStreams = false,
-    shareAssignedTasksAcrossProjects = false,
-    sharedAssignedTaskProjectIds = []
+    deferSecondaryStreams = false
 ) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
@@ -344,9 +330,7 @@ const watchOpenTasksInternal = (
         subtasksMap,
         assistantProfileMode,
         trackConnectionHealth,
-        deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
-        shareAssignedTasksAcrossProjects,
-        sharedAssignedTaskProjectIds
+        deferSecondaryStreams ? scheduleSecondaryStreams : undefined
     )
 
     if (!deferSecondaryStreams) {
@@ -470,9 +454,7 @@ const watchUserOpenTasks = (
     subtasksMap,
     assistantProfileMode = false,
     trackConnectionHealth = true,
-    onInitialSnapshotDelivered,
-    shareAssignedTasksAcrossProjects = false,
-    sharedAssignedTaskProjectIds = []
+    onInitialSnapshotDelivered
 ) => {
     if (!areObservedTasks)
         setTimeout(() => {
@@ -481,17 +463,6 @@ const watchUserOpenTasks = (
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const assistantOwner = !!currentUser.temperature
-    const normalizedSharedProjectIds = normalizeAssignedTaskProjectIds(sharedAssignedTaskProjectIds)
-    const useSharedAssignedTasks =
-        !areObservedTasks &&
-        shareAssignedTasksAcrossProjects &&
-        normalizedSharedProjectIds.length > 0 &&
-        normalizedSharedProjectIds.length <= MAX_PROJECT_IDS_PER_ASSIGNED_TASK_QUERY &&
-        normalizedSharedProjectIds.includes(projectId) &&
-        !assistantProfileMode &&
-        !loggedUser.isAnonymous &&
-        currentUserId === loggedUser.uid
-    let sharedAssignedTasksActive = useSharedAssignedTasks
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
@@ -512,28 +483,22 @@ const watchUserOpenTasks = (
     let cacheChanges = []
     let initialSnapshotDelivered = false
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
-    let snapshotPerformance = null
-    const getSnapshotPerformance = () => {
-        if (!snapshotPerformance) {
-            snapshotPerformance = createFirstSnapshotPerformance(
-                {
-                    object_type: 'tasks',
-                    scope: 'project',
-                    source: areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks',
-                },
-                { sampleRate: 0.02 }
-            )
-        }
-        return snapshotPerformance
-    }
+    const snapshotPerformance = createFirstSnapshotPerformance(
+        {
+            object_type: 'tasks',
+            scope: 'project',
+            source: areObservedTasks ? 'observed_open_tasks' : 'assigned_open_tasks',
+        },
+        { sampleRate: 0.02 }
+    )
     function handleOpenTasksSnapshot(querySnapshot) {
         const changes = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-        const buffered = sharedAssignedTasksActive ? false : gate.shouldBuffer(querySnapshot)
-        if (!sharedAssignedTasksActive) getSnapshotPerformance().observe(querySnapshot, buffered)
+        const buffered = gate.shouldBuffer(querySnapshot)
+        snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
@@ -646,34 +611,7 @@ const watchUserOpenTasks = (
         deliverOpenTasksChanges([change], { optimistic: true })
     })
 
-    let unsubDirect = null
-    const startDirectSubscription = () => {
-        if (unsubDirect) return
-        unsubDirect = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
-    }
-    const unsubShared = useSharedAssignedTasks
-        ? subscribeToAllProjectsAssignedTasks({
-              projectId,
-              currentUserId,
-              accessReaderId: loggedUser.uid,
-              endOfDay,
-              projectIds: normalizedSharedProjectIds,
-              trackConnectionHealth,
-              onSnapshot: handleOpenTasksSnapshot,
-              onError: () => {
-                  sharedAssignedTasksActive = false
-                  startDirectSubscription()
-              },
-          })
-        : null
-    if (!useSharedAssignedTasks) startDirectSubscription()
-
-    const unsub = () => {
-        if (unsubShared) unsubShared()
-        if (unsubDirect) unsubDirect()
-        else gate.dispose()
-        snapshotPerformance?.cancel()
-    }
+    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
     const unsubAll = () => {
         unsubOptimistic()
         unsub()
