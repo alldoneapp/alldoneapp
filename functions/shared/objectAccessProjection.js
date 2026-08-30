@@ -34,6 +34,12 @@ const OBJECT_COLLECTIONS = [
     { root: 'okrs', child: 'projectOkrs' },
 ]
 
+function withoutAccessProjection(objectData = {}) {
+    const sanitized = { ...objectData }
+    ACCESS_PROJECTION_FIELDS.forEach(field => delete sanitized[field])
+    return sanitized
+}
+
 function uniqueStrings(values) {
     if (!Array.isArray(values)) return []
     return Array.from(new Set(values.filter(value => typeof value === 'string' && value.length > 0))).sort()
@@ -481,4 +487,5 @@ module.exports = {
     synchronizeProjectAccessProjectionPage,
     synchronizeProjectAccessProjections,
     valuesEqual,
+    withoutAccessProjection,
 }

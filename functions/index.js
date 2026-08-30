@@ -208,6 +208,71 @@ exports.setDefaultProjectSecondGen = onCall(
     }
 )
 
+exports.copyProjectMoveChatSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { sourceProjectId, targetProjectId, objectType, objectId } = request.data || {}
+        await Promise.all([
+            assertProjectAccess(request.auth.uid, sourceProjectId),
+            assertProjectAccess(request.auth.uid, targetProjectId),
+        ])
+
+        const { ProjectMoveChatError, copyProjectMoveChat } = require('./Chats/copyProjectMoveChat')
+        try {
+            return await copyProjectMoveChat({
+                adminRef: admin,
+                actorId: request.auth.uid,
+                sourceProjectId,
+                targetProjectId,
+                objectType,
+                objectId,
+            })
+        } catch (error) {
+            if (error instanceof ProjectMoveChatError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
+exports.createBotQuickTopicSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { projectId, chatId, assistantId, quickDateId, titlePrefix, isAssistantEnabled } = request.data || {}
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { BotQuickTopicError, createBotQuickTopic } = require('./Chats/createBotQuickTopic')
+        try {
+            return await createBotQuickTopic({
+                db: admin.firestore(),
+                actorId: request.auth.uid,
+                projectId,
+                chatId,
+                assistantId,
+                quickDateId,
+                titlePrefix,
+                isAssistantEnabled: isAssistantEnabled === true,
+            })
+        } catch (error) {
+            if (error instanceof BotQuickTopicError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 exports.awardXpSecondGen = onCall(
     {
         timeoutSeconds: 60,

@@ -38,6 +38,7 @@ import {
     updateChatPrivacy,
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
+import { withoutServerAccessProjection } from '../accessProjection'
 
 //ACCESS FUNCTIONS
 
@@ -105,7 +106,7 @@ export function uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, 
     skill.created = Date.now()
     skill.lastEditionDate = skill.created
 
-    const skillToStore = { ...skill }
+    const skillToStore = withoutServerAccessProjection(skill)
     delete skillToStore.id
 
     const batch = new BatchWrapper(getDb())

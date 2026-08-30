@@ -3,6 +3,7 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getUserData } = require('../Users/usersFirestore')
 const { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } = require('../Utils/HelperFunctionsCloud')
 const { FieldValue } = require('firebase-admin/firestore')
+const { withoutAccessProjection } = require('../shared/objectAccessProjection')
 
 const deleteChat = async (admin, projectId, chatId) => {
     await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).delete()
@@ -11,8 +12,9 @@ const deleteChat = async (admin, projectId, chatId) => {
 // When an object (task/note) is moved to another project the object document is recreated in the
 // target project, but its chat lives in project-scoped collections (chatObjects + chatComments) keyed
 // by the OLD project id. Without copying it across, the moved object shows up with an empty chat and the
-// original conversation is orphaned (and then deleted by the source object's delete cascade). This mirrors
-// the client-side moveChatOnMoveObjectFromProject so assistant-driven moves keep the chat content.
+// original conversation is orphaned (and then deleted by the source object's delete cascade). The Admin SDK
+// preserves original comment authors while omitting server-owned access projections so the destination
+// trigger can rebuild them against the target project's membership.
 const moveAssistantLastCommentPointer = async (admin, sourceProjectId, targetProjectId, chatId) => {
     try {
         const projectDoc = await admin.firestore().doc(`projects/${sourceProjectId}`).get()
@@ -54,7 +56,7 @@ const moveAssistantLastCommentPointer = async (admin, sourceProjectId, targetPro
     }
 }
 
-const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, objectType, chatId) => {
+const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, objectType, chatId, options = {}) => {
     if (!sourceProjectId || !targetProjectId || !objectType || !chatId) return false
     if (sourceProjectId === targetProjectId) return false
 
@@ -67,7 +69,10 @@ const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, o
         .get()
 
     const batch = new BatchWrapper(firestore)
-    batch.set(firestore.doc(`chatObjects/${targetProjectId}/chats/${chatId}`), chatDoc.data())
+    batch.set(
+        firestore.doc(`chatObjects/${targetProjectId}/chats/${chatId}`),
+        withoutAccessProjection(options.chatData || chatDoc.data())
+    )
     commentsSnapshot.forEach(commentDoc => {
         batch.set(
             firestore.doc(`chatComments/${targetProjectId}/${objectType}/${chatId}/comments/${commentDoc.id}`),

@@ -7,7 +7,17 @@ const {
     isAccessProjectionOnlyChange,
     synchronizeProjectAccessProjectionPage,
     valuesEqual,
+    withoutAccessProjection,
 } = require('./objectAccessProjection')
+
+describe('withoutAccessProjection', () => {
+    it('removes server-owned projection fields from a copied document', () => {
+        const source = { title: 'Moved', isPublicFor: [0], readerIds: [0], followedReaderIds: ['member-1'] }
+
+        expect(withoutAccessProjection(source)).toEqual({ title: 'Moved', isPublicFor: [0] })
+        expect(source).toHaveProperty('readerIds')
+    })
+})
 
 function createPagingDb(documentsByPath, collectionPathsByDoc = {}) {
     const writes = []
