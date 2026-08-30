@@ -43,6 +43,7 @@ import {
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
+    reconcileInitialSnapshotChanges,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
     taskBelongsInOpenBoard,
@@ -57,6 +58,54 @@ jest.mock('./firestore', () => ({
     mapMilestoneData: jest.fn(),
     mapTaskData: jest.fn(),
 }))
+
+describe('same-session initial snapshot reconciliation', () => {
+    const doc = (id, data = {}) => ({ id, data: () => data })
+
+    it('updates retained documents, adds new documents, and removes documents missing from a complete snapshot', () => {
+        const retained = {
+            retained: { id: 'retained', name: 'old name' },
+            removed: { id: 'removed', name: 'no longer open' },
+        }
+
+        const changes = reconcileInitialSnapshotChanges(
+            [doc('retained', { name: 'new name' }), doc('added', { name: 'new task' })],
+            retained
+        )
+
+        expect(changes.map(change => [change.type, change.doc.id])).toEqual([
+            ['modified', 'retained'],
+            ['added', 'added'],
+            ['removed', 'removed'],
+        ])
+        expect(changes[2].doc.data()).toBe(retained.removed)
+    })
+
+    it('does not remove retained documents outside a limited foreground window', () => {
+        const changes = reconcileInitialSnapshotChanges(
+            [doc('visible', { name: 'fresh visible task' })],
+            {
+                visible: { id: 'visible', name: 'cached visible task' },
+                outsideWindow: { id: 'outsideWindow', name: 'cached hidden task' },
+            },
+            { authoritative: false }
+        )
+
+        expect(changes.map(change => [change.type, change.doc.id])).toEqual([['modified', 'visible']])
+    })
+
+    it('removes a retained document that no longer belongs on the board', () => {
+        const retained = { task: { id: 'task', workflowTask: false } }
+
+        const changes = reconcileInitialSnapshotChanges([doc('task', { workflowTask: true })], retained, {
+            includeDocument: snapshotDoc => snapshotDoc.data().workflowTask !== true,
+        })
+
+        expect(changes).toHaveLength(1)
+        expect(changes[0].type).toBe('removed')
+        expect(changes[0].doc.data()).toBe(retained.task)
+    })
+})
 
 describe('assistant profile open task selection', () => {
     it('includes active workflow tasks in the unified assistant profile timeline', () => {

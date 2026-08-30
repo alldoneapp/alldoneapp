@@ -143,10 +143,13 @@ export const cleanDataWhenRemoveWorkstreamMember = (projectId, currentUserId, us
 
     // REMOVE RECORDS FROM REDUX
     const globalData = {
+        ...globalDataByProject[projectId],
         storedTasks: taskListWatchersVars.storedTasks,
         estimationByDate: taskListWatchersVars.estimationByDate,
         amountOfTasksByDate: taskListWatchersVars.amountOfTasksByDate,
         tasksMap: taskListWatchersVars.tasksMap,
+        subtasksByParentId: taskListWatchersVars.subtasksByParentId,
+        subtasksMap: taskListWatchersVars.subtasksMap,
     }
 
     // stored task

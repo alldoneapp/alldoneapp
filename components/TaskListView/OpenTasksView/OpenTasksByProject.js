@@ -17,13 +17,7 @@ import NeedShowMoreOpenTasksButton from './NeedShowMoreOpenTasksButton'
 import OpenTasksByProjectHandler from './OpenTasksByProjectHandler'
 import BottomShowMoreButtonContainer from './BottomShowMoreButtonContainer'
 import Backend from '../../../utils/BackendBridge'
-import {
-    setTasksArrowButtonIsExpanded,
-    setDoneMilestonesInProjectInTasks,
-    setGoalsInProjectInTasks,
-    setOKRsInProjectInTasks,
-    setOpenMilestonesInProjectInTasks,
-} from '../../../redux/actions'
+import { setTasksArrowButtonIsExpanded } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 import OKRSection from '../OKRs/OKRSection'
@@ -109,10 +103,6 @@ function OpenTasksByProject({
         watchAllMilestones(projectId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
-            dispatch([
-                setOpenMilestonesInProjectInTasks(projectId, null),
-                setDoneMilestonesInProjectInTasks(projectId, null),
-            ])
         }
     }, [projectDecorationsReady, projectId])
 
@@ -122,7 +112,6 @@ function OpenTasksByProject({
         watchAllGoals(projectId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
-            dispatch(setGoalsInProjectInTasks(projectId, null))
         }
     }, [projectDecorationsReady, projectId])
 
@@ -132,7 +121,6 @@ function OpenTasksByProject({
         watchProjectOKRs(projectId, currentUserId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
-            dispatch(setOKRsInProjectInTasks(projectId, null))
         }
     }, [currentUserId, projectDecorationsReady, projectId])
 
