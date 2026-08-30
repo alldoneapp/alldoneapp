@@ -444,6 +444,7 @@ const updateAssistantEditedWorkflowStepTasks = (projectId, tasks, stepId, review
             : task.stepHistory.findIndex(id => id === stepId)
         if (index == null || index < 0 || index >= task.userIds.length) return
 
+        task.projectId = projectId
         task.userIds[index] = reviewerUid
         if (index === task.stepHistory.length - 1) task.currentReviewerId = reviewerUid
         if (task.subtaskIds?.length > 0) parentTasksIndices[taskData.id] = index
