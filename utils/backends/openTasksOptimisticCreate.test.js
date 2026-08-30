@@ -348,6 +348,60 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         unwatchOpenTasks(PROJECT_ID, 'user-1')
     })
 
+    it('reuses a same-session snapshot and reconciles it against the next complete listener', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        published = []
+        mockDispatch.mockClear()
+        mockState.loggedUser.numberTodayTasks = 0
+
+        watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1')
+
+        const retainedTask = buildRawTask({ name: 'cached name' })
+        const removedTask = buildRawTask({ name: 'completed elsewhere', sortIndex: 90 })
+        deliverSnapshot(0, [
+            realAddedChange('retained-task', retainedTask),
+            realAddedChange('removed-task', removedTask),
+        ])
+
+        const firstActions = mockDispatch.mock.calls.flatMap(([action]) => (Array.isArray(action) ? action : [action]))
+        const retainedGlobalDataAction = firstActions
+            .filter(action => action.type === 'Set global data by project')
+            .pop()
+        mockState.globalDataByProject = retainedGlobalDataAction.globalDataByProject
+
+        mockDispatch.mockClear()
+        unwatchOpenTasks(PROJECT_ID, 'user-1', { preserveData: true })
+        expect(
+            mockDispatch.mock.calls
+                .flatMap(([action]) => (Array.isArray(action) ? action : [action]))
+                .some(action => action.type === 'Set global data by project')
+        ).toBe(false)
+
+        listeners.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        published = []
+
+        watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, true, 'project-1user-1')
+
+        // Reattaching does not publish an empty replacement over the retained Redux rows.
+        expect(published).toEqual([])
+
+        const refreshedTask = buildRawTask({ name: 'fresh name' })
+        const addedTask = buildRawTask({ name: 'created elsewhere', sortIndex: 80 })
+        deliverSnapshot(0, [realAddedChange('retained-task', refreshedTask), realAddedChange('added-task', addedTask)])
+
+        const latestTasks = mainTasksOf(published[published.length - 1]).flatMap(([, tasks]) => tasks)
+        expect(latestTasks.map(task => task.id)).toEqual(['retained-task', 'added-task'])
+        expect(latestTasks.find(task => task.id === 'retained-task').name).toBe('fresh name')
+
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+    })
+
     it('keeps a fourteen-project discovery window to one foreground query per project', () => {
         jest.useFakeTimers()
         unwatchOpenTasks(PROJECT_ID, 'user-1')

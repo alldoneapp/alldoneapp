@@ -106,6 +106,54 @@ export const getForegroundOpenTasksLimit = ({
 export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
     observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
 
+const cachedItemAsSnapshotDocument = item => ({
+    id: item.id,
+    data: () => item,
+})
+
+/**
+ * A newly attached Firestore listener reports every matching document as `added`, even when the
+ * task board retained the same document from an earlier listener. Replaying those additions over
+ * retained mutable maps either leaves changed documents stale (parents de-dupe `added`) or can
+ * leave documents that disappeared while the board was closed in the list forever.
+ *
+ * Complete listeners therefore reconcile their first usable snapshot as an authoritative set:
+ * present cached documents become `modified`, new documents stay `added`, and cached documents
+ * absent from the snapshot become synthetic `removed` changes. Limited foreground listeners use
+ * `authoritative: false`; absence from a ten-document window says nothing about the remaining
+ * project, but documents that are present still refresh immediately.
+ */
+export const reconcileInitialSnapshotChanges = (
+    snapshotDocuments,
+    knownItemsById,
+    { authoritative = true, includeDocument = () => true } = {}
+) => {
+    const documents = snapshotDocuments || []
+    const knownItems = knownItemsById || {}
+    const snapshotIds = new Set()
+    const changes = []
+
+    documents.forEach(doc => {
+        snapshotIds.add(doc.id)
+        const knownItem = knownItems[doc.id]
+        if (includeDocument(doc)) {
+            changes.push({ type: knownItem ? 'modified' : 'added', doc })
+        } else if (knownItem) {
+            changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(knownItem) })
+        }
+    })
+
+    if (authoritative) {
+        Object.entries(knownItems).forEach(([itemId, item]) => {
+            if (!snapshotIds.has(itemId)) {
+                changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(item) })
+            }
+        })
+    }
+
+    return changes
+}
+
 const activeMilestoneEmptyGoals = {}
 
 export const WATCHER_VARS_DEFAULT = {
@@ -122,11 +170,13 @@ export const WATCHER_VARS_DEFAULT = {
 }
 
 //OPEN TASKS WATCHERS
-export const unwatchOpenTasks = (projectId, currentUserId) => {
+export const unwatchOpenTasks = (projectId, currentUserId, { preserveData = false } = {}) => {
     const { globalDataByProject } = store.getState()
-    delete globalDataByProject[projectId]
-
-    batchDispatch(setGlobalDataByProject(globalDataByProject))
+    if (!preserveData) {
+        const nextGlobalDataByProject = { ...globalDataByProject }
+        delete nextGlobalDataByProject[projectId]
+        batchDispatch(setGlobalDataByProject(nextGlobalDataByProject))
+    }
 
     unwatch(projectId, currentUserId, userOpenTasks)
     unwatch(projectId, currentUserId, userObservedTasks)
@@ -211,7 +261,7 @@ const watchOpenTasksInternal = (
         })
     )
 
-    if (keepMainDayData) {
+    if (keepMainDayData && globalDataByProject[projectId]) {
         const currentGlobalData = globalDataByProject[projectId]
         const mainDayDate = TODAY_DATE
 
@@ -235,7 +285,7 @@ const watchOpenTasksInternal = (
                         return task.dueDateByObserversIds[currentUser.uid] <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.observedTasksById),
+            ])(currentGlobalData.tasksMap?.observedTasksById || {}),
             userTasksById: flow([
                 Object.entries,
                 arr =>
@@ -243,7 +293,7 @@ const watchOpenTasksInternal = (
                         return task.dueDate <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.userTasksById),
+            ])(currentGlobalData.tasksMap?.userTasksById || {}),
             streamAndUserTasksById: flow([
                 Object.entries,
                 arr =>
@@ -251,7 +301,7 @@ const watchOpenTasksInternal = (
                         return task.dueDate <= endOfDay
                     }),
                 Object.fromEntries,
-            ])(currentGlobalData.tasksMap.streamAndUserTasksById),
+            ])(currentGlobalData.tasksMap?.streamAndUserTasksById || {}),
         }
 
         goalsMap = flow([
@@ -264,11 +314,29 @@ const watchOpenTasksInternal = (
                     )
                 }),
             Object.fromEntries,
-        ])(currentGlobalData.goalsMap)
+        ])(currentGlobalData.goalsMap || {})
+
+        // The rendered snapshot keeps subtasks visible while this new listener reconnects. Keep
+        // the listener-owned subtask indexes alongside it so the first foreground parent snapshot
+        // cannot momentarily replace those rows with an empty subtask map.
+        subtasksByParentId = currentGlobalData.subtasksByParentId || {}
+        subtasksMap = currentGlobalData.subtasksMap || {
+            observedSubtasksById: {},
+            userSubtasksById: {},
+            streamAndUserSubtasksById: {},
+        }
     }
 
     unwatchOpenTasks(projectId, currentUser.uid)
-    const globalData = { storedTasks, estimationByDate, amountOfTasksByDate, tasksMap, goalsMap }
+    const globalData = {
+        storedTasks,
+        estimationByDate,
+        amountOfTasksByDate,
+        tasksMap,
+        goalsMap,
+        subtasksByParentId,
+        subtasksMap,
+    }
 
     batchDispatch(setGlobalDataByProject({ ...globalDataByProject, [projectId]: globalData }))
 
@@ -650,7 +718,7 @@ const watchUserOpenTasks = (
         { sampleRate: 0.02 }
     )
     function handleOpenTasksSnapshot(querySnapshot) {
-        const changes = querySnapshot
+        const liveChanges = querySnapshot
             .docChanges()
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
@@ -658,10 +726,32 @@ const watchUserOpenTasks = (
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
-            cacheChanges = [...cacheChanges, ...changes]
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
+            const isInitialSnapshot = !initialSnapshotDelivered
+            const taskItems = areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById
+            const subtaskItems = areObservedTasks ? subtasksMap.observedSubtasksById : subtasksMap.userSubtasksById
+            const changes = isInitialSnapshot
+                ? reconcileInitialSnapshotChanges(
+                      querySnapshot.docs,
+                      { ...taskItems, ...subtaskItems },
+                      {
+                          // A limited foreground window can refresh documents it contains, but only the
+                          // subsequent complete listener may remove retained documents absent from it.
+                          authoritative: !Number.isInteger(queryLimit) || queryLimit <= 0,
+                          includeDocument: doc =>
+                              taskBelongsInOpenBoard(
+                                  doc.data(),
+                                  assistantOwner,
+                                  areObservedTasks,
+                                  assistantProfileMode
+                              ),
+                      }
+                  )
+                : liveChanges
+            if (isInitialSnapshot) cacheChanges = []
             deliverOpenTasksChanges(changes)
-            if (!initialSnapshotDelivered) {
+            if (isInitialSnapshot) {
                 initialSnapshotDelivered = true
                 onInitialSnapshotDelivered?.()
             }
@@ -1542,22 +1632,39 @@ const watchStreamAndUserOpenTasks = (
     )
 
     let cacheChanges = []
+    let initialSnapshotDelivered = false
     const gate = createCachedSnapshotGate(() => handleStreamAndUserTasksSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         { object_type: 'tasks', scope: 'project', source: 'workstream_open_tasks' },
         { sampleRate: 0.02 }
     )
     function handleStreamAndUserTasksSnapshot(querySnapshot) {
-        const changes = querySnapshot.docChanges()
+        const liveChanges = querySnapshot.docChanges()
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
-            cacheChanges = [...cacheChanges, ...changes]
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
             // AT-2337: see the note in watchUserOpenTasks - coalesce this snapshot's
             // dispatches into one store notification.
             runInDispatchBatch(() => {
-                const mergedChanges = [...cacheChanges, ...changes]
+                const isInitialSnapshot = !initialSnapshotDelivered
+                const knownItems = {
+                    ...Object.fromEntries(
+                        Object.entries(tasksMap.streamAndUserTasksById).filter(
+                            ([, task]) => task.userId === assigneeUserId
+                        )
+                    ),
+                    ...Object.fromEntries(
+                        Object.entries(subtasksMap.streamAndUserSubtasksById).filter(
+                            ([, task]) => task.userId === assigneeUserId
+                        )
+                    ),
+                }
+                const mergedChanges = isInitialSnapshot
+                    ? reconcileInitialSnapshotChanges(querySnapshot.docs, knownItems)
+                    : [...cacheChanges, ...liveChanges]
+                if (isInitialSnapshot) initialSnapshotDelivered = true
 
                 let subtasks = { ...subtasksByParentId }
 
@@ -1702,6 +1809,7 @@ function watchEmptyGoals(
 
     const ownerId = getOwnerId(projectId, currentUserId)
     let cacheChanges = []
+    let initialSnapshotDelivered = false
 
     let query = getDb()
         .collection(`goals/${projectId}/items`)
@@ -1713,13 +1821,17 @@ function watchEmptyGoals(
         { sampleRate: 0.02 }
     )
     function handleEmptyGoalsSnapshot(querySnapshot) {
-        const changes = querySnapshot.docChanges()
+        const liveChanges = querySnapshot.docChanges()
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
-            cacheChanges = [...cacheChanges, ...changes]
+            cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
-            const mergedChanges = [...cacheChanges, ...changes]
+            const isInitialSnapshot = !initialSnapshotDelivered
+            const mergedChanges = isInitialSnapshot
+                ? reconcileInitialSnapshotChanges(querySnapshot.docs, goalsMap)
+                : [...cacheChanges, ...liveChanges]
+            if (isInitialSnapshot) initialSnapshotDelivered = true
             if (mergedChanges.length > 0) {
                 const openTasksArray = processEmptyGoalChanges(
                     mergedChanges,
