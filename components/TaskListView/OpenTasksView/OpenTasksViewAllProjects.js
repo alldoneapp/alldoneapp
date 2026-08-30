@@ -17,10 +17,10 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-// The first useful project on a large account is often late in sidebar order. Each preloaded
-// All Projects block now starts only its assigned-task query, so a twenty-project window is still
-// materially lighter than the old nine-project window's four streams per project. Cover a normal
-// morning in one wave while the mount queue keeps larger accounts bounded and ordered.
+// The first useful project on a large account is often late in sidebar order. Preloaded blocks now
+// share one cross-project assigned-task listener, so mounting a normal morning in one wave no longer
+// multiplies the foreground Firestore/IndexedDB query. The blocks still own their project-local
+// reduction and secondary streams, while the mount queue keeps larger accounts bounded and ordered.
 export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
 export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 20
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
