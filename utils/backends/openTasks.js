@@ -43,6 +43,7 @@ import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
 import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
+import { scheduleTaskColdStartCachePersist } from '../InitialLoad/taskColdStartCache'
 
 export const TODAY_DATE = '0'
 
@@ -2096,6 +2097,11 @@ export const updateOpTasks = (
         return openTasks
     })
 
+    // Persist only after the Redux batch has flushed. This records the render-ready projection,
+    // not Firestore's mutable listener internals, and debounces the many per-project callbacks into
+    // one idle IndexedDB write.
+    scheduleTaskColdStartCachePersist(store.getState)
+
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
@@ -2276,6 +2282,7 @@ export function watchAllMilestones(projectId, watcherKey) {
                 setOpenMilestonesInProjectInTasks(projectId, openMilestones),
                 setDoneMilestonesInProjectInTasks(projectId, doneMilestone),
             ])
+            scheduleTaskColdStartCachePersist(store.getState)
         })
 }
 
@@ -2303,6 +2310,7 @@ export function watchAllGoals(projectId, watcherKey) {
             goalsById[goal.id] = goal
         })
         store.dispatch(setGoalsInProjectInTasks(projectId, goalsById))
+        scheduleTaskColdStartCachePersist(store.getState)
     })
 }
 

@@ -42,7 +42,11 @@ export default function ParentGoalSection({
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
     const activeEditMode = useSelector(state => state.activeEditMode)
-    const [goal, setGoal] = useState(null)
+    const cachedGoal = useSelector(state => state.goalsByProjectInTasks?.[projectId]?.[goalId])
+    // The task cold-start projection restores the previous goal snapshot before this component
+    // mounts. Use it for the first paint instead of hiding the task rows until the per-goal live
+    // listener completes; that listener still replaces this value as soon as Firestore answers.
+    const [goal, setGoal] = useState(cachedGoal || null)
     const [editing, setEditing] = useState(false)
     const [showingTasks, setShowingTasks] = useState(true)
     const dismissibleRef = useRef(null)

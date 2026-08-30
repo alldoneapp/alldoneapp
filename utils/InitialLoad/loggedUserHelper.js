@@ -12,7 +12,21 @@ import {
     updateLastLoggedUserDate,
     watchForceReload,
 } from '../backends/firestore'
-import { initLogInForLoggedUser, setProjectsInitialData, updateLoadingStep } from '../../redux/actions'
+import {
+    initLogInForLoggedUser,
+    setDoneMilestonesInProjectInTasks,
+    setGoalsInProjectInTasks,
+    setOpenMilestonesInProjectInTasks,
+    setOpenSubtasksMap,
+    setOpenTasksMap,
+    setProjectsInitialData,
+    updateFilteredOpenTasks,
+    updateLoadingStep,
+    updateOpenTasks,
+    updateSubtaskByTask,
+    updateThereAreHiddenNotMainTasks,
+    updateThereAreNotTasksInFirstDay,
+} from '../../redux/actions'
 import { getProgressLoadingMessage } from '../FunnyLoadingMessages'
 import { isBrowserOffline } from '../connectionState'
 import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelper'
@@ -46,6 +60,8 @@ import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
 import { trackEvent } from '../analytics/analytics'
 import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
+import { getRestorableTaskColdStartSnapshot, readTaskColdStartCache } from './taskColdStartCache'
+import { markNamedPerformanceTrace } from '../performance/performanceLogger'
 
 // A valid local user snapshot is enough to construct the project list. Give an
 // authoritative read a small chance to win (preserving the zero-staleness fast
@@ -60,6 +76,7 @@ export const CACHED_PROJECT_REFRESH_SETTLE_MS = 10000
 export const CACHED_PROJECT_REFRESH_FALLBACK_MS = 30000
 export const POST_LOGIN_MAINTENANCE_SETTLE_MS = 6000
 export const POST_LOGIN_MAINTENANCE_FALLBACK_MS = 20000
+export const TASK_COLD_START_RESTORE_BUDGET_MS = 250
 const CACHED_USER_REFRESH_BUDGET_ELAPSED = Symbol('cached-user-refresh-budget-elapsed')
 let cancelDeferredProjectWatchers = null
 let cancelDeferredCachedProjectRefresh = null
@@ -242,6 +259,11 @@ function getInitialRoutingUrl() {
 async function loadInitialData() {
     const { loggedUser } = store.getState()
     const projectIds = Array.isArray(loggedUser.projectIds) ? loggedUser.projectIds : []
+    // Start this read alongside the project shell. It uses a separate, tiny IndexedDB database, so
+    // a healthy cache is normally ready before the project list; a bounded wait below prevents a
+    // damaged browser database from ever extending the login path.
+    markNamedPerformanceTrace('app_boot', 'task_cache_read_started')
+    const cachedTaskSnapshotPromise = readTaskColdStartCache(loggedUser.uid)
     store.dispatch(updateLoadingStep(3, getProgressLoadingMessage()))
     const projectsInitialData = await getInitialProjectsData(projectIds)
 
@@ -301,6 +323,46 @@ async function loadInitialData() {
             projectAssistants
         )
     )
+
+    const cachedTaskSnapshot = await waitWithinBudget(cachedTaskSnapshotPromise, TASK_COLD_START_RESTORE_BUDGET_MS)
+    const restorableTaskSnapshot = getRestorableTaskColdStartSnapshot(
+        cachedTaskSnapshot,
+        loggedUser.uid,
+        projects.map(project => project.id)
+    )
+    markNamedPerformanceTrace('app_boot', 'task_cache_read_finished', {
+        outcome: restorableTaskSnapshot ? 'hit' : 'miss_or_budget',
+    })
+    if (restorableTaskSnapshot) {
+        const hydrationActions = []
+        Object.entries(restorableTaskSnapshot.projects).forEach(([projectId, projectSnapshot]) => {
+            const instanceKey = `${projectId}${loggedUser.uid}`
+            hydrationActions.push(
+                updateOpenTasks(instanceKey, projectSnapshot.openTasks),
+                // Filters are empty on a fresh Redux store. OpenTasksByProjectHandler reapplies
+                // any live filters in a layout effect before paint on same-session restores.
+                updateFilteredOpenTasks(instanceKey, projectSnapshot.openTasks),
+                updateSubtaskByTask(instanceKey, projectSnapshot.subtaskByTask || {}),
+                setOpenTasksMap(projectId, projectSnapshot.openTasksMap || {}),
+                setOpenSubtasksMap(projectId, projectSnapshot.openSubtasksMap || {}),
+                ...(Array.isArray(projectSnapshot.openMilestones)
+                    ? [setOpenMilestonesInProjectInTasks(projectId, projectSnapshot.openMilestones)]
+                    : []),
+                ...(Array.isArray(projectSnapshot.doneMilestones)
+                    ? [setDoneMilestonesInProjectInTasks(projectId, projectSnapshot.doneMilestones)]
+                    : []),
+                ...(projectSnapshot.goalsById && typeof projectSnapshot.goalsById === 'object'
+                    ? [setGoalsInProjectInTasks(projectId, projectSnapshot.goalsById)]
+                    : []),
+                updateThereAreNotTasksInFirstDay(instanceKey, !!projectSnapshot.thereAreNotTasksInFirstDay),
+                updateThereAreHiddenNotMainTasks(instanceKey, !!projectSnapshot.thereAreHiddenNotMainTasks)
+            )
+        })
+        if (hydrationActions.length > 0) store.dispatch(hydrationActions)
+        markNamedPerformanceTrace('app_boot', 'task_cache_restored', {
+            project_count: Object.keys(restorableTaskSnapshot.projects).length,
+        })
+    }
 
     watchLoggedUserData(loggedUser)
 
