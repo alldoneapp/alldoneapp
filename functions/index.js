@@ -120,7 +120,7 @@ async function assertProjectAccess(userId, projectId) {
     return userDoc.data() || {}
 }
 
-async function synchronizeAccessProjection(event, roleField, followerField) {
+async function synchronizeAccessProjection(event, roleField, followerField, includeProjectId = false) {
     const { synchronizeObjectAccessProjection } = require('./shared/objectAccessProjection')
     return synchronizeObjectAccessProjection({
         db: admin.firestore(),
@@ -128,12 +128,17 @@ async function synchronizeAccessProjection(event, roleField, followerField) {
         projectId: event.params.projectId,
         roleField,
         followerField,
+        includeProjectId,
     })
 }
 
-function accessProjectionOnly(event) {
+function accessProjectionOnly(event, additionalProjectionFields) {
     const { isAccessProjectionOnlyChange } = require('./shared/objectAccessProjection')
-    return isAccessProjectionOnlyChange(event.data.before.data() || {}, event.data.after.data() || {})
+    return isAccessProjectionOnlyChange(
+        event.data.before.data() || {},
+        event.data.after.data() || {},
+        additionalProjectionFields
+    )
 }
 
 const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
@@ -3600,7 +3605,10 @@ exports.onCreateTaskSecondGen = onDocumentCreated(
         const { onCreateTask } = require('./Tasks/onCreateTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await Promise.all([onCreateTask(task, projectId), synchronizeAccessProjection(event, 'observersIds')])
+        await Promise.all([
+            onCreateTask(task, projectId),
+            synchronizeAccessProjection(event, 'observersIds', null, true),
+        ])
     }
 )
 
@@ -3672,12 +3680,12 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
         region: 'europe-west1',
     },
     async event => {
-        if (accessProjectionOnly(event)) return
+        if (accessProjectionOnly(event, ['projectId'])) return
         const { onUpdateTask } = require('./Tasks/onUpdateTaskFunctions')
         const { projectId, taskId } = event.params
         await Promise.all([
             onUpdateTask(taskId, projectId, event.data),
-            synchronizeAccessProjection(event, 'observersIds'),
+            synchronizeAccessProjection(event, 'observersIds', null, true),
         ])
     }
 )

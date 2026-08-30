@@ -563,7 +563,7 @@ export async function uploadNewTask(
         taskCopy.dueDateByObserversIds = dueDateByObserversIds
         taskCopy.estimationsByObserverIds = estimationsByObserverIds
 
-        delete taskCopy.projectId
+        taskCopy.projectId = projectId
 
         if (!notGenerateUpdates) creatTaskFeedChain(projectId, taskId, taskCopy)
 
@@ -668,6 +668,7 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
         subTask.parentGoalIsPublicFor = task.parentGoalIsPublicFor
         subTask.lockKey = task.lockKey
         subTask.assistantId = task.assistantId
+        subTask.projectId = projectId
 
         // Human readable ID will be generated asynchronously in onCreate trigger
         // This improves subtask creation performance by removing the blocking transaction
@@ -2253,7 +2254,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     updateEditionData(taskCopy)
 
     delete taskCopy.time
-    delete taskCopy.projectId
+    taskCopy.projectId = newProject.id
     await awaitWriteAck(
         getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
         'create task in target project'
@@ -2370,7 +2371,7 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     updateEditionData(taskCopy)
 
     delete taskCopy.time
-    delete taskCopy.projectId
+    taskCopy.projectId = newProject.id
     await awaitWriteAck(
         getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
         'create goal task in target project'

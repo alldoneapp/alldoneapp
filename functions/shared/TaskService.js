@@ -322,9 +322,9 @@ class TaskService {
                                   : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
-                        return { ...task, estimations }
+                        return { ...task, projectId: finalProjectId, estimations }
                     } catch (_) {
-                        return task
+                        return { ...task, projectId: finalProjectId }
                     }
                 })()
 
@@ -470,9 +470,9 @@ class TaskService {
                                   : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
-                        return { ...task, estimations }
+                        return { ...task, projectId: finalProjectId, estimations }
                     } catch (_) {
-                        return task
+                        return { ...task, projectId: finalProjectId }
                     }
                 })()
 

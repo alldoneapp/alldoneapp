@@ -25,7 +25,7 @@ const DEFAULT_PROJECTION_PAGE_SIZE = 400
 const MAX_NESTED_COLLECTIONS_PER_PAGE = 25
 
 const OBJECT_COLLECTIONS = [
-    { root: 'items', child: 'tasks', roleField: 'observersIds' },
+    { root: 'items', child: 'tasks', roleField: 'observersIds', includeProjectId: true },
     { root: 'noteItems', child: 'notes', followerField: 'isVisibleInFollowedFor' },
     { root: 'goals', child: 'items', roleField: 'assigneesIds' },
     { root: 'chatObjects', child: 'chats', followerField: 'usersFollowing' },
@@ -72,7 +72,13 @@ function getBacklinkTokens(objectData) {
     return tokens.sort()
 }
 
-function buildObjectAccessProjection(objectData = {}, projectUserIds = [], roleField, followerField) {
+function buildObjectAccessProjection(
+    objectData = {},
+    projectUserIds = [],
+    roleField,
+    followerField,
+    projectedProjectId
+) {
     const projectMembers = uniqueStrings(projectUserIds)
     const projectMemberSet = new Set(projectMembers)
     const isPublicFor = Array.isArray(objectData.isPublicFor) ? objectData.isPublicFor : []
@@ -101,20 +107,28 @@ function buildObjectAccessProjection(objectData = {}, projectUserIds = [], roleF
         ? Object.fromEntries(readerIds.map(readerId => [String(readerId), backlinkTokens]))
         : {}
 
-    return { readerIds, roleIdsVisibleTo, followedByVisibleTo, followedReaderIds, backlinkIdsVisibleTo }
+    return {
+        readerIds,
+        roleIdsVisibleTo,
+        followedByVisibleTo,
+        followedReaderIds,
+        backlinkIdsVisibleTo,
+        ...(projectedProjectId ? { projectId: projectedProjectId } : {}),
+    }
 }
 
-function isAccessProjectionOnlyChange(beforeData = {}, afterData = {}) {
+function isAccessProjectionOnlyChange(beforeData = {}, afterData = {}, additionalProjectionFields = []) {
+    const projectionFields = new Set([...ACCESS_PROJECTION_FIELDS, ...additionalProjectionFields])
     const keys = new Set([...Object.keys(beforeData), ...Object.keys(afterData)])
     for (const key of keys) {
-        if (ACCESS_PROJECTION_FIELDS.includes(key)) continue
+        if (projectionFields.has(key)) continue
         if (!valuesEqual(beforeData[key], afterData[key])) return false
     }
     return true
 }
 
 function projectionsEqual(objectData = {}, projection) {
-    return ACCESS_PROJECTION_FIELDS.every(field => {
+    return Object.keys(projection).every(field => {
         const emptyValue =
             field === 'roleIdsVisibleTo' || field === 'followedByVisibleTo' || field === 'backlinkIdsVisibleTo'
                 ? {}
@@ -130,6 +144,7 @@ async function synchronizeObjectAccessProjection({
     projectUserIds,
     roleField,
     followerField,
+    includeProjectId = false,
 }) {
     if (!documentSnapshot?.exists) return false
 
@@ -140,7 +155,13 @@ async function synchronizeObjectAccessProjection({
     }
 
     const objectData = documentSnapshot.data() || {}
-    const projection = buildObjectAccessProjection(objectData, members, roleField, followerField)
+    const projection = buildObjectAccessProjection(
+        objectData,
+        members,
+        roleField,
+        followerField,
+        includeProjectId ? projectId : undefined
+    )
     if (projectionsEqual(objectData, projection)) return false
 
     await documentSnapshot.ref.set(projection, { merge: true })
@@ -192,7 +213,8 @@ async function synchronizeProjectAccessProjections(db, projectId, projectUserIds
                 objectData,
                 projectUserIds,
                 spec.roleField,
-                spec.followerField
+                spec.followerField,
+                spec.includeProjectId ? projectId : undefined
             )
             if (projectionsEqual(objectData, projection)) return
             writer.set(documentSnapshot.ref, projection, { merge: true })
@@ -214,11 +236,17 @@ async function getDocumentPage(collectionRef, documentId, pageSize) {
     return query.get()
 }
 
-async function applyProjectionPage(db, snapshot, spec, projectUserIds, write) {
+async function applyProjectionPage(db, snapshot, spec, projectId, projectUserIds, write) {
     const updates = []
     snapshot.docs.forEach(documentSnapshot => {
         const objectData = documentSnapshot.data() || {}
-        const projection = buildObjectAccessProjection(objectData, projectUserIds, spec.roleField, spec.followerField)
+        const projection = buildObjectAccessProjection(
+            objectData,
+            projectUserIds,
+            spec.roleField,
+            spec.followerField,
+            spec.includeProjectId ? projectId : undefined
+        )
         if (!projectionsEqual(objectData, projection)) updates.push({ ref: documentSnapshot.ref, projection })
     })
 
@@ -271,7 +299,7 @@ async function synchronizeProjectAccessProjectionPage(
                 current.documentId,
                 remaining
             )
-            const stats = await applyProjectionPage(db, snapshot, spec, projectUserIds, write)
+            const stats = await applyProjectionPage(db, snapshot, spec, projectId, projectUserIds, write)
             addStats(stats)
             if (snapshot.size === remaining) {
                 return continueAt({
@@ -296,7 +324,7 @@ async function synchronizeProjectAccessProjectionPage(
             const collection = collections[index]
             const remaining = pageSize - totals.scanned
             const snapshot = await getDocumentPage(collection, current.documentId, remaining)
-            const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+            const stats = await applyProjectionPage(db, snapshot, {}, projectId, projectUserIds, write)
             addStats(stats)
             nestedCollectionsVisited++
             if (snapshot.size === remaining) {
@@ -348,7 +376,7 @@ async function synchronizeProjectAccessProjectionPage(
             const feedsRef = typeCollection.doc(objectId).collection('feeds')
             const remaining = pageSize - totals.scanned
             const snapshot = await getDocumentPage(feedsRef, current.documentId, remaining)
-            const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+            const stats = await applyProjectionPage(db, snapshot, {}, projectId, projectUserIds, write)
             addStats(stats)
             nestedCollectionsVisited++
             if (snapshot.size === remaining) {
@@ -392,7 +420,7 @@ async function synchronizeProjectAccessProjectionPage(
             current.documentId,
             remaining
         )
-        const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+        const stats = await applyProjectionPage(db, snapshot, {}, projectId, projectUserIds, write)
         addStats(stats)
         if (snapshot.size === remaining) {
             return continueAt({
@@ -414,7 +442,7 @@ async function synchronizeProjectAccessProjectionPage(
             const followedRef = userCollection.doc('feeds').collection('followed')
             const remaining = pageSize - totals.scanned
             const snapshot = await getDocumentPage(followedRef, current.documentId, remaining)
-            const stats = await applyProjectionPage(db, snapshot, {}, projectUserIds, write)
+            const stats = await applyProjectionPage(db, snapshot, {}, projectId, projectUserIds, write)
             addStats(stats)
             nestedCollectionsVisited++
             if (snapshot.size === remaining) {
