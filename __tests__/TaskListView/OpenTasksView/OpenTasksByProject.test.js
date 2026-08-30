@@ -226,10 +226,9 @@ describe('OpenTasksByProject visibility', () => {
     })
 
     it('keeps assistant and decoration watchers out of an All Projects task preload', () => {
-        const tree = renderProject(createState())
+        renderProject(createState())
 
         expect(mockUseProjectAssistantLine).toHaveBeenCalledWith(null)
-        expect(tree.root.findByType('OpenTasksByProjectHandler').props.allProjectsTaskProjectIds).toEqual([projectId])
         expect(watchAllMilestones).not.toHaveBeenCalled()
         expect(watchAllGoals).not.toHaveBeenCalled()
         expect(watchProjectOKRs).not.toHaveBeenCalled()

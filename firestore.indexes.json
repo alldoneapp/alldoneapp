@@ -4435,32 +4435,6 @@
             "queryScope": "COLLECTION_GROUP",
             "fields": [
                 {
-                    "fieldPath": "readerIds",
-                    "arrayConfig": "CONTAINS"
-                },
-                {
-                    "fieldPath": "projectId",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "currentReviewerId",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "inDone",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "dueDate",
-                    "order": "ASCENDING"
-                }
-            ]
-        },
-        {
-            "collectionGroup": "tasks",
-            "queryScope": "COLLECTION_GROUP",
-            "fields": [
-                {
                     "fieldPath": "isPublicFor",
                     "arrayConfig": "CONTAINS"
                 },

@@ -312,10 +312,7 @@ service cloud.firestore {
     }
 
     match /items/{projectId}/tasks/{taskId} {
-      allow get: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
-      allow list: if
-        canReadObject(projectId, resource.data) ||
-        canReadSharedObject(projectId, resource.data);
+      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       allow create: if
         request.resource.data.get('projectId', '') == projectId &&
         canWriteObject(projectId, request.resource.data) &&
@@ -327,16 +324,6 @@ service cloud.firestore {
         canWriteObject(projectId, request.resource.data) &&
         accessProjectionUnchanged();
       allow delete: if canReadObject(projectId, resource.data);
-    }
-
-    // Rules v2 evaluates collection-group queries through a recursive wildcard rather than the
-    // concrete /items/{projectId}/tasks match above. `readerIds` is Admin-maintained, while
-    // `projectId` is validated against and repaired from the authoritative project path. The
-    // client query constrains both, so it discovers only readable tasks in the active projects.
-    match /{path=**}/tasks/{taskId} {
-      allow list: if
-        signedIn() &&
-        request.auth.uid in resource.data.get('readerIds', []);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {
