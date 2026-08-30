@@ -5,8 +5,9 @@
  *
  *   1. a project URL may synchronously resolve a user/contact/workstream/assistant from that
  *      project's redux slices, so the route project needs its complete data bundle;
- *   2. `getDefaultAssistant` reads the default project's assistant slice, so that one collection
- *      must settle even when the app opens on All Projects.
+ *   2. `getDefaultAssistant` reads the default project's assistant slice. That collection starts
+ *      before routing; All Projects gives it only a short cache budget, while a project deep link
+ *      still waits for every route-critical dependency.
  *
  * The in-focus project and the first sidebar project are useful rendering priorities, but neither
  * is a routing dependency. Awaiting all four collections for them made an ordinary cold start fan

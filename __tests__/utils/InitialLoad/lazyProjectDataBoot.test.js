@@ -11,7 +11,7 @@
  *   2. every project is still seeded with EMPTY ARRAYS - a dozen consumers read
  *      `state.projectUsers[projectId].length` and friends without a guard, so the key must exist
  *      from the first frame even though the content is deferred,
- *   3. an ordinary All Projects boot awaits only the default project's assistants,
+ *   3. an ordinary All Projects boot gives only the default project's assistants a short budget,
  *   4. a project deep link still awaits that route project's complete bundle, and
  *   5. nothing outside `loggedUser.projectIds` is ever loaded - which is what makes "only active
  *      projects" a guarantee rather than a side effect of `updateInactiveProjectsData`.
@@ -138,7 +138,10 @@ jest.mock('../../../utils/backends/Premium/stripePremiumFirestore', () => ({
 }))
 jest.mock('../../../utils/analytics/analytics', () => ({ trackEvent: jest.fn() }))
 
-const { loadInitialDataForLoggedUser } = require('../../../utils/InitialLoad/loggedUserHelper')
+const {
+    DEFAULT_ASSISTANT_BOOT_BUDGET_MS,
+    loadInitialDataForLoggedUser,
+} = require('../../../utils/InitialLoad/loggedUserHelper')
 
 const project = id => ({ id, name: `Project ${id}` })
 
@@ -148,6 +151,10 @@ describe("AT-2386 login no longer loads every project's people", () => {
     beforeEach(() => {
         jest.clearAllMocks()
         callLog.length = 0
+        mockEnsureProjectDataLoaded.mockImplementation((projectId, kinds) => {
+            callLog.push(['ensure', projectId, kinds])
+            return Promise.resolve(true)
+        })
         mockState.initialUrl = '/'
         mockGetProjectData.mockImplementation(projectId =>
             Promise.resolve({ project: project(projectId), missingFromCache: false })
@@ -179,11 +186,36 @@ describe("AT-2386 login no longer loads every project's people", () => {
         })
     })
 
-    it("awaits only the default project's assistants before an ordinary All Projects route", async () => {
+    it("starts only the default project's assistants before an ordinary All Projects route", async () => {
         await login()
 
         expect(callLog.map(entry => entry[0])).toEqual(['ensure', 'processUrl'])
         expect(callLog[0]).toEqual(['ensure', 'p2', 'assistants'])
+    })
+
+    it('routes All Projects after the short budget when the default assistant snapshot is slow', async () => {
+        jest.useFakeTimers()
+        let resolveAssistant
+        mockEnsureProjectDataLoaded.mockImplementation((projectId, kinds) => {
+            callLog.push(['ensure', projectId, kinds])
+            return new Promise(resolve => {
+                resolveAssistant = resolve
+            })
+        })
+
+        const loginPromise = login()
+        for (let index = 0; index < 10 && mockEnsureProjectDataLoaded.mock.calls.length === 0; index++) {
+            await Promise.resolve()
+        }
+
+        expect(mockProcessUrl).not.toHaveBeenCalled()
+        jest.advanceTimersByTime(DEFAULT_ASSISTANT_BOOT_BUDGET_MS)
+        await loginPromise
+
+        expect(mockProcessUrl).toHaveBeenCalledTimes(1)
+        resolveAssistant(true)
+        await Promise.resolve()
+        jest.useRealTimers()
     })
 
     it("never loads a project outside the logged user's project ids", async () => {

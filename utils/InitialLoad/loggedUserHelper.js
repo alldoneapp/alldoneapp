@@ -52,6 +52,10 @@ import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
 // path), then continue it in the background instead of holding the loading
 // screen on a multi-second Firestore read.
 export const CACHED_USER_REFRESH_BOOT_BUDGET_MS = 250
+// The default assistant makes the All Projects assistant line richer, but it is not required to
+// route or paint task rows. Give a cached snapshot one short chance to win; keep the watcher alive
+// in the background when it does not. Project deep links still await their complete route bundle.
+export const DEFAULT_ASSISTANT_BOOT_BUDGET_MS = 250
 export const CACHED_PROJECT_REFRESH_SETTLE_MS = 10000
 export const CACHED_PROJECT_REFRESH_FALLBACK_MS = 30000
 export const POST_LOGIN_MAINTENANCE_SETTLE_MS = 6000
@@ -60,6 +64,20 @@ const CACHED_USER_REFRESH_BUDGET_ELAPSED = Symbol('cached-user-refresh-budget-el
 let cancelDeferredProjectWatchers = null
 let cancelDeferredCachedProjectRefresh = null
 let cancelDeferredLoginMaintenance = null
+
+const waitWithinBudget = (promise, budgetMs) =>
+    new Promise(resolve => {
+        let settled = false
+        let timer
+        const finish = value => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve(value)
+        }
+        timer = setTimeout(() => finish(false), budgetMs)
+        Promise.resolve(promise).then(finish, () => finish(false))
+    })
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
@@ -291,7 +309,9 @@ async function loadInitialData() {
     //
     // - a route project needs its complete bundle because a project URL can resolve a user,
     //   contact, workstream or assistant from redux;
-    // - the default project needs only assistants for `getDefaultAssistant`.
+    // - the default project needs only assistants for `getDefaultAssistant`; on All Projects this
+    //   gets a short cache budget and then continues behind the task board rather than holding the
+    //   route for the full first-snapshot timeout.
     //
     // In-focus/first projects are rendering priorities, not routing dependencies. Their existing
     // lookup funnels request data on demand after the first frame.
@@ -305,7 +325,12 @@ async function loadInitialData() {
     const bootCriticalLoads = []
     if (routeProjectId) bootCriticalLoads.push(ensureProjectDataLoaded(routeProjectId))
     if (defaultAssistantProjectId && defaultAssistantProjectId !== routeProjectId) {
-        bootCriticalLoads.push(ensureProjectDataLoaded(defaultAssistantProjectId, PROJECT_DATA_ASSISTANTS))
+        const defaultAssistantLoad = ensureProjectDataLoaded(defaultAssistantProjectId, PROJECT_DATA_ASSISTANTS)
+        bootCriticalLoads.push(
+            routeProjectId
+                ? defaultAssistantLoad
+                : waitWithinBudget(defaultAssistantLoad, DEFAULT_ASSISTANT_BOOT_BUDGET_MS)
+        )
     }
 
     // Each load is bounded inside the loader, so a wedged stream delays routing by at most one
