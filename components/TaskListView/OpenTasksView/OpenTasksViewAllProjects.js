@@ -17,12 +17,12 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-// Keep the first IndexedDB/Firestore wave small enough that one useful project can answer quickly.
-// The first project is mounted eagerly and these three preloads bring the foreground wave to four
-// projects. As snapshots arrive (or hit the bounded readiness timeout), the queue admits those
-// projects and starts the next wave in the background until the full board is complete.
+// Task rows are spread across the active projects, and live Pixel traces showed that shrinking this
+// wave serialized even the first three task-bearing projects. Keep the user's assigned-task queries
+// in one foreground discovery wave; their observed/workstream/decorative streams remain deferred,
+// and the task-board readiness gate now prevents unrelated startup listeners from competing with it.
 export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
-export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 3
+export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 20
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
