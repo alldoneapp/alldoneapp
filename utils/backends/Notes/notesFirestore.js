@@ -257,21 +257,21 @@ export async function deleteNote(projectId, note, externalBatch) {
 }
 
 export async function updateNoteMeta(projectId, tmpNote, note) {
-    updateNoteData(
+    await updateNoteData(
         projectId,
         note.id,
         { title: tmpNote.title.toLowerCase(), extendedTitle: tmpNote.extendedTitle },
         null
     )
 
-    updateNotesEditedDailyList(projectId, note.id)
+    await updateNotesEditedDailyList(projectId, note.id)
 
     if (tmpNote.stickyData.stickyEndDate !== note.stickyData.stickyEndDate) {
         const { stickyEndDate } = tmpNote.stickyData
-        stickyEndDate > 0 ? trackStickyNote(projectId, note.id, stickyEndDate) : untrackStickyNote(note.id)
+        await (stickyEndDate > 0 ? trackStickyNote(projectId, note.id, stickyEndDate) : untrackStickyNote(note.id))
     }
 
-    createNoteUpdatedFeedsChain(projectId, note.id, tmpNote, note)
+    await createNoteUpdatedFeedsChain(projectId, note.id, tmpNote, note)
     createGenericTaskWhenMentionInTitleEdition(
         projectId,
         note.id,

@@ -62,6 +62,16 @@ describe('getUserOrContactBy', () => {
         expect(mockGetUserData).toHaveBeenCalledTimes(1)
     })
 
+    it('does not reject a resolved user when the speculative contact probe is denied', async () => {
+        const user = { uid: 'user-1' }
+        mockGetUserData.mockResolvedValue(user)
+        mockGetContactData.mockRejectedValue({ code: 'permission-denied' })
+        mockGetAssistantData.mockResolvedValue(null)
+
+        await expect(getUserOrContactBy('project-1', 'user-1')).resolves.toBe(user)
+        expect(mockGetUserData).toHaveBeenCalledTimes(1)
+    })
+
     it('does not escalate when a contact explains the missing user document', async () => {
         const contact = { id: 'contact-1' }
         mockGetUserData.mockResolvedValue(null)
@@ -102,6 +112,16 @@ describe('getUserOrContactBy', () => {
         mockGetAssistantData.mockResolvedValue(null)
 
         await expect(getUserOrContactBy('project-1', 'flaky-user')).resolves.toBe(recovered)
+    })
+
+    it('still surfaces an unexpected candidate failure when no lookup resolves', async () => {
+        const backendError = { code: 'unavailable' }
+        mockGetUserData.mockResolvedValue(null)
+        mockGetContactData.mockRejectedValue(backendError)
+        mockGetAssistantData.mockResolvedValue(null)
+
+        await expect(getUserOrContactBy('project-1', 'unavailable-owner')).rejects.toBe(backendError)
+        expect(mockGetUserData).toHaveBeenCalledTimes(1)
     })
 
     it('still short-circuits a workstream id without touching users/', async () => {
