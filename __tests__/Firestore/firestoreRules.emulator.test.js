@@ -8,7 +8,6 @@ const { assertFails, assertSucceeds, initializeTestEnvironment } = require('@fir
 const {
     FieldPath,
     collection,
-    collectionGroup,
     doc,
     getDoc,
     getDocs,
@@ -444,19 +443,8 @@ describe('queries used by the web client', () => {
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
     })
 
-    it('allows the cross-project assigned-task query only through the reader projection', async () => {
+    it('requires a task projectId that matches its authoritative path', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-        const assignedTasks = query(
-            collectionGroup(memberDb, 'tasks'),
-            where('readerIds', 'array-contains', MEMBER_ID),
-            where('projectId', 'in', [PROJECT_ID]),
-            where('currentReviewerId', '==', MEMBER_ID),
-            where('inDone', '==', false),
-            where('dueDate', '<=', 253402214400000)
-        )
-
-        const snapshot = await assertSucceeds(getDocs(assignedTasks))
-        expect(snapshot.docs.map(item => item.id)).toEqual(['private-task'])
 
         await assertFails(
             setDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/wrong-project-id`), {
@@ -474,17 +462,6 @@ describe('queries used by the web client', () => {
                 projectId: PROJECT_ID,
                 name: 'Ordinary edit',
             })
-        )
-
-        await assertFails(
-            getDocs(
-                query(
-                    collectionGroup(memberDb, 'tasks'),
-                    where('currentReviewerId', '==', MEMBER_ID),
-                    where('inDone', '==', false),
-                    where('dueDate', '<=', 253402214400000)
-                )
-            )
         )
     })
 

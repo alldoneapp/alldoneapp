@@ -150,7 +150,6 @@ function OpenTasksByProject({
             <OpenTasksByProjectHandler
                 projectIndex={projectIndex}
                 firstProject={firstProject}
-                allProjectsTaskProjectIds={sortedLoggedUserProjectIds}
                 setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
                 assistantProfileMode={assistantProfileMode}
             />
