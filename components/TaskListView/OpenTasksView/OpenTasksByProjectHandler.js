@@ -35,6 +35,7 @@ export default function OpenTasksByProjectHandler({
     firstProject,
     setProjectsHaveTasksInFirstDay,
     assistantProfileMode = false,
+    taskWatchersEnabled = true,
 }) {
     const dispatch = useDispatch()
     // Contracting the day list re-subscribes the open-task watchers with an
@@ -174,7 +175,7 @@ export default function OpenTasksByProjectHandler({
     ])
 
     useEffect(() => {
-        if (currentUserId) {
+        if (currentUserId && taskWatchersEnabled) {
             const {
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
@@ -211,7 +212,7 @@ export default function OpenTasksByProjectHandler({
                 stopTasksWatchers({ preserveSessionSnapshot: true })
             }
         }
-    }, [])
+    }, [taskWatchersEnabled])
 
     useEffect(() => {
         const { openTasksStore } = store.getState()
@@ -239,7 +240,7 @@ export default function OpenTasksByProjectHandler({
     if (!currentUserId.startsWith(WORKSTREAM_ID_PREFIX)) {
         useEffectDebug(
             changedDeps => {
-                if (!isEmpty(changedDeps) && currentUserId) {
+                if (!isEmpty(changedDeps) && currentUserId && taskWatchersEnabled) {
                     let changes = changedDeps.streams
 
                     if (changes.before) {

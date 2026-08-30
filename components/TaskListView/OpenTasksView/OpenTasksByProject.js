@@ -38,6 +38,7 @@ function OpenTasksByProject({
     assistantScheduleOccurrences = [],
     assistantScheduleContext = null,
     assistantTaskCreatorContext = null,
+    taskWatchersEnabled = true,
 }) {
     const dispatch = useDispatch()
     const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
@@ -87,9 +88,10 @@ function OpenTasksByProject({
     const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(inSelectedProject ? project : null)
     const showAssistantLine = !assistantProfileMode && !isAnonymous && inSelectedProject && hasAssistantLine
     const projectDecorationsReady =
-        inSelectedProject ||
-        (initialLoadingEndOpenTasks && initialLoadingEndObservedTasks) ||
-        ((initialLoadingEndOpenTasks || initialLoadingEndObservedTasks) && hasMatchingFilteredTasks)
+        taskWatchersEnabled &&
+        (inSelectedProject ||
+            (initialLoadingEndOpenTasks && initialLoadingEndObservedTasks) ||
+            ((initialLoadingEndOpenTasks || initialLoadingEndObservedTasks) && hasMatchingFilteredTasks))
     const showInitialSkeleton =
         inSelectedProject &&
         filteredOpenTasksDates.length === 0 &&
@@ -140,6 +142,7 @@ function OpenTasksByProject({
                 firstProject={firstProject}
                 setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
                 assistantProfileMode={assistantProfileMode}
+                taskWatchersEnabled={taskWatchersEnabled}
             />
             {!hideProjectData && (
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>

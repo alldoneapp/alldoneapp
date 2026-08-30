@@ -16,6 +16,8 @@ import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
+import { getTaskBearingProjectIndexes } from '../../../utils/InitialLoad/taskColdStartCache'
+import { markNamedPerformanceTrace } from '../../../utils/performance/performanceLogger'
 
 // Task rows are spread across the active projects, and live Pixel traces showed that shrinking this
 // wave serialized even the first three task-bearing projects. Keep the user's assigned-task queries
@@ -23,6 +25,7 @@ import TaskListSkeleton from '../TaskListSkeleton'
 // and the task-board readiness gate now prevents unrelated startup listeners from competing with it.
 export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
 export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 20
+export const ALL_PROJECTS_CACHED_TASK_PRELOAD_CONCURRENCY = 3
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
@@ -188,6 +191,26 @@ export default function OpenTasksViewAllProjects() {
             ),
         shallowEqual
     )
+    const retainedProjectSnapshotStates = useSelector(
+        state =>
+            sortedLoggedUserProjectIds.map(projectId =>
+                Object.prototype.hasOwnProperty.call(state.openTasksStore || {}, `${projectId}${currentUserId}`)
+            ),
+        shallowEqual
+    )
+    const taskBearingProjectIndexes = useSelector(
+        state => getTaskBearingProjectIndexes(sortedLoggedUserProjectIds, state.openTasksStore, currentUserId),
+        shallowEqual
+    )
+    const hasRetainedProjectSnapshots = retainedProjectSnapshotStates.some(Boolean)
+    const hasRetainedTaskBearingProjects = taskBearingProjectIndexes.length > 0
+    useEffect(() => {
+        if (!hasRetainedProjectSnapshots) return
+        markNamedPerformanceTrace('app_boot', 'task_cache_render_ready', {
+            project_count: retainedProjectSnapshotStates.filter(Boolean).length,
+            task_count: taskBearingProjectIndexes.length,
+        })
+    }, [hasRetainedProjectSnapshots, retainedProjectSnapshotStates, taskBearingProjectIndexes])
     const {
         mountedProjectIndexes,
         preloadingProjectIndexes,
@@ -197,8 +220,15 @@ export default function OpenTasksViewAllProjects() {
     } = useRateLimitedProjectMountQueue({
         projectIds: sortedLoggedUserProjectIds,
         projectReadyStates,
+        preloadPriorityProjectIndexes: taskBearingProjectIndexes,
         minIntervalMs: ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS,
-        preloadConcurrency: ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY,
+        // A previous projection tells us where rows are likely to be. Reconnect those projects
+        // first and keep the remaining Firestore/IndexedDB work bounded. A truly first-ever load
+        // has no such hint, so it retains the existing broad discovery wave rather than making a
+        // task in the last project wait through several five-second readiness fallbacks.
+        preloadConcurrency: hasRetainedTaskBearingProjects
+            ? ALL_PROJECTS_CACHED_TASK_PRELOAD_CONCURRENCY
+            : ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY,
     })
     const mountedProjectIndexesSet = useMemo(() => new Set(mountedProjectIndexes), [mountedProjectIndexes])
     const viewportGhostProjectIndexesSet = useMemo(
@@ -300,6 +330,9 @@ export default function OpenTasksViewAllProjects() {
                 ]}
             />
             {sortedLoggedUserProjectIds.map((projectId, index) => {
+                const queueMounted = mountedProjectIndexesSet.has(index)
+                const queuePreloading = preloadingProjectIndexes.includes(index)
+                const retainedSnapshot = retainedProjectSnapshotStates[index]
                 let thisProjectIsTheFirstProject = false
                 if (projectsHaveTasksInFirstDay[projectId] && !areFirstProject) {
                     areFirstProject = true
@@ -310,8 +343,11 @@ export default function OpenTasksViewAllProjects() {
                     <DeferredProjectBlock
                         key={projectId}
                         projectIndex={index}
-                        mounted={mountedProjectIndexesSet.has(index)}
-                        preloading={preloadingProjectIndexes.includes(index)}
+                        // Render retained rows independently from listener admission. The project
+                        // stays in its normal sorted position, while `taskWatchersEnabled` below
+                        // controls the much more expensive Firestore work.
+                        mounted={queueMounted || retainedSnapshot}
+                        preloading={queuePreloading}
                         observe={index === nextProjectIndex}
                         showGhost={
                             index === nextProjectIndex ||
@@ -326,6 +362,7 @@ export default function OpenTasksViewAllProjects() {
                             firstProject={thisProjectIsTheFirstProject}
                             sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
                             setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                            taskWatchersEnabled={queueMounted || queuePreloading}
                         />
                     </DeferredProjectBlock>
                 )

@@ -5,6 +5,7 @@ export const PROJECT_MOUNT_MAX_READY_WAIT_MS = 5000
 export const PROJECT_FAST_FLING_CONCURRENCY = 3
 
 const uniqueIndexes = indexes => [...new Set(indexes)]
+const EMPTY_PROJECT_INDEXES = []
 
 const normalizeConcurrency = (value, fallback) => {
     if (!Number.isFinite(value)) return fallback
@@ -21,6 +22,7 @@ const normalizeConcurrency = (value, fallback) => {
 export default function useRateLimitedProjectMountQueue({
     projectIds,
     projectReadyStates,
+    preloadPriorityProjectIndexes = EMPTY_PROJECT_INDEXES,
     minIntervalMs = PROJECT_MOUNT_MIN_INTERVAL_MS,
     maxReadyWaitMs = PROJECT_MOUNT_MAX_READY_WAIT_MS,
     preloadConcurrency = 1,
@@ -28,6 +30,10 @@ export default function useRateLimitedProjectMountQueue({
     now = Date.now,
 }) {
     const projectKey = useMemo(() => projectIds.join('\u001f'), [projectIds])
+    const preloadPriorityKey = useMemo(
+        () => preloadPriorityProjectIndexes.join('\u001f'),
+        [preloadPriorityProjectIndexes]
+    )
     const initialMountedIndexes = useMemo(() => (projectIds.length > 0 ? [0] : []), [projectIds.length])
     const [queueState, setQueueState] = useState(() => ({
         projectKey,
@@ -88,6 +94,9 @@ export default function useRateLimitedProjectMountQueue({
                 { length: normalLimit },
                 (_, offset) => mountedProjectCount + offset
             ).filter(index => index < projectIds.length && !mountedProjectIndexesSet.has(index))
+            const cachePriorityIndexes = uniqueIndexes(preloadPriorityProjectIndexes)
+                .filter(index => index >= 0 && index < projectIds.length)
+                .filter(index => !mountedProjectIndexesSet.has(index))
             const viewportIndexes = hasPassedViewport
                 ? uniqueIndexes(viewportProjectIndexes)
                       .filter(index => index >= 0 && index < projectIds.length)
@@ -97,8 +106,8 @@ export default function useRateLimitedProjectMountQueue({
             const backgroundIndexes = hasVisibleProject ? sequentialIndexes.slice(0, 1) : sequentialIndexes
             const desiredIndexes = hasPassedViewport
                 ? uniqueIndexes([...viewportIndexes, ...backgroundIndexes]).slice(0, fastLimit)
-                : sequentialIndexes
-            const viewportIndexSet = new Set(viewportIndexes)
+                : uniqueIndexes([...cachePriorityIndexes, ...sequentialIndexes]).slice(0, normalLimit)
+            const outOfOrderPriorityIndexSet = new Set([...viewportIndexes, ...cachePriorityIndexes])
             const showFallbackGhost = hasPassedViewport && viewportIndexes.length === 0 && !hasVisibleProject
             const startedAt = now()
 
@@ -113,9 +122,9 @@ export default function useRateLimitedProjectMountQueue({
                         projectKey,
                         index,
                         startedAt: existing?.startedAt ?? startedAt,
-                        allowOutOfOrder: viewportIndexSet.has(index),
+                        allowOutOfOrder: outOfOrderPriorityIndexSet.has(index) && index !== mountedProjectCount,
                         showSkippedProjectGhost: showFallbackGhost,
-                        priorityRank: viewportIndexSet.has(index) ? rank : fastLimit + index,
+                        priorityRank: outOfOrderPriorityIndexSet.has(index) ? rank : fastLimit + index,
                     }
                 })
             })
@@ -126,6 +135,8 @@ export default function useRateLimitedProjectMountQueue({
             mountedProjectIndexesSet,
             now,
             preloadConcurrency,
+            preloadPriorityKey,
+            preloadPriorityProjectIndexes,
             projectIds.length,
             projectKey,
         ]

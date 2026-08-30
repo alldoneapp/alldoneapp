@@ -102,11 +102,27 @@ describe('scheduleAfterInitialTaskData', () => {
         scheduleAfterInitialTaskData(callback, { settleMs: 8000 })
 
         mockState.filteredOpenTasksStore['p1user-1'] = [['TODAY', 1]]
+        mockState.initialLoadingEndOpenTasks['p1user-1'] = true
         mockListeners.forEach(listener => listener())
         jest.advanceTimersByTime(7999)
         expect(callback).not.toHaveBeenCalled()
 
         jest.advanceTimersByTime(1)
+        expect(callback).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not treat a restored cold-start projection as a live task snapshot', () => {
+        const callback = jest.fn()
+        mockState.filteredOpenTasksStore['p1user-1'] = [['TODAY', 1]]
+        scheduleAfterInitialTaskData(callback)
+
+        mockListeners.forEach(listener => listener())
+        jest.advanceTimersByTime(TASK_DATA_SETTLE_GRACE_MS)
+        expect(callback).not.toHaveBeenCalled()
+
+        mockState.initialLoadingEndOpenTasks['p1user-1'] = true
+        mockListeners.forEach(listener => listener())
+        jest.advanceTimersByTime(TASK_DATA_SETTLE_GRACE_MS)
         expect(callback).toHaveBeenCalledTimes(1)
     })
 })
