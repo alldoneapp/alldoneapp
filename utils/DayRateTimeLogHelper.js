@@ -257,6 +257,7 @@ function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes
 
     return {
         id: taskId,
+        projectId,
         name: DAY_RATE_TIME_LOG_TASK_NAME,
         extendedName: DAY_RATE_TIME_LOG_TASK_NAME,
         description: '',

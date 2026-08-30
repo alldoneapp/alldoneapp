@@ -461,6 +461,7 @@ export async function uploadNewUser(uid, user, project, task, workstream, assist
 
     const taskToStore = { ...task }
     delete taskToStore.id
+    taskToStore.projectId = project.id
 
     const workstreamToStore = { ...workstream }
     delete workstreamToStore.uid
@@ -610,6 +611,7 @@ export const updateEditedWorkflowStepTaks = (projectId, tasks, stepId, reviewerU
                 : task.stepHistory.findIndex(id => id === stepId)
 
             if (index !== null && index !== undefined && index > -1) {
+                task.projectId = projectId
                 task.userIds[index] = reviewerUid
                 if (index === task.stepHistory.length - 1) task.currentReviewerId = reviewerUid
                 if (task.subtaskIds && task.subtaskIds.length > 0) {

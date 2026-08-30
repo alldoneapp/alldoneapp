@@ -149,6 +149,18 @@ describe('object access projection', () => {
         ).toMatchObject({ followedReaderIds: ['member-1'] })
     })
 
+    it('projects the task project id from its authoritative document path', () => {
+        expect(
+            buildObjectAccessProjection(
+                { isPublicFor: ['member-1'], projectId: 'wrong-project' },
+                ['member-1'],
+                'observersIds',
+                null,
+                'project-1'
+            )
+        ).toMatchObject({ projectId: 'project-1', readerIds: ['member-1'] })
+    })
+
     it('recognizes the server projection write so business triggers can ignore it', () => {
         const before = { title: 'Task', isPublicFor: [0], readerIds: ['member-1'] }
 
@@ -160,6 +172,7 @@ describe('object access projection', () => {
                 backlinkIdsVisibleTo: { 'member-1': [], 'member-2': [] },
             })
         ).toBe(true)
+        expect(isAccessProjectionOnlyChange(before, { ...before, projectId: 'project-1' }, ['projectId'])).toBe(true)
         expect(isAccessProjectionOnlyChange(before, { ...before, title: 'Changed' })).toBe(false)
     })
 
@@ -199,6 +212,14 @@ describe('object access projection', () => {
             cursor: null,
         })
         expect(db.writes).toHaveLength(3)
+        expect(db.writes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    ref: { path: 'items/project-1/tasks/task-1' },
+                    data: expect.objectContaining({ projectId: 'project-1' }),
+                }),
+            ])
+        )
     })
 
     it('packs small nested feed collections into one bounded page', async () => {
