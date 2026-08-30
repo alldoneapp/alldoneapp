@@ -152,8 +152,18 @@ export default function GlobalSearchModal() {
         const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
 
         dispatch(startLoadingData())
-        const projectsList = await getAllUserProjects(loggedUser.uid)
-        dispatch(stopLoadingData())
+        let projectsList
+        try {
+            projectsList = await getAllUserProjects(loggedUser.uid)
+        } catch (error) {
+            // Opening search must never become an unhandled rejection. The already-loaded redux
+            // projects keep active-project search usable while a transient/rules failure is being
+            // recovered; the authoritative query normally adds archived/template/guide projects.
+            console.error('[GlobalSearch] Could not refresh the project scope, using loaded projects', error)
+            projectsList = loggedUserProjects
+        } finally {
+            dispatch(stopLoadingData())
+        }
 
         // AT-2390: bucket against the REAL id sets, never the masked ones on
         // `loggedUser`. `updateInactiveProjectsData` (redux/store.js) empties

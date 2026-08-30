@@ -46,6 +46,7 @@ import {
     DV_TAB_NOTE_EDITOR,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
+    DV_TAB_TASK_CHAT,
     DV_TAB_TASK_PROPERTIES,
 } from '../../utils/TabNavigationConstants'
 
@@ -215,6 +216,19 @@ describe('AT-2417 - a detailed-view link never routes through the root list', ()
             await URLTrigger.directProcessUrl(NavigationService, `/projects/${PROJECT_ID}/tasks/${TASK_ID}/properties`)
 
             expect(routesNavigatedTo()).toEqual(['TaskDetailedView'])
+            expect(navigateSpy).not.toHaveBeenCalledWith('Root')
+        })
+
+        it('opens the task chat directly from a comment popup URL', async () => {
+            const task = { id: TASK_ID, name: 'Discuss the release', userId: LOGGED_USER_ID }
+            jest.spyOn(Backend, 'getTaskData').mockResolvedValue(task)
+            jest.spyOn(Backend, 'getUserOrContactBy').mockResolvedValue({ uid: LOGGED_USER_ID })
+            store.dispatch([setSelectedNavItem(DV_TAB_ROOT_TASKS), setSelectedSidebarTab(DV_TAB_ROOT_TASKS)])
+
+            await URLTrigger.directProcessUrl(NavigationService, `/projects/${PROJECT_ID}/tasks/${TASK_ID}/chat`)
+
+            expect(routesNavigatedTo()).toEqual(['TaskDetailedView'])
+            expect(store.getState().selectedNavItem).toEqual(DV_TAB_TASK_CHAT)
             expect(navigateSpy).not.toHaveBeenCalledWith('Root')
         })
     })
