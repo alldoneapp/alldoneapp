@@ -1,4 +1,5 @@
-import { selectInitialTaskDataPublished } from './useDeferredStartupWork'
+import { selectDeferredStartupFallbackAllowed, selectInitialTaskDataPublished } from './useDeferredStartupWork'
+import { DV_TAB_ROOT_NOTES, DV_TAB_ROOT_TASKS } from '../utils/TabNavigationConstants'
 
 const state = overrides => ({
     currentUser: { uid: 'user-1' },
@@ -67,5 +68,16 @@ describe('selectInitialTaskDataPublished', () => {
         expect(selectInitialTaskDataPublished(state({ initialLoadingEndOpenTasks: { 'p1another-user': true } }))).toBe(
             false
         )
+    })
+})
+
+describe('selectDeferredStartupFallbackAllowed', () => {
+    it('keeps background listener fan-out behind real readiness on the task board', () => {
+        expect(selectDeferredStartupFallbackAllowed({ route: DV_TAB_ROOT_TASKS })).toBe(false)
+    })
+
+    it('keeps the bounded fallback for routes that do not mount a task board', () => {
+        expect(selectDeferredStartupFallbackAllowed({ route: DV_TAB_ROOT_NOTES })).toBe(true)
+        expect(selectDeferredStartupFallbackAllowed({ route: null })).toBe(true)
     })
 })

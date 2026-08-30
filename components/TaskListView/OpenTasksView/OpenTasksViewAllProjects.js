@@ -17,12 +17,12 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 
-// The first useful project on a large account is often late in sidebar order. Each preloaded
-// All Projects block now starts only its assigned-task query, so a twenty-project window is still
-// materially lighter than the old nine-project window's four streams per project. Cover a normal
-// morning in one wave while the mount queue keeps larger accounts bounded and ordered.
+// Keep the first IndexedDB/Firestore wave small enough that one useful project can answer quickly.
+// The first project is mounted eagerly and these three preloads bring the foreground wave to four
+// projects. As snapshots arrive (or hit the bounded readiness timeout), the queue admits those
+// projects and starts the next wave in the background until the full board is complete.
 export const ALL_PROJECTS_TASK_PRELOAD_ROOT_MARGIN = '720px 0px'
-export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 20
+export const ALL_PROJECTS_TASK_PRELOAD_CONCURRENCY = 3
 export const ALL_PROJECTS_TASK_GHOST_MIN_VISIBLE_MS = 200
 export const SKIPPED_PROJECT_GHOST_HIDE_DELAY_MS = 120
 
