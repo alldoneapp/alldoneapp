@@ -87,6 +87,7 @@ import {
     normalizeMilestoneType,
 } from '../../GoalMilestonesHelper'
 import { handleOptionalSnapshotError } from '../optionalSnapshotError'
+import { withoutServerAccessProjection } from '../accessProjection'
 
 //ACCESS FUNCTIONS
 
@@ -780,7 +781,7 @@ export async function uploadNewGoal(
         goal.completionMilestoneDate
     )
 
-    const goalToStore = { ...goal }
+    const goalToStore = withoutServerAccessProjection(goal)
     delete goalToStore.id
     getDb().doc(`goals/${projectId}/items/${goal.id}`).set(goalToStore, { merge: true })
 

@@ -2,7 +2,7 @@ import moment from 'moment'
 
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import store from '../redux/store'
-import { getDb, getId, getProjectUsersIds, getTaskData, runHttpsCallableFunction } from './backends/firestore'
+import { getDb, getId, getProjectUsersIds, getTaskData, logEvent, runHttpsCallableFunction } from './backends/firestore'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import URLTrigger from '../URLSystem/URLTrigger'
 import NavigationService from './NavigationService'
@@ -30,6 +30,7 @@ import { setSkillAssistant } from './backends/Skills/skillsFirestore'
 import TasksHelper, { DONE_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../components/TaskListView/Utils/TasksHelper'
 import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
+import { createBotQuickTopicChat } from './backends/Chats/createBotQuickTopic'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
 import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
@@ -188,32 +189,22 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         const chatId = getId()
         const quickDateId = moment().format('YYYYMMDD')
 
-        const quickDateNumber =
-            (await getDb().collection(`chatObjects/${projectId}/chats/`).where('quickDateId', '==', quickDateId).get())
-                .docs.length + 1
-
-        const isPublicFor = [FEED_PUBLIC_FOR_ALL]
-
-        const title = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
+        const titlePrefix = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
             loggedUser.displayName
-        )} ${moment().format(getDateFormat())} ${quickDateNumber}`
+        )} ${moment().format(getDateFormat())}`
 
-        await createChat(
-            chatId,
+        // Creating the chat and then immediately updating it races the server-owned access projection:
+        // until that projection exists, the canonical rules correctly deny the follow-up update/read.
+        // The callable creates the chat with its projection and follower state in one authenticated batch.
+        const topicData = await createBotQuickTopicChat({
             projectId,
-            loggedUser.uid,
-            '',
-            'topics',
-            title,
-            isPublicFor,
-            '#ffffff',
-            null,
-            null,
+            chatId,
             quickDateId,
-            assistant.uid,
-            STAYWARD_COMMENT,
-            loggedUser.uid
-        )
+            assistantId: assistant.uid,
+            titlePrefix,
+            isAssistantEnabled: enableAssistant,
+        })
+        logEvent('new_chat', { id: chatId })
 
         // Enable assistant BEFORE creating the message so the trigger condition is met.
         // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
@@ -222,7 +213,6 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
         // into the next Chat DV they open (AT-2084).
         if (enableAssistant) {
-            await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).update({ isAssistantEnabled: true })
             store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
             console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
         }
@@ -247,11 +237,8 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         }
 
         return {
-            projectId,
-            chatId,
-            assistantId: assistant.uid,
-            isPublicFor,
-            title,
+            ...topicData,
+            assistantId: topicData.assistantId || assistant.uid,
         }
     } catch (error) {
         console.error('Error creating bot quick topic:', error)

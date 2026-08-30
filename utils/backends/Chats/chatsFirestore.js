@@ -1,10 +1,10 @@
-import firebase from 'firebase/compat/app'
 import TasksHelper, { GENERIC_CHAT_TYPE } from '../../../components/TaskListView/Utils/TasksHelper'
 import {
     getDb,
     getObjectFollowersIds,
     globalWatcherUnsub,
     mapUserData,
+    runHttpsCallableFunction,
     trackStickyNote,
     untrackStickyNote,
 } from '../firestore'
@@ -13,8 +13,6 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from './chatsComments'
-import { updateUserDataDirectly } from '../Users/usersFirestore'
 
 export const watchChat = (projectId, chatId, watcherKey, callback) => {
     globalWatcherUnsub[watcherKey] = getDb()
@@ -142,56 +140,15 @@ export async function moveChatOnMoveObjectFromProject(
 ) {
     if (oldProjectId === newProjectId) return
 
-    const { loggedUser, loggedUserProjectsMap, projectUsers } = store.getState()
+    const { loggedUser, loggedUserProjectsMap } = store.getState()
 
     const sourceChatRef = getDb().doc(`chatObjects/${oldProjectId}/chats/${chatId}`)
     const chat = await sourceChatRef.get()
     if (!chat.exists) return
 
-    const commentDocs = await getDb().collection(`chatComments/${oldProjectId}/${objectType}/${chatId}/comments`).get()
-
-    const users = projectUsers[oldProjectId] || []
-    const pointerUpdates = []
-
-    users.forEach(user => {
-        if (user.lastAssistantCommentData?.[oldProjectId]?.objectId === chatId) {
-            pointerUpdates.push(
-                updateUserDataDirectly(
-                    user.uid,
-                    { [`lastAssistantCommentData.${oldProjectId}`]: firebase.firestore.FieldValue.delete() },
-                    null,
-                    oldProjectId
-                ).catch(error => {
-                    console.warn('Unable to clear the source-project assistant comment pointer', error)
-                })
-            )
-        }
-        if (
-            user.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.projectId === oldProjectId &&
-            user.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.objectId === chatId
-        ) {
-            pointerUpdates.push(
-                updateUserDataDirectly(
-                    user.uid,
-                    {
-                        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                            ...user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
-                            projectId: newProjectId,
-                        },
-                    },
-                    null,
-                    oldProjectId
-                ).catch(error => {
-                    console.warn('Unable to move the all-projects assistant comment pointer', error)
-                })
-            )
-        }
-    })
-
     const chatData = { ...chat.data() }
     delete chatData.movingToOtherProjectId
 
-    const targetWrites = []
     if (objectType === 'topics') {
         const newProjectUserIds = loggedUserProjectsMap[newProjectId]?.userIds || []
         const allowedUserIds = new Set(newProjectUserIds)
@@ -215,27 +172,19 @@ export async function moveChatOnMoveObjectFromProject(
                 chatData.isPublicFor.push(loggedUser.uid)
             }
         }
-
-        targetWrites.push(
-            getDb().doc(`followers/${newProjectId}/topics/${chatId}`).set({ usersFollowing: followerIds })
-        )
-        followerIds.forEach(userId => {
-            targetWrites.push(
-                getDb()
-                    .doc(`usersFollowing/${newProjectId}/entries/${userId}`)
-                    .set({ topics: { [chatId]: true } }, { merge: true })
-            )
-        })
     }
 
-    commentDocs.forEach(doc => {
-        targetWrites.push(
-            getDb().doc(`chatComments/${newProjectId}/${objectType}/${chatId}/comments/${doc.id}`).set(doc.data())
-        )
+    // Comments retain their original creatorId. Recreating a teammate's or assistant's
+    // comment from the browser would correctly be rejected as impersonation, so the
+    // authenticated callable verifies both project memberships and copies the conversation
+    // with the Admin SDK. It also owns follower/pointer maintenance for top-level chats.
+    await runHttpsCallableFunction('copyProjectMoveChatSecondGen', {
+        sourceProjectId: oldProjectId,
+        targetProjectId: newProjectId,
+        objectType,
+        objectId: chatId,
     })
 
-    await Promise.all([...pointerUpdates, ...targetWrites])
-    await getDb().doc(`chatObjects/${newProjectId}/chats/${chatId}`).set(chatData)
     await sourceChatRef.update({ movingToOtherProjectId: newProjectId })
     if (beforeDeleteSource) await beforeDeleteSource({ ...chatData, id: chatId })
     await sourceChatRef.delete()

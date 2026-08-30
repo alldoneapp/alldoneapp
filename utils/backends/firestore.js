@@ -59,6 +59,7 @@ import { writeLinkedParentsIfChanged } from './linkedParentsWrite'
 import { buildBacklinkToken, getBacklinkIdsVisibleToField } from './firestoreAccess'
 import { handleOptionalSnapshotError } from './optionalSnapshotError'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
+import { withoutServerAccessProjection } from './accessProjection'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -2203,8 +2204,9 @@ export async function setTaskProjectFeedsChain(currentProject, newProject, task,
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds, which is
 // project-scoped by path. When an object is moved to another project it keeps its id but lives under a new
 // project path, so its activity history would otherwise become unreachable from the new project. This copies
-// that history across (verbatim, preserving isPublicFor/lastChangeDate) so the moved object's Updates tab
-// keeps showing it. Mirrors moveChatOnMoveObjectFromProject for the feed side of a move.
+// that history across (preserving user-authored fields such as isPublicFor/lastChangeDate) so the moved
+// object's Updates tab keeps showing it. Server-owned access projections are deliberately omitted and
+// rebuilt for the destination project. Mirrors moveChatOnMoveObjectFromProject for the feed side of a move.
 export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newProjectId, objectType, objectId) {
     if (!oldProjectId || !newProjectId || !objectType || !objectId) return 0
     if (oldProjectId === newProjectId) return 0
@@ -2219,7 +2221,7 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
     feedsSnapshot.forEach(feedDoc => {
         batch.set(
             db.doc(`projectsInnerFeeds/${newProjectId}/${objectType}/${objectId}/feeds/${feedDoc.id}`),
-            feedDoc.data()
+            withoutServerAccessProjection(feedDoc.data())
         )
     })
     await awaitWriteAck(batch.commit(), 'moved object activity history')

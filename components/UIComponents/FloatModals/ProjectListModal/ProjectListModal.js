@@ -172,9 +172,15 @@ export default function ProjectListModal({
         closeModal()
     }
 
+    const commitSafely = index => {
+        commit(index).catch(error => {
+            console.error('[ProjectListModal] Could not commit project selection', error)
+        })
+    }
+
     const onRowPress = index => {
         if (commitMode === 'confirm') setActiveOptionIndex(index)
-        else commit(index)
+        else commitSafely(index)
     }
 
     useEffect(() => {
@@ -184,7 +190,7 @@ export default function ProjectListModal({
             else if (key === 'ArrowDown') moveSelection(1)
             else if (key === 'Enter') {
                 if (activeOptionIndex === -1 && !leadingOptionVisible) closeModal()
-                else commit(activeOptionIndex)
+                else commitSafely(activeOptionIndex)
             } else if (tabs && (key === 'Tab' || key === 'ArrowRight')) {
                 changeTab(activeTabIndex + 1 === tabs.length ? 0 : activeTabIndex + 1)
             } else if (tabs && key === 'ArrowLeft') {
