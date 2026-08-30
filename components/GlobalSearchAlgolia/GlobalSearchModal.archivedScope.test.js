@@ -37,6 +37,7 @@ import {
     ALL_PROJECTS_OPTION,
 } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { translate } from '../../i18n/TranslationService'
+import { getAllUserProjects } from '../../utils/backends/firestore'
 
 const searchCalls = []
 
@@ -167,9 +168,11 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
     beforeEach(() => {
         searchCalls.length = 0
+        getAllUserProjects.mockResolvedValue(ALL_PROJECTS)
     })
 
     afterEach(() => {
+        jest.restoreAllMocks()
         act(() => component.unmount())
     })
 
@@ -178,6 +181,28 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         const picker = await openScopePicker()
 
         expect(picker.props.tabs.map(tab => tab.name)).toEqual(['Active', 'Archived'])
+    })
+
+    it('falls back to loaded projects without an unhandled rejection when the scope refresh is denied', async () => {
+        const permissionError = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        getAllUserProjects.mockRejectedValueOnce(permissionError)
+
+        await mount({ loggedUserProjects: [ACTIVE_PROJECT, OTHER_ACTIVE_PROJECT] })
+        const picker = await openScopePicker()
+
+        expect(picker.props.tabs.map(tab => tab.name)).toEqual(['Active', 'Archived'])
+        expect(picker.props.tabs[0].projects.map(project => project.id).sort()).toEqual([
+            'project-active',
+            'project-active-2',
+        ])
+        expect(picker.props.tabs[1].projects).toEqual([])
+        expect(consoleError).toHaveBeenCalledWith(
+            '[GlobalSearch] Could not refresh the project scope, using loaded projects',
+            permissionError
+        )
     })
 
     it('lists the archived projects in the Archived group, with archived mode OFF', async () => {

@@ -263,6 +263,18 @@ service cloud.firestore {
         .hasAny(['readerIds', 'roleIdsVisibleTo', 'followedByVisibleTo', 'followedReaderIds', 'backlinkIdsVisibleTo']);
     }
 
+    function canAccessObjectWhileProjectionIsPending(projectId, data) {
+      // Object creates and the Admin SDK projection trigger are separate
+      // commits. The creating client can legitimately enqueue an immediate
+      // title/follower/content update before that trigger lands. During only
+      // that all-projection-fields-absent state, fall back to the same
+      // isPublicFor authorization used for create. Server-owned projection
+      // fields remain immutable, and callers not already named by the source
+      // object still cannot grant themselves access.
+      return canReadObject(projectId, data) ||
+        (accessProjectionAbsent(data) && canWriteObject(projectId, data));
+    }
+
     function canReadUserScopedProjectData(projectId, userId) {
       return signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
@@ -304,7 +316,11 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      allow read: if canReadProject(projectId);
+      // Project-list queries filter `userIds` with array-contains. Express membership against the
+      // candidate resource so the rules engine can prove that query; routing through
+      // `projectDoc(projectId)` is equivalent for a single read but opaque to collection queries.
+      allow read: if signedIn() && request.auth.uid in resource.data.get('userIds', []);
+      allow read: if resource.data.get('isShared', privateProject()) != privateProject();
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
       allow update: if isProjectMember(projectId);
       allow delete: if signedIn() &&
@@ -329,16 +345,23 @@ service cloud.firestore {
     match /noteItems/{projectId}/notes/{noteId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /noteItemsVersions/{projectId}/{noteId}/{versionId} {
-      allow read, write: if canReadObject(projectId, get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data);
+      allow read, write: if canAccessObjectWhileProjectionIsPending(
+        projectId,
+        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
+      );
     }
 
     match /noteItemsDailyVersions/{projectId}/notes/{noteId} {
-      allow read, write: if canReadObject(projectId, get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data);
+      allow read, write: if canAccessObjectWhileProjectionIsPending(
+        projectId,
+        get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
+      );
     }
 
     match /goals/{projectId}/items/{goalId} {
@@ -351,8 +374,9 @@ service cloud.firestore {
     match /chatObjects/{projectId}/chats/{chatId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /projectsContacts/{projectId}/contacts/{contactId} {
@@ -553,7 +577,14 @@ service cloud.firestore {
     }
 
     match /feedsCount/{projectId}/{userId}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
+      // The feed event creator fans out an unread counter to the other project
+      // members in the same batch as the event. Counters contain no private
+      // source data and remain readable/deletable only by their owner; writes
+      // are limited to real members and real member targets.
+      allow read, delete: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
+      allow create, update: if isProjectMember(projectId) &&
+        projectDoc(projectId).data.userIds is list &&
+        userId in projectDoc(projectId).data.userIds;
     }
 
     match /chatNotifications/{projectId}/{userId}/{document=**} {
@@ -639,7 +670,7 @@ service cloud.firestore {
     }
 
     match /notesCollab/{projectId}/notes/{noteId} {
-      allow read, write: if canReadObject(
+      allow read, write: if canAccessObjectWhileProjectionIsPending(
         projectId,
         get(/databases/$(database)/documents/noteItems/$(projectId)/notes/$(noteId)).data
       );

@@ -262,9 +262,13 @@ class EditNote extends Component {
                 if (tmpNote.title === '') {
                     this.askToDeleteNote()
                 } else {
-                    updateNoteMeta(projectId, tmpNote, note)
+                    updateNoteMeta(projectId, tmpNote, note).catch(error =>
+                        console.error('[notes] Could not persist note metadata update', error)
+                    )
                     if (note.extendedTitle !== tmpNote.extendedTitle) {
-                        updateChatTitleWithoutFeeds(projectId, note.id, tmpNote.extendedTitle)
+                        updateChatTitleWithoutFeeds(projectId, note.id, tmpNote.extendedTitle).catch(error =>
+                            console.error('[notes] Could not mirror the note title to its chat', error)
+                        )
                     }
                     this.trySetLinkedObjects(note)
                     if (onSuccessAction !== undefined) {

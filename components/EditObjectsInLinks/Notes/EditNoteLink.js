@@ -161,7 +161,9 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
             dispatch(startLoadingData())
             setSendingData(true)
 
-            updateNoteMeta(projectId, updatedNote, note)
+            updateNoteMeta(projectId, updatedNote, note).catch(error =>
+                console.error('[notes] Could not persist linked-note metadata update', error)
+            )
             trySetLinkedObjects(note)
 
             dispatch(stopLoadingData())

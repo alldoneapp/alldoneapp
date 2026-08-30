@@ -384,6 +384,21 @@ describe('project membership authority', () => {
 })
 
 describe('queries used by the web client', () => {
+    it('allows the signed-in user project query through its authoritative userIds filter', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const memberProjects = query(collection(memberDb, 'projects'), where('userIds', 'array-contains', MEMBER_ID))
+
+        const snapshot = await assertSucceeds(getDocs(memberProjects))
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual(
+            [PROJECT_ID, MOVE_TARGET_PROJECT_ID, SHARED_PROJECT_ID].sort()
+        )
+        await assertFails(
+            getDocs(query(collection(outsiderDb, 'projects'), where('userIds', 'array-contains', MEMBER_ID)))
+        )
+        await assertFails(getDocs(collection(memberDb, 'projects')))
+    })
+
     it('allows anonymous public-sentinel queries in a shared project', async () => {
         const publicDb = testEnv.unauthenticatedContext().firestore()
         const tasks = query(
@@ -436,7 +451,15 @@ describe('queries used by the web client', () => {
                 quickDateId: '20260830',
             })
         )
-        await assertFails(updateDoc(newChatRef, { isAssistantEnabled: true }))
+        // Client creates and its first follower/title update can reach the
+        // server before the Admin SDK projection trigger. The source
+        // isPublicFor field authorizes that short projection-pending window.
+        await assertSucceeds(updateDoc(newChatRef, { isAssistantEnabled: true }))
+        await assertFails(
+            updateDoc(newChatRef, {
+                readerIds: [MEMBER_ID, OUTSIDER_ID],
+            })
+        )
         await assertFails(
             updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
                 followedByVisibleTo: { [OUTSIDER_ID]: true },
@@ -458,6 +481,72 @@ describe('queries used by the web client', () => {
 
         const snapshot = await assertSucceeds(getDocs(notes))
         expect(snapshot.docs.map(item => item.id)).toEqual(['followed-note'])
+    })
+
+    it('allows an authorized note lifecycle while its server projection is pending', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const noteRef = doc(memberDb, `noteItems/${PROJECT_ID}/notes/new-client-note`)
+
+        await assertSucceeds(
+            setDoc(noteRef, {
+                creatorId: MEMBER_ID,
+                userId: MEMBER_ID,
+                isPublicFor: [MEMBER_ID],
+                title: 'first title',
+            })
+        )
+        await assertSucceeds(updateDoc(noteRef, { title: 'edited title' }))
+        await assertSucceeds(setDoc(doc(memberDb, `notesCollab/${PROJECT_ID}/notes/new-client-note`), { updatedAt: 1 }))
+        await assertSucceeds(
+            setDoc(doc(memberDb, `noteItemsVersions/${PROJECT_ID}/new-client-note/version-1`), { created: 1 })
+        )
+        await assertFails(updateDoc(doc(teammateDb, noteRef.path), { title: 'not allowed' }))
+        await assertFails(
+            updateDoc(noteRef, {
+                readerIds: [MEMBER_ID, OUTSIDER_ID],
+            })
+        )
+    })
+
+    it('accepts the collaborative feed fan-out that accompanies a new note', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+        const noteId = 'note-with-feed-fanout'
+        const feedId = 'feed-1'
+        const feed = {
+            creatorId: MEMBER_ID,
+            objectId: noteId,
+            isPublicFor: [0],
+            lastChangeDate: 1,
+        }
+
+        batch.set(doc(memberDb, `noteItems/${PROJECT_ID}/notes/${noteId}`), {
+            creatorId: MEMBER_ID,
+            userId: MEMBER_ID,
+            isPublicFor: [0],
+            title: 'new note',
+        })
+        batch.set(doc(memberDb, `projectsInnerFeeds/${PROJECT_ID}/notes/${noteId}/feeds/${feedId}`), feed)
+        batch.set(doc(memberDb, `feedsStore/${PROJECT_ID}/all/${feedId}`), feed)
+        batch.set(doc(memberDb, `feedsStore/${PROJECT_ID}/${TEAMMATE_ID}/feeds/followed/${feedId}`), feed)
+        batch.set(
+            doc(memberDb, `feedsCount/${PROJECT_ID}/${TEAMMATE_ID}/followed`),
+            { notes: { [noteId]: { [feedId]: { dateFormated: '30082026', feed } } } },
+            { merge: true }
+        )
+        batch.set(
+            doc(memberDb, `followers/${PROJECT_ID}/notes/${noteId}`),
+            { usersFollowing: [MEMBER_ID] },
+            { merge: true }
+        )
+        batch.set(
+            doc(memberDb, `usersFollowing/${PROJECT_ID}/entries/${MEMBER_ID}`),
+            { notes: { [noteId]: true } },
+            { merge: true }
+        )
+
+        await assertSucceeds(batch.commit())
     })
 
     it('allows the query-shaped readerIds task query', async () => {
@@ -595,6 +684,28 @@ describe('queries used by the web client', () => {
                 lastChangeDate: 4,
             })
         )
+    })
+
+    it('allows project feed creators to fan out unread counters without exposing teammate counters', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const teammateCounter = doc(memberDb, `feedsCount/${PROJECT_ID}/${TEAMMATE_ID}/followed`)
+
+        await assertSucceeds(
+            setDoc(
+                teammateCounter,
+                {
+                    notes: {
+                        'note-1': {
+                            'feed-1': { dateFormated: '30082026' },
+                        },
+                    },
+                },
+                { merge: true }
+            )
+        )
+        await assertFails(getDoc(teammateCounter))
+        await assertFails(setDoc(doc(outsiderDb, `feedsCount/${PROJECT_ID}/${TEAMMATE_ID}/all`), { forged: true }))
     })
 
     it('allows backlink queries only through the per-reader server projection', async () => {

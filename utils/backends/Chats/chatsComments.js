@@ -981,6 +981,11 @@ const getChatFollowerIds = async (projectId, chatName, objectType, chatId) => {
 }
 
 async function setFollowChatNotifications(projectId, userId, chatId, followed, batch) {
+    // chatNotifications is a private per-user inbox. A client may update its
+    // own existing entries, but adding a mentioned/assigned teammate as a
+    // follower must not query that teammate's inbox from this browser.
+    if (store.getState().loggedUser?.uid !== userId) return
+
     const docs = await getDb()
         .collection(`chatNotifications/${projectId}/${userId}`)
         .where('chatId', '==', chatId)

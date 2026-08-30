@@ -114,6 +114,7 @@ import {
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
+import { DEFAULT_MAX_STORED_FEEDS, deleteOldVisibleFeeds } from './Feeds/feedCleanup'
 import {
     setAllFeeds,
     setFollowedFeeds,
@@ -1364,10 +1365,23 @@ export async function getUserOrContactBy(projectId, userId) {
         getAssistantData(projectId, userId),
         getAssistantData(GLOBAL_PROJECT_ID, userId),
     ]
-    const [user, contact, assistant, globalAssistant] = await Promise.all(promises)
+    // These are polymorphic probes, not four assertions that the same id must be readable in every
+    // collection. Under the least-privilege rules an id belonging to a user or assistant is not a
+    // readable contact document, so that deliberately speculative contact get can be denied. Do
+    // not let the expected miss reject a direct-link navigation after the real owner already
+    // resolved. Unexpected failures still surface when none of the candidate lookups succeeds.
+    const results = await Promise.allSettled(promises)
+    const [user, contact, assistant, globalAssistant] = results.map(result =>
+        result.status === 'fulfilled' ? result.value : null
+    )
 
     const resolved = user || contact || assistant || globalAssistant
     if (resolved) return resolved
+
+    const unexpectedFailure = results.find(
+        result => result.status === 'rejected' && result.reason?.code !== 'permission-denied'
+    )
+    if (unexpectedFailure) throw unexpectedFailure.reason
 
     // Nothing explained the absence, so the cheap answer is no longer good enough: escalate to the
     // verified read. That is what still recovers a real user whose realtime read was wrong (the
@@ -5019,7 +5033,7 @@ export async function createNoteFeedsChain(projectId, noteId, noteData) {
         batch
     )
 
-    batch.commit()
+    await batch.commit()
 }
 
 export async function createNoteUpdatedFeedsChain(projectId, noteId, noteData, oldNoteData) {
@@ -5041,7 +5055,7 @@ export async function createNoteUpdatedFeedsChain(projectId, noteId, noteData, o
         await updateNoteStickyDataFeedsChain(projectId, noteData.stickyData.days, noteId)
     }
 
-    batch.commit()
+    await batch.commit()
 }
 
 export const trackStickyNote = async (projectId, noteId, stickyEndDate) => {
@@ -5049,7 +5063,7 @@ export const trackStickyNote = async (projectId, noteId, stickyEndDate) => {
 }
 
 export const untrackStickyNote = noteId => {
-    db.doc(`stickyNotesData/${noteId}`).delete()
+    return db.doc(`stickyNotesData/${noteId}`).delete()
 }
 
 export async function updateNoteStickyDataFeedsChain(projectId, days, noteId) {
@@ -5062,7 +5076,7 @@ export async function updateNoteStickyDataFeedsChain(projectId, days, noteId) {
             feedCreator: store.getState().loggedUser,
         }
         await tryAddFollower(projectId, followNoteData, batch)
-        batch.commit()
+        await batch.commit()
     }
 }
 
@@ -5074,7 +5088,7 @@ export async function updateNoteTitleFeedsChain(projectId, note, title, noteId) 
     await processFollowersWhenEditTexts(projectId, FOLLOWER_NOTES_TYPE, noteId, note, mentionedUserIds, true, batch)
 
     await createNoteNameChangedFeed(projectId, note.title, title, noteId, batch)
-    batch.commit()
+    await batch.commit()
 }
 
 export function insertFollowersUserToFeedChain(
@@ -6014,7 +6028,7 @@ export async function addFollower(projectId, followData, externalBatch) {
 
     updateEditonForFollowUnfollowAnObjectSafely(projectId, followObjectId, followObjectsType, userFollowingId)
     addFollowerWithoutFeeds(projectId, userFollowingId, followObjectsType, followObjectId, actionType, batch)
-    addFollowerToChat(projectId, followObjectId, userFollowingId)
+    await addFollowerToChat(projectId, followObjectId, userFollowingId)
 
     if (!followObject) followObject = await getObject(projectId, followObjectId, followObjectsType)
     if (
@@ -6603,48 +6617,57 @@ async function increaseNewFeedCount(
 
 //// ROBOT FOR CLEAN FEEDS
 
-const MAX_AMOUNT_OF_FEEDS_STORED = 200
-
-export function cleanStoreFeeds(projectId, projectUsersIds) {
-    deleteOldFeeds(`feedsStore/${projectId}/all`)
-
-    projectUsersIds.forEach(userId => {
-        deleteOldFeeds(`feedsStore/${projectId}/${userId}/feeds/followed`)
+const reportFeedCleanupError = (scope, error) => {
+    console.warn('[feeds cleanup] Could not trim legacy client feed data', {
+        scope,
+        code: error?.code,
+        message: error?.message,
     })
+}
+
+export function cleanStoreFeeds(projectId) {
+    const loggedUserId = store.getState().loggedUser?.uid
+    if (!loggedUserId) return Promise.resolve()
+
+    // Each followed feed is user-scoped by the rules. A browser must never scan
+    // or rewrite the other project members' personal feeds; trusted backend
+    // cleanup already handles project-wide retention.
+    return Promise.all([
+        deleteOldVisibleFeeds(db, `feedsStore/${projectId}/all`, loggedUserId),
+        deleteOldVisibleFeeds(db, `feedsStore/${projectId}/${loggedUserId}/feeds/followed`, loggedUserId),
+    ]).catch(error => reportFeedCleanupError(`store:${projectId}`, error))
 }
 
 export async function cleanInnerFeeds(projectId, objectId, objectTypes) {
-    deleteOldFeeds(`projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`)
+    const loggedUserId = store.getState().loggedUser?.uid
+    if (!loggedUserId) return
+
+    const path = `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`
+    await deleteOldVisibleFeeds(db, path, loggedUserId).catch(error =>
+        reportFeedCleanupError(`inner:${projectId}:${objectTypes}:${objectId}`, error)
+    )
 }
 
-async function deleteOldFeeds(path) {
-    const feedsDocs = (await db.collection(path).orderBy('lastChangeDate', 'desc').get()).docs
-    const feedsIds = []
-    feedsDocs.forEach(function (doc) {
-        feedsIds.push(doc.id)
-    })
+export function cleanNewFeeds(projectId) {
+    const loggedUserId = store.getState().loggedUser?.uid
+    if (!loggedUserId) return Promise.resolve()
 
-    feedsIds.splice(0, MAX_AMOUNT_OF_FEEDS_STORED)
-    feedsIds.forEach(id => {
-        db.doc(`${path}/${id}`).delete()
-    })
-}
-
-export function cleanNewFeeds(projectId, projectUsersIds) {
-    projectUsersIds.forEach(userId => {
-        cleanNewFeedsTab(projectId, userId, 'followed')
-        cleanNewFeedsTab(projectId, userId, 'all')
-    })
+    // feedsCount is also user-scoped. The old loop attempted to read and write
+    // every teammate's counter from this browser, which strict rules reject.
+    return Promise.all([
+        cleanNewFeedsTab(projectId, loggedUserId, 'followed'),
+        cleanNewFeedsTab(projectId, loggedUserId, 'all'),
+    ]).catch(error => reportFeedCleanupError(`counts:${projectId}:${loggedUserId}`, error))
 }
 
 async function cleanNewFeedsTab(projectId, userId, tab) {
     const newFeeds = (await db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).get()).data()
     const linealFeeds = parseNewFeeds(newFeeds)
 
-    const toLeftNewFeeds = linealFeeds.splice(0, MAX_AMOUNT_OF_FEEDS_STORED)
+    const toLeftNewFeeds = linealFeeds.splice(0, DEFAULT_MAX_STORED_FEEDS)
     const newFeedsObject = parseInvertedNewFeeds(toLeftNewFeeds)
 
-    db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).set(newFeedsObject)
+    await db.doc(`/feedsCount/${projectId}/${userId}/${tab}`).set(newFeedsObject)
 }
 
 function parseNewFeeds(newFeeds) {
