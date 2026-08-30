@@ -440,11 +440,11 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds: ['project-1', 'project-2'],
                 projectReadyStates: [true, false],
                 minIntervalMs: 200,
-                preloadConcurrency: 3,
+                preloadConcurrency: 20,
             })
         })
 
-        it('starts a four-project foreground wave and leaves the rest for background admission', () => {
+        it('covers a fourteen-project morning in one foreground discovery wave', () => {
             const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
             getProjectIdsForAllProjectsTasks.mockReturnValue(projectIds)
             const state = buildState({ openTasksAmount: 100, todayEmptyGoalsTotal: 0 })
@@ -459,7 +459,7 @@ describe('OpenTasksViewAllProjects', () => {
                 projectIds,
                 projectReadyStates: Array(14).fill(true),
                 minIntervalMs: 200,
-                preloadConcurrency: 3,
+                preloadConcurrency: 20,
             })
         })
     })
