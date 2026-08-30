@@ -8,6 +8,7 @@ const { assertFails, assertSucceeds, initializeTestEnvironment } = require('@fir
 const {
     FieldPath,
     collection,
+    collectionGroup,
     doc,
     getDoc,
     getDocs,
@@ -71,6 +72,7 @@ const seed = async () => {
         })
         await setDoc(doc(db, 'roles/administrator'), { userId: 'admin' })
         await setDoc(doc(db, `items/${PROJECT_ID}/tasks/public-task`), {
+            projectId: PROJECT_ID,
             isPublicFor: [0],
             observersIds: [MEMBER_ID],
             parentId: null,
@@ -80,11 +82,13 @@ const seed = async () => {
             backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN] },
         })
         await setDoc(doc(db, `items/${PROJECT_ID}/tasks/private-task`), {
+            projectId: PROJECT_ID,
             isPublicFor: [MEMBER_ID],
             observersIds: [MEMBER_ID],
             parentId: null,
             dueDate: 253402214400000,
             done: false,
+            inDone: false,
             currentReviewerId: MEMBER_ID,
             linkedParentTasksIds: [BACKLINK_OBJECT_ID],
             readerIds: [MEMBER_ID],
@@ -92,6 +96,7 @@ const seed = async () => {
             backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN] },
         })
         await setDoc(doc(db, `items/${PROJECT_ID}/tasks/focus-task`), {
+            projectId: PROJECT_ID,
             userId: TEAMMATE_ID,
             userIds: [TEAMMATE_ID],
             isPublicFor: [0],
@@ -99,11 +104,13 @@ const seed = async () => {
             roleIdsVisibleTo: { [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
         })
         await setDoc(doc(db, `items/${OTHER_PROJECT_ID}/tasks/other-task`), {
+            projectId: OTHER_PROJECT_ID,
             isPublicFor: [0],
             readerIds: ['other-owner'],
             roleIdsVisibleTo: { 'other-owner': [] },
         })
         await setDoc(doc(db, `items/${SHARED_PROJECT_ID}/tasks/shared-task`), {
+            projectId: SHARED_PROJECT_ID,
             isPublicFor: [0],
             observersIds: [MEMBER_ID],
             readerIds: [0, MEMBER_ID],
@@ -178,6 +185,7 @@ describe('project membership authority', () => {
         await assertSucceeds(getDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`)))
         await assertSucceeds(
             setDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/member-created`), {
+                projectId: PROJECT_ID,
                 isPublicFor: [0],
                 observersIds: [MEMBER_ID],
             })
@@ -434,6 +442,50 @@ describe('queries used by the web client', () => {
 
         const snapshot = await assertSucceeds(getDocs(tasks))
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+    })
+
+    it('allows the cross-project assigned-task query only through the reader projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const assignedTasks = query(
+            collectionGroup(memberDb, 'tasks'),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            where('projectId', 'in', [PROJECT_ID]),
+            where('currentReviewerId', '==', MEMBER_ID),
+            where('inDone', '==', false),
+            where('dueDate', '<=', 253402214400000)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(assignedTasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['private-task'])
+
+        await assertFails(
+            setDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/wrong-project-id`), {
+                projectId: OTHER_PROJECT_ID,
+                isPublicFor: [0],
+            })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), {
+                projectId: OTHER_PROJECT_ID,
+            })
+        )
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), {
+                projectId: PROJECT_ID,
+                name: 'Ordinary edit',
+            })
+        )
+
+        await assertFails(
+            getDocs(
+                query(
+                    collectionGroup(memberDb, 'tasks'),
+                    where('currentReviewerId', '==', MEMBER_ID),
+                    where('inDone', '==', false),
+                    where('dueDate', '<=', 253402214400000)
+                )
+            )
+        )
     })
 
     it('allows the projected random Someday task query', async () => {

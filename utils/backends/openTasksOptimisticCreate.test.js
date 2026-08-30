@@ -82,7 +82,7 @@ const buildQuery = () => {
 }
 
 jest.mock('./firestore', () => ({
-    getDb: () => ({ collection: () => buildQuery(), doc: () => buildQuery() }),
+    getDb: () => ({ collection: () => buildQuery(), collectionGroup: () => buildQuery(), doc: () => buildQuery() }),
     globalWatcherUnsub: {},
     mapGoalData: jest.fn(),
     mapMilestoneData: jest.fn(),
@@ -288,6 +288,49 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
         expect(listeners).toHaveLength(56)
 
+        projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
+    })
+
+    it('shares one foreground assigned query across a fourteen-project morning', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
+
+        projectIds.forEach(projectId =>
+            watchOpenTasks(projectId, jest.fn(), false, false, false, `${projectId}user-1`, false, {
+                deferSecondaryStreams: true,
+                shareAssignedTasksAcrossProjects: true,
+                sharedAssignedTaskProjectIds: projectIds,
+            })
+        )
+
+        expect(listeners).toHaveLength(1)
+        deliverSnapshot(0, [])
+
+        jest.advanceTimersByTime(DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(15)
+        jest.advanceTimersByTime(DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS - DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(43)
+
+        projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
+    })
+
+    it('falls back to per-project assigned queries when Firestore in-query limits are exceeded', () => {
+        jest.useFakeTimers()
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        const projectIds = Array.from({ length: 31 }, (_, index) => `project-${index}`)
+
+        projectIds.forEach(projectId =>
+            watchOpenTasks(projectId, jest.fn(), false, false, false, `${projectId}user-1`, false, {
+                deferSecondaryStreams: true,
+                shareAssignedTasksAcrossProjects: true,
+                sharedAssignedTaskProjectIds: projectIds,
+            })
+        )
+
+        expect(listeners).toHaveLength(31)
         projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
     })
 

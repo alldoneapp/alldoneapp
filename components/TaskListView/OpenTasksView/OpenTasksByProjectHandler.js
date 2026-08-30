@@ -41,6 +41,7 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 export default function OpenTasksByProjectHandler({
     projectIndex,
     firstProject,
+    allProjectsTaskProjectIds = [],
     setProjectsHaveTasksInFirstDay,
     assistantProfileMode = false,
 }) {
@@ -178,6 +179,8 @@ export default function OpenTasksByProjectHandler({
                 {
                     trackConnectionHealth: inSelectedProject,
                     deferSecondaryStreams: !inSelectedProject,
+                    shareAssignedTasksAcrossProjects: !inSelectedProject,
+                    sharedAssignedTaskProjectIds: allProjectsTaskProjectIds,
                 }
             )
 
