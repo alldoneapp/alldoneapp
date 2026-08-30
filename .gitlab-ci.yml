@@ -354,7 +354,10 @@ test:web:full:
         # No selection step here — this is the whole web suite by design.
         # ci/jest.web.config.js excludes functions/, whose separate dependency
         # tree this image does not carry.
-        - npm test -- --config ci/jest.web.config.js --runInBand
+        # Several legacy suites print React warnings for every render. Their noise can hit
+        # GitLab's 4 MB trace cap before Jest reports the failing assertion, as pipeline 8605 did.
+        # `--silent` suppresses test console calls, not assertion output or Jest's suite summary.
+        - npm test -- --config ci/jest.web.config.js --runInBand --silent
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
         - if: '$CI_COMMIT_BRANCH == "develop"'
