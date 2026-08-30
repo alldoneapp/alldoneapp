@@ -34,7 +34,20 @@ describe('selectInitialTaskDataPublished', () => {
         ).toBe(true)
     })
 
-    it('releases as soon as one scoped project publishes real task content', () => {
+    it('releases as soon as one scoped project publishes live task content', () => {
+        expect(
+            selectInitialTaskDataPublished(
+                state({
+                    filteredOpenTasksStore: {
+                        'p2user-1': [['0', 3]],
+                    },
+                    initialLoadingEndOpenTasks: { 'p2user-1': true },
+                })
+            )
+        ).toBe(true)
+    })
+
+    it('does not treat a restored cold-start projection as live task content', () => {
         expect(
             selectInitialTaskDataPublished(
                 state({
@@ -43,7 +56,7 @@ describe('selectInitialTaskDataPublished', () => {
                     },
                 })
             )
-        ).toBe(true)
+        ).toBe(false)
     })
 
     it('ignores archived, template and guide projects when settling All Projects', () => {
