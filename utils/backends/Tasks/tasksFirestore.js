@@ -170,6 +170,7 @@ import {
     supersedeFocusHandoffs,
 } from './focusHandoffRace'
 import { isTaskOnUserPlate } from './focusTaskEligibility'
+import { withoutServerAccessProjection } from '../accessProjection'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -675,9 +676,10 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
         subTask.humanReadableId = null
 
         updateEditionData(subTask)
+        const subTaskToStore = withoutServerAccessProjection(subTask)
         batch.set(getDb().collection(`items/${projectId}/tasks`).doc(newTaskId), {
-            ...subTask,
-            name: subTask.name.toLowerCase(),
+            ...subTaskToStore,
+            name: subTaskToStore.name.toLowerCase(),
         })
 
         updateTaskData(
@@ -2256,7 +2258,9 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     delete taskCopy.time
     taskCopy.projectId = newProject.id
     await awaitWriteAck(
-        getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
+        getDb()
+            .doc(`items/${newProject.id}/tasks/${task.id}`)
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy))),
         'create task in target project'
     )
     performanceTrace.mark('target_task_created')
@@ -2373,7 +2377,9 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     delete taskCopy.time
     taskCopy.projectId = newProject.id
     await awaitWriteAck(
-        getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy)),
+        getDb()
+            .doc(`items/${newProject.id}/tasks/${task.id}`)
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy))),
         'create goal task in target project'
     )
 

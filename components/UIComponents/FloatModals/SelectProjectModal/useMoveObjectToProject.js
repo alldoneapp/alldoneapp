@@ -74,14 +74,15 @@ export default function useMoveObjectToProject() {
             task_count: type === 'task' ? 1 : 0,
             subtask_count: type === 'task' ? data.subtaskIds?.length || 0 : 0,
         })
-        const observeDetachedMove = promise => {
-            Promise.resolve(promise).then(
-                () => performanceTrace.end('move_complete', { outcome: 'success' }),
-                error => {
-                    performanceTrace.fail('move_failed')
-                    throw error
-                }
-            )
+        const completeMove = async promise => {
+            try {
+                const result = await promise
+                performanceTrace.end('move_complete', { outcome: 'success' })
+                return result
+            } catch (error) {
+                performanceTrace.fail('move_failed')
+                throw error
+            }
         }
         const objectType = type === 'chat' ? 'topics' : type + 's'
         const beforeDeleteSource =
@@ -122,20 +123,28 @@ export default function useMoveObjectToProject() {
             const task = data
             const taskOwner = TasksHelper.getTaskOwner(task.userId, project.id)
             dispatch(startLoadingData())
-
-            if (!newProject.userIds.includes(taskOwner.uid) && task.userId !== DEFAULT_WORKSTREAM_ID) {
-                observeDetachedMove(
-                    setTaskAssignee(project.id, task.id, loggedUser.uid, taskOwner, loggedUser, task).then(
-                        updatedTask => {
-                            const taskMove = setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
-                            dispatch([setAssignee(loggedUser), hideProjectPicker()])
-                            return taskMove
-                        }
+            try {
+                if (!newProject.userIds.includes(taskOwner.uid) && task.userId !== DEFAULT_WORKSTREAM_ID) {
+                    await completeMove(
+                        (async () => {
+                            const updatedTask = await setTaskAssignee(
+                                project.id,
+                                task.id,
+                                loggedUser.uid,
+                                taskOwner,
+                                loggedUser,
+                                task
+                            )
+                            return setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
+                        })()
                     )
-                )
-            } else {
-                observeDetachedMove(setTaskProject(project, newProject, task))
+                    dispatch(setAssignee(loggedUser))
+                } else {
+                    await completeMove(setTaskProject(project, newProject, task))
+                }
                 dispatch(hideProjectPicker())
+            } finally {
+                dispatch(stopLoadingData())
             }
         } else if (type === 'note') {
             const note = data
@@ -153,23 +162,19 @@ export default function useMoveObjectToProject() {
             const movedOwnerId = resolveMovedNoteOwnerId(newProject.id, note.userId, loggedUser.uid)
 
             dispatch(startLoadingData())
-            if (movedOwnerId !== note.userId) {
-                observeDetachedMove(
-                    setNoteProject(project, newProject, note, noteOwner, loggedUser).then(() => {
-                        dispatch(stopLoadingData())
-                    })
+            try {
+                await completeMove(
+                    movedOwnerId !== note.userId
+                        ? setNoteProject(project, newProject, note, noteOwner, loggedUser)
+                        : setNoteProject(project, newProject, note)
                 )
-            } else {
-                observeDetachedMove(
-                    setNoteProject(project, newProject, note).then(() => {
-                        dispatch(stopLoadingData())
-                    })
-                )
+                dispatch(hideProjectPicker())
+            } finally {
+                dispatch(stopLoadingData())
             }
-            dispatch(hideProjectPicker())
         } else if (type === 'goal') {
             const goal = data
-            observeDetachedMove(updateGoalProject(project, newProject, goal))
+            await completeMove(updateGoalProject(project, newProject, goal))
         } else if (type === 'skill') {
             const skill = data
             const { loggedUser, route } = store.getState()

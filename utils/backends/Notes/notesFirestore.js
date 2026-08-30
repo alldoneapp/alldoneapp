@@ -60,6 +60,7 @@ import {
     switchProject,
 } from '../../../redux/actions'
 import { DV_TAB_NOTE_PROPERTIES, DV_TAB_ROOT_NOTES } from '../../TabNavigationConstants'
+import { withoutServerAccessProjection } from '../accessProjection'
 
 export const updateNoteEditionData = async (projectId, noteId, editorId) => {
     await getDb().runTransaction(async transaction => {
@@ -503,7 +504,10 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
     delete noteMeta.state
 
     await updateEditionData(noteMeta)
-    batch.set(getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`), sanitizeForFirestore(noteMeta))
+    batch.set(
+        getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`),
+        withoutServerAccessProjection(sanitizeForFirestore(noteMeta))
+    )
     batch.delete(getDb().doc(`noteItems/${currentProject.id}/notes/${noteId}`))
 
     await getDb()

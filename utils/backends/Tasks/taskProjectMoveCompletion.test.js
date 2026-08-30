@@ -44,6 +44,13 @@ describe('task project move completion', () => {
         expect(goalMove?.[1]).toMatch(/buildManuallyPinnedCalendarData\(/)
     })
 
+    it('strips access projections from moved root tasks and copied subtasks', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+
+        expect(source).toMatch(/withoutServerAccessProjection\(removeUndefinedForFirestore\(taskCopy\)\)/)
+        expect(source).toMatch(/const subTaskToStore = withoutServerAccessProjection\(subTask\)/)
+    })
+
     it('stamps manual calendar Goal additions and removals with durable routing feedback', () => {
         const source = readSource('backends/Tasks/tasksFirestore.js')
         const goalMove = source.match(

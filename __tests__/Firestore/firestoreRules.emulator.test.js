@@ -21,6 +21,7 @@ const {
 
 const PROJECT_ID = 'project-a'
 const OTHER_PROJECT_ID = 'project-b'
+const MOVE_TARGET_PROJECT_ID = 'project-c'
 const SHARED_PROJECT_ID = 'shared-project'
 const MEMBER_ID = 'member'
 const OUTSIDER_ID = 'outsider'
@@ -63,6 +64,11 @@ const seed = async () => {
             creatorId: 'other-owner',
             isShared: 2,
             userIds: ['other-owner'],
+        })
+        await setDoc(doc(db, `projects/${MOVE_TARGET_PROJECT_ID}`), {
+            creatorId: MEMBER_ID,
+            isShared: 2,
+            userIds: [MEMBER_ID, TEAMMATE_ID],
         })
         await setDoc(doc(db, `projects/${SHARED_PROJECT_ID}`), {
             creatorId: MEMBER_ID,
@@ -118,6 +124,7 @@ const seed = async () => {
         })
         await setDoc(doc(db, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
             isPublicFor: [0],
+            quickDateId: '20260830',
             usersFollowing: [MEMBER_ID],
             readerIds: [0, MEMBER_ID, TEAMMATE_ID],
             roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
@@ -409,6 +416,27 @@ describe('queries used by the web client', () => {
         expect(allSnapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
         const snapshot = await assertSucceeds(getDocs(chats))
         expect(snapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
+        await assertSucceeds(
+            updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
+                isAssistantEnabled: true,
+            })
+        )
+        await assertFails(
+            getDocs(
+                query(collection(memberDb, `chatObjects/${PROJECT_ID}/chats`), where('quickDateId', '==', '20260830'))
+            )
+        )
+
+        const newChatRef = doc(memberDb, `chatObjects/${PROJECT_ID}/chats/new-client-chat`)
+        await assertSucceeds(
+            setDoc(newChatRef, {
+                creatorId: MEMBER_ID,
+                type: 'topics',
+                isPublicFor: [0],
+                quickDateId: '20260830',
+            })
+        )
+        await assertFails(updateDoc(newChatRef, { isAssistantEnabled: true }))
         await assertFails(
             updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
                 followedByVisibleTo: { [OUTSIDER_ID]: true },
@@ -463,6 +491,22 @@ describe('queries used by the web client', () => {
                 name: 'Ordinary edit',
             })
         )
+    })
+
+    it('allows a cross-project task copy only after server access projections are removed', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const sourceSnapshot = await getDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`))
+        const copiedTask = {
+            ...sourceSnapshot.data(),
+            projectId: MOVE_TARGET_PROJECT_ID,
+        }
+
+        await assertFails(setDoc(doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/forged-move`), copiedTask))
+
+        ;['readerIds', 'roleIdsVisibleTo', 'followedByVisibleTo', 'followedReaderIds', 'backlinkIdsVisibleTo'].forEach(
+            field => delete copiedTask[field]
+        )
+        await assertSucceeds(setDoc(doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/sanitized-move`), copiedTask))
     })
 
     it('allows the projected random Someday task query', async () => {
