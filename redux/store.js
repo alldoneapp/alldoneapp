@@ -487,7 +487,9 @@ const getDefaultAssistant = state => {
     const defaultProjectId = state?.loggedUser?.defaultProjectId
 
     if (!defaultProjectId) {
-        console.warn('No default project ID found')
+        // Empty startup/logout state has no user yet; that is expected. Keep the warning for an
+        // actually loaded account whose membership data is inconsistent.
+        if (state?.loggedIn && state?.loggedUser?.uid) console.warn('No default project ID found')
         return {}
     }
 
@@ -575,7 +577,9 @@ export const theReducer = (state = initialState, action) => {
         case 'Set selected Note':
             return { ...state, selectedNote: action.selectedNote }
         case 'Log out':
-            return { ...state, loggedIn: false }
+            // A failed signup can leave this flag armed. Carrying it into the next login skips the
+            // existing-user read and attempts to provision the account again.
+            return { ...state, loggedIn: false, registeredNewUser: false }
         case 'Set Version':
             return { ...state, alldoneVersion: action.version }
         case 'Set new version':

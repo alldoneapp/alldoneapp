@@ -4,6 +4,11 @@ import moment from 'moment'
 
 import { preserveAutoAssignedGoal } from './autoAssignedGoalGuard'
 import { publishOptimisticTaskCreateFailed, publishOptimisticTaskCreated } from './optimisticTaskCreate'
+import { getTaskFromLoadedTaskMaps } from './taskSnapshotCache'
+import {
+    buildCrossUserTaskStatisticsMarker as buildTaskStatisticsMarker,
+    shouldClientWriteTaskTransitionStatistics,
+} from './taskTransitionStatistics'
 
 import {
     addUniqueInstanceTypeToArray,
@@ -234,6 +239,20 @@ const queueTaskTransitionUndo = ({ projectId, task, stepToMoveId, beforeStates, 
     })
     if (!action) throw new Error('Could not queue the task transition for undo')
     return action
+}
+
+// Statistics documents are user-scoped by the rules. Keep an owner's own update in the task
+// batch, but let onUpdateTaskSecondGen apply reviewer/teammate transitions with Admin SDK access.
+// This avoids either weakening statistics rules or rejecting the entire task transition batch.
+const updateTaskTransitionStatistics = (projectId, taskOwnerUid, ...args) => {
+    if (!shouldClientWriteTaskTransitionStatistics(taskOwnerUid, store.getState().loggedUser.uid)) return false
+    updateStatistics(projectId, taskOwnerUid, ...args)
+    return true
+}
+
+const buildCrossUserTaskStatisticsMarker = (taskOwnerUid, completed) => {
+    const actorId = store.getState().loggedUser.uid
+    return buildTaskStatisticsMarker(taskOwnerUid, actorId, completed, getId)
 }
 
 async function updateLinkedContactsEditionData(projectId, task, editionDate) {
@@ -2499,11 +2518,20 @@ export function dismissTaskGoalSuggestion(projectId, task) {
 }
 
 /**
- * AT-2160: read a task doc from Firestore's local cache, falling back to the server when it is not
- * cached. Used on paths where the read is only needed to build an undo record and must not delay
- * the write that the user is waiting to see.
+ * AT-2160: read a task from the already-rendered Redux maps, then Firestore's local cache, falling
+ * back to the server only when neither has it. Used where the read only builds an undo record and
+ * must not delay the write that the user is waiting to see.
  */
 export async function getTaskSnapshotCacheFirst(projectId, taskId) {
+    const loadedTask = getTaskFromLoadedTaskMaps(store.getState(), projectId, taskId)
+    if (loadedTask) {
+        return {
+            exists: true,
+            id: taskId,
+            data: () => loadedTask,
+        }
+    }
+
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
     try {
         return await ref.get({ source: 'cache' })
@@ -2977,7 +3005,7 @@ export async function moveTasksFromMiddleOfWorkflow(
                 projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
             })
         }
-        updateStatistics(projectId, userId, taskEstimation, false, false, null, batch)
+        updateTaskTransitionStatistics(projectId, userId, taskEstimation, false, false, null, batch)
 
         logDoneTasks(task.userId, loggedUser.uid, true)
     }
@@ -2988,6 +3016,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(userId, updateData.completed),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         done: stepToMoveId === DONE_STEP,
@@ -3030,7 +3059,11 @@ export async function moveTasksFromMiddleOfWorkflow(
     // chain after it) must still run (AT-2340).
     await awaitWriteAck(batch.commit(), 'moveTasksInWorkflow batch')
 
-    if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
+    if (
+        stepToMoveId === DONE_STEP &&
+        shouldClientWriteTaskTransitionStatistics(userId, loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed),
             'moveTasksInWorkflow day-rate time log'
@@ -3220,7 +3253,7 @@ export async function moveTasksFromOpen(
                     projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
                 })
             }
-            updateStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
+            updateTaskTransitionStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
         }
 
         logDoneTasks(task.userId, loggedUser.uid, workflow ? true : false)
@@ -3237,6 +3270,7 @@ export async function moveTasksFromOpen(
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(newUserId, completionDate),
         ...(task.suggestedBy ? { suggestedBy: null } : {}),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
@@ -3280,7 +3314,12 @@ export async function moveTasksFromOpen(
     await awaitWriteAck(batch.commit(), 'moveTasksToDone batch')
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
 
-    if (stepToMoveId === DONE_STEP && ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+    if (
+        stepToMoveId === DONE_STEP &&
+        ownerIsTeamMeber &&
+        shouldClientWriteTaskTransitionStatistics(newUserId, loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, newUserId, completionDate),
             'moveTasksToDone day-rate time log'
@@ -3355,7 +3394,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
     if (ownerIsTeamMeber) {
-        updateStatistics(projectId, userId, estimations[OPEN_STEP], true, false, task.completed, batch)
+        updateTaskTransitionStatistics(projectId, userId, estimations[OPEN_STEP], true, false, task.completed, batch)
     }
 
     // AT-2259 - a calendar task orders by when it entered the list, exactly like every other task.
@@ -3364,6 +3403,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     const taskUpdateData = {
         ...updateData,
+        ...buildCrossUserTaskStatisticsMarker(userId, task.completed),
         // Reopening a completed task has no transition-popup comment. Explicitly clear any old
         // handoff so landing on an AI step runs its configured prompt.
         workflowAiPromptOverride: null,
@@ -3401,7 +3441,11 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     await awaitWriteAck(batch.commit(), 'moveTasksFromDone batch')
 
-    if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+    if (
+        ownerIsTeamMeber &&
+        shouldClientWriteTaskTransitionStatistics(userId, store.getState().loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, userId, task.completed),
             'moveTasksFromDone day-rate time log'
@@ -3437,6 +3481,7 @@ export async function setTaskStatus(
         done: isDone,
         inDone: task.parentId ? task.inDone : isDone,
         recurrence: task.recurrence,
+        ...buildCrossUserTaskStatisticsMarker(taskOwnerUid, isDone ? completedDate : task.completed),
         ...(isDone && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
     }
 
@@ -3480,9 +3525,17 @@ export async function setTaskStatus(
     const taskRealOwner = TasksHelper.getTaskOwner(taskOwnerUid, projectId)
     const statisticUserUid = taskRealOwner.recorderUserId ? store.getState().loggedUser.uid : taskOwnerUid
     if (isDone) {
-        updateStatistics(projectId, statisticUserUid, task.estimations[OPEN_STEP], false, false, null, taskBatch)
+        updateTaskTransitionStatistics(
+            projectId,
+            statisticUserUid,
+            task.estimations[OPEN_STEP],
+            false,
+            false,
+            null,
+            taskBatch
+        )
     } else {
-        updateStatistics(
+        updateTaskTransitionStatistics(
             projectId,
             statisticUserUid,
             task.estimations[OPEN_STEP],
@@ -3546,7 +3599,10 @@ export async function setTaskStatus(
     // keep going (AT-2340).
     await awaitWriteAck(taskBatch.commit(), 'setTaskStatus task batch')
 
-    if (!isDayRateTimeLogTask(task)) {
+    if (
+        shouldClientWriteTaskTransitionStatistics(statisticUserUid, store.getState().loggedUser.uid) &&
+        !isDayRateTimeLogTask(task)
+    ) {
         await awaitWriteAck(
             reconcileExistingDayRateTimeLog(projectId, statisticUserUid, isDone ? completedDate : task.completed),
             'setTaskStatus day-rate time log'

@@ -169,4 +169,42 @@ describe('SecondaryButtonsArea', () => {
 
         expect(dismissEditMode).toHaveBeenCalledWith(true)
     })
+
+    test('ignores a parent-goal close callback after the task row was re-bucketed and unmounted', async () => {
+        const dismissEditMode = jest.fn()
+        const tree = renderer.create(
+            <SecondaryButtonsArea
+                tmpTask={{
+                    id: 'task-1',
+                    done: false,
+                    calendarData: null,
+                    parentGoalId: null,
+                    isSubtask: false,
+                    userId: 'user-1',
+                }}
+                hasName={true}
+                adding={false}
+                projectId="project-1"
+                accessGranted={true}
+                loggedUserCanUpdateObject={true}
+                isAssistant={false}
+                setParentGoalBeforeSave={jest.fn()}
+                dismissEditMode={dismissEditMode}
+            />
+        )
+
+        await act(async () => {
+            await tree.root
+                .findAllByType('GhostButton')
+                .find(button => button.props.icon === 'target')
+                .props.onPress()
+        })
+
+        const staleCloseModal = tree.root.findByType('TaskParentGoalModal').props.closeModal
+
+        act(() => tree.unmount())
+        act(() => staleCloseModal())
+
+        expect(dismissEditMode).not.toHaveBeenCalled()
+    })
 })

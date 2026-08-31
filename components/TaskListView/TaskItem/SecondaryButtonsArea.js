@@ -153,6 +153,11 @@ export default function SecondaryButtonsArea({
 
     const hideParentGoalPopup = () => {
         popupLock.release()
+        // Persisting a parent-goal change re-buckets the task immediately. That can unmount this
+        // editor before TaskParentGoalModal's awaited save resumes and asks us to close. The
+        // popup lock is already released by the hook cleanup; do not continue into the stale
+        // task-row dismiss callback after unmount.
+        if (isUnmountedRef.current) return
         safeSetShowParentGoalModalUI(false)
         // TaskParentGoalModal owns its own popup lock until this state change unmounts it. Closing
         // the editor without forcing it while that lock is still present makes DismissibleItem

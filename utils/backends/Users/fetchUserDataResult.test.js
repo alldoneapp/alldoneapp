@@ -339,17 +339,17 @@ describe('fetchUserDataResult', () => {
         expect(result.missing).toBe(false)
     })
 
-    it('still reports a failed first read as an error rather than a missing account', async () => {
-        const denied = new Error('permission-denied')
+    it('still reports a non-permission read failure as an error rather than a missing account', async () => {
+        const unavailable = Object.assign(new Error('network unavailable'), { code: 'unavailable' })
         mockGetDb.mockReturnValue({
             doc: () => ({
-                get: () => Promise.reject(denied),
+                get: () => Promise.reject(unavailable),
             }),
         })
 
         const result = await fetchUserDataResult('user-1', true)
 
-        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+        expect(result).toEqual({ user: null, missing: false, error: unavailable, verified: false })
     })
 
     it('refreshes the own-user token once when the first Firestore read is denied', async () => {
@@ -368,6 +368,47 @@ describe('fetchUserDataResult', () => {
         expect(mockGetIdToken).toHaveBeenNthCalledWith(1)
         expect(mockGetIdToken).toHaveBeenNthCalledWith(2, true)
         expect(get).toHaveBeenCalledTimes(2)
+    })
+
+    it('uses the authenticated direct read when Firestore still denies the own user after token refresh', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest.fn().mockRejectedValue(denied)
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { email: 'a@b.c', defaultProjectId: 'project-1' },
+        })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result).toEqual({
+            user: { uid: 'user-1', email: 'a@b.c', defaultProjectId: 'project-1', isLoggedUser: true },
+            missing: false,
+            error: null,
+            verified: true,
+        })
+        expect(get).toHaveBeenCalledTimes(2)
+        expect(mockGetIdToken).toHaveBeenNthCalledWith(2, true)
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledWith('users/user-1')
+        expect(mockRestartFirestoreNetwork).toHaveBeenCalledWith('adopt the authenticated user during login')
+    })
+
+    it('recognizes a genuinely new user when the direct read confirms no user document', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const get = jest.fn().mockRejectedValue(denied)
+        mockGetDb.mockReturnValue({ doc: () => ({ get }) })
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({ exists: false, data: undefined })
+
+        const result = await fetchUserDataResult('user-1', true)
+
+        expect(result).toEqual({ user: null, missing: true, error: null, verified: true })
+        expect(mockReadDocumentDirectlyFromServer).toHaveBeenCalledTimes(1)
+        expect(mockRestartFirestoreNetwork).toHaveBeenCalledTimes(1)
+        expect(consoleError).not.toHaveBeenCalled()
     })
 })
 

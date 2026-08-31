@@ -255,6 +255,33 @@ describe('EmailLine', () => {
         expect(textNodes(tree)).toContain('Reconnect email')
     })
 
+    it('does not poll a connection already marked invalid', () => {
+        mockState = {
+            ...createState(),
+            loggedUser: {
+                ...createState().loggedUser,
+                emailConnections: {
+                    [connectionId]: {
+                        provider: 'google',
+                        emailAddress: accountEmail,
+                        defaultProjectId: projectId,
+                        authInvalid: true,
+                    },
+                },
+            },
+        }
+
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailLine />)
+        })
+        act(() => jest.advanceTimersByTime(EMAIL_SUMMARY_LOAD_DELAY_MS))
+
+        expect(fetchEmailLineSummary).not.toHaveBeenCalled()
+        expect(textNodes(tree)).toContain('Reconnect email')
+        tree.unmount()
+    })
+
     it('opens Integrations settings from the settings button', () => {
         const tree = renderer.create(<EmailLine />)
         const settingsButton = findButtonByLabel(tree, 'Settings')
