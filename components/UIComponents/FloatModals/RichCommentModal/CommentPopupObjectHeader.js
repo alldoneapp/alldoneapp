@@ -30,40 +30,71 @@ const WATCHED_OBJECT_TYPES = {
     topics: watchChat,
 }
 
+export const COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS = 1500
+
 export default function CommentPopupObjectHeader({
     projectId,
     objectId,
     objectType,
     objectName,
+    initialObject,
     onOpen,
     onWorkflowTransitionSuccess,
 }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const watcherKeyRef = useRef(`comment-popup-object-${v4()}`)
-    const [object, setObject] = useState(null)
-    const [loading, setLoading] = useState(true)
+    const lastKnownObjectRef = useRef(initialObject || null)
+    const [object, setObject] = useState(initialObject || null)
+    const [loading, setLoading] = useState(!initialObject)
+    const [reconnecting, setReconnecting] = useState(false)
 
     useEffect(() => {
         let mounted = true
+        let loadTimeout
         const normalizedObjectType = objectType === 'users' ? 'contacts' : objectType
 
         const updateObject = nextObject => {
             if (mounted) {
-                setObject(nextObject || null)
+                // A transport restart can emit an empty/cache-miss result before the
+                // authoritative snapshot returns. Never replace a valid row object with that
+                // transient absence; the parent list will remove the popup if deletion is later
+                // established by its own authoritative watcher.
+                if (nextObject) {
+                    lastKnownObjectRef.current = nextObject
+                    setObject(nextObject)
+                } else if (!lastKnownObjectRef.current) {
+                    setObject(null)
+                }
                 setLoading(false)
+                setReconnecting(false)
             }
         }
 
+        const showReconnectFallback = () => {
+            if (mounted && !lastKnownObjectRef.current) {
+                setLoading(false)
+                setReconnecting(true)
+            }
+        }
+
+        if (!lastKnownObjectRef.current) {
+            loadTimeout = setTimeout(showReconnectFallback, COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS)
+        }
+
         getParentObjectData(projectId, objectId, normalizedObjectType)
-            .then(data => updateObject(data?.object))
+            .then(data => {
+                clearTimeout(loadTimeout)
+                updateObject(data?.object)
+            })
             .catch(error => {
+                clearTimeout(loadTimeout)
                 console.warn('[CommentPopupObjectHeader] Could not load parent object', {
                     projectId,
                     objectId,
                     objectType: normalizedObjectType,
                     error,
                 })
-                updateObject(null)
+                showReconnectFallback()
             })
 
         if (normalizedObjectType === 'notes') {
@@ -78,6 +109,7 @@ export default function CommentPopupObjectHeader({
 
         return () => {
             mounted = false
+            clearTimeout(loadTimeout)
             if (normalizedObjectType === 'notes') {
                 unwatchNote(projectId, objectId)
             } else if (normalizedObjectType === 'contacts' || WATCHED_OBJECT_TYPES[normalizedObjectType]) {
@@ -95,7 +127,11 @@ export default function CommentPopupObjectHeader({
     }
 
     if (!object) {
-        return <UnavailableObject objectName={objectName} />
+        return reconnecting ? (
+            <RecoveringObject objectName={objectName} />
+        ) : (
+            <UnavailableObject objectName={objectName} />
+        )
     }
 
     const project = ProjectHelper.getProjectById(projectId)
@@ -219,6 +255,15 @@ const UnavailableObject = ({ objectName }) => (
     <View style={localStyles.unavailableContainer} accessibilityLabel={translate('Object unavailable')}>
         <Header title={objectName} />
         <Text style={localStyles.unavailableText}>{translate('This object is no longer available.')}</Text>
+    </View>
+)
+
+const RecoveringObject = ({ objectName }) => (
+    <View style={localStyles.unavailableContainer} accessibilityLabel={translate('Object details reconnecting')}>
+        <Header title={objectName} />
+        <Text style={localStyles.unavailableText}>
+            {translate('Object details are reconnecting. You can continue commenting.')}
+        </Text>
     </View>
 )
 

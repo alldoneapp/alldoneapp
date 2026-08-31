@@ -15,13 +15,9 @@ class GoogleApi {
     authCallback: any = null
     gmailAuthCallback: any = null
 
-    private initPromise: Promise<void>
-    private resolveInit: ((value: void | PromiseLike<void>) => void) | null = null
+    private initPromise: Promise<void> | null = null
 
     constructor() {
-        this.initPromise = new Promise(resolve => {
-            this.resolveInit = resolve
-        })
         try {
             this.updateSigninStatus = this.updateSigninStatus.bind(this)
             this.initClient = this.initClient.bind(this)
@@ -43,11 +39,6 @@ class GoogleApi {
             this.getEvent = this.getEvent.bind(this)
             this.getBasicUserProfile = this.getBasicUserProfile.bind(this)
             this.fetchUserProfile = this.fetchUserProfile.bind(this)
-
-            // Defer loading to avoid blocking app initialization
-            setTimeout(() => {
-                this.handleClientLoad()
-            }, 2000)
         } catch (e) {
             console.log(e)
         }
@@ -92,109 +83,87 @@ class GoogleApi {
     /**
      * Initialize gapi client without auth2
      */
-    private initClient(): void {
+    private async initClient(): Promise<void> {
         this.gapi = window['gapi']
-        this.gapi.client
-            .init({
-                apiKey: apiKey,
-                discoveryDocs: discoveryDocs,
-            })
-            .then(() => {
-                // Initialize token clients for different scopes
-                if (window['google']?.accounts?.oauth2) {
-                    this.tokenClient = window['google'].accounts.oauth2.initTokenClient({
-                        client_id: client_id,
-                        scope: scope,
-                        callback: (response: any) => {
-                            if (response.error) {
-                                console.error('Calendar auth error:', response.error)
-                                return
-                            }
-                            this.updateSigninStatus(true)
-                            this.fetchUserProfile()
-                            if (this.authCallback) {
-                                this.authCallback()
-                                this.authCallback = null
-                            }
-                        },
-                    })
+        await this.gapi.client.init({
+            apiKey: apiKey,
+            discoveryDocs: discoveryDocs,
+        })
 
-                    this.gmailTokenClient = window['google'].accounts.oauth2.initTokenClient({
-                        client_id: client_id,
-                        scope: gmailScope,
-                        callback: (response: any) => {
-                            if (response.error) {
-                                console.error('Gmail auth error:', response.error)
-                                return
-                            }
-                            this.updateSigninStatus(true)
-                            this.fetchUserProfile()
-                            if (this.gmailAuthCallback) {
-                                this.gmailAuthCallback()
-                                this.gmailAuthCallback = null
-                            }
-                        },
-                    })
-                }
+        // Initialize token clients for different scopes
+        if (window['google']?.accounts?.oauth2) {
+            this.tokenClient = window['google'].accounts.oauth2.initTokenClient({
+                client_id: client_id,
+                scope: scope,
+                callback: (response: any) => {
+                    if (response.error) {
+                        console.error('Calendar auth error:', response.error)
+                        return
+                    }
+                    this.updateSigninStatus(true)
+                    this.fetchUserProfile()
+                    if (this.authCallback) {
+                        this.authCallback()
+                        this.authCallback = null
+                    }
+                },
+            })
 
-                if (this.onLoadCallback) {
-                    this.onLoadCallback()
-                }
-                if (this.resolveInit) this.resolveInit()
+            this.gmailTokenClient = window['google'].accounts.oauth2.initTokenClient({
+                client_id: client_id,
+                scope: gmailScope,
+                callback: (response: any) => {
+                    if (response.error) {
+                        console.error('Gmail auth error:', response.error)
+                        return
+                    }
+                    this.updateSigninStatus(true)
+                    this.fetchUserProfile()
+                    if (this.gmailAuthCallback) {
+                        this.gmailAuthCallback()
+                        this.gmailAuthCallback = null
+                    }
+                },
             })
-            .catch((e: any) => {
-                console.log(e)
-                if (this.resolveInit) this.resolveInit()
-            })
+        }
+
+        if (this.onLoadCallback) {
+            this.onLoadCallback()
+            this.onLoadCallback = null
+        }
     }
 
     /**
      * Initialize Google API client and GIS
      */
-    private handleClientLoad(): void {
-        this.gapi = window['gapi']
-
-        // Check if gapi is already loaded
-        if (window['gapi']) {
-            window['gapi'].load('client', () => {
-                // Load GIS client
-                scriptLoader
-                    .loadScript(scriptSrcGoogle)
-                    .then(() => {
-                        this.initClient()
-                    })
-                    .catch(error => {
-                        console.error('Error loading GIS client:', error)
-                    })
-            })
-            return
+    private async handleClientLoad(): Promise<void> {
+        if (!window['gapi']) {
+            await scriptLoader.loadScript('https://apis.google.com/js/api.js')
+        }
+        if (!window['gapi']) {
+            throw new Error('Google API library failed to load properly')
         }
 
-        // Use scriptLoader for better error handling
-        scriptLoader
-            .loadScript('https://apis.google.com/js/api.js')
-            .then(() => {
-                if (window['gapi']) {
-                    window['gapi'].load('client', () => {
-                        // Load GIS client
-                        scriptLoader
-                            .loadScript(scriptSrcGoogle)
-                            .then(() => {
-                                this.initClient()
-                            })
-                            .catch(error => {
-                                console.error('Error loading GIS client:', error)
-                            })
-                    })
-                }
-            })
-            .catch(error => {
-                console.error('Error loading Google API script:', error)
-                console.error('Google Calendar and Gmail integrations will not be available')
-            })
+        this.gapi = window['gapi']
+        await new Promise<void>((resolve, reject) => {
+            try {
+                window['gapi'].load('client', resolve)
+            } catch (error) {
+                reject(error)
+            }
+        })
+        await scriptLoader.loadScript(scriptSrcGoogle)
+        await this.initClient()
     }
 
-    private async ensureInitialized() {
+    public ensureInitialized(): Promise<void> {
+        if (!this.initPromise) {
+            this.initPromise = this.handleClientLoad().catch(error => {
+                this.initPromise = null
+                console.error('Error loading Google API integrations:', error)
+                throw error
+            })
+        }
         return this.initPromise
     }
 
@@ -224,6 +193,7 @@ class GoogleApi {
      * Sign in Google user account for calendar access
      */
     public async handleAuthClick(): Promise<void> {
+        await this.ensureInitialized()
         return new Promise((resolve, reject) => {
             if (!this.tokenClient) {
                 console.log('Error: Token client not loaded')
@@ -248,6 +218,7 @@ class GoogleApi {
      * Sign in Google user account for Gmail access
      */
     public async handleGmailAuthClick(): Promise<void> {
+        await this.ensureInitialized()
         return new Promise((resolve, reject) => {
             if (!this.gmailTokenClient) {
                 console.log('Error: Gmail token client not loaded')
@@ -297,6 +268,9 @@ class GoogleApi {
             callback()
         } else {
             this.onLoadCallback = callback
+            this.ensureInitialized().catch(() => {
+                this.onLoadCallback = null
+            })
         }
     }
 

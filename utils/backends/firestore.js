@@ -168,7 +168,6 @@ import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
 import { SIDEBAR_NAVIGATION_SIMPLE } from '../SidebarNavigationModes'
 import GoogleApi from '../../apis/google/GoogleApi'
-import apiCalendar from '../../apis/google/calendar/apiCalendar'
 import { setServerTokenInGoogleApi, hasServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { updateQuotaTraffic } from './Premium/premiumFirestore'
 import {
@@ -2609,11 +2608,20 @@ export async function getTaskData(projectId, taskId) {
     return task ? mapTaskData(taskId, task) : null
 }
 
-export function watchUserData(userId, isLoggedUser, callback, watcherKey) {
-    globalWatcherUnsub[watcherKey] = db.doc(`users/${userId}`).onSnapshot(doc => {
-        const user = doc.exists ? mapUserData(userId, doc.data(), isLoggedUser) : null
-        if (user || !doc.metadata.fromCache) callback(user)
-    })
+export function watchUserData(userId, isLoggedUser, callback, watcherKey, onError) {
+    globalWatcherUnsub[watcherKey] = db.doc(`users/${userId}`).onSnapshot(
+        doc => {
+            const user = doc.exists ? mapUserData(userId, doc.data(), isLoggedUser) : null
+            if (user || !doc.metadata.fromCache) callback(user)
+        },
+        error => {
+            if (onError) {
+                onError(error)
+                return
+            }
+            console.error(`[UserData] Listener failed for /users/${userId}:`, error)
+        }
+    )
 }
 
 export async function getNote(projectId, noteId) {

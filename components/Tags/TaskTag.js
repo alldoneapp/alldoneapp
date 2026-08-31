@@ -182,6 +182,7 @@ export default function TaskTag({
                                         userGettingKarmaId={task.userId}
                                         outline={true}
                                         objectName={task.name}
+                                        object={task}
                                         assistantId={task.assistantId}
                                     />
                                 )}
