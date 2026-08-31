@@ -4,6 +4,8 @@ const { ProjectMoveChatError, buildMovedTopicChatData, copyProjectMoveChat } = r
 
 function createAdmin(documents) {
     const writes = []
+    const updates = []
+    const deletes = []
     const database = {
         doc: path => ({
             get: async () => {
@@ -11,9 +13,11 @@ function createAdmin(documents) {
                 return { exists: data !== undefined, data: () => data }
             },
             set: async (data, options) => writes.push({ path, data, options }),
+            update: async data => updates.push({ path, data }),
+            delete: async () => deletes.push(path),
         }),
     }
-    return { adminRef: { firestore: () => database }, writes }
+    return { adminRef: { firestore: () => database }, writes, updates, deletes }
 }
 
 describe('copyProjectMoveChat', () => {
@@ -24,7 +28,7 @@ describe('copyProjectMoveChat', () => {
             members: ['target-member', 'source-only'],
             movingToOtherProjectId: 'stale-target',
         }
-        const { adminRef, writes } = createAdmin({
+        const { adminRef, writes, updates, deletes } = createAdmin({
             'projects/target': { userIds: ['actor', 'target-member'] },
             'chatObjects/source/chats/chat-1': sourceChat,
             'followers/source/topics/chat-1': { usersFollowing: ['target-member', 'source-only'] },
@@ -56,6 +60,11 @@ describe('copyProjectMoveChat', () => {
                 'usersFollowing/target/entries/target-member',
             ])
         )
+        expect(updates).toContainEqual({
+            path: 'chatObjects/source/chats/chat-1',
+            data: { movingToOtherProjectId: 'target' },
+        })
+        expect(deletes).toContain('chatObjects/source/chats/chat-1')
     })
 
     it('rejects copying a private conversation the actor cannot write', async () => {
@@ -78,7 +87,7 @@ describe('copyProjectMoveChat', () => {
     })
 
     it('returns cleanly when the moved object has no conversation', async () => {
-        const { adminRef } = createAdmin({ 'projects/target': { userIds: ['actor'] } })
+        const { adminRef, updates, deletes } = createAdmin({ 'projects/target': { userIds: ['actor'] } })
 
         await expect(
             copyProjectMoveChat({
@@ -91,6 +100,8 @@ describe('copyProjectMoveChat', () => {
                 copyChat: jest.fn(),
             })
         ).resolves.toEqual({ copied: false, reason: 'no-chat' })
+        expect(updates).toEqual([])
+        expect(deletes).toEqual([])
     })
 })
 
