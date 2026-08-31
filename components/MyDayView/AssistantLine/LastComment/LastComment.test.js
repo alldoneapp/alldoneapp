@@ -7,11 +7,18 @@ import renderer from 'react-test-renderer'
 
 import LastComment from './LastComment'
 import LastUserOrAssistantCommentContainer from './LastUserOrAssistantCommentContainer'
+import NoComment from '../NoComment/NoComment'
 
 jest.mock('./LastUserOrAssistantCommentContainer', () => {
     const React = require('react')
     const { View } = require('react-native')
     return props => <View testID="last-comment-container" {...props} />
+})
+
+jest.mock('../NoComment/NoComment', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return props => <View testID="assistant-no-comment" {...props} />
 })
 
 describe('LastComment', () => {
@@ -56,5 +63,15 @@ describe('LastComment', () => {
             objectType: 'topics',
         })
         expect(tree.root.findByType(LastUserOrAssistantCommentContainer).props.fromChatNotification).toBeUndefined()
+    })
+
+    it('keeps the last-comment footprint when there is no previous comment', () => {
+        const assistant = { uid: 'assistant-1' }
+        const tree = renderer.create(<LastComment project={project} assistant={assistant} />)
+
+        expect(tree.root.findByType(NoComment).props).toMatchObject({
+            projectId: 'project-1',
+            assistant,
+        })
     })
 })

@@ -6,9 +6,10 @@ import React from 'react'
 import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import AssistantOptions from './AssistantOptions'
+import AssistantOptions, { DEFERRED_QUICK_ACTION_REFRESH_MS } from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import { writeAssistantTasksCache } from '../assistantLineCache'
 
 const mockInputBlur = jest.fn()
 const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
@@ -166,6 +167,55 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantM
 describe('AssistantOptions search button', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        localStorage.clear()
+    })
+
+    it('shows Search and a fixed option ghost while the lower-priority listener is deferred', async () => {
+        jest.useFakeTimers()
+        let tree
+        try {
+            await act(async () => {
+                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} deferQuickActions />)
+            })
+
+            expect(watchAssistantTasks).not.toHaveBeenCalled()
+            expect(tree.root.findByProps({ testID: 'assistant-quick-actions-loading-skeleton' })).toBeTruthy()
+            expect(JSON.stringify(tree.toJSON())).toContain('SearchButton')
+
+            await act(async () => {
+                jest.advanceTimersByTime(DEFERRED_QUICK_ACTION_REFRESH_MS)
+            })
+
+            expect(watchAssistantTasks).toHaveBeenCalledTimes(1)
+            expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons')
+        } finally {
+            await act(async () => tree?.unmount())
+            jest.useRealTimers()
+        }
+    })
+
+    it('renders cached quick actions immediately and refreshes them later', async () => {
+        writeAssistantTasksCache({ userId: 'user-1', projectId: 'default-project', assistantId: 'assistant-1' }, [
+            { id: 'cached-task', name: 'Cached task' },
+        ])
+        jest.useFakeTimers()
+        let tree
+        try {
+            await act(async () => {
+                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} deferQuickActions />)
+            })
+
+            expect(JSON.stringify(tree.toJSON())).toContain('SearchButton')
+            expect(watchAssistantTasks).not.toHaveBeenCalled()
+
+            await act(async () => {
+                jest.advanceTimersByTime(DEFERRED_QUICK_ACTION_REFRESH_MS)
+            })
+            expect(watchAssistantTasks).toHaveBeenCalledTimes(1)
+        } finally {
+            await act(async () => tree?.unmount())
+            jest.useRealTimers()
+        }
     })
 
     it('renders the pinned Search button before assistant task quick actions', async () => {

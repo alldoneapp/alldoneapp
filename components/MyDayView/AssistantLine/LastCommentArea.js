@@ -7,6 +7,7 @@ import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends
 import LastComment from './LastComment/LastComment'
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
+import { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
 
 export default function LastCommentArea({
     withTopMargin = true,
@@ -74,7 +75,22 @@ export default function LastCommentArea({
     }
 
     if (!commentProject || !commentCreator) {
-        return null
+        if (compact) return null
+
+        return (
+            <View
+                style={[
+                    localStyles.container,
+                    withTopMargin && localStyles.containerWithTopMargin,
+                    useCardBackground && localStyles.cardContainer,
+                ]}
+            >
+                <Text style={localStyles.title}>{translate('Last comment')}</Text>
+                <View style={localStyles.previewInset}>
+                    <LastCommentPreviewSkeleton />
+                </View>
+            </View>
+        )
     }
 
     return (
@@ -89,6 +105,7 @@ export default function LastCommentArea({
             {!compact && <Text style={localStyles.title}>{translate('Last comment')}</Text>}
             <LastComment
                 project={commentProject}
+                assistant={commentCreator}
                 setAModalIsOpen={setAModalIsOpen}
                 currentProjectChatLastNotification={currentProjectChatLastNotification}
                 currentLastAssistantCommentData={currentLastAssistantCommentData}
@@ -124,5 +141,8 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginBottom: 8,
         textAlign: 'center',
+    },
+    previewInset: {
+        marginLeft: 16,
     },
 })

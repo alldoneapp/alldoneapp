@@ -15,5 +15,12 @@ import { useAllProjectsAssistantLine } from './useAllProjectsAssistantLine'
 export default function AllProjectsAssistantLine(props) {
     const assistantSwitch = useAllProjectsAssistantLine()
 
-    return <AssistantLine useAssistantProjectContext={false} assistantSwitch={assistantSwitch} {...props} />
+    return (
+        <AssistantLine
+            useAssistantProjectContext={false}
+            assistantSwitch={assistantSwitch}
+            deferQuickActions={true}
+            {...props}
+        />
+    )
 }
