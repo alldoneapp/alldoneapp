@@ -357,7 +357,7 @@ let functions
 let messaging
 let db
 
-const getLoggedUserAccessReaderId = () => {
+export const getLoggedUserAccessReaderId = () => {
     const loggedUser = store.getState().loggedUser
     return loggedUser?.isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUser?.uid
 }
