@@ -7,6 +7,7 @@ const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => {})
 jest.mock('./backends/firestore', () => ({
     generateSortIndex: jest.fn(() => 1),
     getDb: jest.fn(),
+    getLoggedUserAccessReaderId: jest.fn(() => 'user-1'),
     getId: jest.fn(() => 'task-id'),
     updateStatistics: jest.fn(),
 }))
@@ -64,6 +65,7 @@ const calendarTask = estimation => ({
 const storedTask = (estimation, data = {}) => ({
     ...task(estimation),
     userId: 'user-1',
+    readerIds: ['user-1'],
     done: true,
     inDone: true,
     ...data,
@@ -72,6 +74,7 @@ const storedTask = (estimation, data = {}) => ({
 const storedCalendarTask = (estimation, data = {}) => ({
     ...calendarTask(estimation),
     userId: 'user-1',
+    readerIds: ['user-1'],
     done: true,
     inDone: true,
     ...data,
@@ -109,6 +112,8 @@ const createMockDb = (tasks, statisticsByPath = {}) => {
                                     return task[field] >= value
                                 case '<=':
                                     return task[field] <= value
+                                case 'array-contains':
+                                    return Array.isArray(task[field]) && task[field].includes(value)
                                 default:
                                     return true
                             }
@@ -145,6 +150,20 @@ describe('DayRateTimeLogHelper', () => {
         jest.clearAllMocks()
         mockBatchCommit.mockResolvedValue(undefined)
         mockDocUpdate.mockResolvedValue(undefined)
+    })
+
+    it('uses the strict-rules reader projection for day task queries', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        const db = createMockDb([storedTask(30, { completed })])
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+        getDb.mockReturnValue(db)
+
+        await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+        const tasksQuery = db.collection.mock.results[0].value
+        expect(tasksQuery.where).toHaveBeenCalledWith('readerIds', 'array-contains', 'user-1')
     })
 
     afterAll(() => {
