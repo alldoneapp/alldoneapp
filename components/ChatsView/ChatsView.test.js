@@ -25,7 +25,11 @@ jest.mock('../../URLSystem/Chats/URLsChats', () => ({
     URL_PROJECT_USER_CHATS_FOLLOWED: 'project-followed',
 }))
 jest.mock('../HashtagFilters/HashtagFiltersView', () => () => null)
-jest.mock('../UIComponents/NothingToShowOnChats', () => () => null)
+jest.mock('../UIComponents/NothingToShowOnChats', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return () => React.createElement(View, { testID: 'nothing-to-show-on-chats' })
+})
 jest.mock('../TaskListView/Header/AllProjectsLine/AllProjectsLine', () => props => props.customRight || null)
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
@@ -67,9 +71,14 @@ jest.mock('./ChatFiltersLine', () => {
         )
 })
 
-import ChatsView from './ChatsView'
+import ChatsView, { getChatsPresenceCacheKey } from './ChatsView'
 import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
+import {
+    resetSecondaryViewCacheForTests,
+    SECONDARY_VIEW_CHATS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
 
 const projects = [
     { id: 'project-1', index: 0, lastChatActionDate: 2 },
@@ -100,7 +109,12 @@ const switchToAll = component => {
 }
 
 describe('ChatsView unread filter', () => {
-    beforeEach(() => jest.clearAllMocks())
+    beforeEach(() => {
+        jest.clearAllMocks()
+        resetSecondaryViewCacheForTests()
+    })
+
+    afterEach(() => resetSecondaryViewCacheForTests())
 
     it('switches Unread back to All in a project-specific chat view', () => {
         const component = renderView(0)
@@ -120,6 +134,43 @@ describe('ChatsView unread filter', () => {
 
         expect(mockDispatch).toHaveBeenNthCalledWith(2, { type: 'Set chats unread only', unreadOnly: true })
         expect(mockDispatch).toHaveBeenNthCalledWith(3, { type: 'Set chats unread only', unreadOnly: false })
+    })
+})
+
+describe('ChatsView cached presence', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        resetSecondaryViewCacheForTests()
+    })
+
+    afterEach(() => resetSecondaryViewCacheForTests())
+
+    it('does not flash the empty state before every project has reported', () => {
+        const component = renderView(-1)
+
+        expect(component.root.findAllByProps({ testID: 'nothing-to-show-on-chats' })).toHaveLength(0)
+    })
+
+    it('can immediately reuse a complete cached empty result', () => {
+        const cacheKey = getChatsPresenceCacheKey({
+            activeTab: ALL_TAB,
+            inAllProjects: true,
+            selectedProjectId: null,
+        })
+        setSecondaryViewCacheEntry(
+            'user-1',
+            SECONDARY_VIEW_CHATS,
+            cacheKey,
+            {
+                cacheKey,
+                projects: { 'project-1': false, 'project-2': false },
+            },
+            { persist: false }
+        )
+
+        const component = renderView(-1)
+
+        expect(component.root.findAllByProps({ testID: 'nothing-to-show-on-chats' })).toHaveLength(1)
     })
 })
 

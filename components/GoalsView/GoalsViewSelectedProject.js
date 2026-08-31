@@ -1,14 +1,13 @@
 import React, { useEffect } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
-import v4 from 'uuid/v4'
+import { useSelector } from 'react-redux'
 
-import { setDoneMilestonesInProject, setGoalsInProject, setOpenMilestonesInProject } from '../../redux/actions'
 import URLsGoals, { URL_PROJECT_USER_GOALS_DONE, URL_PROJECT_USER_GOALS_OPEN } from '../../URLSystem/Goals/URLsGoals'
-import Backend from '../../utils/BackendBridge'
-import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
-import { getOwnerId, GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
+import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
 import MilestonesListByProject from './MilestonesListByProject'
+import { GoalsProjectWatcher } from './GoalsViewAllProjects'
+
+const NOOP = () => {}
 
 export default function GoalsViewSelectedProject({
     openEdition,
@@ -16,13 +15,13 @@ export default function GoalsViewSelectedProject({
     unsetDismissibleRefs,
     setDismissibleRefs,
 }) {
-    const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const goalsActiveTab = useSelector(state => state.goalsActiveTab)
     const processedInitialURL = useSelector(state => state.processedInitialURL)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
-    const projectId = useSelector(state => state.loggedUserProjects[selectedProjectIndex].id)
+    const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const projectId = project.id
     const boardMilestones = useSelector(state => state.boardMilestonesByProject[projectId])
 
     const writeBrowserURL = () => {
@@ -38,45 +37,30 @@ export default function GoalsViewSelectedProject({
         if (processedInitialURL && selectedSidebarTab === DV_TAB_ROOT_GOALS) writeBrowserURL()
     }, [processedInitialURL, projectId, selectedSidebarTab, goalsActiveTab, currentUserId])
 
-    useEffect(() => {
-        if (currentUserId) {
-            const watcherKey = v4()
-            const ownerId = getOwnerId(projectId, currentUserId)
-
-            watchAllMilestones(projectId, watcherKey, ownerId)
-            return () => {
-                Backend.unwatch(watcherKey)
-                dispatch([setOpenMilestonesInProject(projectId, null), setDoneMilestonesInProject(projectId, null)])
-            }
-        }
-    }, [projectId, currentUserId])
-
-    useEffect(() => {
-        if (currentUserId) {
-            const watcherKey = v4()
-            const ownerId = getOwnerId(projectId, currentUserId)
-            watchAllGoals(projectId, watcherKey, ownerId)
-            return () => {
-                Backend.unwatch(watcherKey)
-                dispatch(setGoalsInProject(projectId, null))
-            }
-        }
-    }, [projectId, currentUserId])
-
     const firstMilestoneId = boardMilestones && boardMilestones.length > 0 ? boardMilestones[0].id : ''
 
     return (
-        <MilestonesListByProject
-            key={projectId + goalsActiveTab}
-            projectId={projectId}
-            projectIndex={selectedProjectIndex}
-            goalsActiveTab={goalsActiveTab}
-            firstMilestoneId={firstMilestoneId}
-            setDismissibleRefs={setDismissibleRefs}
-            unsetDismissibleRefs={unsetDismissibleRefs}
-            closeEdition={closeEdition}
-            openEdition={openEdition}
-            canShowProject={true}
-        />
+        <>
+            {currentUserId && (
+                <GoalsProjectWatcher
+                    project={project}
+                    currentUserId={currentUserId}
+                    trackInitialLoad
+                    onInitialSnapshot={NOOP}
+                />
+            )}
+            <MilestonesListByProject
+                key={projectId + goalsActiveTab}
+                projectId={projectId}
+                projectIndex={selectedProjectIndex}
+                goalsActiveTab={goalsActiveTab}
+                firstMilestoneId={firstMilestoneId}
+                setDismissibleRefs={setDismissibleRefs}
+                unsetDismissibleRefs={unsetDismissibleRefs}
+                closeEdition={closeEdition}
+                openEdition={openEdition}
+                canShowProject={true}
+            />
+        </>
     )
 }

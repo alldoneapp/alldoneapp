@@ -23,8 +23,51 @@ import { watchFollowedPeople } from '../../utils/backends/Contacts/followedPeopl
 import { createFollowedPeopleBatcher } from './followedPeopleBatcher'
 import { buildContactsViewData } from './contactsViewData'
 import { getProjectsForContactsView } from './contactsViewProjectScope'
-import { ensureProjectDataLoaded, PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader'
+import {
+    ensureProjectDataLoaded,
+    PROJECT_DATA_CONTACTS,
+    PROJECT_DATA_USERS,
+} from '../../utils/InitialLoad/projectDataLoader'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
+import {
+    buildSecondaryViewCacheKey,
+    getSecondaryViewCacheEntry,
+    getSecondaryViewCacheEntrySync,
+    SECONDARY_VIEW_CONTACTS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
+
+export const CONTACTS_ALL_PROJECTS_CACHE_ROWS = 3
+export const CONTACTS_SELECTED_PROJECT_CACHE_ROWS = 10
+
+const sortCachedContacts = (first, second) => {
+    const dateDifference = (second.lastEditionDate || 0) - (first.lastEditionDate || 0)
+    return dateDifference || (first.displayName || '').localeCompare(second.displayName || '')
+}
+
+export const getContactsViewCacheKey = ({ activeTab, inAllProjects, selectedProjectId, projectIds = [] }) =>
+    buildSecondaryViewCacheKey(activeTab, inAllProjects ? 'all-projects' : selectedProjectId, [...projectIds].sort())
+
+export const buildContactsViewCacheSnapshot = ({
+    cacheKey,
+    projects,
+    filteredProjectsUsers,
+    filteredProjectsContacts,
+    amounts,
+    rowsPerProject,
+}) => {
+    const projectsById = {}
+    projects.forEach(project => {
+        const members = filteredProjectsUsers[project.id] || []
+        const contacts = filteredProjectsContacts[project.id] || []
+        const visibleRows = [...members, ...contacts].sort(sortCachedContacts).slice(0, rowsPerProject)
+        projectsById[project.id] = {
+            members: visibleRows.filter(contact => !contact.hasOwnProperty('recorderUserId')),
+            contacts: visibleRows.filter(contact => contact.hasOwnProperty('recorderUserId')),
+        }
+    })
+    return { cacheKey, projects: projectsById, amounts }
+}
 
 export function ContactsProjectLoader({ projectId, trackInitialLoad, onInitialSnapshot }) {
     const dispatch = useDispatch()
@@ -39,14 +82,14 @@ export function ContactsProjectLoader({ projectId, trackInitialLoad, onInitialSn
             dispatch(stopLoadingData())
         }
 
-        ensureProjectDataLoaded(projectId, PROJECT_DATA_CONTACTS, {
+        ensureProjectDataLoaded(projectId, [PROJECT_DATA_USERS, PROJECT_DATA_CONTACTS], {
             trackConnectionHealth: trackInitialLoad,
         })
             .catch(() => false)
-            .then(() => {
+            .then(loaded => {
                 if (!active) return
                 finishLoading()
-                onInitialSnapshot(projectId)
+                onInitialSnapshot(projectId, loaded)
             })
 
         return () => {
@@ -78,6 +121,34 @@ export default function ContactsView() {
         () => getProjectsForContactsView(inAllProjects, loggedUserProjects, loggedUser),
         [inAllProjects, loggedUserProjects, loggedUser]
     )
+    const selectedProjectId = inAllProjects ? null : loggedUserProjects[selectedProjectIndex]?.id
+    const contactsCacheKey = getContactsViewCacheKey({
+        activeTab: contactsActiveTab,
+        inAllProjects,
+        selectedProjectId,
+        projectIds: projectsForContactsView.map(project => project.id),
+    })
+    const [cachedViewSnapshot, setCachedViewSnapshot] = useState(() =>
+        getSecondaryViewCacheEntrySync(loggedUser.uid, SECONDARY_VIEW_CONTACTS, contactsCacheKey)
+    )
+
+    useEffect(() => {
+        let active = true
+        const sessionSnapshot = getSecondaryViewCacheEntrySync(
+            loggedUser.uid,
+            SECONDARY_VIEW_CONTACTS,
+            contactsCacheKey
+        )
+        setCachedViewSnapshot(sessionSnapshot)
+        if (!sessionSnapshot) {
+            getSecondaryViewCacheEntry(loggedUser.uid, SECONDARY_VIEW_CONTACTS, contactsCacheKey).then(snapshot => {
+                if (active) setCachedViewSnapshot(snapshot)
+            })
+        }
+        return () => {
+            active = false
+        }
+    }, [contactsCacheKey, loggedUser.uid])
 
     const writeBrowserURL = () => {
         if (inAllProjects) {
@@ -168,12 +239,19 @@ export default function ContactsView() {
         [sortedLoggedUserProjects]
     )
     const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
-    const selectedProjectId = inAllProjects ? null : loggedUserProjects[selectedProjectIndex]?.id
     const projectRevealKey = `${inAllProjects ? 'all' : selectedProjectId}:${projectMembershipKey}`
     const projectRevealKeyRef = useRef(projectRevealKey)
     projectRevealKeyRef.current = projectRevealKey
-    const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
+    const cachedProjectIds = Object.keys(
+        cachedViewSnapshot?.cacheKey === contactsCacheKey ? cachedViewSnapshot.projects || {} : {}
+    ).filter(projectId => sortedProjectIds.includes(projectId))
+    const [projectReadiness, setProjectReadiness] = useState({
+        key: projectRevealKey,
+        projectIds: cachedProjectIds,
+    })
     const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
+    const [liveProjectReadiness, setLiveProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
+    const liveReadyProjectIds = liveProjectReadiness.key === projectRevealKey ? liveProjectReadiness.projectIds : []
     const markProjectReady = useCallback(projectId => {
         setProjectReadiness(current => {
             const key = projectRevealKeyRef.current
@@ -182,6 +260,25 @@ export default function ContactsView() {
             return { key, projectIds: [...projectIds, projectId] }
         })
     }, [])
+    const cachedProjectIdsKey = cachedProjectIds.join('\u001f')
+    useEffect(() => {
+        cachedProjectIds.forEach(markProjectReady)
+    }, [cachedProjectIdsKey, markProjectReady])
+    const markLiveProjectReady = useCallback(
+        (projectId, loaded = true) => {
+            markProjectReady(projectId)
+            // A timeout/failure still releases the reveal queue, but it is not newer data. Keep
+            // rendering the cached rows until a later live watcher delivery can replace them.
+            if (!loaded) return
+            setLiveProjectReadiness(current => {
+                const key = projectRevealKeyRef.current
+                const projectIds = current.key === key ? current.projectIds : []
+                if (projectIds.includes(projectId)) return current
+                return { key, projectIds: [...projectIds, projectId] }
+            })
+        },
+        [markProjectReady]
+    )
     const { revealedProjectIds, primaryProjectId, complete } = useRateLimitedProjectReveal({
         projectIds: inAllProjects ? sortedProjectIds : [],
         readyProjectIds,
@@ -226,7 +323,7 @@ export default function ContactsView() {
         })
         projects.forEach(project => {
             if (followedWatchers.current.has(project.id)) return
-            let loadingActive = project.id === trackedProjectId
+            let loadingActive = project.id === trackedProjectId && !cachedProjectIds.includes(project.id)
             if (loadingActive) dispatch(startLoadingData())
             const finishLoading = () => {
                 if (!loadingActive) return
@@ -247,10 +344,67 @@ export default function ContactsView() {
             )
             followedWatchers.current.set(project.id, { unsubscribe, finishLoading })
         })
-    }, [contactsActiveTab, dispatch, loggedUser.uid, selectedProjectIndex, trackedProjectId, visibleProjectIdsKey])
+    }, [
+        cachedProjectIdsKey,
+        contactsActiveTab,
+        dispatch,
+        loggedUser.uid,
+        selectedProjectIndex,
+        trackedProjectId,
+        visibleProjectIdsKey,
+    ])
 
-    const contactsAmount = amounts.users + amounts.contacts
-    const followedContactsAmount = amounts.followedUsers + amounts.followedContacts
+    const cachedProjects = cachedViewSnapshot?.cacheKey === contactsCacheKey ? cachedViewSnapshot.projects || {} : {}
+    const projectHasLiveRows = projectId =>
+        liveReadyProjectIds.includes(projectId) &&
+        (contactsActiveTab !== FOLLOWED_TAB || followedReadyProjectIds.includes(projectId))
+    const renderedProjectsUsers = {}
+    const renderedProjectsContacts = {}
+    projectsForContactsView.forEach(project => {
+        const useLiveRows = projectHasLiveRows(project.id) || !cachedProjects[project.id]
+        renderedProjectsUsers[project.id] = useLiveRows
+            ? filteredProjectsUsers[project.id] || []
+            : cachedProjects[project.id].members || []
+        renderedProjectsContacts[project.id] = useLiveRows
+            ? filteredProjectsContacts[project.id] || []
+            : cachedProjects[project.id].contacts || []
+    })
+    const requiredLiveProjectIds = inAllProjects ? sortedProjectIds : selectedProjectId ? [selectedProjectId] : []
+    const allVisibleProjectsLive = requiredLiveProjectIds.every(projectHasLiveRows)
+    const renderedAmounts =
+        !allVisibleProjectsLive && cachedViewSnapshot?.cacheKey === contactsCacheKey
+            ? cachedViewSnapshot.amounts || amounts
+            : amounts
+
+    useEffect(() => {
+        // The initial Redux maps are empty while project listeners are attaching. Persist only
+        // after every required project has delivered, otherwise that transient state can win a
+        // race with the existing IndexedDB projection and erase the useful cold-start rows.
+        if (projectsForContactsView.length === 0 || !allVisibleProjectsLive) return
+        const snapshot = buildContactsViewCacheSnapshot({
+            cacheKey: contactsCacheKey,
+            projects: projectsForContactsView,
+            filteredProjectsUsers: renderedProjectsUsers,
+            filteredProjectsContacts: renderedProjectsContacts,
+            amounts: renderedAmounts,
+            rowsPerProject: inAllProjects ? CONTACTS_ALL_PROJECTS_CACHE_ROWS : CONTACTS_SELECTED_PROJECT_CACHE_ROWS,
+        })
+        setSecondaryViewCacheEntry(loggedUser.uid, SECONDARY_VIEW_CONTACTS, contactsCacheKey, snapshot)
+    }, [
+        allVisibleProjectsLive,
+        contactsCacheKey,
+        filteredProjectsContacts,
+        filteredProjectsUsers,
+        followedPeopleByProject,
+        inAllProjects,
+        liveReadyProjectIds,
+        loggedUser.uid,
+        renderedAmounts,
+        selectedProjectId,
+    ])
+
+    const contactsAmount = renderedAmounts.users + renderedAmounts.contacts
+    const followedContactsAmount = renderedAmounts.followedUsers + renderedAmounts.followedContacts
     const displayedContactsAmount = contactsActiveTab === FOLLOWED_TAB ? followedContactsAmount : contactsAmount
 
     return (
@@ -275,19 +429,19 @@ export default function ContactsView() {
                 <ContactsProjectLoader
                     key={`contacts-loader-${project.id}`}
                     projectId={project.id}
-                    trackInitialLoad={project.id === trackedProjectId}
-                    onInitialSnapshot={markProjectReady}
+                    trackInitialLoad={project.id === trackedProjectId && !cachedProjects[project.id]}
+                    onInitialSnapshot={markLiveProjectReady}
                 />
             ))}
 
             {inAllProjects ? (
                 visibleProjects.map((project, index) =>
-                    filteredProjectsUsers[project.id] ? (
+                    renderedProjectsUsers[project.id] ? (
                         <ContactListByProject
                             key={project.id}
                             projectIndex={project.index}
-                            members={filteredProjectsUsers[project.id]}
-                            contacts={filteredProjectsContacts[project.id]}
+                            members={renderedProjectsUsers[project.id]}
+                            contacts={renderedProjectsContacts[project.id]}
                             onlyMembers={false}
                             firstProject={index === 0}
                             maxContactsToRender={3}
@@ -298,8 +452,8 @@ export default function ContactsView() {
             ) : displayedContactsAmount > 0 ? (
                 <ContactListByProject
                     projectIndex={selectedProjectIndex}
-                    members={filteredProjectsUsers[project.id]}
-                    contacts={filteredProjectsContacts[project.id]}
+                    members={renderedProjectsUsers[project.id]}
+                    contacts={renderedProjectsContacts[project.id]}
                     onlyMembers={false}
                     maxContactsToRender={10}
                     requestProjectData={false}

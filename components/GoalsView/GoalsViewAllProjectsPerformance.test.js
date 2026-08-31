@@ -22,6 +22,13 @@ import {
     storeCurrentUser,
     storeLoggedUser,
 } from '../../redux/actions'
+import { getOwnerId } from './GoalsHelper'
+import {
+    buildSecondaryViewCacheKey,
+    resetSecondaryViewCacheForTests,
+    SECONDARY_VIEW_GOALS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
 
 const renderCountsByProject = {}
 
@@ -105,6 +112,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        resetSecondaryViewCacheForTests()
         Object.keys(renderCountsByProject).forEach(key => delete renderCountsByProject[key])
         watchAllGoals.mockClear()
         watchAllMilestones.mockClear()
@@ -129,6 +137,7 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         clearBoards()
         store.dispatch(resetLoadingData())
         jest.useRealTimers()
+        resetSecondaryViewCacheForTests()
     })
 
     const mount = () => {
@@ -160,6 +169,31 @@ describe('GoalsViewAllProjects performance (AT-2336)', () => {
         expect(watchAllMilestones.mock.calls[0][3]).toEqual(
             expect.objectContaining({ manageLoading: true, trackConnectionHealth: true })
         )
+    })
+
+    it('hydrates a cached project board before its listeners refresh it', () => {
+        const ownerId = getOwnerId('p0', 'user-1')
+        const cacheKey = buildSecondaryViewCacheKey('p0', ownerId)
+        setSecondaryViewCacheEntry(
+            'user-1',
+            SECONDARY_VIEW_GOALS,
+            cacheKey,
+            {
+                projectId: 'p0',
+                ownerId,
+                goals: [{ id: 'cached-goal' }],
+                openMilestones: [{ id: 'cached-open-milestone' }],
+                doneMilestones: [],
+            },
+            { persist: false }
+        )
+
+        mount()
+
+        expect(store.getState().goalsByProject.p0).toEqual([{ id: 'cached-goal' }])
+        expect(store.getState().openMilestonesByProject.p0).toEqual([{ id: 'cached-open-milestone' }])
+        expect(watchAllGoals.mock.calls[0][3]).toEqual(expect.objectContaining({ manageLoading: false }))
+        expect(watchAllMilestones.mock.calls[0][3]).toEqual(expect.objectContaining({ manageLoading: false }))
     })
 
     it('eventually watches every active project exactly once', () => {
