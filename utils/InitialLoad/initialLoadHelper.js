@@ -244,7 +244,20 @@ export function watchAdministratorUser(userId) {
                     )
                 })
         },
-        'administratorUser'
+        'administratorUser',
+        error => {
+            const permissionDenied =
+                error?.code === 'permission-denied' ||
+                String(error?.message || error).includes('Missing or insufficient permissions')
+            if (permissionDenied) {
+                // The role pointer is public to signed-in users, but the named person's private
+                // profile is not. Keep the identity needed for global-assistant ownership without
+                // letting an expected cross-user denial escape as an uncaught snapshot error.
+                store.dispatch(setAdministratorUser({ uid: userId, roleOnly: true }))
+                return
+            }
+            console.warn(`[GlobalData] Administrator listener failed for /users/${userId}:`, error)
+        }
     )
 }
 

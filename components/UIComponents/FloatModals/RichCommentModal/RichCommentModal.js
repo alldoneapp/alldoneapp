@@ -88,6 +88,7 @@ export default function RichCommentModal({
     customHeader,
     showBotButton,
     objectName,
+    initialObject,
     externalAssistantId,
     initialAssistantEnabled = false,
     openedFromUnreadComment = false,
@@ -496,6 +497,7 @@ export default function RichCommentModal({
                             objectType={objectType}
                             objectId={objectId}
                             objectName={objectName}
+                            initialObject={initialObject}
                             onOpen={processShowMore}
                             onWorkflowTransitionSuccess={closeModal}
                         />

@@ -97,6 +97,7 @@ export default function ContactCommentsWrapper({
                     userGettingKarmaId={userGettingKarmaId}
                     showBotButton={true}
                     objectName={contact.displayName}
+                    initialObject={contact}
                     externalAssistantId={contact.assistantId}
                 />
             }

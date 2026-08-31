@@ -137,6 +137,7 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                     userGettingKarmaId=""
                     showBotButton={true}
                     objectName={goal.name}
+                    initialObject={goal}
                     externalAssistantId={goal.assistantId}
                 />
             }

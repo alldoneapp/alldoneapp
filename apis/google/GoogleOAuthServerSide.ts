@@ -220,6 +220,7 @@ export async function setServerTokenInGoogleApi(
 ): Promise<void> {
     try {
         const accessToken = await getServerSideToken(projectId, service)
+        await googleApi.ensureInitialized()
 
         // Set the token in gapi client if available
         if (googleApi.gapi?.client) {

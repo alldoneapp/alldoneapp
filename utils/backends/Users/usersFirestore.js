@@ -248,6 +248,37 @@ export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
             )
             return { user: null, missing: true, error: null, verified: true }
         }
+
+        // A cached document is not proof that this signed-in user may still read it. This matters
+        // for the global Administrator profile: an older session can leave a full private user
+        // document in IndexedDB, the cached get succeeds, and the listener then fails against the
+        // current strict rules. Verify optional cross-user reads independently before exposing the
+        // cached profile or arming that listener.
+        if (permissionDeniedIsExpected && docSnapshot.metadata?.fromCache && !docSnapshot.directlyVerified) {
+            let directSnapshot
+            try {
+                directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
+            } catch (verifyError) {
+                if (isPermissionDenied(verifyError)) {
+                    return { user: null, missing: false, error: verifyError, verified: false }
+                }
+                throw verifyError
+            }
+
+            if (!directSnapshot.exists) {
+                return { user: null, missing: true, error: null, verified: true }
+            }
+            const directlyVerifiedUser = directSnapshot.data
+                ? mapUserData(userId, directSnapshot.data, isLoggedUser)
+                : null
+            return {
+                user: directlyVerifiedUser,
+                missing: !directlyVerifiedUser,
+                error: null,
+                verified: true,
+            }
+        }
+
         const user = docSnapshot.data()
         const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
         return { user: mappedUser, missing: !mappedUser, error: null, verified: true }

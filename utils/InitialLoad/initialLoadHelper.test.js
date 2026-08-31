@@ -93,13 +93,15 @@ describe('watchGlobalAssistants', () => {
 
 describe('watchAdministratorUser', () => {
     let watcherCallback
+    let watcherErrorCallback
     let consoleWarn
 
     beforeEach(() => {
         jest.clearAllMocks()
         store.getState.mockReturnValue({ administratorUser: { uid: 'admin-1' } })
-        watchUserData.mockImplementation((userId, isLoggedUser, callback) => {
+        watchUserData.mockImplementation((userId, isLoggedUser, callback, watcherKey, onError) => {
             watcherCallback = callback
+            watcherErrorCallback = onError
         })
         getAdministratorUser.mockResolvedValue({ uid: 'admin-1' })
         consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -114,7 +116,13 @@ describe('watchAdministratorUser', () => {
         watcherCallback({ uid: 'admin-1', displayName: 'Administrator' })
 
         expect(unwatch).toHaveBeenCalledWith('administratorUser')
-        expect(watchUserData).toHaveBeenCalledWith('admin-1', false, expect.any(Function), 'administratorUser')
+        expect(watchUserData).toHaveBeenCalledWith(
+            'admin-1',
+            false,
+            expect.any(Function),
+            'administratorUser',
+            expect.any(Function)
+        )
         expect(setAdministratorUser).toHaveBeenCalledWith({ uid: 'admin-1', displayName: 'Administrator' })
     })
 
@@ -172,7 +180,34 @@ describe('watchAdministratorUser', () => {
         await Promise.resolve()
 
         expect(setAdministratorUser).toHaveBeenCalledWith({ uid: 'admin-2' })
-        expect(watchUserData).toHaveBeenLastCalledWith('admin-2', false, expect.any(Function), 'administratorUser')
+        expect(watchUserData).toHaveBeenLastCalledWith(
+            'admin-2',
+            false,
+            expect.any(Function),
+            'administratorUser',
+            expect.any(Function)
+        )
+    })
+
+    it('downgrades an unreadable Administrator profile to its public role identity', () => {
+        watchAdministratorUser('admin-1')
+
+        watcherErrorCallback(
+            Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' })
+        )
+
+        expect(setAdministratorUser).toHaveBeenCalledWith({ uid: 'admin-1', roleOnly: true })
+        expect(consoleWarn).not.toHaveBeenCalled()
+    })
+
+    it('reports unexpected Administrator listener failures without clearing valid state', () => {
+        const unavailable = Object.assign(new Error('offline'), { code: 'unavailable' })
+        watchAdministratorUser('admin-1')
+
+        watcherErrorCallback(unavailable)
+
+        expect(setAdministratorUser).not.toHaveBeenCalled()
+        expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('Administrator listener failed'), unavailable)
     })
 })
 
