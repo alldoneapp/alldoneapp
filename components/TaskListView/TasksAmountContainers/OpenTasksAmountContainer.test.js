@@ -39,6 +39,17 @@ jest.mock('../../../utils/backends/Tasks/taskNumbers', () => ({
 
 jest.mock('../../../redux/actions', () => ({
     setOpenTasksAmountLoaded: jest.fn(loaded => ({ type: 'Set open tasks amount loaded', loaded })),
+    setTaskColdStartEmptyToday: jest.fn(emptyToday => ({ type: 'Set task cold start empty today', emptyToday })),
+}))
+
+const mockScheduleTaskColdStartCachePersist = jest.fn()
+jest.mock('../../../utils/InitialLoad/taskColdStartCache', () => ({
+    scheduleTaskColdStartCachePersist: (...args) => mockScheduleTaskColdStartCachePersist(...args),
+}))
+
+jest.mock('../../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: jest.fn(() => STATE) },
 }))
 
 const STATE = {
@@ -109,6 +120,8 @@ describe('OpenTasksAmountContainer readiness (AT-2445)', () => {
         settleAll()
 
         expect(loadedDispatches(dispatch)).toEqual([[{ type: 'Set open tasks amount loaded', loaded: true }]])
+        expect(dispatch).toHaveBeenCalledWith({ type: 'Set task cold start empty today', emptyToday: null })
+        expect(mockScheduleTaskColdStartCachePersist).toHaveBeenCalledTimes(1)
     })
 
     it('announces readiness exactly once, however many snapshots follow', () => {

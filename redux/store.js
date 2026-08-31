@@ -313,6 +313,9 @@ export const initialState = {
     // rebuilt, so "0" on its own cannot tell an empty inbox apart from an inbox that has not been
     // counted yet. This flag is the missing half — see `setOpenTasksAmountLoaded`.
     openTasksAmountLoaded: false,
+    // A same-day, complete-project cold-start proof that the previous Tasks board was empty.
+    // It is cleared as soon as the live aggregate queries take over.
+    taskColdStartEmptyToday: null,
     doneTasksAmount: null,
     earlierDoneTasksAmount: null,
     workflowTasksAmount: { amount: 0, loaded: false },
@@ -1833,6 +1836,13 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 openTasksAmountLoaded,
+            }
+        }
+
+        case 'Set task cold start empty today': {
+            return {
+                ...state,
+                taskColdStartEmptyToday: action.emptyToday || null,
             }
         }
 

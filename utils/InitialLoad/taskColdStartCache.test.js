@@ -4,6 +4,8 @@ import {
     buildTaskColdStartSnapshot,
     getRestorableTaskColdStartSnapshot,
     getTaskBearingProjectIndexes,
+    getTaskColdStartDayKey,
+    getTaskColdStartProjectIds,
 } from './taskColdStartCache'
 
 const todayWithTasks = amount => [['0', amount, 0, [], [], [], [], [], [], [], [], []]]
@@ -97,5 +99,71 @@ describe('taskColdStartCache projection', () => {
         const state = buildState()
 
         expect(getTaskBearingProjectIndexes(['p2', 'p1'], state.openTasksStore, 'user-1')).toEqual([1])
+    })
+
+    it('matches the active Tasks scope while retaining an explicitly focused project', () => {
+        const projects = [{ id: 'active' }, { id: 'guide' }, { id: 'archived' }]
+
+        expect(
+            getTaskColdStartProjectIds(projects, {
+                archivedProjectIds: ['archived'],
+                guideProjectIds: ['guide'],
+                templateProjectIds: [],
+                inFocusTaskProjectId: 'guide',
+            })
+        ).toEqual(['guide', 'active'])
+    })
+
+    it('stores and restores a same-day empty-today proof only after the complete board has answered', () => {
+        const now = new Date('2026-08-31T12:00:00.000Z').valueOf()
+        const state = buildState()
+        state.openTasksStore = {
+            'p1user-1': [],
+            'p2user-1': [],
+        }
+        state.openMilestonesByProjectInTasks.p2 = []
+        state.doneMilestonesByProjectInTasks.p2 = []
+        state.goalsByProjectInTasks.p2 = {}
+        state.openTasksAmount = 0
+        state.openTasksAmountLoaded = true
+        state.todayEmptyGoalsTotalAmountInOpenTasksView = { total: 0 }
+        state.initialLoadingEndOpenTasks = { 'p1user-1': true, 'p2user-1': true }
+        state.initialLoadingEndObservedTasks = { 'p1user-1': true, 'p2user-1': true }
+        state.thereAreNotTasksInFirstDay = { 'p1user-1': true, 'p2user-1': true }
+
+        const snapshot = buildTaskColdStartSnapshot(state, now)
+
+        expect(snapshot.emptyToday).toEqual({
+            userId: 'user-1',
+            dayKey: getTaskColdStartDayKey(now),
+            projectIds: ['p1', 'p2'],
+        })
+        expect(getRestorableTaskColdStartSnapshot(snapshot, 'user-1', ['p1', 'p2'], now).emptyToday).toEqual(
+            snapshot.emptyToday
+        )
+    })
+
+    it('does not restore an empty-today proof on another day or for a changed task-board scope', () => {
+        const now = new Date('2026-08-31T12:00:00.000Z').valueOf()
+        const state = buildState()
+        state.openTasksStore = { 'p1user-1': [], 'p2user-1': [] }
+        state.openMilestonesByProjectInTasks.p2 = []
+        state.doneMilestonesByProjectInTasks.p2 = []
+        state.goalsByProjectInTasks.p2 = {}
+        state.openTasksAmount = 0
+        state.openTasksAmountLoaded = true
+        state.todayEmptyGoalsTotalAmountInOpenTasksView = { total: 0 }
+        state.initialLoadingEndOpenTasks = { 'p1user-1': true, 'p2user-1': true }
+        state.initialLoadingEndObservedTasks = { 'p1user-1': true, 'p2user-1': true }
+        state.thereAreNotTasksInFirstDay = { 'p1user-1': true, 'p2user-1': true }
+        const snapshot = buildTaskColdStartSnapshot(state, now)
+
+        expect(
+            getRestorableTaskColdStartSnapshot(snapshot, 'user-1', ['p1', 'p2'], now + 24 * 60 * 60 * 1000).emptyToday
+        ).toBeNull()
+        expect(getRestorableTaskColdStartSnapshot(snapshot, 'user-1', ['p1', 'p2'], now, ['p1']).emptyToday).toBeNull()
+
+        state.initialLoadingEndObservedTasks['p2user-1'] = false
+        expect(buildTaskColdStartSnapshot(state, now).emptyToday).toBeNull()
     })
 })
