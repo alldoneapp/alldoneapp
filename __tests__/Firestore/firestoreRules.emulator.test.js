@@ -132,6 +132,11 @@ const seed = async () => {
             followedReaderIds: [MEMBER_ID],
             backlinkIdsVisibleTo: { [MEMBER_ID]: [] },
         })
+        await setDoc(doc(db, `chatObjects/${PROJECT_ID}/chats/private-chat`), {
+            isPublicFor: [MEMBER_ID],
+            readerIds: [MEMBER_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [] },
+        })
         await setDoc(doc(db, `noteItems/${PROJECT_ID}/notes/followed-note`), {
             isPublicFor: [MEMBER_ID],
             isVisibleInFollowedFor: [MEMBER_ID],
@@ -428,6 +433,8 @@ describe('queries used by the web client', () => {
 
     it('allows a followed-chat query only through the fixed server projection', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
         const allChats = query(
             collection(memberDb, `chatObjects/${PROJECT_ID}/chats`),
             where('readerIds', 'array-contains', MEMBER_ID)
@@ -438,9 +445,15 @@ describe('queries used by the web client', () => {
         )
 
         const allSnapshot = await assertSucceeds(getDocs(allChats))
-        expect(allSnapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
+        expect(allSnapshot.docs.map(item => item.id).sort()).toEqual(['followed-chat', 'private-chat'])
         const snapshot = await assertSucceeds(getDocs(chats))
         expect(snapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
+        const missingChat = await assertSucceeds(
+            getDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/not-created`))
+        )
+        expect(missingChat.exists()).toBe(false)
+        await assertFails(getDoc(doc(teammateDb, `chatObjects/${PROJECT_ID}/chats/private-chat`)))
+        await assertFails(getDoc(doc(outsiderDb, `chatObjects/${PROJECT_ID}/chats/not-created`)))
         await assertSucceeds(
             updateDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/followed-chat`), {
                 isAssistantEnabled: true,
