@@ -3,8 +3,13 @@ import renderer, { act } from 'react-test-renderer'
 
 import store from '../../redux/store'
 import Backend from '../../utils/BackendBridge'
-import NotesByProject from './NotesByProject'
+import NotesByProject, { getNotesViewCacheKey, limitNotesForViewCache } from './NotesByProject'
 import { startLoadingData, stopLoadingData } from '../../redux/actions'
+import {
+    resetSecondaryViewCacheForTests,
+    SECONDARY_VIEW_NOTES,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
 
 /**
  * AT-2382 — the notes list's "Show more" ghosts.
@@ -109,6 +114,7 @@ const noteChange = id => ({
 })
 
 const baseState = {
+    loggedUser: { uid: 'user-1' },
     hashtagFilters: new Map(),
     noteOwnerFilters: [],
     selectedProjectIndex: 0,
@@ -142,7 +148,61 @@ const render = async () => {
 describe('NotesByProject "Show more" ghosts', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        resetSecondaryViewCacheForTests()
         store.getState.mockReturnValue(baseState)
+    })
+
+    afterEach(() => resetSecondaryViewCacheForTests())
+
+    it('bounds the cached projection to the initial visible note count', () => {
+        const notes = {
+            20260806: [{ id: 'n1' }, { id: 'n2' }],
+            20260805: [{ id: 'n3' }, { id: 'n4' }],
+        }
+
+        expect(limitNotesForViewCache(notes, 3)).toEqual({
+            20260806: [{ id: 'n1' }, { id: 'n2' }],
+            20260805: [{ id: 'n3' }],
+        })
+    })
+
+    it('renders a cached note before the live listener delivers', async () => {
+        const cacheKey = getNotesViewCacheKey({
+            projectId: PROJECT.id,
+            filterBy: 0,
+            maxNotesToRender: 10,
+            inAllProjects: false,
+        })
+        const cachedNote = { id: 'cached-note', title: 'Cached note', lastEditionDate: 1786000000000 }
+        setSecondaryViewCacheEntry(
+            'user-1',
+            SECONDARY_VIEW_NOTES,
+            cacheKey,
+            {
+                projectId: PROJECT.id,
+                filterBy: 0,
+                inAllProjects: false,
+                notes: { 20260806: [cachedNote] },
+                stickyNotes: [],
+                needShowMoreButton: false,
+            },
+            { persist: false }
+        )
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <NotesByProject project={PROJECT} filterBy={0} maxNotesToRender={10} setLastEditNoteDate={jest.fn()} />
+            )
+            await Promise.resolve()
+        })
+
+        const cachedSections = tree.root
+            .findAllByType('NotesByDate')
+            .filter(node => node.props.notes.some(note => note.id === 'cached-note'))
+        expect(cachedSections).toHaveLength(1)
+        expect(startLoadingData).not.toHaveBeenCalled()
+        act(() => tree.unmount())
     })
 
     it('renders no ghosts before the button is pressed', async () => {

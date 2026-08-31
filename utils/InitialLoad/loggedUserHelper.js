@@ -62,6 +62,7 @@ import { isEqual } from 'lodash'
 import { trackEvent } from '../analytics/analytics'
 import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
 import { getRestorableTaskColdStartSnapshot, readTaskColdStartCache } from './taskColdStartCache'
+import { primeSecondaryViewCache } from './secondaryViewCache'
 import { markNamedPerformanceTrace } from '../performance/performanceLogger'
 
 // A valid local user snapshot is enough to construct the project list. Give an
@@ -417,6 +418,10 @@ async function loadInitialData() {
     if (cancelDeferredProjectWatchers) cancelDeferredProjectWatchers()
     cancelDeferredProjectWatchers = scheduleAfterInitialTaskData(() => {
         if (store.getState().loggedUser?.uid !== loggedUser.uid) return
+        // This cache can contain compact projections for several secondary pages. Read it only
+        // after the task board is ready so Notes/Goals/Contacts/Chats are warm for a later tap
+        // without making the primary startup path deserialize unrelated rows.
+        primeSecondaryViewCache(loggedUser.uid)
         try {
             watchProjectsData(projectIds)
             watchProjectsChatNotifications()
