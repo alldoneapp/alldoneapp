@@ -549,7 +549,12 @@ export async function reconcileExistingDayRateTimeLog(projectId, userId, timesta
     const config = normalizeDayRateTimeLogConfig(project?.dayRateTimeLog)
     const timezone = getDayRateTimezone()
 
-    if (!projectId || !userId || !timestamp) return null
+    // This lightweight reconciliation runs after every ordinary task status change. Match the
+    // main reconciliation entry point's feature gate so projects that never enabled day-rate time
+    // logging do not issue an unrelated Firestore query after their task write already succeeded.
+    // Apart from wasting a round trip, a rejected follow-up query made the workflow modal report
+    // the successful task completion itself as failed.
+    if (!projectId || !userId || !timestamp || !config.enabled) return null
 
     const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)

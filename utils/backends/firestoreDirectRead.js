@@ -51,17 +51,19 @@ const decodeFields = fields =>
         return data
     }, {})
 
-const buildDocumentUrl = documentPath => {
+const getDirectReadTarget = documentPath => {
     const { apiKey, projectId } = firebase.app().options
     const normalizedPath = String(documentPath || '')
         .replace(/^\/+/, '')
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')
+        .replace(/\/+$/, '')
+    const databaseName = `projects/${projectId}/databases/(default)`
     const baseUrl = shouldUseEmulator()
-        ? `http://127.0.0.1:8080/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`
-        : `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`
-    return `${baseUrl}/${normalizedPath}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`
+        ? `http://127.0.0.1:8080/v1/${databaseName}`
+        : `https://firestore.googleapis.com/v1/${databaseName}`
+    return {
+        documentName: `${databaseName}/documents/${normalizedPath}`,
+        url: `${baseUrl}/documents:batchGet${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`,
+    }
 }
 
 // The regular Firestore client serves the whole app: local state, listeners and writes. An
@@ -75,12 +77,17 @@ export const readDocumentDirectlyFromServer = async documentPath => {
     if (!currentUser) throw new Error('Cannot verify a Firestore document without an authenticated user')
 
     const idToken = await currentUser.getIdToken()
-    const response = await fetch(buildDocumentUrl(documentPath), {
+    const target = getDirectReadTarget(documentPath)
+    const response = await fetch(target.url, {
+        method: 'POST',
         cache: 'no-store',
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: {
+            Authorization: `Bearer ${idToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ documents: [target.documentName] }),
     })
 
-    if (response.status === 404) return { exists: false, data: undefined }
     if (!response.ok) {
         let details
         try {
@@ -95,9 +102,17 @@ export const readDocumentDirectlyFromServer = async documentPath => {
         throw directReadError
     }
 
-    const document = await response.json()
+    // batchGet deliberately represents a missing document in a successful HTTP 200 response.
+    // This keeps first-time signup out of Chrome's red 404 network/error path while retaining
+    // the independent server verification that protects an existing account from being reset.
+    const payload = await response.json()
+    const results = Array.isArray(payload) ? payload : [payload]
+    const result = results.find(item => item?.found || item?.missing)
+    if (result?.missing) return { exists: false, data: undefined }
+    if (!result?.found) throw new Error('Direct Firestore batch read returned no document result')
+
     return {
         exists: true,
-        data: decodeFields(document.fields || {}),
+        data: decodeFields(result.found.fields || {}),
     }
 }
