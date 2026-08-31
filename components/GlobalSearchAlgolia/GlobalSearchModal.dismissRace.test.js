@@ -26,6 +26,7 @@ import GlobalSearchModal from './GlobalSearchModal'
 import { highResNow } from '../../utils/popupDismissGuard'
 
 jest.mock('../../utils/typesenseSearch', () => ({
+    warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => searches.map(() => ({ hits: [] })),
 }))
 

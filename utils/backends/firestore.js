@@ -3103,10 +3103,16 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
     const defaultStream = getDefaultMainWorkstream(projectId, user.uid)
     uploadNewMainWorkstream(projectId, defaultStream, batch)
 
-    if (!setLikeDefaultProject) updateXpByCreateProject(user.uid, firebase, db, projectId)
-
     await batch.commit()
     project.id = projectId
+
+    // The XP callable verifies project membership on the server. Calling it before the batch
+    // exists races that verification and produced a real 403 during new-user provisioning.
+    if (!setLikeDefaultProject) {
+        updateXpByCreateProject(user.uid, firebase, db, projectId).catch(error =>
+            console.warn('[Project creation] Could not award project-creation XP:', error)
+        )
+    }
 
     if (addingTemplate) {
         store.dispatch(setChatNotificationsInProject(projectId, []))
@@ -3187,7 +3193,12 @@ export const getAdministratorUser = async () => {
             }
         },
         readRoleDirectly: () => readDocumentDirectlyFromServer('roles/administrator'),
-        readUserResult: userId => fetchUserDataResult(userId, false),
+        readUserResult: userId =>
+            fetchUserDataResult(userId, false, {
+                // Most users do not share a project with the Administrator. Under strict rules
+                // that denial is expected; the resolver safely falls back to roles/administrator.
+                permissionDeniedIsExpected: firebase.auth().currentUser?.uid !== userId,
+            }),
         recoverRealtimeConnection: restartFirestoreNetwork,
         warn: (...args) => console.warn(...args),
     })

@@ -1,4 +1,8 @@
-import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
+import {
+    getAssistantPreConfigSearchRows,
+    settlePreConfigTaskSearchSources,
+    sortPreConfigTaskSearchItems,
+} from './preConfigTaskSearchHelper'
 
 describe('assistant pre-config task search helpers', () => {
     const loggedUserId = 'user-1'
@@ -8,6 +12,7 @@ describe('assistant pre-config task search helpers', () => {
         index: 2,
         sortIndexByUser: { [loggedUserId]: 100 },
         globalAssistantIds: ['global-1'],
+        userIds: [loggedUserId],
     }
     const betaProject = {
         id: 'project-b',
@@ -15,6 +20,7 @@ describe('assistant pre-config task search helpers', () => {
         index: 1,
         sortIndexByUser: { [loggedUserId]: 200 },
         globalAssistantIds: [],
+        userIds: [loggedUserId],
     }
     const globalAssistant = { uid: 'global-1', displayName: 'Global Helper', order: 2 }
     const localAssistant = { uid: 'local-1', displayName: 'Local Helper', order: 1 }
@@ -97,5 +103,40 @@ describe('assistant pre-config task search helpers', () => {
             project: betaProject,
             assistant: betaAssistant,
         })
+    })
+
+    it('omits readable public projects whose assistant tasks the user cannot execute', () => {
+        const publicNonMemberProject = {
+            id: 'public-project',
+            name: 'Public',
+            userIds: ['someone-else'],
+            globalAssistantIds: ['global-1'],
+        }
+
+        const rows = getAssistantPreConfigSearchRows({
+            loggedUserProjects: [alphaProject, publicNonMemberProject],
+            projectAssistants: {
+                [publicNonMemberProject.id]: [{ uid: 'local-public' }],
+            },
+            globalAssistants: [globalAssistant],
+            loggedUserId,
+        })
+
+        expect(rows.map(row => row.project.id)).toEqual([alphaProject.id])
+    })
+
+    it('keeps successful task sources when another source is denied', async () => {
+        const sources = [{ assistantId: 'allowed' }, { assistantId: 'denied' }]
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+
+        const result = await settlePreConfigTaskSearchSources(sources, source => {
+            if (source.assistantId === 'denied') throw denied
+            return [{ id: 'task-1' }]
+        })
+
+        expect(result.loadedSources).toEqual([{ source: sources[0], tasks: [{ id: 'task-1' }], error: null }])
+        expect(result.failedSources).toEqual([{ source: sources[1], tasks: [], error: denied }])
     })
 })

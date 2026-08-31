@@ -39,7 +39,7 @@ import {
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
 import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
-import { multiSearchTypesense } from '../../utils/typesenseSearch'
+import { multiSearchTypesense, warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 import Backend from '../../utils/BackendBridge'
 import { convertNoteObjectType, getInitialTab, goToObjectDetailView } from './searchFunctions'
 import SearchFilterChips from './Filter/SearchFilterChips'
@@ -215,6 +215,7 @@ export default function GlobalSearchModal() {
     }
 
     useEffect(() => {
+        warmTypesenseSearchCredentials()
         updateTemporaryProjectsAndUsers()
     }, [])
 

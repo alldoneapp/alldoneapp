@@ -4590,14 +4590,17 @@ exports.getEmailLineSummarySecondGen = onCall(
         const { includeNeedsReply } = data || {}
 
         try {
-            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
-            const { getEmailLineSummary } = require('./Email/emailLine/emailLineService')
-            return await getEmailLineSummary(auth.uid, key, { userData, includeNeedsReply: !!includeNeedsReply })
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
+            const { getEmailLineSummaryResponse } = require('./Email/emailLine/emailLineSummaryResponse')
+            return await getEmailLineSummaryResponse({
+                userId: auth.uid,
+                key,
+                userData,
+                connection,
+                includeNeedsReply: !!includeNeedsReply,
+            })
         } catch (error) {
             if (error instanceof HttpsError) throw error
-            if (error?.code === 'EMAIL_AUTH_EXPIRED') {
-                throw new HttpsError('failed-precondition', 'EMAIL_AUTH_EXPIRED')
-            }
             console.error('[getEmailLineSummarySecondGen] Error:', error)
             throw new HttpsError('internal', error.message || 'Failed to load email summary')
         }

@@ -200,6 +200,17 @@ describe('loadGlobalData', () => {
         expect(setAdministratorAndGlobalAssistants).toHaveBeenCalledWith({ uid: 'admin-1' }, [{ uid: 'assistant-1' }])
     })
 
+    it('does not watch a private profile for a role-only Administrator identity', async () => {
+        getAdministratorUser.mockResolvedValue({ uid: 'admin-1', roleOnly: true })
+
+        await loadGlobalData()
+
+        expect(setAdministratorAndGlobalAssistants).toHaveBeenCalledWith({ uid: 'admin-1', roleOnly: true }, [
+            { uid: 'assistant-1' },
+        ])
+        expect(watchUserData).not.toHaveBeenCalled()
+    })
+
     it('preserves existing state when authoritative reads exhaust their retries', async () => {
         getAdministratorUser.mockRejectedValue(new Error('unavailable'))
 

@@ -7,7 +7,9 @@ const path = require('path')
 const { assertFails, assertSucceeds, initializeTestEnvironment } = require('@firebase/rules-unit-testing')
 const {
     FieldPath,
+    arrayUnion,
     collection,
+    deleteDoc,
     doc,
     getDoc,
     getDocs,
@@ -151,6 +153,29 @@ const seed = async () => {
             roleIdsVisibleTo: { [MEMBER_ID]: [] },
             followedByVisibleTo: { [MEMBER_ID]: true },
             followedReaderIds: [MEMBER_ID],
+        })
+        await setDoc(doc(db, `goals/${PROJECT_ID}/items/public-goal`), {
+            isPublicFor: [0],
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+            roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+        })
+        await setDoc(doc(db, `projectsContacts/${PROJECT_ID}/contacts/public-contact`), {
+            isPublicFor: [0],
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+            roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+        })
+        await setDoc(doc(db, `skills/${PROJECT_ID}/items/public-skill`), {
+            isPublicFor: [0],
+            readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+            roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+        })
+        await setDoc(doc(db, `assistants/${PROJECT_ID}/items/project-assistant`), {
+            creatorId: MEMBER_ID,
+            displayName: 'Project Assistant',
+        })
+        await setDoc(doc(db, 'assistants/globalProject/items/global-assistant'), {
+            creatorId: MEMBER_ID,
+            displayName: 'Global Assistant',
         })
         await setDoc(doc(db, `feedsStore/${PROJECT_ID}/all/public-feed`), {
             isPublicFor: [0],
@@ -421,6 +446,49 @@ describe('project membership authority', () => {
         })
 
         await assertSucceeds(batch.commit())
+    })
+})
+
+describe('assistant task search authorization', () => {
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `assistantTasks/${PROJECT_ID}/assistant-1/local-task`), {
+                name: 'Local task',
+            })
+            await setDoc(doc(db, 'assistantTasks/globalProject/preConfigTasks/global-task'), {
+                name: 'Global task',
+                assistantId: 'global-assistant',
+            })
+        })
+    })
+
+    it('lets a project member query local and global pre-configured tasks', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(getDocs(collection(memberDb, `assistantTasks/${PROJECT_ID}/assistant-1`)))
+        await assertSucceeds(
+            getDocs(
+                query(
+                    collection(memberDb, 'assistantTasks/globalProject/preConfigTasks'),
+                    where('assistantId', '==', 'global-assistant')
+                )
+            )
+        )
+    })
+
+    it('denies a non-member local assistant tasks while keeping global tasks readable', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertFails(getDocs(collection(outsiderDb, `assistantTasks/${PROJECT_ID}/assistant-1`)))
+        await assertSucceeds(
+            getDocs(
+                query(
+                    collection(outsiderDb, 'assistantTasks/globalProject/preConfigTasks'),
+                    where('assistantId', '==', 'global-assistant')
+                )
+            )
+        )
     })
 })
 
@@ -942,7 +1010,317 @@ describe('task transition side-effect ownership', () => {
     })
 })
 
+describe('comment parent authorization', () => {
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `chatComments/${PROJECT_ID}/tasks/public-task/comments/public-comment`), {
+                commentText: 'Visible with the public task',
+                creatorId: MEMBER_ID,
+                created: 1,
+            })
+            await setDoc(doc(db, `chatComments/${PROJECT_ID}/tasks/private-task/comments/private-comment`), {
+                commentText: 'Private task comment',
+                creatorId: MEMBER_ID,
+                created: 1,
+            })
+        })
+    })
+
+    it('lets a new project member read public comments but not comments on a private parent', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        await assertSucceeds(
+            getDoc(doc(teammateDb, `chatComments/${PROJECT_ID}/tasks/public-task/comments/public-comment`))
+        )
+        await assertFails(
+            getDoc(doc(teammateDb, `chatComments/${PROJECT_ID}/tasks/private-task/comments/private-comment`))
+        )
+    })
+
+    it('requires write access to the parent before creating a comment', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+
+        await assertSucceeds(
+            setDoc(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/private-task/comments/owner-comment`), {
+                commentText: 'Allowed private comment',
+                creatorId: MEMBER_ID,
+            })
+        )
+        await assertFails(
+            setDoc(doc(teammateDb, `chatComments/${PROJECT_ID}/tasks/private-task/comments/member-comment`), {
+                commentText: 'Must not reach the private task',
+                creatorId: TEAMMATE_ID,
+            })
+        )
+    })
+
+    it('only lets the comment author edit or delete a public comment', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const memberComment = doc(memberDb, `chatComments/${PROJECT_ID}/tasks/public-task/comments/public-comment`)
+        const teammateComment = doc(teammateDb, `chatComments/${PROJECT_ID}/tasks/public-task/comments/public-comment`)
+
+        await assertFails(updateDoc(teammateComment, { commentText: 'Rewritten by another member' }))
+        await assertFails(deleteDoc(teammateComment))
+        await assertSucceeds(updateDoc(memberComment, { commentText: 'Edited by its author' }))
+        await assertSucceeds(deleteDoc(memberComment))
+    })
+
+    it.each([
+        ['tasks', 'public-task'],
+        ['notes', 'followed-note'],
+        ['goals', 'public-goal'],
+        ['topics', 'followed-chat'],
+        ['contacts', 'public-contact'],
+        ['contacts', TEAMMATE_ID],
+        ['skills', 'public-skill'],
+        ['assistants', 'project-assistant'],
+        ['assistants', 'global-assistant'],
+    ])('preserves legitimate comments for %s parents', async (chatType, objectId) => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(
+            setDoc(doc(memberDb, `chatComments/${PROJECT_ID}/${chatType}/${objectId}/comments/member-comment`), {
+                commentText: 'Legitimate comment',
+                creatorId: MEMBER_ID,
+            })
+        )
+    })
+})
+
 describe('chat notification ownership', () => {
+    it('lets a comment author atomically fan out inbox, push, and email notifications to project members', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'comment-fanout'
+        const taskId = 'public-task'
+        const notificationMetadata = {
+            projectId: PROJECT_ID,
+            chatType: 'tasks',
+            objectId: taskId,
+            commentId,
+            creatorId: MEMBER_ID,
+        }
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/${taskId}/comments/${commentId}`), {
+            commentText: 'A real comment',
+            creatorId: MEMBER_ID,
+            created: 1,
+        })
+        batch.set(doc(memberDb, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+            ...notificationMetadata,
+            chatId: taskId,
+            followed: true,
+        })
+        batch.set(doc(memberDb, `pushNotifications/${commentId}`), {
+            ...notificationMetadata,
+            chatId: taskId,
+            userIds: [TEAMMATE_ID],
+        })
+        batch.set(doc(memberDb, `emailNotifications/${taskId}`), {
+            ...notificationMetadata,
+            objectType: 'tasks',
+            userIds: [TEAMMATE_ID],
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('lets a project assistant quick topic persist its first comment and notification fan-out', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'quick-topic-comment'
+        const topicId = 'followed-chat'
+        const notificationMetadata = {
+            projectId: PROJECT_ID,
+            chatType: 'topics',
+            objectId: topicId,
+            commentId,
+            creatorId: MEMBER_ID,
+        }
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/topics/${topicId}/comments/${commentId}`), {
+            commentText: 'Start a new assistant topic',
+            creatorId: MEMBER_ID,
+            created: 1,
+        })
+        batch.set(doc(memberDb, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+            ...notificationMetadata,
+            chatId: topicId,
+            followed: false,
+        })
+        batch.set(doc(memberDb, `pushNotifications/${commentId}`), {
+            ...notificationMetadata,
+            chatId: topicId,
+            userIds: [TEAMMATE_ID],
+        })
+        batch.set(doc(memberDb, `emailNotifications/${topicId}`), {
+            ...notificationMetadata,
+            // Email delivery still calls topics "chats". The authorization proof must use
+            // chatType above so it resolves the actual chatComments/.../topics/... document.
+            objectType: 'chats',
+            userIds: [TEAMMATE_ID],
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('does not let a comment author notify users outside the project', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'comment-outsider'
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/public-task/comments/${commentId}`), {
+            commentText: 'A real comment',
+            creatorId: MEMBER_ID,
+            created: 1,
+        })
+        batch.set(doc(memberDb, `pushNotifications/${commentId}`), {
+            projectId: PROJECT_ID,
+            chatType: 'tasks',
+            objectId: 'public-task',
+            commentId,
+            creatorId: MEMBER_ID,
+            userIds: [OUTSIDER_ID],
+        })
+
+        await assertFails(batch.commit())
+    })
+
+    it('does not let a private comment notify another project member without parent access', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'private-comment-fanout'
+        const notificationMetadata = {
+            projectId: PROJECT_ID,
+            chatType: 'tasks',
+            objectId: 'private-task',
+            commentId,
+            creatorId: MEMBER_ID,
+        }
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/private-task/comments/${commentId}`), {
+            commentText: 'Private task comment',
+            creatorId: MEMBER_ID,
+            created: 1,
+        })
+        batch.set(doc(memberDb, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+            ...notificationMetadata,
+            chatId: 'private-task',
+            followed: false,
+        })
+        batch.set(doc(memberDb, `pushNotifications/${commentId}`), {
+            ...notificationMetadata,
+            chatId: 'private-task',
+            userIds: [TEAMMATE_ID],
+        })
+        batch.set(doc(memberDb, 'emailNotifications/private-task'), {
+            ...notificationMetadata,
+            objectType: 'tasks',
+            userIds: [TEAMMATE_ID],
+        })
+
+        await assertFails(batch.commit())
+    })
+
+    it('lets a restricted comment notify another explicitly authorized project member', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/restricted-team-task`), {
+                projectId: PROJECT_ID,
+                isPublicFor: [MEMBER_ID, TEAMMATE_ID],
+                observersIds: [MEMBER_ID],
+                readerIds: [MEMBER_ID, TEAMMATE_ID],
+                roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID], [TEAMMATE_ID]: [MEMBER_ID] },
+            })
+        })
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'restricted-comment-fanout'
+        const taskId = 'restricted-team-task'
+        const notificationMetadata = {
+            projectId: PROJECT_ID,
+            chatType: 'tasks',
+            objectId: taskId,
+            commentId,
+            creatorId: MEMBER_ID,
+        }
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/${taskId}/comments/${commentId}`), {
+            commentText: 'Restricted team comment',
+            creatorId: MEMBER_ID,
+            created: 1,
+        })
+        batch.set(doc(memberDb, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+            ...notificationMetadata,
+            chatId: taskId,
+            followed: true,
+        })
+        batch.set(doc(memberDb, `pushNotifications/${commentId}`), {
+            ...notificationMetadata,
+            chatId: taskId,
+            userIds: [TEAMMATE_ID],
+        })
+        batch.set(doc(memberDb, `emailNotifications/${taskId}`), {
+            ...notificationMetadata,
+            objectType: 'tasks',
+            userIds: [TEAMMATE_ID],
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('lets a later comment merge recipients into an existing email notification queue item', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), 'emailNotifications/public-task'), {
+                projectId: PROJECT_ID,
+                objectType: 'tasks',
+                userIds: [MEMBER_ID],
+            })
+        })
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'comment-email-merge'
+        const batch = writeBatch(memberDb)
+        batch.set(doc(memberDb, `chatComments/${PROJECT_ID}/tasks/public-task/comments/${commentId}`), {
+            commentText: 'Another real comment',
+            creatorId: MEMBER_ID,
+            created: 2,
+        })
+        batch.set(
+            doc(memberDb, 'emailNotifications/public-task'),
+            {
+                projectId: PROJECT_ID,
+                objectType: 'tasks',
+                chatType: 'tasks',
+                objectId: 'public-task',
+                commentId,
+                creatorId: MEMBER_ID,
+                userIds: arrayUnion(TEAMMATE_ID),
+            },
+            { merge: true }
+        )
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('does not allow a notification queue write without its author-owned comment', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(
+            setDoc(doc(memberDb, 'pushNotifications/forged-comment'), {
+                projectId: PROJECT_ID,
+                chatType: 'tasks',
+                objectId: 'public-task',
+                commentId: 'forged-comment',
+                creatorId: MEMBER_ID,
+                userIds: [TEAMMATE_ID],
+            })
+        )
+    })
+
     it('lets the recipient clear its inbox while keeping email side channels server-owned', async () => {
         await testEnv.withSecurityRulesDisabled(async context => {
             const db = context.firestore()
@@ -960,6 +1338,25 @@ describe('chat notification ownership', () => {
                 objectId: 'other-chat',
                 userIds: [TEAMMATE_ID],
             })
+            await setDoc(doc(db, 'pushNotifications/push-a'), {
+                projectId: PROJECT_ID,
+                objectId: 'chat-a',
+                userIds: [MEMBER_ID],
+            })
+            await setDoc(doc(db, `chatComments/${PROJECT_ID}/tasks/public-task/comments/queue-comment`), {
+                commentText: 'Notification queue proof',
+                creatorId: MEMBER_ID,
+            })
+            const queueProof = {
+                projectId: PROJECT_ID,
+                chatType: 'tasks',
+                objectId: 'public-task',
+                commentId: 'queue-comment',
+                creatorId: MEMBER_ID,
+                userIds: [MEMBER_ID],
+            }
+            await setDoc(doc(db, 'emailNotifications/public-task-security'), queueProof)
+            await setDoc(doc(db, 'pushNotifications/queue-comment'), queueProof)
         })
 
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
@@ -984,6 +1381,12 @@ describe('chat notification ownership', () => {
         const batch = writeBatch(memberDb)
         unreadSnapshot.docs.forEach(snapshot => batch.delete(snapshot.ref))
         await assertSucceeds(batch.commit())
+        await assertFails(
+            updateDoc(doc(memberDb, 'emailNotifications/public-task-security'), { userIds: [OUTSIDER_ID] })
+        )
+        await assertFails(deleteDoc(doc(memberDb, 'emailNotifications/public-task-security')))
+        await assertFails(updateDoc(doc(memberDb, 'pushNotifications/queue-comment'), { userIds: [OUTSIDER_ID] }))
+        await assertFails(deleteDoc(doc(memberDb, 'pushNotifications/queue-comment')))
         await assertFails(getDoc(doc(memberDb, 'emailNotifications/missing-chat')))
     })
 })

@@ -32,6 +32,7 @@ const searchCalls = []
 // The search batches all five tabs into one multi_search call; capturing each entry
 // separately keeps the assertions per-index.
 jest.mock('../../utils/typesenseSearch', () => ({
+    warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => {
         searches.forEach(({ collection, query, filterBy }) => {
             searchCalls.push({ indexName: collection, text: query, filters: filterBy })

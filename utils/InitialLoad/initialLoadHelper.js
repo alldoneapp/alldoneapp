@@ -227,7 +227,7 @@ export function watchAdministratorUser(userId) {
                         store.dispatch(setAdministratorUser(verifiedAdministrator))
                         // The role may genuinely have moved to another user. Follow
                         // the authoritative pointer instead of retaining the old watcher.
-                        if (verifiedAdministrator.uid !== userId) {
+                        if (!verifiedAdministrator.roleOnly && verifiedAdministrator.uid !== userId) {
                             watchAdministratorUser(verifiedAdministrator.uid)
                         }
                     } else {
@@ -266,7 +266,7 @@ export const loadGlobalData = async (retryCount = 0) => {
             store.dispatch(setAdministratorAndGlobalAssistants(administratorUser, globalAssistants))
 
             watchGlobalAssistants()
-            if (administratorUser?.uid) {
+            if (administratorUser?.uid && !administratorUser.roleOnly) {
                 watchAdministratorUser(administratorUser.uid)
             }
         } catch (error) {

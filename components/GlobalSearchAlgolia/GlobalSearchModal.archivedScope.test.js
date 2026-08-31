@@ -38,10 +38,12 @@ import {
 } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 import { translate } from '../../i18n/TranslationService'
 import { getAllUserProjects } from '../../utils/backends/firestore'
+import { warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 
 const searchCalls = []
 
 jest.mock('../../utils/typesenseSearch', () => ({
+    warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => {
         searches.forEach(({ collection, query, filterBy }) => {
             searchCalls.push({ indexName: collection, text: query, filters: filterBy })
@@ -168,6 +170,7 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
     beforeEach(() => {
         searchCalls.length = 0
+        warmTypesenseSearchCredentials.mockClear()
         getAllUserProjects.mockResolvedValue(ALL_PROJECTS)
     })
 
@@ -181,6 +184,12 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         const picker = await openScopePicker()
 
         expect(picker.props.tabs.map(tab => tab.name)).toEqual(['Active', 'Archived'])
+    })
+
+    it('warms the scoped Typesense credential as soon as the modal opens', async () => {
+        await mount()
+
+        expect(warmTypesenseSearchCredentials).toHaveBeenCalledTimes(1)
     })
 
     it('falls back to loaded projects without an unhandled rejection when the scope refresh is denied', async () => {

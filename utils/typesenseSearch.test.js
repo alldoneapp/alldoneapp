@@ -4,6 +4,7 @@ import {
     multiSearchTypesense,
     searchTypesenseCollection,
     TYPESENSE_QUERY_CONFIG,
+    warmTypesenseSearchCredentials,
 } from './typesenseSearch'
 
 jest.mock('./BackendBridge', () => ({
@@ -100,6 +101,47 @@ describe('scoped credentials and bounded payloads', () => {
 
         expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
         expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('warms the credential cache without contacting Typesense', async () => {
+        await expect(warmTypesenseSearchCredentials()).resolves.toBe(true)
+        await multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
+        expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('shares an in-flight warm-up with the first search', async () => {
+        let resolveCredentials
+        Backend.getTypesenseScopedSearchCredentials.mockReturnValue(
+            new Promise(resolve => {
+                resolveCredentials = resolve
+            })
+        )
+
+        const warmUp = warmTypesenseSearchCredentials()
+        const firstSearch = multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
+        resolveCredentials(VALID_CREDENTIALS)
+
+        await expect(warmUp).resolves.toBe(true)
+        await expect(firstSearch).resolves.toEqual([{ hits: [] }])
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(1)
+        expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps warm-up failures best-effort and retries on the real search', async () => {
+        Backend.getTypesenseScopedSearchCredentials
+            .mockRejectedValueOnce(new Error('callable unavailable'))
+            .mockResolvedValueOnce(VALID_CREDENTIALS)
+
+        await expect(warmTypesenseSearchCredentials()).resolves.toBe(false)
+        await expect(
+            multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
+        ).resolves.toEqual([{ hits: [] }])
+
+        expect(Backend.getTypesenseScopedSearchCredentials).toHaveBeenCalledTimes(2)
     })
 
     it('refreshes once after Typesense rejects an expired cached key', async () => {

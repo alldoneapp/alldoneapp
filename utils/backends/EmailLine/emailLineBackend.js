@@ -1,12 +1,17 @@
 import store from '../../../redux/store'
 import { setEmailLineSummary, setEmailLineLoading } from '../../../redux/actions'
 import { runHttpsCallableFunction } from '../firestore'
-import { buildConnectionKeyPayload } from '../../IntegrationProviders'
+import {
+    CONNECTION_SERVICE_EMAIL,
+    buildConnectionKeyPayload,
+    getConnection,
+    getConnectionsForProject,
+} from '../../IntegrationProviders'
 import { translate } from '../../../i18n/TranslationService'
 
-// The server raises a typed `EMAIL_AUTH_EXPIRED` when the account's OAuth token cannot be
-// refreshed any more (revoked / expired refresh token, consent withdrawn). It reaches the
-// client as a callable `failed-precondition` whose message carries the code.
+// Action/message callables still raise a typed `EMAIL_AUTH_EXPIRED` when the account's OAuth
+// token cannot be refreshed. Summary calls return `{ authExpired: true }` successfully so a
+// dead connection does not create a noisy HTTP 400 during normal screen mounts.
 export function isEmailAuthExpiredError(error) {
     return String(error?.message || '').includes('EMAIL_AUTH_EXPIRED')
 }
@@ -14,21 +19,21 @@ export function isEmailAuthExpiredError(error) {
 // Flags the connection's cached summary as expired so the Email line and the Integrations
 // screen immediately render their existing "Reconnect" state instead of silently failing.
 function markSummaryAuthExpired(projectId) {
-    const current = store.getState().emailLineSummaryByProject[projectId]
-    store.dispatch(
-        setEmailLineSummary(projectId, {
-            provider: '',
-            emailAddress: '',
-            labels: [],
-            needsReplyCount: 0,
-            needsReplyByMessageId: {},
-            inboxZero: false,
-            ...(current || {}),
-            connected: true,
-            authExpired: true,
-            scannedAt: Date.now(),
-        })
-    )
+    const current = store.getState().emailLineSummaryByProject?.[projectId]
+    const summary = {
+        provider: '',
+        emailAddress: '',
+        labels: [],
+        needsReplyCount: 0,
+        needsReplyByMessageId: {},
+        inboxZero: false,
+        ...(current || {}),
+        connected: true,
+        authExpired: true,
+        scannedAt: Date.now(),
+    }
+    store.dispatch(setEmailLineSummary(projectId, summary))
+    return summary
 }
 
 // Turns the raw `EMAIL_AUTH_EXPIRED` code into something a person can act on. Callers alert
@@ -51,8 +56,29 @@ function toEmailAuthExpiredError(error) {
 const summaryCooldownCache = new Map()
 const SUMMARY_COOLDOWN_MS = 60 * 1000 // 1 minute
 
+function getEmailConnectionForSummaryKey(loggedUser, key) {
+    if (typeof key === 'string' && key.startsWith('email_')) {
+        return getConnection(loggedUser, CONNECTION_SERVICE_EMAIL, key)
+    }
+    return getConnectionsForProject(loggedUser, CONNECTION_SERVICE_EMAIL, key)[0] || null
+}
+
+function getPersistedAuthInvalidSummary(key) {
+    const state = store.getState()
+    const connection = getEmailConnectionForSummaryKey(state.loggedUser || {}, key)
+    if (connection?.authInvalid !== true) return null
+
+    const current = state.emailLineSummaryByProject?.[key]
+    return current?.authExpired ? current : markSummaryAuthExpired(key)
+}
+
 export async function fetchEmailLineSummary(projectId, { force = false, includeNeedsReply = true } = {}) {
     if (!projectId) return null
+
+    // authInvalid is the persisted circuit breaker. Every caller funnels through this helper,
+    // including older project-level mounts, so none of them can keep polling a revoked account.
+    const authInvalidSummary = getPersistedAuthInvalidSummary(projectId)
+    if (authInvalidSummary) return authInvalidSummary
 
     const lastFetch = summaryCooldownCache.get(projectId)
     if (!force && lastFetch && Date.now() - lastFetch < SUMMARY_COOLDOWN_MS) {
@@ -71,19 +97,7 @@ export async function fetchEmailLineSummary(projectId, { force = false, includeN
         return summary
     } catch (error) {
         if (isEmailAuthExpiredError(error)) {
-            const summary = {
-                provider: '',
-                emailAddress: '',
-                labels: [],
-                needsReplyCount: 0,
-                needsReplyByMessageId: {},
-                inboxZero: false,
-                connected: true,
-                authExpired: true,
-                scannedAt: Date.now(),
-            }
-            store.dispatch(setEmailLineSummary(projectId, summary))
-            return summary
+            return markSummaryAuthExpired(projectId)
         }
         // Leave the previous summary in place on transient errors; reset the
         // cooldown so the next attempt can retry sooner.
