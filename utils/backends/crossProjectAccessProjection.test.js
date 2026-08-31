@@ -18,8 +18,14 @@ describe('cross-project destination writes', () => {
 
     it('copies moved chats and their original comments through the authenticated server function', () => {
         const source = readSource('backends/Chats/chatsFirestore.js')
+        const branch = source.match(
+            /export async function moveChatOnMoveObjectFromProject\(([^]*?)\n}\n\nexport async function updateStickyChatData/
+        )
 
+        expect(branch).not.toBeNull()
         expect(source).toMatch(/runHttpsCallableFunction\('copyProjectMoveChatSecondGen'/)
         expect(source).not.toMatch(/chatComments\/\$\{newProjectId\}/)
+        expect(branch[1]).toMatch(/if \(objectType === 'topics'\) \{[^]*?sourceChatRef\.get\(\)/)
+        expect(branch[1]).not.toMatch(/sourceChatRef\.(update|delete)\(/)
     })
 })
