@@ -1851,6 +1851,21 @@ exports.resetUserFreePlanSecondGen = onSchedule(
     }
 )
 
+// "Every Day at 00:00."
+exports.autoCancelSubscriptionsSecondGen = onSchedule(
+    {
+        schedule: '0 0 * * *',
+        timeZone: 'UTC',
+        region: 'europe-west1',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+    },
+    async event => {
+        const { autoCancelSubscription } = require('./Payment/CancelSubscriptions')
+        await autoCancelSubscription()
+    }
+)
+
 //ALGOLIA
 
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
