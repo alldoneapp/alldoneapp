@@ -301,6 +301,53 @@ const convertUserDocsInUsers = docs => {
     return users
 }
 
+// Multiple active projects frequently contain the same people. Keep one Firestore document
+// target per user and fan its snapshots out locally instead of opening the same users/{uid}
+// listener again for every project section on Contacts.
+const sharedProjectUserWatchers = new Map()
+
+const subscribeToSharedProjectUser = (db, userId, onSnapshot, onError) => {
+    let entry = sharedProjectUserWatchers.get(userId)
+    if (!entry) {
+        entry = {
+            subscribers: new Set(),
+            lastSnapshot: null,
+            lastError: null,
+            unsubscribe: () => {},
+        }
+        sharedProjectUserWatchers.set(userId, entry)
+        entry.unsubscribe = db.doc(`users/${userId}`).onSnapshot(
+            snapshot => {
+                entry.lastSnapshot = snapshot
+                entry.lastError = null
+                entry.subscribers.forEach(subscriber => subscriber.onSnapshot(snapshot))
+            },
+            error => {
+                entry.lastSnapshot = null
+                entry.lastError = error
+                entry.subscribers.forEach(subscriber => subscriber.onError(error))
+            }
+        )
+    }
+
+    const subscriber = { onSnapshot, onError }
+    entry.subscribers.add(subscriber)
+    if (entry.lastSnapshot) onSnapshot(entry.lastSnapshot)
+    else if (entry.lastError) onError(entry.lastError)
+
+    return () => {
+        entry.subscribers.delete(subscriber)
+        if (entry.subscribers.size > 0) return
+        entry.unsubscribe()
+        if (sharedProjectUserWatchers.get(userId) === entry) sharedProjectUserWatchers.delete(userId)
+    }
+}
+
+export const resetSharedProjectUserWatchersForTests = () => {
+    sharedProjectUserWatchers.forEach(entry => entry.unsubscribe())
+    sharedProjectUserWatchers.clear()
+}
+
 export async function watchUserByEmail(email, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`users`)
@@ -353,7 +400,9 @@ export async function watchProjectUsers(projectId, callback, watcherKey, { onErr
         nextUserIds.forEach(userId => {
             if (userWatchers.has(userId)) return
             userWatchers.set(userId, () => {})
-            const unsubscribe = db.doc(`users/${userId}`).onSnapshot(
+            const unsubscribe = subscribeToSharedProjectUser(
+                db,
+                userId,
                 snapshot => {
                     if (stopped || !activeUserIds.includes(userId)) return
                     resolvedUserIds.add(userId)

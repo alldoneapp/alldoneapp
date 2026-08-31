@@ -85,6 +85,9 @@ describe('ContactsView project admission', () => {
             revealedProjectIds: ['project-1', 'project-2'],
             primaryProjectId: 'project-1',
             complete: false,
+            nextProjectId: null,
+            loadingProjectId: null,
+            markProjectNearViewport: jest.fn(),
         })
     })
 
@@ -104,6 +107,33 @@ describe('ContactsView project admission', () => {
             trackConnectionHealth: false,
         })
         expect(tree.root.findAllByType('ContactListByProject').every(node => !node.props.requestProjectData)).toBe(true)
+        expect(useRateLimitedProjectReveal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requireNearViewport: true,
+                minIntervalMs: 200,
+            })
+        )
+    })
+
+    it('keeps later projects behind a viewport sentinel until they are admitted', () => {
+        const markProjectNearViewport = jest.fn()
+        useRateLimitedProjectReveal.mockReturnValue({
+            revealedProjectIds: ['project-1'],
+            primaryProjectId: 'project-1',
+            complete: false,
+            nextProjectId: 'project-2',
+            loadingProjectId: null,
+            markProjectNearViewport,
+        })
+
+        let tree
+        act(() => {
+            tree = renderer.create(<ContactsView />)
+        })
+
+        expect(tree.root.findAllByType('ContactListByProject').map(node => node.props.projectIndex)).toEqual([0])
+        expect(ensureProjectDataLoaded).toHaveBeenCalledTimes(1)
+        expect(tree.root.findAllByProps({ testID: 'contacts-list-loading-skeleton' })).toHaveLength(1)
     })
 
     it('renders cached visible rows while the project listeners refresh in the background', async () => {
