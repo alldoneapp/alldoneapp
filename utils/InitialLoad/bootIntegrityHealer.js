@@ -1,7 +1,7 @@
 import store from '../../redux/store'
 import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
-import { loadGlobalData, watchProjectData } from './initialLoadHelper'
+import { getActiveGlobalDataLoadPromise, loadGlobalData, watchProjectData } from './initialLoadHelper'
 import { isBrowserOffline } from '../connectionState'
 import { runExclusiveFirestoreRestart } from '../backends/firestoreRestartLease'
 import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
@@ -39,6 +39,8 @@ let running = false
 let networkCyclesUsed = 0
 let recheckWhenBackOnline = null
 let recheckStoreUnsubscribe = null
+let globalDataFollowUpPromise = null
+let globalDataFollowUpTimer = null
 
 // The redux slice is debounced and is still '' during early boot (its listener is
 // installed from a component that only mounts once login resolves), so the very
@@ -95,7 +97,31 @@ export const resetBootIntegrityHealerForTests = () => {
     scheduledUserId = null
     running = false
     networkCyclesUsed = 0
+    if (globalDataFollowUpTimer) clearTimeout(globalDataFollowUpTimer)
+    globalDataFollowUpPromise = null
+    globalDataFollowUpTimer = null
     removeRecheckListener()
+}
+
+const scheduleCheckAfterGlobalDataLoad = (loadPromise, userId) => {
+    if (!loadPromise || globalDataFollowUpPromise === loadPromise) return
+    globalDataFollowUpPromise = loadPromise
+
+    const recheck = () => {
+        // Run in a new task: an already-settled Promise can otherwise invoke this while the
+        // current integrity check still owns the `running` guard and silently lose the recheck.
+        globalDataFollowUpTimer = setTimeout(() => {
+            globalDataFollowUpTimer = null
+            if (globalDataFollowUpPromise !== loadPromise) return
+            globalDataFollowUpPromise = null
+            if (store.getState().loggedUser?.uid !== userId) return
+            runBootIntegrityCheck({ trigger: 'global_data_refresh' }).catch(error =>
+                console.warn('[BootIntegrity] Check after global data refresh failed:', error)
+            )
+        }, 0)
+    }
+
+    Promise.resolve(loadPromise).then(recheck, recheck)
 }
 
 const findAnomalies = async () => {
@@ -107,18 +133,27 @@ const findAnomalies = async () => {
 
     let administratorMissing = false
     if (!administratorUser?.uid) {
-        try {
-            const roleDoc = await getDb().doc('roles/administrator').get()
-            let roleUserId = roleDoc.data()?.userId
-            if (!roleUserId) {
-                // The exact failure this healer covers can also omit the role
-                // document itself. Confirm the apparent absence independently.
-                const directRole = await readDocumentDirectlyFromServer('roles/administrator')
-                roleUserId = directRole.data?.userId
+        const activeGlobalDataLoad = getActiveGlobalDataLoadPromise()
+        if (activeGlobalDataLoad) {
+            // The Administrator is not missing yet; its authoritative load simply has not
+            // settled. Keep project recovery immediate, and recheck the Administrator once the
+            // existing load finishes instead of emitting a false repair warning and starting a
+            // duplicate read.
+            scheduleCheckAfterGlobalDataLoad(activeGlobalDataLoad, loggedUser.uid)
+        } else {
+            try {
+                const roleDoc = await getDb().doc('roles/administrator').get()
+                let roleUserId = roleDoc.data()?.userId
+                if (!roleUserId) {
+                    // The exact failure this healer covers can also omit the role
+                    // document itself. Confirm the apparent absence independently.
+                    const directRole = await readDocumentDirectlyFromServer('roles/administrator')
+                    roleUserId = directRole.data?.userId
+                }
+                administratorMissing = !!roleUserId
+            } catch (error) {
+                // The role doc could not be read right now — nothing actionable this pass.
             }
-            administratorMissing = !!roleUserId
-        } catch (error) {
-            // The role doc could not be read right now — nothing actionable this pass.
         }
     }
 
