@@ -608,6 +608,28 @@ describe('queries used by the web client', () => {
         await assertSucceeds(setDoc(doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/sanitized-move`), copiedTask))
     })
 
+    it('keeps a private moved task readable and editable while its server projection is pending', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const movedTaskRef = doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/pending-move`)
+
+        await assertSucceeds(
+            setDoc(movedTaskRef, {
+                projectId: MOVE_TARGET_PROJECT_ID,
+                creatorId: MEMBER_ID,
+                userId: MEMBER_ID,
+                userIds: [MEMBER_ID],
+                currentReviewerId: MEMBER_ID,
+                isPublicFor: [MEMBER_ID],
+                name: 'Moved task',
+            })
+        )
+        await assertSucceeds(getDoc(movedTaskRef))
+        await assertSucceeds(updateDoc(movedTaskRef, { name: 'Moved task updated' }))
+        await assertFails(getDoc(doc(teammateDb, movedTaskRef.path)))
+        await assertFails(updateDoc(doc(teammateDb, movedTaskRef.path), { name: 'Forbidden edit' }))
+    })
+
     it('allows the projected random Someday task query', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const tasks = query(
