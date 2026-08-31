@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -33,12 +33,19 @@ import {
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
+import {
+    ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
+    ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT,
+    AssistantOptionButtonsSkeleton,
+} from '../AssistantLineSkeleton'
+import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantLineCache'
 
 // The formats an attachment-capable input must declare. `CustomTextInput3.supportsAttachments`
 // keys on `attachment` / `customImageFormat` being present, and that predicate is what installs
 // `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
 // as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
+export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
 
 export default function AssistantOptions({
     amountOfButtonOptions,
@@ -47,6 +54,7 @@ export default function AssistantOptions({
     assistantIdOverride = null,
     showAllQuickActions = false,
     preferAssistantIdOverride = false,
+    deferQuickActions = false,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -57,7 +65,6 @@ export default function AssistantOptions({
     const userId = useSelector(state => state.loggedUser.uid)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const gold = useSelector(state => state.loggedUser.gold)
-    const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
@@ -81,28 +88,63 @@ export default function AssistantOptions({
         defaultProjectId,
         preferAssistantIdOverride
     )
+    const assistantTasksProjectId = assistant?.uid
+        ? isGlobalAssistant(assistant.uid)
+            ? GLOBAL_PROJECT_ID
+            : assistantProjectId
+        : null
+    const cachedTasks = useMemo(
+        () =>
+            readAssistantTasksCache({
+                userId,
+                projectId: assistantTasksProjectId,
+                assistantId: assistant?.uid,
+            }),
+        [assistant?.uid, assistantTasksProjectId, userId]
+    )
+    const [tasks, setTasks] = useState(cachedTasks)
     // The assistant can live in another project, but conversations started from
     // this line must inherit the project the user currently has selected.
     const conversationProject = selectedProjectFromStore || selectedProject || assistantProject
     const conversationProjectId = conversationProject?.id || assistantProjectId
 
     useEffect(() => {
-        if (assistantProjectId && assistant && assistant.uid) {
-            const watcherKey = v4()
-            watchAssistantTasks(
-                isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : assistantProjectId,
-                assistant.uid,
-                watcherKey,
-                setTasks
-            )
-            return () => {
+        setTasks(cachedTasks)
+
+        if (!assistantTasksProjectId || !assistant?.uid) return undefined
+
+        const watcherKey = v4()
+        let watcherStarted = false
+        let refreshTimer = null
+        const startWatcher = () => {
+            watcherStarted = true
+            watchAssistantTasks(assistantTasksProjectId, assistant.uid, watcherKey, liveTasks => {
+                setTasks(liveTasks)
+                writeAssistantTasksCache(
+                    {
+                        userId,
+                        projectId: assistantTasksProjectId,
+                        assistantId: assistant.uid,
+                    },
+                    liveTasks
+                )
+            })
+        }
+
+        if (deferQuickActions) {
+            refreshTimer = setTimeout(startWatcher, DEFERRED_QUICK_ACTION_REFRESH_MS)
+        } else {
+            startWatcher()
+        }
+
+        return () => {
+            if (refreshTimer) clearTimeout(refreshTimer)
+            if (watcherStarted) {
                 unwatch(watcherKey)
                 dispatch(stopLoadingData())
             }
-        } else {
-            setTasks(null)
         }
-    }, [assistant?.uid, assistantProjectId])
+    }, [assistant?.uid, assistantTasksProjectId, cachedTasks, deferQuickActions, userId])
 
     useEffect(() => {
         setQuickActionsExpanded(showAllQuickActions)
@@ -243,17 +285,20 @@ export default function AssistantOptions({
         }
     }, [handleKeyDown, handleKeyUp])
 
-    if (!tasks || !assistant || !assistant.uid || !assistantProject) {
+    if (!assistant || !assistant.uid || !assistantProject) {
         return null
     }
 
-    const { optionsLikeButtons, hasAdditionalOptions } = getOptionsPresentationData(
-        conversationProject,
-        assistant.uid,
-        tasks,
-        amountOfButtonOptions,
-        quickActionsExpanded
-    )
+    const tasksLoaded = Array.isArray(tasks)
+    const { optionsLikeButtons, hasAdditionalOptions } = tasksLoaded
+        ? getOptionsPresentationData(
+              conversationProject,
+              assistant.uid,
+              tasks,
+              amountOfButtonOptions,
+              quickActionsExpanded
+          )
+        : { optionsLikeButtons: [], hasAdditionalOptions: false }
 
     const hasQuickActions = true
     // An image on its own is a complete message — the serialized embed token IS the text, so this
@@ -368,18 +413,24 @@ export default function AssistantOptions({
                 </AppPopover>
             </View>
             {hasQuickActions && (
-                <View style={localStyles.quickActions}>
+                <View style={[localStyles.quickActions, isMobile && localStyles.quickActionsMobile]}>
                     <AssistantTaskSearchButtonWrapper />
-                    <OptionButtons
-                        projectId={conversationProjectId}
-                        options={optionsLikeButtons}
-                        assistant={assistant}
-                    />
-                    {hasAdditionalOptions && (
-                        <QuickActionsToggle
-                            expanded={quickActionsExpanded}
-                            onPress={() => setQuickActionsExpanded(expanded => !expanded)}
-                        />
+                    {tasksLoaded ? (
+                        <>
+                            <OptionButtons
+                                projectId={conversationProjectId}
+                                options={optionsLikeButtons}
+                                assistant={assistant}
+                            />
+                            {hasAdditionalOptions && (
+                                <QuickActionsToggle
+                                    expanded={quickActionsExpanded}
+                                    onPress={() => setQuickActionsExpanded(expanded => !expanded)}
+                                />
+                            )}
+                        </>
+                    ) : (
+                        <AssistantOptionButtonsSkeleton />
                     )}
                 </View>
             )}
@@ -485,10 +536,14 @@ const localStyles = StyleSheet.create({
         fontSize: 14,
     },
     quickActions: {
+        minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
         flexDirection: 'row',
         alignItems: 'center',
         flexWrap: 'wrap',
         justifyContent: 'center',
         width: '100%',
+    },
+    quickActionsMobile: {
+        minHeight: ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT,
     },
 })

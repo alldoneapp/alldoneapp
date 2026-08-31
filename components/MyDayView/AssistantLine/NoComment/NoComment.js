@@ -8,6 +8,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ProjectTagIndicator from '../LastComment/ProjectTagIndicator'
+import { LAST_COMMENT_PREVIEW_HEIGHT } from '../LastComment/lastCommentLayout'
 
 export default function NoComment({ projectId, assistant }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -40,10 +41,9 @@ const localStyles = StyleSheet.create({
     container: {
         alignContent: 'flex-start',
         flex: 1,
-        marginLeft: 16,
     },
     container2: {
-        minHeight: 100,
+        height: LAST_COMMENT_PREVIEW_HEIGHT,
         backgroundColor: colors.Grey300,
         borderRadius: 12,
         flexDirection: 'row',

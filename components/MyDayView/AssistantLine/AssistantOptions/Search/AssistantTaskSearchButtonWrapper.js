@@ -36,7 +36,10 @@ export default function AssistantTaskSearchButtonWrapper() {
 
     return (
         <AppPopover
-            content={<AssistantTaskSearchModal closeModal={closeModal} />}
+            // The modal queries assistant tasks across every project. Keep it
+            // out of the closed popover tree instead of relying on every
+            // popover presenter to suppress closed content.
+            content={isOpen ? <AssistantTaskSearchModal closeModal={closeModal} /> : null}
             align={'start'}
             position={['bottom', 'left', 'right', 'top']}
             onClickOutside={closeModal}

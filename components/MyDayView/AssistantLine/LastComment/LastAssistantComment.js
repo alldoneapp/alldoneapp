@@ -22,16 +22,23 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import {
+    LAST_COMMENT_PREVIEW_HEIGHT,
+    PREVIEW_BODY_HEIGHT,
+    PREVIEW_TITLE_HEIGHT,
+    PREVIEW_VERTICAL_PADDING,
+} from './lastCommentLayout'
+
+export {
+    LAST_COMMENT_PREVIEW_HEIGHT,
+    PREVIEW_BODY_HEIGHT,
+    PREVIEW_LINE_HEIGHT,
+    PREVIEW_TITLE_HEIGHT,
+    PREVIEW_VERTICAL_PADDING,
+} from './lastCommentLayout'
 
 // The preview reserves a constant height so the assistant line (and everything below it) never
-// reflows when the last comment changes length. The numbers below are the layout that was already
-// the maximum before AT-2344: one clipped title line plus two clipped body lines.
-export const PREVIEW_LINE_HEIGHT = 22 // styles.subtitle2 lineHeight
-export const PREVIEW_TITLE_HEIGHT = PREVIEW_LINE_HEIGHT
-export const PREVIEW_BODY_HEIGHT = PREVIEW_LINE_HEIGHT * 2
-export const PREVIEW_VERTICAL_PADDING = 12
-export const LAST_COMMENT_PREVIEW_HEIGHT = PREVIEW_TITLE_HEIGHT + PREVIEW_BODY_HEIGHT + PREVIEW_VERTICAL_PADDING * 2
-
+// reflows when the last comment changes length: one clipped title line plus two clipped body lines.
 export default function LastAssistantComment({
     projectId,
     commentText,
