@@ -104,6 +104,9 @@ const seed = async () => {
             projectId: PROJECT_ID,
             userId: TEAMMATE_ID,
             userIds: [TEAMMATE_ID],
+            done: true,
+            inDone: true,
+            completed: 1788134400000,
             isPublicFor: [0],
             readerIds: [MEMBER_ID, TEAMMATE_ID],
             roleIdsVisibleTo: { [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
@@ -579,6 +582,22 @@ describe('queries used by the web client', () => {
 
         const snapshot = await assertSucceeds(getDocs(tasks))
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+    })
+
+    it('allows the projected day-rate reconciliation query', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            where('userId', '==', TEAMMATE_ID),
+            where('inDone', '==', true),
+            where('completed', '>=', 1788134400000),
+            where('completed', '<=', 1788220799999),
+            orderBy('completed', 'desc')
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['focus-task'])
     })
 
     it('requires a task projectId that matches its authoritative path', async () => {

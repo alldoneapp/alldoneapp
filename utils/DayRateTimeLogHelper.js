@@ -9,7 +9,7 @@ import {
 } from '../components/TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../redux/store'
-import { generateSortIndex, getDb, updateStatistics } from './backends/firestore'
+import { generateSortIndex, getDb, getLoggedUserAccessReaderId, updateStatistics } from './backends/firestore'
 
 export const DAY_RATE_TIME_LOG_TASK_NAME = 'Time log for day rate'
 export const DAY_RATE_TIME_LOG_TYPE = 'dayRateTimeLog'
@@ -213,6 +213,7 @@ async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
 
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('userId', '==', userId)
         .where('inDone', '==', true)
         .where('completed', '>=', start)
@@ -238,6 +239,7 @@ async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
 async function getDoneTasksForRange(projectId, userId, start, end) {
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('userId', '==', userId)
         .where('inDone', '==', true)
         .where('completed', '>=', start)
