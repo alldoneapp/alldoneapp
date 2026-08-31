@@ -9,7 +9,9 @@ import {
     watchOpenTasksAmount,
     watchUserWorkstreamsOpenTasksAmount,
 } from '../../../utils/backends/Tasks/taskNumbers'
-import { setOpenTasksAmountLoaded } from '../../../redux/actions'
+import { setOpenTasksAmountLoaded, setTaskColdStartEmptyToday } from '../../../redux/actions'
+import { scheduleTaskColdStartCachePersist } from '../../../utils/InitialLoad/taskColdStartCache'
+import store from '../../../redux/store'
 
 /**
  * AT-2445: a Firestore listener that is simply slow must not keep a genuinely empty inbox from ever
@@ -50,6 +52,10 @@ export default function OpenTasksAmountContainer({ projectIds }) {
             if (announced) return
             announced = true
             dispatch(setOpenTasksAmountLoaded(true))
+            // The live aggregate has taken over. Do not reuse the cold-start proof when these
+            // watchers are rebuilt later by a Today/Later/Someday toggle.
+            dispatch(setTaskColdStartEmptyToday(null))
+            scheduleTaskColdStartCachePersist(store.getState)
         }
 
         const onQuerySettled = token => {

@@ -1,3 +1,5 @@
+import moment from 'moment'
+
 /**
  * A compact stale-while-revalidate projection of the task board.
  *
@@ -21,6 +23,25 @@ let pendingWriteTimer = null
 let pendingIdleHandle = null
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
+
+export const getTaskColdStartDayKey = (timestamp = Date.now()) => moment(timestamp).format('YYYY-MM-DD')
+
+export const getTaskColdStartProjectIds = (loadedProjects, loggedUser = {}) => {
+    const loadedProjectIds = (Array.isArray(loadedProjects) ? loadedProjects : [])
+        .map(project => project?.id)
+        .filter(Boolean)
+    const excludedProjectIds = new Set([
+        ...(loggedUser.archivedProjectIds || []),
+        ...(loggedUser.templateProjectIds || []),
+        ...(loggedUser.guideProjectIds || []),
+    ])
+    const activeProjectIds = loadedProjectIds.filter(projectId => !excludedProjectIds.has(projectId))
+    const inFocusTaskProjectId = loggedUser.inFocusTaskProjectId
+
+    return inFocusTaskProjectId && loadedProjectIds.includes(inFocusTaskProjectId)
+        ? [inFocusTaskProjectId, ...activeProjectIds.filter(projectId => projectId !== inFocusTaskProjectId)]
+        : activeProjectIds
+}
 
 const projectSnapshotHasTaskContent = projectSnapshot =>
     projectSnapshot.openTasks.some(section => Number(section?.[1]) > 0)
@@ -131,16 +152,51 @@ export const buildTaskColdStartSnapshot = (state, savedAt = Date.now()) => {
 
     if (Object.keys(projects).length === 0) return null
 
+    const projectIds = getTaskColdStartProjectIds(loadedProjects, state.loggedUser)
+    const hasCompleteEmptyTodayProjection =
+        projectIds.length > 0 &&
+        state.openTasksAmountLoaded === true &&
+        Number(state.openTasksAmount) === 0 &&
+        Number(state.todayEmptyGoalsTotalAmountInOpenTasksView?.total || 0) === 0 &&
+        projectIds.every(projectId => {
+            const instanceKey = `${projectId}${currentUserId}`
+            const projectSnapshot = projects[projectId]
+            return (
+                projectSnapshot &&
+                projectSnapshotHasRenderMetadata(projectSnapshot) &&
+                !!state.initialLoadingEndOpenTasks?.[instanceKey] &&
+                !!state.initialLoadingEndObservedTasks?.[instanceKey] &&
+                !!state.thereAreNotTasksInFirstDay?.[instanceKey]
+            )
+        })
+
     return {
         schemaVersion: TASK_COLD_START_CACHE_SCHEMA_VERSION,
         userId,
         currentUserId,
         savedAt,
         projects,
+        // Empty is meaningful only for the same local calendar day and only after every active
+        // project, both task streams, the count queries and the goal decorations have answered.
+        // This lets the next cold start paint inbox-zero immediately without turning an incomplete
+        // cache into a false celebration.
+        emptyToday: hasCompleteEmptyTodayProjection
+            ? {
+                  userId,
+                  dayKey: getTaskColdStartDayKey(savedAt),
+                  projectIds,
+              }
+            : null,
     }
 }
 
-export const getRestorableTaskColdStartSnapshot = (snapshot, userId, allowedProjectIds, now = Date.now()) => {
+export const getRestorableTaskColdStartSnapshot = (
+    snapshot,
+    userId,
+    allowedProjectIds,
+    now = Date.now(),
+    taskBoardProjectIds = allowedProjectIds
+) => {
     if (
         !snapshot ||
         snapshot.schemaVersion !== TASK_COLD_START_CACHE_SCHEMA_VERSION ||
@@ -164,7 +220,22 @@ export const getRestorableTaskColdStartSnapshot = (snapshot, userId, allowedProj
         projects[projectId] = projectSnapshot
     })
 
-    return Object.keys(projects).length > 0 ? { ...snapshot, projects } : null
+    if (Object.keys(projects).length === 0) return null
+
+    const emptyTodayProjectIds = Array.isArray(snapshot.emptyToday?.projectIds) ? snapshot.emptyToday.projectIds : []
+    const emptyTodayProjectIdsSet = new Set(emptyTodayProjectIds)
+    const taskBoardProjectIdsSet = new Set(Array.isArray(taskBoardProjectIds) ? taskBoardProjectIds : [])
+    const hasRestorableEmptyToday =
+        snapshot.emptyToday?.userId === userId &&
+        snapshot.emptyToday?.dayKey === getTaskColdStartDayKey(now) &&
+        emptyTodayProjectIds.length === taskBoardProjectIdsSet.size &&
+        [...taskBoardProjectIdsSet].every(projectId => emptyTodayProjectIdsSet.has(projectId) && projects[projectId])
+
+    return {
+        ...snapshot,
+        projects,
+        emptyToday: hasRestorableEmptyToday ? snapshot.emptyToday : null,
+    }
 }
 
 export const getTaskBearingProjectIndexes = (projectIds, openTasksStore, currentUserId) => {
