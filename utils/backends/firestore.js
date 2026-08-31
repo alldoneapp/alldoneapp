@@ -2012,7 +2012,7 @@ export async function moveTasksinWorkflowFeedsChain(
         await createTaskMovedInWorkflowFeed(projectId, task, task.id, workflow, stepToMoveId, batch, null)
     }
 
-    batch.commit()
+    await batch.commit()
 }
 
 export async function spentGold(userId, goldToReduce, context = {}) {
