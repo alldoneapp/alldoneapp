@@ -1,7 +1,7 @@
 import v4 from 'uuid/v4'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { REGEX_URL } from '../components/Feeds/Utils/HelperFunctions'
 import { getAppUrlHost } from './backends/firestore'
-import { handleNestedLinks } from './nestedLinkText'
 
 export const LINKED_OBJECT_TYPE_CONTACT = 'contact'
 export const LINKED_OBJECT_TYPE_PROJECT = 'project'
@@ -281,11 +281,23 @@ const formatUrl = plainUrl => {
     return execRes
 }
 
-// `handleNestedLinks` used to live here and replaced every URL-looking word in an
-// object title with the literal string `LINK` (AT-2470). It moved to the pure leaf
-// module `./nestedLinkText` — see the header comment there for why the placeholder was
-// wrong for real URLs AND for ordinary words like `package.json`. It is re-exported
-// unchanged below so no call site had to move.
+const handleNestedLinks = text => {
+    const words = text.split(' ')
+    let parsedText = ''
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i]
+
+        if (REGEX_URL.test(word)) {
+            parsedText += 'LINK '
+        } else {
+            parsedText += `${word} `
+        }
+    }
+
+    parsedText = parsedText.trim()
+
+    return parsedText
+}
 
 export {
     formatUrl,

@@ -95,7 +95,7 @@ import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCol
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
 import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
-import { isolatePasteInHistory } from '../../../Feeds/CommentsTextInput/quillHistoryEntries'
+import { applyPastedDeltaToEditor } from './notePaste'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -733,20 +733,7 @@ const NotesEditorView = ({
                     const parsedDelta = markdownToDelta(textData, Delta)
 
                     if (parsedDelta) {
-                        const editor = exportRef.getEditor()
-                        const selection = editor.getSelection(true)
-
-                        if (selection.length > 0) {
-                            parsedDelta.ops.unshift({ delete: selection.length })
-                        }
-                        if (selection.index > 0) {
-                            parsedDelta.ops.unshift({ retain: selection.index })
-                        }
-
-                        const previousLenght = editor.getLength()
-                        isolatePasteInHistory(editor, () => editor.updateContents(parsedDelta, 'user'))
-                        const newLenght = editor.getLength()
-                        editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
+                        applyPastedDeltaToEditor(exportRef.getEditor(), parsedDelta, Delta)
 
                         event.preventDefault()
                         return
@@ -785,20 +772,7 @@ const NotesEditorView = ({
                         }
                     }
 
-                    const editor = exportRef.getEditor()
-                    const selection = editor.getSelection(true)
-
-                    if (selection.length > 0) {
-                        finalDelta.ops.unshift({ delete: selection.length })
-                    }
-                    if (selection.index > 0) {
-                        finalDelta.ops.unshift({ retain: selection.index })
-                    }
-
-                    const previousLenght = editor.getLength()
-                    isolatePasteInHistory(editor, () => editor.updateContents(finalDelta, 'user'))
-                    const newLenght = editor.getLength()
-                    editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
+                    applyPastedDeltaToEditor(exportRef.getEditor(), finalDelta, Delta)
 
                     event.preventDefault()
                 } else if (textData) {
@@ -817,20 +791,7 @@ const NotesEditorView = ({
                         true
                     )
 
-                    const editor = exportRef.getEditor()
-                    const selection = editor.getSelection(true)
-
-                    if (selection.length > 0) {
-                        parsedDelta.ops.unshift({ delete: selection.length })
-                    }
-                    if (selection.index > 0) {
-                        parsedDelta.ops.unshift({ retain: selection.index })
-                    }
-
-                    const previousLenght = editor.getLength()
-                    isolatePasteInHistory(editor, () => editor.updateContents(parsedDelta, 'user'))
-                    const newLenght = editor.getLength()
-                    editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
+                    applyPastedDeltaToEditor(exportRef.getEditor(), parsedDelta, Delta)
 
                     event.preventDefault()
                 }
