@@ -11,6 +11,10 @@ const ACCESS_PROJECTION_FIELDS = [
     'backlinkIdsVisibleTo',
 ]
 const LINKED_PARENT_FIELDS = [
+    // Tasks embedded in a note use this legacy relationship field. It must be projected just like
+    // the linkedParent* fields so the client can prove both the note relationship and task access
+    // with one array-contains predicate.
+    'containerNotesIds',
     'linkedParentNotesIds',
     'linkedParentTasksIds',
     'linkedParentContactsIds',

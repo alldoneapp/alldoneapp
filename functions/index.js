@@ -143,6 +143,10 @@ function accessProjectionOnly(event, additionalProjectionFields) {
 
 const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
 const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
+const ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION = 'firestoreAccessProjectionMigrations'
+const ACCESS_PROJECTION_SCHEMA_VERSION = 2
+const ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE = 25
+const ACCESS_PROJECTION_SCHEMA_MIGRATION_LEASE_MS = 9 * 60 * 1000
 
 async function queueProjectAccessProjectionSync(db, projectId, projectUserIds, generation) {
     const { getInitialProjectionCursor } = require('./shared/objectAccessProjection')
@@ -3554,6 +3558,91 @@ exports.resumeStalledFirestoreAccessProjectionJobsSecondGen = onSchedule(
             })
         })
         await writer.close()
+    }
+)
+
+// Projection schema changes need to repair existing objects as well as new writes. This durable,
+// paged migration queues every project through the same projection worker used for membership
+// changes. It becomes a cheap no-op after the current schema version is complete.
+exports.queueFirestoreAccessProjectionSchemaMigrationSecondGen = onSchedule(
+    {
+        schedule: '*/10 * * * *',
+        timeoutSeconds: 300,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const db = admin.firestore()
+        const migrationId = `schema-v${ACCESS_PROJECTION_SCHEMA_VERSION}`
+        const migrationRef = db.doc(`${ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION}/${migrationId}`)
+        const leaseId = `${event.id}:${Date.now()}`
+        const now = Date.now()
+
+        const migration = await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(migrationRef)
+            const data = snapshot.data() || {}
+            if (data.status === 'complete') return null
+            if (data.leaseExpiresAt?.toMillis?.() > now) return null
+
+            transaction.set(
+                migrationRef,
+                {
+                    schemaVersion: ACCESS_PROJECTION_SCHEMA_VERSION,
+                    status: 'processing',
+                    projectCursor: data.projectCursor || null,
+                    queuedProjects: data.queuedProjects || 0,
+                    leaseId,
+                    leaseExpiresAt: Timestamp.fromMillis(now + ACCESS_PROJECTION_SCHEMA_MIGRATION_LEASE_MS),
+                    startedAt: data.startedAt || admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            )
+            return data
+        })
+        if (!migration) return
+
+        let projectsQuery = db
+            .collection('projects')
+            .orderBy(admin.firestore.FieldPath.documentId())
+            .limit(ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE)
+        if (migration.projectCursor) projectsQuery = projectsQuery.startAfter(migration.projectCursor)
+
+        const projectsSnapshot = await projectsQuery.get()
+        const { getInitialProjectionCursor } = require('./shared/objectAccessProjection')
+        const writer = db.bulkWriter()
+        projectsSnapshot.docs.forEach(projectDoc => {
+            const projectData = projectDoc.data() || {}
+            writer.set(db.doc(`${ACCESS_PROJECTION_JOBS_COLLECTION}/${projectDoc.id}`), {
+                projectId: projectDoc.id,
+                projectUserIds: Array.isArray(projectData.userIds) ? projectData.userIds : [],
+                generation: `${migrationId}:${projectDoc.id}`,
+                status: 'pending',
+                cursor: getInitialProjectionCursor(),
+                scanned: 0,
+                updated: 0,
+                queuedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
+        await writer.close()
+
+        const lastProjectId =
+            projectsSnapshot.docs[projectsSnapshot.docs.length - 1]?.id || migration.projectCursor || null
+        const done = projectsSnapshot.size < ACCESS_PROJECTION_SCHEMA_MIGRATION_BATCH_SIZE
+        await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(migrationRef)
+            if (snapshot.data()?.leaseId !== leaseId) return
+            transaction.update(migrationRef, {
+                status: done ? 'complete' : 'pending',
+                projectCursor: lastProjectId,
+                queuedProjects: admin.firestore.FieldValue.increment(projectsSnapshot.size),
+                completedAt: done ? admin.firestore.FieldValue.serverTimestamp() : null,
+                leaseId: admin.firestore.FieldValue.delete(),
+                leaseExpiresAt: admin.firestore.FieldValue.delete(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        })
     }
 )
 
