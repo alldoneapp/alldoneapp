@@ -4636,6 +4636,19 @@
             "queryScope": "COLLECTION",
             "fields": [
                 { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "completed", "order": "ASCENDING" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "isSubtask", "order": "ASCENDING" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
                 { "fieldPath": "done", "order": "ASCENDING" },
                 { "fieldPath": "parentId", "order": "ASCENDING" },
                 { "fieldPath": "currentReviewerId", "order": "ASCENDING" },
@@ -5185,6 +5198,29 @@
                 {
                     "order": "ASCENDING",
                     "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "undoActions",
+            "fieldPath": "expiresAt",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "order": "DESCENDING",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "arrayConfig": "CONTAINS",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION_GROUP"
                 }
             ]
         },
