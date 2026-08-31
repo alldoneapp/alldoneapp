@@ -16,7 +16,7 @@ import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
-import { getTaskBearingProjectIndexes } from '../../../utils/InitialLoad/taskColdStartCache'
+import { getTaskBearingProjectIndexes, getTaskColdStartDayKey } from '../../../utils/InitialLoad/taskColdStartCache'
 import { markNamedPerformanceTrace } from '../../../utils/performance/performanceLogger'
 
 // Task rows are spread across the active projects, and live Pixel traces showed that shrinking this
@@ -36,6 +36,28 @@ export const getProjectTaskStreamReadyState = (state, projectId, currentUserId) 
     // both made one slow observed-task query hold every following project behind a ghost (or the
     // five-second queue fallback), even when assigned tasks were already in Redux.
     return !!state.initialLoadingEndOpenTasks?.[instanceKey] || !!state.initialLoadingEndObservedTasks?.[instanceKey]
+}
+
+export const isTaskColdStartEmptyToday = ({
+    emptyToday,
+    loggedUserId,
+    currentUserId,
+    projectIds,
+    now = Date.now(),
+}) => {
+    if (
+        !emptyToday ||
+        emptyToday.userId !== loggedUserId ||
+        currentUserId !== loggedUserId ||
+        emptyToday.dayKey !== getTaskColdStartDayKey(now)
+    )
+        return false
+
+    const cachedProjectIds = Array.isArray(emptyToday.projectIds) ? emptyToday.projectIds : []
+    const currentProjectIds = Array.isArray(projectIds) ? projectIds : []
+    if (cachedProjectIds.length !== currentProjectIds.length) return false
+    const cachedProjectIdsSet = new Set(cachedProjectIds)
+    return currentProjectIds.every(projectId => cachedProjectIdsSet.has(projectId))
 }
 
 const uniqueProjectIndexes = indexes => [...new Set(indexes.filter(index => index !== null))]
@@ -146,6 +168,7 @@ export default function OpenTasksViewAllProjects() {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const openTasksAmount = useSelector(state => state.openTasksAmount)
     const openTasksAmountLoaded = useSelector(state => state.openTasksAmountLoaded)
+    const taskColdStartEmptyToday = useSelector(state => state.taskColdStartEmptyToday)
     const todayEmptyGoalsTotal = useSelector(state => state.todayEmptyGoalsTotalAmountInOpenTasksView.total)
     const inFocusTaskProjectId = useSelector(state => state.loggedUser.inFocusTaskProjectId)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
@@ -209,6 +232,14 @@ export default function OpenTasksViewAllProjects() {
     )
     const hasRetainedProjectSnapshots = retainedProjectSnapshotStates.some(Boolean)
     const hasRetainedTaskBearingProjects = taskBearingProjectIndexes.length > 0
+    const hasCachedEmptyToday =
+        !openTasksAmountLoaded &&
+        isTaskColdStartEmptyToday({
+            emptyToday: taskColdStartEmptyToday,
+            loggedUserId,
+            currentUserId,
+            projectIds: sortedLoggedUserProjectIds,
+        })
     useEffect(() => {
         if (!hasRetainedProjectSnapshots) return
         markNamedPerformanceTrace('app_boot', 'task_cache_render_ready', {
@@ -311,7 +342,10 @@ export default function OpenTasksViewAllProjects() {
     // empty. Keep the genuinely-empty timeout, but never place the empty-inbox block above visible
     // task content.
     const needToShowEmptyBoardPicture =
-        openTasksAmountLoaded && !openTasksAmount && !todayEmptyGoalsTotal && !hasVisibleTaskContent
+        (openTasksAmountLoaded || hasCachedEmptyToday) &&
+        !openTasksAmount &&
+        !todayEmptyGoalsTotal &&
+        !hasVisibleTaskContent
 
     return (
         <View
@@ -329,7 +363,14 @@ export default function OpenTasksViewAllProjects() {
                 task filters. The assistant composer + last comment must keep the top of
                 the page — the congrats is a reward, not the primary control — but it is
                 still high enough to be visible without scrolling when the inbox is empty. */}
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />}
+            {needToShowEmptyBoardPicture && (
+                <AllProjectsEmptyInbox
+                    showEmptyInboxOverview
+                    // A same-day cached zero is enough to paint the useful empty state, but only
+                    // the live count may spend the once-per-day celebration/achievement marker.
+                    celebrateNewDay={openTasksAmountLoaded}
+                />
+            )}
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskFiltersLine projectId={null} />
             <SkippedProjectCatchUpSkeleton

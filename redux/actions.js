@@ -2041,6 +2041,11 @@ export const setOpenTasksAmount = openTasksAmount => {
     return action
 }
 
+export const setTaskColdStartEmptyToday = emptyToday => ({
+    type: 'Set task cold start empty today',
+    emptyToday,
+})
+
 /**
  * AT-2445 — "has every open-task count watcher delivered its first snapshot?".
  *

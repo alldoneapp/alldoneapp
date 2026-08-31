@@ -10,6 +10,7 @@ import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
+import { getTaskColdStartDayKey } from '../../../utils/InitialLoad/taskColdStartCache'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -40,6 +41,7 @@ const buildState = ({ openTasksAmount, todayEmptyGoalsTotal, openTasksAmountLoad
     isMiddleScreen: false,
     openTasksAmount,
     openTasksAmountLoaded,
+    taskColdStartEmptyToday: null,
     todayEmptyGoalsTotalAmountInOpenTasksView: { total: todayEmptyGoalsTotal },
     loggedUserProjectsMap: {},
     currentUser: { uid: 'user-1' },
@@ -213,6 +215,36 @@ describe('OpenTasksViewAllProjects', () => {
         state.filteredOpenTasksStore['project-1user-1'] = [['TODAY', 3]]
 
         expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
+    })
+
+    it('paints a same-day cached empty inbox immediately without spending the celebration marker', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.taskColdStartEmptyToday = {
+            userId: 'user-1',
+            dayKey: getTaskColdStartDayKey(),
+            projectIds: ['project-1', 'project-2'],
+        }
+
+        const tree = renderView(state)
+        const emptyInbox = tree.root.findByType('AllProjectsEmptyInbox')
+
+        expect(emptyInbox.props.showEmptyInboxOverview).toBe(true)
+        expect(emptyInbox.props.celebrateNewDay).toBe(false)
+    })
+
+    it('ignores an incomplete cached empty scope and lets the live result take over', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.taskColdStartEmptyToday = {
+            userId: 'user-1',
+            dayKey: getTaskColdStartDayKey(),
+            projectIds: ['project-1'],
+        }
+
+        expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
+
+        state.openTasksAmountLoaded = true
+        const liveTree = renderView(state)
+        expect(liveTree.root.findByType('AllProjectsEmptyInbox').props.celebrateNewDay).toBe(true)
     })
 
     // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer

@@ -34,6 +34,7 @@ const mockGetRestorableTaskColdStartSnapshot = jest.fn(() => null)
 jest.mock('../../../utils/InitialLoad/taskColdStartCache', () => ({
     readTaskColdStartCache: (...args) => mockReadTaskColdStartCache(...args),
     getRestorableTaskColdStartSnapshot: (...args) => mockGetRestorableTaskColdStartSnapshot(...args),
+    getTaskColdStartProjectIds: projects => projects.map(project => project.id),
 }))
 
 const mockSetCachedGlobalData = jest.fn()
@@ -103,6 +104,7 @@ jest.mock('../../../redux/actions', () => ({
     setOpenSubtasksMap: jest.fn((projectId, value) => ({ type: 'SET_OPEN_SUBTASKS_MAP', projectId, value })),
     setOpenTasksMap: jest.fn((projectId, value) => ({ type: 'SET_OPEN_TASKS_MAP', projectId, value })),
     setProjectsInitialData: (...args) => mockSetProjectsInitialData(...args),
+    setTaskColdStartEmptyToday: jest.fn(value => ({ type: 'SET_TASK_COLD_START_EMPTY', value })),
     updateFilteredOpenTasks: jest.fn((instanceKey, value) => ({
         type: 'UPDATE_FILTERED_OPEN_TASKS',
         instanceKey,
@@ -265,6 +267,11 @@ describe('loadInitialDataForLoggedUser', () => {
         mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
         mockReadTaskColdStartCache.mockResolvedValue({ userId: 'user-1' })
         mockGetRestorableTaskColdStartSnapshot.mockReturnValue({
+            emptyToday: {
+                userId: 'user-1',
+                dayKey: '2026-08-31',
+                projectIds: ['p1', 'p2'],
+            },
             projects: {
                 p1: {
                     openTasks: [['0', 1]],
@@ -284,6 +291,12 @@ describe('loadInitialDataForLoggedUser', () => {
         await loadInitialDataForLoggedUser(mockState.loggedUser)
 
         expect(mockReadTaskColdStartCache).toHaveBeenCalledWith('user-1')
+        expect(mockDispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'SET_TASK_COLD_START_EMPTY',
+                value: expect.objectContaining({ userId: 'user-1', projectIds: ['p1', 'p2'] }),
+            })
+        )
         expect(mockDispatch).toHaveBeenCalledWith(
             expect.arrayContaining([
                 expect.objectContaining({ type: 'UPDATE_OPEN_TASKS', instanceKey: 'p1user-1' }),

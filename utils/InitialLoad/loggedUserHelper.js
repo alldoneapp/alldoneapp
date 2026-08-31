@@ -21,6 +21,7 @@ import {
     setOpenSubtasksMap,
     setOpenTasksMap,
     setProjectsInitialData,
+    setTaskColdStartEmptyToday,
     updateFilteredOpenTasks,
     updateLoadingStep,
     updateOpenTasks,
@@ -61,7 +62,11 @@ import { scheduleBootIntegrityChecks } from './bootIntegrityHealer'
 import { isEqual } from 'lodash'
 import { trackEvent } from '../analytics/analytics'
 import { scheduleAfterInitialTaskData } from './startupTaskReadiness'
-import { getRestorableTaskColdStartSnapshot, readTaskColdStartCache } from './taskColdStartCache'
+import {
+    getRestorableTaskColdStartSnapshot,
+    getTaskColdStartProjectIds,
+    readTaskColdStartCache,
+} from './taskColdStartCache'
 import { primeSecondaryViewCache } from './secondaryViewCache'
 import { markNamedPerformanceTrace } from '../performance/performanceLogger'
 
@@ -327,14 +332,18 @@ async function loadInitialData() {
     )
 
     const cachedTaskSnapshot = await waitWithinBudget(cachedTaskSnapshotPromise, TASK_COLD_START_RESTORE_BUDGET_MS)
+    const taskBoardProjectIds = getTaskColdStartProjectIds(projects, loggedUser)
     const restorableTaskSnapshot = getRestorableTaskColdStartSnapshot(
         cachedTaskSnapshot,
         loggedUser.uid,
-        projects.map(project => project.id)
+        projects.map(project => project.id),
+        Date.now(),
+        taskBoardProjectIds
     )
     markNamedPerformanceTrace('app_boot', 'task_cache_read_finished', {
         outcome: restorableTaskSnapshot ? 'hit' : 'miss_or_budget',
     })
+    store.dispatch(setTaskColdStartEmptyToday(restorableTaskSnapshot?.emptyToday || null))
     if (restorableTaskSnapshot) {
         const hydrationActions = []
         Object.entries(restorableTaskSnapshot.projects).forEach(([projectId, projectSnapshot]) => {
