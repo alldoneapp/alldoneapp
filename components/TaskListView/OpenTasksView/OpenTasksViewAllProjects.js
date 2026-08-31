@@ -202,6 +202,11 @@ export default function OpenTasksViewAllProjects() {
         state => getTaskBearingProjectIndexes(sortedLoggedUserProjectIds, state.openTasksStore, currentUserId),
         shallowEqual
     )
+    const hasVisibleTaskContent = useSelector(
+        state =>
+            getTaskBearingProjectIndexes(sortedLoggedUserProjectIds, state.filteredOpenTasksStore, currentUserId)
+                .length > 0
+    )
     const hasRetainedProjectSnapshots = retainedProjectSnapshotStates.some(Boolean)
     const hasRetainedTaskBearingProjects = taskBearingProjectIndexes.length > 0
     useEffect(() => {
@@ -299,7 +304,14 @@ export default function OpenTasksViewAllProjects() {
     //
     // My Day has always gated this the same way (`tasksLoaded && …` in `MyDayOpenTasks`); the
     // all-projects board was the outlier.
-    const needToShowEmptyBoardPicture = openTasksAmountLoaded && !openTasksAmount && !todayEmptyGoalsTotal
+    // The numeric counter is rebuilt by an independent Firestore listener wave. Its eight-second
+    // fail-open timeout can therefore announce "ready, 0" while the cold-start projection is
+    // already painting real rows and the live count is still on the way. The filtered task store is
+    // the data those rows actually render from, so it is positive evidence that the board cannot be
+    // empty. Keep the genuinely-empty timeout, but never place the empty-inbox block above visible
+    // task content.
+    const needToShowEmptyBoardPicture =
+        openTasksAmountLoaded && !openTasksAmount && !todayEmptyGoalsTotal && !hasVisibleTaskContent
 
     return (
         <View

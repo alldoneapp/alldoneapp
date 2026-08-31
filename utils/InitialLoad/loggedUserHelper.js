@@ -16,6 +16,7 @@ import {
     initLogInForLoggedUser,
     setDoneMilestonesInProjectInTasks,
     setGoalsInProjectInTasks,
+    setOKRsInProjectInTasks,
     setOpenMilestonesInProjectInTasks,
     setOpenSubtasksMap,
     setOpenTasksMap,
@@ -354,6 +355,9 @@ async function loadInitialData() {
                 ...(projectSnapshot.goalsById && typeof projectSnapshot.goalsById === 'object'
                     ? [setGoalsInProjectInTasks(projectId, projectSnapshot.goalsById)]
                     : []),
+                ...(Array.isArray(projectSnapshot.okrs)
+                    ? [setOKRsInProjectInTasks(projectId, projectSnapshot.okrs)]
+                    : []),
                 updateThereAreNotTasksInFirstDay(instanceKey, !!projectSnapshot.thereAreNotTasksInFirstDay),
                 updateThereAreHiddenNotMainTasks(instanceKey, !!projectSnapshot.thereAreHiddenNotMainTasks)
             )
@@ -361,6 +365,14 @@ async function loadInitialData() {
         if (hydrationActions.length > 0) store.dispatch(hydrationActions)
         markNamedPerformanceTrace('app_boot', 'task_cache_restored', {
             project_count: Object.keys(restorableTaskSnapshot.projects).length,
+            okr_project_count: Object.values(restorableTaskSnapshot.projects).filter(projectSnapshot =>
+                Array.isArray(projectSnapshot.okrs)
+            ).length,
+            okr_count: Object.values(restorableTaskSnapshot.projects).reduce(
+                (total, projectSnapshot) =>
+                    total + (Array.isArray(projectSnapshot.okrs) ? projectSnapshot.okrs.length : 0),
+                0
+            ),
         })
     }
 

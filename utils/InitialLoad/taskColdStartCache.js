@@ -4,8 +4,9 @@
  * Firestore already persists canonical task documents in IndexedDB. Rebuilding the visible board
  * from that cache is still expensive, though: All Projects has to attach one query per project and
  * Chrome serializes a large part of that work through Firestore's own IndexedDB transactions.
- * This second cache stores only the Redux data needed to paint the previous task rows. The normal
- * listeners remain authoritative and replace the projection as soon as their first snapshots land.
+ * This second cache stores only the Redux data needed to paint the previous task rows and their
+ * lightweight project decorations. The normal listeners remain authoritative and replace the
+ * projection as soon as their first snapshots land.
  */
 
 export const TASK_COLD_START_CACHE_SCHEMA_VERSION = 2
@@ -117,6 +118,12 @@ export const buildTaskColdStartSnapshot = (state, savedAt = Date.now()) => {
             openMilestones: state.openMilestonesByProjectInTasks?.[projectId],
             doneMilestones: state.doneMilestonesByProjectInTasks?.[projectId],
             goalsById: state.goalsByProjectInTasks?.[projectId],
+            // Optional and additive: retaining schema 2 keeps every existing task projection
+            // usable after this rollout. Once the late OKR watcher publishes, it schedules a new
+            // write containing this user-filtered render array for the next cold start.
+            ...(Array.isArray(state.okrsByProjectInTasks?.[projectId])
+                ? { okrs: state.okrsByProjectInTasks[projectId] }
+                : {}),
             thereAreNotTasksInFirstDay: !!state.thereAreNotTasksInFirstDay?.[instanceKey],
             thereAreHiddenNotMainTasks: !!state.thereAreHiddenNotMainTasks?.[instanceKey],
         }

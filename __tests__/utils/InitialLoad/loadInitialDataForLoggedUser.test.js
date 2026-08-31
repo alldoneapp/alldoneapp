@@ -94,6 +94,7 @@ jest.mock('../../../redux/actions', () => ({
         value,
     })),
     setGoalsInProjectInTasks: jest.fn((projectId, value) => ({ type: 'SET_GOALS', projectId, value })),
+    setOKRsInProjectInTasks: jest.fn((projectId, value) => ({ type: 'SET_OKRS', projectId, value })),
     setOpenMilestonesInProjectInTasks: jest.fn((projectId, value) => ({
         type: 'SET_OPEN_MILESTONES',
         projectId,
@@ -273,6 +274,7 @@ describe('loadInitialDataForLoggedUser', () => {
                     openMilestones: [{ id: 'open-milestone' }],
                     doneMilestones: [{ id: 'done-milestone' }],
                     goalsById: { goal: { id: 'goal' } },
+                    okrs: [{ id: 'okr-1' }],
                     thereAreNotTasksInFirstDay: false,
                     thereAreHiddenNotMainTasks: false,
                 },
@@ -290,6 +292,7 @@ describe('loadInitialDataForLoggedUser', () => {
                 expect.objectContaining({ type: 'SET_OPEN_MILESTONES', projectId: 'p1' }),
                 expect.objectContaining({ type: 'SET_DONE_MILESTONES', projectId: 'p1' }),
                 expect.objectContaining({ type: 'SET_GOALS', projectId: 'p1' }),
+                expect.objectContaining({ type: 'SET_OKRS', projectId: 'p1' }),
             ])
         )
     })

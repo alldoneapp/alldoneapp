@@ -22,6 +22,7 @@ const buildState = () => ({
     openMilestonesByProjectInTasks: { p1: [{ id: 'open-milestone' }] },
     doneMilestonesByProjectInTasks: { p1: [{ id: 'done-milestone' }] },
     goalsByProjectInTasks: { p1: { goal: { id: 'goal' } } },
+    okrsByProjectInTasks: { p1: [{ id: 'okr-1', label: 'Grow' }], p2: [] },
     thereAreNotTasksInFirstDay: { 'p1user-1': false, 'p2user-1': true },
     thereAreHiddenNotMainTasks: { 'p1user-1': true },
 })
@@ -45,11 +46,12 @@ describe('taskColdStartCache projection', () => {
                 openMilestones: [{ id: 'open-milestone' }],
                 doneMilestones: [{ id: 'done-milestone' }],
                 goalsById: { goal: { id: 'goal' } },
+                okrs: [{ id: 'okr-1', label: 'Grow' }],
                 thereAreHiddenNotMainTasks: true,
             })
         )
         expect(snapshot.projects.p2).toEqual(
-            expect.objectContaining({ openTasks: [], thereAreNotTasksInFirstDay: true })
+            expect.objectContaining({ openTasks: [], okrs: [], thereAreNotTasksInFirstDay: true })
         )
     })
 
@@ -71,6 +73,16 @@ describe('taskColdStartCache projection', () => {
         expect(
             getRestorableTaskColdStartSnapshot({ ...snapshot, savedAt: snapshot.savedAt - 1 }, 'user-1', ['p1'], now)
         ).toBeNull()
+    })
+
+    it('keeps existing schema-2 task projections valid when they predate cached OKRs', () => {
+        const now = 1_000_000_000
+        const snapshot = buildTaskColdStartSnapshot(buildState(), now)
+        delete snapshot.projects.p1.okrs
+
+        expect(getRestorableTaskColdStartSnapshot(snapshot, 'user-1', ['p1'], now).projects.p1).toEqual(
+            snapshot.projects.p1
+        )
     })
 
     it('rejects task rows that cannot render without their goal-order metadata', () => {

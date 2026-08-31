@@ -43,6 +43,8 @@ const buildState = ({ openTasksAmount, todayEmptyGoalsTotal, openTasksAmountLoad
     todayEmptyGoalsTotalAmountInOpenTasksView: { total: todayEmptyGoalsTotal },
     loggedUserProjectsMap: {},
     currentUser: { uid: 'user-1' },
+    openTasksStore: {},
+    filteredOpenTasksStore: {},
     initialLoadingEndOpenTasks: {},
     initialLoadingEndObservedTasks: {},
     loggedUser: {
@@ -204,6 +206,13 @@ describe('OpenTasksViewAllProjects', () => {
                 renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: true }))
             )
         ).toContain('AllProjectsEmptyInbox')
+    })
+
+    it('does not claim an empty inbox while retained task rows are visible and the live count is still zero', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: true })
+        state.filteredOpenTasksStore['project-1user-1'] = [['TODAY', 3]]
+
+        expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
     })
 
     // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer
