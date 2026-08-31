@@ -1,4 +1,4 @@
-import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -15,6 +15,14 @@ import Backend from '../../utils/BackendBridge'
 import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
 import { decodeFirstBoardMilestone, selectFirstBoardMilestoneByProject } from './goalsBoardSelectors'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
+import {
+    buildSecondaryViewCacheKey,
+    getSecondaryViewCacheEntry,
+    getSecondaryViewCacheEntrySync,
+    SECONDARY_VIEW_GOALS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
+import store from '../../redux/store'
 
 const NO_MILESTONE_DATE = moment('5000-01-01').valueOf()
 const EMPTY_IDS = []
@@ -26,18 +34,83 @@ export const getProjectsToWatch = (loggedUserProjects, templateProjectIds, archi
 
 export function GoalsProjectWatcher({ project, currentUserId, trackInitialLoad, onInitialSnapshot }) {
     const dispatch = useDispatch()
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const goals = useSelector(state => state.goalsByProject[project.id])
+    const openMilestones = useSelector(state => state.openMilestonesByProject[project.id])
+    const doneMilestones = useSelector(state => state.doneMilestonesByProject[project.id])
+    const ownerId = getOwnerId(project.id, currentUserId)
+    const cacheKey = buildSecondaryViewCacheKey(project.id, ownerId)
+    const liveSnapshotDelivered = useRef(false)
+    const cacheApplied = useRef(false)
+
+    const applyCachedSnapshot = useCallback(
+        cachedSnapshot => {
+            if (
+                !cachedSnapshot ||
+                !Array.isArray(cachedSnapshot.goals) ||
+                !Array.isArray(cachedSnapshot.openMilestones) ||
+                !Array.isArray(cachedSnapshot.doneMilestones)
+            ) {
+                return false
+            }
+            dispatch([
+                setGoalsInProject(project.id, cachedSnapshot.goals),
+                setOpenMilestonesInProject(project.id, cachedSnapshot.openMilestones),
+                setDoneMilestonesInProject(project.id, cachedSnapshot.doneMilestones),
+            ])
+            onInitialSnapshot(project.id)
+            return true
+        },
+        [cacheKey, dispatch, onInitialSnapshot, project.id]
+    )
+
+    useLayoutEffect(() => {
+        liveSnapshotDelivered.current = false
+        cacheApplied.current = applyCachedSnapshot(
+            getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_GOALS, cacheKey)
+        )
+    }, [applyCachedSnapshot, cacheKey, loggedUserId])
+
+    useEffect(() => {
+        let active = true
+        getSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_GOALS, cacheKey).then(cachedSnapshot => {
+            if (active && !liveSnapshotDelivered.current) {
+                cacheApplied.current = applyCachedSnapshot(cachedSnapshot)
+            }
+        })
+        return () => {
+            active = false
+        }
+    }, [applyCachedSnapshot, cacheKey, loggedUserId])
+
+    useEffect(() => {
+        if (!Array.isArray(goals) || !Array.isArray(openMilestones) || !Array.isArray(doneMilestones)) return
+        setSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_GOALS, cacheKey, {
+            projectId: project.id,
+            ownerId,
+            goals,
+            openMilestones,
+            doneMilestones,
+        })
+    }, [cacheKey, doneMilestones, goals, loggedUserId, openMilestones, ownerId, project.id])
 
     useEffect(() => {
         const goalsWatcherKey = v4()
         const milestonesWatcherKey = v4()
-        const ownerId = getOwnerId(project.id, currentUserId)
         const deliveredSnapshots = new Set()
         const markSnapshotDelivered = snapshotType => {
+            // Once either listener has delivered, its Redux slice is newer than the projection.
+            // Do not let a slower IndexedDB read put an older full projection over that slice.
+            liveSnapshotDelivered.current = true
             deliveredSnapshots.add(snapshotType)
-            if (deliveredSnapshots.size === 2) onInitialSnapshot(project.id)
+            if (deliveredSnapshots.size === 2) {
+                onInitialSnapshot(project.id)
+            }
         }
         const watcherOptions = {
-            manageLoading: trackInitialLoad,
+            // A restored board is already usable. Keep the listener refresh entirely in the
+            // background instead of showing the page spinner over those cached rows.
+            manageLoading: trackInitialLoad && !cacheApplied.current,
             trackConnectionHealth: trackInitialLoad,
         }
 
@@ -51,6 +124,23 @@ export function GoalsProjectWatcher({ project, currentUserId, trackInitialLoad, 
         })
 
         return () => {
+            const state = store.getState()
+            const currentGoals = state.goalsByProject[project.id]
+            const currentOpenMilestones = state.openMilestonesByProject[project.id]
+            const currentDoneMilestones = state.doneMilestonesByProject[project.id]
+            if (
+                Array.isArray(currentGoals) &&
+                Array.isArray(currentOpenMilestones) &&
+                Array.isArray(currentDoneMilestones)
+            ) {
+                setSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_GOALS, cacheKey, {
+                    projectId: project.id,
+                    ownerId,
+                    goals: currentGoals,
+                    openMilestones: currentOpenMilestones,
+                    doneMilestones: currentDoneMilestones,
+                })
+            }
             Backend.unwatch(milestonesWatcherKey)
             Backend.unwatch(goalsWatcherKey)
             dispatch([
@@ -59,7 +149,7 @@ export function GoalsProjectWatcher({ project, currentUserId, trackInitialLoad, 
                 setGoalsInProject(project.id, null),
             ])
         }
-    }, [currentUserId, project.id, trackInitialLoad])
+    }, [cacheKey, currentUserId, loggedUserId, onInitialSnapshot, ownerId, project.id, trackInitialLoad])
 
     return null
 }

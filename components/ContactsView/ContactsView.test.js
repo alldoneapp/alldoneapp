@@ -6,15 +6,21 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import ContactsView from './ContactsView'
+import ContactsView, { getContactsViewCacheKey } from './ContactsView'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 import { ensureProjectDataLoaded } from '../../utils/InitialLoad/projectDataLoader'
+import {
+    resetSecondaryViewCacheForTests,
+    SECONDARY_VIEW_CONTACTS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
 
 const mockDispatch = jest.fn()
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 jest.mock('../../hooks/useRateLimitedProjectReveal', () => jest.fn())
 jest.mock('../../utils/InitialLoad/projectDataLoader', () => ({
     PROJECT_DATA_CONTACTS: 'contacts',
+    PROJECT_DATA_USERS: 'users',
     ensureProjectDataLoaded: jest.fn(() => new Promise(() => {})),
 }))
 jest.mock('./ContactListByProject', () => 'ContactListByProject')
@@ -72,6 +78,8 @@ const STATE = {
 describe('ContactsView project admission', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        resetSecondaryViewCacheForTests()
+        ensureProjectDataLoaded.mockImplementation(() => new Promise(() => {}))
         useSelector.mockImplementation(selector => selector(STATE))
         useRateLimitedProjectReveal.mockReturnValue({
             revealedProjectIds: ['project-1', 'project-2'],
@@ -80,6 +88,8 @@ describe('ContactsView project admission', () => {
         })
     })
 
+    afterEach(() => resetSecondaryViewCacheForTests())
+
     it('loads only admitted projects and tracks only the primary one', () => {
         let tree
         act(() => {
@@ -87,12 +97,50 @@ describe('ContactsView project admission', () => {
         })
 
         expect(tree.root.findAllByType('ContactListByProject').map(node => node.props.projectIndex)).toEqual([0, 1])
-        expect(ensureProjectDataLoaded).toHaveBeenNthCalledWith(1, 'project-1', 'contacts', {
+        expect(ensureProjectDataLoaded).toHaveBeenNthCalledWith(1, 'project-1', ['users', 'contacts'], {
             trackConnectionHealth: true,
         })
-        expect(ensureProjectDataLoaded).toHaveBeenNthCalledWith(2, 'project-2', 'contacts', {
+        expect(ensureProjectDataLoaded).toHaveBeenNthCalledWith(2, 'project-2', ['users', 'contacts'], {
             trackConnectionHealth: false,
         })
         expect(tree.root.findAllByType('ContactListByProject').every(node => !node.props.requestProjectData)).toBe(true)
+    })
+
+    it('renders cached visible rows while the project listeners refresh in the background', async () => {
+        const cacheKey = getContactsViewCacheKey({
+            activeTab: 1,
+            inAllProjects: true,
+            selectedProjectId: null,
+            projectIds: PROJECTS.map(project => project.id),
+        })
+        setSecondaryViewCacheEntry(
+            'user-1',
+            SECONDARY_VIEW_CONTACTS,
+            cacheKey,
+            {
+                cacheKey,
+                projects: {
+                    'project-1': {
+                        members: [{ uid: 'cached-user', displayName: 'Cached User' }],
+                        contacts: [],
+                    },
+                    'project-2': { members: [], contacts: [] },
+                },
+                amounts: { users: 1, contacts: 0, followedUsers: 0, followedContacts: 0 },
+            },
+            { persist: false }
+        )
+
+        ensureProjectDataLoaded.mockResolvedValue(false)
+        let tree
+        await act(async () => {
+            tree = renderer.create(<ContactsView />)
+            await Promise.resolve()
+        })
+
+        expect(tree.root.findAllByType('ContactListByProject')[0].props.members).toEqual([
+            { uid: 'cached-user', displayName: 'Cached User' },
+        ])
+        expect(ensureProjectDataLoaded.mock.calls[0][2]).toEqual({ trackConnectionHealth: false })
     })
 })

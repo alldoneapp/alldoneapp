@@ -52,8 +52,9 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const [toRender, setToRender] = useState(initialToRender)
     const [atEnd, setAtEnd] = useState(false)
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
-    const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
-    const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab)
+    const shouldUseInitialViewCache = toRender === initialToRender
+    const loadedChats = useGetChats(project.id, toRender, chatsActiveTab, shouldUseInitialViewCache)
+    const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab, shouldUseInitialViewCache)
     const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly, toRender)
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
