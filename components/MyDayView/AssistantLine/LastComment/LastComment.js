@@ -2,6 +2,7 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import LastUserOrAssistantCommentContainer from './LastUserOrAssistantCommentContainer'
+import NoComment from '../NoComment/NoComment'
 
 export default function LastComment({
     project,
@@ -9,6 +10,7 @@ export default function LastComment({
     currentProjectChatLastNotification,
     currentLastAssistantCommentData,
     compact = false,
+    assistant,
 }) {
     const followedNotification = currentProjectChatLastNotification?.followed
         ? currentProjectChatLastNotification
@@ -20,15 +22,17 @@ export default function LastComment({
         !!currentLastAssistantCommentData.objectType
 
     if (!hasNotification && !hasValidLastCommentData) {
-        console.warn('LastComment: missing or invalid lastAssistantCommentData; skipping render', {
-            currentLastAssistantCommentData,
-        })
-        return null
+        return compact ? null : (
+            <View style={localStyles.container}>
+                <NoComment projectId={project.id} assistant={assistant} />
+            </View>
+        )
     }
     return (
         <View style={[localStyles.container, compact && localStyles.containerCompact]}>
             {followedNotification ? (
                 <LastUserOrAssistantCommentContainer
+                    key={`${project.id}:${followedNotification.chatType}:${followedNotification.chatId}`}
                     project={project}
                     objectId={followedNotification.chatId}
                     objectType={followedNotification.chatType}
@@ -39,6 +43,7 @@ export default function LastComment({
                 />
             ) : (
                 <LastUserOrAssistantCommentContainer
+                    key={`${project.id}:${currentLastAssistantCommentData.objectType}:${currentLastAssistantCommentData.objectId}`}
                     project={project}
                     objectId={currentLastAssistantCommentData.objectId}
                     objectType={currentLastAssistantCommentData.objectType}

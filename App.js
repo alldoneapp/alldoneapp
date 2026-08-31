@@ -19,6 +19,12 @@ import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from '
 import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
 import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
 import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
+import { initializeResponsiveLayout } from './AppNavigator'
+
+// React Native Web reports the real viewport synchronously. Apply it before
+// mounting AppContent so a phone never paints the cached task board with the
+// Redux store's desktop layout defaults.
+initializeResponsiveLayout()
 
 startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
 startAppBootConnectionWait()

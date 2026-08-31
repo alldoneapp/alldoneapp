@@ -27,14 +27,6 @@ import {
     toggleSmallScreenNavigation,
     toggleSmallScreenNavSidebarCollapsed,
 } from './redux/actions'
-import {
-    SCREEN_BREAKPOINT,
-    SCREEN_BREAKPOINT_MIDDLE,
-    SCREEN_BREAKPOINT_NAV,
-    SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED,
-    SCREEN_SMALL_BREAKPOINT_NAV,
-    SIDEBAR_MENU_WIDTH,
-} from './components/styles/global'
 import DismissibleModal from './components/UIComponents/DismissibleModal'
 import SettingsView from './components/SettingsView/SettingsView'
 import { notifyClickObservers } from './utils/Observers'
@@ -52,6 +44,47 @@ import { installShellOtaUpdater } from './utils/shellOtaUpdater'
 import { installConnectionHealthMonitor } from './utils/connectionHealth'
 import { installAppResumeListener } from './utils/appResume'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
+import { getResponsiveLayoutState } from './utils/responsiveLayout'
+
+const getCurrentResponsiveLayout = width => {
+    const { loggedUser, route } = store.getState()
+    return getResponsiveLayoutState({ width, sidebarExpanded: loggedUser.sidebarExpanded, route })
+}
+
+// Seed the responsive Redux flags before AppContent's first render. This is
+// intentionally separate from the outer View's onLayout handler: on a cached
+// mobile boot the task board can be visible for well over a second before that
+// first layout callback, which otherwise exposes the desktop defaults.
+export const initializeResponsiveLayout = () => {
+    const width = Dimensions.get('window').width
+    if (!Number.isFinite(width) || width <= 0) return
+
+    const current = store.getState()
+    const next = getResponsiveLayoutState({
+        width,
+        sidebarExpanded: current.loggedUser.sidebarExpanded,
+        route: current.route,
+    })
+    const dispatches = []
+
+    if (current.showWebSideBar.visible && next.smallScreenNavigation) dispatches.push(hideWebSideBar())
+    if (current.isMiddleScreen !== next.isMiddleScreen) dispatches.push(toggleMiddleScreen(next.isMiddleScreen))
+    if (current.isMiddleScreenNoteDV !== next.isMiddleScreenNoteDV) {
+        dispatches.push(toggleMiddleScreenNoteDV(next.isMiddleScreenNoteDV))
+    }
+    if (current.smallScreen !== next.smallScreen) dispatches.push(toggleSmallScreen(next.smallScreen))
+    if (current.smallScreenNavigation !== next.smallScreenNavigation) {
+        dispatches.push(toggleSmallScreenNavigation(next.smallScreenNavigation))
+    }
+    if (current.reallySmallScreenNavigation !== next.reallySmallScreenNavigation) {
+        dispatches.push(toggleReallySmallScreenNavigation(next.reallySmallScreenNavigation))
+    }
+    if (current.smallScreenNavSidebarCollapsed !== next.smallScreenNavSidebarCollapsed) {
+        dispatches.push(toggleSmallScreenNavSidebarCollapsed(next.smallScreenNavSidebarCollapsed))
+    }
+
+    if (dispatches.length > 0) store.dispatch(dispatches)
+}
 
 const onLayoutChange = layout => {
     const {
@@ -62,22 +95,16 @@ const onLayoutChange = layout => {
         smallScreen,
         isMiddleScreenNoteDV,
         showWebSideBar,
-        route,
-        loggedUser,
     } = store.getState()
-
-    const { sidebarExpanded } = loggedUser
-    const screenBreakpointNav = sidebarExpanded ? SCREEN_BREAKPOINT_NAV : SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
 
     let widthScreenNavigation = layout.nativeEvent.layout.width
     if (widthScreenNavigation === 0) {
         widthScreenNavigation = Dimensions.get('window').width
     }
 
-    let widthScreen =
-        widthScreenNavigation < screenBreakpointNav ? widthScreenNavigation : widthScreenNavigation - SIDEBAR_MENU_WIDTH
+    const next = getCurrentResponsiveLayout(widthScreenNavigation)
 
-    if (widthScreenNavigation <= screenBreakpointNav) {
+    if (next.smallScreenNavigation) {
         //This conditional is to avoid setting the state every time the layout changes while the condition is false
         if (showWebSideBar.visible && !smallScreenNavigation) {
             store.dispatch(hideWebSideBar())
@@ -90,7 +117,7 @@ const onLayoutChange = layout => {
 
     const dispatches = []
 
-    if (widthScreenNavigation <= SCREEN_SMALL_BREAKPOINT_NAV) {
+    if (next.reallySmallScreenNavigation) {
         if (!reallySmallScreenNavigation) {
             dispatches.push(toggleReallySmallScreenNavigation(true))
         }
@@ -99,7 +126,7 @@ const onLayoutChange = layout => {
     }
 
     // For screen size under breakpoint navigation
-    if (widthScreenNavigation <= screenBreakpointNav) {
+    if (next.smallScreenNavigation) {
         if (!smallScreenNavigation) {
             dispatches.push(toggleSmallScreenNavigation(true))
         }
@@ -108,7 +135,7 @@ const onLayoutChange = layout => {
     }
 
     // For screen size under breakpoint navigation sidebar collapsed
-    if (widthScreenNavigation <= SCREEN_BREAKPOINT_NAV) {
+    if (next.smallScreenNavSidebarCollapsed) {
         if (!smallScreenNavSidebarCollapsed) {
             dispatches.push(toggleSmallScreenNavSidebarCollapsed(true))
         }
@@ -119,7 +146,7 @@ const onLayoutChange = layout => {
     dispatches.length > 0 && store.dispatch(dispatches)
 
     // For screen size under breakpoint
-    if (widthScreen <= SCREEN_BREAKPOINT) {
+    if (next.smallScreen) {
         if (!smallScreen) {
             store.dispatch(toggleSmallScreen(true))
         }
@@ -127,7 +154,7 @@ const onLayoutChange = layout => {
         store.dispatch(toggleSmallScreen(false))
     }
 
-    if (widthScreen <= SCREEN_BREAKPOINT_MIDDLE - SIDEBAR_MENU_WIDTH) {
+    if (next.isMiddleScreen) {
         if (!isMiddleScreen) store.dispatch(toggleMiddleScreen(true))
     } else {
         if (isMiddleScreen) store.dispatch(toggleMiddleScreen(false))
@@ -135,17 +162,7 @@ const onLayoutChange = layout => {
 
     // This specific breakpoint allows a nice responsive behavior in NoteDV
     // The Note Toolbar and Tag List needs to jump to mobile earlier than the rest of view
-    if (
-        widthScreen <= SCREEN_BREAKPOINT_MIDDLE &&
-        (route === 'NotesDetailedView' ||
-            route === 'ChatDetailedView' ||
-            route === 'ContactDetailedView' ||
-            route === 'GoalDetailedView' ||
-            route === 'SkillDetailedView' ||
-            route === 'AssistantDetailedView' ||
-            route === 'TaskDetailedView' ||
-            route === 'UserDetailedView')
-    ) {
+    if (next.isMiddleScreenNoteDV) {
         if (!isMiddleScreenNoteDV) {
             store.dispatch(toggleMiddleScreenNoteDV(true))
         }

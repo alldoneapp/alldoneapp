@@ -9,6 +9,7 @@ import LastCommentArea from './LastCommentArea'
 import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
 import Icon from '../../Icon'
 import AssistantSwitchControl from './AssistantSwitchControl'
+import AssistantLineSkeleton from './AssistantLineSkeleton'
 
 export default function AssistantLine({
     showLastComment = true,
@@ -28,6 +29,7 @@ export default function AssistantLine({
     scopeLastCommentToAssistant = false,
     showEditAssistantButton = false,
     onEditAssistant = null,
+    deferQuickActions = false,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
@@ -40,7 +42,7 @@ export default function AssistantLine({
     const selectedProject = projectOverride || selectedProjectFromStore
     const assistantId = assistantIdOverride || defaultAssistant?.uid
 
-    const { assistant: selectedLineAssistant } = getAssistantLineData(
+    const { assistant: selectedLineAssistant, assistantProject: selectedLineAssistantProject } = getAssistantLineData(
         selectedProject,
         assistantId,
         loggedUser?.defaultProjectId,
@@ -57,7 +59,11 @@ export default function AssistantLine({
         setAmountOfButtonOptions(amountOfButtonOptions)
     }
 
-    const hasRequiredData = defaultAssistant && defaultAssistant.uid && loggedUser && loggedUser.defaultProjectId
+    const hasRequiredData =
+        defaultAssistant?.uid &&
+        loggedUser?.defaultProjectId &&
+        selectedLineAssistant?.uid &&
+        selectedLineAssistantProject?.id
 
     useEffect(() => {
         setIsCollapsed(startCollapsed)
@@ -66,9 +72,7 @@ export default function AssistantLine({
     if (!hasRequiredData) {
         return (
             <View style={localStyles.container} onLayout={onLayout}>
-                <View style={localStyles.loadingContainer}>
-                    <Text style={localStyles.loadingText}>Loading assistant...</Text>
-                </View>
+                <AssistantLineSkeleton showLastComment={showLastComment} />
             </View>
         )
     }
@@ -108,6 +112,7 @@ export default function AssistantLine({
                         assistantIdOverride={assistantId}
                         showAllQuickActions={showAllQuickActions}
                         preferAssistantIdOverride={preferAssistantIdOverride}
+                        deferQuickActions={deferQuickActions}
                     />
                     {showLastComment && (
                         <LastCommentArea
@@ -295,14 +300,5 @@ const localStyles = StyleSheet.create({
     },
     chevronMobile: {
         marginLeft: 2,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        fontSize: 14,
-        color: colors.Grey600,
     },
 })
