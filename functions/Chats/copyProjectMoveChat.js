@@ -49,9 +49,10 @@ async function copyProjectMoveChat({
     if (sourceProjectId === targetProjectId) return { copied: false, reason: 'same-project' }
 
     const database = adminRef.firestore()
+    const sourceChatRef = database.doc(`chatObjects/${sourceProjectId}/chats/${objectId}`)
     const [targetProjectDoc, sourceChatDoc] = await Promise.all([
         database.doc(`projects/${targetProjectId}`).get(),
-        database.doc(`chatObjects/${sourceProjectId}/chats/${objectId}`).get(),
+        sourceChatRef.get(),
     ])
     if (!sourceChatDoc.exists) return { copied: false, reason: 'no-chat' }
 
@@ -77,6 +78,8 @@ async function copyProjectMoveChat({
     }
 
     await copyChat(adminRef, sourceProjectId, targetProjectId, objectType, objectId, { chatData })
+    await sourceChatRef.update({ movingToOtherProjectId: targetProjectId })
+    await sourceChatRef.delete()
 
     if (objectType === 'topics') {
         const writes = [

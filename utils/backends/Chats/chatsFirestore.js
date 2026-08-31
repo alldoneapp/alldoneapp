@@ -143,13 +143,15 @@ export async function moveChatOnMoveObjectFromProject(
     const { loggedUser, loggedUserProjectsMap } = store.getState()
 
     const sourceChatRef = getDb().doc(`chatObjects/${oldProjectId}/chats/${chatId}`)
-    const chat = await sourceChatRef.get()
-    if (!chat.exists) return
-
-    const chatData = { ...chat.data() }
-    delete chatData.movingToOtherProjectId
+    let chatData
 
     if (objectType === 'topics') {
+        const chat = await sourceChatRef.get()
+        if (!chat.exists) return
+
+        chatData = { ...chat.data() }
+        delete chatData.movingToOtherProjectId
+
         const newProjectUserIds = loggedUserProjectsMap[newProjectId]?.userIds || []
         const allowedUserIds = new Set(newProjectUserIds)
         const sourceFollowers = await getDb().doc(`followers/${oldProjectId}/topics/${chatId}`).get()
@@ -177,17 +179,17 @@ export async function moveChatOnMoveObjectFromProject(
     // Comments retain their original creatorId. Recreating a teammate's or assistant's
     // comment from the browser would correctly be rejected as impersonation, so the
     // authenticated callable verifies both project memberships and copies the conversation
-    // with the Admin SDK. It also owns follower/pointer maintenance for top-level chats.
-    await runHttpsCallableFunction('copyProjectMoveChatSecondGen', {
+    // with the Admin SDK. It also owns source cleanup and follower/pointer maintenance,
+    // so chatless object moves never have to probe a nonexistent client-readable document.
+    const result = await runHttpsCallableFunction('copyProjectMoveChatSecondGen', {
         sourceProjectId: oldProjectId,
         targetProjectId: newProjectId,
         objectType,
         objectId: chatId,
     })
+    if (!result?.copied) return
 
-    await sourceChatRef.update({ movingToOtherProjectId: newProjectId })
-    if (beforeDeleteSource) await beforeDeleteSource({ ...chatData, id: chatId })
-    await sourceChatRef.delete()
+    if (beforeDeleteSource && chatData) await beforeDeleteSource({ ...chatData, id: chatId })
 }
 
 export async function updateStickyChatData(projectId, chatId, stickyData) {
