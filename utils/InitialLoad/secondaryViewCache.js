@@ -3,8 +3,8 @@
  *
  * Firestore's persistent cache remains the canonical offline store. These projections only avoid
  * rebuilding the rows the user just saw through many per-project IndexedDB queries when opening
- * Goals, Notes, Contacts or Chats. Every consumer still attaches its normal listeners and replaces
- * the projection as soon as the first complete live/cache snapshot arrives.
+ * Goals, Notes, Contacts or Chats. Every consumer still attaches its normal listeners and refreshes
+ * the projection from Firestore in the background as authoritative snapshots arrive.
  */
 
 export const SECONDARY_VIEW_CACHE_SCHEMA_VERSION = 1

@@ -30,9 +30,12 @@ import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_USER_PROFILE } from '../../utils/TabN
 import v4 from 'uuid/v4'
 import {
     getContactBacklinksWatcherKey,
+    getContactInfoPreview,
     getContactItemStoreUpdate,
     getContactPresentationData,
 } from './contactItemStoreUpdate'
+
+export const CONTACT_BACKLINKS_ROOT_MARGIN = '600px 0px'
 
 export default class ContactItem extends Component {
     constructor(props) {
@@ -56,12 +59,39 @@ export default class ContactItem extends Component {
         }
 
         this.itemSwipe = React.createRef()
+        this.containerRef = React.createRef()
         // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
         // and leave the row permanently unopenable. See the hook module.
         this.swipeCloseGuard = createSwipeCloseGuard(blockOpen => this.setState({ blockOpen }))
     }
 
     componentDidMount() {
+        const target = this.containerRef.current
+        if (typeof IntersectionObserver === 'undefined' || !target) {
+            this.startBacklinksWatcher()
+            return
+        }
+
+        try {
+            this.backlinksObserver = new IntersectionObserver(
+                entries => {
+                    if (!entries.some(entry => entry.isIntersecting)) return
+                    this.backlinksObserver?.disconnect()
+                    this.backlinksObserver = null
+                    this.startBacklinksWatcher()
+                },
+                { rootMargin: CONTACT_BACKLINKS_ROOT_MARGIN }
+            )
+            this.backlinksObserver.observe(target)
+        } catch {
+            this.backlinksObserver?.disconnect()
+            this.backlinksObserver = null
+            this.startBacklinksWatcher()
+        }
+    }
+
+    startBacklinksWatcher = () => {
+        if (this.backlinksWatcherKey) return
         const { loggedUserProjects } = this.state
         const { projectIndex, contact } = this.props
         const projectId = loggedUserProjects[projectIndex].id
@@ -86,8 +116,9 @@ export default class ContactItem extends Component {
     }
 
     componentWillUnmount() {
+        this.backlinksObserver?.disconnect()
         const { contact } = this.props
-        Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
+        if (this.backlinksWatcherKey) Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
         this.state.unsubscribe()
     }
 
@@ -213,12 +244,13 @@ export default class ContactItem extends Component {
             return `${translate('Edited')}: ${moment(date).format(`${getTimeFormat(true)} of ${getDateFormat()}`)}`
         }
 
-        const userInfo =
+        const userInfo = getContactInfoPreview(
             !role && !company && !description
                 ? ''
                 : `${role ? role : ''}${role && (company || description) ? ' • ' : ''}${company ? company : ''}${
                       company && description ? ' • ' : ''
                   }${description ? description : ''}`
+        )
 
         const backlinksCount = backlinksTasksCount + backlinksNotesCount
         const backlinkObject =
@@ -242,7 +274,7 @@ export default class ContactItem extends Component {
         const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
         return showContact ? (
-            <View>
+            <View ref={this.containerRef}>
                 <View style={localStyles.swipeContainer}>
                     <View style={localStyles.leftSwipeArea}>
                         <Icon name="circle-details" size={18} color={colors.UtilityGreen200} />

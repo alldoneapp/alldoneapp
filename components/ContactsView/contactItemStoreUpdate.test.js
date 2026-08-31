@@ -1,5 +1,7 @@
 import {
+    CONTACT_INFO_PREVIEW_MAX_LENGTH,
     getContactBacklinksWatcherKey,
+    getContactInfoPreview,
     getContactItemStoreUpdate,
     getContactPresentationData,
 } from './contactItemStoreUpdate'
@@ -37,6 +39,14 @@ describe('ContactItem store updates', () => {
         expect(getContactBacklinksWatcherKey('project-1', 'contact-1', 'instance-1')).not.toBe(
             getContactBacklinksWatcherKey('project-1', 'contact-1', 'instance-2')
         )
+    })
+
+    it('keeps short contact information intact and bounds the DOM preview', () => {
+        expect(getContactInfoPreview('Short description')).toBe('Short description')
+
+        const preview = getContactInfoPreview('a'.repeat(CONTACT_INFO_PREVIEW_MAX_LENGTH + 50))
+        expect(preview).toHaveLength(CONTACT_INFO_PREVIEW_MAX_LENGTH)
+        expect(preview.endsWith('…')).toBe(true)
     })
 
     it('applies project privacy without mutating the Redux contact object', () => {

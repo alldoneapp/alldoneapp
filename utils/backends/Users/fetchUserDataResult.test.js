@@ -81,7 +81,12 @@ jest.mock('../../../components/SettingsView/SettingsHelper', () => ({}))
 jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({ __esModule: true, default: {} }))
 jest.mock('../../../components/Workstreams/WorkstreamHelper', () => ({ DEFAULT_WORKSTREAM_ID: 'ws' }))
 
-const { fetchUserDataResult, updateUserDataDirectly, watchProjectUsers } = require('./usersFirestore')
+const {
+    fetchUserDataResult,
+    resetSharedProjectUserWatchersForTests,
+    updateUserDataDirectly,
+    watchProjectUsers,
+} = require('./usersFirestore')
 
 const snapshot = ({ exists, data = null, fromCache = false, withMetadata = true }) => ({
     exists,
@@ -100,6 +105,7 @@ describe('fetchUserDataResult', () => {
     let consoleError
 
     beforeEach(() => {
+        resetSharedProjectUserWatchersForTests()
         mockStoreGetState.mockReset()
         mockStoreGetState.mockReturnValue({})
         mockGetDb.mockReset()
@@ -213,6 +219,40 @@ describe('fetchUserDataResult', () => {
         expect(listeners['users/user-1']).toBeDefined()
         listeners['users/user-1'].next(snapshot({ exists: true, data: { displayName: 'One' } }))
         expect(callback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'One', isLoggedUser: false }])
+    })
+
+    it('shares one user document listener across project sections', async () => {
+        const listeners = {}
+        const userUnsubscribe = jest.fn()
+        const doc = jest.fn(path => ({
+            onSnapshot: (next, error) => {
+                listeners[path] = listeners[path] || []
+                listeners[path].push({ next, error })
+                return path === 'users/user-1' ? userUnsubscribe : jest.fn()
+            },
+        }))
+        mockGetDb.mockReturnValue({ doc })
+        mockStoreGetState.mockReturnValue({
+            loggedUserProjectsMap: {
+                'project-1': { userIds: ['user-1'] },
+                'project-2': { userIds: ['user-1'] },
+            },
+        })
+        const firstCallback = jest.fn()
+        const secondCallback = jest.fn()
+
+        await watchProjectUsers('project-1', firstCallback, 'project-1Users')
+        await watchProjectUsers('project-2', secondCallback, 'project-2Users')
+
+        expect(listeners['users/user-1']).toHaveLength(1)
+        listeners['users/user-1'][0].next(snapshot({ exists: true, data: { displayName: 'Shared' } }))
+        expect(firstCallback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'Shared', isLoggedUser: false }])
+        expect(secondCallback).toHaveBeenLastCalledWith([{ uid: 'user-1', displayName: 'Shared', isLoggedUser: false }])
+
+        mockGlobalWatcherUnsub['project-1Users']()
+        expect(userUnsubscribe).not.toHaveBeenCalled()
+        mockGlobalWatcherUnsub['project-2Users']()
+        expect(userUnsubscribe).toHaveBeenCalledTimes(1)
     })
 
     it('reports an authoritative project-listener failure to the loader', async () => {
