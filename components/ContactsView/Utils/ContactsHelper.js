@@ -803,7 +803,9 @@ export const getNewDefaultUser = (customData = {}) => {
         singUpUrl: '',
         noticeAboutTheBotBehavior: true,
         defaultProjectId: '',
-        apisConnected: null,
+        // Project-scoped integration state is a map. Persisting null here made later atomic
+        // project-membership updates hit map validation with a non-map value.
+        apisConnected: {},
         noteIdsByProject: {},
         unlockedKeysByGuides: {},
         inFocusTaskId: '',

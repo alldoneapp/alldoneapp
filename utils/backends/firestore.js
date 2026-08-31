@@ -7099,16 +7099,20 @@ export async function completeMcpOAuth(data) {
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = db
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('parentId', '==', taskId)
-        .onSnapshot(subtasksData => {
-            const subtasks = []
-            subtasksData.forEach(doc => {
-                const subtask = doc.data()
-                subtask.id = doc.id
-                subtasks.push(subtask)
-            })
-            callback(subtasks)
-        })
+        .onSnapshot(
+            subtasksData => {
+                const subtasks = []
+                subtasksData.forEach(doc => {
+                    const subtask = doc.data()
+                    subtask.id = doc.id
+                    subtasks.push(subtask)
+                })
+                callback(subtasks)
+            },
+            error => handleOptionalSnapshotError('embedded task subtasks', error, () => callback([]))
+        )
 }
 
 export function unwatch(watcherKey) {

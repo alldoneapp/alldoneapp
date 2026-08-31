@@ -35,23 +35,28 @@ describe('readDocumentDirectlyFromServer', () => {
         global.fetch.mockResolvedValue({
             ok: true,
             status: 200,
-            json: jest.fn().mockResolvedValue({
-                fields: {
-                    title: { stringValue: 'Project' },
-                    count: { integerValue: '12' },
-                    ratio: { doubleValue: 1.5 },
-                    active: { booleanValue: true },
-                    empty: { nullValue: null },
-                    when: { timestampValue: '2026-08-13T12:00:00.000Z' },
-                    bytes: { bytesValue: 'YWJj' },
-                    location: { geoPointValue: { latitude: 52.5, longitude: 13.4 } },
-                    project: {
-                        referenceValue: 'projects/test-project/databases/(default)/documents/projects/project-1',
+            json: jest.fn().mockResolvedValue([
+                {
+                    found: {
+                        fields: {
+                            title: { stringValue: 'Project' },
+                            count: { integerValue: '12' },
+                            ratio: { doubleValue: 1.5 },
+                            active: { booleanValue: true },
+                            empty: { nullValue: null },
+                            when: { timestampValue: '2026-08-13T12:00:00.000Z' },
+                            bytes: { bytesValue: 'YWJj' },
+                            location: { geoPointValue: { latitude: 52.5, longitude: 13.4 } },
+                            project: {
+                                referenceValue:
+                                    'projects/test-project/databases/(default)/documents/projects/project-1',
+                            },
+                            members: { arrayValue: { values: [{ stringValue: 'user-1' }] } },
+                            nested: { mapValue: { fields: { enabled: { booleanValue: false } } } },
+                        },
                     },
-                    members: { arrayValue: { values: [{ stringValue: 'user-1' }] } },
-                    nested: { mapValue: { fields: { enabled: { booleanValue: false } } } },
                 },
-            }),
+            ]),
         })
 
         await expect(readDocumentDirectlyFromServer('/projects/project 1')).resolves.toEqual({
@@ -73,16 +78,29 @@ describe('readDocumentDirectlyFromServer', () => {
 
         expect(mockGetIdToken).toHaveBeenCalledTimes(1)
         expect(global.fetch).toHaveBeenCalledWith(
-            'https://firestore.googleapis.com/v1/projects/test-project/databases/(default)/documents/projects/project%201?key=test-api-key',
+            'https://firestore.googleapis.com/v1/projects/test-project/databases/(default)/documents:batchGet?key=test-api-key',
             {
+                method: 'POST',
                 cache: 'no-store',
-                headers: { Authorization: 'Bearer id-token' },
+                headers: {
+                    Authorization: 'Bearer id-token',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    documents: ['projects/test-project/databases/(default)/documents/projects/project 1'],
+                }),
             }
         )
     })
 
-    it('returns an authoritative missing result for HTTP 404', async () => {
-        global.fetch.mockResolvedValue({ ok: false, status: 404 })
+    it('returns an authoritative missing result from an HTTP 200 batch response', async () => {
+        global.fetch.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: jest
+                .fn()
+                .mockResolvedValue([{ missing: 'projects/test-project/databases/(default)/documents/users/missing' }]),
+        })
 
         await expect(readDocumentDirectlyFromServer('users/missing')).resolves.toEqual({
             exists: false,
