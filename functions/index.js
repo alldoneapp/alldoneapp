@@ -4389,8 +4389,8 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
 
 exports.deleteUserSecondGen = onCall(
     {
-        timeoutSeconds: 30,
-        memory: '512MiB',
+        timeoutSeconds: 540,
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -4399,15 +4399,24 @@ exports.deleteUserSecondGen = onCall(
         if (auth) {
             const admin = require('firebase-admin')
             try {
-                const { userId } = data
+                const userId = data?.userId
                 if (!userId || typeof userId !== 'string') {
                     throw new HttpsError('invalid-argument', 'userId is required')
                 }
                 if (auth.uid !== userId) await assertAdministrator(auth.uid)
-                await admin.auth().deleteUser(userId)
-                console.log('Successfully deleted user')
+                const { deleteUserAccount } = require('./Users/deleteUserAccount')
+                const { STRIPE_SECRET_KEY } = require('./envFunctionsHelper').getEnvFunctions()
+                const result = await deleteUserAccount({
+                    db: admin.firestore(),
+                    auth: admin.auth(),
+                    FieldValue: admin.firestore.FieldValue,
+                    stripe: STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null,
+                    userId,
+                })
+                console.log('Successfully deleted user account', { userId, ...result })
+                return result
             } catch (e) {
-                console.error('Error deleting user:', e.message)
+                console.error('Error deleting user:', { userId: data?.userId, code: e.code, message: e.message })
                 if (e instanceof HttpsError) throw e
                 throw new HttpsError('internal', 'Unable to delete user')
             }
