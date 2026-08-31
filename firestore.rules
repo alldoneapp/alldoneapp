@@ -328,7 +328,8 @@ service cloud.firestore {
     }
 
     match /items/{projectId}/tasks/{taskId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if
         request.resource.data.get('projectId', '') == projectId &&
         canWriteObject(projectId, request.resource.data) &&
@@ -336,14 +337,15 @@ service cloud.firestore {
       allow update: if
         resource.data.get('projectId', '') == projectId &&
         request.resource.data.get('projectId', '') == projectId &&
-        canReadObject(projectId, resource.data) &&
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) &&
         accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
@@ -365,14 +367,17 @@ service cloud.firestore {
     }
 
     match /goals/{projectId}/items/{goalId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /chatObjects/{projectId}/chats/{chatId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
@@ -380,24 +385,29 @@ service cloud.firestore {
     }
 
     match /projectsContacts/{projectId}/contacts/{contactId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /skills/{projectId}/items/{skillId} {
-      allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /okrs/{projectId}/projectOkrs/{okrId} {
-      allow read: if canReadObject(projectId, resource.data);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
-      allow update: if canReadObject(projectId, resource.data) && canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
+      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /assistants/{projectId}/items/{assistantId} {
