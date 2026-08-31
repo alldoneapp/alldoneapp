@@ -448,9 +448,7 @@ describe('queries used by the web client', () => {
         expect(allSnapshot.docs.map(item => item.id).sort()).toEqual(['followed-chat', 'private-chat'])
         const snapshot = await assertSucceeds(getDocs(chats))
         expect(snapshot.docs.map(item => item.id)).toEqual(['followed-chat'])
-        const missingChat = await assertSucceeds(
-            getDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/not-created`))
-        )
+        const missingChat = await assertSucceeds(getDoc(doc(memberDb, `chatObjects/${PROJECT_ID}/chats/not-created`)))
         expect(missingChat.exists()).toBe(false)
         await assertFails(getDoc(doc(teammateDb, `chatObjects/${PROJECT_ID}/chats/private-chat`)))
         await assertFails(getDoc(doc(outsiderDb, `chatObjects/${PROJECT_ID}/chats/not-created`)))
@@ -763,6 +761,54 @@ describe('queries used by the web client', () => {
         )
         await assertFails(getDoc(teammateCounter))
         await assertFails(setDoc(doc(outsiderDb, `feedsCount/${PROJECT_ID}/${TEAMMATE_ID}/all`), { forged: true }))
+    })
+
+    it('allows the complete member-written task transition feed batch', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const feedId = 'transition-feed'
+        const taskId = 'public-task'
+        const taskFeedObject = {
+            type: 'task',
+            taskId,
+            name: 'Public task',
+            userId: MEMBER_ID,
+            isDone: false,
+            isDeleted: false,
+            isPublicFor: [0, MEMBER_ID],
+            lastChangeDate: 5,
+        }
+        const feed = {
+            type: 'task-unchecked-done',
+            creatorId: MEMBER_ID,
+            objectId: taskId,
+            isPublicFor: [0, MEMBER_ID],
+            lastChangeDate: 5,
+        }
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `projectsFeeds/${PROJECT_ID}/31082026/${taskId}`), taskFeedObject, {
+            merge: true,
+        })
+        batch.set(doc(memberDb, `feedsObjectsLastStates/${PROJECT_ID}/tasks/${taskId}`), taskFeedObject, {
+            merge: true,
+        })
+        batch.set(doc(memberDb, `feedsStore/${PROJECT_ID}/all/${feedId}`), feed, { merge: true })
+        batch.set(doc(memberDb, `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed/${feedId}`), feed, {
+            merge: true,
+        })
+        batch.set(
+            doc(memberDb, `feedsCount/${PROJECT_ID}/${TEAMMATE_ID}/all`),
+            { tasks: { [taskId]: { [feedId]: { dateFormated: '31082026', feed } } } },
+            { merge: true }
+        )
+        batch.set(doc(memberDb, `projectsInnerFeeds/${PROJECT_ID}/tasks/${taskId}/feeds/${feedId}`), feed)
+        batch.set(doc(memberDb, `projects/${PROJECT_ID}`), { lastActionDate: 5 }, { merge: true })
+
+        await assertSucceeds(batch.commit())
+        await assertSucceeds(
+            setDoc(doc(memberDb, `oldFeeds/${PROJECT_ID}/31082026/${taskId}`), taskFeedObject, { merge: true })
+        )
+        await assertSucceeds(setDoc(doc(memberDb, `oldFeeds/${PROJECT_ID}/31082026/${taskId}/feeds/${feedId}`), feed))
     })
 
     it('allows backlink queries only through the per-reader server projection', async () => {
