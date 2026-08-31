@@ -38,7 +38,10 @@ jest.mock('../../components/Workstreams/WorkstreamHelper', () => ({
 
 const { getUserDataByUidOrEmail, getUserOrContactBy } = require('./firestore')
 
-const PROBE = { absenceIsExpected: true }
+const PROBE = {
+    absenceIsExpected: true,
+    permissionDeniedIsExpected: true,
+}
 
 beforeEach(() => {
     mockGetUserData.mockReset()
@@ -91,6 +94,17 @@ describe('getUserOrContactBy', () => {
         mockGetAssistantData.mockResolvedValueOnce(assistant).mockResolvedValueOnce(null)
 
         await expect(getUserOrContactBy('project-1', 'assistant-1')).resolves.toBe(assistant)
+        expect(mockGetUserData).toHaveBeenCalledTimes(1)
+    })
+
+    it('marks the speculative user read as an expected permission denial', async () => {
+        const assistant = { uid: 'assistant-1' }
+        mockGetUserData.mockResolvedValue(null)
+        mockGetContactData.mockResolvedValue(null)
+        mockGetAssistantData.mockResolvedValueOnce(assistant).mockResolvedValueOnce(null)
+
+        await expect(getUserOrContactBy('project-1', 'assistant-1')).resolves.toBe(assistant)
+        expect(mockGetUserData).toHaveBeenCalledWith('assistant-1', false, PROBE)
         expect(mockGetUserData).toHaveBeenCalledTimes(1)
     })
 

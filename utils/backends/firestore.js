@@ -1354,11 +1354,15 @@ export async function getUserOrContactBy(projectId, userId) {
         return ws
     }
 
-    // This races four collections precisely because the id may belong to any of them, so a miss in
-    // `users/` is an ordinary answer rather than an anomaly and must not cost a verification round
-    // trip or log a production ERROR for every contact and assistant the app resolves (AT-2428).
+    // This races four collections precisely because the id may belong to any of them, so a missing
+    // or denied `users/` probe is an ordinary answer rather than an anomaly. Strict rules deny a
+    // speculative users/{id} read when the id actually belongs to a contact or assistant; that
+    // must not cost a verification round trip or log a production ERROR (AT-2428).
     const promises = [
-        getUserData(userId, false, { absenceIsExpected: true }),
+        getUserData(userId, false, {
+            absenceIsExpected: true,
+            permissionDeniedIsExpected: true,
+        }),
         getContactData(projectId, userId),
         getAssistantData(projectId, userId),
         getAssistantData(GLOBAL_PROJECT_ID, userId),
