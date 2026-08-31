@@ -2456,8 +2456,10 @@ async function updateInnerTasksWhenRestoreNote(projectId, noteId, restoredConten
 }
 
 async function getNoteInnerTasks(projectId, noteId) {
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken('containerNotesIds', noteId)
     const tasksDocs = (
-        await db.collection(`items/${projectId}/tasks`).where('containerNotesIds', 'array-contains-any', [noteId]).get()
+        await db.collection(`items/${projectId}/tasks`).where(backlinkField, 'array-contains', backlinkToken).get()
     ).docs
 
     const tasks = []
@@ -2468,17 +2470,22 @@ async function getNoteInnerTasks(projectId, noteId) {
 }
 
 export function watchNoteInnerTasks(projectId, noteId, watcherKey, callback) {
+    const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
+    const backlinkToken = buildBacklinkToken('containerNotesIds', noteId)
     globalWatcherUnsub[watcherKey] = db
         .collection(`/items/${projectId}/tasks`)
-        .where('containerNotesIds', 'array-contains-any', [noteId])
-        .onSnapshot(tasksDocs => {
-            const tasks = {}
-            tasksDocs.forEach(doc => {
-                const task = mapTaskData(doc.id, doc.data())
-                tasks[task.id] = task
-            })
-            callback(tasks)
-        })
+        .where(backlinkField, 'array-contains', backlinkToken)
+        .onSnapshot(
+            tasksDocs => {
+                const tasks = {}
+                tasksDocs.forEach(doc => {
+                    const task = mapTaskData(doc.id, doc.data())
+                    tasks[task.id] = task
+                })
+                callback(tasks)
+            },
+            error => handleOptionalSnapshotError('note inner tasks', error, () => callback({}))
+        )
 }
 
 export async function setTaskContainerNotesIds(projectId, taskId, noteId, action, checkTaskExitenceWhenRemove) {
@@ -5416,13 +5423,24 @@ export async function unwatchNotes(projectId, uid) {
 }
 
 export async function watchNote(objectId, noteId, callback) {
-    const unsub = db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(doc => {
-        let note = null
-        if (doc.data() !== undefined) {
-            note = mapNoteData(doc.id, doc.data())
+    const unsub = db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(
+        doc => {
+            let note = null
+            if (doc.data() !== undefined) {
+                note = mapNoteData(doc.id, doc.data())
+            }
+            callback(note)
+        },
+        error => {
+            console.error('[note detail] Firestore listener failed', {
+                projectId: objectId,
+                noteId,
+                code: error?.code,
+                message: error?.message,
+            })
+            callback(null, error)
         }
-        callback(note)
-    })
+    )
 
     if (noteUnsub[objectId]) {
         noteUnsub[objectId][noteId] = unsub
@@ -5765,13 +5783,16 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
 }
 
 export function watchNotesCollab(projectId, noteId, callback) {
-    db.doc(`notesCollab/${projectId}/notes/${noteId}`).onSnapshot(doc => {
-        callback(doc.data())
-    })
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).onSnapshot(
+        doc => {
+            callback(doc.data())
+        },
+        error => handleOptionalSnapshotError('note collaboration presence', error, () => callback(null))
+    )
 }
 
 export function addNoteEditor(projectId, noteId, editor) {
-    db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayUnion(editor),
         },
@@ -5780,7 +5801,7 @@ export function addNoteEditor(projectId, noteId, editor) {
 }
 
 export function removeNoteEditor(projectId, noteId, editor) {
-    db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
+    return db.doc(`notesCollab/${projectId}/notes/${noteId}`).set(
         {
             editors: firebase.firestore.FieldValue.arrayRemove(editor),
         },
@@ -6187,14 +6208,16 @@ export async function removeFollower(projectId, followData, externalBatch) {
 }
 
 export async function watchFollowers(projectId, followObjectsType, followObjectId, callback, watchId = false) {
-    const unsub = db.doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`).onSnapshot(doc => {
-        const parsedDoc = doc.data()
-        callback(parsedDoc ? parsedDoc.usersFollowing : [])
-    })
+    const unsub = db.doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`).onSnapshot(
+        doc => {
+            const parsedDoc = doc.data()
+            callback(parsedDoc ? parsedDoc.usersFollowing : [])
+        },
+        error => handleOptionalSnapshotError('followers', error, () => callback([]))
+    )
 
     if (watchId && !hasProperty(followersUnsubsList, [projectId, followObjectsType, followObjectId, watchId])) {
         setProperty(followersUnsubsList, [projectId, followObjectsType, followObjectId, watchId], unsub)
-        followersUnsubsList = unsub
     } else {
         followersUnsubs = unsub
     }
@@ -6448,21 +6471,33 @@ export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, cal
             .limit(MAX_NUMBER_OF_FEEDS_TO_SHOW)
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .orderBy('lastChangeDate', 'desc')
-            .onSnapshot(feedsData => {
-                const feeds = []
-                feedsData.forEach(doc => {
-                    const feed = doc.data()
-                    feed.id = doc.id
-                    feeds.push(feed)
-                })
-                feedsBySource[sourceKey] = feeds
-                callback(
-                    Object.values(feedsBySource)
-                        .flat()
-                        .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
-                        .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
-                )
-            })
+            .onSnapshot(
+                feedsData => {
+                    const feeds = []
+                    feedsData.forEach(doc => {
+                        const feed = doc.data()
+                        feed.id = doc.id
+                        feeds.push(feed)
+                    })
+                    feedsBySource[sourceKey] = feeds
+                    callback(
+                        Object.values(feedsBySource)
+                            .flat()
+                            .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
+                            .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
+                    )
+                },
+                error =>
+                    handleOptionalSnapshotError(`detailed feeds ${sourceKey}`, error, () => {
+                        feedsBySource[sourceKey] = []
+                        callback(
+                            Object.values(feedsBySource)
+                                .flat()
+                                .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
+                                .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
+                        )
+                    })
+            )
     })
     feedsDetailedViewUnsub = () => unsubs.forEach(unsub => unsub())
 }

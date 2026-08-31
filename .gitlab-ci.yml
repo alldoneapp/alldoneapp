@@ -514,31 +514,22 @@ build_web_production:
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
-# Manual QA gate for the webpack pipeline (migration Stage 0 acceptance): publish
-# the shadow build's artifact to a Firebase Hosting preview channel on the staging
-# project (.firebaserc default; the shadow build injects the _DEV env values, so
-# the artifact talks to staging). Once this channel passes the parity checklist,
-# deploy:web's `needs` flips to build_web_webpack_check's successor and the expo
-# pipeline can be deleted.
+# Manual feature-branch QA gate: publish the branch build's artifact to a Firebase
+# Hosting preview channel on the staging project (.firebaserc default; the build injects
+# the _DEV env values, so the artifact talks to staging). Master and develop already have
+# their real environment-specific build/deploy jobs, and build_web_webpack_check does not
+# run there, so offering this preview job on those branches was both redundant and capable
+# of running without the artifact it expects.
 deploy:web-webpack-preview:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
-    # optional: the shadow build's rules use compare_to on branches, so a push
-    # with no web-relevant diff (e.g. creating a branch off master) creates a
-    # pipeline without it — a hard `needs` made that pipeline invalid. The job
-    # is manual, so it is only ever played when the build actually ran.
     needs:
-        - job: 'build_web_webpack_check'
-          optional: true
+        - 'build_web_webpack_check'
     script:
         - firebase --version
         - firebase hosting:channel:deploy --token $GOOGLE_FIREBASE_DEPLOY_TOKEN webpack-$CI_COMMIT_REF_SLUG
     interruptible: false
     rules:
-        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes: *web-relevant-paths
-          when: manual
-          allow_failure: true
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
               compare_to: 'refs/heads/master'
@@ -845,10 +836,10 @@ deploy:cloud:runner:production:
 # `--only firestore:rules` publishes one compiled file as one release; it has no
 # desired-state diff and therefore none of the index job's deletion hazard (see the
 # long comment below). It is still an authorization cutover for the whole application,
-# though, so production publication is deliberately manual. Syntax compilation alone
-# did not catch AT-2450's query/rule incompatibilities; the behavioral emulator suite is
-# the precondition for an operator-approved release. --force is deliberately NOT passed:
-# it buys nothing here and is the exact flag that makes the indexes deploy destructive.
+# so publication is automatic only after the behavioral rules suite, the complete web
+# suite and the production bundle have all passed. Syntax compilation alone did not catch
+# AT-2450's query/rule incompatibilities. --force is deliberately NOT passed: it buys
+# nothing here and is the exact flag that makes the indexes deploy destructive.
 deploy:firestore:rules:production:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
@@ -856,11 +847,16 @@ deploy:firestore:rules:production:
     # pushes in quick succession otherwise publish two rule releases at once and the
     # newest-commit guard can only order deploys it sees one at a time.
     resource_group: firestore-rules-production-deploy
-    # The authorization suite is a hard prerequisite even though publication
-    # itself still requires an explicit operator action.
+    # Rules are published automatically, but never from a partially validated pipeline.
+    # The two web gates are relevant when a commit changes both the client and its access
+    # contract; when no web content needs shipping they finish as marker-scoped no-ops.
     needs:
         - 'deploy_scope'
         - 'test:firestore:rules'
+        - job: 'build_web_production'
+          artifacts: false
+        - job: 'test:web:full'
+          artifacts: false
     script:
         # Same reasoning as deploy:web - the guard fails closed, so make sure its probe
         # can run on a cached image that predates git being added.
@@ -879,12 +875,10 @@ deploy:firestore:rules:production:
     environment:
         name: production
     interruptible: false
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          when: manual
-          # A rules change must not freeze every unrelated production deploy while it
-          # waits for its dedicated staging/browser verification and operator approval.
-          allow_failure: true
 
 # Report drift between firestore.indexes.json and the live Firestore indexes.
 #

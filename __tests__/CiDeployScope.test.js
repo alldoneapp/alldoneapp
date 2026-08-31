@@ -53,15 +53,12 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(recordIndex).toBeGreaterThan(deployIndex)
     })
 
-    it.each(Object.entries(MARKER_SCOPED_JOBS).filter(([name]) => name !== 'deploy:firestore:rules:production'))(
-        '%s keeps superseded visible but handles no-op as success',
-        name => {
-            const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
-            expect(codes).toContain(SUPERSEDED_EXIT_CODE)
-            expect(codes).not.toContain(NOT_NEEDED_EXIT_CODE)
-            expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
-        }
-    )
+    it.each(Object.entries(MARKER_SCOPED_JOBS))('%s keeps superseded visible but handles no-op as success', name => {
+        const codes = [].concat((job(name).allow_failure || {}).exit_codes || [])
+        expect(codes).toContain(SUPERSEDED_EXIT_CODE)
+        expect(codes).not.toContain(NOT_NEEDED_EXIT_CODE)
+        expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
+    })
 
     it('computes the scope exactly once and hands it to every consumer', () => {
         expect(job('deploy_scope')).toBeDefined()
@@ -118,10 +115,20 @@ describe('the Firestore rules deploy cannot become the destructive indexes deplo
         expect(deployLine()).not.toContain('--force')
     })
 
-    it('requires an explicit operator action instead of publishing on merge', () => {
+    it('publishes automatically only after the authorization and web gates pass', () => {
         const defaultBranchRule = rulesJob().rules.find(rule => String(rule.if).includes('CI_DEFAULT_BRANCH'))
+        const needs = rulesJob().needs
 
-        expect(defaultBranchRule).toMatchObject({ when: 'manual', allow_failure: true })
+        expect(defaultBranchRule.when).not.toBe('manual')
+        expect(defaultBranchRule.allow_failure).not.toBe(true)
+        expect(needs).toContain('deploy_scope')
+        expect(needs).toContain('test:firestore:rules')
+        expect(needs).toEqual(
+            expect.arrayContaining([
+                { job: 'build_web_production', artifacts: false },
+                { job: 'test:web:full', artifacts: false },
+            ])
+        )
     })
 
     it('is reported on by the scope computation, so it can be skipped as a no-op', () => {
@@ -169,6 +176,24 @@ describe('the GitHub mirror is its own job', () => {
         expect((mirror.allow_failure || {}).exit_codes).toEqual(SUPERSEDED_EXIT_CODE)
         // Pushing real history to a repository that already has it needs a full clone.
         expect(String(mirror.variables.GIT_DEPTH)).toBe('0')
+    })
+})
+
+describe('the webpack preview is feature-branch QA, not a production deploy', () => {
+    const previewJob = () => job('deploy:web-webpack-preview')
+
+    it('never creates a redundant manual action on master or develop', () => {
+        const conditions = previewJob().rules.map(rule => String(rule.if || ''))
+
+        expect(conditions).toHaveLength(1)
+        expect(conditions[0]).toContain('CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH')
+        expect(conditions[0]).toContain('CI_COMMIT_BRANCH != "develop"')
+    })
+
+    it('stays manual on feature branches and requires the artifact-producing build', () => {
+        expect(previewJob().needs).toEqual(['build_web_webpack_check'])
+        expect(previewJob().rules).toHaveLength(1)
+        expect(previewJob().rules[0]).toMatchObject({ when: 'manual', allow_failure: true })
     })
 })
 

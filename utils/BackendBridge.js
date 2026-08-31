@@ -517,15 +517,15 @@ export default class Backend {
     }
 
     static watchNotesCollab(projectId, noteId, callback) {
-        bridge.watchNotesCollab(projectId, noteId, callback)
+        return bridge.watchNotesCollab(projectId, noteId, callback)
     }
 
     static addNoteEditor(projectId, noteId, editor) {
-        bridge.addNoteEditor(projectId, noteId, editor)
+        return bridge.addNoteEditor(projectId, noteId, editor)
     }
 
     static removeNoteEditor(projectId, noteId, editor) {
-        bridge.removeNoteEditor(projectId, noteId, editor)
+        return bridge.removeNoteEditor(projectId, noteId, editor)
     }
 
     static createGenericTasksForMentionsInNoteContent(projectId, noteId, mentionedUserIds, assistantId) {

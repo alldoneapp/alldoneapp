@@ -211,6 +211,8 @@ const NotesEditorView = ({
     const maxLengthWarningDisplayed = useRef(false)
     const innerTasksIdsRef = useRef([])
     const lastSeenEditionDateRef = useRef(null)
+    const noteCollabUnsubRef = useRef(null)
+    const noteEditorPresenceRegisteredRef = useRef(false)
 
     const lastFullscreenChangeTime = useRef(0)
     const isFullscreenRef = useRef(isFullscreen)
@@ -639,7 +641,14 @@ const NotesEditorView = ({
             uid: loggedUser.uid,
             id: note.id,
         })
-        Backend.removeNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current })
+        noteCollabUnsubRef.current?.()
+        noteCollabUnsubRef.current = null
+        if (noteEditorPresenceRegisteredRef.current) {
+            noteEditorPresenceRegisteredRef.current = false
+            Backend.removeNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current }).catch(error => {
+                console.warn('Failed to remove note collaboration presence', error)
+            })
+        }
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
@@ -813,12 +822,20 @@ const NotesEditorView = ({
             return null
         }
 
-        Backend.addNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current })
-        Backend.watchNotesCollab(projectId, note.id, editors => {
-            if (editors) {
-                setEditors(editors.editors)
-            }
-        })
+        // Collaboration presence is member-owned mutable state. A shared/read-only note can still
+        // load its content, but must not start this write/listener pair.
+        if (!readOnlyRef.current) {
+            noteEditorPresenceRegisteredRef.current = true
+            Backend.addNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current }).catch(error => {
+                noteEditorPresenceRegisteredRef.current = false
+                console.warn('Failed to add note collaboration presence', error)
+            })
+            noteCollabUnsubRef.current = Backend.watchNotesCollab(projectId, note.id, editors => {
+                if (editors) {
+                    setEditors(editors.editors)
+                }
+            })
+        }
 
         const loadNoteContent = async () => {
             try {
