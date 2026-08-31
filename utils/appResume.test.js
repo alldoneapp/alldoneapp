@@ -106,6 +106,41 @@ describe('installAppResumeListener', () => {
         harness.stop()
     })
 
+    it('ignores focus on a tab that stayed visible', () => {
+        const harness = setup()
+        harness.advance(10 * 60 * 1000)
+
+        harness.windowObject.emit('focus')
+
+        expect(harness.resumes).toHaveLength(0)
+        expect(harness.calls.connection).toHaveLength(0)
+        harness.stop()
+    })
+
+    it('uses freeze and resume when visibilitychange is unavailable', () => {
+        const harness = setup()
+        harness.documentObject.emit('freeze')
+        harness.advance(10 * 60 * 1000)
+
+        harness.documentObject.emit('resume')
+
+        expect(harness.resumes).toEqual([{ hiddenMs: 10 * 60 * 1000 }])
+        expect(harness.calls.connection).toHaveLength(1)
+        harness.stop()
+    })
+
+    it('uses pagehide and pageshow for a bfcache restore that remains visible', () => {
+        const harness = setup()
+        harness.windowObject.emit('pagehide')
+        harness.advance(10 * 60 * 1000)
+
+        harness.windowObject.emit('pageshow')
+
+        expect(harness.resumes).toEqual([{ hiddenMs: 10 * 60 * 1000 }])
+        expect(harness.calls.connection).toHaveLength(1)
+        harness.stop()
+    })
+
     it('treats two genuinely separate returns as two resumes', () => {
         const harness = setup()
         harness.hide()
@@ -117,6 +152,24 @@ describe('installAppResumeListener', () => {
         harness.show()
 
         expect(harness.resumes).toHaveLength(2)
+        harness.stop()
+    })
+
+    it('consumes a rapid second absence instead of reusing it on a later focus', () => {
+        const harness = setup()
+        harness.hide()
+        harness.advance(10 * 60 * 1000)
+        harness.show()
+
+        harness.advance(500)
+        harness.hide()
+        harness.advance(100)
+        harness.show()
+        harness.advance(10 * 60 * 1000)
+        harness.windowObject.emit('focus')
+
+        expect(harness.resumes).toEqual([{ hiddenMs: 10 * 60 * 1000 }])
+        expect(harness.calls.connection).toHaveLength(1)
         harness.stop()
     })
 
@@ -194,14 +247,18 @@ describe('installAppResumeListener', () => {
     it('removes every listener on uninstall', () => {
         const harness = setup()
         expect(harness.documentObject.listenerCount('visibilitychange')).toBe(1)
+        expect(harness.documentObject.listenerCount('freeze')).toBe(1)
         expect(harness.documentObject.listenerCount('resume')).toBe(1)
+        expect(harness.windowObject.listenerCount('pagehide')).toBe(1)
         expect(harness.windowObject.listenerCount('pageshow')).toBe(1)
         expect(harness.windowObject.listenerCount('focus')).toBe(1)
 
         harness.stop()
 
         expect(harness.documentObject.listenerCount('visibilitychange')).toBe(0)
+        expect(harness.documentObject.listenerCount('freeze')).toBe(0)
         expect(harness.documentObject.listenerCount('resume')).toBe(0)
+        expect(harness.windowObject.listenerCount('pagehide')).toBe(0)
         expect(harness.windowObject.listenerCount('pageshow')).toBe(0)
         expect(harness.windowObject.listenerCount('focus')).toBe(0)
     })

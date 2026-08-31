@@ -15,20 +15,29 @@ class ApiCalendar {
 
     constructor(config) {
         this.config = config
-        this.handleClientLoad()
+        this.initializationPromise = null
     }
 
-    handleClientLoad() {
-        const self = this
-        scriptLoader.loadScript(scriptSrcGoogle).then(() => {
-            self.tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: self.config.client_id,
-                scope: self.config.scope,
-            })
+    async handleClientLoad() {
+        await Promise.all([ProfileInit.ensureInitialized(), scriptLoader.loadScript(scriptSrcGoogle)])
+        this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: this.config.client_id,
+            scope: this.config.scope,
         })
     }
 
-    requestConsent(callback) {
+    ensureInitialized() {
+        if (!this.initializationPromise) {
+            this.initializationPromise = this.handleClientLoad().catch(error => {
+                this.initializationPromise = null
+                throw error
+            })
+        }
+        return this.initializationPromise
+    }
+
+    async requestConsent(callback) {
+        await this.ensureInitialized()
         if (ProfileInit.checkAccessGranted()) {
             callback()
         } else {
@@ -41,9 +50,10 @@ class ApiCalendar {
         return ProfileInit.checkAccessGranted()
     }
 
-    createEvent(event, calendarId) {
-        if (gapi) {
-            return gapi.client.calendar.events.insert({
+    async createEvent(event, calendarId) {
+        await this.ensureInitialized()
+        if (window.gapi) {
+            return window.gapi.client.calendar.events.insert({
                 calendarId: calendarId,
                 resource: event,
                 conferenceDataVersion: 1,
@@ -77,9 +87,10 @@ class ApiCalendar {
         return this.createEvent(event, calendarId)
     }
 
-    deleteEvent(eventId) {
-        if (gapi) {
-            return gapi.client.calendar.events.delete({
+    async deleteEvent(eventId) {
+        await this.ensureInitialized()
+        if (window.gapi) {
+            return window.gapi.client.calendar.events.delete({
                 calendarId: this.calendar,
                 eventId: eventId,
             })
@@ -89,7 +100,8 @@ class ApiCalendar {
         }
     }
 
-    listTodayEvents(maxResults) {
+    async listTodayEvents(maxResults) {
+        await this.ensureInitialized()
         const calendarId = this.calendar
         const date = new Date()
         const tomorrow = new Date()
@@ -101,8 +113,8 @@ class ApiCalendar {
         date.setMinutes(0)
         date.setSeconds(0)
 
-        if (gapi) {
-            return gapi.client.calendar.events.list({
+        if (window.gapi) {
+            return window.gapi.client.calendar.events.list({
                 calendarId: calendarId,
                 timeMin: date.toISOString(),
                 timeMax: tomorrow.toISOString(),

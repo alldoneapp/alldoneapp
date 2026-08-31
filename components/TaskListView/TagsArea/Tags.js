@@ -219,6 +219,7 @@ export default function Tags({
                     userGettingKarmaId={task.userId}
                     disabled={isActiveOrganizeMode || isLocked}
                     objectName={task.name}
+                    object={task}
                     assistantId={task.assistantId}
                     compact={true}
                 />

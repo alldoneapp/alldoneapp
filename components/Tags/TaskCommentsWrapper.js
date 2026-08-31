@@ -31,6 +31,7 @@ export default function TaskCommentsWrapper({
     outline,
     linkForNoteTopic,
     objectName,
+    object,
     assistantId,
     compact,
 }) {
@@ -149,6 +150,7 @@ export default function TaskCommentsWrapper({
                     userGettingKarmaId={userGettingKarmaId}
                     showBotButton={true}
                     objectName={objectName}
+                    initialObject={object}
                     externalAssistantId={assistantId}
                 />
             }

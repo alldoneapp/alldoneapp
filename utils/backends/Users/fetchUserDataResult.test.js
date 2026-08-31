@@ -370,6 +370,56 @@ describe('fetchUserDataResult', () => {
         expect(consoleError).not.toHaveBeenCalled()
     })
 
+    it('does not trust a cached unrelated-user profile that the server now denies', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        mockGetDb.mockReturnValue(
+            buildDb({
+                first: snapshot({
+                    exists: true,
+                    data: { email: 'private-admin@example.com' },
+                    fromCache: true,
+                }),
+            })
+        )
+        mockReadDocumentDirectlyFromServer.mockRejectedValue(denied)
+
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+        expect(mockMapUserData).not.toHaveBeenCalled()
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
+    it('uses server data when an unrelated cached user remains readable', async () => {
+        mockGetDb.mockReturnValue(
+            buildDb({
+                first: snapshot({
+                    exists: true,
+                    data: { email: 'stale@example.com' },
+                    fromCache: true,
+                }),
+            })
+        )
+        mockReadDocumentDirectlyFromServer.mockResolvedValue({
+            exists: true,
+            data: { email: 'current@example.com' },
+        })
+
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result.user).toEqual({
+            uid: 'administrator',
+            email: 'current@example.com',
+            isLoggedUser: false,
+        })
+    })
+
     it('refreshes the own-user token once when the first Firestore read is denied', async () => {
         const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
             code: 'permission-denied',

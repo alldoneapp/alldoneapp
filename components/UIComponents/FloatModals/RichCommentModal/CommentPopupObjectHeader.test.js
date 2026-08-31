@@ -1,9 +1,10 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import CommentPopupObjectHeader from './CommentPopupObjectHeader'
+import CommentPopupObjectHeader, { COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS } from './CommentPopupObjectHeader'
 import { getParentObjectData } from '../../../../utils/backends/Chats/chatsComments'
 import { unwatch } from '../../../../utils/backends/firestore'
+import { watchTask } from '../../../../utils/backends/Tasks/tasksFirestore'
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUserProjects: [{ id: 'project-1' }] }),
@@ -144,6 +145,88 @@ describe('CommentPopupObjectHeader', () => {
 
         expect(tree.root.findByProps({ accessibilityLabel: 'Object unavailable' })).toBeTruthy()
         expect(tree.root.findByType('Header').props.title).toBe('Fallback title')
+    })
+
+    it('renders a task supplied by the list immediately while the duplicate read reconnects', () => {
+        const task = { id: 'object-1', name: 'Test' }
+        getParentObjectData.mockReturnValue(new Promise(() => {}))
+        let tree
+
+        act(() => {
+            tree = renderer.create(
+                <CommentPopupObjectHeader
+                    projectId="project-1"
+                    objectId="object-1"
+                    objectType="tasks"
+                    objectName="Test"
+                    initialObject={task}
+                />
+            )
+        })
+
+        expect(tree.root.findByType('TaskPresentation').props.task).toBe(task)
+        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading object' })).toHaveLength(0)
+
+        act(() => tree.unmount())
+    })
+
+    it('replaces an unresolved object spinner with a non-blocking reconnect state', () => {
+        jest.useFakeTimers()
+        getParentObjectData.mockReturnValue(new Promise(() => {}))
+        let tree
+
+        act(() => {
+            tree = renderer.create(
+                <CommentPopupObjectHeader
+                    projectId="project-1"
+                    objectId="object-1"
+                    objectType="tasks"
+                    objectName="Test"
+                />
+            )
+        })
+        expect(tree.root.findByProps({ accessibilityLabel: 'Loading object' })).toBeTruthy()
+
+        act(() => {
+            jest.advanceTimersByTime(COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS)
+        })
+
+        expect(tree.root.findByProps({ accessibilityLabel: 'Object details reconnecting' })).toBeTruthy()
+        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading object' })).toHaveLength(0)
+
+        act(() => {
+            const watcherCallback = watchTask.mock.calls[0][3]
+            watcherCallback({ id: 'object-1', name: 'Test' })
+        })
+        expect(tree.root.findByType('TaskPresentation')).toBeTruthy()
+
+        act(() => tree.unmount())
+        jest.useRealTimers()
+    })
+
+    it('retains the valid list object when reconnecting briefly reports no object', () => {
+        const task = { id: 'object-1', name: 'Test' }
+        getParentObjectData.mockReturnValue(new Promise(() => {}))
+        let tree
+
+        act(() => {
+            tree = renderer.create(
+                <CommentPopupObjectHeader
+                    projectId="project-1"
+                    objectId="object-1"
+                    objectType="tasks"
+                    initialObject={task}
+                />
+            )
+        })
+
+        act(() => {
+            const watcherCallback = watchTask.mock.calls[0][3]
+            watcherCallback(null)
+        })
+
+        expect(tree.root.findByType('TaskPresentation').props.task).toBe(task)
+        act(() => tree.unmount())
     })
 
     it('removes live object watchers when the popup unmounts', async () => {

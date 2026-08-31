@@ -50,17 +50,18 @@ export const RESUME_SW_UPDATE_MS = 60 * 60 * 1000
 export const RESUME_COALESCE_MS = 1000
 
 const SIGNALS = [
-    // Only visibilitychange means "the app just went away". Chrome may emit
-    // focus/pageshow/resume while the document still reports hidden; treating
-    // any of those as another hide would overwrite the real background start
-    // time and make the later visible event look like a sub-second no-op.
-    { target: 'document', type: 'visibilitychange', recordsHiddenAt: true },
+    // visibilitychange is the ordinary browser path. `freeze` covers Chrome's
+    // Page Lifecycle suspension and `pagehide` covers bfcache restores even when
+    // the browser never exposes a hidden visibility state.
+    { target: 'document', type: 'visibilitychange', kind: 'visibility' },
+    { target: 'document', type: 'freeze', kind: 'absence' },
+    { target: 'window', type: 'pagehide', kind: 'absence' },
     // Chrome freezes background pages on Android and reports the thaw through
     // the Page Lifecycle API before (or without, when it stays hidden) the
     // ordinary return signals.
-    { target: 'document', type: 'resume', recordsHiddenAt: false },
-    { target: 'window', type: 'pageshow' },
-    { target: 'window', type: 'focus' },
+    { target: 'document', type: 'resume', kind: 'resume' },
+    { target: 'window', type: 'pageshow', kind: 'resume' },
+    { target: 'window', type: 'focus', kind: 'resume' },
 ]
 
 const requestServiceWorkerUpdate = navigatorObject => {
@@ -124,19 +125,31 @@ export const installAppResumeListener = ({
 } = {}) => {
     if (!windowObject || !windowObject.addEventListener || !documentObject) return () => {}
 
-    let lastActiveAt = now()
+    let hiddenAt = null
     let lastResumeAt = 0
 
     const isHidden = () => documentObject.visibilityState === 'hidden'
 
+    const recordAbsence = () => {
+        if (hiddenAt === null) hiddenAt = now()
+    }
+
     const handleResume = () => {
+        // `focus` and `pageshow` also fire for windows/pages that never went
+        // away. Without an explicit absence marker the old code measured from
+        // installation time, so focusing a continuously visible tab after 30s
+        // triggered an unnecessary Firestore restart.
+        if (hiddenAt === null) return
+
         const at = now()
+        const hiddenMs = at - hiddenAt
+        // Consume the absence even when this return is coalesced. Otherwise a
+        // later ordinary focus could reuse the stale marker and trigger recovery.
+        hiddenAt = null
+
         // Same resume, reported twice by two different APIs.
         if (at - lastResumeAt < coalesceMs) return
         lastResumeAt = at
-
-        const hiddenMs = at - lastActiveAt
-        lastActiveAt = at
 
         if (hiddenMs < ignoreMs) return
 
@@ -146,20 +159,31 @@ export const installAppResumeListener = ({
         if (typeof onResume === 'function') onResume({ hiddenMs })
     }
 
-    const handleSignal = recordsHiddenAt => () => {
-        if (isHidden()) {
-            // A return-ish signal can arrive before visibilityState flips to
-            // visible. Ignore it without erasing how long the app was away; the
-            // ensuing visibilitychange will perform the resume with the real age.
-            if (recordsHiddenAt) lastActiveAt = now()
+    const handleSignal = kind => () => {
+        if (kind === 'absence') {
+            recordAbsence()
             return
         }
+
+        if (kind === 'visibility') {
+            if (isHidden()) {
+                recordAbsence()
+                return
+            }
+            handleResume()
+            return
+        }
+
+        // A return-ish signal can arrive before visibilityState flips to
+        // visible. Ignore it without erasing the recorded absence; the ensuing
+        // visibilitychange will perform the resume with the real age.
+        if (isHidden()) return
         handleResume()
     }
 
-    const listeners = SIGNALS.map(({ target, type, recordsHiddenAt = false }) => {
+    const listeners = SIGNALS.map(({ target, type, kind }) => {
         const node = target === 'document' ? documentObject : windowObject
-        const listener = handleSignal(recordsHiddenAt)
+        const listener = handleSignal(kind)
         node.addEventListener(type, listener)
         return () => node.removeEventListener(type, listener)
     })
