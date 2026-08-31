@@ -1316,6 +1316,7 @@
     "Search assistant tasks": "Assistentenaufgaben suchen",
     "Search pre-configured tasks": "Vorkonfigurierte Aufgaben suchen",
     "No assistant tasks found": "Keine Assistentenaufgaben gefunden",
+    "Could not load assistant tasks": "Assistentenaufgaben konnten nicht geladen werden",
     "Last comment": "Letzter Kommentar",
     "Webhook": "Webhook",
     "Discovering external tools...": "Externe Tools werden erkannt...",

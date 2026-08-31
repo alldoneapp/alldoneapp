@@ -1931,6 +1931,7 @@
     "Search assistant tasks": "Search assistant tasks",
     "Search pre-configured tasks": "Search pre-configured tasks",
     "No assistant tasks found": "No assistant tasks found",
+    "Could not load assistant tasks": "Could not load assistant tasks",
     "Last comment": "Last comment",
     "Click here to start a new chat": "Click here to start a new chat",
     "AI Settings": "AI Settings",

@@ -352,6 +352,24 @@ describe('fetchUserDataResult', () => {
         expect(result).toEqual({ user: null, missing: false, error: unavailable, verified: false })
     })
 
+    it('keeps an expected unrelated-user permission denial quiet for role resolution', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        mockGetDb.mockReturnValue({
+            doc: () => ({
+                get: () => Promise.reject(denied),
+            }),
+        })
+
+        const result = await fetchUserDataResult('administrator', false, {
+            permissionDeniedIsExpected: true,
+        })
+
+        expect(result).toEqual({ user: null, missing: false, error: denied, verified: false })
+        expect(consoleError).not.toHaveBeenCalled()
+    })
+
     it('refreshes the own-user token once when the first Firestore read is denied', async () => {
         const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
             code: 'permission-denied',

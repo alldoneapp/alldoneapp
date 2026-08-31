@@ -76,6 +76,20 @@ describe('resolveAdministratorUser', () => {
         expect(harness.readRoleDirectly).not.toHaveBeenCalled()
     })
 
+    it('uses the role pointer when strict rules deny the private Administrator profile', async () => {
+        const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+        })
+        const harness = setup({
+            users: {
+                'admin-1': { user: null, missing: false, error: denied, verified: false },
+            },
+        })
+
+        await expect(harness.resolve()).resolves.toEqual({ uid: 'admin-1', roleOnly: true })
+        expect(harness.readRoleDirectly).not.toHaveBeenCalled()
+    })
+
     it('follows an authoritative role change instead of clearing the Administrator', async () => {
         const harness = setup({
             directRole: role('admin-2'),

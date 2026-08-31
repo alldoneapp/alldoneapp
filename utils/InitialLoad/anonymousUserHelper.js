@@ -37,7 +37,9 @@ async function loadInitialData(projectId) {
     )
 
     watchGlobalAssistants()
-    watchAdministratorUser(administratorUser.uid)
+    if (administratorUser?.uid && !administratorUser.roleOnly) {
+        watchAdministratorUser(administratorUser.uid)
+    }
     watchLoggedUserData(loggedUser)
     watchProjectData(projectId, false, false)
 }

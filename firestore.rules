@@ -288,6 +288,174 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
+    function canReadStoredCommentParent(projectId, parentPath) {
+      return exists(parentPath) && get(parentPath).data.get('isPublicFor', []) is list && (
+        (
+          isProjectMember(projectId) &&
+          get(parentPath).data.get('isPublicFor', []).hasAny([publicForAll(), request.auth.uid])
+        ) || (
+          isPublicSharedProject(projectId) &&
+          publicForAll() in get(parentPath).data.get('isPublicFor', [])
+        )
+      );
+    }
+
+    function canWriteStoredCommentParent(projectId, parentPath) {
+      return exists(parentPath) &&
+        canWriteObject(projectId, get(parentPath).data);
+    }
+
+    function isProjectUserCommentParent(projectId, objectId) {
+      return projectDoc(projectId).data.get('userIds', []) is list &&
+        objectId in projectDoc(projectId).data.get('userIds', []);
+    }
+
+    function isStoredCommentParentType(chatType) {
+      return chatType == 'tasks' || chatType == 'notes' || chatType == 'goals' ||
+        chatType == 'topics' || chatType == 'contacts' || chatType == 'users' || chatType == 'skills';
+    }
+
+    function isContactCommentParentType(chatType) {
+      return chatType == 'contacts' || chatType == 'users';
+    }
+
+    function commentParentPath(projectId, chatType, objectId) {
+      return chatType == 'tasks'
+        ? /databases/$(database)/documents/items/$(projectId)/tasks/$(objectId)
+        : chatType == 'notes'
+          ? /databases/$(database)/documents/noteItems/$(projectId)/notes/$(objectId)
+          : chatType == 'goals'
+            ? /databases/$(database)/documents/goals/$(projectId)/items/$(objectId)
+            : chatType == 'topics'
+              ? /databases/$(database)/documents/chatObjects/$(projectId)/chats/$(objectId)
+              : isContactCommentParentType(chatType)
+                ? /databases/$(database)/documents/projectsContacts/$(projectId)/contacts/$(objectId)
+                : chatType == 'skills'
+                  ? /databases/$(database)/documents/skills/$(projectId)/items/$(objectId)
+                  : /databases/$(database)/documents/invalidCommentParents/invalid/objects/$(objectId);
+    }
+
+    function assistantCommentParentExists(projectId, objectId) {
+      return exists(/databases/$(database)/documents/assistants/$(projectId)/items/$(objectId)) ||
+        exists(/databases/$(database)/documents/assistants/globalProject/items/$(objectId));
+    }
+
+    function canReadCommentParent(projectId, chatType, objectId) {
+      let parentPath = commentParentPath(projectId, chatType, objectId);
+      return (
+        isStoredCommentParentType(chatType) && canReadStoredCommentParent(projectId, parentPath)
+      ) || (
+        isContactCommentParentType(chatType) && !exists(parentPath) &&
+        isProjectUserCommentParent(projectId, objectId) && canReadProject(projectId)
+      ) || (
+        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) && canReadProject(projectId)
+      );
+    }
+
+    function canWriteCommentParent(projectId, chatType, objectId) {
+      let parentPath = commentParentPath(projectId, chatType, objectId);
+      return (
+        isStoredCommentParentType(chatType) && canWriteStoredCommentParent(projectId, parentPath)
+      ) || (
+        isContactCommentParentType(chatType) && !exists(parentPath) &&
+        isProjectUserCommentParent(projectId, objectId) && isProjectMember(projectId)
+      ) || (
+        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) && isProjectMember(projectId)
+      );
+    }
+
+    function canNotifyObjectReader(projectId, objectData, userId) {
+      return projectDoc(projectId).data.get('userIds', []) is list &&
+        userId in projectDoc(projectId).data.get('userIds', []) &&
+        objectData.get('isPublicFor', []) is list &&
+        objectData.get('isPublicFor', []).hasAny([publicForAll(), userId]);
+    }
+
+    function canNotifyObjectReaders(projectId, objectData, recipients) {
+      let projectUserIds = projectDoc(projectId).data.get('userIds', []);
+      let isPublicFor = objectData.get('isPublicFor', []);
+      return recipients is list && recipients.size() > 0 &&
+        projectUserIds is list && recipients.hasOnly(projectUserIds) &&
+        isPublicFor is list && (
+          publicForAll() in isPublicFor || recipients.hasOnly(isPublicFor)
+        );
+    }
+
+    function canNotifyStoredCommentParent(projectId, parentPath, userId) {
+      return exists(parentPath) && canNotifyObjectReader(projectId, get(parentPath).data, userId);
+    }
+
+    function canNotifyStoredCommentParentReaders(projectId, parentPath, recipients) {
+      return exists(parentPath) && canNotifyObjectReaders(projectId, get(parentPath).data, recipients);
+    }
+
+    function canNotifyCommentRecipient(projectId, chatType, objectId, userId) {
+      let parentPath = commentParentPath(projectId, chatType, objectId);
+      return (
+        isStoredCommentParentType(chatType) && canNotifyStoredCommentParent(projectId, parentPath, userId)
+      ) || (
+        isContactCommentParentType(chatType) && !exists(parentPath) &&
+        isProjectUserCommentParent(projectId, objectId) &&
+        userId in projectDoc(projectId).data.get('userIds', [])
+      ) || (
+        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) &&
+        userId in projectDoc(projectId).data.get('userIds', [])
+      );
+    }
+
+    function canNotifyCommentReaders(projectId, chatType, objectId, recipients) {
+      let parentPath = commentParentPath(projectId, chatType, objectId);
+      return (
+        isStoredCommentParentType(chatType) &&
+        canNotifyStoredCommentParentReaders(projectId, parentPath, recipients)
+      ) || (
+        isContactCommentParentType(chatType) && !exists(parentPath) &&
+        isProjectUserCommentParent(projectId, objectId) &&
+        recipients is list && recipients.size() > 0 &&
+        recipients.hasOnly(projectDoc(projectId).data.get('userIds', []))
+      ) || (
+        chatType == 'assistants' && assistantCommentParentExists(projectId, objectId) &&
+        recipients is list && recipients.size() > 0 &&
+        recipients.hasOnly(projectDoc(projectId).data.get('userIds', []))
+      );
+    }
+
+    // Comment authors enqueue recipient inbox rows and the scheduled push/email side-channel
+    // documents in the same atomic batch as the comment. Bind every such write to that exact
+    // after-state comment so a project member cannot manufacture arbitrary notifications.
+    function isValidCommentNotification(data) {
+      let projectId = data.get('projectId', '');
+      let chatType = data.get('chatType', '');
+      let objectId = data.get('objectId', '');
+      let commentId = data.get('commentId', '');
+      let commentPath = /databases/$(database)/documents/chatComments/$(projectId)/$(chatType)/$(objectId)/comments/$(commentId);
+      return signedIn() &&
+        projectId is string && projectId != '' &&
+        chatType is string && chatType != '' &&
+        objectId is string && objectId != '' &&
+        commentId is string && commentId != '' &&
+        data.get('creatorId', '') == request.auth.uid &&
+        isProjectMember(projectId) &&
+        canWriteCommentParent(projectId, chatType, objectId) &&
+        existsAfter(commentPath) &&
+        getAfter(commentPath).data.get('creatorId', '') == request.auth.uid;
+    }
+
+    function hasValidNotificationRecipients(data) {
+      let projectId = data.get('projectId', '');
+      let recipients = data.get('userIds', []);
+      return projectId is string && projectId != '' &&
+        recipients is list && recipients.size() > 0 &&
+        projectDoc(projectId).data.get('userIds', []) is list &&
+        recipients.hasOnly(projectDoc(projectId).data.get('userIds', [])) &&
+        canNotifyCommentReaders(
+          projectId,
+          data.get('chatType', ''),
+          data.get('objectId', ''),
+          recipients
+        );
+    }
+
     match /users/{userId} {
       allow read: if signedIn() && (
         request.auth.uid == userId ||
@@ -542,14 +710,18 @@ service cloud.firestore {
     }
 
     match /chatComments/{projectId}/{chatType}/{objectId}/comments/{commentId} {
-      allow read: if canReadProject(projectId);
+      allow read: if canReadCommentParent(projectId, chatType, objectId);
       // A member may only create a comment authored as themselves: if creatorId is set it must
       // equal the caller's uid. This blocks forging a comment as another user (impersonation /
       // confused-deputy). Assistant/system comments are written server-side (admin SDK) and bypass
       // rules, so they are unaffected.
-      allow create: if isProjectMember(projectId)
+      allow create: if canWriteCommentParent(projectId, chatType, objectId)
         && (!('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid);
-      allow update, delete: if isProjectMember(projectId) && signedIn();
+      allow update: if canWriteCommentParent(projectId, chatType, objectId) &&
+        resource.data.get('creatorId', '') == request.auth.uid &&
+        request.resource.data.get('creatorId', '') == resource.data.get('creatorId', '');
+      allow delete: if canWriteCommentParent(projectId, chatType, objectId) &&
+        resource.data.get('creatorId', '') == request.auth.uid;
     }
 
     // VM runtime documents are server-managed. A client may only observe a session when it can
@@ -616,6 +788,20 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
 
+    match /chatNotifications/{projectId}/{userId}/{notificationId} {
+      allow create: if projectDoc(projectId).data.get('userIds', []) is list &&
+        userId in projectDoc(projectId).data.get('userIds', []) &&
+        request.resource.data.get('projectId', '') == projectId &&
+        request.resource.data.get('commentId', '') == notificationId &&
+        canNotifyCommentRecipient(
+          projectId,
+          request.resource.data.get('chatType', ''),
+          request.resource.data.get('objectId', ''),
+          userId
+        ) &&
+        isValidCommentNotification(request.resource.data);
+    }
+
     match /notifications/{userId}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
@@ -657,13 +843,19 @@ service cloud.firestore {
     }
 
     match /emailNotifications/{notificationId} {
-      allow read, update, delete: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
-      allow create: if signedIn() && request.resource.data.userIds is list && request.auth.uid in request.resource.data.userIds;
+      allow read: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
+      allow create: if isValidCommentNotification(request.resource.data) &&
+        hasValidNotificationRecipients(request.resource.data);
+      allow update: if request.resource.data.get('commentId', '') != '' &&
+        isValidCommentNotification(request.resource.data) &&
+        hasValidNotificationRecipients(request.resource.data);
     }
 
     match /pushNotifications/{notificationId} {
-      allow read, update, delete: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
-      allow create: if signedIn() && request.resource.data.userIds is list && request.auth.uid in request.resource.data.userIds;
+      allow read: if signedIn() && resource.data.userIds is list && request.auth.uid in resource.data.userIds;
+      allow create: if request.resource.data.get('commentId', '') == notificationId &&
+        isValidCommentNotification(request.resource.data) &&
+        hasValidNotificationRecipients(request.resource.data);
     }
 
     match /followers/{projectId}/{objectType}/{objectId} {

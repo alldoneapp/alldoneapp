@@ -9,6 +9,9 @@ const createUnavailableError = (message, cause) => {
     return error
 }
 
+const isPermissionDenied = error =>
+    error?.code === 'permission-denied' || String(error?.message || error).includes('permission-denied')
+
 const recoverRealtimeConnectionSafely = async (recoverRealtimeConnection, warn, reason) => {
     if (!recoverRealtimeConnection) return
     try {
@@ -23,6 +26,14 @@ const recoverRealtimeConnectionSafely = async (recoverRealtimeConnection, warn, 
 const readUserAuthoritatively = async (userId, readUserResult) => {
     const result = await readUserResult(userId)
     if (result?.user) return { user: result.user, missing: false }
+
+    // roles/administrator is readable by every authenticated client, while the full
+    // users/{administratorUid} profile is private unless both users share a project. The role
+    // pointer is sufficient for authorization/UI identity checks, so keep that safe identity
+    // instead of retrying a private-profile read that strict rules intentionally deny.
+    if (result?.error && isPermissionDenied(result.error)) {
+        return { user: { uid: userId, roleOnly: true }, missing: false }
+    }
 
     if (result?.error || !result?.verified) {
         throw createUnavailableError(
@@ -42,7 +53,8 @@ const readUserAuthoritatively = async (userId, readUserResult) => {
  * independent authenticated REST read decides whether the role is genuinely
  * unconfigured. User-document absence is already independently verified by
  * `fetchUserDataResult`; a failed verification throws so initial loading retries
- * and an existing watcher keeps its last valid Administrator.
+ * and an existing watcher keeps its last valid Administrator. An expected strict-rules denial
+ * retains only the authenticated role uid; it never exposes or synthesizes private profile data.
  */
 export const resolveAdministratorUser = async ({
     readRoleFromClient,
