@@ -5202,6 +5202,12 @@
             ]
         },
         {
+            "collectionGroup": "taskStatisticsEvents",
+            "fieldPath": "expiresAt",
+            "ttl": true,
+            "indexes": []
+        },
+        {
             "collectionGroup": "undoActions",
             "fieldPath": "expiresAt",
             "ttl": false,

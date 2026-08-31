@@ -108,6 +108,13 @@ const getCurrentAuthUser = () => {
 const isPermissionDenied = error =>
     error?.code === 'permission-denied' || String(error?.message || error).includes('permission-denied')
 
+const asDirectlyVerifiedSnapshot = directSnapshot => ({
+    exists: directSnapshot.exists,
+    data: () => directSnapshot.data,
+    metadata: { fromCache: false },
+    directlyVerified: true,
+})
+
 const readUserDocumentWithFreshAuth = async (userId, isLoggedUser) => {
     const authUser = getCurrentAuthUser()
     const isOwnLoggedUser = isLoggedUser && authUser?.uid === userId
@@ -131,7 +138,23 @@ const readUserDocumentWithFreshAuth = async (userId, isLoggedUser) => {
         // A token minted just before a rules deployment can be rejected by the first Firestore
         // request. Refresh once, then preserve the existing failed-read behavior if it still fails.
         await authUser.getIdToken(true)
-        return getDb().doc(`/users/${userId}`).get()
+        try {
+            return await getDb().doc(`/users/${userId}`).get()
+        } catch (retryError) {
+            if (!isPermissionDenied(retryError)) throw retryError
+
+            // onAuthStateChanged may run before the compat Firestore connection has adopted the
+            // freshly signed-in user's token. The authenticated REST endpoint uses that token
+            // immediately, so it can authoritatively distinguish an existing account from a new
+            // user while the realtime transport is being restarted.
+            const directSnapshot = await readDocumentDirectlyFromServer(`users/${userId}`)
+            try {
+                await restartFirestoreNetwork('adopt the authenticated user during login')
+            } catch (restartError) {
+                console.warn('[Firestore] Could not restart after verifying the logged user directly:', restartError)
+            }
+            return asDirectlyVerifiedSnapshot(directSnapshot)
+        }
     }
 }
 
@@ -171,6 +194,9 @@ export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
         const docSnapshot = await readUserDocumentWithFreshAuth(userId, isLoggedUser)
         if (!docSnapshot.exists) {
             if (absenceIsExpected) return { user: null, missing: true, error: null, verified: false }
+            if (docSnapshot.directlyVerified) {
+                return { user: null, missing: true, error: null, verified: true }
+            }
 
             let directSnapshot
             try {

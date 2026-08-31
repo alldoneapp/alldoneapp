@@ -112,7 +112,12 @@ export default function EmailLine() {
 
     const connections = listEmailConnections(loggedUser)
     const connectionIds = connections.map(connection => connection.connectionId)
-    const connectionIdsKey = connectionIds.join(',')
+    const fetchableConnectionIds = connections
+        .filter(connection => !connection.authInvalid)
+        .map(connection => connection.connectionId)
+    const connectionFetchStateKey = connections
+        .map(connection => `${connection.connectionId}:${connection.authInvalid === true}`)
+        .join(',')
 
     const hiddenToday = areEmailLineConnectionsHiddenToday(loggedUser, connectionIds)
 
@@ -123,13 +128,13 @@ export default function EmailLine() {
         // the visible task snapshots first use of the network and main thread,
         // then refresh every connected account once through this unified line.
         const timer = setTimeout(() => {
-            connectionIds.forEach(connectionId => {
+            fetchableConnectionIds.forEach(connectionId => {
                 fetchEmailLineSummary(connectionId)
             })
         }, EMAIL_SUMMARY_LOAD_DELAY_MS)
 
         return () => clearTimeout(timer)
-    }, [connectionIdsKey, taskDataLoading])
+    }, [connectionFetchStateKey, taskDataLoading])
 
     if (!EMAIL_LINE_ENABLED) return null
 
@@ -144,7 +149,7 @@ export default function EmailLine() {
     }
 
     const reload = () => {
-        connectionIds.forEach(connectionId => {
+        fetchableConnectionIds.forEach(connectionId => {
             fetchEmailLineSummary(connectionId, { force: true })
         })
     }

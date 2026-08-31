@@ -250,6 +250,15 @@ service cloud.firestore {
         data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
     }
 
+    function canCreateObjectWithProject(projectId, data) {
+      // Project creation and its starter objects are intentionally one atomic batch. `get()` sees
+      // only the pre-batch state, so creation must validate membership through getAfter(). Updates
+      // continue to require membership in the already-committed project.
+      return isProjectMemberBeforeOrAfter(projectId) &&
+        data.isPublicFor is list &&
+        data.isPublicFor.hasAny([publicForAll(), request.auth.uid]);
+    }
+
     function accessProjectionAbsent(data) {
       return !('readerIds' in data) &&
         !('roleIdsVisibleTo' in data) &&
@@ -332,7 +341,7 @@ service cloud.firestore {
         canReadSharedObject(projectId, resource.data);
       allow create: if
         request.resource.data.get('projectId', '') == projectId &&
-        canWriteObject(projectId, request.resource.data) &&
+        canCreateObjectWithProject(projectId, request.resource.data) &&
         accessProjectionAbsent(request.resource.data);
       allow update: if
         resource.data.get('projectId', '') == projectId &&
@@ -417,7 +426,8 @@ service cloud.firestore {
 
     match /assistants/{projectId}/items/{assistantId} {
       allow read: if projectId == 'globalProject' || canReadProject(projectId);
-      allow write: if isProjectMember(projectId);
+      allow create: if isProjectMemberBeforeOrAfter(projectId);
+      allow update, delete: if isProjectMember(projectId);
     }
 
     // Per-assistant MCP server secrets (bearer tokens / OAuth tokens). Server-only:
@@ -673,7 +683,8 @@ service cloud.firestore {
     // them explicit so a renamed backend path cannot silently fall through to
     // the final deny rule.
     match /projectsWorkstreams/{projectId}/workstreams/{workstreamId} {
-      allow read, write: if isProjectMember(projectId);
+      allow read, update, delete: if isProjectMember(projectId);
+      allow create: if isProjectMemberBeforeOrAfter(projectId);
     }
 
     match /goalsMilestones/{projectId}/milestonesItems/{milestoneId} {

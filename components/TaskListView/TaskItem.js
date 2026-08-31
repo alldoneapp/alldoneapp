@@ -106,7 +106,9 @@ export default function TaskItem({
                     showSubTaskList={showSubTaskList}
                     toggleSubTaskList={toggleSubTaskList}
                     onCancelAction={forceAction => {
-                        dismissibleRef.current.closeModal(false, forceAction)
+                        // Async task writes can move this row to another section before their
+                        // completion callback closes the editor.
+                        dismissibleRef.current?.closeModal(false, forceAction)
                     }}
                     editModeCheckOff={editModeCheckOff}
                     isObservedTask={isObservedTask}

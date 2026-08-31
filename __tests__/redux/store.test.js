@@ -45,7 +45,7 @@ describe('Redux Reducers', () => {
     })
 
     it('should log out', () => {
-        const state = theReducer(undefined, LogOut())
+        const state = theReducer({ ...initialState, loggedIn: true, registeredNewUser: true }, LogOut())
         const newState = { ...initialState, loggedIn: false }
         expect(state).toEqual(newState)
     })

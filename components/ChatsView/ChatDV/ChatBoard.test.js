@@ -9,6 +9,7 @@ import ChatBoard from './ChatBoard'
 import { buildBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../Utils/assistantEnabledScope'
 import { CHAT_FULLSCREEN_COOLDOWN_MS } from '../Utils/chatScrollFullscreen'
+import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 
 const PROJECT_ID = 'project-1'
 const TASK_CHAT_ID = 'task-1'
@@ -144,6 +145,11 @@ const consumeCalls = () =>
         ([action]) => action?.type === 'Set trigger bot spinner' && !action.triggerBotSpinner
     )
 
+beforeEach(() => {
+    markChatMessagesAsRead.mockReset()
+    markChatMessagesAsRead.mockResolvedValue(undefined)
+})
+
 describe('ChatBoard bot spinner placeholder', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
@@ -204,6 +210,45 @@ describe('ChatBoard bot spinner placeholder', () => {
         })
 
         expect(consumeCalls()).toHaveLength(0)
+    })
+})
+
+describe('ChatBoard unread lifecycle', () => {
+    beforeEach(() => {
+        mockDispatch.mockClear()
+        mockMessages = []
+        mockState = {
+            triggerBotSpinner: null,
+            assistantEnabled: false,
+            assistantEnabledScope: null,
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: false,
+            projectChatNotifications: {
+                [PROJECT_ID]: { [TASK_CHAT_ID]: { totalFollowed: 1, totalUnfollowed: 0 } },
+            },
+        }
+    })
+
+    it('handles a rejected read-clear operation instead of leaking an unhandled promise', async () => {
+        const error = Object.assign(new Error('denied'), { code: 'permission-denied' })
+        markChatMessagesAsRead.mockRejectedValueOnce(error)
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        const tree = renderChatBoard()
+        await act(async () => Promise.resolve())
+
+        expect(markChatMessagesAsRead).toHaveBeenCalledWith(PROJECT_ID, TASK_CHAT_ID)
+        expect(consoleSpy).toHaveBeenCalledWith('[chat read] Could not clear unread notifications', {
+            projectId: PROJECT_ID,
+            chatId: TASK_CHAT_ID,
+            code: 'permission-denied',
+            message: 'denied',
+        })
+
+        tree.unmount()
+        consoleSpy.mockRestore()
     })
 })
 

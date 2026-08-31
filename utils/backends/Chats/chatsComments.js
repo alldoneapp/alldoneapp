@@ -33,7 +33,7 @@ import {
     runHttpsCallableFunction,
     tryAddFollower,
 } from '../firestore'
-import { FEED_PUBLIC_FOR_ALL, FOLLOWED_TAB } from '../../../components/Feeds/Utils/FeedsConstants'
+import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setNoteAssistant, updateNoteLastCommentData, resetNoteLastCommentData } from '../Notes/notesFirestore'
 import {
     createGenericTaskWhenMention,
@@ -1094,114 +1094,4 @@ export const resetNotificationsWhenUserHasAnActiveChat = (projectChatNotificatio
     return projectChatNotifications
 }
 
-export async function markMessagesAsRead(projectId, userId, chatsActiveTab) {
-    const { loggedUser } = store.getState()
-
-    let newCommentsRef = getDb().collection(`chatNotifications/${projectId}/${userId}`)
-    if (chatsActiveTab === FOLLOWED_TAB) newCommentsRef = newCommentsRef.where('followed', '==', true)
-
-    const pushNotificationsRef = getDb()
-        .collection(`pushNotifications`)
-        .where('projectId', '==', projectId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-    const emailNotificationsRef = getDb()
-        .collection(`emailNotifications`)
-        .where('projectId', '==', projectId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-
-    const [chatSnapshot, pushSnapshot, emailSnapshot] = await Promise.all([
-        newCommentsRef.get(),
-        pushNotificationsRef.get(),
-        emailNotificationsRef.get(),
-    ])
-
-    await Promise.all([
-        removeAllChatNotifications(projectId, userId, chatSnapshot.docs),
-        removeAllChatPushNotifications(pushSnapshot),
-        removeAllChatEmailNotifications(emailSnapshot),
-    ])
-}
-
-export async function markChatMessagesAsRead(projectId, chatId) {
-    const { loggedUser } = store.getState()
-
-    getDb()
-        .collection(`chatNotifications/${projectId}/${loggedUser.uid}`)
-        .where('chatId', '==', chatId)
-        .get()
-        .then(snapshot => {
-            removeAllChatNotifications(projectId, loggedUser.uid, snapshot.docs)
-        })
-
-    getDb()
-        .doc(`emailNotifications/${chatId}`)
-        .get()
-        .then(doc => {
-            const notification = doc.data()
-            if (notification && notification.userIds.includes(loggedUser.uid)) {
-                notification.userIds.length > 1
-                    ? getDb()
-                          .doc(`emailNotifications/${chatId}`)
-                          .set(
-                              { ...notification, userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid) },
-                              { merge: true }
-                          )
-                    : getDb().doc(`emailNotifications/${chatId}`).delete()
-            }
-        })
-
-    getDb()
-        .collection(`pushNotifications`)
-        .where('chatId', '==', chatId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-        .get()
-        .then(snapshot => {
-            removeAllChatPushNotifications(snapshot)
-        })
-}
-
-async function removeAllChatNotifications(projectId, userId, docs) {
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        batch.delete(getDb().doc(`chatNotifications/${projectId}/${userId}/${doc.id}`))
-    })
-    await batch.commit()
-}
-
-async function removeAllChatPushNotifications(docs) {
-    const { loggedUser } = store.getState()
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        const notification = doc.data()
-        notification.userIds.length > 1
-            ? batch.set(
-                  getDb().doc(`pushNotifications/${doc.id}`),
-                  {
-                      ...notification,
-                      userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid),
-                  },
-                  { merge: true }
-              )
-            : batch.delete(getDb().doc(`pushNotifications/${doc.id}`))
-    })
-    await batch.commit()
-}
-
-async function removeAllChatEmailNotifications(docs) {
-    const { loggedUser } = store.getState()
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        const notification = doc.data()
-        notification.userIds.length > 1
-            ? batch.set(
-                  getDb().doc(`emailNotifications/${doc.id}`),
-                  {
-                      ...notification,
-                      userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid),
-                  },
-                  { merge: true }
-              )
-            : batch.delete(getDb().doc(`emailNotifications/${doc.id}`))
-    })
-    await batch.commit()
-}
+export { markChatMessagesAsRead, markMessagesAsRead } from './chatReadNotifications'

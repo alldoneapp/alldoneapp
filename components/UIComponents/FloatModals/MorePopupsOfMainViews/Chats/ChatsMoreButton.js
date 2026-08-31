@@ -26,17 +26,20 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
     }
 
     const markRead = () => {
+        let projectIdsToClear = [projectId]
         if (checkIfSelectedAllProjects(selectedProjectIndex)) {
             const { loggedUser } = store.getState()
             const { realProjectIds, realTemplateProjectIds, realArchivedProjectIds } = loggedUser
 
-            const guidesAndNormalProjectIds = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
-            guidesAndNormalProjectIds.forEach(projectId => {
-                markMessagesAsRead(projectId, userId, chatsActiveTab)
-            })
-        } else {
-            markMessagesAsRead(projectId, userId, chatsActiveTab)
+            projectIdsToClear = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
         }
+        Promise.all(projectIdsToClear.map(id => markMessagesAsRead(id, userId, chatsActiveTab))).catch(error => {
+            console.error('[chat read] Could not clear project notifications', {
+                projectIds: projectIdsToClear,
+                code: error?.code,
+                message: error?.message,
+            })
+        })
         dismissModal()
     }
 
