@@ -46,6 +46,7 @@ import { cleanWebShareTargetParamsFromCurrentUrl, loadPendingWebShareTarget } fr
 import { ensureIosShareExtensionCredential } from './utils/iosShareExtensionCredential'
 import { runBootIntegrityCheck } from './utils/InitialLoad/bootIntegrityHealer'
 import useDeferredStartupWork, { useInitialTaskDataPublished } from './hooks/useDeferredStartupWork'
+import { warmTypesenseSearchCredentials } from './utils/typesenseSearch'
 
 // A failing initial data load is retried a few times before the user is told about it - and the
 // session is kept in every case (see handleLoginFailure).
@@ -145,53 +146,24 @@ export default function AppContent() {
         } catch (error) {
             console.error('❌ Failed to recover user account:', error)
 
-            // Show error dialog with options
-            const userChoice = confirm(
-                `Your account is in an inconsistent state and automatic recovery failed.\n\n` +
-                    `Error: ${error.message || 'Unknown error'}\n\n` +
-                    `Would you like to:\n` +
-                    `• Click OK to delete your authentication and start fresh\n` +
-                    `• Click Cancel to try logging in again later\n\n` +
-                    `If this problem persists, please contact support with your email: ${email}`
-            )
-
-            if (userChoice) {
-                // User chose to delete auth and start fresh
-                try {
-                    console.log('User chose to delete auth - attempting to delete Firebase Auth user...')
-                    await firebaseUser.delete()
-                    console.log('✅ Firebase Auth user deleted successfully')
-                    alert(
-                        'Your authentication has been reset. You can now sign up again with a fresh account.\n\n' +
-                            'If you had important data, please contact support.'
-                    )
-                } catch (deleteError) {
-                    console.error('Failed to delete Firebase Auth user:', deleteError)
-                    // If delete fails, at least sign them out
-                    try {
-                        await new Promise(resolve => Backend.logout(resolve))
-                    } catch (e) {
-                        console.error('Logout failed:', e)
-                    }
-                    alert(
-                        'Could not delete your authentication. You have been logged out.\n\n' +
-                            'Please contact support with your email: ' +
-                            email
-                    )
-                }
-            } else {
-                // User chose to try again later
-                try {
-                    await new Promise(resolve => Backend.logout(resolve))
-                } catch (e) {
-                    console.error('Logout failed:', e)
-                }
-                alert(
-                    'You have been logged out. Please try logging in again or contact support if the problem persists.'
-                )
+            // Provisioning is multi-stage. If the authoritative user/project batch succeeded and
+            // a supplementary step failed afterwards, continue with that valid account instead of
+            // offering to delete its Auth identity and leaving orphaned Firestore data behind.
+            const recovered = await loadGlobalDataAndGetUserResult(userId)
+            if (recovered.user) {
+                await loadInitialDataForLoggedUser(recovered.user)
+                console.warn('Signup completed with a supplementary provisioning error; using the recovered account.')
+                return true
             }
 
-            return false
+            // Keep the Auth identity. A missing document can be retried safely on the next login;
+            // deleting Auth here is destructive and made partial signup failures unrecoverable.
+            const recoveryError = new Error(
+                `Account setup for ${email || userId} did not complete. The authentication was preserved; ` +
+                    'please retry the login.'
+            )
+            recoveryError.cause = error
+            throw recoveryError
         }
     }
 
@@ -420,6 +392,14 @@ export default function AppContent() {
             return () => clearTimeout(timer)
         }
         setHeavyComponentsLoaded(false)
+    }, [deferredStartupWorkReady, loggedIn, processedInitialURL])
+
+    // The first Typesense search otherwise has to wait for a cold callable request that creates a
+    // short-lived, user-scoped key. Start that handshake after foreground task data has settled;
+    // the Search modal repeats this best-effort warm-up and both paths share one in-flight request.
+    useEffect(() => {
+        if (!loggedIn || !processedInitialURL || !deferredStartupWorkReady) return
+        warmTypesenseSearchCredentials()
     }, [deferredStartupWorkReady, loggedIn, processedInitialURL])
 
     useEffect(() => {

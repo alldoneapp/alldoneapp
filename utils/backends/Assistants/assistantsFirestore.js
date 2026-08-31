@@ -39,7 +39,11 @@ import { updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { RECURRENCE_NEVER, RECURRENCE_ONCE } from '../../../components/TaskListView/Utils/TasksHelper'
-import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
+import {
+    getAssistantPreConfigSearchRows,
+    settlePreConfigTaskSearchSources,
+    sortPreConfigTaskSearchItems,
+} from './preConfigTaskSearchHelper'
 import { getPreConfigTaskModelOverride } from '../../../functions/Assistant/preConfigTaskModel'
 import { getWorkflowSortIndexUpdates, getWorkflowStepsIdsSorted } from '../../workflowOrder'
 import {
@@ -329,27 +333,45 @@ export async function getPreConfigTasksForAllProjects() {
         sourcesByCacheKey[cacheKey].rows.push({ project, assistant, projectSearchOrder, assistantSearchOrder })
     })
 
-    await Promise.all(
-        Object.values(sourcesByCacheKey).map(async source => {
-            const tasks = await getAssistantTasks(source.tasksProjectId, source.assistantId)
-            source.rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
-                tasks.forEach(task => {
-                    allTasks.push({
-                        ...task,
-                        id: task.id,
-                        searchId: `${project.id}_${assistant.uid}_${task.id}`,
-                        projectId: project.id,
-                        project,
-                        assistant,
-                        assistantId: assistant.uid,
-                        isPreConfigTask: true,
-                        projectSearchOrder,
-                        assistantSearchOrder,
-                    })
+    const { loadedSources, failedSources } = await settlePreConfigTaskSearchSources(
+        Object.values(sourcesByCacheKey),
+        source => getAssistantTasks(source.tasksProjectId, source.assistantId)
+    )
+
+    loadedSources.forEach(({ source, tasks }) => {
+        source.rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
+            tasks.forEach(task => {
+                allTasks.push({
+                    ...task,
+                    id: task.id,
+                    searchId: `${project.id}_${assistant.uid}_${task.id}`,
+                    projectId: project.id,
+                    project,
+                    assistant,
+                    assistantId: assistant.uid,
+                    isPreConfigTask: true,
+                    projectSearchOrder,
+                    assistantSearchOrder,
                 })
             })
         })
-    )
+    })
+
+    if (failedSources.length > 0) {
+        const failureDetails = failedSources.map(({ source, error }) => ({
+            tasksProjectId: source.tasksProjectId,
+            assistantId: source.assistantId,
+            code: error?.code || error?.name || 'unknown',
+        }))
+        console.warn('[Assistant task search] Skipped unavailable task sources:', failureDetails)
+
+        if (allTasks.length === 0) {
+            const error = new Error('Assistant tasks could not be loaded')
+            error.code = 'assistant-task-search-load-failed'
+            error.failedSources = failureDetails
+            throw error
+        }
+    }
 
     return sortPreConfigTaskSearchItems(allTasks, loggedUser?.uid)
 }

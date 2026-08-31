@@ -1899,6 +1899,7 @@
     "Search assistant tasks": "Buscar tareas del asistente",
     "Search pre-configured tasks": "Buscar tareas preconfiguradas",
     "No assistant tasks found": "No se encontraron tareas del asistente",
+    "Could not load assistant tasks": "No se pudieron cargar las tareas del asistente",
     "Last comment": "Último comentario",
     "Click here to start a new chat": "Click para comenzar un nuevo chat",
     "AI Settings": "Configuración de IA",

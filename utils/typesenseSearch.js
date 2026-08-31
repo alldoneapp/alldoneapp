@@ -87,6 +87,22 @@ export const __resetTypesenseCredentialCacheForTests = () => {
     credentialsPromise = null
 }
 
+// Fetch the short-lived scoped key before the user submits their first query. This is deliberately
+// best-effort: opening Search must still work when the browser is offline or the callable is
+// temporarily unavailable. getTypesenseScopedSearchCredentials owns the shared in-flight promise,
+// so a real search that starts during this warm-up waits for the same request instead of issuing a
+// duplicate one.
+export const warmTypesenseSearchCredentials = async () => {
+    if (isBrowserOffline()) return false
+
+    try {
+        await getTypesenseScopedSearchCredentials()
+        return true
+    } catch (error) {
+        return false
+    }
+}
+
 export const adaptTypesenseHit = hit => {
     const document = hit.document || {}
     // Downstream code (ResultLists, mention insertion, parent-goal picking) reads the

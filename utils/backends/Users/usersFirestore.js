@@ -189,7 +189,7 @@ const readUserDocumentWithFreshAuth = async (userId, isLoggedUser) => {
  * gone. `verified` on the result says which of the two answers the caller got.
  */
 export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
-    const { absenceIsExpected = false } = options
+    const { absenceIsExpected = false, permissionDeniedIsExpected = false } = options
     try {
         const docSnapshot = await readUserDocumentWithFreshAuth(userId, isLoggedUser)
         if (!docSnapshot.exists) {
@@ -252,6 +252,9 @@ export async function fetchUserDataResult(userId, isLoggedUser, options = {}) {
         const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
         return { user: mappedUser, missing: !mappedUser, error: null, verified: true }
     } catch (error) {
+        if (permissionDeniedIsExpected && isPermissionDenied(error)) {
+            return { user: null, missing: false, error, verified: false }
+        }
         console.error(`Error fetching user data for ${userId}:`, error)
         return { user: null, missing: false, error, verified: false }
     }

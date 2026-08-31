@@ -88,6 +88,7 @@ import {
     getChatNotificationWithCommentId,
     getProjectChatLastNotification,
 } from './chatNotificationPriority'
+import { buildCommentNotificationIdentity } from './commentNotificationHelper'
 
 export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
@@ -367,6 +368,13 @@ const storeComment = async (
 ) => {
     const batch = new BatchWrapper(getDb())
     const mediaContext = extractMediaContextFromText(comment)
+    const notificationIdentity = buildCommentNotificationIdentity({
+        projectId,
+        chatType: objectType,
+        objectId,
+        commentId,
+        creatorId,
+    })
     if (!editingCommentId) {
         const followrsMap = {}
         followerIds.forEach(uid => {
@@ -374,23 +382,19 @@ const storeComment = async (
         })
         userIdsToNotify.forEach(userId => {
             batch.set(getDb().doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
+                ...notificationIdentity,
                 chatId: objectId,
-                chatType: objectType,
                 followed: !!followrsMap[userId],
                 date: moment().utc().valueOf(),
-                creatorId,
                 creatorType: 'user',
             })
         })
 
         generatePushAndEmailNotifcations(
-            projectId,
-            objectType,
-            objectId,
+            notificationIdentity,
             comment,
             followerIds.filter(uid => uid !== creatorId),
             title,
-            commentId,
             batch
         )
 
@@ -415,36 +419,17 @@ const storeComment = async (
     await batch.commit()
 }
 
-const generatePushAndEmailNotifcations = (
-    projectId,
-    objectType,
-    objectId,
-    comment,
-    followerIds,
-    title,
-    commentId,
-    batch
-) => {
+const generatePushAndEmailNotifcations = (notificationIdentity, comment, followerIds, title, batch) => {
     if (followerIds.length > 0) {
+        const { projectId, chatType: objectType, objectId } = notificationIdentity
         const messageTimestamp = Date.now()
-        sendChatPushNotification(
-            projectId,
-            objectType,
-            objectId,
-            comment,
-            followerIds,
-            title,
-            commentId,
-            messageTimestamp,
-            batch
-        )
+        sendChatPushNotification(notificationIdentity, comment, followerIds, title, messageTimestamp, batch)
         batch.set(
             getDb().doc(`emailNotifications/${objectId}`),
             {
+                ...notificationIdentity,
                 userIds: firebase.firestore.FieldValue.arrayUnion(...followerIds),
-                projectId,
                 objectType: objectType === 'topics' ? 'chats' : objectType,
-                objectId,
                 objectName: TasksHelper.getTaskNameWithoutMeta(title),
                 messageTimestamp,
             },
@@ -904,28 +889,26 @@ export const repairChatMetadata = async (projectId, objectId, type) => {
 }
 
 const sendChatPushNotification = async (
-    projectId,
-    objectType,
-    objectId,
+    notificationIdentity,
     message,
     followerIds,
     objectName,
-    commentId,
     messageTimestamp,
     batch
 ) => {
+    const { projectId, chatType: objectType, objectId } = notificationIdentity
     const { displayName: userName } = store.getState().loggedUser
 
     const project = ProjectHelper.getProjectById(projectId)
     const cleanedComment = TasksHelper.getTaskNameWithoutMeta(message)
-    batch.set(getDb().doc(`pushNotifications/${commentId}`), {
+    batch.set(getDb().doc(`pushNotifications/${notificationIdentity.commentId}`), {
+        ...notificationIdentity,
         userIds: followerIds,
         body: `${project.name}\n  ✔ ${objectName}\n ${userName} ${'commented'}: ${cleanedComment}`,
         link: getLinkedParentChatUrl(projectId, objectType, objectId),
         messageTimestamp,
         type: 'Chat Notification',
         chatId: objectId,
-        projectId,
     })
 }
 
