@@ -1,7 +1,7 @@
 import store from '../../redux/store'
 import { getDb, globalWatcherUnsub } from '../backends/firestore'
 import { recoverDroppedProject } from './projectRecovery'
-import { loadGlobalData, watchProjectData } from './initialLoadHelper'
+import { getActiveGlobalDataLoadPromise, loadGlobalData, watchProjectData } from './initialLoadHelper'
 import { readDocumentDirectlyFromServer } from '../backends/firestoreDirectRead'
 import {
     resetBootIntegrityHealerForTests,
@@ -24,6 +24,7 @@ jest.mock('./projectRecovery', () => ({
 }))
 
 jest.mock('./initialLoadHelper', () => ({
+    getActiveGlobalDataLoadPromise: jest.fn(),
     loadGlobalData: jest.fn(),
     watchProjectData: jest.fn(),
 }))
@@ -73,6 +74,8 @@ describe('runBootIntegrityCheck', () => {
             state.loggedUserProjectsMap[projectId] = { id: projectId }
             return true
         })
+        getActiveGlobalDataLoadPromise.mockReset()
+        getActiveGlobalDataLoadPromise.mockReturnValue(null)
         loadGlobalData.mockReset()
         loadGlobalData.mockImplementation(async () => {
             state.administratorUser = { uid: 'admin-1' }
@@ -240,6 +243,92 @@ describe('runBootIntegrityCheck', () => {
             '[BootIntegrity] Client state is missing expected data, repairing:',
             expect.objectContaining({ administratorMissing: true, trigger: 'app_resume' })
         )
+    })
+
+    it('does not report the Administrator missing while its global-data load is still running', async () => {
+        jest.useFakeTimers()
+        try {
+            state.administratorUser = {}
+            let finishGlobalDataLoad
+            const activeLoad = new Promise(resolve => {
+                finishGlobalDataLoad = resolve
+            })
+            getActiveGlobalDataLoadPromise.mockReturnValue(activeLoad)
+
+            await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+
+            expect(loadGlobalData).not.toHaveBeenCalled()
+            expect(consoleWarn).not.toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.anything()
+            )
+
+            state.administratorUser = { uid: 'admin-1' }
+            getActiveGlobalDataLoadPromise.mockReturnValue(null)
+            finishGlobalDataLoad()
+            await Promise.resolve()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(loadGlobalData).not.toHaveBeenCalled()
+            expect(consoleWarn).not.toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.anything()
+            )
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('still repairs missing projects immediately while the global-data load is running', async () => {
+        state.administratorUser = {}
+        delete state.loggedUserProjectsMap.p2
+        getActiveGlobalDataLoadPromise.mockReturnValue(new Promise(() => {}))
+
+        await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+
+        expect(recoverDroppedProject).toHaveBeenCalledWith('p2')
+        expect(loadGlobalData).not.toHaveBeenCalled()
+        expect(consoleWarn).toHaveBeenCalledWith(
+            '[BootIntegrity] Client state is missing expected data, repairing:',
+            expect.objectContaining({
+                missingProjectIds: ['p2'],
+                administratorMissing: false,
+                trigger: 'cached_user_refresh',
+            })
+        )
+    })
+
+    it('rechecks and repairs when the completed global-data load still left the Administrator missing', async () => {
+        jest.useFakeTimers()
+        try {
+            state.administratorUser = {}
+            let finishGlobalDataLoad
+            const activeLoad = new Promise(resolve => {
+                finishGlobalDataLoad = resolve
+            })
+            getActiveGlobalDataLoadPromise.mockReturnValue(activeLoad)
+
+            await runBootIntegrityCheck({ settleMs: 0, trigger: 'cached_user_refresh' })
+            expect(loadGlobalData).not.toHaveBeenCalled()
+
+            getActiveGlobalDataLoadPromise.mockReturnValue(null)
+            finishGlobalDataLoad()
+            await Promise.resolve()
+            jest.runOnlyPendingTimers()
+            await Promise.resolve()
+            await Promise.resolve()
+            await Promise.resolve()
+
+            expect(loadGlobalData).toHaveBeenCalledTimes(1)
+            expect(consoleWarn).toHaveBeenCalledWith(
+                '[BootIntegrity] Client state is missing expected data, repairing:',
+                expect.objectContaining({ administratorMissing: true, trigger: 'global_data_refresh' })
+            )
+        } finally {
+            jest.useRealTimers()
+        }
     })
 
     it('detects the missing administrator when only the direct role read finds it', async () => {

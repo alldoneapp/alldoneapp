@@ -261,7 +261,11 @@ export function watchAdministratorUser(userId) {
     )
 }
 
-export const loadGlobalData = async (retryCount = 0) => {
+let activeGlobalDataLoadPromise = null
+
+export const getActiveGlobalDataLoadPromise = () => activeGlobalDataLoadPromise
+
+const performGlobalDataLoad = async (retryCount = 0) => {
     const MAX_RETRIES = 5
     const RETRY_DELAY_MS = 5000
 
@@ -296,7 +300,7 @@ export const loadGlobalData = async (retryCount = 0) => {
                     `Retrying loadGlobalData in ${RETRY_DELAY_MS / 1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`
                 )
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
-                return loadGlobalData(retryCount + 1)
+                return performGlobalDataLoad(retryCount + 1)
             }
             // Exhausted retries still mean "unverifiable", not "absent". Keep
             // whatever valid global state Redux already has; the integrity
@@ -304,6 +308,22 @@ export const loadGlobalData = async (retryCount = 0) => {
             console.warn('[GlobalData] Global data is still unavailable; preserving the last valid state.')
         }
     }
+}
+
+export const loadGlobalData = (retryCount = 0) => {
+    // Cached startup, BootIntegrity and app-resume recovery can all ask for the same global
+    // bundle within milliseconds. Share one authoritative read so callers do not race each
+    // other and temporarily diagnose the Administrator as missing while another caller is
+    // already loading it.
+    if (activeGlobalDataLoadPromise) return activeGlobalDataLoadPromise
+
+    const loadPromise = performGlobalDataLoad(retryCount)
+    activeGlobalDataLoadPromise = loadPromise
+    const clearActiveLoad = () => {
+        if (activeGlobalDataLoadPromise === loadPromise) activeGlobalDataLoadPromise = null
+    }
+    loadPromise.then(clearActiveLoad, clearActiveLoad)
+    return loadPromise
 }
 
 export const unwatchProjectData = projectId => {

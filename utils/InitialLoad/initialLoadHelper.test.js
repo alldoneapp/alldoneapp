@@ -2,7 +2,12 @@ import store from '../../redux/store'
 import { setAdministratorAndGlobalAssistants, setAdministratorUser, setGlobalAssistants } from '../../redux/actions'
 import { getGlobalAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
 import { getAdministratorUser, unwatch, watchUserData } from '../backends/firestore'
-import { loadGlobalData, watchAdministratorUser, watchGlobalAssistants } from './initialLoadHelper'
+import {
+    getActiveGlobalDataLoadPromise,
+    loadGlobalData,
+    watchAdministratorUser,
+    watchGlobalAssistants,
+} from './initialLoadHelper'
 
 let mockBrowserIsOffline = false
 
@@ -233,6 +238,29 @@ describe('loadGlobalData', () => {
         await loadGlobalData()
 
         expect(setAdministratorAndGlobalAssistants).toHaveBeenCalledWith({ uid: 'admin-1' }, [{ uid: 'assistant-1' }])
+    })
+
+    it('shares one in-flight global-data load between concurrent callers', async () => {
+        let finishAdministratorRead
+        getAdministratorUser.mockReturnValue(
+            new Promise(resolve => {
+                finishAdministratorRead = resolve
+            })
+        )
+
+        const firstLoad = loadGlobalData()
+        const secondLoad = loadGlobalData()
+
+        expect(secondLoad).toBe(firstLoad)
+        expect(getActiveGlobalDataLoadPromise()).toBe(firstLoad)
+        expect(getAdministratorUser).toHaveBeenCalledTimes(1)
+        expect(getGlobalAssistants).toHaveBeenCalledTimes(1)
+
+        finishAdministratorRead({ uid: 'admin-1' })
+        await Promise.all([firstLoad, secondLoad])
+
+        expect(getActiveGlobalDataLoadPromise()).toBeNull()
+        expect(setAdministratorAndGlobalAssistants).toHaveBeenCalledTimes(1)
     })
 
     it('does not watch a private profile for a role-only Administrator identity', async () => {
