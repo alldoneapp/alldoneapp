@@ -159,6 +159,25 @@ describe('object access projection', () => {
         ).toMatchObject({ followedReaderIds: ['member-1'] })
     })
 
+    it('projects embedded-note task relationships into the per-reader backlink map', () => {
+        const noteId = 'note-1'
+        const token = buildBacklinkToken('containerNotesIds', noteId)
+
+        expect(
+            buildObjectAccessProjection(
+                { isPublicFor: [0], containerNotesIds: [noteId] },
+                ['member-1', 'member-2'],
+                'observersIds'
+            )
+        ).toMatchObject({
+            backlinkIdsVisibleTo: {
+                0: [token],
+                'member-1': [token],
+                'member-2': [token],
+            },
+        })
+    })
+
     it('projects the task project id from its authoritative document path', () => {
         expect(
             buildObjectAccessProjection(

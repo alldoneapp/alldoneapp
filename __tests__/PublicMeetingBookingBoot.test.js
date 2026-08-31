@@ -84,12 +84,17 @@ jest.mock('../components/UIComponents/FloatModals/EndDayStatisticsModal', () => 
     default: () => null,
 }))
 
-jest.mock('../utils/Geolocation/GeolocationHelper', () => ({ initIpRegistry: () => {} }))
+jest.mock('../utils/Geolocation/GeolocationHelper', () => ({
+    initIpRegistry: () => {
+        global.__ipRegistryInitCalls += 1
+    },
+}))
 
 jest.mock('../utils/BackendBridge', () => ({
     __esModule: true,
     default: {
         initFirebase: callback => {
+            global.__firebaseInitCalls += 1
             global.__firebaseAuthCallback = callback
         },
         logout: resolve => resolve && resolve(),
@@ -107,6 +112,8 @@ const bootApp = async pathname => {
     global.__renderedRoutes = []
     global.__loadingScreenRendered = false
     global.__firebaseAuthCallback = null
+    global.__firebaseInitCalls = 0
+    global.__ipRegistryInitCalls = 0
 
     jest.resetModules()
     const React = require('react')
@@ -143,27 +150,28 @@ describe('Public meeting link boot path (AT-2276)', () => {
         expect(NavigationService.getCurrentState().params).toEqual({ slug: 'karsten-wysk' })
         // No "connecting" spinner in front of a page that needs no account and no app data.
         expect(global.__loadingScreenRendered).toBe(false)
+        expect(global.__firebaseInitCalls).toBe(0)
+        expect(global.__firebaseAuthCallback).toBeNull()
+        expect(global.__ipRegistryInitCalls).toBe(0)
     })
 
     it('never mounts the login screen and keeps the booking URL in the address bar', async () => {
         const { NavigationService, store } = await bootApp('/meet/karsten-wysk')
 
-        await answerAuthWithNoSession()
-
         expect(global.__renderedRoutes).not.toContain('LoginScreen')
         expect(NavigationService.getCurrentState().routeName).toBe('MeetingBooking')
         expect(window.location.pathname).toBe('/meet/karsten-wysk')
-        expect(store.getState().loggedIn).toBe(false)
+        expect(store.getState().loggedIn).toBeNull()
         expect(store.getState().initialUrl).toBe('/meet/karsten-wysk')
+        expect(global.__firebaseInitCalls).toBe(0)
     })
 
     it('keeps a query string on the booking link', async () => {
         const { store } = await bootApp('/meet/karsten-wysk?utm_source=signature')
 
-        await answerAuthWithNoSession()
-
         expect(global.__renderedRoutes).not.toContain('LoginScreen')
         expect(store.getState().initialUrl).toBe('/meet/karsten-wysk?utm_source=signature')
+        expect(global.__firebaseInitCalls).toBe(0)
     })
 
     it('still sends a logged-out visitor of a normal app URL to the login screen', async () => {
@@ -172,6 +180,7 @@ describe('Public meeting link boot path (AT-2276)', () => {
         // Auth has not answered yet: the app shell stays behind the loading screen as before.
         expect(global.__loadingScreenRendered).toBe(true)
         expect(global.__renderedRoutes).toEqual([])
+        expect(global.__firebaseInitCalls).toBe(1)
 
         await answerAuthWithNoSession()
 

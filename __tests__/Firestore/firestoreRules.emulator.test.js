@@ -31,6 +31,8 @@ const TEAMMATE_ID = 'teammate'
 const BACKLINK_FIELD = 'linkedParentTasksIds'
 const BACKLINK_OBJECT_ID = 'source-task'
 const BACKLINK_TOKEN = JSON.stringify([BACKLINK_FIELD, BACKLINK_OBJECT_ID])
+const INNER_TASK_NOTE_ID = 'note-with-inner-task'
+const INNER_TASK_NOTE_TOKEN = JSON.stringify(['containerNotesIds', INNER_TASK_NOTE_ID])
 
 // The first rules-unit-testing handshake can exceed Jest's 5 s default while a cold CI runner
 // downloads and boots the Firestore emulator. Local runs are warm enough not to expose it.
@@ -88,9 +90,10 @@ const seed = async () => {
             observersIds: [MEMBER_ID],
             parentId: null,
             linkedParentTasksIds: [BACKLINK_OBJECT_ID],
+            containerNotesIds: [INNER_TASK_NOTE_ID],
             readerIds: [MEMBER_ID],
             roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID] },
-            backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN] },
+            backlinkIdsVisibleTo: { [MEMBER_ID]: [BACKLINK_TOKEN, INNER_TASK_NOTE_TOKEN] },
         })
         await setDoc(doc(db, `items/${PROJECT_ID}/tasks/private-task`), {
             projectId: PROJECT_ID,
@@ -122,6 +125,14 @@ const seed = async () => {
             isPublicFor: [0],
             readerIds: ['other-owner'],
             roleIdsVisibleTo: { 'other-owner': [] },
+        })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/hidden-inner-task`), {
+            projectId: PROJECT_ID,
+            isPublicFor: [OUTSIDER_ID],
+            containerNotesIds: [INNER_TASK_NOTE_ID],
+            readerIds: [OUTSIDER_ID],
+            roleIdsVisibleTo: { [OUTSIDER_ID]: [] },
+            backlinkIdsVisibleTo: { [OUTSIDER_ID]: [INNER_TASK_NOTE_TOKEN] },
         })
         await setDoc(doc(db, `items/${SHARED_PROJECT_ID}/tasks/shared-task`), {
             projectId: SHARED_PROJECT_ID,
@@ -932,6 +943,22 @@ describe('queries used by the web client', () => {
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['private-task', 'public-task'])
     })
 
+    it('loads note inner tasks through the per-reader backlink projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const projectedTasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where(new FieldPath('backlinkIdsVisibleTo', MEMBER_ID), 'array-contains', INNER_TASK_NOTE_TOKEN)
+        )
+        const legacyTasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('containerNotesIds', 'array-contains', INNER_TASK_NOTE_ID)
+        )
+
+        const snapshot = await assertSucceeds(getDocs(projectedTasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['public-task'])
+        await assertFails(getDocs(legacyTasks))
+    })
+
     it('rejects an observer-only query that could return a task private to somebody else', async () => {
         await testEnv.withSecurityRulesDisabled(async context => {
             await setDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/not-readable`), {
@@ -975,6 +1002,7 @@ describe('server-only data', () => {
         'workflowAiRuns/run-a',
         'taskStatisticsEvents/event-a',
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
+        'firestoreAccessProjectionMigrations/schema-v2',
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 

@@ -1,14 +1,14 @@
 // Firestore security rules.
 //
-// These are compiled and offered as a MANUAL production deployment by CI
+// These are compiled, behavior-tested and deployed automatically to production by CI
 // (`deploy:firestore:rules:production` in .gitlab-ci.yml) when this file changes.
 // Before AT-2450 nothing deployed them at all and it was a manual
 // `firebase deploy --only firestore:rules`, which is how the file came to describe an
 // authorization model production was not actually running.
 //
 // Two consequences worth keeping in mind when editing:
-//   - A merge does not publish the rules. Production requires the manual CI job after
-//     emulator, staging and browser validation.
+//   - A merge publishes the rules only after the behavioral emulator suite, the full web
+//     suite and the production bundle succeed. A failed gate leaves production unchanged.
 //   - A deploy publishes the WHOLE file, never just your hunk, so anything already
 //     committed here but not yet released ships alongside your change.
 //
@@ -623,6 +623,12 @@ service cloud.firestore {
     // project's membership changes. They contain the authoritative member list
     // and processing cursors, so no client may observe or alter them.
     match /firestoreAccessProjectionJobs/{projectId} {
+      allow read, write: if false;
+    }
+
+    // Durable cursor for server-owned projection schema migrations. Like the per-project jobs,
+    // this is backend coordination state and never client data.
+    match /firestoreAccessProjectionMigrations/{migrationId} {
       allow read, write: if false;
     }
 

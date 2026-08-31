@@ -360,16 +360,26 @@ export default function AppContent() {
     }, [loggedIn, loggedUserId])
 
     useEffect(() => {
+        // Public booking pages use only the unauthenticated /api/booking endpoints. Initializing
+        // Firebase Auth here injects Google's hidden gapi iframe even though the page has no login
+        // surface; that iframe registers a deprecated unload handler and makes Chrome report a
+        // permissions-policy violation. Keep the public page genuinely independent of Firebase.
+        if (publicPageUrl) {
+            finishAppBootConnectionWait()
+            return undefined
+        }
+
         initFirebase()
         // Initialize IP registry in background after Firebase auth
-        setTimeout(() => {
+        const ipRegistryTimer = setTimeout(() => {
             initIpRegistry()
         }, 100)
         return () => {
+            clearTimeout(ipRegistryTimer)
             finishAppBootConnectionWait()
             unwatch('userProjectWatcherUnsubKey')
         }
-    }, [])
+    }, [publicPageUrl])
 
     // Once the anonymous visitor has been forwarded off the login screen (to the resource view or
     // the private-resource page), clear the resolving flag so the login UI can render normally if
