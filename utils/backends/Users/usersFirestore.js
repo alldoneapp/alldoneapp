@@ -10,7 +10,6 @@ import {
     addWorkflowStepFeedChain,
     createDefaultProject,
     forceUsersToReloadApp,
-    getAllUserProjects,
     getDb,
     getId,
     getObjectFollowersIds,
@@ -26,8 +25,6 @@ import {
     runHttpsCallableFunction,
     selectAndSetNewDefaultProject,
     tryAddFollower,
-    unlinkDeletedProjectFromInvitedUsers,
-    unlinkDeletedProjectFromMembers,
     updateRemovedWorkflowStepSubtaks,
     updateRemovedWorkflowStepTaks,
 } from '../firestore'
@@ -553,29 +550,16 @@ export const addNewUserToAlldoneTemplate = async userId => {
 
 export async function deleteUser(user) {
     const userId = user.uid
-    const projects = await getAllUserProjects(userId)
-
-    const batch = new BatchWrapper(getDb())
-
-    let promises = []
-    projects.forEach(project => {
-        promises.push(processProjectWhenDeleteUser(project, userId, batch))
-    })
-    await Promise.all(promises)
-
-    batch.delete(getDb().doc(`invoiceNumbers/customInvoiceNumber/users/${userId}`))
-    batch.delete(getDb().doc(`karmaPoints/${userId}`))
-    batch.delete(getDb().doc(`users/${userId}`))
-
     const { loggedUser } = store.getState()
     const userToDeleteIsTheLoggedUser = loggedUser.uid === user.uid
 
-    promises = []
-    promises.push(logEvent('delete_user', { userId }))
-    promises.push(runHttpsCallableFunction('deleteUserSecondGen', { userId }))
-    await Promise.all(promises)
-
-    await batch.commit()
+    // Firestore cleanup now runs with Admin permissions inside the callable. It finishes project
+    // and personal-data cleanup before deleting Firebase Auth, so stricter client rules cannot
+    // strand a half-deleted account and a failed cleanup remains retryable.
+    logEvent('delete_user', { userId }).catch(error => {
+        console.warn('[Account deletion] Could not record analytics event', error)
+    })
+    await runHttpsCallableFunction('deleteUserSecondGen', { userId }, { timeout: 540000 })
 
     if (userToDeleteIsTheLoggedUser) {
         Backend.logout(SettingsHelper.onLogOut)
@@ -1610,66 +1594,4 @@ export async function kickUserFromProject(projectId, userId) {
     forceUsersToReloadApp(project.userIds, batch, projectId)
 
     await batch.commit()
-}
-
-const checkIfUserIsLastUser = (userId, projectUserIds, templateCreatorId) => {
-    if (templateCreatorId) {
-        const { administratorUser } = store.getState()
-        return (
-            projectUserIds.filter(uid => uid !== userId && uid !== templateCreatorId && uid !== administratorUser.uid)
-                .length === 0
-        )
-    } else {
-        return projectUserIds.filter(uid => uid !== userId).length === 0
-    }
-}
-
-async function kickUserFromProjectWhenDeleteUser(project, userId, batch) {
-    let promises = []
-    promises.push(getUserWorkstreams(project.id, userId))
-    promises.push(getProjectUsers(project.id, false))
-    const [workstreams, users] = await Promise.all(promises)
-
-    forceUsersToReloadApp(
-        users.map(user => user.uid).filter(uid => uid !== userId),
-        batch,
-        project.id
-    )
-
-    updateProjectDataWhenKickUserFromProject(userId, project, batch)
-    updateWorkstreamsDataWhenKickUserFromProject(project.id, userId, workstreams, batch)
-    updateUsersDataWhenKickUserFromProject(project.id, userId, users, batch)
-}
-
-async function removeProjectWhenDeleteUser(project, userId, batch) {
-    const { id: projectId, userIds, parentTemplateId } = project
-
-    const userToUpdateIds = userIds.filter(uid => uid !== userId)
-    if (userIds) unlinkDeletedProjectFromMembers(projectId, batch, userToUpdateIds)
-    await unlinkDeletedProjectFromInvitedUsers(projectId, batch)
-    if (parentTemplateId) {
-        batch.update(getDb().doc(`projects/${parentTemplateId}`), {
-            guideProjectIds: firebase.firestore.FieldValue.arrayRemove(projectId),
-        })
-    }
-
-    batch.delete(getDb().doc(`projects/${projectId}`))
-    forceUsersToReloadApp(userToUpdateIds, batch, projectId)
-}
-
-async function processProjectWhenDeleteUser(project, userId, batch) {
-    const { parentTemplateId, userIds } = project
-
-    let templateCreatorId = ''
-    if (parentTemplateId) {
-        const template = await getProjectData(parentTemplateId)
-        if (template && template.templateCreatorId) templateCreatorId = template.templateCreatorId
-    }
-    const isLastUser = !userIds || checkIfUserIsLastUser(userId, userIds, templateCreatorId)
-
-    if (isLastUser) {
-        await removeProjectWhenDeleteUser(project, userId, batch)
-    } else {
-        await kickUserFromProjectWhenDeleteUser(project, userId, batch)
-    }
 }

@@ -1,22 +1,18 @@
 const admin = require('firebase-admin')
 const { deleteUserRecord } = require('../AlgoliaGlobalSearchHelper')
-const { cancelSubscription } = require('../Payment/CancelSubscriptions')
-const { SUBSCRIPTION_STATUS_CANCELED } = require('../Payment/Mollie')
-const { removePaidUsersFromSubscription } = require('../Payment/SubscriptionsActions')
 const {
     deleteHeartbeatSchedulesForUser,
     safelySyncHeartbeatSchedules,
 } = require('../Assistant/assistantHeartbeatSchedule')
 const { FieldValue } = require('firebase-admin/firestore')
 
-const processPremiumStatusPaidByOtherUser = async (userId, admin, superAdmin) => {
+const processPremiumStatusPaidByOtherUser = async (userId, admin) => {
     const userSubscription = (await admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).get()).data()
     if (userSubscription) {
         const { userPayingId } = userSubscription
-        if (userSubscription.canceled) await removePaidUsersFromSubscription(userPayingId, [userId])
         const mainSubscription = (await admin.firestore().doc(`subscriptions/${userPayingId}`).get()).data()
+        const promises = [admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).delete()]
         if (mainSubscription) {
-            const promises = []
             promises.push(
                 admin
                     .firestore()
@@ -27,29 +23,20 @@ const processPremiumStatusPaidByOtherUser = async (userId, admin, superAdmin) =>
                         selectedUserIds: FieldValue.arrayRemove(userId),
                     })
             )
-            promises.push(admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).delete())
-            await Promise.all(promises)
         }
+        await Promise.all(promises)
     }
 }
 
-const processPremiumStatusPaidByTheUser = async (userId, admin) => {
-    const subscription = (await admin.firestore().doc(`subscriptions/${userId}`).get()).data()
-    if (subscription && subscription.status !== SUBSCRIPTION_STATUS_CANCELED) {
-        await cancelSubscription(userId)
-    }
-}
-
-const deleteUserDataFromAlldone = async (userId, admin, superAdmin) => {
-    const promises = []
-    promises.push(processPremiumStatusPaidByOtherUser(userId, admin, superAdmin))
-    promises.push(processPremiumStatusPaidByTheUser(userId, admin))
-    await Promise.all(promises)
+const deleteUserDataFromAlldone = async (userId, admin) => {
+    // Current Stripe subscriptions are canceled synchronously by deleteUserSecondGen before the
+    // Firestore user document is removed. Keep only the local legacy sponsorship cleanup here.
+    await processPremiumStatusPaidByOtherUser(userId, admin)
 }
 
 const onDeleteUser = async user => {
     const promises = []
-    promises.push(deleteUserDataFromAlldone(user.uid, admin, admin))
+    promises.push(deleteUserDataFromAlldone(user.uid, admin))
     promises.push(deleteUserRecord(user.uid, user))
     promises.push(
         safelySyncHeartbeatSchedules(() => deleteHeartbeatSchedulesForUser(user.uid), {
@@ -60,4 +47,4 @@ const onDeleteUser = async user => {
     await Promise.all(promises)
 }
 
-module.exports = { onDeleteUser }
+module.exports = { onDeleteUser, processPremiumStatusPaidByOtherUser }

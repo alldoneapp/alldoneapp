@@ -138,7 +138,13 @@ export default function ConfirmPopup() {
             case CONFIRM_POPUP_TRIGGER_DELETE_USER:
                 setProcessing(true)
                 const { user } = object
-                deleteUser(user)
+                try {
+                    await deleteUser(user)
+                } catch (error) {
+                    console.error('[Account deletion] Could not delete account', error)
+                    setProcessing(false)
+                    alert('The account could not be deleted. Please try again or contact support.')
+                }
                 break
             case CONFIRM_POPUP_TRIGGER_DELETE_TASK: {
                 const { originalTaskName, projectId, task, multiTasks, tasks } = object
