@@ -30,6 +30,10 @@ const BACKLINK_FIELD = 'linkedParentTasksIds'
 const BACKLINK_OBJECT_ID = 'source-task'
 const BACKLINK_TOKEN = JSON.stringify([BACKLINK_FIELD, BACKLINK_OBJECT_ID])
 
+// The first rules-unit-testing handshake can exceed Jest's 5 s default while a cold CI runner
+// downloads and boots the Firestore emulator. Local runs are warm enough not to expose it.
+jest.setTimeout(30000)
+
 let testEnv
 
 const seed = async () => {
