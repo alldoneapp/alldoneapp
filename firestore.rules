@@ -376,6 +376,11 @@ service cloud.firestore {
     }
 
     match /chatObjects/{projectId}/chats/{chatId} {
+      // Tasks, notes and goals share the follower helper with chats. Most objects never
+      // create a chat document, so the helper must be able to distinguish "not created"
+      // from "exists but is private" without opening any existing conversation.
+      allow get: if isProjectMember(projectId) &&
+        !exists(/databases/$(database)/documents/chatObjects/$(projectId)/chats/$(chatId));
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
