@@ -246,10 +246,13 @@ describe('project membership authority', () => {
         )
     })
 
-    it('allows initial user and project creation only as one authoritative membership batch', async () => {
+    it('allows the complete new-account bootstrap only as one authoritative membership batch', async () => {
         const creatorId = 'new-user'
         const projectId = 'new-project'
         const creatorDb = testEnv.authenticatedContext(creatorId).firestore()
+        const missingUser = await assertSucceeds(getDoc(doc(creatorDb, `users/${creatorId}`)))
+        expect(missingUser.exists()).toBe(false)
+
         const batch = writeBatch(creatorDb)
         batch.set(doc(creatorDb, `projects/${projectId}`), {
             creatorId,
@@ -263,6 +266,22 @@ describe('project membership authority', () => {
             templateProjectIds: [],
             archivedProjectIds: [],
             copyProjectIds: [],
+            invitedProjectIds: [],
+        })
+        batch.set(doc(creatorDb, `items/${projectId}/tasks/welcome-task`), {
+            projectId,
+            creatorId,
+            userId: creatorId,
+            userIds: [creatorId],
+            isPublicFor: [0],
+        })
+        batch.set(doc(creatorDb, `assistants/${projectId}/items/default-assistant`), {
+            creatorId,
+            isDefault: true,
+        })
+        batch.set(doc(creatorDb, `projectsWorkstreams/${projectId}/workstreams/default`), {
+            creatorId,
+            userIds: [creatorId],
         })
 
         await assertSucceeds(batch.commit())
@@ -886,12 +905,86 @@ describe('server-only data', () => {
         `assistants/${PROJECT_ID}/mcpSecrets/secret-a`,
         'assistantHeartbeatSchedules/schedule-a',
         'workflowAiRuns/run-a',
+        'taskStatisticsEvents/event-a',
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 
         await assertFails(getDoc(doc(memberDb, documentPath)))
         await assertFails(setDoc(doc(memberDb, documentPath), { secret: 'never-client-visible' }))
+    })
+})
+
+describe('task transition side-effect ownership', () => {
+    it('lets a member update a readable task and their undo record without writing another user statistics', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+
+        batch.update(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`), {
+            projectId: PROJECT_ID,
+            done: true,
+            inDone: true,
+            completed: 1788134400000,
+            currentReviewerId: -2,
+            taskStatisticsTransition: {
+                id: 'transition-a',
+                actorId: MEMBER_ID,
+                ownerId: TEAMMATE_ID,
+            },
+        })
+        batch.set(doc(memberDb, `users/${MEMBER_ID}/undoActions/action-a`), {
+            initiatorId: MEMBER_ID,
+            status: 'applied',
+        })
+
+        await assertSucceeds(batch.commit())
+        await assertFails(setDoc(doc(memberDb, `statistics/${PROJECT_ID}/${TEAMMATE_ID}/31082026`), { doneTasks: 1 }))
+    })
+})
+
+describe('chat notification ownership', () => {
+    it('lets the recipient clear its inbox while keeping email side channels server-owned', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `chatNotifications/${PROJECT_ID}/${MEMBER_ID}/comment-a`), {
+                chatId: 'chat-a',
+                followed: true,
+            })
+            await setDoc(doc(db, 'emailNotifications/chat-a'), {
+                projectId: PROJECT_ID,
+                objectId: 'chat-a',
+                userIds: [MEMBER_ID],
+            })
+            await setDoc(doc(db, 'emailNotifications/other-chat'), {
+                projectId: PROJECT_ID,
+                objectId: 'other-chat',
+                userIds: [TEAMMATE_ID],
+            })
+        })
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const unreadSnapshot = await assertSucceeds(
+            getDocs(
+                query(
+                    collection(memberDb, `chatNotifications/${PROJECT_ID}/${MEMBER_ID}`),
+                    where('chatId', '==', 'chat-a')
+                )
+            )
+        )
+        await assertFails(
+            getDocs(
+                query(
+                    collection(memberDb, 'emailNotifications'),
+                    where('projectId', '==', PROJECT_ID),
+                    where('userIds', 'array-contains', MEMBER_ID)
+                )
+            )
+        )
+
+        const batch = writeBatch(memberDb)
+        unreadSnapshot.docs.forEach(snapshot => batch.delete(snapshot.ref))
+        await assertSucceeds(batch.commit())
+        await assertFails(getDoc(doc(memberDb, 'emailNotifications/missing-chat')))
     })
 })
 

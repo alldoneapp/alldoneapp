@@ -241,6 +241,33 @@ exports.copyProjectMoveChatSecondGen = onCall(
     }
 )
 
+exports.markChatNotificationsReadSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const projectId = typeof request.data?.projectId === 'string' ? request.data.projectId.trim() : ''
+        const chatId = typeof request.data?.chatId === 'string' ? request.data.chatId.trim() : ''
+        if (!projectId) throw new HttpsError('invalid-argument', 'Project id is required')
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { markChatNotificationsRead } = require('./Chats/markChatNotificationsRead')
+        return markChatNotificationsRead({
+            db: admin.firestore(),
+            FieldValue: admin.firestore.FieldValue,
+            userId: request.auth.uid,
+            projectId,
+            chatId: chatId || null,
+            followedOnly: !chatId && request.data?.followedOnly === true,
+        })
+    }
+)
+
 exports.createBotQuickTopicSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -3734,7 +3761,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
         const { onUpdateTask } = require('./Tasks/onUpdateTaskFunctions')
         const { projectId, taskId } = event.params
         await Promise.all([
-            onUpdateTask(taskId, projectId, event.data),
+            onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
         ])
     }

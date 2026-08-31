@@ -274,6 +274,11 @@ export const processNewUser = async firebaseUser => {
         projectAssistants
     )
 
+    // Persist the authoritative account/project batch before publishing logged-in Redux state.
+    // Otherwise mounted views begin project listeners and feed cleanup while the project does not
+    // exist yet, producing permission-denied noise and racing the actual signup commit.
+    await uploadNewUser(userId, user, project, task, workstream, assistant)
+
     store.dispatch(
         setInitialDataForNewUser(
             user,
@@ -286,8 +291,13 @@ export const processNewUser = async firebaseUser => {
         )
     )
 
-    createUploadNewUserFeeds(mappedUser, userId, project.id, project, task.id, task)
-    await uploadNewUser(userId, user, project, task, workstream, assistant)
+    try {
+        await createUploadNewUserFeeds(mappedUser, userId, project.id, project, task.id, task)
+    } catch (error) {
+        // Feed history is supplementary. The authoritative user/project batch already succeeded,
+        // so a feed-side failure must not restart provisioning with a second initial project.
+        console.warn('[NewUser] Could not create initial feed history:', error)
+    }
 
     // Create "Work" project
     const workProject = generateInitialProject(userId, assistant?.uid)

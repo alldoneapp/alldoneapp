@@ -19,6 +19,7 @@ const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
 const { FieldValue } = require('firebase-admin/firestore')
 const { persistTaskStatusFeed } = require('./taskStatusFeed')
+const { persistCrossUserTaskStatusStatistics } = require('./taskStatusStatistics')
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
@@ -332,7 +333,7 @@ const captureTaskPriorityFeedbackSafely = async (projectId, taskId, oldTask, new
     }
 }
 
-const onUpdateTask = async (taskId, projectId, change) => {
+const onUpdateTask = async (taskId, projectId, change, eventId) => {
     const promises = []
 
     const oldTask = change.before.data()
@@ -380,6 +381,11 @@ const onUpdateTask = async (taskId, projectId, change) => {
     promises.push(reconcileTaskMergeStatusAfterWorkflowChange({ projectId, taskId, oldTask, newTask }))
     promises.push(finalizeAssistantScheduleSource(oldTask, { id: taskId, ...newTask }))
     promises.push(persistTaskStatusFeed({ projectId, taskId, oldTask, newTask }))
+    promises.push(
+        persistCrossUserTaskStatusStatistics({ eventId, projectId, taskId, oldTask, newTask }).catch(error =>
+            console.error('[task statistics] Cross-user status update failed', { taskId, error: error.message })
+        )
+    )
     promises.push(
         enqueueWorkflowAiRunIfNeeded(projectId, taskId, oldTask, newTask).catch(error =>
             console.error('[workflowAiStep] Enqueue check failed', { taskId, error: error.message })

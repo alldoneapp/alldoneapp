@@ -51,4 +51,17 @@ describe('Required Firestore indexes', () => {
             ],
         })
     })
+
+    it('expires idempotency claims for server-owned task statistics', () => {
+        expect(
+            indexConfig.fieldOverrides.find(
+                override => override.collectionGroup === 'taskStatisticsEvents' && override.fieldPath === 'expiresAt'
+            )
+        ).toEqual({
+            collectionGroup: 'taskStatisticsEvents',
+            fieldPath: 'expiresAt',
+            ttl: true,
+            indexes: [],
+        })
+    })
 })

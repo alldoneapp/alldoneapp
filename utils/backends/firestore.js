@@ -150,6 +150,7 @@ import {
 
 import firebase from 'firebase/compat/app'
 import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
+import { initializeGoogleIdentity } from '../googleIdentityInitialization'
 import { resolveAdministratorUser } from './administratorUserResolver'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
@@ -803,10 +804,10 @@ export function initGAPIWeb(handlerFunction) {
     // is loaded in the web/index.html file
     // as a script tag
     onload = () => {
-        window.google.accounts.id.initialize({
-            client_id: GOOGLE_FIREBASE_WEB_CLIENT_ID,
+        initializeGoogleIdentity({
+            accountsId: window.google.accounts.id,
+            clientId: GOOGLE_FIREBASE_WEB_CLIENT_ID,
             callback: handlerFunction || handleGSICredentialResponse,
-            itp_support: true,
         })
         window.google.accounts.id.prompt()
     }
@@ -823,12 +824,10 @@ export const getGoogleClientId = () => {
 export function loginWithGoogleWeb() {
     // window.google
     // from Google Identity Services ( GSI )
-    return new Promise(() => {
-        window.google.accounts.id.initialize({
-            client_id: GOOGLE_FIREBASE_WEB_CLIENT_ID,
-            callback: handleGSICredentialResponseOnLogin,
-            itp_support: true,
-        })
+    initializeGoogleIdentity({
+        accountsId: window.google.accounts.id,
+        clientId: GOOGLE_FIREBASE_WEB_CLIENT_ID,
+        callback: handleGSICredentialResponseOnLogin,
     })
 }
 
@@ -2642,7 +2641,7 @@ export async function createUploadNewUserFeeds(user, uid, newProjectId, newProje
     await addFollower(newProjectId, followUserData, feedBatch)
     await createTaskCreatedFeed(newProjectId, firstTask, taskId, feedBatch, feedCreator)
     await addFollower(newProjectId, followTaskData, feedBatch)
-    feedBatch.commit()
+    await feedBatch.commit()
 }
 
 export const addWorkflowStepFeedChain = async (projectId, reviewerUid, userId, description) => {

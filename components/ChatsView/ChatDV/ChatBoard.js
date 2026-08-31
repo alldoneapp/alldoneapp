@@ -319,7 +319,14 @@ export default function ChatBoard({
     useEffect(() => {
         if (chatNotificationsAmount > 0) {
             setAmountOfNewCommentsToHighligth(state => state + chatNotificationsAmount)
-            markChatMessagesAsRead(projectId, chat.id)
+            markChatMessagesAsRead(projectId, chat.id).catch(error => {
+                console.error('[chat read] Could not clear unread notifications', {
+                    projectId,
+                    chatId: chat.id,
+                    code: error?.code,
+                    message: error?.message,
+                })
+            })
         }
     }, [chatNotificationsAmount])
 
