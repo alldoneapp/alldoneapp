@@ -30,6 +30,16 @@ describe('task project move completion', () => {
         expect(branch[1]).toMatch(/await awaitWriteAck\(batchFeed\.commit\(\), 'task project feed chain'\)/)
     })
 
+    it('reads moved activity history through the caller access projection', () => {
+        const source = readSource('backends/firestore.js')
+        const branch = source.match(
+            /export async function moveInnerFeedsOnMoveObjectFromProject\(([^]*?)\n}\n\nexport async function setTaskParentGoalMultiple/
+        )
+
+        expect(branch).not.toBeNull()
+        expect(branch[1]).toMatch(/\.where\('readerIds', 'array-contains', getLoggedUserAccessReaderId\(\)\)/)
+    })
+
     it('stamps calendar project moves with durable routing feedback in both task move paths', () => {
         const source = readSource('backends/Tasks/tasksFirestore.js')
         const normalMove = source.match(

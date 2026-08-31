@@ -160,6 +160,16 @@ const seed = async () => {
             lastChangeDate: 3,
             readerIds: [0, MEMBER_ID, TEAMMATE_ID],
         })
+        await setDoc(doc(db, `projectsInnerFeeds/${PROJECT_ID}/tasks/public-task/feeds/member-visible`), {
+            isPublicFor: [MEMBER_ID],
+            lastChangeDate: 2,
+            readerIds: [MEMBER_ID],
+        })
+        await setDoc(doc(db, `projectsInnerFeeds/${PROJECT_ID}/tasks/public-task/feeds/hidden-feed`), {
+            isPublicFor: [TEAMMATE_ID],
+            lastChangeDate: 1,
+            readerIds: [TEAMMATE_ID],
+        })
     })
 }
 
@@ -644,6 +654,18 @@ describe('queries used by the web client', () => {
         )
         await assertFails(getDoc(doc(outsiderDb, `feedsStore/${PROJECT_ID}/all/public-feed`)))
         await assertFails(getDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/hidden-feed`)))
+    })
+
+    it('requires the reader projection when copying a moved object activity history', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const activityHistory = collection(memberDb, `projectsInnerFeeds/${PROJECT_ID}/tasks/public-task/feeds`)
+
+        await assertFails(getDocs(activityHistory))
+        const visibleHistory = await assertSucceeds(
+            getDocs(query(activityHistory, where('readerIds', 'array-contains', MEMBER_ID)))
+        )
+
+        expect(visibleHistory.docs.map(item => item.id)).toEqual(['member-visible'])
     })
 
     it('keeps Updates projections server-owned while allowing ordinary member feed writes', async () => {

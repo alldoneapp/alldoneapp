@@ -2227,6 +2227,7 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
 
     const feedsSnapshot = await db
         .collection(`projectsInnerFeeds/${oldProjectId}/${objectType}/${objectId}/feeds`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .get()
 
     if (feedsSnapshot.empty) return 0
