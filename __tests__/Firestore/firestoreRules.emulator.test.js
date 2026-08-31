@@ -49,6 +49,9 @@ const seed = async () => {
             guideProjectIds: [],
             templateProjectIds: [],
             archivedProjectIds: [],
+            // This is the actual new-user shape. Membership rules must not call map.diff() on
+            // this unchanged nullable field while atomically adding another project.
+            apisConnected: null,
         })
         await setDoc(doc(db, `users/${OUTSIDER_ID}`), {
             projectIds: [],
@@ -133,6 +136,22 @@ const seed = async () => {
             readerIds: [OUTSIDER_ID],
             roleIdsVisibleTo: { [OUTSIDER_ID]: [] },
             backlinkIdsVisibleTo: { [OUTSIDER_ID]: [INNER_TASK_NOTE_TOKEN] },
+        })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/readable-embedded-subtask`), {
+            projectId: PROJECT_ID,
+            parentId: 'public-task',
+            isSubtask: true,
+            isPublicFor: [MEMBER_ID],
+            readerIds: [MEMBER_ID],
+            roleIdsVisibleTo: { [MEMBER_ID]: [] },
+        })
+        await setDoc(doc(db, `items/${PROJECT_ID}/tasks/hidden-embedded-subtask`), {
+            projectId: PROJECT_ID,
+            parentId: 'public-task',
+            isSubtask: true,
+            isPublicFor: [OUTSIDER_ID],
+            readerIds: [OUTSIDER_ID],
+            roleIdsVisibleTo: { [OUTSIDER_ID]: [] },
         })
         await setDoc(doc(db, `items/${SHARED_PROJECT_ID}/tasks/shared-task`), {
             projectId: SHARED_PROJECT_ID,
@@ -318,6 +337,39 @@ describe('project membership authority', () => {
         batch.set(doc(creatorDb, `projectsWorkstreams/${projectId}/workstreams/default`), {
             creatorId,
             userIds: [creatorId],
+        })
+
+        await assertSucceeds(batch.commit())
+    })
+
+    it('allows a signed-in user to create a second project and join it atomically', async () => {
+        const projectId = 'member-second-project'
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const batch = writeBatch(memberDb)
+
+        batch.set(doc(memberDb, `projects/${projectId}`), {
+            id: 'client-placeholder-id',
+            creatorId: MEMBER_ID,
+            name: 'Work',
+            isShared: 0,
+            userIds: [MEMBER_ID],
+            workstreamIds: ['ws@default'],
+        })
+        batch.update(doc(memberDb, `users/${MEMBER_ID}`), {
+            projectIds: arrayUnion(projectId),
+            lastEditionDate: 2,
+            lastEditorId: MEMBER_ID,
+            projectMembershipMutation: {
+                projectId,
+                action: 'self-sync',
+                actorId: MEMBER_ID,
+                updatedAt: 2,
+            },
+        })
+        batch.set(doc(memberDb, `projectsWorkstreams/${projectId}/workstreams/ws@default`), {
+            projectId,
+            creatorId: MEMBER_ID,
+            userIds: [MEMBER_ID],
         })
 
         await assertSucceeds(batch.commit())
@@ -683,7 +735,29 @@ describe('queries used by the web client', () => {
         )
 
         const snapshot = await assertSucceeds(getDocs(tasks))
-        expect(snapshot.docs.map(item => item.id).sort()).toEqual(['focus-task', 'private-task', 'public-task'])
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual([
+            'focus-task',
+            'private-task',
+            'public-task',
+            'readable-embedded-subtask',
+        ])
+    })
+
+    it('loads embedded-task subtasks only through the reader projection', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const projectedSubtasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('readerIds', 'array-contains', MEMBER_ID),
+            where('parentId', '==', 'public-task')
+        )
+        const unscopedSubtasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where('parentId', '==', 'public-task')
+        )
+
+        const snapshot = await assertSucceeds(getDocs(projectedSubtasks))
+        expect(snapshot.docs.map(item => item.id)).toEqual(['readable-embedded-subtask'])
+        await assertFails(getDocs(unscopedSubtasks))
     })
 
     it('allows the projected day-rate reconciliation query', async () => {

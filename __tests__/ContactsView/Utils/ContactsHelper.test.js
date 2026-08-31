@@ -69,6 +69,11 @@ describe('getNewDefaultUser identity-field hardening', () => {
         expect(user.photoURL).not.toBeUndefined()
     })
 
+    it('initializes project-scoped integration state as a map', () => {
+        const user = getNewDefaultUser({ uid: 'abc' })
+        expect(user.apisConnected).toEqual({})
+    })
+
     it('preserves valid identity values supplied by the caller', () => {
         const user = getNewDefaultUser({
             uid: 'abc',

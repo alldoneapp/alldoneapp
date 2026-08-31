@@ -84,13 +84,22 @@ service cloud.firestore {
     }
 
     function projectMapChangedOnlyAt(fieldName, projectId) {
-      return resource.data.get(fieldName, {}).diff(request.resource.data.get(fieldName, {}))
-        .affectedKeys().hasOnly([projectId]);
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let before = resource.data.get(fieldName, {});
+      let after = request.resource.data.get(fieldName, {});
+      // Some long-lived and freshly-created users legitimately store nullable project maps
+      // (notably apisConnected: null). A project membership update that leaves such a field
+      // untouched must not try to call map.diff() on null and fail the entire atomic batch.
+      return !affected.hasAny([fieldName]) ||
+        (before is map && after is map && before.diff(after).affectedKeys().hasOnly([projectId]));
     }
 
     function projectMapChangedOnlyAtWithGlobal(fieldName, projectId) {
-      return resource.data.get(fieldName, {}).diff(request.resource.data.get(fieldName, {}))
-        .affectedKeys().hasOnly([projectId, 'allProjects']);
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let before = resource.data.get(fieldName, {});
+      let after = request.resource.data.get(fieldName, {});
+      return !affected.hasAny([fieldName]) ||
+        (before is map && after is map && before.diff(after).affectedKeys().hasOnly([projectId, 'allProjects']));
     }
 
     function validFocusChange(userId, projectId) {

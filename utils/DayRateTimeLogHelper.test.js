@@ -48,6 +48,7 @@ import {
     isDayRateTimeLogTask,
     normalizeDayRateTimezoneOffset,
     reconcileDayRateTimeLog,
+    reconcileExistingDayRateTimeLog,
     reconcileProjectDayRateTimeLogsBackfill,
 } from './DayRateTimeLogHelper'
 
@@ -164,6 +165,18 @@ describe('DayRateTimeLogHelper', () => {
 
         const tasksQuery = db.collection.mock.results[0].value
         expect(tasksQuery.where).toHaveBeenCalledWith('readerIds', 'array-contains', 'user-1')
+    })
+
+    it('does not query Firestore after an ordinary task completion when day-rate logging is disabled', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        const db = createMockDb([storedTask(30, { completed })])
+        ProjectHelper.getProjectById.mockReturnValue({})
+        getDb.mockReturnValue(db)
+
+        await expect(reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)).resolves.toBeNull()
+
+        expect(db.collection).not.toHaveBeenCalled()
+        expect(mockBatchCommit).not.toHaveBeenCalled()
     })
 
     afterAll(() => {

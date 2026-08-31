@@ -26,4 +26,18 @@ describe('note inner task access query', () => {
 
         expect(branch).toMatch(/handleOptionalSnapshotError\('note inner tasks', error, \(\) => callback\(\{\}\)\)/)
     })
+
+    it('reader-scopes the subtask query started by an embedded task tag', () => {
+        const functionStart = source.indexOf('watchSubtasks(projectId, taskId, watcherKey, callback)')
+        const nextFunctionStart = source.indexOf('\nexport ', functionStart + 1)
+        const branch = source.slice(functionStart, nextFunctionStart)
+
+        expect(functionStart).toBeGreaterThan(-1)
+        expect(nextFunctionStart).toBeGreaterThan(functionStart)
+        expect(branch).toMatch(/\.where\('readerIds', 'array-contains', getLoggedUserAccessReaderId\(\)\)/)
+        expect(branch).toMatch(/\.where\('parentId', '==', taskId\)/)
+        expect(branch).toMatch(
+            /handleOptionalSnapshotError\('embedded task subtasks', error, \(\) => callback\(\[\]\)\)/
+        )
+    })
 })
