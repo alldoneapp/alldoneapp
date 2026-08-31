@@ -2236,7 +2236,12 @@ export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newPro
     feedsSnapshot.forEach(feedDoc => {
         batch.set(
             db.doc(`projectsInnerFeeds/${newProjectId}/${objectType}/${objectId}/feeds/${feedDoc.id}`),
-            withoutServerAccessProjection(feedDoc.data())
+            withoutServerAccessProjection(feedDoc.data()),
+            // A task can be moved back to a project that still has the same historical
+            // feed id. Merge preserves that destination document's server-owned access
+            // projection until its trigger recalculates it; an overwrite would delete
+            // the projection fields and is correctly rejected by strict rules.
+            { merge: true }
         )
     })
     await awaitWriteAck(batch.commit(), 'moved object activity history')

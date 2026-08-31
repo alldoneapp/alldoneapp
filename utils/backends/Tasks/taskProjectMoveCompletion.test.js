@@ -38,6 +38,8 @@ describe('task project move completion', () => {
 
         expect(branch).not.toBeNull()
         expect(branch[1]).toMatch(/\.where\('readerIds', 'array-contains', getLoggedUserAccessReaderId\(\)\)/)
+        expect(branch[1]).toMatch(/withoutServerAccessProjection\(feedDoc\.data\(\)\)/)
+        expect(branch[1]).toMatch(/\{ merge: true \}/)
     })
 
     it('stamps calendar project moves with durable routing feedback in both task move paths', () => {
