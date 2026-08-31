@@ -710,6 +710,9 @@ async function createTaskUpdatedFeed(
             ? task.priority
             : 'none'
     }
+    if (typeof contextOverrides.isDone === 'boolean') {
+        taskFeedObject.isDone = contextOverrides.isDone
+    }
 
     await proccessFeed(
         projectId,

@@ -18,6 +18,7 @@ const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
 const { FieldValue } = require('firebase-admin/firestore')
+const { persistTaskStatusFeed } = require('./taskStatusFeed')
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
@@ -378,6 +379,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
     promises.push(reconcileTaskMergeStatusAfterWorkflowChange({ projectId, taskId, oldTask, newTask }))
     promises.push(finalizeAssistantScheduleSource(oldTask, { id: taskId, ...newTask }))
+    promises.push(persistTaskStatusFeed({ projectId, taskId, oldTask, newTask }))
     promises.push(
         enqueueWorkflowAiRunIfNeeded(projectId, taskId, oldTask, newTask).catch(error =>
             console.error('[workflowAiStep] Enqueue check failed', { taskId, error: error.message })

@@ -16,6 +16,7 @@ jest.mock('./backends/firestore', () => ({
 
 jest.mock('./HelperFunctions', () => ({
     chronoKeysOrder: jest.fn(),
+    getWorkflowStepsIdsSorted: jest.fn(workflow => Object.keys(workflow).sort()),
 }))
 
 jest.mock('./EstimationHelper', () => ({
@@ -24,7 +25,12 @@ jest.mock('./EstimationHelper', () => ({
 }))
 
 const { runHttpsCallableFunction } = require('./backends/firestore')
-const { getEarnedSkillPoints, getLevelUpUserUpdateData, updateXpByDoneTask } = require('./Levels')
+const {
+    getEarnedSkillPoints,
+    getLevelUpUserUpdateData,
+    updateXpByDoneForAllReviewers,
+    updateXpByDoneTask,
+} = require('./Levels')
 
 describe('Levels skill point awards', () => {
     const firebase = {
@@ -67,6 +73,32 @@ describe('Levels skill point awards', () => {
             projectId: 'project-1',
             userId: 'user-1',
             xpEarned: 400,
+            increaseProjectQuota: true,
+        })
+    })
+
+    test('awards reviewer XP only to current human project members', async () => {
+        runHttpsCallableFunction.mockResolvedValue({ totalXp: 600 })
+        const workflow = {
+            'step-1': { reviewerUid: 'member-1' },
+            'step-2': { reviewerUid: 'assistant-1', reviewerType: 'assistant' },
+            'step-3': { reviewerUid: 'former-member' },
+        }
+
+        await updateXpByDoneForAllReviewers(
+            { 'step-1': 2, 'step-2': 3, 'step-3': 4 },
+            workflow,
+            firebase,
+            {},
+            'project-1',
+            ['member-1']
+        )
+
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('awardXpSecondGen', {
+            projectId: 'project-1',
+            userId: 'member-1',
+            xpEarned: 600,
             increaseProjectQuota: true,
         })
     })

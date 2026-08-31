@@ -74,6 +74,10 @@ jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskSomedaySelectedFeed: jest.fn(() => Promise.resolve()),
 }))
 
+jest.mock('./taskStatusFeed', () => ({
+    persistTaskStatusFeed: jest.fn(() => Promise.resolve(false)),
+}))
+
 const admin = require('firebase-admin')
 const { buildTaskProgressReward, finalizeAssistantScheduleSource } = require('./onUpdateTaskFunctions')
 

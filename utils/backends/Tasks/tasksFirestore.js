@@ -2869,7 +2869,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     estimations,
     checkBoxId
 ) {
-    const { loggedUser } = store.getState()
+    const { loggedUser, loggedUserProjectsMap } = store.getState()
     const { parentId, subtaskIds = [], userId, stepHistory, userIds } = task
     const transitionDate = Date.now()
     const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
@@ -2967,8 +2967,15 @@ export async function moveTasksFromMiddleOfWorkflow(
     if (stepToMoveId === DONE_STEP) {
         const taskEstimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
         if (!task.parentId) {
-            updateXpByDoneTask(userId, taskEstimation, firebase, getDb(), projectId)
-            if (workflow) updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId)
+            awardTaskCompletionXp({
+                projectId,
+                taskId: task.id,
+                ownerId: userId,
+                taskEstimation,
+                estimations,
+                workflow,
+                projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
+            })
         }
         updateStatistics(projectId, userId, taskEstimation, false, false, null, batch)
 
@@ -3032,7 +3039,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
 
 const getTaskCompletedTime = task => {
@@ -3075,6 +3082,54 @@ const getTaskCompletedTime = task => {
     }
 }
 
+const reportTaskXpAwardError = (scope, projectId, taskId, error) => {
+    console.warn('[task XP] Could not award completion XP', {
+        scope,
+        projectId,
+        taskId,
+        code: error?.code,
+        message: error?.message,
+    })
+}
+
+const awardTaskCompletionXp = ({
+    projectId,
+    taskId,
+    ownerId,
+    taskEstimation,
+    estimations,
+    workflow,
+    projectMemberIds,
+}) => {
+    if (!Array.isArray(projectMemberIds) || projectMemberIds.includes(ownerId)) {
+        updateXpByDoneTask(ownerId, taskEstimation, firebase, getDb(), projectId).catch(error =>
+            reportTaskXpAwardError('owner', projectId, taskId, error)
+        )
+    }
+    if (workflow) {
+        updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId, projectMemberIds).catch(
+            error => reportTaskXpAwardError('reviewers', projectId, taskId, error)
+        )
+    }
+}
+
+const persistClientOwnedWorkflowFeed = (projectId, task, stepToMoveId, workflow, estimations, undoActionId) => {
+    // Done/Open activity is generated from the authoritative task update by onUpdateTaskSecondGen.
+    // Keeping those events server-owned avoids a second, browser-authenticated fan-out after the
+    // task commit. Intermediate workflow moves still use the legacy client feed chain for now.
+    if (stepToMoveId === DONE_STEP || stepToMoveId === OPEN_STEP) return
+
+    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoActionId).catch(error => {
+        console.error('[task workflow feeds] Could not persist workflow activity', {
+            projectId,
+            taskId: task.id,
+            stepToMoveId,
+            code: error?.code,
+            message: error?.message,
+        })
+    })
+}
+
 export async function moveTasksFromOpen(
     projectId,
     task,
@@ -3085,7 +3140,7 @@ export async function moveTasksFromOpen(
     checkBoxId,
     recurrenceBaseDateOverride = null
 ) {
-    const { loggedUser } = store.getState()
+    const { loggedUser, loggedUserProjectsMap } = store.getState()
     const loggedUserId = loggedUser.uid
     const completionDate = Date.now()
     const { parentId, subtaskIds = [], userId } = task
@@ -3155,8 +3210,15 @@ export async function moveTasksFromOpen(
         if (ownerIsTeamMeber) {
             const taskEstimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
             if (!task.parentId) {
-                updateXpByDoneTask(newUserId, taskEstimation, firebase, getDb(), projectId)
-                if (workflow) updateXpByDoneForAllReviewers(estimations, workflow, firebase, getDb(), projectId)
+                awardTaskCompletionXp({
+                    projectId,
+                    taskId: task.id,
+                    ownerId: newUserId,
+                    taskEstimation,
+                    estimations,
+                    workflow,
+                    projectMemberIds: loggedUserProjectsMap?.[projectId]?.userIds,
+                })
             }
             updateStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
         }
@@ -3232,7 +3294,7 @@ export async function moveTasksFromOpen(
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
 
 export async function moveTasksFromDone(projectId, task, stepToMoveId) {
@@ -3348,7 +3410,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
+    persistClientOwnedWorkflowFeed(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
 }
 
 export async function setTaskStatus(

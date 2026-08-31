@@ -27,11 +27,30 @@ export async function updateXpByDoneTask(userId, estimation, firebase, db, proje
     return updateXp(userId, xpEarned, projectId, true)
 }
 
-export async function updateXpByDoneForAllReviewers(estimations, workflow, firebase, db, projectId) {
+export async function updateXpByDoneForAllReviewers(
+    estimations,
+    workflow,
+    firebase,
+    db,
+    projectId,
+    eligibleReviewerIds = null
+) {
     const steps = getWorkflowStepsIdsSorted(workflow)
+    const eligibleReviewers = Array.isArray(eligibleReviewerIds) ? new Set(eligibleReviewerIds) : null
 
     for (let i = 0; i < steps.length; i++) {
-        const reviewerUid = workflow[steps[i]].reviewerUid
+        const step = workflow[steps[i]]
+        const reviewerUid = step.reviewerUid
+        // Assistants and stale workflow reviewers are not user accounts that can receive XP.
+        // The server correctly rejects them, but older clients attempted the callable anyway and
+        // leaked the rejection into every otherwise-successful task completion.
+        if (
+            !reviewerUid ||
+            step.reviewerType === 'assistant' ||
+            (eligibleReviewers && !eligibleReviewers.has(reviewerUid))
+        ) {
+            continue
+        }
         const estimation = estimations[steps[i]] ? estimations[steps[i]] : 0
         const estimationInPoints = getEstimationRealValue(null, estimation, ESTIMATION_TYPE_POINTS)
         const xpEarned = getEarnedXpByDoneTask(estimationInPoints)
