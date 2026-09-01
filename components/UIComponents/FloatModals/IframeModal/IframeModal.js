@@ -8,6 +8,17 @@ import useEscapeKey from '../../../../hooks/useEscapeKey'
 import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 
+// The only messages this modal speaks. The window `message` event is a shared
+// bus, not a private channel: react-native-web's scheduler runs on the
+// `setimmediate` polyfill, which implements setImmediate as
+// `window.postMessage('setImmediate$<rand>$<handle>', '*')` on OUR OWN window —
+// so every scheduled tick delivers a same-origin string here. Treating those as
+// "a message from the iframe that failed the origin check" logged a warning per
+// tick (hundreds while a modal is open) and buried a real cross-origin attempt
+// in the noise. Anything not shaped like our protocol is dropped silently; the
+// origin check below still guards every message that IS.
+const IFRAME_MESSAGE_TYPES = new Set(['GET_USER_DATA', 'DEDUCT_GOLD', 'REFUND_GOLD'])
+
 export default function IframeModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
@@ -42,11 +53,18 @@ export default function IframeModal() {
         }
 
         const handleMessage = async event => {
+            // Not addressed to us (our own scheduler, an SDK, a browser
+            // extension): ignore without a word.
+            if (event.source === window) return
+
+            const messageType = event?.data?.type
+            if (typeof messageType !== 'string' || !IFRAME_MESSAGE_TYPES.has(messageType)) return
+
             if (!trustedOrigin || event.origin !== trustedOrigin) {
                 console.warn('IframeModal: ignoring message from untrusted origin', {
                     origin: event.origin,
                     trustedOrigin,
-                    type: event?.data?.type,
+                    type: messageType,
                 })
                 return
             }
