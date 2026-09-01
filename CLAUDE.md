@@ -1506,6 +1506,69 @@ marked read the moment it appeared. The client half learns the same two facts fr
 two rules match; `isEmailHandledInMailbox` exists once per side because Cloud Functions cannot import
 app code — keep them in step.
 
+### One email address can belong to several accounts, and a connected mailbox has to prove itself (AT-2483)
+
+**The inbound Anna email channel weighs two different kinds of ownership proof, and merging them
+into one bag is what broke forwarding.** `findVerifiedUserByEmailIdentity` poured "this is the
+account's Firebase-Auth-verified login email" and "this address is a mailbox the account has
+OAuth-connected" into a single candidate map and then demanded `size === 1`. Both claims are
+ordinary and they routinely name **different** accounts belonging to the same human — so the day a
+second account was created by signing in with Google using an address another account had long had
+connected, the lookup found two owners and returned `null`. The reply, _"I couldn't match this
+sender to a verified Alldone account email"_, says the opposite of what happened: the address was
+matched twice, not zero times. Nothing about the connection had changed, which is why it reads as a
+broken integration. It also left **no trace at all** — the early return wrote no audit record and
+logged nothing, so the only evidence in production was the absence of an
+`annaEmailInboundAudit` document.
+
+Evidence is now **ranked**, and only a genuine tie inside one rank is refused:
+attested mailbox + verified login > attested mailbox > verified login > unattested mailbox.
+A connected mailbox outranks a login email because it is the deliberate per-address act — you
+OAuth-connect a mailbox INTO the workspace whose Anna should read it, while a login email is merely
+how you sign in.
+
+**That ordering is only safe because the connected claim is no longer forgeable.** It used to rest
+on two pieces of client-writable Firestore data: the token document under the owner-writable
+`users/{uid}/private/**` and the `apisConnected` / `emailConnections` entry on the user's own
+document. Only Cloud Functions ever write them, but "in practice" is not a security boundary.
+`emailIdentityAttestation.js` turns the claim into a proof by asking the **provider** — the only
+party that can say which mailbox a refresh token actually belongs to — and recording the answer in
+`verifiedEmailIdentities/{sha256(email)}/accounts/{userId}`, a collection no client can write (no
+rule, default deny). It is written at OAuth connect time, where the handlers already learn the
+address from Google's userinfo / Microsoft Graph, and **lazily** the first time an inbound message
+needs to weigh a connection that has no attestation yet — which is what makes every pre-existing
+connection work with **no migration**. Three verdicts, and the difference between the last two is
+load-bearing: `verified`, `rejected` (the provider named a different address, or refused the
+credentials — a fabricated token document lands here and stops counting as evidence at all), and
+`unverifiable` (network, timeout, unknown shape), which keeps its pre-AT-2483 precedence so a Google
+outage cannot silently revoke everybody's routing. Attestation alone is deliberately **not**
+sufficient: the account must ALSO currently list the address, so disconnecting stops routing
+immediately. `firestore.rules` closes the same hole at the source — `private/googleAuth_*` and
+`private/microsoftAuth_*` are owner-**readable** but no longer owner-writable, while every other
+private document (clockSync, gmailLabeling__, calendarProjectRouting__, taskPriorityLearning) keeps
+owner read+write.
+
+Three gaps in the same lookup went with it. The collection-group scan over `private` treated **any**
+document carrying `email` + `service: 'gmail'` as a connection, so it now runs an allowlist on the
+document **id** (`parseCredentialDocId`) — a hand-written `private/whatever` is not a connection
+whatever it claims. Connection state was read straight off the legacy `apisConnected` map, so a
+mailbox living only in the account-level `emailConnections` map was invisible and a **Microsoft/
+Outlook** mailbox could never be a sender at all (`service === 'gmail'` was hard-coded); both now go
+through `listEmailConnections`, unioned with the legacy map because that helper returns one shape or
+the other, never both. And the scan's `limit(20)` was already at **14** for one address on the
+dogfooding account — the OAuth documents of every account that ever connected it, including the
+orphans left by deleted accounts — truncating silently in document-name order; the cap is raised and
+reaching it is reported.
+
+Two things worth knowing when reading this code. A `users/` document whose Firebase Auth record was
+deleted is **not** an owner — `getUser` throws and the candidate is skipped, which is what the
+production logs showed for one of the two duplicate accounts. And the attestation read is paid
+**once per inbound message** no matter how many accounts claim the address, and not at all when
+nothing claims a connected mailbox. Pinned by `functions/Email/emailIdentityAttestation.test.js`,
+`functions/Email/emailUserRouting.test.js`, the AT-2483 blocks in
+`functions/Email/emailIncomingHandler.test.js` and the credential-document cases in
+`__tests__/Firestore/firestoreRules.emulator.test.js`.
+
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
 **A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything
