@@ -75,6 +75,17 @@ export default function SelectProjectModal({
             description={subheader}
             selectedProjectId={project.id}
             onSelectProject={handleSelect}
+            // The move is the one commit in this picker that takes real time —
+            // a conversation copy through a Cloud Function, then writes across
+            // both projects. Naming the destination is what tells the user the
+            // pick registered and is being carried out, rather than leaving a
+            // picker that looks like it ignored the click. The object type is
+            // deliberately not repeated here; the title above already carries it,
+            // and `translate(item.type)` is an empty string for several types in
+            // the German and Spanish files.
+            getBusyDescription={destination =>
+                translate('Moving to projectName', { projectName: destination?.name || '' })
+            }
         />
     )
 }
