@@ -5070,41 +5070,6 @@ exports.postponeGoalWithUndoSecondGen = onCall(
     }
 )
 
-exports.updateMilestoneDoneStateSecondGen = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { auth, data } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-
-        try {
-            const { executeMilestoneDoneTransition } = require('./Goals/milestoneDoneService')
-            return await executeMilestoneDoneTransition({ actorUserId: auth.uid, data })
-        } catch (error) {
-            const supportedCodes = new Set([
-                'invalid-argument',
-                'permission-denied',
-                'not-found',
-                'failed-precondition',
-            ])
-            const code = supportedCodes.has(error.code) ? error.code : 'internal'
-            console.error('[updateMilestoneDoneStateSecondGen] Failed', {
-                userId: auth.uid,
-                projectId: data?.projectId,
-                milestoneId: data?.milestoneId,
-                targetDone: data?.targetDone,
-                code,
-                error: error.message,
-            })
-            throw new HttpsError(code, code === 'internal' ? 'Failed to update milestone state' : error.message)
-        }
-    }
-)
-
 exports.reverseUndoActionSecondGen = onCall(
     {
         timeoutSeconds: 60,

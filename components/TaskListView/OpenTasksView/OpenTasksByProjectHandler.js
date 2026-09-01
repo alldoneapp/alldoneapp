@@ -26,7 +26,6 @@ import useEffectDebug from '../../../hooks/useEffectDebug'
 import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
-import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { useIsUserEditing } from '../../../utils/editingGuard'
 
@@ -109,18 +108,18 @@ export default function OpenTasksByProjectHandler({
         updateOpTasks(projectId, instanceKey, tasksForCurrentView, undefined, null, inSelectedProject)
     }, [])
 
-    // Keep integration refreshes out of the All Projects mount fan-out. The
-    // unified Email line refreshes connected accounts once, while calendar is
-    // refreshed on the selected project (and by its server-side sync).
+    // Keep integration refreshes out of the All Projects mount fan-out. The unified Email line
+    // refreshes connected accounts once.
+    //
+    // AT-2480: calendar used to be refreshed here too, per project block and only when that
+    // project was selected - which is exactly why meetings never appeared in All Projects. The
+    // calendar connection belongs to the user, not to the rendered project, so the pull now runs
+    // once for the whole board in `useTaskBoardCalendarSync` (mounted by `TasksByProjectSections`)
+    // and covers both views.
     useEffect(() => {
         const { loggedUser } = store.getState()
         if (inSelectedProject && currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
-            if (projectApis?.calendar) {
-                if (__DEV__)
-                    console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
-                checkIfCalendarConnected(projectId)
-            }
             if (projectApis?.email || projectApis?.gmail) {
                 if (__DEV__)
                     console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
