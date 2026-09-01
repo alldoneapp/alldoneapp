@@ -13,6 +13,7 @@ import {
     AUTOMATIC_PROJECT_OPTION,
 } from '../SelectProjectModal/projectPickerConstants'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
+import { LOADING_DATA_SPINNER_DELAY_MS } from '../../LoadingData'
 import Button from '../../../UIControls/Button'
 import ModalHeader from '../ModalHeader'
 import Line from '../GoalMilestoneModal/Line'
@@ -81,6 +82,7 @@ export default function ProjectListModal({
     containerStyle,
     emptyText,
     widthStyle,
+    getBusyDescription,
 }) {
     const dispatch = useDispatch()
     const [activeTabIndex, setActiveTabIndex] = useState(initialTabIndex)
@@ -174,25 +176,59 @@ export default function ProjectListModal({
 
     // A commit is awaited to completion before the picker closes, and for the
     // move flow that is several seconds of work across two projects. The picker
-    // therefore stays on screen and interactive for the whole of it — which is
-    // exactly when a person clicks the row again, or presses Enter, and starts a
-    // SECOND move of the same object. The two runs then race over one document:
+    // therefore stays on screen for the whole of it, so it has to do two things:
+    // refuse a second commit, and say that the first one is still running.
+    //
+    // Refusing matters because a picker that looks untouched is exactly what
+    // makes a person click the row again, or press Enter — starting a SECOND
+    // move of the same object. The two runs then race over one document:
     // whichever deletes the source first leaves the other one writing to a
     // document that no longer exists, and under the strict rules every access to
     // a missing document — write, delete, even a plain read — comes back as
     // `permission-denied`, never `not-found`. So the duplicate run reports the
     // move as broken while the move it duplicated actually succeeded.
     const commitInFlight = useRef(false)
+    const [committingIndex, setCommittingIndex] = useState(null)
+    const [busyVisible, setBusyVisible] = useState(false)
+
+    // Most callers of this picker commit instantly (a search scope, a default
+    // project), so the busy state waits out the same grace period as the app's
+    // global spinner rather than flashing on every pick. Blocking is immediate;
+    // only saying so is delayed.
+    useEffect(() => {
+        if (committingIndex === null) {
+            setBusyVisible(false)
+            return
+        }
+        const timer = setTimeout(() => setBusyVisible(true), LOADING_DATA_SPINNER_DELAY_MS)
+        return () => clearTimeout(timer)
+    }, [committingIndex])
+
+    // Only a caller whose commit does real work supplies this; everyone else
+    // keeps the picker's ordinary description and never sees a busy state at all.
+    // `committingIndex` clears one render before the effect clears `busyVisible`,
+    // so the destination has to be resolved before deciding to ask for a message
+    // — otherwise that in-between render asks the caller to describe nothing.
+    const committingDestination =
+        committingIndex === null
+            ? null
+            : committingIndex === -1
+              ? { id: leadingOptionId }
+              : currentProjects[committingIndex]
+    const busyDescription =
+        busyVisible && getBusyDescription && committingDestination ? getBusyDescription(committingDestination) : null
 
     const commitSafely = index => {
         if (commitInFlight.current) return
         commitInFlight.current = true
+        setCommittingIndex(index)
         commit(index)
             .catch(error => {
                 console.error('[ProjectListModal] Could not commit project selection', error)
             })
             .finally(() => {
                 commitInFlight.current = false
+                setCommittingIndex(null)
             })
     }
 
@@ -236,7 +272,7 @@ export default function ProjectListModal({
                 containerStyle,
             ]}
         >
-            <ModalHeader closeModal={closeModal} title={title} description={description} />
+            <ModalHeader closeModal={closeModal} title={title} description={busyDescription || description} />
 
             {tabs && (
                 <View style={localStyles.tabsContainer}>
@@ -244,7 +280,13 @@ export default function ProjectListModal({
                 </View>
             )}
 
-            <View style={localStyles.projectListContainer}>
+            <View
+                style={[
+                    localStyles.projectListContainer,
+                    committingIndex !== null && localStyles.projectListInert,
+                    busyVisible && localStyles.projectListBusy,
+                ]}
+            >
                 <CustomScrollView
                     ref={scrollRef}
                     showsVerticalScrollIndicator={false}
@@ -260,8 +302,9 @@ export default function ProjectListModal({
                     {leadingOptionVisible &&
                         React.createElement(LEADING_ROW_BY_OPTION_ID[leadingOptionId] || AllProjectItem, {
                             selectedProjectId,
-                            onProjectSelect: () => commit(-1),
+                            onProjectSelect: () => commitSafely(-1),
                             active: activeOptionIndex === -1,
+                            busy: busyVisible && committingIndex === -1,
                         })}
 
                     {currentProjects.length > 0 ? (
@@ -277,6 +320,7 @@ export default function ProjectListModal({
                                 }
                                 newProject={projectItem}
                                 active={index === activeOptionIndex}
+                                busy={busyVisible && committingIndex === index}
                                 onProjectSelect={() => onRowPress(index)}
                             />
                         ))
@@ -302,8 +346,8 @@ export default function ProjectListModal({
                         <Button
                             title={confirmLabel || translate('Proceed')}
                             type={'primary'}
-                            onPress={() => commit(activeOptionIndex)}
-                            disabled={activeOptionIndex === -1}
+                            onPress={() => commitSafely(activeOptionIndex)}
+                            disabled={activeOptionIndex === -1 || committingIndex !== null}
                         />
                     </View>
                 </>
@@ -327,6 +371,17 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
         marginHorizontal: -8,
+    },
+    // Blocking is immediate; saying so waits out the grace period. react-native-web
+    // deprecated the `pointerEvents` prop in favour of the style, so it lives here.
+    projectListInert: {
+        pointerEvents: 'none',
+    },
+    // A light touch on purpose: enough for the list to read as out of play while
+    // the spinner and the header message carry the actual news, and not so much
+    // that the picker looks broken or that the busy row's spinner goes faint.
+    projectListBusy: {
+        opacity: 0.72,
     },
     tabsContainer: {
         marginTop: 12,

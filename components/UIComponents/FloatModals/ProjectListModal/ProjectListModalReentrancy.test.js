@@ -2,6 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import ProjectListModal from './ProjectListModal'
+import { LOADING_DATA_SPINNER_DELAY_MS } from '../../LoadingData'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn() }))
 jest.mock('../SelectProjectModal/ProjectModalItem', () => 'ProjectModalItem')
@@ -28,12 +29,17 @@ const projects = [
     { id: 'project-b', name: 'Work' },
 ]
 
-const renderModal = onSelectProject => {
+const renderModal = (onSelectProject, props) => {
     const closeModal = jest.fn()
     let tree
     act(() => {
         tree = renderer.create(
-            <ProjectListModal projects={projects} onSelectProject={onSelectProject} closeModal={closeModal} />
+            <ProjectListModal
+                projects={projects}
+                onSelectProject={onSelectProject}
+                closeModal={closeModal}
+                {...props}
+            />
         )
     })
     return { tree, closeModal }
@@ -111,6 +117,53 @@ describe('ProjectListModal commit re-entrancy', () => {
         })
 
         expect(onSelectProject).toHaveBeenCalledTimes(2)
+    })
+
+    it('shows the chosen row working, and only that row, once the commit is slow', async () => {
+        jest.useFakeTimers()
+        let releaseCommit
+        const onSelectProject = jest.fn(() => new Promise(resolve => (releaseCommit = resolve)))
+        const { tree } = renderModal(onSelectProject, {
+            getBusyDescription: destination => `Moving to ${destination.name}...`,
+        })
+
+        pressRow(tree, 1)
+
+        // Nothing announced yet: an instant commit must not flash a spinner.
+        expect(tree.root.findAllByType('ProjectModalItem').map(row => row.props.busy)).toEqual([false, false])
+        expect(tree.root.findByType('ModalHeader').props.description).toBeUndefined()
+
+        act(() => {
+            jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS)
+        })
+
+        expect(tree.root.findAllByType('ProjectModalItem').map(row => row.props.busy)).toEqual([false, true])
+        expect(tree.root.findByType('ModalHeader').props.description).toBe('Moving to Work...')
+
+        await act(async () => {
+            releaseCommit()
+        })
+        expect(tree.root.findAllByType('ProjectModalItem').map(row => row.props.busy)).toEqual([false, false])
+        jest.useRealTimers()
+    })
+
+    it('stops the list taking input the instant a commit starts, before it says so', () => {
+        const onSelectProject = jest.fn(() => new Promise(() => {}))
+        const { tree } = renderModal(onSelectProject)
+
+        const inertViews = () =>
+            tree.root.findAll(
+                node =>
+                    Array.isArray(node.props.style) &&
+                    node.props.style.some(entry => entry && entry.pointerEvents === 'none')
+            )
+        expect(inertViews()).toHaveLength(0)
+
+        pressRow(tree, 0)
+
+        // Blocking is immediate even though the spinner waits out its grace
+        // period — the whole point is that a second click cannot land.
+        expect(inertViews().length).toBeGreaterThan(0)
     })
 
     it('releases the guard after a failed commit so the user can retry', async () => {

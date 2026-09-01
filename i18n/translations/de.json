@@ -2348,5 +2348,6 @@
     "New message": "Neue Nachricht",
     "Jump to newest message": "Zur neuesten Nachricht springen",
     "Project skills description": "Skills sind wiederverwendbare Anleitungspakete (Agent-Skills-Format), die Assistenten bei Bedarf laden. Hier hinzugefügte Skills gehören zu diesem Projekt und stehen den Assistenten dieses Projekts sofort zur Verfügung.",
-    "Manage": "Verwalten"
+    "Manage": "Verwalten",
+    "Moving to projectName": "Wird nach %{projectName} verschoben ..."
 }
