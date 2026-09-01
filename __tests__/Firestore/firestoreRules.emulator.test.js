@@ -814,6 +814,34 @@ describe('queries used by the web client', () => {
         await assertSucceeds(setDoc(doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/sanitized-move`), copiedTask))
     })
 
+    it('requires a merge when the destination id is already taken', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const sourceSnapshot = await getDoc(doc(memberDb, `items/${PROJECT_ID}/tasks/public-task`))
+        const copiedTask = { ...sourceSnapshot.data(), projectId: MOVE_TARGET_PROJECT_ID }
+        ;['readerIds', 'roleIdsVisibleTo', 'followedByVisibleTo', 'followedReaderIds', 'backlinkIdsVisibleTo'].forEach(
+            field => delete copiedTask[field]
+        )
+
+        // A calendar task is keyed by its calendar event id, so the destination
+        // project can already hold a document with that id — and so can any
+        // project a previous move failed halfway into. Stripping the projection
+        // is then not enough: an overwriting set() DELETES the destination's own
+        // projection fields, which accessProjectionUnchanged() rejects.
+        const occupiedRef = doc(memberDb, `items/${MOVE_TARGET_PROJECT_ID}/tasks/occupied-move`)
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), occupiedRef.path), {
+                projectId: MOVE_TARGET_PROJECT_ID,
+                isPublicFor: [0],
+                observersIds: [MEMBER_ID],
+                readerIds: [0, MEMBER_ID, TEAMMATE_ID],
+                roleIdsVisibleTo: { 0: [], [MEMBER_ID]: [], [TEAMMATE_ID]: [] },
+            })
+        })
+
+        await assertFails(setDoc(occupiedRef, copiedTask))
+        await assertSucceeds(setDoc(occupiedRef, copiedTask, { merge: true }))
+    })
+
     it('keeps a private moved task readable and editable while its server projection is pending', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()

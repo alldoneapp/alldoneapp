@@ -175,7 +175,7 @@ import {
     supersedeFocusHandoffs,
 } from './focusHandoffRace'
 import { isTaskOnUserPlate } from './focusTaskEligibility'
-import { withoutServerAccessProjection } from '../accessProjection'
+import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -2276,10 +2276,13 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
 
     delete taskCopy.time
     taskCopy.projectId = newProject.id
+    // A stale move marker must never survive into the destination copy, and a
+    // merge cannot remove a field it does not name.
+    taskCopy.movingToOtherProjectId = null
     await awaitWriteAck(
         getDb()
             .doc(`items/${newProject.id}/tasks/${task.id}`)
-            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy))),
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy)), CROSS_PROJECT_DESTINATION_WRITE),
         'create task in target project'
     )
     performanceTrace.mark('target_task_created')
@@ -2395,10 +2398,11 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
 
     delete taskCopy.time
     taskCopy.projectId = newProject.id
+    taskCopy.movingToOtherProjectId = null
     await awaitWriteAck(
         getDb()
             .doc(`items/${newProject.id}/tasks/${task.id}`)
-            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy))),
+            .set(withoutServerAccessProjection(removeUndefinedForFirestore(taskCopy)), CROSS_PROJECT_DESTINATION_WRITE),
         'create goal task in target project'
     )
 
