@@ -1,19 +1,16 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import v4 from 'uuid/v4'
 
 import CustomVideoContainer from '../tags/CustomVideoContainer'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class VideoFormat extends Embed {
+export default class VideoFormat extends ReactEmbedBlot {
     static create(videoData) {
         const { text, uri, isNew, externalId, isLoading, editorId } = videoData
         const node = super.create(text)
-        const refs = VideoFormat.refs
         const id = externalId ? externalId : v4()
 
         node.setAttribute('data-id', id)
@@ -26,10 +23,6 @@ export default class VideoFormat extends Embed {
         if (editorId != null) node.setAttribute('editorId', editorId)
 
         VideoFormat.data = text
-        VideoFormat.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,

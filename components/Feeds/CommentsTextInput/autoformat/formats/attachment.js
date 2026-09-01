@@ -1,5 +1,4 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import v4 from 'uuid/v4'
 import { Provider } from 'react-redux'
 
@@ -7,14 +6,12 @@ import FileDownloadableTag from '../../../../Tags/FileDownloadableTag'
 import store from '../../../../../redux/store'
 import { quillTextInputProjectIds } from '../../CustomTextInput3'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class Attachment extends Embed {
+export default class Attachment extends ReactEmbedBlot {
     static create(attachmentData) {
         const { text, uri, isNew, externalId, isLoading, editorId } = attachmentData
         const node = super.create(text)
-        const refs = Attachment.refs
         const id = externalId ? externalId : v4()
 
         node.setAttribute('data-id', id)
@@ -27,10 +24,6 @@ export default class Attachment extends Embed {
         if (editorId != null) node.setAttribute('editorId', editorId)
 
         Attachment.data = text
-        Attachment.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,

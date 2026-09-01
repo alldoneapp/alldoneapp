@@ -96,6 +96,7 @@ import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
 import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
 import { applyPastedDeltaToEditor } from './notePaste'
+import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -976,7 +977,16 @@ const NotesEditorView = ({
         }
 
         loadNoteContent()
-        return cleanup
+        return () => {
+            // `cleanup` also runs from `window.onbeforeunload`, where the editor is NOT going
+            // away — the sweep belongs to the unmount only. Quill 2 never tells a blot that its
+            // editor is gone, so without this every embed in the note (task tags, mentions,
+            // hashtags, images) leaks its React root and redux subscription on the way out, and
+            // reopening the note simply adds another set.
+            const editorRoot = quillRef.current?.root
+            cleanup()
+            unmountEmbedReactRoots(editorRoot)
+        }
     }, [])
 
     useEffect(() => {

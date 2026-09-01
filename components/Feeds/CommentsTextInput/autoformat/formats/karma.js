@@ -1,20 +1,17 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import v4 from 'uuid/v4'
 import { Provider } from 'react-redux'
 
 import KarmaTag from '../../../../Tags/KarmaTag'
 import store from '../../../../../redux/store'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class Karma extends Embed {
+export default class Karma extends ReactEmbedBlot {
     static create(attachmentData) {
         const { userId, editorId } = attachmentData
         const text = 'Karma'
         const node = super.create(text)
-        const refs = Karma.refs
         const id = v4()
 
         node.setAttribute('data-id', id)
@@ -24,10 +21,6 @@ export default class Karma extends Embed {
         node.setAttribute('editorId', editorId)
 
         Karma.data = text
-        Karma.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,
