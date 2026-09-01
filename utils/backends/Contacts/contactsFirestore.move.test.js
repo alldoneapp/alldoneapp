@@ -67,7 +67,14 @@ describe('setContactProject', () => {
             }
         )
 
-        expect(mockTargetSet).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'note-1' }))
+        // Merged, never overwritten: an id the destination project already holds
+        // (a retried move, a calendar object keyed by its event id) would
+        // otherwise strip the destination's server access projection and be
+        // refused by the rules.
+        expect(mockTargetSet).toHaveBeenCalledWith(
+            expect.objectContaining({ noteId: 'note-1', movingToOtherProjectId: null }),
+            { merge: true }
+        )
         expect(mockSourceUpdate).toHaveBeenCalledWith({ movingToOtherProjectId: 'project-b' })
         expect(mockSourceUpdate.mock.invocationCallOrder[0]).toBeLessThan(mockSourceDelete.mock.invocationCallOrder[0])
     })

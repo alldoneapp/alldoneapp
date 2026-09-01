@@ -102,7 +102,7 @@ export const awaitWriteAck = (write, label = 'firestore write') => {
                 }
                 finished = true
                 cleanup()
-                reject(error)
+                reject(describeFailedWrite(error, label))
             }
         )
 
@@ -113,6 +113,30 @@ export const awaitWriteAck = (write, label = 'firestore write') => {
         // Cover the narrow race between the initial level check and listener setup.
         if (isAppOffline()) releaseForOfflineWork()
     })
+}
+
+/**
+ * Name the write on the error the caller receives.
+ *
+ * A multi-write flow — a cross-project move is fifteen writes across two
+ * projects — otherwise surfaces every one of them as the same bare
+ * `FirebaseError: Missing or insufficient permissions.`, with nothing to say
+ * which document was refused. The label is already written at every call site
+ * for the offline warning; carrying it onto the rejection costs nothing and is
+ * the difference between a reproducible report and a guess.
+ *
+ * The original error is returned mutated rather than wrapped, so `error.code`,
+ * the stack and any `instanceof` check a caller makes still hold.
+ */
+const describeFailedWrite = (error, label) => {
+    if (!error || typeof error !== 'object' || error.writeLabel) return error
+    try {
+        error.writeLabel = label
+        if (typeof error.message === 'string') error.message = `${error.message} (write: ${label})`
+    } catch (mutationError) {
+        // A frozen error object is still worth reporting unchanged.
+    }
+    return error
 }
 
 const continueWithoutServerAck = (settled, label) => {
