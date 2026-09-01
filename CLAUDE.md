@@ -404,10 +404,13 @@ conversational noise that would pin schemas for the whole thread. Matching is lo
 `web_search` is never reported as a bare `search`.
 
 **An unattended run turns tool search off entirely.** Tool search trades a retry for a smaller
-prompt, and an interactive user simply asks again — but nobody is watching a recurring task or a
-heartbeat, so there the trade is all cost. `generatePreConfigTaskResult` takes
-`options.disableToolSearch`, and `assistantRecurringTasks` plus both `assistantHeartbeat` call sites
-set it. Interactive runs keep tool search.
+prompt, and an interactive user simply asks again — but nobody is watching a recurring task, a
+heartbeat or a workflow AI step, so there the trade is all cost. `generatePreConfigTaskResult` takes
+`options.disableToolSearch`, and all four unattended call sites set it: `assistantRecurringTasks`,
+both `assistantHeartbeat` sites, and `workflowAiStep`. The workflow step is the worst of them to get
+wrong — it **hands the task to the next reviewer when it finishes**, so a step that reported a tool
+as unavailable would advance the task anyway and carry the non-answer down the chain. The two
+interactive entry points (`generatePreConfigTaskResultSecondGen`) keep tool search.
 
 **Prefixed tool families are namespaced BEFORE the keyword rules.** `getToolSearchNamespaceName`'s
 keyword tests used to run first, and `talk_to_assistant_*` / `external_tool_*` / `mcp_*` names are
@@ -1766,8 +1769,17 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
   resolves exports maps with the **node** conditions — under jsdom's default browser
   condition, jest 30 would resolve e.g. jwks-rsa's `jose` to its browser ESM build and
   fail at require time. CI's `test:web:changed` excludes `functions/` entirely, so the
-  functions suite is a local check — drift CAN land on master unnoticed (it has: three
-  suites carry stale assertions from AT-2199-era commits, tracked separately). Three
+  functions suite is a local check — drift CAN land on master unnoticed, and it does.
+  **Run `npx jest --config ci/jest.functions.config.js functions` before pushing anything
+  under `functions/`**; as of 2026-09-01 it is fully green (236 suites / 3247 tests), so a
+  failure there is yours. The drift is rarely a broken behaviour — it is a stale test
+  DOUBLE. `vmTargetTask.test.js` sat red for four days because "Harden Firestore access
+  rollout" (`6009eabd85`) moved project membership from the user document's `projectIds`
+  to the project document's `userIds`, and the double only seeded the user side; two of
+  its cases then went on passing while asserting nothing, because everything failed at the
+  project gate before reaching the check under test. When a double stops matching what the
+  code reads, fix the double AND confirm the still-green cases are not green for the wrong
+  reason. Three
   web-located "bridge" suites that require functions code
   (`__tests__/TwilioWhatsAppService.test.js`, `__tests__/Chats/copyChatToOtherProject.test.js`,
   `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) run in the functions config

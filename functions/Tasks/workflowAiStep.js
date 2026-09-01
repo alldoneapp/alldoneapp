@@ -598,7 +598,16 @@ const runWorkflowAiStep = async (runId, run) => {
                         // The wall clock is the scheduled one, not the interactive 55 minutes: this
                         // run executes inside runWorkflowAiStepsSecondGen, whose Cloud Scheduler
                         // attempt deadline is 30 minutes.
-                        { triggerMessageId, maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS }
+                        {
+                            triggerMessageId,
+                            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+                            // Unattended, and it hands the task on when it is done: a step that
+                            // failed to search for a tool it was told to use would report the tool
+                            // as unavailable, advance the task to the next reviewer anyway and
+                            // spend the Gold. Send every schema instead of deferring them behind
+                            // hosted tool search.
+                            disableToolSearch: true,
+                        }
                     )
                 }
             } catch (error) {
