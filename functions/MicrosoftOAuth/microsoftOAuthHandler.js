@@ -264,6 +264,20 @@ async function handleOAuthCallback(code, state) {
         connectionId,
     })
 
+    // Microsoft Graph has just named the mailbox these credentials belong to — the one
+    // moment ownership is actually proven. Record it so the Anna email channel can trust
+    // this connection when it resolves an inbound sender (AT-2483).
+    if (connectionService === CONNECTION_SERVICE_EMAIL) {
+        const { recordEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await recordEmailIdentityAttestation({
+            userId,
+            email,
+            provider: EMAIL_PROVIDER_MICROSOFT,
+            connectionId,
+            source: 'microsoft_oauth_connect',
+        })
+    }
+
     const userRef = admin.firestore().collection('users').doc(userId)
     const userDoc = await userRef.get()
     const userData = userDoc.exists ? userDoc.data() || {} : {}
@@ -403,6 +417,11 @@ async function revokeConnectionAccess(userId, connectionId) {
             .catch(() => null)
     }
 
+    if (connectionService === CONNECTION_SERVICE_EMAIL && connection?.emailAddress) {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({ userId, email: connection.emailAddress })
+    }
+
     const updateData = { [`${mapField}.${connectionId}`]: FieldValue.delete() }
     const resolver =
         connectionService === CONNECTION_SERVICE_CALENDAR ? resolveCalendarConnection : resolveEmailConnection
@@ -436,9 +455,20 @@ async function revokeAccess(userId, projectId, service) {
         return await revokeConnectionAccess(userId, projectId)
     }
 
-    await tokenDocRef(userId, projectId, service)
-        .delete()
-        .catch(() => null)
+    const legacyTokenRef = tokenDocRef(userId, projectId, service)
+    const legacyTokenEmail =
+        service === 'email'
+            ? await legacyTokenRef
+                  .get()
+                  .then(doc => (doc.exists ? doc.data()?.email || '' : ''))
+                  .catch(() => '')
+            : ''
+    await legacyTokenRef.delete().catch(() => null)
+
+    if (legacyTokenEmail) {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({ userId, email: legacyTokenEmail })
+    }
 
     const updateData = {}
     if (service === 'calendar') {

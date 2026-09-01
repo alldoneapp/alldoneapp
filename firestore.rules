@@ -486,12 +486,34 @@ service cloud.firestore {
       allow delete: if signedIn() && (request.auth.uid == userId || isAdministrator());
     }
 
+    // OAuth credential documents are written ONLY by Cloud Functions, right after the
+    // provider itself confirmed which mailbox or calendar the tokens belong to. They stay
+    // owner-readable (the app renders connection state from them), but a client write is
+    // refused: fabricating `private/googleAuth_…` is otherwise all it takes for an account
+    // to present somebody else's address as a connected mailbox, which the Anna email
+    // channel used to accept as proof of ownership (AT-2483). Everything else under
+    // private/ keeps owner read+write — clockSync, gmailLabeling_*, calendarProjectRouting_*
+    // and taskPriorityLearning are all written from the app.
+    match /users/{userId}/private/{privateDocId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if signedIn() && request.auth.uid == userId &&
+        !privateDocId.matches('(googleAuth|microsoftAuth)_.*');
+    }
+
+    // One named segment before the recursive wildcard, so this cannot also match the
+    // private document itself and hand back the write the rule above just withheld
+    // (`{nested=**}` matches zero segments). Covers e.g. gmailLabelingState_*/messages/*.
+    match /users/{userId}/private/{privateDocId}/{nestedCollection}/{nested=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
     // Include one named segment before the recursive wildcard. In rules v2 a
     // `{document=**}` wildcard can match zero segments, so the old shape also
     // matched users/{userId} itself and silently bypassed every field-level
     // restriction in the rule above.
     match /users/{userId}/{userSubcollection}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow read, write: if signedIn() && request.auth.uid == userId &&
+        userSubcollection != 'private';
     }
 
     // Raw personal provider API keys are server-only. Unlike the legacy

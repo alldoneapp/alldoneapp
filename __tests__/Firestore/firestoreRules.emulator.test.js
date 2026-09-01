@@ -1105,11 +1105,43 @@ describe('server-only data', () => {
         'taskStatisticsEvents/event-a',
         `firestoreAccessProjectionJobs/${PROJECT_ID}`,
         'firestoreAccessProjectionMigrations/schema-v2',
+        'verifiedEmailIdentities/abc123/accounts/member',
     ])('denies client reads and writes at %s', async documentPath => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
 
         await assertFails(getDoc(doc(memberDb, documentPath)))
         await assertFails(setDoc(doc(memberDb, documentPath), { secret: 'never-client-visible' }))
+    })
+
+    // Fabricating one of these is otherwise all it takes to present somebody else's
+    // address as a connected mailbox, which the Anna email channel treats as proof of
+    // ownership (AT-2483). Only Cloud Functions write them, after the provider itself
+    // confirmed the address.
+    it.each([
+        `users/${MEMBER_ID}/private/googleAuth_${PROJECT_ID}_gmail`,
+        `users/${MEMBER_ID}/private/googleAuth_email_google_ab12cd34`,
+        `users/${MEMBER_ID}/private/microsoftAuth_email_microsoft_ab12cd34`,
+    ])('denies a client write to its own OAuth credential document %s', async documentPath => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertFails(setDoc(doc(memberDb, documentPath), { email: 'victim@example.com', service: 'gmail' }))
+        // Still readable: the app renders connection state from these documents.
+        await assertSucceeds(getDoc(doc(memberDb, documentPath)))
+    })
+
+    it('keeps every other private document owner-writable', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await assertSucceeds(setDoc(doc(memberDb, `users/${MEMBER_ID}/private/clockSync`), { time: 1 }))
+        await assertSucceeds(
+            setDoc(doc(memberDb, `users/${MEMBER_ID}/private/gmailLabeling_${PROJECT_ID}`), { enabled: true })
+        )
+        await assertSucceeds(
+            setDoc(doc(memberDb, `users/${MEMBER_ID}/private/gmailLabelingState_${PROJECT_ID}/messages/m1`), {
+                labeled: true,
+            })
+        )
+        await assertFails(setDoc(doc(memberDb, `users/${OUTSIDER_ID}/private/clockSync`), { time: 1 }))
     })
 })
 
