@@ -83,11 +83,16 @@ jest.mock('../../../utils/backends/Assistants/assistantsFirestore', () => ({
 }))
 
 const mockSetProjectsInitialData = jest.fn((...args) => ({ type: 'SET_PROJECTS_INITIAL_DATA', args }))
+// This factory REPLACES the whole module, so every action `loadInitialData` dispatches has to be
+// listed here - an omitted one is `undefined` and takes the boot down with
+// "(0 , _actions.<name>) is not a function", failing all seven cases at once rather than the one
+// that cares. `setTaskColdStartEmptyToday` is dispatched unconditionally on the cold-start path.
 jest.mock('../../../redux/actions', () => ({
     initLogInForLoggedUser: jest.fn(payload => ({ type: 'INIT_LOGIN', payload })),
     setProjectsInitialData: (...args) => mockSetProjectsInitialData(...args),
     updateLoadingStep: jest.fn((step, message) => ({ type: 'UPDATE_LOADING_STEP', step, message })),
     storeLoggedUser: jest.fn(user => ({ type: 'STORE_LOGGED_USER', user })),
+    setTaskColdStartEmptyToday: jest.fn(emptyToday => ({ type: 'Set task cold start empty today', emptyToday })),
 }))
 
 jest.mock('../../../utils/InitialLoad/initialLoadHelper', () => ({
