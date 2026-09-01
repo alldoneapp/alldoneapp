@@ -700,6 +700,7 @@ describe('runWorkflowAiStep', () => {
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
             triggerMessageId: 'popup-comment-1',
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+            disableToolSearch: true,
         })
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
     })
@@ -1025,9 +1026,13 @@ describe('runWorkflowAiStep', () => {
         // The wall clock is the scheduled one: this run executes inside runWorkflowAiStepsSecondGen,
         // whose Cloud Scheduler attempt deadline would otherwise retry it into a second concurrent
         // invocation.
+        // disableToolSearch: an AI step is unattended AND hands the task on when it finishes, so a
+        // model that fails to search for a tool it was told to use would report the tool as missing
+        // and still advance the task. Send every schema instead.
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
             triggerMessageId: 'trigger-comment-1',
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+            disableToolSearch: true,
         })
     })
 
@@ -1040,6 +1045,7 @@ describe('runWorkflowAiStep', () => {
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
             triggerMessageId: null,
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+            disableToolSearch: true,
         })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
