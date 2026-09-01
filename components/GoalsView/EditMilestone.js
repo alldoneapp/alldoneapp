@@ -123,8 +123,16 @@ export default function EditMilestone({ milestone, onCancelAction, projectId }) 
             ...tmpMilestone,
             extendedName: cleanMilestoneTag(tmpMilestone.extendedName),
         }
-        Backend.updateMilestoneDoneState(projectId, updatedMilestone)
-        onCancelAction()
+        try {
+            await Backend.updateMilestoneDoneState(projectId, updatedMilestone)
+            onCancelAction()
+        } catch (error) {
+            console.error('[Milestone transition] Could not update milestone state', {
+                projectId,
+                milestoneId: updatedMilestone.id,
+                error,
+            })
+        }
     }
 
     const onKeyDown = event => {

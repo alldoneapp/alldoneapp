@@ -585,6 +585,11 @@ deploy:web:
         # "artifacts from every earlier stage", so without this the scope check below
         # would find no artifact and fall back to deploying unconditionally.
         - 'deploy_scope'
+        # Hosting can call functions introduced by the same commit. Both deploy jobs live in
+        # this stage, so make the backend finish first instead of briefly publishing a client
+        # whose callable does not exist yet.
+        - job: 'deploy:cloud:functions:production'
+          artifacts: false
     script:
         # build_firebase:latest only gains git once firebase_cmd_cache rebuilds it, and that
         # happens in this same pipeline — a runner holding a cached :latest would otherwise
@@ -618,6 +623,9 @@ deploy:web-dev:
         - 'build_web_staging'
         # Blocking on purpose, same as deploy:web.
         - 'test:web:full'
+        - job: 'deploy:cloud:functions:staging'
+          artifacts: false
+          optional: true
     script:
         - firebase --version
         # develop is dormant, so pushes there rarely race — but the guard costs one
