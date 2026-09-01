@@ -367,6 +367,91 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
     })
 
+    // tool search trades a retry for a smaller prompt, and an unattended run has no
+    // retry — it did every step of the work, reported the tool it was told to use as unavailable,
+    // spent the Gold and was marked done.
+    describe('hosted tool search is opt-out per run', () => {
+        const runWithOptions = options =>
+            generatePreConfigTaskResult(
+                'user-1',
+                'project-1',
+                'chat-1',
+                ['user-1'],
+                ['PUBLIC'],
+                'assistant-1',
+                'Update the global user description',
+                'en',
+                aiSettings,
+                { sendWhatsApp: false, name: 'Recurring task' },
+                null,
+                'tasks',
+                options
+            )
+
+        test('an unattended caller can turn it off', async () => {
+            await runWithOptions({ disableToolSearch: true })
+
+            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+                expect.objectContaining({ disableToolSearch: true })
+            )
+        })
+
+        test('an interactive run keeps it on, because the user can simply ask again', async () => {
+            await runWithOptions({})
+
+            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+                expect.objectContaining({ disableToolSearch: false })
+            )
+        })
+    })
+
+    // The two option bags look interchangeable at a call site, and one of them is silently ignored.
+    describe('run options passed as task metadata are called out', () => {
+        const runWithMetadata = taskMetadata =>
+            generatePreConfigTaskResult(
+                'user-1',
+                'project-1',
+                'chat-1',
+                ['user-1'],
+                ['PUBLIC'],
+                'assistant-1',
+                'Recurring prompt',
+                'en',
+                aiSettings,
+                taskMetadata,
+                null,
+                'tasks'
+            )
+
+        test('warns and still uses the default when a run option lands in the metadata bag', async () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+            await runWithMetadata({ name: 'Recurring task', maxRunWallClockMs: 25 * 60 * 1000 })
+
+            expect(warn).toHaveBeenCalledWith(
+                expect.stringContaining('run options passed as task metadata are ignored'),
+                expect.objectContaining({ misplaced: ['maxRunWallClockMs'] })
+            )
+            // The point of the warning: the value really was ignored.
+            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+                expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
+            )
+            warn.mockRestore()
+        })
+
+        test('stays quiet for ordinary task metadata', async () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+            await runWithMetadata({ sendWhatsApp: false, name: 'Recurring task', recurrence: 'daily' })
+
+            expect(warn).not.toHaveBeenCalledWith(
+                expect.stringContaining('run options passed as task metadata are ignored'),
+                expect.anything()
+            )
+            warn.mockRestore()
+        })
+    })
+
     test('uses canonical task context for a background VM-style predefined prompt', async () => {
         const canonicalContext = [
             [

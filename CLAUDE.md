@@ -370,6 +370,67 @@ It previously accepted **any** string and defaulted client-side to `MODEL_GPT5_4
 outside the selectable set that the classifier's mapper did not know — so it fell through to
 `gpt-5.2`, and calendar labeling ran on a model that was neither stored nor chosen.
 
+### Hosted tool search hides tools, and an unattended run cannot ask again
+
+`buildResponsesTools` (`functions/Assistant/assistantHelper.js`) uses OpenAI's hosted **tool
+search**: once a request carries `TOOL_SEARCH_MIN_FUNCTIONS` (10) or more function schemas on a
+tool-search-capable model, **every** function is marked `defer_loading: true` and packed into
+namespaces, and the model is sent only `{type: 'tool_search'}` plus the namespace descriptors. A
+typical assistant therefore starts a turn with **zero directly callable functions** — 48 deferred
+behind 10 namespaces is the ordinary case for the dogfooding account — and has to search for each
+tool by name before it can call it.
+
+That is a token optimization whose failure mode is a **silently wrong answer, not an error**. A
+daily recurring task ("update my global user description") did every step of its work — eight model
+rounds, `get_tasks` twice, `get_goals`, `get_notes`, `get_updates`, `get_contacts`, `get_chats`,
+three minutes, 23 Gold — produced a correct new description, and then wrote _"I couldn't persist the
+update because the available tools in this thread do not expose `update_user_description`."_ The
+tool was in the assistant's `allowedTools` and in the assembled schema list for that exact request;
+it sat in the `people_and_projects` namespace, the same one the run had already pulled `get_contacts`
+out of. The model simply never searched for it, and a model that concludes a tool is missing does
+not retry. Nothing failed, nothing was logged as an error, the task was marked done and the Gold was
+spent. The same task on the same model succeeded on each of the three preceding days.
+
+Three rules come out of that, and they are independent:
+
+**A tool the prompt names in writing is never deferred.** `addBaseInstructions` injects lines like
+_"use `update_user_description`"_, and an assistant's own `instructions` name their tools too — so
+the model is told by name that a tool exists while the schema for it is hidden. `interactWithChatStream`
+runs `collectPromptReferencedToolNames` over the **system** messages and passes the hits to
+`buildResponsesTools` as `alwaysDirectToolNames`; those go out as ordinary direct tools and the rest
+still defer. Scanning is deliberately limited to system messages — they hold our base instructions
+and the assistant's configured instructions, whereas a tool name in a user turn or a tool result is
+conversational noise that would pin schemas for the whole thread. Matching is longest-name-first, so
+`web_search` is never reported as a bare `search`.
+
+**An unattended run turns tool search off entirely.** Tool search trades a retry for a smaller
+prompt, and an interactive user simply asks again — but nobody is watching a recurring task or a
+heartbeat, so there the trade is all cost. `generatePreConfigTaskResult` takes
+`options.disableToolSearch`, and `assistantRecurringTasks` plus both `assistantHeartbeat` call sites
+set it. Interactive runs keep tool search.
+
+**Prefixed tool families are namespaced BEFORE the keyword rules.** `getToolSearchNamespaceName`'s
+keyword tests used to run first, and `talk_to_assistant_*` / `external_tool_*` / `mcp_*` names are
+built out of user-authored project and assistant names — so `/assistant/` swallowed every delegation
+tool into `assistant_settings` ("Manage assistant settings, memory, heartbeat behavior, skills, and
+thread context"), a delegate in a project called _MediAgents_ matched `/media/` and landed in
+`chats_and_media`, and the `integrations` namespace was unreachable dead code. Advertising a
+delegation tool under "assistant settings" is exactly what makes tool search miss it, and the
+overflow also pushed the real settings tools into an `assistant_settings_2` chunk. The prefix test
+now runs first.
+
+**`generatePreConfigTaskResult` reads run options from its 13th parameter, never from `taskMetadata`
+(the 10th).** The two bags look interchangeable at a call site and one of them is silently ignored:
+`assistantRecurringTasks` had been passing `maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS`
+(25 min) in the metadata bag, so every scheduled run in production reported the 55-minute interactive
+default while `checkRecurringAssistantTasks` is deployed with `SCHEDULED_FUNCTION_TIMEOUT_SECONDS`,
+sized for 25. The run's own guardrail could therefore never fire first — and per the note in
+`assistantRunLimits.js` a scheduled run past the Cloud Scheduler attempt deadline is not truncated,
+it gets a **second concurrent invocation of the same function**. `warnAboutMisplacedRunOptions` now
+names the mistake at runtime instead of swallowing it. Pinned by the tool-search blocks in
+`functions/Assistant/assistantHelper.test.js` and
+`functions/Assistant/assistantPreConfigTaskTopic.test.js`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

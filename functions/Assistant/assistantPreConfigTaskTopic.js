@@ -115,6 +115,26 @@ function buildScheduledTaskSourceLabel(taskMetadata) {
     return name ? `From your ${kind} "${name}"` : `From your ${kind}`
 }
 
+// Run-shaping options are read from the OPTIONS parameter (the 13th) only. taskMetadata (the 10th)
+// describes the scheduled task — its name, recurrence and WhatsApp flag — and putting a run option
+// there is a silent no-op: assistantRecurringTasks spent years passing its 25-minute scheduled wall
+// clock in that bag, so every recurring run reported a 55-minute budget while its onSchedule
+// transport was sized for 25, and the run's own guardrail could never fire before the platform cut
+// it off. The two bags look interchangeable at a call site, so name the mistake instead of
+// tolerating it.
+const RUN_SHAPING_OPTION_KEYS = ['maxRunWallClockMs', 'disableToolSearch', 'triggerMessageId']
+
+function warnAboutMisplacedRunOptions(taskMetadata) {
+    if (!taskMetadata || typeof taskMetadata !== 'object') return
+    const misplaced = RUN_SHAPING_OPTION_KEYS.filter(key => taskMetadata[key] !== undefined)
+    if (misplaced.length === 0) return
+    console.warn('⚠️ generatePreConfigTaskResult: run options passed as task metadata are ignored', {
+        misplaced,
+        taskName: taskMetadata.name || null,
+        hint: 'Pass them in the options argument (the 13th parameter) instead.',
+    })
+}
+
 async function generatePreConfigTaskResult(
     userId,
     projectId,
@@ -131,6 +151,7 @@ async function generatePreConfigTaskResult(
     options = {}
 ) {
     const functionStartTime = Date.now()
+    warnAboutMisplacedRunOptions(taskMetadata)
     // Use entry time if provided, otherwise use function start time
     const timeToFirstTokenStart = functionEntryTime || functionStartTime
     console.log('🚀 [TIMING] generatePreConfigTaskResult START', {
@@ -408,6 +429,13 @@ async function generatePreConfigTaskResult(
             userTimezoneOffset,
             language,
             maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,
+            // Unattended runs (recurring assistant tasks, heartbeats) send every tool schema up
+            // front instead of deferring them behind OpenAI's hosted tool search. Tool
+            // search is a token optimization that costs a retry when the model fails to search for
+            // a tool it needs — and in an unattended run there is nobody to retry: the run does the
+            // whole job, reports the tool as unavailable, spends the Gold and is marked done. An
+            // interactive run keeps tool search, because there the user simply asks again.
+            disableToolSearch: options?.disableToolSearch === true,
             // A scheduled/preconfigured run must not be marked successful after its tool loop
             // wrote a visible error and stopped. storeChunks persists the error first, then
             // propagates it so the recurring-task lifecycle can record a real failure and retry.

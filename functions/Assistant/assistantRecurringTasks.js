@@ -930,13 +930,24 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
                 recurrence: taskWithActivator.recurrence,
-                // These runs execute inline inside checkRecurringAssistantTasks, an onSchedule
-                // function whose Cloud Scheduler attempt deadline caps at 30 minutes, so they get
-                // the scheduled wall clock rather than the interactive 55 minutes.
-                maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
             },
             null,
-            'tasks'
+            'tasks',
+            {
+                // These runs execute inline inside checkRecurringAssistantTasks, an onSchedule
+                // function whose Cloud Scheduler attempt deadline caps at 30 minutes, so they get
+                // the scheduled wall clock rather than the interactive 55 minutes. This lives in
+                // the OPTIONS argument, not in the task metadata one: generatePreConfigTaskResult
+                // reads run-shaping options only from the 13th parameter, so the years this spent
+                // in the metadata bag were years it silently did nothing and every scheduled run
+                // believed it had 55 minutes while its transport was sized for 25.
+                maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+                // Nobody is watching a scheduled run, so it cannot be re-asked when the model
+                // fails to search for a tool it was told to use — it does the whole job, reports
+                // the tool as missing, spends the Gold and is marked done. Send every
+                // schema up front and trade the prompt-size saving for determinism.
+                disableToolSearch: true,
+            }
         )
 
         // WhatsApp notification is now handled inside generatePreConfigTaskResult
