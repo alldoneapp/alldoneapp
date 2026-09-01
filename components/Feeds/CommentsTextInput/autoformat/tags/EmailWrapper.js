@@ -15,12 +15,10 @@ import { getQuillEditorRef } from '../../textInputHelper'
 const Delta = ReactQuill.Quill.import('delta')
 
 const EmailWrapper = ({ data }) => {
-    console.log('EmailWrapper received data:', data)
     const { text = '', id: tagId = '', editorId = '', userIdAllowedToEditTags = '' } = data
 
     // Clean the email text by removing any trailing punctuation
     const cleanedText = text.replace(/[,.]$/, '')
-    console.log('EmailWrapper cleaned text:', cleanedText)
 
     const loggedUser = useSelector(state => state.loggedUser)
     const activeNoteIsReadOnly = useSelector(state => state.activeNoteIsReadOnly)
@@ -53,7 +51,6 @@ const EmailWrapper = ({ data }) => {
     }
 
     const updateEmail = newEmail => {
-        console.log('Updating email to:', newEmail)
         const editor = editorRef.getEditor()
         closeModal()
         setTimeout(function () {

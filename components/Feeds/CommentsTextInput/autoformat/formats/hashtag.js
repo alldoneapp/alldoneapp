@@ -1,18 +1,15 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import { Provider } from 'react-redux'
 
 import HashtagWrapper from '../tags/HashtagWrapper'
 import store from '../../../../../redux/store'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class Hashtag extends Embed {
+export default class Hashtag extends ReactEmbedBlot {
     static create(hashtagData) {
         const { text, id, editorId, userIdAllowedToEditTags } = hashtagData
         const node = super.create(text)
-        const refs = Hashtag.refs
 
         node.setAttribute('data-id', id)
         node.setAttribute('editorId', editorId)
@@ -21,10 +18,6 @@ export default class Hashtag extends Embed {
         node.setAttribute('contenteditable', false)
 
         Hashtag.data = text
-        Hashtag.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,

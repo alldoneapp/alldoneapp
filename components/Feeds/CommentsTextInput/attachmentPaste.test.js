@@ -103,7 +103,18 @@ const embedNames = editor =>
 
 const rawImageOps = editor => editor.getContents().ops.filter(op => op.insert?.image)
 
-const settle = () => new Promise(resolve => setTimeout(resolve, 20))
+// Quill's uploader reads each file through a real FileReader and only then applies its delta,
+// so every assertion here has to wait out a chain of genuine event-loop turns. A single fixed
+// sleep is a bet on how long that takes: 20ms was enough on an idle machine and failed roughly
+// one run in three once the suite shared workers with anything else, always as "the paste
+// inserted nothing". Turning the wall clock into event-loop TURNS removes the bet — a starved
+// worker gets the same number of chances to run the reader, it just takes longer to hand them out.
+const SETTLE_TURNS = 20
+const settle = async () => {
+    for (let turn = 0; turn < SETTLE_TURNS; turn += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1))
+    }
+}
 
 describe('a pasted image becomes a real attachment (AT-2441)', () => {
     let editor

@@ -73,21 +73,72 @@ export const createEmbedReactRoot = node => {
 }
 
 /**
+ * Roots that have been torn down. A disposed mount node still sits in the DOM — React leaves
+ * the container alone — so without this an async first render would happily mount a fresh tree
+ * into a blot that is already gone (`url.js` renders from a `Backend.getObjectFromUrl` callback,
+ * which routinely lands after a `setContents` has dropped the embed that asked for it).
+ */
+const disposedRoots = new WeakSet()
+
+const unmountMountNode = mountNode => {
+    if (!mountNode || disposedRoots.has(mountNode)) return false
+    disposedRoots.add(mountNode)
+    ReactDOM.unmountComponentAtNode(mountNode)
+    return true
+}
+
+/**
  * Drop-in replacement for `ReactDOM.render(element, blotDomNode)`. Returns the mount node so a
  * caller that renders more than once keeps writing into the same React root.
  */
 export const renderEmbedContent = (node, element) => {
     const mountNode = createEmbedReactRoot(node)
-    if (!mountNode) return null
+    if (!mountNode || disposedRoots.has(mountNode)) return null
     ReactDOM.render(element, mountNode)
     return mountNode
 }
 
 /**
- * Tears the root down. Only used where a blot knows its node is gone for good; quill itself
- * never calls back into the app when it drops an embed.
+ * The blot teardown hook, called from `ReactEmbedBlot.detach()`.
+ *
+ * Nothing used to tear these roots down at all: every `editor.setContents(...)` — the
+ * image-format rewrite, the remove-tag path, `onCopy`'s throwaway editor, and above all the
+ * ordinary reload of a note's content — orphaned one React root per embed, each holding its
+ * redux subscription (and, for a task tag, a live `Backend.watchSubtasks` listener) for the
+ * lifetime of the tab. Reopening the same note simply added another set.
+ *
+ * Two details are load-bearing:
+ *
+ *  - the unmount is DEFERRED to a microtask. `detach()` runs inside quill's own mutation
+ *    processing, and React's unmount is synchronous: it mutates the DOM (re-entering the scroll
+ *    observer) and, when the caller is a React commit, would flush inside another root's commit
+ *    phase. A microtask puts it strictly after quill's `update()` pass and after the commit;
+ *  - it re-checks membership of the editor first. Parchment calls `detach()` from `remove()`
+ *    and from the scroll's removed-node handling, and the latter deliberately skips a node that
+ *    merely MOVED — but a node moved inside a headless editor is never "contained by body", so
+ *    that guard does not hold there. Asking the blot's own scroll is the check that does.
  */
-export const unmountEmbedContent = node => {
+export const scheduleEmbedContentUnmount = (node, scrollNode) => {
     const mountNode = getEmbedReactRoot(node)
-    if (mountNode) ReactDOM.unmountComponentAtNode(mountNode)
+    if (!mountNode || disposedRoots.has(mountNode)) return
+    Promise.resolve().then(() => {
+        if (scrollNode && scrollNode.contains(node)) return
+        unmountMountNode(mountNode)
+    })
+}
+
+/**
+ * Tears down every embed root under `root`. Quill never calls back into the app when the EDITOR
+ * itself goes away — there is no `quill.destroy()` in quill 2 — so leaving a note, closing a
+ * comment popup or discarding `onCopy`'s throwaway editor drops the whole document without a
+ * single `detach()`. This is the sweep for that; deferred for the same reason as above, since
+ * every call site is a React cleanup.
+ */
+export const unmountEmbedReactRoots = root => {
+    if (!root || typeof root.querySelectorAll !== 'function') return
+    const mountNodes = Array.from(root.querySelectorAll(`.${EMBED_REACT_ROOT_CLASS}`))
+    if (mountNodes.length === 0) return
+    Promise.resolve().then(() => {
+        mountNodes.forEach(unmountMountNode)
+    })
 }

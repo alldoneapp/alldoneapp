@@ -1,18 +1,15 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import { Provider } from 'react-redux'
 
 import EmailWrapper from '../tags/EmailWrapper'
 import store from '../../../../../redux/store'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class Email extends Embed {
+export default class Email extends ReactEmbedBlot {
     static create(emailData) {
         const { text, id, editorId, userIdAllowedToEditTags } = emailData
         const node = super.create(text)
-        const refs = Email.refs
 
         node.setAttribute('data-id', id)
         node.setAttribute('editorId', editorId)
@@ -21,10 +18,6 @@ export default class Email extends Embed {
         node.setAttribute('contenteditable', false)
 
         Email.data = text
-        Email.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,

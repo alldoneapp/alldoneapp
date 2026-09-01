@@ -5,7 +5,6 @@ import styles, { colors } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
 export default function EmailTag({ value, onPress, disabled }) {
-    console.log('EmailTag rendering with value:', value)
     return (
         <TouchableOpacity onPress={onPress} style={localStyles.tag} disabled={disabled}>
             <Icon name={'mail'} size={16} color={colors.Yellow300} />
