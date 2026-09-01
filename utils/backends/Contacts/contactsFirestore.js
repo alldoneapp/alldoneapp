@@ -50,6 +50,7 @@ import {
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
+import { CROSS_PROJECT_DESTINATION_WRITE } from '../accessProjection'
 import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
 
@@ -336,7 +337,9 @@ export async function setContactProject(currentProject, newProject, contact) {
         feedPhotoUrl = urlList[3]
     }
 
-    await getDb().doc(`projectsContacts/${newProject.id}/contacts/${contactId}`).set(contactData)
+    await getDb()
+        .doc(`projectsContacts/${newProject.id}/contacts/${contactId}`)
+        .set({ ...contactData, movingToOtherProjectId: null }, CROSS_PROJECT_DESTINATION_WRITE)
 
     addContactFeedsChain(newProject.id, contactData, feedPhotoUrl, contactId)
 

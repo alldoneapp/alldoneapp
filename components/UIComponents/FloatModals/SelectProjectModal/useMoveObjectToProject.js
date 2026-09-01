@@ -67,6 +67,35 @@ export default function useMoveObjectToProject() {
         }
     }
 
+    // A move is a fan-out of writes across TWO projects, and a rejection anywhere
+    // in it reaches the picker as one bare `FirebaseError`. Naming the phase (and
+    // `awaitWriteAck` naming the individual write inside it) is what turns
+    // "permission-denied while moving" into something reproducible.
+    const reportMoveFailure = (step, error) => {
+        if (error && typeof error === 'object' && !error.moveStep) {
+            try {
+                error.moveStep = step
+            } catch (mutationError) {
+                // A frozen error is still reported unchanged.
+            }
+        }
+        console.error(`[moveObjectToProject] failed during "${step}"`, {
+            step,
+            code: error?.code,
+            writeLabel: error?.writeLabel,
+            message: error?.message,
+        })
+        return error
+    }
+
+    const runMoveStep = async (step, work) => {
+        try {
+            return await work()
+        } catch (error) {
+            throw reportMoveFailure(step, error)
+        }
+    }
+
     const moveObjectToProject = async (item, project, newProject) => {
         const { type, data } = item
         const performanceTrace = startPerformanceTrace('move_object_project', {
@@ -81,7 +110,7 @@ export default function useMoveObjectToProject() {
                 return result
             } catch (error) {
                 performanceTrace.fail('move_failed')
-                throw error
+                throw reportMoveFailure(`move ${type}`, error)
             }
         }
         const objectType = type === 'chat' ? 'topics' : type + 's'
@@ -104,15 +133,14 @@ export default function useMoveObjectToProject() {
 
         if (type === 'chat') dispatch(startLoadingData())
 
-        await moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
+        await runMoveStep('move conversation', () =>
+            moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
+        )
         performanceTrace.mark('chat_history_moved')
         if (type !== 'chat') dispatch(stopLoadingData())
         // Keep the object's "Updates" activity history with it across the move (chat is handled above).
-        const movedFeedCount = await moveInnerFeedsOnMoveObjectFromProject(
-            project.id,
-            newProject.id,
-            objectType,
-            data.id
+        const movedFeedCount = await runMoveStep('move activity history', () =>
+            moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id)
         )
         performanceTrace.mark('activity_history_moved', { document_count: movedFeedCount || 0 })
 
