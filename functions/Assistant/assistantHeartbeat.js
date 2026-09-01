@@ -770,7 +770,13 @@ async function checkAndExecuteHeartbeats() {
                     },
                     null, // functionEntryTime
                     'topics', // objectType - heartbeat uses topic chats, not task chats
-                    { additionalContextMessages, silentModeMarker: HEARTBEAT_OK_MARKER }
+                    {
+                        additionalContextMessages,
+                        silentModeMarker: HEARTBEAT_OK_MARKER,
+                        // Unattended run: nobody is waiting to re-ask, so send every tool schema
+                        // rather than deferring them behind hosted tool search.
+                        disableToolSearch: true,
+                    }
                 )
 
                 console.log('🔕 [Heartbeat] generatePreConfigTaskResult returned', {
@@ -975,6 +981,9 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData,
             additionalContextMessages,
             silentModeMarker: HEARTBEAT_OK_MARKER,
             maxRunWallClockMs: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS,
+            // Unattended run: nobody is waiting to re-ask, so send every tool schema rather than
+            // deferring them behind hosted tool search.
+            disableToolSearch: true,
         }
     )
 
