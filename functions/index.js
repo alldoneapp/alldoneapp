@@ -5152,6 +5152,24 @@ exports.autoArchiveInactiveProjectsSecondGen = onSchedule(
     }
 )
 
+// AT-2480: pulls each recently active user's calendar ONCE per their own local day, so a day's
+// meetings exist as tasks before anyone opens the app. Hourly rather than daily because "the day"
+// is the user's, not UTC: a single fixed hour would fire before local midnight for everyone west
+// of it and sync the wrong day. The once-per-local-day gate lives in `scheduledCalendarSync`.
+exports.syncActiveUsersCalendarsSecondGen = onSchedule(
+    {
+        schedule: '13 * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { syncCalendarsForActiveUsers } = require('./GoogleCalendar/scheduledCalendarSync')
+        return await syncCalendarsForActiveUsers()
+    }
+)
+
 exports.renewExpiredOKRsSecondGen = onSchedule(
     {
         schedule: '0 * * * *',
