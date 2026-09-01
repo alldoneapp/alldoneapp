@@ -359,6 +359,8 @@ const {
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
     buildResponsesTools,
+    collectPromptReferencedToolNames,
+    getToolSearchNamespaceName,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
     enforceOpenAiInputTokenPreflight,
@@ -1216,6 +1218,141 @@ describe('Responses API compatibility helpers', () => {
         })
         expect(explicitlyDisabled.toolSearchEnabled).toBe(false)
         expect(explicitlyDisabled.tools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    // a daily recurring task did every step of its work, then reported
+    // `update_user_description` as unavailable and refused to save — the tool was allowed and in
+    // the assembled schema list, but tool search had deferred it while a base instruction named it
+    // in writing. The model never searched for it and did not retry.
+    describe('prompt-referenced tools are never deferred behind tool search', () => {
+        const namedTools = [
+            'update_user_description',
+            'update_project_description',
+            'update_user_memory',
+            'get_contacts',
+            'get_chats',
+            'get_goals',
+            'get_notes',
+            'get_updates',
+            'search',
+            'web_search',
+            'create_note',
+            'create_task',
+        ]
+        const schemasFor = names =>
+            names.map(name => ({
+                type: 'function',
+                function: { name, description: '', parameters: { type: 'object', properties: {} } },
+            }))
+
+        test('collects only tool names the system prompt actually writes out', () => {
+            const messages = [
+                ['system', 'When the user asks to update their user description, use update_user_description.'],
+                ['system', 'Use your update_user_memory tool to save noteworthy facts.'],
+                // A user turn must not count: it is the request, not an instruction about tooling,
+                // and tool names echoed back in conversation would pin schemas for the whole thread.
+                ['user', 'please also run get_contacts for me'],
+            ]
+
+            const referenced = collectPromptReferencedToolNames(messages, namedTools)
+
+            expect([...referenced].sort()).toEqual(['update_user_description', 'update_user_memory'])
+        })
+
+        test('prefers the longest matching name so web_search is not reported as search', () => {
+            const referenced = collectPromptReferencedToolNames(
+                [['system', 'Use web_search for anything on the open internet.']],
+                namedTools
+            )
+
+            expect([...referenced]).toEqual(['web_search'])
+        })
+
+        test('object-shaped system messages and empty prompts are handled', () => {
+            expect([
+                ...collectPromptReferencedToolNames(
+                    [{ role: 'system', content: 'Call get_goals before planning.' }],
+                    namedTools
+                ),
+            ]).toEqual(['get_goals'])
+            expect(collectPromptReferencedToolNames([], namedTools).size).toBe(0)
+            expect(collectPromptReferencedToolNames([['system', 'no tools here']], []).size).toBe(0)
+        })
+
+        test('sends a named tool directly while the rest stay deferred', () => {
+            const result = buildResponsesTools(schemasFor(namedTools), 'MODEL_GPT5_6_SOL', {
+                alwaysDirectToolNames: new Set(['update_user_description']),
+            })
+            const directNames = result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)
+            const deferredNames = result.tools
+                .filter(tool => tool.type === 'namespace')
+                .flatMap(namespace => namespace.tools.map(tool => tool.name))
+
+            expect(result.toolSearchEnabled).toBe(true)
+            expect(directNames).toEqual(['update_user_description'])
+            expect(result.alwaysDirectCount).toBe(1)
+            expect(deferredNames).not.toContain('update_user_description')
+            expect(deferredNames).toHaveLength(namedTools.length - 1)
+            // The fallback path (used when the API rejects tool search) must still carry everything.
+            expect(result.fallbackTools).toHaveLength(namedTools.length)
+        })
+
+        test('reproduces the reported request: the named write tool is directly callable', () => {
+            const productionTools = [
+                ...namedTools,
+                'update_task',
+                'get_tasks',
+                'get_focus_task',
+                'update_note',
+                'get_user_projects',
+                'search_gmail',
+                'update_contact',
+                'get_project_okrs',
+                'get_project_happiness',
+                'add_chat_comment',
+                'load_skill',
+            ]
+            const messages = [
+                ['system', 'When the user asks to update their user description, use update_user_description.'],
+                ['user', 'Please update the global user description based on my tasks, goals and notes.'],
+            ]
+
+            const result = buildResponsesTools(schemasFor(productionTools), 'MODEL_GPT5_6_SOL', {
+                alwaysDirectToolNames: collectPromptReferencedToolNames(messages, productionTools),
+            })
+
+            expect(result.toolSearchEnabled).toBe(true)
+            expect(result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)).toContain(
+                'update_user_description'
+            )
+        })
+    })
+
+    // `talk_to_assistant_*` / `external_tool_*` / `mcp_*` names are built from
+    // user-authored project and assistant names, so every keyword rule matched them first.
+    describe('tool search namespace routing', () => {
+        test('files delegation, external and MCP tools under integrations', () => {
+            expect(getToolSearchNamespaceName('talk_to_assistant_alldone_team_cto_02e74d40d143')).toBe('integrations')
+            expect(getToolSearchNamespaceName('external_tool_bookkeeping_assistant__f5f03fdb4d16')).toBe('integrations')
+            expect(getToolSearchNamespaceName('mcp_pubmed_pubmed_europepmc_fetch_e671552bd534')).toBe('integrations')
+        })
+
+        test('a delegate named after a project cannot be pulled into a keyword namespace', () => {
+            // "MediAgents" matched /media/ and landed in chats_and_media; "assistant" pulled the
+            // rest into assistant_settings, overflowing it into an _1/_2 split.
+            expect(getToolSearchNamespaceName('talk_to_assistant_mediagents_pubmed_research_f250285ab147')).toBe(
+                'integrations'
+            )
+            expect(getToolSearchNamespaceName('talk_to_assistant_gmail_desk_1dced65e3398')).toBe('integrations')
+        })
+
+        test('keeps the keyword routing for native tools', () => {
+            expect(getToolSearchNamespaceName('update_user_description')).toBe('people_and_projects')
+            expect(getToolSearchNamespaceName('search_gmail')).toBe('gmail')
+            expect(getToolSearchNamespaceName('get_tasks')).toBe('tasks_and_goals')
+            expect(getToolSearchNamespaceName('update_assistant_settings')).toBe('assistant_settings')
+            expect(getToolSearchNamespaceName('web_search')).toBe('research')
+        })
     })
 
     test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {

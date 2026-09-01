@@ -2955,14 +2955,21 @@ async function interactWithChatStream(
                     'Using native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
+                const promptReferencedToolNames = collectPromptReferencedToolNames(
+                    messages,
+                    toolSchemas.map(schema => schema.function.name)
+                )
                 responsesToolConfig = buildResponsesTools(toolSchemas, modelKey, {
                     disableToolSearch: toolRuntimeContext?.disableToolSearch === true,
+                    alwaysDirectToolNames: promptReferencedToolNames,
                 })
                 requestParams.tools = responsesToolConfig.tools
                 console.log('🔎 TOOL SEARCH: Request tool loading strategy', {
                     enabled: responsesToolConfig.toolSearchEnabled,
                     namespaceCount: responsesToolConfig.namespaceCount,
                     deferredFunctionCount: responsesToolConfig.deferredFunctionCount,
+                    alwaysDirectCount: responsesToolConfig.alwaysDirectCount,
+                    promptReferencedTools: Array.from(promptReferencedToolNames),
                     directToolCount: requestParams.tools.length,
                     model,
                 })
@@ -12984,8 +12991,22 @@ const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
     other: 'Additional tools available to this assistant.',
 }
 
+// The prefixed tool families are matched FIRST and deliberately so. Their names are built from
+// user-authored assistant, project and server names, so they collide with every keyword below:
+// `talk_to_assistant_*` matches /assistant/, and a delegate whose project is called "MediAgents"
+// matches /media/. With the keyword tests running first, `integrations` was unreachable dead code
+// and every delegation tool was advertised to the model under "Manage assistant settings, memory,
+// heartbeat behavior, skills, and thread context" — which is exactly what makes tool search miss
+// them, and it also pushed the real settings tools into an `assistant_settings_2` overflow chunk.
 function getToolSearchNamespaceName(toolName = '') {
     const name = String(toolName || '').toLowerCase()
+    if (
+        name.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) ||
+        name.startsWith(EXTERNAL_TOOL_PREFIX) ||
+        name.startsWith(MCP_TOOL_PREFIX)
+    ) {
+        return 'integrations'
+    }
     if (/gmail|email/.test(name)) return 'gmail'
     if (/calendar|availability/.test(name)) return 'calendar'
     if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
@@ -12994,24 +13015,62 @@ function getToolSearchNamespaceName(toolName = '') {
     if (/contact|project|user/.test(name)) return 'people_and_projects'
     if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
     if (/search|weather|route|recommendation|local/.test(name)) return 'research'
-    if (
-        name.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) ||
-        name.startsWith(EXTERNAL_TOOL_PREFIX) ||
-        name.startsWith(MCP_TOOL_PREFIX)
-    ) {
-        return 'integrations'
-    }
     return 'other'
 }
 
-function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}) {
+// A tool the prompt names in writing must never be hidden behind tool search.
+// `addBaseInstructions` injects lines like "use update_user_description", and an assistant's own
+// instructions name their tools too — so the model is told a tool exists by name while the schema
+// for it is deferred. When it then fails to search for that exact name it does not retry, it
+// reports the tool as unavailable and stops, after having done all the surrounding work. Scanning
+// is limited to `system` messages: those carry our base instructions and the assistant's
+// configured instructions, and are the only place a tool name is an instruction rather than
+// conversational noise or the echo of an earlier tool result.
+function collectPromptReferencedToolNames(messages = [], toolNames = []) {
+    const candidateNames = Array.from(new Set((toolNames || []).filter(name => typeof name === 'string' && name)))
+    if (candidateNames.length === 0) return new Set()
+
+    const systemText = (Array.isArray(messages) ? messages : [])
+        .filter(message => (Array.isArray(message) ? message[0] : message?.role) === 'system')
+        .map(message => {
+            const content = Array.isArray(message) ? message[1] : message?.content
+            return typeof content === 'string' ? content : getMessageTextForTokenCounting(content)
+        })
+        .join('\n')
+    if (!systemText) return new Set()
+
+    // One pass over the prompt rather than one regex test per tool: the longest names are tried
+    // first so `web_search` cannot be reported as a bare `search` match.
+    const alternation = candidateNames
+        .slice()
+        .sort((first, second) => second.length - first.length)
+        .map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|')
+    const referenced = new Set()
+    const matcher = new RegExp(`\\b(?:${alternation})\\b`, 'g')
+    let match = matcher.exec(systemText)
+    const candidateSet = new Set(candidateNames)
+    while (match) {
+        if (candidateSet.has(match[0])) referenced.add(match[0])
+        match = matcher.exec(systemText)
+    }
+    return referenced
+}
+
+function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alwaysDirectToolNames = null } = {}) {
     const convertedTools = convertToolsToResponsesFormat(tools).sort((firstTool, secondTool) => {
         const firstName = firstTool?.name || firstTool?.type || ''
         const secondName = secondTool?.name || secondTool?.type || ''
         return firstName.localeCompare(secondName)
     })
-    const functionTools = convertedTools.filter(tool => tool?.type === 'function' && tool.name)
-    const directTools = convertedTools.filter(tool => tool?.type !== 'function' || !tool.name)
+    const alwaysDirect =
+        alwaysDirectToolNames instanceof Set ? alwaysDirectToolNames : new Set(alwaysDirectToolNames || [])
+    const functionTools = convertedTools.filter(
+        tool => tool?.type === 'function' && tool.name && !alwaysDirect.has(tool.name)
+    )
+    const directTools = convertedTools.filter(
+        tool => tool?.type !== 'function' || !tool.name || alwaysDirect.has(tool.name)
+    )
 
     if (disableToolSearch || !modelSupportsToolSearch(modelKey) || functionTools.length < TOOL_SEARCH_MIN_FUNCTIONS) {
         return {
@@ -13020,6 +13079,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}
             toolSearchEnabled: false,
             namespaceCount: 0,
             deferredFunctionCount: 0,
+            alwaysDirectCount: 0,
         }
     }
 
@@ -13052,6 +13112,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}
         toolSearchEnabled: true,
         namespaceCount: namespaces.length,
         deferredFunctionCount: functionTools.length,
+        alwaysDirectCount: directTools.filter(tool => tool?.type === 'function' && tool.name).length,
     }
 }
 
@@ -13869,6 +13930,8 @@ module.exports = {
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
     buildResponsesTools,
+    collectPromptReferencedToolNames,
+    getToolSearchNamespaceName,
     buildAssistantPromptCacheKey,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
