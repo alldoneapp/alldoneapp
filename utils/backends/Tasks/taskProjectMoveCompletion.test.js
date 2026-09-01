@@ -11,13 +11,39 @@ describe('task project move completion', () => {
         )
 
         expect(branch).not.toBeNull()
-        expect(branch[1]).toMatch(/await awaitWriteAck\(batch\.commit\(\), 'delete task from source project'\)/)
+        expect(branch[1]).toMatch(/await removeMovedSourceTask\(currentProject\.id, task\.id\)/)
         expect(branch[1]).toMatch(/performanceTrace\.mark\('source_task_deleted'\)/)
         expect(branch[1]).toMatch(/await setTaskProjectFeedsChain\(/)
         expect(branch[1]).toMatch(/performanceTrace\.mark\('feed_chain_committed'\)/)
         expect(branch[1]).toMatch(/const queuedOffline = isAppOffline\(\)/)
         expect(branch[1]).toMatch(/performanceTrace\.end\(queuedOffline \? 'queued_offline' : 'server_acked'/)
         expect(branch[1]).not.toMatch(/\nbatch = new BatchWrapper/)
+    })
+
+    // A missing document and a forbidden one are the same `permission-denied` under
+    // these rules, so nothing can probe which one it is. The move marker landing is
+    // the proof that the source existed and was writable, which makes a refusal on
+    // the delete that follows it a vanished source rather than a real denial.
+    it('treats a source task that vanished mid-move as an already-completed move', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+        const helper = source.match(/const removeMovedSourceTask = async \(([\s\S]*?)\n}\n/)
+
+        expect(helper).not.toBeNull()
+        expect(helper[1]).toMatch(/'delete task from source project'/)
+        expect(helper[1]).toMatch(/if \(error\?\.code !== 'permission-denied'\) throw error/)
+        expect(helper[1]).toMatch(/console\.warn\(/)
+    })
+
+    it('marks the source as moving and stamps its edition data in one write', () => {
+        const source = readSource('backends/Tasks/tasksFirestore.js')
+        const helper = source.match(/const markSourceTaskAsMoving = async \(([\s\S]*?)\n}\n/)
+
+        expect(helper).not.toBeNull()
+        expect(helper[1]).toMatch(/updateEditionData\(moveMarker\)/)
+        expect(helper[1]).toMatch(/'mark source task as moving'/)
+        // The stamp used to ride in the delete batch — a second write to a document
+        // the next operation in that same batch removes.
+        expect(source).not.toMatch(/updateTaskData\(currentProject\.id, task\.id, \{\}, batch\)/)
     })
 
     it('awaits the feed batch through the offline-aware acknowledgement helper', () => {
