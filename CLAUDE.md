@@ -1440,15 +1440,19 @@ app code — keep them in step.
 
 ### A meeting exists only after somebody's browser asked for it (AT-2480)
 
-**There is no scheduled server-side calendar sync.** `syncCalendarEventsSecondGen` is an `onCall`
-and nothing else — no `onSchedule`, no trigger — so a day's meetings are not tasks until a client
-calls `checkIfCalendarConnected(projectId)` for that user's connected project. Everything
-downstream is ordinary: the callable writes `items/{projectId}/tasks` documents carrying
-`calendarData`, they ride the normal open-tasks listeners, `getTaskTypeIndex` buckets them into
-`CALENDAR_TASK_INDEX` and the Calendar section renders them. So a "the calendar section is
-missing" report is almost always about the **pull**, not about the list, and the way to tell them
-apart is the task's own `created` stamp: if it equals the first sync of the day, nothing was there
-to render before it.
+**A meeting is not a task until `syncCalendarEvents` has run for the user's local day.** Everything
+downstream is ordinary: it writes `items/{projectId}/tasks` documents carrying `calendarData`, they
+ride the normal open-tasks listeners, `getTaskTypeIndex` buckets them into `CALENDAR_TASK_INDEX`
+and the Calendar section renders them. So a "the calendar section is missing" report is almost
+always about the **pull**, not about the list, and the way to tell them apart is the task's own
+`created` stamp: if it equals the first sync of the day, nothing was there to render before it.
+
+Until AT-2480 the **only** caller was a browser (`checkIfCalendarConnected` →
+`syncCalendarEventsSecondGen`, an `onCall` with no `onSchedule` and no trigger), so a day nobody
+opened the app on had no meetings at all — including for heartbeats, push and the WhatsApp bridge,
+which read the task list with no client in front of them. There are now **two** callers and they
+do different jobs: the client keeps the day warm, and `syncActiveUsersCalendarsSecondGen`
+(`functions/GoogleCalendar/scheduledCalendarSync.js`) makes sure the day _starts_ correct.
 
 The board used to make that call from `OpenTasksByProjectHandler`, once per rendered project block
 and gated on `inSelectedProject` — so **All Projects never pulled anything**, and the day's
@@ -1471,10 +1475,38 @@ plus a ref keyed on the connected-project list, so a re-render or a project swit
 multi-second Cloud Function call into a storm. Pinned by `taskBoardCalendarSync.test.js` and
 `TasksByProjectSectionsCalendarSync.test.js`.
 
-Worth knowing when reading a sync log: the fetch window is the user's **local day** even though
-the client passes `daysAhead: 30`, and per-event LLM project routing makes a cold first sync of
-the day slow (32s for 7 events on the reporting account), so the meetings land a beat after the
-board paints.
+**The scheduled half ticks hourly but syncs each user once per THEIR OWN local day.** The fetch
+window is the user's local day (`getUserLocalDayStart`), so a single fixed UTC hour would fire
+before local midnight for everyone west of it, sync the **wrong** day, and not fire again until
+the next day's tick. The hourly `onSchedule` therefore just asks each user whether their local
+date has moved past the one recorded in `users/{uid}/private/calendarScheduledSync` — one sync per
+user per local day, shortly after their own midnight, per connected project. Eligibility is the
+**heartbeat** definition of active: `ACTIVE_USER_WINDOW_MS` and `getTimestampMillis` are imported
+from `assistantHeartbeatSchedule` rather than re-declared, so they cannot drift (`autoArchiveProjectsCloud`
+and `assistantRecurringTasks` still carry their own 30-day copies — that is the drift being
+avoided). On production that query returns **11** of 4381 users.
+
+Two rules that keep it cheap and are easy to get backwards. The day marker is written **before**
+the sync and **regardless of its outcome**, so a permanently broken connection (a revoked Google
+token is the common one) costs one failed attempt a day instead of one an hour — recovery is the
+client-side pull, which runs on every board mount. And a **failed marker read must not skip** the
+sync: an unreadable state doc looks exactly like "already synced today", which would silently
+disable the job for that user forever. No `firestore.rules` change, no new collection, no index —
+the marker sits under the existing owner-writable `users/{userId}/{userSubcollection}/{document=**}`
+rule.
+
+Because the marker and the fetched window are answers to the same question, the timezone
+resolution lives in **one** place, `functions/GoogleCalendar/calendarUserDay.js`. Note `timezone`
+on the user doc is normally an **integer number of hours** (2 for Berlin), not an IANA name — a
+small number is multiplied by 60, a large one is already minutes — and `preferredTimezone` (which
+_is_ a real IANA name) is deliberately never consulted, because the sync never read it and
+starting to would silently move every existing user's day boundary.
+
+Worth knowing when reading a sync log: `daysAhead: 30` is passed by the client and **ignored** —
+the window is one local day — and per-event LLM project routing makes a cold first sync of the day
+slow (32s for 7 events on the reporting account), so the meetings land a beat after the board
+paints. Deploying this adds a Cloud Scheduler job; per the runtime note above, confirm the
+function actually exists after the deploy rather than trusting the deploy summary.
 
 ### Task reminders and the channel they come back on (AT-2211)
 
