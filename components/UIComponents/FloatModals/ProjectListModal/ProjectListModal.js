@@ -172,10 +172,28 @@ export default function ProjectListModal({
         closeModal()
     }
 
+    // A commit is awaited to completion before the picker closes, and for the
+    // move flow that is several seconds of work across two projects. The picker
+    // therefore stays on screen and interactive for the whole of it — which is
+    // exactly when a person clicks the row again, or presses Enter, and starts a
+    // SECOND move of the same object. The two runs then race over one document:
+    // whichever deletes the source first leaves the other one writing to a
+    // document that no longer exists, and under the strict rules every access to
+    // a missing document — write, delete, even a plain read — comes back as
+    // `permission-denied`, never `not-found`. So the duplicate run reports the
+    // move as broken while the move it duplicated actually succeeded.
+    const commitInFlight = useRef(false)
+
     const commitSafely = index => {
-        commit(index).catch(error => {
-            console.error('[ProjectListModal] Could not commit project selection', error)
-        })
+        if (commitInFlight.current) return
+        commitInFlight.current = true
+        commit(index)
+            .catch(error => {
+                console.error('[ProjectListModal] Could not commit project selection', error)
+            })
+            .finally(() => {
+                commitInFlight.current = false
+            })
     }
 
     const onRowPress = index => {

@@ -2216,6 +2216,62 @@ export async function setTaskAssigneeMultiple(tasks, oldAssignee, newAssignee) {
     performanceTrace.end('client_complete', { outcome: 'success' })
 }
 
+/**
+ * Mark the source task as moving, and stamp the edition data in the same write.
+ *
+ * The marker has to reach the server on its own commit — `onDeleteTask` reads it
+ * to tell a move apart from a real deletion, and so preserve the task's linked
+ * notes and backlinks. The edition stamp used to ride in the DELETE batch
+ * instead, which meant a second round trip to a document that the very next
+ * operation in that batch removed: a write that can only ever fail, never be
+ * observed. Folding it in here writes the same fields, touches the source once
+ * and leaves the delete on its own.
+ */
+const markSourceTaskAsMoving = async (sourceProjectId, taskId, targetProjectId) => {
+    const moveMarker = { movingToOtherProjectId: targetProjectId }
+    updateEditionData(moveMarker)
+    await awaitWriteAck(
+        getDb().doc(`items/${sourceProjectId}/tasks/${taskId}`).update(moveMarker),
+        'mark source task as moving'
+    )
+}
+
+/**
+ * Delete the source task, tolerating a source that somebody else already moved.
+ *
+ * Under the strict rules a MISSING document is indistinguishable from a
+ * forbidden one: `canAccessObjectWhileProjectionIsPending` dereferences
+ * `resource.data`, so every access to a task that is not there — the delete, an
+ * update, even a plain `get()` or an id-equality query — comes back as
+ * `permission-denied`, never `not-found`. There is therefore no probe that can
+ * answer "is it gone or am I not allowed?"; the only sound discriminator is
+ * within the run itself. The move marker was accepted moments ago, which proves
+ * the document existed and that this user could write it, and nothing since has
+ * changed its shape — so a refusal now can only mean the document has since
+ * disappeared, and the move it belonged to is complete.
+ *
+ * That is not a rare race. Two runs of the same move produce it (a slow move
+ * leaves the project picker on screen, so a second click starts one), and so
+ * does `addOrUpdateCalendarTask` in the scheduled calendar sync, which moves a
+ * calendar task between projects with the same create-then-`oldRef.delete()`
+ * shape while the user's own move is in flight.
+ */
+const removeMovedSourceTask = async (sourceProjectId, taskId) => {
+    try {
+        await awaitWriteAck(
+            getDb().doc(`items/${sourceProjectId}/tasks/${taskId}`).delete(),
+            'delete task from source project'
+        )
+    } catch (error) {
+        if (error?.code !== 'permission-denied') throw error
+        console.warn('[setTaskProject] source task was already removed by a concurrent move', {
+            sourceProjectId,
+            taskId,
+            code: error.code,
+        })
+    }
+}
+
 export async function setTaskProject(currentProject, newProject, task, oldAssignee, newAssignee) {
     const performanceTrace = startPerformanceTrace('move_task_project', {
         object_type: 'task',
@@ -2305,21 +2361,11 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     promises.push(
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
-    promises.push(
-        awaitWriteAck(
-            getDb()
-                .doc(`items/${currentProject.id}/tasks/${task.id}`)
-                .update({ movingToOtherProjectId: newProject.id }),
-            'mark source task as moving'
-        )
-    )
+    promises.push(markSourceTaskAsMoving(currentProject.id, task.id, newProject.id))
     await Promise.all(promises)
     performanceTrace.mark('subtasks_copied')
 
-    const batch = new BatchWrapper(getDb())
-    updateTaskData(currentProject.id, task.id, {}, batch)
-    batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    await awaitWriteAck(batch.commit(), 'delete task from source project')
+    await removeMovedSourceTask(currentProject.id, task.id)
     performanceTrace.mark('source_task_deleted')
 
     await setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
@@ -2410,20 +2456,10 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     promises.push(
         createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
     )
-    promises.push(
-        awaitWriteAck(
-            getDb()
-                .doc(`items/${currentProject.id}/tasks/${task.id}`)
-                .update({ movingToOtherProjectId: newProject.id }),
-            'mark source goal task as moving'
-        )
-    )
+    promises.push(markSourceTaskAsMoving(currentProject.id, task.id, newProject.id))
     await Promise.all(promises)
 
-    const batch = new BatchWrapper(getDb())
-    updateTaskData(currentProject.id, task.id, {}, batch)
-    batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
-    await awaitWriteAck(batch.commit(), 'delete goal task from source project')
+    await removeMovedSourceTask(currentProject.id, task.id)
 
     await setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
 }
