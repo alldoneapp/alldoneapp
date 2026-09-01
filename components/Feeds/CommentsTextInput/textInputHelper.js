@@ -34,6 +34,7 @@ import {
     getVideoData,
 } from '../../../functions/Utils/parseTextUtils'
 import { addFilesAsAttachments } from './attachmentFileUtils'
+import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
 
 export const MENTION_MODAL_TASKS_TAB = 0
 export const MENTION_MODAL_GOALS_TAB = 1
@@ -819,6 +820,10 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     tempQuill.setContents(selectedContent)
 
     const tempQuillContent = tempQuill.getContents()
+    // This editor exists for exactly the two lines above, but building its document mounts one
+    // React root per embed in the selection. Nothing would ever take them down again — copying
+    // a note full of tags used to leak a root (and its redux subscription) per tag, per copy.
+    unmountEmbedReactRoots(tempQuill.root)
     var converter = new QuillDeltaToHtmlConverter(tempQuillContent.ops, {})
     var html = converter.convert()
 

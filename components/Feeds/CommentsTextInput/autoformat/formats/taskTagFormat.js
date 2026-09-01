@@ -1,19 +1,16 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import { Provider } from 'react-redux'
 
 import TaskTagWrapper from '../tags/TaskTagWrapper'
 import store from '../../../../../redux/store'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class TaskTagFormat extends Embed {
+export default class TaskTagFormat extends ReactEmbedBlot {
     static create(taskData) {
         const { id, taskId, editorId, objectUrl } = taskData
         const text = 'taskTagFormat'
         const node = super.create(text)
-        const refs = TaskTagFormat.refs
 
         node.setAttribute('data-id', id)
         node.setAttribute('objectUrl', objectUrl)
@@ -23,10 +20,6 @@ export default class TaskTagFormat extends Embed {
         node.setAttribute('contenteditable', false)
 
         TaskTagFormat.data = text
-        TaskTagFormat.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,

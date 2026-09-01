@@ -87,11 +87,8 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     const openModal = e => {
-        console.log('[UrlWrapper] openModal called:', { type, url, projectId })
-
         // For pre-configured tasks, directly execute the action (open the modal)
         if (type === 'preConfigTask' || isValidPreConfigTaskLink(url, projectId)) {
-            console.log('[UrlWrapper] Detected preConfigTask, calling performAction')
             performAction(url)
             return
         }
@@ -136,18 +133,14 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     }
 
     const performAction = async currentUrl => {
-        console.log('[UrlWrapper] performAction called:', { currentUrl, type, projectId })
-
         if (url.trim() !== currentUrl.trim()) {
             updateUrl(currentUrl)
         }
 
         // Handle pre-configured task links - open the task generator modal
         const isPreConfig = type === 'preConfigTask' || isValidPreConfigTaskLink(currentUrl, projectId)
-        console.log('[UrlWrapper] isPreConfigTask check:', { type, isPreConfig })
 
         if (isPreConfig) {
-            console.log('[UrlWrapper] Handling preConfigTask link')
             try {
                 const urlObj = new URL(addProtocol(currentUrl))
                 const assistantId = urlObj.searchParams.get('assistantId')
@@ -156,13 +149,9 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                 const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
                 const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
 
-                console.log('[UrlWrapper] Parsed URL:', { taskId, assistantId, assistantProjectId })
-
                 if (taskId && assistantId) {
                     closeModal()
-                    console.log('[UrlWrapper] Fetching preConfigTask...')
                     const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
-                    console.log('[UrlWrapper] Got task:', task)
 
                     if (task) {
                         const taskType = task.type || 'prompt'
@@ -174,29 +163,19 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                             if (task.variables && task.variables.length > 0) {
                                 // Get assistant from Redux, or fetch from backend
                                 let assistant = getAssistant(assistantId)
-                                console.log('[UrlWrapper] Got assistant from Redux:', assistant)
 
                                 if (!assistant) {
                                     const fetchProjectId = isGlobalAssistant(assistantId)
                                         ? GLOBAL_PROJECT_ID
                                         : assistantProjectId
-                                    console.log(
-                                        '[UrlWrapper] Fetching assistant from backend, projectId:',
-                                        fetchProjectId
-                                    )
                                     assistant = await getAssistantData(fetchProjectId, assistantId)
-                                    console.log('[UrlWrapper] Got assistant from backend:', assistant)
                                 }
 
                                 if (assistant) {
-                                    console.log(
-                                        '[UrlWrapper] Opening PreConfigTaskGeneratorModal for task with variables'
-                                    )
                                     dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
                                 }
                             } else {
                                 // No variables - execute directly
-                                console.log('[UrlWrapper] Executing prompt task directly (no variables)')
                                 const aiSettings =
                                     task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                                         ? {
@@ -221,22 +200,18 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                             }
                         } else if (taskType === 'iframe') {
                             // Open iframe modal
-                            console.log('[UrlWrapper] Opening iframe modal:', task.link)
                             dispatch(setIframeModalData(true, task.link, task.name))
                         } else if (taskType === 'link') {
                             // Open external link in new tab
-                            console.log('[UrlWrapper] Opening external link:', task.link)
                             window.open(task.link, '_blank')
                         } else {
                             // Unknown type - try to open as link
-                            console.log('[UrlWrapper] Unknown task type, opening as link:', taskType)
                             if (task.link) {
                                 window.open(task.link, '_blank')
                             }
                         }
                     }
                 } else {
-                    console.log('[UrlWrapper] Missing taskId or assistantId:', { taskId, assistantId })
                 }
             } catch (error) {
                 console.error('[UrlWrapper] Error opening pre-configured task:', error)
@@ -244,7 +219,6 @@ export default function UrlWrapper({ value, objectName, isShared }) {
             return
         }
 
-        console.log('[UrlWrapper] Not a preConfigTask, checking other types')
         if (type !== 'plain' && type !== 'preConfigTask' && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
             if (!loggedUser.isAnonymous || isShared) {
                 closeModal()
@@ -338,7 +312,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                     tagPosition += typeof insert === 'string' ? insert.length : 1
                 }
             } catch (error) {
-                console.log('Editor Error')
+                console.warn('Failed to replace the url tag in the editor', error)
             }
         }, 400)
     }

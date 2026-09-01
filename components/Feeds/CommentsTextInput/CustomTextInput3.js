@@ -52,6 +52,7 @@ import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
 import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
 import useDictationSubmit from './dictationSubmit'
+import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -1151,6 +1152,12 @@ function CustomTextInput3(
 
     const unmountComponent = () => {
         dispatch(setIsQuillTagEditorOpen(false))
+
+        // Quill 2 has no destroy(), so it never tells a blot that the editor around it is
+        // gone — every React root mounted inside an embed would outlive this input together
+        // with its redux subscription. `detach()` only covers a blot that is deleted from a
+        // LIVING document; this is the other half.
+        unmountEmbedReactRoots(quillRef.current?.root)
 
         if (!inMentionsEditionTag) {
             cleanTagsInteractionsPopus()

@@ -1,17 +1,14 @@
-import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import React from 'react'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
 import MilestoneTagWrapper from '../tags/MilestoneTagWrapper'
 import { renderEmbedContent } from './embedReactRoot'
+import ReactEmbedBlot from './reactEmbedBlot'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
-
-export default class MilestoneTag extends Embed {
+export default class MilestoneTag extends ReactEmbedBlot {
     static create(milestoneTagData) {
         const { text, id, editorId, milestoneId, userIdAllowedToEditTags } = milestoneTagData
         const node = super.create(text)
-        const refs = MilestoneTag.refs
 
         node.setAttribute('data-id', id)
         node.setAttribute('editorId', editorId)
@@ -21,10 +18,6 @@ export default class MilestoneTag extends Embed {
         node.setAttribute('contenteditable', false)
 
         MilestoneTag.data = text
-        MilestoneTag.refs = {
-            ...refs,
-            [id]: createRef(),
-        }
 
         renderEmbedContent(
             node,
