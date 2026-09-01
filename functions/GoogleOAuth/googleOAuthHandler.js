@@ -281,6 +281,20 @@ async function handleOAuthCallback(code, state) {
 
     await tokenDocRef.set(tokenData, { merge: true })
 
+    // Google has just told us which mailbox these credentials belong to, which is the one
+    // moment the ownership is actually proven. Record it so the Anna email channel can
+    // trust this connection when it decides who an inbound message belongs to (AT-2483).
+    if (connectionService === CONNECTION_SERVICE_EMAIL) {
+        const { recordEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await recordEmailIdentityAttestation({
+            userId,
+            email: userInfo.email,
+            provider: EMAIL_PROVIDER_GOOGLE,
+            connectionId,
+            source: 'google_oauth_connect',
+        })
+    }
+
     const userRef = admin.firestore().collection('users').doc(userId)
     const userDoc = await userRef.get()
     const userData = userDoc.exists ? userDoc.data() || {} : {}
@@ -720,6 +734,14 @@ async function revokeConnectionAccess(userId, connectionId) {
     if (tokenDoc.exists) await docRef.delete()
     if (legacyDocRef) await legacyDocRef.delete()
 
+    if (connectionService === CONNECTION_SERVICE_EMAIL) {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({
+            userId,
+            email: tokenData?.email || connection?.emailAddress || '',
+        })
+    }
+
     const updateData = { [`${mapField}.${connectionId}`]: FieldValue.delete() }
     const resolver =
         connectionService === CONNECTION_SERVICE_CALENDAR ? resolveCalendarConnection : resolveEmailConnection
@@ -832,6 +854,11 @@ async function revokeAccess(userId, projectId, service) {
 
     // Delete stored tokens
     await docRef.delete()
+
+    if (tokenData.email && service !== 'calendar') {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({ userId, email: tokenData.email })
+    }
 
     // Update user's apisConnected flags
     const userRef = admin.firestore().collection('users').doc(userId)
