@@ -2,6 +2,7 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../../../Icon'
+import ProjectRowStatusIcon from './ProjectRowStatusIcon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { ALL_ARCHIVED_PROJECTS_OPTION, ALL_ARCHIVED_SCOPE_LABEL } from './projectPickerConstants'
@@ -12,7 +13,7 @@ import { ALL_ARCHIVED_PROJECTS_OPTION, ALL_ARCHIVED_SCOPE_LABEL } from './projec
  * same shape so ProjectListModal can render any of them at index -1 without
  * special-casing the layout or the keyboard cycle.
  */
-export default function AllArchivedProjectItem({ selectedProjectId, onProjectSelect, active }) {
+export default function AllArchivedProjectItem({ selectedProjectId, onProjectSelect, active, busy = false }) {
     const onPress = () => {
         onProjectSelect(null, null, { id: ALL_ARCHIVED_PROJECTS_OPTION })
     }
@@ -34,12 +35,7 @@ export default function AllArchivedProjectItem({ selectedProjectId, onProjectSel
                             {translate(ALL_ARCHIVED_SCOPE_LABEL)}
                         </Text>
                     </View>
-
-                    {selectedProjectId === ALL_ARCHIVED_PROJECTS_OPTION && (
-                        <View style={localStyles.checkContainer}>
-                            <Icon name="check" size={24} color="white" />
-                        </View>
-                    )}
+                    <ProjectRowStatusIcon busy={busy} checked={selectedProjectId === ALL_ARCHIVED_PROJECTS_OPTION} />
                 </View>
             </TouchableOpacity>
         </View>
@@ -66,9 +62,6 @@ const localStyles = StyleSheet.create({
     },
     icon: {
         marginRight: 8,
-    },
-    checkContainer: {
-        marginLeft: 'auto',
     },
     projectName: {
         color: '#ffffff',

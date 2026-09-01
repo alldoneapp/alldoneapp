@@ -2,6 +2,7 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import Icon from '../../../Icon'
+import ProjectRowStatusIcon from './ProjectRowStatusIcon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { AUTOMATIC_PROJECT_OPTION } from './projectPickerConstants'
@@ -11,7 +12,7 @@ import { AUTOMATIC_PROJECT_OPTION } from './projectPickerConstants'
  * sibling of AllProjectItem, kept in the same shape so ProjectListModal can
  * render either one at index -1 without special-casing the layout.
  */
-export default function AutomaticProjectItem({ selectedProjectId, onProjectSelect, active }) {
+export default function AutomaticProjectItem({ selectedProjectId, onProjectSelect, active, busy = false }) {
     const onPress = () => {
         onProjectSelect(null, null, { id: AUTOMATIC_PROJECT_OPTION })
     }
@@ -38,12 +39,7 @@ export default function AutomaticProjectItem({ selectedProjectId, onProjectSelec
                             </Text>
                         </View>
                     </View>
-
-                    {selectedProjectId === AUTOMATIC_PROJECT_OPTION && (
-                        <View style={localStyles.checkContainer}>
-                            <Icon name="check" size={24} color="white" />
-                        </View>
-                    )}
+                    <ProjectRowStatusIcon busy={busy} checked={selectedProjectId === AUTOMATIC_PROJECT_OPTION} />
                 </View>
             </TouchableOpacity>
         </View>
@@ -74,9 +70,6 @@ const localStyles = StyleSheet.create({
     textContainer: {
         flex: 1,
         minWidth: 0,
-    },
-    checkContainer: {
-        marginLeft: 'auto',
     },
     projectName: {
         color: '#ffffff',

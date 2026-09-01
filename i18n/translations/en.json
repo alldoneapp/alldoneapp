@@ -2811,5 +2811,6 @@
     "New message": "New message",
     "Jump to newest message": "Jump to newest message",
     "Project skills description": "Skills are reusable instruction packs (Agent Skills format) that assistants load on demand. Skills you add here belong to this project and are available to this project's assistants right away.",
-    "Manage": "Manage"
+    "Manage": "Manage",
+    "Moving to projectName": "Moving to %{projectName}..."
 }
