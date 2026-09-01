@@ -1438,6 +1438,44 @@ marked read the moment it appeared. The client half learns the same two facts fr
 two rules match; `isEmailHandledInMailbox` exists once per side because Cloud Functions cannot import
 app code — keep them in step.
 
+### A meeting exists only after somebody's browser asked for it (AT-2480)
+
+**There is no scheduled server-side calendar sync.** `syncCalendarEventsSecondGen` is an `onCall`
+and nothing else — no `onSchedule`, no trigger — so a day's meetings are not tasks until a client
+calls `checkIfCalendarConnected(projectId)` for that user's connected project. Everything
+downstream is ordinary: the callable writes `items/{projectId}/tasks` documents carrying
+`calendarData`, they ride the normal open-tasks listeners, `getTaskTypeIndex` buckets them into
+`CALENDAR_TASK_INDEX` and the Calendar section renders them. So a "the calendar section is
+missing" report is almost always about the **pull**, not about the list, and the way to tell them
+apart is the task's own `created` stamp: if it equals the first sync of the day, nothing was there
+to render before it.
+
+The board used to make that call from `OpenTasksByProjectHandler`, once per rendered project block
+and gated on `inSelectedProject` — so **All Projects never pulled anything**, and the day's
+meetings materialised only when the user selected the one project holding the connection. Two
+quieter cases had the same shape: selecting a project that merely _receives_ routed meetings
+(`calendarProjectRouting` routes an event to whichever project it classifies into, which is
+frequently not the synced one) never synced either, and neither did selecting one of several
+connected projects, which refreshed only that one's calendar. My Day never had the bug because
+`MyDayView` loops `apisConnected` — and `showAllProjectsByTime` decides which of the two you get,
+so whether the calendar syncs at all came down to a display toggle.
+
+The connection is a property of the **user** (`loggedUser.apisConnected[projectId].calendar`), so
+`useTaskBoardCalendarSync` (`components/TaskListView/taskBoardCalendarSync.js`) resolves it from
+there and runs once for the whole board from `TasksByProjectSections` — the one component that
+survives the All Projects ⇄ selected-project switch and the Open/In progress/Workflow/Done toggle.
+It is deliberately **not** gated on `state.isLoadingData` the way the Email line is: the failure
+being fixed is "the sync never ran", so a gate that can stay closed would reintroduce it. What
+keeps it cheap is the one-minute per-project cooldown already inside `checkIfCalendarConnected`
+plus a ref keyed on the connected-project list, so a re-render or a project switch cannot turn a
+multi-second Cloud Function call into a storm. Pinned by `taskBoardCalendarSync.test.js` and
+`TasksByProjectSectionsCalendarSync.test.js`.
+
+Worth knowing when reading a sync log: the fetch window is the user's **local day** even though
+the client passes `daysAhead: 30`, and per-event LLM project routing makes a cold first sync of
+the day slow (32s for 7 events on the reporting account), so the meetings land a beat after the
+board paints.
+
 ### Task reminders and the channel they come back on (AT-2211)
 
 A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`
