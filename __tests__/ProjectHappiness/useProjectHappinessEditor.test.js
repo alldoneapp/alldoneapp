@@ -223,3 +223,51 @@ describe('useProjectHappinessEditor (AT-2392)', () => {
         expect(Backend.setProjectHappiness).toHaveBeenCalledTimes(2)
     })
 })
+
+describe('useProjectHappinessEditor — what is already stored for the day', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        Backend.watchProjectHappinessByRange.mockReset()
+    })
+
+    const answer = entriesByProject => {
+        Backend.watchProjectHappinessByRange.mockImplementation(
+            (projectId, userId, timestamp1, timestamp2, watcherKey, callback) => {
+                if (entriesByProject[projectId]) callback(projectId, entriesByProject[projectId])
+            }
+        )
+    }
+
+    it('reports a stored rating as stored, and an unrated project as null', () => {
+        answer({
+            'project-a': [{ rating: 4, comment: 'fine', timestamp: MONDAY, updated: 1 }],
+            'project-b': [],
+        })
+
+        const { editor } = renderEditor({ date: MONDAY })
+
+        expect(editor().storedEntries['project-a']).toEqual({ rating: 4, comment: 'fine', updated: 1 })
+        expect(editor().storedEntries['project-b']).toBeNull()
+    })
+
+    it('does not count a rating that was only tapped, until the watcher confirms it', () => {
+        answer({ 'project-a': [], 'project-b': [] })
+        const { editor } = renderEditor({ date: MONDAY })
+
+        renderer.act(() => editor().setRating(PROJECT_A, 3))
+
+        expect(editor().ratings['project-a']).toBe(3)
+        expect(editor().storedEntries['project-a']).toBeNull()
+    })
+
+    it('forgets the previous day when the day changes', () => {
+        answer({ 'project-a': [{ rating: 4, comment: '', timestamp: MONDAY, updated: 1 }] })
+        const { editor, setDate } = renderEditor({ date: MONDAY })
+        expect(editor().storedEntries['project-a']).toBeTruthy()
+
+        answer({})
+        setDate(TUESDAY)
+
+        expect(editor().storedEntries['project-a']).toBeUndefined()
+    })
+})

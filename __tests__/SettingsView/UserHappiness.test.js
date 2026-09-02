@@ -15,6 +15,7 @@ import renderer from 'react-test-renderer'
 jest.mock('../../utils/BackendBridge', () => ({
     watchProjectHappinessByRange: jest.fn(),
     setProjectHappiness: jest.fn(() => Promise.resolve()),
+    getUserStatistics: jest.fn(),
     unwatch: jest.fn(),
 }))
 
@@ -58,23 +59,29 @@ const storeState = {
     showFloatPopup: false,
 }
 
-const testStore = {
-    getState: () => storeState,
-    subscribe: () => () => {},
-    dispatch: () => {},
+const makeStore = (overrides = {}) => {
+    const state = { ...storeState, ...overrides }
+    return {
+        getState: () => state,
+        subscribe: () => () => {},
+        dispatch: () => {},
+    }
 }
 
-const render = () => {
+const render = (storeOverrides = {}) => {
     let tree
     renderer.act(() => {
         tree = renderer.create(
-            <Provider store={testStore}>
+            <Provider store={makeStore(storeOverrides)}>
                 <UserHappiness />
             </Provider>
         )
     })
     return tree
 }
+
+const flattenStyle = style => (Array.isArray(style) ? style : [style]).flat(Infinity).filter(Boolean)
+const styleOf = (tree, testID) => Object.assign({}, ...flattenStyle(tree.root.findByProps({ testID }).props.style))
 
 const findRateButton = tree => tree.root.findAllByType(Button).find(button => button.props.icon === 'smile')
 
@@ -104,5 +111,25 @@ describe('Settings → Happiness (AT-2392)', () => {
         renderer.act(() => tree.root.findByType(HappinessRatingModal).props.onClose())
 
         expect(tree.root.findAllByType(HappinessRatingModal)).toHaveLength(0)
+    })
+})
+
+describe('Settings → Happiness header on a phone', () => {
+    it('keeps the title and the controls on one line on desktop', () => {
+        const tree = render()
+
+        expect(styleOf(tree, 'happinessHeader').flexDirection).toBe('row')
+        expect(styleOf(tree, 'happinessHeaderActions').marginLeft).toBe('auto')
+    })
+
+    it('stacks the controls under the title and lets them wrap on a phone', () => {
+        const tree = render({ smallScreenNavigation: true })
+
+        expect(styleOf(tree, 'happinessHeader').flexDirection).toBe('column')
+        const actions = styleOf(tree, 'happinessHeaderActions')
+        expect(actions.flexWrap).toBe('wrap')
+        expect(actions.marginLeft).toBe(0)
+        // The button is still there — it moved, it did not disappear.
+        expect(findRateButton(tree)).toBeTruthy()
     })
 })

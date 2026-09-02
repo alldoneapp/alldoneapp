@@ -20,7 +20,7 @@ firebase emulators:start --only functions --inspect-functions
 
 # Testing
 npm test                     # Run Jest tests
-npm test -- --testPathPattern="TaskList"  # Run single test file
+npm test -- --testPathPatterns="TaskList"  # Run single test file (jest 30: plural flag)
 npm run coverage             # Generate test coverage
 npm run update-snapshots     # Update Jest snapshots
 
@@ -1427,6 +1427,44 @@ repairs existing documents from the goal's current privacy. Pinned by
 `functions/shared/TaskModelBuilder.test.js` and the goal-privacy block in
 `functions/Tasks/recurringTasksCloud.test.js`. The client-side `createRecurrentTask` in
 `tasksFirestore.js` has no callers; the cloud function is the only producer.
+
+### Happiness ratings — what a rating popup knows before you rate
+
+Both rating surfaces (the "new day" popup and Settings → Happiness → "Rate happiness") render
+`ProjectHappinessRatingList` on `useProjectHappinessEditor`, and three things in that pair are easy
+to get backwards. **`ratings` is not "already rated"**: it holds the value on screen, which a tap
+sets immediately, so it cannot tell a stored rating from one made a second ago; the editor's
+`storedEntries` (written ONLY by the per-day watcher: an entry object, `null` once the watcher has
+answered "nothing", absent until it answered at all) is what the "Rated / Not rated yet" badge, the
+"N of M projects rated on this day" line and the tests read. **"Tasks done" for a day comes from
+`statistics/{projectId}/{userId}/{DDMMYYYY}`** — `useProjectDayStatistics` reads it exactly as the
+new-day popup does (`getUserStatistics`), and an unanswered read is `undefined`, rendered as a dash
+by the shared `ProjectDayActivity` row, never as `0`. **The date picker's dots** come from
+`useHappinessRatedDays`, one range watcher per project over the VISIBLE month, attached only while
+the picker is open (and keyed `settings_happiness_rated_days_*`, distinct from the editor's per-day
+watchers); under `markingType="custom"` a plain `{ marked: true, dotColor }` renders the dot and the
+selected day layers its `customStyles` on top. The Settings header stacks on `smallScreenNavigation`
+and lets the two controls wrap (`rowGap`), because title + primary button + "Filtered by" never fit
+one 72px line on a phone. Pinned by `__tests__/ProjectHappiness/*` and
+`__tests__/SettingsView/UserHappiness.test.js`.
+
+### Client feed cleanup: concurrent trims race, and a lost race reads as permission-denied
+
+Every write batch trims `feedsStore/{project}/all` and the user's `followed` store to the newest
+200 readable entries (`deleteOldVisibleFeeds`, called from the `feedsCleaned` block of each
+`*Updates.js`). In steady state that is 1-2 overflow documents per run, and a burst of edits used to
+start one cleanup **per batch**: all of them read the same overflow and raced to delete it, and every
+loser logged `[feeds cleanup] Could not trim legacy client feed data … permission-denied`. The
+denial is real but not about authorization: the delete rule evaluates
+`canReadObject(projectId, resource.data)`, and on a document the winner already removed that
+dereferences a missing `resource.data` - a rules evaluation ERROR, which the client receives as
+PERMISSION_DENIED (it shows up as `ERROR DELETE` bursts in the `rules/evaluation_count` metric, never
+as DENY). Replaying the queries in the emulator with the real project document allows everything;
+deleting the same document twice reproduces the error. `utils/backends/Feeds/feedCleanup.js` now
+coalesces concurrent runs per collection and treats `permission-denied` / `not-found` on a delete of
+a document the query just returned as "already gone"; any other delete failure still rejects and is
+still reported. The other project member's browser races the shared `all` store the same way, so the
+tolerance matters even with the coalescing. Pinned by `utils/backends/Feeds/feedCleanup.test.js`.
 
 ### Gold Transactions
 

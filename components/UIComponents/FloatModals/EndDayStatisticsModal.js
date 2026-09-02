@@ -30,6 +30,7 @@ import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
 } from '../../../utils/DayRateTimeLogHelper'
+import ProjectDayActivity from '../../ProjectHappiness/ProjectDayActivity'
 import ProjectHappinessRatingList from '../../ProjectHappiness/ProjectHappinessRatingList'
 import useProjectHappinessEditor from '../../ProjectHappiness/useProjectHappinessEditor'
 import { getHappinessProjects } from '../../ProjectHappiness/happinessProjects'
@@ -579,35 +580,14 @@ export default function EndDayStatisticsModal() {
         (maxDoneTasks, project) => Math.max(maxDoneTasks, getProjectDoneTasks(project.id)),
         0
     )
-    const getProjectActivityWidth = projectId => {
-        const projectDoneTasks = getProjectDoneTasks(projectId)
-        if (projectDoneTasks <= 0 || maxProjectDoneTasks <= 0) return 0
-        return `${Math.max(8, Math.round((projectDoneTasks / maxProjectDoneTasks) * 100))}%`
-    }
     /**
-     * The one thing the shared rating list does not know about: how busy the
-     * day being acknowledged was in this project. It is meaningful only for
-     * the day the popup is about, which is why it is injected here rather than
-     * living in `ProjectHappinessRatingList`.
+     * How busy the day being acknowledged was in this project, under its
+     * name. The shared rating list does not know about statistics; the host
+     * injects the day's count (`ProjectDayActivity` is the same row the
+     * Settings → Happiness rating popup renders for the day it rates).
      */
     const renderProjectDayActivity = project => (
-        <>
-            <View style={localStyles.happinessProjectStats}>
-                <Icon name="check-square" size={16} color={colors.Text04} />
-                <Text style={localStyles.happinessProjectStatsText}>
-                    {translate('Tasks done:')} {getProjectDoneTasks(project.id)}
-                </Text>
-            </View>
-            <View style={localStyles.projectActivityTrack}>
-                <View
-                    style={[
-                        localStyles.projectActivityFill,
-                        { width: getProjectActivityWidth(project.id) },
-                        getProjectDoneTasks(project.id) === 0 && localStyles.projectActivityFillEmpty,
-                    ]}
-                />
-            </View>
-        </>
+        <ProjectDayActivity doneTasks={getProjectDoneTasks(project.id)} maxDoneTasks={maxProjectDoneTasks} />
     )
     const renderStatItem = (key, icon, label, value) => (
         <View style={[localStyles.statItem, compactModalLayout && localStyles.mobileStatItem]} key={key}>
@@ -960,30 +940,5 @@ const localStyles = StyleSheet.create({
         color: colors.Text04,
         marginTop: 2,
         textAlign: 'center',
-    },
-    happinessProjectStats: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 4,
-    },
-    happinessProjectStatsText: {
-        ...styles.caption2,
-        color: colors.Text04,
-        marginLeft: 4,
-    },
-    projectActivityTrack: {
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        marginTop: 8,
-        overflow: 'hidden',
-    },
-    projectActivityFill: {
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: colors.Primary300,
-    },
-    projectActivityFillEmpty: {
-        width: 0,
     },
 })

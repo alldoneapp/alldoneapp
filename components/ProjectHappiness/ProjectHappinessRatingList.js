@@ -9,6 +9,16 @@ import { getSafeTextValue } from '../../utils/StatisticDataHelper'
 import { HAPPINESS_PRIVACY_TEXT } from '../../utils/ProjectHappinessHelper'
 
 /**
+ * Whether a project already carries a STORED rating for the rated day.
+ *
+ * Reads the editor's `storedEntries`, which only the day's watcher writes —
+ * so a rating tapped a moment ago shows as "Rated" once its write has landed
+ * in the local cache, and a day opened from the date picker shows its stored
+ * state before anything is touched.
+ */
+export const isProjectRatedForDay = (editor, projectId) => !!editor?.storedEntries?.[projectId]
+
+/**
  * The "rate every project" list, on the dark popup card (AT-2392).
  *
  * Extracted from the "new day" popup so Settings → Happiness renders the exact
@@ -16,9 +26,13 @@ import { HAPPINESS_PRIVACY_TEXT } from '../../utils/ProjectHappinessHelper'
  * state and the writes live in `useProjectHappinessEditor`; this component is
  * presentational and takes that editor as its controller.
  *
- * `renderProjectMeta` is the one thing that differs between the two hosts: the
- * new-day popup shows the day's "Tasks done" count and an activity bar under
- * the project name, which is meaningless for an arbitrary past day.
+ * `renderProjectMeta` is what the host adds under the project name — both
+ * hosts now show the day's "Tasks done" count and activity bar there
+ * (`ProjectDayActivity`).
+ *
+ * Every row also says whether the day is already rated in that project, so a
+ * user who reopens a day (or the new-day popup after rating half of it) can
+ * tell at a glance what is still open.
  */
 export default function ProjectHappinessRatingList({
     projects = [],
@@ -30,6 +44,18 @@ export default function ProjectHappinessRatingList({
     containerStyle,
 }) {
     if (projects.length === 0) return null
+
+    const renderRatedBadge = project =>
+        isProjectRatedForDay(editor, project.id) ? (
+            <View style={localStyles.ratedBadge} testID={`happinessRated_${project.id}`}>
+                <Icon name="check" size={12} color={colors.UtilityGreen150} />
+                <Text style={localStyles.ratedBadgeText}>{translate('Rated')}</Text>
+            </View>
+        ) : (
+            <Text style={localStyles.notRatedText} testID={`happinessNotRated_${project.id}`}>
+                {translate('Not rated yet')}
+            </Text>
+        )
 
     return (
         <View style={[localStyles.happinessSection, containerStyle]}>
@@ -52,9 +78,12 @@ export default function ProjectHappinessRatingList({
                                 compact && localStyles.mobileHappinessProjectInfo,
                             ]}
                         >
-                            <Text style={localStyles.happinessProjectName} numberOfLines={1}>
-                                {getSafeTextValue(project.name, translate('Project'))}
-                            </Text>
+                            <View style={localStyles.happinessProjectNameRow}>
+                                <Text style={localStyles.happinessProjectName} numberOfLines={1}>
+                                    {getSafeTextValue(project.name, translate('Project'))}
+                                </Text>
+                                {renderRatedBadge(project)}
+                            </View>
                             {renderProjectMeta ? renderProjectMeta(project) : null}
                         </View>
                         <View style={[localStyles.happinessActions, compact && localStyles.mobileHappinessActions]}>
@@ -132,10 +161,38 @@ const localStyles = StyleSheet.create({
         marginRight: 0,
         marginBottom: 10,
     },
+    happinessProjectNameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minWidth: 0,
+    },
     happinessProjectName: {
         ...styles.subtitle2,
         color: '#ffffff',
         flexShrink: 1,
+    },
+    ratedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 8,
+        paddingHorizontal: 6,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(0,194,130,0.18)',
+        flexShrink: 0,
+    },
+    ratedBadgeText: {
+        ...styles.caption2,
+        lineHeight: 14,
+        color: colors.UtilityGreen150,
+        marginLeft: 4,
+    },
+    notRatedText: {
+        ...styles.caption2,
+        lineHeight: 14,
+        color: colors.Text04,
+        marginLeft: 8,
+        flexShrink: 0,
     },
     happinessActions: {
         flexDirection: 'row',
