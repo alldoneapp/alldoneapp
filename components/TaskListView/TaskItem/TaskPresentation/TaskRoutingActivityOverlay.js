@@ -67,20 +67,20 @@ function ConfirmationGlow() {
                     toValue: 1,
                     duration: 180,
                     easing: Easing.out(Easing.cubic),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(glow, {
                     toValue: 0,
                     duration: ROUTING_GLOW_DURATION_MS - 180,
                     easing: Easing.in(Easing.quad),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ]),
             Animated.timing(burst, {
                 toValue: 1,
                 duration: ROUTING_BURST_DURATION_MS,
                 easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
+                useNativeDriver: false,
             }),
         ])
 

@@ -38,9 +38,9 @@ function EmailLabelingLiveDot() {
                     toValue: 1,
                     duration: 1600,
                     easing: Easing.out(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
-                Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: false }),
             ])
         )
         animation.start()
@@ -76,13 +76,13 @@ function EmailChipsSkeleton() {
                     toValue: 1,
                     duration: 700,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(pulse, {
                     toValue: 0.5,
                     duration: 700,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         )

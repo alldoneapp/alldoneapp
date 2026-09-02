@@ -303,13 +303,13 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                         toValue: CHECKBOX_PUNCH_DIP,
                         duration: CHECKBOX_PUNCH_DIP_MS,
                         easing: Easing.out(Easing.quad),
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                     }),
                     Animated.spring(punch, {
                         toValue: 1,
                         friction: 3.6,
                         tension: 180,
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                     }),
                 ]),
                 // Beat 2 — ring and sparks out of the checkbox.
@@ -317,14 +317,14 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                     toValue: 1,
                     duration: BURST_DURATION_MS,
                     easing: Easing.out(Easing.cubic),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 // Beat 3 — everything green arrives together.
                 Animated.timing(flourish, {
                     toValue: 1,
                     duration: FLOURISH_FADE_IN_MS,
                     easing: Easing.out(Easing.quad),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 // Beats 4 and 5 — the 0 → 100% sweep and then, strictly afterwards, the
                 // confirmation. One sequence rather than two parallel entries with a hand-computed
@@ -340,13 +340,13 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                         // rate (mechanical) or dawdling towards the end (`Easing.out` alone, which
                         // spends most of a 450ms budget barely moving).
                         easing: Easing.bezier(0.22, 0.75, 0.25, 1),
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                     }),
                     Animated.timing(pulse, {
                         toValue: 1,
                         duration: PROGRESS_PULSE_MS,
                         easing: Easing.out(Easing.quad),
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                     }),
                 ]),
             ]
@@ -361,7 +361,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                             toValue: 0,
                             duration: RELEASE_DURATION_MS,
                             easing: Easing.in(Easing.quad),
-                            useNativeDriver: true,
+                            useNativeDriver: false,
                         }),
                     ])
                 )

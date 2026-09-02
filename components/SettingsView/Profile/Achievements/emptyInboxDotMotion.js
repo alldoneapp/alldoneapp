@@ -145,7 +145,7 @@ export default function useEmptyInboxDotCelebration(runId, currentStreak) {
                     toValue: 1,
                     duration: DOT_LAND_MS,
                     easing: Easing.linear,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 // Linear for the same reason: swell / hold / settle is one shape expressed in the
                 // consumer's interpolation, so the hold can be lengthened without touching timing.
@@ -153,7 +153,7 @@ export default function useEmptyInboxDotCelebration(runId, currentStreak) {
                     toValue: 1,
                     duration: DOT_ZOOM_MS,
                     easing: Easing.linear,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ]),
             Animated.sequence([
@@ -162,7 +162,7 @@ export default function useEmptyInboxDotCelebration(runId, currentStreak) {
                     toValue: 1,
                     duration: BURST_DURATION_MS,
                     easing: Easing.out(Easing.cubic),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ]),
             Animated.sequence([
@@ -171,7 +171,7 @@ export default function useEmptyInboxDotCelebration(runId, currentStreak) {
                     toValue: 1,
                     duration: SPOTLIGHT_MS,
                     easing: Easing.linear,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ]),
             Animated.sequence([

@@ -13,16 +13,16 @@ const TypingIndicator = () => {
             const duration = 300
             const sequence = [
                 Animated.sequence([
-                    Animated.timing(dot1Opacity, { toValue: 1, duration, useNativeDriver: true }),
-                    Animated.timing(dot1Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                    Animated.timing(dot1Opacity, { toValue: 1, duration, useNativeDriver: false }),
+                    Animated.timing(dot1Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
                 ]),
                 Animated.sequence([
-                    Animated.timing(dot2Opacity, { toValue: 1, duration, useNativeDriver: true }),
-                    Animated.timing(dot2Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                    Animated.timing(dot2Opacity, { toValue: 1, duration, useNativeDriver: false }),
+                    Animated.timing(dot2Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
                 ]),
                 Animated.sequence([
-                    Animated.timing(dot3Opacity, { toValue: 1, duration, useNativeDriver: true }),
-                    Animated.timing(dot3Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                    Animated.timing(dot3Opacity, { toValue: 1, duration, useNativeDriver: false }),
+                    Animated.timing(dot3Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
                 ]),
             ]
 
@@ -60,13 +60,13 @@ const OptionBubble = ({ option, onPress }) => {
                     Animated.timing(scaleAnim, {
                         toValue: 1.05,
                         duration: 800,
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                         easing: Easing.inOut(Easing.ease),
                     }),
                     Animated.timing(opacityAnim, {
                         toValue: 0.8,
                         duration: 800,
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                         easing: Easing.inOut(Easing.ease),
                     }),
                 ]),
@@ -74,13 +74,13 @@ const OptionBubble = ({ option, onPress }) => {
                     Animated.timing(scaleAnim, {
                         toValue: 1,
                         duration: 800,
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                         easing: Easing.inOut(Easing.ease),
                     }),
                     Animated.timing(opacityAnim, {
                         toValue: 1,
                         duration: 800,
-                        useNativeDriver: true,
+                        useNativeDriver: false,
                         easing: Easing.inOut(Easing.ease),
                     }),
                 ]),
