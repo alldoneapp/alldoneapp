@@ -134,7 +134,6 @@ import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
     buildTaskUpdateOperation,
-    MAX_UNDO_OPERATIONS,
     queueUndoAction,
 } from '../../undo/undoActions'
 import { buildTaskStateUndoOperation, buildTaskStateUndoOperations } from '../../undo/taskStateUndo'
@@ -176,6 +175,8 @@ import {
 } from './focusHandoffRace'
 import { isTaskOnUserPlate } from './focusTaskEligibility'
 import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
+import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
+import { captureTaskUndoStates } from './taskUndoCapture'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -189,33 +190,21 @@ const getTaskTransitionUndoLabel = (task, stepToMoveId) => {
     return `Moved “${task.name}” to another workflow step`
 }
 
-const loadTaskUndoStates = async (projectId, taskIds) => {
-    const uniqueTaskIds = uniq(taskIds.filter(Boolean))
-    if (uniqueTaskIds.length === 0) return {}
-    if (uniqueTaskIds.length > MAX_UNDO_OPERATIONS) {
-        throw new Error('This task transition affects too many tasks to be safely undoable')
-    }
-
-    try {
-        const snapshots = await Promise.all(
-            uniqueTaskIds.map(taskId => getDb().doc(`items/${projectId}/tasks/${taskId}`).get())
-        )
-        const states = snapshots.reduce((result, snapshot, index) => {
-            if (snapshot.exists) result[uniqueTaskIds[index]] = snapshot.data()
-            return result
-        }, {})
-        if (Object.keys(states).length !== uniqueTaskIds.length) {
-            throw new Error('A task changed before its undo state could be captured')
-        }
-        return states
-    } catch (error) {
-        console.warn('[task undo] Could not capture the state before the task transition', {
-            projectId,
-            error: error.message,
-        })
-        throw error
-    }
+// Best-effort by contract (see taskUndoCapture.js): resolves to the captured states, or to
+// null when they could not be read even through the server, in which case the transition
+// simply is not undoable. It never throws and never blocks the move.
+const readTaskDocumentFromClient = async path => {
+    const snapshot = await getDb().doc(path).get()
+    return { exists: snapshot.exists, data: snapshot.exists ? snapshot.data() : undefined }
 }
+
+const loadTaskUndoStates = (projectId, taskIds) =>
+    captureTaskUndoStates({
+        projectId,
+        taskIds,
+        readFromClient: readTaskDocumentFromClient,
+        readFromServer: readDocumentDirectlyFromServer,
+    })
 
 const getParentRemovalChanges = (parentState, taskId) => {
     if (!parentState || !Array.isArray(parentState.subtaskIds)) return null
@@ -229,15 +218,30 @@ const getParentRemovalChanges = (parentState, taskId) => {
     return { subtaskIds, subtaskNames }
 }
 
+// Returns the queued undo action, or null when the transition goes ahead without one: the
+// capture failed (already reported by captureTaskUndoStates) or produced nothing to restore.
+// Undo is a convenience layered on the move, never a precondition of it (AT-2484).
 const queueTaskTransitionUndo = ({ projectId, task, stepToMoveId, beforeStates, taskChanges, batch }) => {
+    if (!beforeStates) return null
     const operations = buildTaskStateUndoOperations(projectId, beforeStates, taskChanges)
-    if (operations.length === 0) throw new Error('Could not capture the task transition for undo')
+    if (operations.length === 0) {
+        console.warn('[task undo] Nothing to record for the task transition; continuing without undo', {
+            projectId,
+            taskId: task.id,
+        })
+        return null
+    }
     const action = queueUndoAction({
         label: getTaskTransitionUndoLabel(task, stepToMoveId),
         operations,
         batch,
     })
-    if (!action) throw new Error('Could not queue the task transition for undo')
+    if (!action) {
+        console.warn('[task undo] Could not queue the task transition for undo; continuing without undo', {
+            projectId,
+            taskId: task.id,
+        })
+    }
     return action
 }
 
@@ -3070,7 +3074,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = {
@@ -3326,7 +3330,7 @@ export async function moveTasksFromOpen(
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = {
@@ -3457,7 +3461,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     if (parentId) {
         const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
         taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
+        const parentChanges = getParentRemovalChanges(undoBeforeStates?.[parentId], task.id)
         if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
     } else {
         const subtaskChanges = { ...updateData, parentDone: false, inDone: false }

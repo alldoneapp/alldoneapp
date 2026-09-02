@@ -1096,6 +1096,59 @@ describe('queries used by the web client', () => {
     })
 })
 
+describe('missing object probes (AT-2484)', () => {
+    it('lets a project member learn that an object does not exist without erroring the read', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        for (const path of [
+            `items/${PROJECT_ID}/tasks/never-created`,
+            `noteItems/${PROJECT_ID}/notes/never-created`,
+            `goals/${PROJECT_ID}/items/never-created`,
+            `projectsContacts/${PROJECT_ID}/contacts/never-created`,
+            `skills/${PROJECT_ID}/items/never-created`,
+            `okrs/${PROJECT_ID}/projectOkrs/never-created`,
+        ]) {
+            const snapshot = await assertSucceeds(getDoc(doc(memberDb, path)))
+            expect(snapshot.exists()).toBe(false)
+        }
+    })
+
+    it('still hides existence from outsiders and keeps existing private objects private', async () => {
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const anonymousDb = testEnv.unauthenticatedContext().firestore()
+
+        await assertFails(getDoc(doc(outsiderDb, `items/${PROJECT_ID}/tasks/never-created`)))
+        await assertFails(getDoc(doc(anonymousDb, `items/${PROJECT_ID}/tasks/never-created`)))
+        await assertFails(getDoc(doc(outsiderDb, `noteItems/${PROJECT_ID}/notes/never-created`)))
+        // The probe only answers for a null resource; a real private task is still governed by the
+        // ordinary read rule, so a teammate outside its isPublicFor cannot read it.
+        await assertFails(getDoc(doc(teammateDb, `items/${PROJECT_ID}/tasks/private-task`)))
+    })
+
+    it('lets a member batch that carries a stale id delete nothing instead of failing as a whole', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/parent-with-stale-subtask`), {
+                projectId: PROJECT_ID,
+                isPublicFor: [0],
+                subtaskIds: ['subtask-already-gone'],
+                readerIds: [MEMBER_ID],
+                roleIdsVisibleTo: { [MEMBER_ID]: [] },
+            })
+        })
+
+        const batch = writeBatch(memberDb)
+        batch.delete(doc(memberDb, `items/${PROJECT_ID}/tasks/parent-with-stale-subtask`))
+        batch.delete(doc(memberDb, `items/${PROJECT_ID}/tasks/subtask-already-gone`))
+        await assertSucceeds(batch.commit())
+
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertFails(deleteDoc(doc(outsiderDb, `items/${PROJECT_ID}/tasks/subtask-already-gone`)))
+    })
+})
+
 describe('server-only data', () => {
     it.each([
         `userSecrets/${MEMBER_ID}/providers/google`,
