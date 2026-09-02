@@ -109,6 +109,62 @@ async function updateNoteData(projectId, noteId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
+/**
+ * AT-2488 — the work a freshly created note still needs, run in the background.
+ *
+ * Every item here is a side effect OF a note that already exists: the note
+ * document has been written (and, online, server-acked) before this runs. None
+ * of them is a precondition for opening the note — feeds/sticky/mention writes
+ * are all about what happens *around* the note, and `logEvent` is analytics.
+ * Awaiting them only made the user wait on a blank screen, and — worse — a
+ * failure in any of them used to reject `uploadNewNote` for a note that had in
+ * fact been created, which the caller then reported as "creation failed".
+ *
+ * So each one is settled independently and reports rather than throws. The
+ * offline branch already worked exactly this way (a server ack cannot arrive
+ * offline, AT-2340), so this makes the online path match a shape that has been
+ * in production for the whole offline-support era.
+ *
+ * The empty Storage seed put is deliberately NOT here — see `uploadNewNote`.
+ */
+const runNewNoteSideEffects = (projectId, noteId, noteDataCopy) => {
+    const settle = (label, work) => {
+        const report = error => console.warn(`[notes] ${label} failed for ${noteId} (the note was created):`, error)
+        try {
+            Promise.resolve(work()).catch(report)
+        } catch (error) {
+            // A side effect that throws synchronously must not take the others down.
+            report(error)
+        }
+    }
+
+    const { stickyEndDate } = noteDataCopy.stickyData || {}
+    if (stickyEndDate > 0) settle('sticky tracking', () => trackStickyNote(projectId, noteId, stickyEndDate))
+
+    settle('feeds chain', () => createNoteFeedsChain(projectId, noteId, noteDataCopy))
+
+    settle('mention tasks', () => {
+        // Resolved here rather than by the caller: a project that is missing from
+        // the store must not fail a note that is already written.
+        const project = ProjectHelper.getProjectById(projectId)
+        const mentionedUserIds = intersection(
+            project ? project.userIds : [],
+            getMentionedUsersIdsWhenEditText(noteDataCopy.extendedTitle, '')
+        )
+
+        return createGenericTaskWhenMention(
+            projectId,
+            noteId,
+            mentionedUserIds,
+            GENERIC_NOTE_TYPE,
+            'notes',
+            noteDataCopy.assistantId
+        )
+    })
+
+    settle('analytics', () => logEvent('new_note', { id: noteId, uid: noteDataCopy.userId }))
+}
+
 export async function uploadNewNote(projectId, noteData) {
     try {
         await updateEditionData(noteData)
@@ -125,23 +181,25 @@ export async function uploadNewNote(projectId, noteData) {
         // the offline editor needs (OFFLINE_SUPPORT_PLAN.md notes follow-ups).
         const browserIsOffline = isBrowserOffline()
 
-        // Create an empty document first to ensure it exists
-        const doc = new Uint8Array()
-        const storageRef = notesStorage.ref()
-
-        // Create an array to track all promises that need to complete
-        const promises = []
-
-        // The empty Storage object is best-effort: the editor tolerates its
-        // absence (a never-saved note opens empty via allowEmptyOpen), so a
-        // failed put — guaranteed offline — must not fail the note creation.
-        promises.push(
-            Promise.resolve(storageRef.child(`notesData/${projectId}/${noteId}`).put(doc)).catch(error =>
-                console.warn(`Empty note content upload failed for ${noteId} (tolerated):`, error)
+        // The empty content object, started HERE so it runs concurrently with the
+        // document write below rather than after it — and awaited once that write
+        // is done. It is the one piece of this function that cannot simply be left
+        // in the background: `setNoteData` overwrites the same Storage path, the
+        // editor autosaves 3s after it opens, and the note opens the moment this
+        // function resolves. A seed put still in flight at that point would land
+        // AFTER the user's first save and blank what they had just typed. Awaiting
+        // it costs nothing in the normal case (it has had the whole document write
+        // to finish) and only costs time exactly when not awaiting would be unsafe.
+        const emptyContentUpload = Promise.resolve()
+            .then(() => notesStorage.ref().child(`notesData/${projectId}/${noteId}`).put(new Uint8Array()))
+            .catch(error =>
+                // Still best-effort: the editor tolerates a missing object through
+                // `allowEmptyOpen` (a brand-new note has no `preview`).
+                console.warn(`[notes] empty content upload failed for ${noteId} (the note was created):`, error)
             )
-        )
 
-        // Set the initial document data with a retry mechanism
+        // Set the initial document data with a retry mechanism. This is the ONE
+        // thing the caller has to wait for: it is what makes the note exist.
         const setNoteDoc = () =>
             getDb()
                 .collection(`noteItems/${projectId}/notes`)
@@ -172,54 +230,17 @@ export async function uploadNewNote(projectId, noteData) {
             }
         }
 
-        const { stickyEndDate } = noteDataCopy.stickyData
-        if (stickyEndDate > 0) {
-            promises.push(trackStickyNote(projectId, noteId, stickyEndDate))
-        }
+        // Offline this can never settle (Storage has no offline queue at all), so
+        // awaiting it would hang note creation — the same reason the document write
+        // above is not awaited offline. Nothing is lost: the local y-indexeddb copy
+        // is durable and `NotesOfflineCatchUp` uploads it on reconnect.
+        if (!browserIsOffline) await emptyContentUpload
 
-        // Add feed chain creation to promises
-        promises.push(createNoteFeedsChain(projectId, noteId, noteDataCopy))
-
-        const project = ProjectHelper.getProjectById(projectId)
-        const mentionedUserIds = intersection(
-            project.userIds,
-            getMentionedUsersIdsWhenEditText(noteDataCopy.extendedTitle, '')
-        )
-
-        promises.push(
-            createGenericTaskWhenMention(
-                projectId,
-                noteId,
-                mentionedUserIds,
-                GENERIC_NOTE_TYPE,
-                'notes',
-                noteDataCopy.assistantId
-            )
-        )
-
-        if (browserIsOffline) {
-            // The side-effect batches (feeds, sticky tracking, mention tasks) are
-            // queued locally and only ack on reconnect — resolve now so the UI can
-            // open the freshly created note.
-            Promise.all(promises).catch(error => console.warn(`Offline note side effects failed for ${noteId}:`, error))
-            logEvent('new_note', { id: noteId, uid: noteData.userId })
-        } else {
-            // Wait for all operations to complete
-            await Promise.all(promises)
-
-            // Log event after everything is complete
-            await logEvent('new_note', {
-                id: noteId,
-                uid: noteData.userId,
-            })
-        }
-
-        // Verify the note exists in the database before returning (offline this
-        // resolves from the local cache, which the write above just populated).
-        const noteExists = await getDb().doc(`noteItems/${projectId}/notes/${noteId}`).get()
-        if (!noteExists.exists) {
-            throw new Error('Note creation verification failed')
-        }
+        // No verification read (AT-2488): online, the awaited `set()` above only
+        // resolves on the server ack, so re-reading the document proved nothing
+        // and cost a full extra round trip on the critical path between the user
+        // pressing Enter and the note opening.
+        runNewNoteSideEffects(projectId, noteId, noteDataCopy)
 
         return { ...noteDataCopy, id: noteId }
     } catch (error) {

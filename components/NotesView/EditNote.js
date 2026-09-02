@@ -1,12 +1,12 @@
 import React, { Component } from 'react'
-import { Keyboard, StyleSheet, View } from 'react-native'
+import { Keyboard, StyleSheet, Text, View } from 'react-native'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import PropTypes from 'prop-types'
 import Backend from '../../utils/BackendBridge'
 import { cloneDeep, findIndex, isEqual } from 'lodash'
 import store from '../../redux/store'
-import { colors } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import {
     resetFloatPopup,
     setActiveEditMode,
@@ -46,8 +46,14 @@ import {
 } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
 import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
+import Spinner from '../UIComponents/Spinner'
 
 class EditNote extends Component {
+    // The form can be dismissed while a creation is still in flight (react-dismissible
+    // still owns Escape and outside clicks), so every continuation below has to know
+    // whether there is still a component to talk to.
+    _isMounted = false
+
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -67,6 +73,10 @@ class EditNote extends Component {
             tmpNote: clonedNote,
             noteChanged: false,
             mounted: false,
+            // AT-2488 — creating a note takes a visible moment. The form stays on
+            // screen and says so, instead of vanishing into an unchanged list.
+            creatingNote: false,
+            creationError: null,
             showButtonSpace: true,
             actionBeforeSave: false,
             followUpDate: null,
@@ -94,6 +104,7 @@ class EditNote extends Component {
     }
 
     componentDidMount() {
+        this._isMounted = true
         const { tmpNote, loggedUser } = this.state
         const { formType, defaultDate, projectId } = this.props
 
@@ -113,12 +124,14 @@ class EditNote extends Component {
     }
 
     componentWillUnmount() {
+        this._isMounted = false
         store.dispatch(unsetActiveEditMode())
         document.removeEventListener('keydown', this.onKeyDown)
         this.state.unsubscribe()
     }
 
     updateState = () => {
+        if (!this._isMounted) return
         const storeState = store.getState()
 
         this.setState({
@@ -224,8 +237,12 @@ class EditNote extends Component {
     updateNote = (e, actionBeforeSave) => {
         if (e) e.preventDefault()
 
-        const { note, tmpNote, noteChanged, loggedUser } = this.state
+        const { note, tmpNote, noteChanged, loggedUser, creatingNote } = this.state
         const { formType, projectId, onSuccessAction, linkedParentObject } = this.props
+
+        // While the note is being created the form is locked and showing its
+        // progress; a stray Enter must not close it or queue a second write.
+        if (creatingNote) return
 
         // removing trailing spaces
         tmpNote.title = tmpNote.title.trim()
@@ -248,15 +265,20 @@ class EditNote extends Component {
                     tmpNote.created = now
 
                     const noteToUpload = { ...tmpNote }
-                    store.dispatch(setTmpInputTextNote(''))
-                    const creation = uploadNewNote(projectId, noteToUpload, true)
+
+                    // AT-2488: the form used to be torn down here, synchronously,
+                    // while the write was still in flight — so the user was left
+                    // looking at an unchanged list with no spinner, no row and no
+                    // sign anything had happened until the view suddenly changed.
+                    // It now stays up in a "Creating note…" state and is dismissed
+                    // by the success path, immediately before navigating.
+                    this.setState({ creatingNote: true, creationError: null })
+
+                    return uploadNewNote(projectId, noteToUpload)
                         .then(note => {
                             this.onSuccessUploadNewNote(note, actionBeforeSave, linkedParentObject)
                         })
-                        .catch(this.dismissEditMode)
-
-                    this.resetEditMode()
-                    return creation
+                        .catch(this.onFailedUploadNewNote)
                 })
             } else {
                 if (tmpNote.title === '') {
@@ -313,6 +335,16 @@ class EditNote extends Component {
             // Set linked objects
             await this.trySetLinkedObjects(note)
 
+            // The note exists now, so the draft that survives a dismissed form is
+            // spent. Closing the editor here — rather than at submit time — is what
+            // keeps the progress state on screen for the whole wait (AT-2488). It is
+            // skipped when the form is already gone: `onCancelAction` is a toggle, so
+            // calling it on a dismissed form would REOPEN it.
+            if (this._isMounted) {
+                store.dispatch(setTmpInputTextNote(''))
+                this.resetEditMode()
+            }
+
             // Handle linked parent object case
             if (linkedParentObject) {
                 // Navigate to the new note created from the linked notes view
@@ -326,17 +358,16 @@ class EditNote extends Component {
                     setSelectedNote(note),
                 ])
 
-                // Small delay to ensure state updates are processed
-                await new Promise(resolve => setTimeout(resolve, 100))
-
-                // Navigate to the new note
+                // No artificial delay before navigating (AT-2488): the dispatch above
+                // is synchronous, and the 100ms it used to wait was pure dead time on
+                // top of a wait the user was already given no feedback about.
                 NavigationService.navigate('NotesDetailedView', {
                     noteId: note.id,
                     projectId: project.id,
                 })
             }
 
-            if (actionBeforeSave) {
+            if (actionBeforeSave && this._isMounted) {
                 this.setState({ actionBeforeSave: false })
             }
         } catch (error) {
@@ -344,6 +375,27 @@ class EditNote extends Component {
             // If navigation fails, try to navigate to root
             NavigationService.navigate('Root')
         }
+    }
+
+    /**
+     * AT-2488 — a failed creation used to silently close the form and drop the
+     * typed title, which is the exact "did something go wrong?" moment this task
+     * is about. Keep the form, keep the text, say what happened, allow a retry.
+     */
+    onFailedUploadNewNote = error => {
+        console.error('[notes] Could not create the note', error)
+
+        // `submitOnce` is one-shot by design, and it observed this rejection as a
+        // resolution (the `.catch` above handles it), so it would stay locked and
+        // silently swallow the retry. Release it explicitly.
+        this.submitOnce.reset()
+
+        if (!this._isMounted) return
+
+        this.setState({
+            creatingNote: false,
+            creationError: translate('Note could not be created'),
+        })
     }
 
     trySetLinkedObjects = note => {
@@ -394,8 +446,9 @@ class EditNote extends Component {
     }
 
     resetEditMode = () => {
-        // clean text input
-        this.inputNote.current.clear()
+        // clean text input — optional-chained because this now also runs from an
+        // async continuation, where the input may already be gone.
+        this.inputNote.current?.clear()
         this.dismissEditMode()
     }
 
@@ -405,11 +458,11 @@ class EditNote extends Component {
 
     onKeyDown = event => {
         const { key } = event
-        const { mentionsModalActive } = this.state
+        const { mentionsModalActive, creatingNote } = this.state
         const { showFloatPopup } = store.getState()
 
         if (key === 'Enter') {
-            if (!mentionsModalActive && showFloatPopup === 0) {
+            if (!mentionsModalActive && showFloatPopup === 0 && !creatingNote) {
                 this.updateNote()
             }
         }
@@ -570,7 +623,16 @@ class EditNote extends Component {
     }
 
     render() {
-        const { tmpNote, noteChanged, smallScreen, smallScreenNavigation, showButtonSpace, loggedUser } = this.state
+        const {
+            tmpNote,
+            noteChanged,
+            smallScreen,
+            smallScreenNavigation,
+            showButtonSpace,
+            loggedUser,
+            creatingNote,
+            creationError,
+        } = this.state
         const { note, formType, style, projectId } = this.props
         const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
 
@@ -578,6 +640,10 @@ class EditNote extends Component {
         const loggedUserCanUpdateObject =
             !tmpNote.linkedToTemplate &&
             (loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId))
+
+        // While the note is being written, every control that would start a second
+        // write or throw away the in-flight one is locked (AT-2488).
+        const secondaryButtonsDisabled = (formType === 'new' && !noteChanged) || creatingNote
 
         return (
             <View
@@ -597,11 +663,19 @@ class EditNote extends Component {
                             formType === 'new' && smallScreenNavigation ? localStyles.iconNewMobile : undefined,
                         ]}
                     >
-                        <Icon
-                            name={formType === 'new' ? 'plus-square' : 'file-text'}
-                            size={24}
-                            color={colors.Primary100}
-                        />
+                        {creatingNote ? (
+                            // The leading "+" turns into a spinner in place, so the row the
+                            // user is looking at is itself the progress indicator.
+                            <View testID="edit-note-creating-spinner">
+                                <Spinner containerSize={24} spinnerSize={20} containerColor={'transparent'} />
+                            </View>
+                        ) : (
+                            <Icon
+                                name={formType === 'new' ? 'plus-square' : 'file-text'}
+                                size={24}
+                                color={colors.Primary100}
+                            />
+                        )}
                     </View>
 
                     <CustomTextInput3
@@ -622,16 +696,28 @@ class EditNote extends Component {
                         initialMentions={this.initialMentions}
                         styleTheme={TASK_THEME}
                         setInitialLinkedObject={formType === 'edit' ? this.setInitialLinkedObject : null}
-                        disabledEdition={!!note.parentObject || !loggedUserCanUpdateObject}
+                        disabledEdition={!!note.parentObject || !loggedUserCanUpdateObject || creatingNote}
                         forceTriggerEnterActionForBreakLines={this.updateNote}
                     />
                 </View>
+
+                {!!creationError && (
+                    <View
+                        style={localStyles.errorContainer}
+                        testID="edit-note-creation-error"
+                        accessibilityRole="alert"
+                    >
+                        <Icon name="alert-circle" size={16} color={colors.UtilityRed200} />
+                        <Text style={localStyles.errorText}>{creationError}</Text>
+                    </View>
+                )}
+
                 <View style={localStyles.buttonContainer}>
                     <View style={[localStyles.buttonSection]}>
                         <View style={{ marginRight: smallScreenNavigation || !showButtonSpace ? 4 : 32 }}>
                             <Hotkeys
                                 keyName={'alt+O'}
-                                disabled={formType === 'new' && !noteChanged}
+                                disabled={secondaryButtonsDisabled}
                                 onKeyDown={(sht, event) =>
                                     execShortcutFn(this.openBtnRef, () => this.onOpenDetailedView(), event)
                                 }
@@ -645,7 +731,7 @@ class EditNote extends Component {
                                     icon={'maximize-2'}
                                     buttonStyle={buttonItemStyle}
                                     onPress={() => this.onOpenDetailedView()}
-                                    disabled={formType === 'new' && !noteChanged}
+                                    disabled={secondaryButtonsDisabled}
                                     shortcutText={'O'}
                                 />
                             </Hotkeys>
@@ -656,7 +742,7 @@ class EditNote extends Component {
                                 projectId={projectId}
                                 object={tmpNote}
                                 objectType={FEED_NOTE_OBJECT_TYPE}
-                                disabled={(formType === 'new' && !noteChanged) || !!note.parentObject}
+                                disabled={secondaryButtonsDisabled || !!note.parentObject}
                                 savePrivacyBeforeSaveObject={this.setPrivacyBeforeSave}
                                 inEditComponent={true}
                                 style={buttonItemStyle}
@@ -669,7 +755,7 @@ class EditNote extends Component {
                                 projectId={projectId}
                                 object={tmpNote}
                                 objectType={FEED_NOTE_OBJECT_TYPE}
-                                disabled={formType === 'new' && !noteChanged}
+                                disabled={secondaryButtonsDisabled}
                                 saveHighlightBeforeSaveObject={this.setHighlightBeforeSave}
                                 inEditComponent={true}
                                 style={buttonItemStyle}
@@ -681,7 +767,7 @@ class EditNote extends Component {
                             <StickyButton
                                 projectId={projectId}
                                 note={tmpNote}
-                                disabled={formType === 'new' && !noteChanged}
+                                disabled={secondaryButtonsDisabled}
                                 style={buttonItemStyle}
                                 shortcutText={'Y'}
                                 saveStickyBeforeSaveNote={this.setStickyBeforeSave}
@@ -695,7 +781,7 @@ class EditNote extends Component {
                                 note={tmpNote}
                                 buttonStyle={buttonItemStyle}
                                 dismissEditMode={this.dismissEditMode}
-                                disabled={formType === 'new' && !noteChanged}
+                                disabled={secondaryButtonsDisabled}
                             />
                         )}
                     </View>
@@ -707,6 +793,7 @@ class EditNote extends Component {
                                 type={'secondary'}
                                 buttonStyle={buttonItemStyle}
                                 onPress={this.dismissEditMode}
+                                disabled={creatingNote}
                                 shortcutText={'Esc'}
                             />
                         )}
@@ -727,7 +814,7 @@ class EditNote extends Component {
                             }
                             type={formType === 'edit' && tmpNote.title === '' ? 'danger' : 'primary'}
                             icon={
-                                smallScreen
+                                smallScreen && !creatingNote
                                     ? formType === 'edit' && tmpNote.title === ''
                                         ? 'trash-2'
                                         : !noteChanged
@@ -739,7 +826,10 @@ class EditNote extends Component {
                             }
                             onPress={this.updateNote}
                             accessible={false}
-                            shortcutText={'Enter'}
+                            shortcutText={creatingNote ? '' : 'Enter'}
+                            disabled={creatingNote}
+                            processing={creatingNote}
+                            processingTitle={smallScreen ? '' : `${translate('Creating Note')}...`}
                         />
                     </View>
                 </View>
@@ -812,6 +902,20 @@ const localStyles = StyleSheet.create({
     inputContainer: {
         minHeight: 59, // (+1 border top = 60)
         overflow: 'hidden',
+    },
+    // AT-2488 — sits between the input and the button bar, so a failed creation
+    // explains itself right where the title the user typed is still visible.
+    errorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+    },
+    errorText: {
+        ...styles.body2,
+        color: colors.UtilityRed200,
+        marginLeft: 8,
+        flex: 1,
     },
     icon: {
         position: 'absolute',
