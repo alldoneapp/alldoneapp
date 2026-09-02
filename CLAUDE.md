@@ -1164,6 +1164,64 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
+### Per-project empty inbox — the smaller sibling (AT-2492)
+
+**Clearing one project is celebrated too, and the difference from the all-projects moment is one of
+KIND, not of degree.** `SelectedProjectEmptyInbox` — the Anna "tasks done" picture that has always
+shown when a project's list is clear — now arrives with a confetti burst and a small pop the first
+time you see it on a day you actually cleared that project. It reuses the AT-2445 machinery at a
+smaller tuning (`projectEmptyInboxCongratsMotion.js`: ~1.5s against ~3s;
+`EmptyInboxConfetti variant="burst"`: 10 pieces at 0.62x throw), and above all it **never renders the
+page-wide fall layer**. That layer is what makes the all-projects moment visible from across a room,
+so withholding it entirely is what keeps the ranking legible; tuning piece counts alone would have
+left the two reading as "the same celebration, slightly weaker". There is no headline, no achievement
+card, no green dot and no streak: the trigger is scoped to today's list per Karsten's decision on
+AT-2492, so this composes as N small flourishes on the way to the one big achievement. A settled
+block is byte-identical to what it rendered before.
+
+**"The list is empty" is not "the project was cleared", and conflating them is the whole bug this
+design avoids.** The reporting account has 78 projects, 64 of them guides, and most are empty on most
+days — so celebrating whenever an empty list is seen would throw confetti for work nobody did, every
+time one is opened. The all-projects feature already solves this in two parts: `useReachEmptyInbox`
+detects the `>0 → 0` **transition** and persists an achievement day, and the celebration hook keys off
+that record rather than off the live count (which is what lets it fire when you open the board hours
+later). AT-2492 copies that shape one level down with **localStorage in place of Firestore** — it is
+purely visual, and a write on the task-completion path is what AT-2340 exists to avoid.
+`projectEmptyInboxCelebrationMarker.js` therefore holds **two** stores over the shared
+`dayCelebrationMarker` factory (`reached` and `celebrated`), in their own namespace: a user routinely
+earns the small and the big celebration within a second of each other, when the last task of the last
+project falls, and a shared namespace would let either silently spend the other.
+
+Three things are load-bearing. The transition rule is **strict** (`didProjectReachEmptyInbox`: both
+sides finite, the new one exactly `0`) because a count that becomes `undefined` is an absent answer,
+not a cleared project — `clearSidebarTasksAmount` wipes the whole map on an account switch, and a
+project with nothing due today never gets a key for that user at all; the celebration gate is
+deliberately **looser** (`projectTodayListLooksClear`, "not a positive count") because after a reload
+that same project reads `undefined` rather than `0`, which is the ordinary shape of the "cleared this
+morning, opened this afternoon" case. The decision lives in **today's `OpenTasksByDate` section, not
+in the block** — the block only mounts once the list is already clear, so a hook inside it could never
+see the transition that earns the celebration, and it renders once per empty date section, so with
+Later expanded it would fire a burst per empty day. And `useProjectEmptyInboxCelebration` does its
+**own** transition detection as well as reading the record, which is not redundancy for its own sake:
+effects run child-before-parent, so on the tick the count reaches zero the app-wide
+`useReachProjectEmptyInbox` (mounted in `InitLoadView` beside `useReachEmptyInbox`) has not written
+its record yet, and a hook that only read it would never fire for the live case.
+
+Four gates decide who may spend the day, and each closes a way of celebrating something that did not
+happen: the empty block must actually be on screen (the AT-2445 lesson — a marker spent by a frame
+nobody saw is a celebration that silently never happens); today's section only; the selected-project
+board only (All Projects hides an empty project's block via `hideProjectData`, but a project with
+visible OKRs still renders it, and a board of cleared projects would celebrate all of them at once);
+and no active task filters plus the board being the logged user's own — `amountTasks` comes from the
+**filtered** store, so a priority or VM filter empties the list without the project being done.
+Known limit, and it degrades in the safe direction: the reached-record is per device, so clearing a
+project on your phone and opening it on your laptop shows no celebration. Pinned by
+`projectEmptyInboxCelebrationMarker.test.js`, `useProjectEmptyInboxCelebration.test.js`,
+`OpenTasksByDateProjectCelebration.test.js`, `hooks/useReachProjectEmptyInbox.test.js` and
+`ProjectEmptyInboxCelebration.test.js` — the last of which renders the real block against the real
+all-projects block and asserts comparatively, so a future change that quietly hands the small
+celebration the page-wide fall fails the build.
+
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
 On macOS, `getUserMedia({ audio: true })` enables Chrome's default processing chain
