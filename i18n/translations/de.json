@@ -1771,6 +1771,7 @@
     "Day-rate logging": "Tagessatz-Zeiterfassung",
     "Enabled": "Aktiviert",
     "Hours per day": "Stunden pro Tag",
+    "Day-rate hours hint": "Füllt jeden Tag auf diesen Wert auf und begrenzt Kalenderzeit darauf; von Hand erfasste Zeit bleibt immer erhalten",
     "Task trigger": "Aufgaben-Auslöser",
     "Mark day worked": "Tag als gearbeitet markieren",
     "Backfill from project start": "Ab Projektstart nachtragen",

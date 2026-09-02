@@ -192,14 +192,22 @@ export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, force
     const shouldLogDay =
         forceWorkedDay || (!hasManualNonCalendarLoggedTime && realDoneTasks.length >= normalizedConfig.triggerTasks)
     // A day-rate project bills the day, not the minutes, so the target is a ceiling as well as a
-    // floor. Unlike the top-up, the cap waits for nothing: not the task trigger, not a manual
-    // "worked day", and not the absence of hand-logged time — ten hours typed onto two tasks is
-    // exactly the case it exists for.
-    const excessMinutes = Math.max(0, realLoggedMinutes - normalizedConfig.targetMinutes)
+    // floor — but only for CALENDAR time. Overlapping or long events (a workshop, travel, a
+    // dinner) are what inflate a day past the target, so calendar time can fill a day only up to
+    // it. Time typed onto a non-calendar task is the user's explicit record of the day and is
+    // always kept: ten hours logged by hand stay ten hours, and the ceiling rises to meet them.
+    // Unlike the top-up, the cap does not wait for the task trigger or a manual "worked day".
+    const manualNonCalendarMinutes = realDoneTasks
+        .filter(task => !task.calendarData)
+        .reduce((total, task) => total + getDayRateTaskEstimation(task), 0)
+    const dayCeilingMinutes = Math.max(normalizedConfig.targetMinutes, manualNonCalendarMinutes)
+    const excessMinutes = Math.max(0, realLoggedMinutes - dayCeilingMinutes)
     const shouldCapDay = excessMinutes > 0
 
     return {
         adjustmentMinutes: shouldLogDay ? Math.max(0, normalizedConfig.targetMinutes - realLoggedMinutes) : 0,
+        manualNonCalendarMinutes,
+        dayCeilingMinutes,
         excessMinutes,
         realDoneTasksAmount: realDoneTasks.length,
         realLoggedMinutes,
@@ -487,6 +495,7 @@ async function reconcileDayRateDay({
         shouldCapDay,
         shouldPinDay,
         adjustmentMinutes,
+        dayCeilingMinutes,
         excessMinutes,
         realDoneTasksAmount,
         realLoggedMinutes,
@@ -512,14 +521,15 @@ async function reconcileDayRateDay({
     const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
     const oldCappedMinutes = existingTask ? getDayRateCappedMinutes(existingTask) : 0
     const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
-    // Pinned: the day's statistics end at the target whatever the tasks add up to — the top-up
-    // fills a short day, the cap trims a long one, and the same repair delta does both. Unpinned:
-    // give back whatever an earlier cap took away, so the statistics return to the task total.
-    // `cappedMinutes` is derived from the excess rather than from the delta so that a repeated
-    // reconcile of an already-capped day (delta 0) does not forget what it trimmed.
+    // Pinned: the day's statistics end at the day's ceiling whatever the tasks add up to — the
+    // top-up fills a short day to the target, the cap trims calendar time back to the ceiling (the
+    // target, or the hand-logged minutes when those are higher), and the same repair delta does
+    // both. Unpinned: give back whatever an earlier cap took away, so the statistics return to the
+    // task total. `cappedMinutes` is derived from the excess rather than from the delta so that a
+    // repeated reconcile of an already-capped day (delta 0) does not forget what it trimmed.
     const statisticsRepairDelta = shouldPinDay
         ? adjustmentMinutes > 0 || existingTask || shouldCapDay
-            ? config.targetMinutes - statsAfterGeneratedUpdate
+            ? dayCeilingMinutes - statsAfterGeneratedUpdate
             : 0
         : oldCappedMinutes
     const cappedMinutes = shouldPinDay ? excessMinutes : 0
@@ -537,6 +547,7 @@ async function reconcileDayRateDay({
         shouldLogDay,
         shouldCapDay,
         adjustmentMinutes,
+        dayCeilingMinutes,
         excessMinutes,
         cappedMinutes,
         oldCappedMinutes,
