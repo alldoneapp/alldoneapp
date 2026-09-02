@@ -50,6 +50,7 @@ const {
     E2B_SANDBOX_SLICE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
+const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
@@ -2388,6 +2389,11 @@ function buildVmGoldContext(pendingWebhook, vmJob, note) {
         projectId: pendingWebhook.projectId,
         objectId: pendingWebhook.objectId,
         objectType: pendingWebhook.objectType,
+        // Billing dimensions (AT-2487). Read from `pendingWebhook` first because the runner
+        // re-asserts credentialMode/tokenBillingExempt onto it once the credential route is
+        // resolved, so it is the fresher of the two documents; `vmJob` supplies the model for
+        // a legacy job whose pending doc predates the field.
+        ...buildVmGoldBillingDimensions({ ...vmJob, ...pendingWebhook }),
         note: note || `VM ${vmJob.agent || 'claude'} runtime`,
     }
 }
@@ -3991,6 +3997,7 @@ async function refundVmJob(pendingWebhook, reason, extraGold = 0) {
             projectId: pendingWebhook.projectId,
             objectId: pendingWebhook.objectId,
             objectType: pendingWebhook.objectType,
+            ...buildVmGoldBillingDimensions(pendingWebhook),
             note: reason || 'VM task failed',
         })
     } catch (error) {
@@ -4084,6 +4091,7 @@ async function chargeVmTopup(
         projectId: pendingWebhook.projectId,
         objectId: pendingWebhook.objectId,
         objectType: pendingWebhook.objectType,
+        ...buildVmGoldBillingDimensions({ ...vmJob, ...pendingWebhook }),
         note,
     }
     const result = await deductGold(pendingWebhook.userId, topup, ctx).catch(() => null)

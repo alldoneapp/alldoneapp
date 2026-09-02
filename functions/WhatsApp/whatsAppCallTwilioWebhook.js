@@ -143,6 +143,7 @@ async function handleIncomingWhatsAppCall(req, res) {
         twilioCallSid,
         language: user.language,
         channel: 'whatsapp_call',
+        realtimeModel: config.realtimeModel,
     })
     if (!leaseResult.success) return rejectCall(res, fromNumber, leaseResult.reason || 'active_call')
 
@@ -211,6 +212,7 @@ async function handleIncomingPhoneCall(req, res) {
         twilioCallSid,
         language: user.language,
         channel: 'phone_call',
+        realtimeModel: config.realtimeModel,
     })
     if (!leaseResult.success) return rejectVoiceCall(res, leaseResult.reason || 'active_call')
 

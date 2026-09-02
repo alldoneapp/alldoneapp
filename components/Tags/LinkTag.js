@@ -902,11 +902,10 @@ export const getPathname = url => {
         const obj = new URL(tmpURL)
         return obj.host === window.location.host || isValidHost(obj.host) ? obj.pathname : url
     } catch (e) {
-        if (url === '') {
-            console.log('Blank URL')
-        } else {
-            console.log(e)
-        }
+        // Not a parseable URL even with a protocol prepended (a template placeholder, a
+        // bare word, a blank). The caller gets the raw value back and renders it as an
+        // external link, which is the designed fallback — it is not worth a console entry,
+        // and Sentry's console instrumentation reported every one as an error.
     }
 
     return url

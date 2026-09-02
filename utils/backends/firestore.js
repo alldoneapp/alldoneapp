@@ -4557,10 +4557,26 @@ export async function storeConvertedVideos(projectId, attachment) {
 }
 
 ////////////////////// NOTIFICATION EMAIL SYSTEM ////////////////////////
+/**
+ * Whether `userId` is a current member of the (mapped) project. Exported for the notification
+ * fan-out and its tests; the project document is the authority on membership (see firestore.rules).
+ */
+export function isCurrentProjectMember(project, userId) {
+    return !!userId && Array.isArray(project?.userIds) && project.userIds.includes(userId)
+}
+
 async function registerFeedEmail(projectId, userId, objectsType, objectId, feed, feedObject, notificationData) {
     const batch = new BatchWrapper(db)
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = await getProjectData(projectId)
+
+    // A feed recipient is not necessarily a user: a workflow task's assistant reviewer and a
+    // member who has since left both reach here through the followers list. Neither has a
+    // users/ document this client may read — the read rule dereferences resource.data, so a
+    // missing document is a rules evaluation ERROR (permission-denied) and getUserData reports
+    // it as an account anomaly. Only a current member can receive an email, so decide that from
+    // the project document already in hand instead of asserting the read (AT-2428).
+    if (!isCurrentProjectMember(project, userId)) return
 
     if (
         objectsType === 'customs' ||
@@ -4596,6 +4612,10 @@ async function sendPushNotifications(projectId, userId, objectsType, objectId, f
 
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = mapProjectData(projectId, (await db.doc(`projects/${projectId}`).get()).data())
+
+    // Same gate as registerFeedEmail: a follower that is not a current member (an assistant
+    // reviewer, a departed member) has no readable users/ document and gets no push either.
+    if (!isCurrentProjectMember(project, userId)) return
 
     if (followers && followers.usersFollowing && followers.usersFollowing.includes(userId)) {
         // this will allow to get the real data from DB
@@ -8269,7 +8289,7 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     const callableOptions = {}
     if (options.timeout) {
         callableOptions.timeout = options.timeout
-        console.log(`⏱️  Setting custom timeout for ${functionName}: ${options.timeout}ms`)
+        if (__DEV__) console.log(`⏱️  Setting custom timeout for ${functionName}: ${options.timeout}ms`)
     }
 
     const func = functions.httpsCallable(functionName, callableOptions)

@@ -1157,8 +1157,13 @@ describe('VM runner runtime Gold monitor', () => {
         projectId: 'project-1',
         objectType: 'topics',
         objectId: 'chat-1',
+        // The runner re-asserts the resolved credential route onto the pending doc, so this is
+        // the fresher of the two documents the billing dimensions are read from (AT-2487).
+        // `agentModel` is mirrored onto it at launch so the proxy can price its charges.
+        agentModel: 'opus',
+        tokenBillingExempt: true,
     }
-    const vmJob = { agent: 'claude' }
+    const vmJob = { agent: 'claude', agentModel: 'opus' }
 
     beforeEach(() => {
         jest.clearAllMocks()
@@ -1192,6 +1197,47 @@ describe('VM runner runtime Gold monitor', () => {
         )
         expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 10 })
         expect(commandHandle.kill).not.toHaveBeenCalled()
+    })
+
+    // AT-2487. Per-minute compute Gold is charged whether or not the model tokens were
+    // Gold-billed, so this is exactly the spend that used to be uninterpretable: without the
+    // dimension it is indistinguishable from an Alldone-billed run in `spendBySource`.
+    test('stamps the run model, its exemption and its run id on every runtime charge', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+        mockDeductGold.mockResolvedValue({ success: true, amount: 10, newBalance: 40 })
+
+        await __private__.checkAndChargeVmRuntimeGold({
+            pendingWebhook,
+            pendingRef,
+            commandHandle,
+            runStartMs: 0,
+            runtimeGoldCharged: 0,
+            vmJob,
+            now: () => 60000,
+            getCurrentGold: jest.fn(async () => 50),
+        })
+
+        expect(mockDeductGold).toHaveBeenCalledWith(
+            'user-1',
+            10,
+            expect.objectContaining({
+                source: 'vm_execution',
+                model: 'opus',
+                billingExempt: true,
+                correlationId: 'correlation-1',
+            })
+        )
+    })
+
+    test('a failure refund reverses the charge with the same dimensions attached', async () => {
+        await __private__.refundVmJob(pendingWebhook, 'VM task failed')
+
+        expect(mockRefundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ model: 'opus', billingExempt: true, correlationId: 'correlation-1' })
+        )
     })
 
     test('continues metering accumulated active runtime without charging time spent waiting for the user', async () => {

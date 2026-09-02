@@ -400,6 +400,7 @@ async function routeNewTaskToProject({
             objectId: task.id,
             objectType: 'tasks',
             channel: 'tasks',
+            model: routingModelKey || '',
         })
     } catch (error) {
         console.error('[taskProjectRouting] Could not charge routing gold', { taskId: task.id, error })

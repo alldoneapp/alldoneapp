@@ -3,6 +3,7 @@
 const admin = require('firebase-admin')
 const { FieldValue } = require('firebase-admin/firestore')
 const moment = require('moment')
+const { computeStatsDimensions } = require('./goldDimensions')
 
 // Consent-independent rollups of the goldTransactions ledger. Unlike the Google
 // Analytics events (which only fire for users who granted analytics consent),
@@ -17,6 +18,12 @@ const moment = require('moment')
 // function runs or where the user is. Each doc holds gross totals + counts per
 // direction, a signed `net` (total change in circulating gold), and a per-source
 // breakdown for earn/spend/refund (spendBySource is the feature-usage metric).
+//
+// Since AT-2487 each source-tracked direction also carries two billing dimensions —
+// `spendByBilling` / `spendByModel` (and the refund equivalents), keyed `<source>__<value>`
+// — so a spend line can be read across a billing-model change without joining `vmJobs` by
+// hand. See goldDimensions.js for why the keys are shaped that way and why an undeclared
+// dimension writes nothing.
 const STATS_TIMEZONE = 'UTC'
 const DAILY_FORMAT = 'YYYY-MM-DD'
 const MONTHLY_FORMAT = 'YYYY-MM'
@@ -95,15 +102,21 @@ function computeStatsDeltas(transaction = {}) {
     }
 
     let bySource = null
+    let dimensions = []
     if (SOURCE_TRACKED_DIRECTIONS.has(direction)) {
         const rawSource = typeof transaction.source === 'string' ? transaction.source.trim() : ''
         bySource = { field: `${field}BySource`, source: rawSource || 'unknown', amount }
+        // Billing dimensions (AT-2487): `spendByBilling` / `spendByModel`, and the same
+        // pair for refunds so a source's NET Gold cost stays decomposable. A transaction
+        // that declares neither dimension produces nothing at all, so a charge site that
+        // knows no model does not grow the rollup document.
+        dimensions = computeStatsDimensions(transaction, field, amount)
     }
 
-    return { deltas, bySource }
+    return { deltas, bySource, dimensions }
 }
 
-function buildRollupPayload(labelKey, labelValue, { deltas, bySource }) {
+function buildRollupPayload(labelKey, labelValue, { deltas, bySource, dimensions = [] }) {
     const payload = { [labelKey]: labelValue, updatedAt: FieldValue.serverTimestamp() }
 
     Object.entries(deltas).forEach(([key, value]) => {
@@ -113,6 +126,14 @@ function buildRollupPayload(labelKey, labelValue, { deltas, bySource }) {
     if (bySource) {
         payload[bySource.field] = { [bySource.source]: FieldValue.increment(bySource.amount) }
     }
+
+    // Merged rather than assigned: `spendByBilling` and `spendByModel` are distinct maps,
+    // but two dimensions could in future share one map, and an assignment would drop the
+    // first silently. The set below runs with `{ merge: true }`, so each nested key becomes
+    // its own field path and untouched keys in the same map are preserved.
+    dimensions.forEach(({ field, key, amount: dimensionAmount }) => {
+        payload[field] = { ...(payload[field] || {}), [key]: FieldValue.increment(dimensionAmount) }
+    })
 
     return payload
 }

@@ -4552,6 +4552,11 @@ async function findAndSetNewFocusedTask(
     for (const pid of allUserProjectIds) {
         const tasksCollectionRef = getDb().collection(`items/${pid}/tasks`)
         let calendarQuery = tasksCollectionRef
+            // The reader projection is what makes this query PROVABLE to firestore.rules: since the
+            // access hardening (6009eabd85) a task query with no readerIds / roleIdsVisibleTo
+            // constraint is denied outright, which surfaced as "workflow focus handoff:
+            // permission-denied" on every checkbox that released the user's focus task.
+            .where('readerIds', 'array-contains', userId)
             .where('userId', '==', userId)
             .where('done', '==', false)
             .where('inDone', '==', false)
@@ -4611,6 +4616,7 @@ async function findAndSetNewFocusedTask(
     // --- Phase 1, 2 & 3: Try to find a task in the current project using display order ---
     const tasksRef = getDb().collection(`items/${currentProjectId}/tasks`)
     let query = tasksRef
+        .where('readerIds', 'array-contains', userId) // rules proof, see the calendar query above
         .where('userId', '==', userId)
         .where('done', '==', false)
         .where('inDone', '==', false)
@@ -4795,6 +4801,7 @@ async function findAndSetNewFocusedTask(
         try {
             const otherProjectTasksRef = getDb().collection(`items/${pid}/tasks`)
             const otherProjectTasks = await otherProjectTasksRef
+                .where('readerIds', 'array-contains', userId) // rules proof, see the calendar query above
                 .where('userId', '==', userId)
                 .where('done', '==', false)
                 .where('inDone', '==', false)
