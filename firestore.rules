@@ -652,21 +652,10 @@ service cloud.firestore {
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
-    // The global assistant catalog lives under the pseudo project 'globalProject', whose
-    // project document has no members, so a membership check alone rejects everyone —
-    // including the administrator who curates it. Every pre-configured task edit on a
-    // global assistant also bumps the assistant document in the same batch, so the whole
-    // batch was denied. Same shape as the global skill catalog: admin-only writes.
-    function isGlobalAssistantCatalog(projectId) {
-      return projectId == 'globalProject';
-    }
-
     match /assistants/{projectId}/items/{assistantId} {
-      allow read: if isGlobalAssistantCatalog(projectId) || canReadProject(projectId);
-      allow create: if (isGlobalAssistantCatalog(projectId) && isAdministrator()) ||
-        isProjectMemberBeforeOrAfter(projectId);
-      allow update, delete: if (isGlobalAssistantCatalog(projectId) && isAdministrator()) ||
-        isProjectMember(projectId);
+      allow read: if projectId == 'globalProject' || canReadProject(projectId);
+      allow create: if isProjectMemberBeforeOrAfter(projectId);
+      allow update, delete: if isProjectMember(projectId);
     }
 
     // Per-assistant MCP server secrets (bearer tokens / OAuth tokens). Server-only:

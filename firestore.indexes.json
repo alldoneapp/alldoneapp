@@ -4708,32 +4708,6 @@
                 { "fieldPath": "stickyData.days", "order": "ASCENDING" },
                 { "fieldPath": "lastEditionDate", "order": "DESCENDING" }
             ]
-        },
-        {
-            "__comment__": "Focus-task handoff hunt (findAndSetNewFocusedTask) - the user's open top-level tasks by display order, proven readable through readerIds",
-            "collectionGroup": "tasks",
-            "queryScope": "COLLECTION",
-            "fields": [
-                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
-                { "fieldPath": "done", "order": "ASCENDING" },
-                { "fieldPath": "inDone", "order": "ASCENDING" },
-                { "fieldPath": "isSubtask", "order": "ASCENDING" },
-                { "fieldPath": "userId", "order": "ASCENDING" },
-                { "fieldPath": "sortIndex", "order": "DESCENDING" }
-            ]
-        },
-        {
-            "__comment__": "Focus-task handoff hunt (findAndSetNewFocusedTask) - the user's open top-level tasks by display order (calendar window variant), proven readable through readerIds",
-            "collectionGroup": "tasks",
-            "queryScope": "COLLECTION",
-            "fields": [
-                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
-                { "fieldPath": "done", "order": "ASCENDING" },
-                { "fieldPath": "inDone", "order": "ASCENDING" },
-                { "fieldPath": "isSubtask", "order": "ASCENDING" },
-                { "fieldPath": "userId", "order": "ASCENDING" },
-                { "fieldPath": "sortIndex", "order": "ASCENDING" }
-            ]
         }
     ],
     "fieldOverrides": [

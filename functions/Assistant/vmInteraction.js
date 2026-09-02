@@ -1,5 +1,4 @@
 const crypto = require('crypto')
-const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 
 const { VM_DISPATCH_LEASE_MS, dispatchLeaseOwner } = require('./vmThreadQueue')
 const {
@@ -468,7 +467,6 @@ async function expireVmInteractions(db, now = Date.now()) {
                     projectId: pending.projectId,
                     objectId: pending.objectId,
                     objectType: pending.objectType,
-                    ...buildVmGoldBillingDimensions(pending),
                     note: 'VM task expired while waiting for user input',
                 }).catch(() => {})
             }

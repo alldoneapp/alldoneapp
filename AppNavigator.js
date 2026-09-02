@@ -43,7 +43,6 @@ import { installConnectionStateListener } from './utils/connectionState'
 import { installShellOtaUpdater } from './utils/shellOtaUpdater'
 import { installConnectionHealthMonitor } from './utils/connectionHealth'
 import { installAppResumeListener } from './utils/appResume'
-import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 
@@ -220,13 +219,6 @@ const ROUTES = {
 // legacy ref callback stays harmless. Each navigation remounts the subtree via
 // the state id key — the old navigator reset the stack on every navigate, so
 // screens rely on fresh mounts.
-// react-native-web's lists register a scroll-blocking (non-passive) `wheel` listener on
-// every mount, which Chrome reports as a `[Violation]` each time. Unlike the listeners
-// installed in `componentDidMount` below this is a PROTOTYPE patch and has to land before
-// the first list mounts — `componentDidMount` runs children-first, so from there it would
-// miss every list on the first screen. Module scope is the only place early enough.
-installPassiveVirtualizedListWheel()
-
 export class AppContainer extends React.Component {
     state = NavigationService.getCurrentState()
 

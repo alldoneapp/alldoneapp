@@ -424,6 +424,10 @@ export default class NotesByProject extends PureComponent {
                     }
                     store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
                     this.persistViewSnapshot()
+                    // Debug: validate side-effects run post state update
+                    console.debug(
+                        '[NotesByProject] post-setState(updateNotes): dispatched setNotesAmounts and stopLoadingData'
+                    )
                 }
             )
         }
@@ -474,6 +478,8 @@ export default class NotesByProject extends PureComponent {
                 () => {
                     store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
                     this.persistViewSnapshot()
+                    // Debug: validate side-effects run post state update
+                    console.debug('[NotesByProject] post-setState(updateStickyNotes): dispatched setNotesAmounts')
                 }
             )
         }

@@ -101,10 +101,7 @@ const filterActiveProjectUserIds = (projectId, userIds, context) => {
     const validUserIds = uniq((userIds || []).filter(userId => isActiveProjectUserId(projectId, userId)))
     const skippedUserIds = difference(uniq((userIds || []).filter(Boolean)), validUserIds)
 
-    // A follower who has since left the project is the ordinary case here, not an anomaly:
-    // the metadata is simply saved without them. Worth seeing while developing, noise in
-    // a production console.
-    if (__DEV__ && skippedUserIds.length > 0) {
+    if (skippedUserIds.length > 0) {
         console.warn('[TaskComments] Ignoring stale project user ids while saving comment metadata', {
             projectId,
             context,

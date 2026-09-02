@@ -13,7 +13,6 @@ const {
     doc,
     getDoc,
     getDocs,
-    limit,
     orderBy,
     query,
     setDoc,
@@ -556,69 +555,6 @@ describe('assistant task search authorization', () => {
     })
 })
 
-describe('global assistant catalog writes', () => {
-    const ADMIN_ID = 'admin'
-
-    beforeEach(async () => {
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await setDoc(doc(context.firestore(), 'assistantTasks/globalProject/preConfigTasks/global-task'), {
-                name: 'Global task',
-                assistantId: 'global-assistant',
-            })
-        })
-    })
-
-    it('lets the administrator update a global assistant', async () => {
-        const adminDb = testEnv.authenticatedContext(ADMIN_ID).firestore()
-
-        await assertSucceeds(
-            updateDoc(doc(adminDb, 'assistants/globalProject/items/global-assistant'), { lastEditionDate: 42 })
-        )
-    })
-
-    it('lets the administrator save a global pre-configured task together with its assistant bump', async () => {
-        // updatePreConfigTask / uploadNewPreConfigTask write the task and bump the assistant
-        // document in ONE batch, so the batch is only as permitted as its most restricted write.
-        const adminDb = testEnv.authenticatedContext(ADMIN_ID).firestore()
-        const batch = writeBatch(adminDb)
-        batch.update(doc(adminDb, 'assistants/globalProject/items/global-assistant'), { lastEditionDate: 43 })
-        batch.update(doc(adminDb, 'assistantTasks/globalProject/preConfigTasks/global-task'), { name: 'Renamed' })
-
-        await assertSucceeds(batch.commit())
-    })
-
-    it('lets the administrator create and delete a global assistant', async () => {
-        const adminDb = testEnv.authenticatedContext(ADMIN_ID).firestore()
-        const ref = doc(adminDb, 'assistants/globalProject/items/new-global-assistant')
-
-        await assertSucceeds(setDoc(ref, { creatorId: ADMIN_ID, displayName: 'New' }))
-        await assertSucceeds(deleteDoc(ref))
-    })
-
-    it('denies a project member writing the global assistant catalog', async () => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-
-        await assertFails(
-            updateDoc(doc(memberDb, 'assistants/globalProject/items/global-assistant'), { lastEditionDate: 44 })
-        )
-        await assertFails(setDoc(doc(memberDb, 'assistants/globalProject/items/member-made'), { creatorId: MEMBER_ID }))
-        await assertFails(deleteDoc(doc(memberDb, 'assistants/globalProject/items/global-assistant')))
-    })
-
-    it('keeps project assistants member-writable and the global catalog readable', async () => {
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
-
-        await assertSucceeds(
-            updateDoc(doc(memberDb, `assistants/${PROJECT_ID}/items/project-assistant`), { lastEditionDate: 45 })
-        )
-        await assertSucceeds(getDoc(doc(outsiderDb, 'assistants/globalProject/items/global-assistant')))
-        await assertFails(
-            updateDoc(doc(outsiderDb, `assistants/${PROJECT_ID}/items/project-assistant`), { lastEditionDate: 46 })
-        )
-    })
-})
-
 describe('queries used by the web client', () => {
     it('allows the signed-in user project query through its authoritative userIds filter', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
@@ -822,57 +758,6 @@ describe('queries used by the web client', () => {
         const snapshot = await assertSucceeds(getDocs(projectedSubtasks))
         expect(snapshot.docs.map(item => item.id)).toEqual(['readable-embedded-subtask'])
         await assertFails(getDocs(unscopedSubtasks))
-    })
-
-    it('allows the focus-handoff task queries only through the reader projection', async () => {
-        // findAndSetNewFocusedTask (tasksFirestore.js) hunts for the user's next focus task with
-        // these exact shapes. Without the readerIds proof the rules engine cannot show every
-        // returned document is readable and denies the LIST outright, which is what reached the
-        // checkbox as "workflow focus handoff: Missing or insufficient permissions".
-        await testEnv.withSecurityRulesDisabled(async context => {
-            await setDoc(doc(context.firestore(), `items/${PROJECT_ID}/tasks/member-open-task`), {
-                projectId: PROJECT_ID,
-                userId: MEMBER_ID,
-                userIds: [MEMBER_ID],
-                done: false,
-                inDone: false,
-                isSubtask: false,
-                sortIndex: 1788134400000,
-                isPublicFor: [0],
-                readerIds: [MEMBER_ID],
-                roleIdsVisibleTo: { [MEMBER_ID]: [MEMBER_ID] },
-            })
-        })
-        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
-        const tasks = collection(memberDb, `items/${PROJECT_ID}/tasks`)
-        const ownOpenTopLevel = [
-            where('readerIds', 'array-contains', MEMBER_ID),
-            where('userId', '==', MEMBER_ID),
-            where('done', '==', false),
-            where('inDone', '==', false),
-            where('isSubtask', '==', false),
-        ]
-
-        const displayOrder = await assertSucceeds(
-            getDocs(query(tasks, ...ownOpenTopLevel, orderBy('sortIndex', 'desc'), limit(200)))
-        )
-        expect(displayOrder.docs.map(item => item.id)).toEqual(['member-open-task'])
-
-        const calendarWindow = await assertSucceeds(
-            getDocs(
-                query(
-                    tasks,
-                    ...ownOpenTopLevel,
-                    where('sortIndex', '>=', 1788134000000),
-                    where('sortIndex', '<', 1788135000000),
-                    orderBy('sortIndex', 'asc')
-                )
-            )
-        )
-        expect(calendarWindow.docs.map(item => item.id)).toEqual(['member-open-task'])
-
-        // The pre-fix shape: identical, minus the proof.
-        await assertFails(getDocs(query(tasks, ...ownOpenTopLevel.slice(1), orderBy('sortIndex', 'desc'))))
     })
 
     it('allows the projected day-rate reconciliation query', async () => {
