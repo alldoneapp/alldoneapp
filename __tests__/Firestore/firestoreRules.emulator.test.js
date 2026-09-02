@@ -1027,6 +1027,47 @@ describe('queries used by the web client', () => {
         await assertFails(getDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/hidden-feed`)))
     })
 
+    it('lets a member re-privatise only the activity it can see, through readerIds-shaped queries', async () => {
+        // The browser half of a privacy change (utils/backends/Feeds/feedPrivacy.js): every store
+        // is queried by objectId AND the reader projection, and only the caller's own followed
+        // store is reachable. A bare objectId query cannot prove canReadObject and is refused as
+        // a whole, which is what used to surface as "Missing or insufficient permissions" on
+        // every privacy change (and on creating a private task, e.g. an invoice task).
+        const objectId = 'privacy-task'
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            const feed = { objectId, isPublicFor: [0], lastChangeDate: 5, readerIds: [0, MEMBER_ID, TEAMMATE_ID] }
+            await setDoc(doc(db, `feedsStore/${PROJECT_ID}/all/privacy-all`), feed)
+            await setDoc(doc(db, `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed/privacy-own`), feed)
+            await setDoc(doc(db, `feedsStore/${PROJECT_ID}/${TEAMMATE_ID}/feeds/followed/privacy-theirs`), feed)
+            await setDoc(doc(db, `projectsInnerFeeds/${PROJECT_ID}/tasks/${objectId}/feeds/privacy-history`), feed)
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const visible = path =>
+            query(
+                collection(memberDb, path),
+                where('objectId', '==', objectId),
+                where('readerIds', 'array-contains', MEMBER_ID)
+            )
+
+        const ownStore = `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed`
+        const allStore = `feedsStore/${PROJECT_ID}/all`
+        const history = `projectsInnerFeeds/${PROJECT_ID}/tasks/${objectId}/feeds`
+        for (const path of [ownStore, allStore, history]) {
+            const snapshot = await assertSucceeds(getDocs(visible(path)))
+            expect(snapshot.size).toBe(1)
+            await assertSucceeds(
+                setDoc(doc(memberDb, `${path}/${snapshot.docs[0].id}`), { isPublicFor: [MEMBER_ID] }, { merge: true })
+            )
+        }
+        await assertSucceeds(deleteDoc(doc(memberDb, `${ownStore}/privacy-own`)))
+
+        // Without the projection the same query is refused outright.
+        await assertFails(getDocs(query(collection(memberDb, allStore), where('objectId', '==', objectId))))
+        // Another member's followed store is unreachable however the query is shaped.
+        await assertFails(getDocs(visible(`feedsStore/${PROJECT_ID}/${TEAMMATE_ID}/feeds/followed`)))
+    })
+
     it('requires the reader projection when copying a moved object activity history', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const activityHistory = collection(memberDb, `projectsInnerFeeds/${PROJECT_ID}/tasks/public-task/feeds`)
