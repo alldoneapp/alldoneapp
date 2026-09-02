@@ -12,6 +12,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
 import moment from 'moment'
@@ -19,6 +20,7 @@ import moment from 'moment'
 jest.mock('../../utils/BackendBridge', () => ({
     setProjectHappiness: jest.fn(() => Promise.resolve()),
     watchProjectHappinessByRange: jest.fn(),
+    getUserStatistics: jest.fn(),
     unwatch: jest.fn(),
 }))
 
@@ -41,6 +43,7 @@ import HappinessRatingModal, {
 import HappinessRatingPicker from '../../components/ProjectHappiness/HappinessRatingPicker'
 
 const PROJECT = { id: 'project-a', name: 'Alldone Product', sortIndexByUser: { 'user-1': 1 } }
+const PROJECT_B = { id: 'project-b', name: 'Juno', sortIndexByUser: { 'user-1': 2 } }
 
 const storeState = {
     loggedUser: {
@@ -59,22 +62,61 @@ const storeState = {
     smallScreen: false,
 }
 
-const testStore = {
-    getState: () => storeState,
-    subscribe: () => () => {},
-    dispatch: () => {},
+// A project is only ratable when it is in the user's project list too.
+const TWO_PROJECTS = {
+    loggedUser: { ...storeState.loggedUser, projectIds: [PROJECT.id, PROJECT_B.id] },
+    loggedUserProjects: [PROJECT, PROJECT_B],
 }
 
-const render = (onClose = jest.fn()) => {
+const makeStore = (overrides = {}) => {
+    const state = { ...storeState, ...overrides }
+    return {
+        getState: () => state,
+        subscribe: () => () => {},
+        dispatch: () => {},
+    }
+}
+
+const render = (onClose = jest.fn(), storeOverrides = {}) => {
     let tree
     renderer.act(() => {
         tree = renderer.create(
-            <Provider store={testStore}>
+            <Provider store={makeStore(storeOverrides)}>
                 <HappinessRatingModal onClose={onClose} />
             </Provider>
         )
     })
     return { tree, onClose }
+}
+
+const flatText = node =>
+    (Array.isArray(node) ? node : [node])
+        .map(child => (child == null || typeof child === 'boolean' ? '' : String(child)))
+        .join('')
+
+const textOf = instance =>
+    instance
+        .findAllByType(Text)
+        .map(text => flatText(text.props.children))
+        .join(' ')
+
+const hasTestID = (tree, testID) => tree.root.findAllByProps({ testID }).length > 0
+
+// A per-day watcher answers for the watched day; the month watcher (rated-day
+// dots) is keyed separately. `entriesByKey` maps a watcher key to what it
+// should deliver — anything unlisted stays silent, as an empty day would.
+const answerWatchers = entriesByKey => {
+    Backend.watchProjectHappinessByRange.mockImplementation(
+        (projectId, userId, timestamp1, timestamp2, watcherKey, callback) => {
+            if (entriesByKey[watcherKey]) callback(projectId, entriesByKey[watcherKey])
+        }
+    )
+}
+
+const answerStatistics = doneTasksByProject => {
+    Backend.getUserStatistics.mockImplementation((projectId, userId, dateKey, callback) => {
+        callback(projectId, { doneTasks: doneTasksByProject[projectId] })
+    })
 }
 
 const press = (tree, testID) =>
@@ -181,6 +223,103 @@ describe('HappinessRatingModal (AT-2392)', () => {
         renderer.act(() => tree.unmount())
 
         expect(Backend.unwatch).toHaveBeenCalledWith('settings_happiness_rating_user-1_project-a')
+    })
+})
+
+describe('HappinessRatingModal — what the day already holds', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        Backend.watchProjectHappinessByRange.mockReset()
+        Backend.getUserStatistics.mockReset()
+    })
+
+    it("shows the day's tasks done per project, read from the same statistics as the new-day popup", () => {
+        answerStatistics({ 'project-a': 3, 'project-b': 0 })
+
+        const { tree } = render(jest.fn(), TWO_PROJECTS)
+
+        const today = moment().format('DDMMYYYY')
+        expect(Backend.getUserStatistics).toHaveBeenCalledWith(
+            'project-a',
+            'user-1',
+            today,
+            expect.any(Function),
+            expect.any(Function)
+        )
+        expect(Backend.getUserStatistics).toHaveBeenCalledWith(
+            'project-b',
+            'user-1',
+            today,
+            expect.any(Function),
+            expect.any(Function)
+        )
+        expect(textOf(tree.root.findByProps({ testID: 'happinessDayActivity_project-a' }))).toContain('Tasks done: 3')
+        expect(textOf(tree.root.findByProps({ testID: 'happinessDayActivity_project-b' }))).toContain('Tasks done: 0')
+    })
+
+    it('shows a dash, not a zero, while a count has not arrived', () => {
+        const { tree } = render()
+
+        expect(textOf(tree.root.findByProps({ testID: 'happinessDayActivity_project-a' }))).toContain('Tasks done: –')
+    })
+
+    it('re-reads the statistics for the day the user picked', () => {
+        const { tree } = render()
+        const lastWeek = moment().subtract(7, 'days').startOf('day')
+
+        pickDay(tree, lastWeek.format('YYYY-MM-DD'))
+
+        const readDays = Backend.getUserStatistics.mock.calls.map(call => call[2])
+        expect(readDays).toContain(lastWeek.format('DDMMYYYY'))
+    })
+
+    it('says which projects are already rated for the day, and how many', () => {
+        const today = getTodayHappinessDate()
+        answerWatchers({
+            'settings_happiness_rating_user-1_project-a': [{ rating: 4, comment: '', timestamp: today, updated: 1 }],
+            'settings_happiness_rating_user-1_project-b': [],
+        })
+
+        const { tree } = render(jest.fn(), TWO_PROJECTS)
+
+        expect(hasTestID(tree, 'happinessRated_project-a')).toBe(true)
+        expect(hasTestID(tree, 'happinessNotRated_project-b')).toBe(true)
+        expect(textOf(tree.root.findByProps({ testID: 'happinessRatedSummary' }))).toBe(
+            '1 of 2 projects rated on this day'
+        )
+    })
+
+    it('says so when nothing is rated for the day yet', () => {
+        answerWatchers({ 'settings_happiness_rating_user-1_project-a': [] })
+
+        const { tree } = render()
+
+        expect(hasTestID(tree, 'happinessRated_project-a')).toBe(false)
+        expect(hasTestID(tree, 'happinessNotRated_project-a')).toBe(true)
+        expect(textOf(tree.root.findByProps({ testID: 'happinessRatedSummary' }))).toBe('No ratings for this day yet')
+    })
+
+    it('marks the already-rated days of the visible month in the date picker', () => {
+        const ratedDay = moment().startOf('month').startOf('day')
+        answerWatchers({
+            'settings_happiness_rated_days_user-1_project-a': [{ rating: 5, timestamp: ratedDay.valueOf() }],
+        })
+
+        const { tree } = render()
+        // The month watcher only runs while the picker is open.
+        expect(Backend.watchProjectHappinessByRange.mock.calls.map(call => call[4])).not.toContain(
+            'settings_happiness_rated_days_user-1_project-a'
+        )
+
+        press(tree, 'happinessRatingDateButton')
+
+        const markedDates = tree.root.findByProps({ markingType: 'custom' }).props.markedDates
+        expect(markedDates[ratedDay.format('YYYY-MM-DD')]).toMatchObject({ marked: true })
+        // The selected day keeps its outline.
+        expect(markedDates[moment().format('YYYY-MM-DD')]).toMatchObject({
+            marked: true,
+            customStyles: expect.any(Object),
+        })
     })
 })
 

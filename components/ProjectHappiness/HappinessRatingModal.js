@@ -6,9 +6,12 @@ import moment from 'moment'
 import AppCalendar from '../UIComponents/Calendar/AppCalendar'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Icon from '../Icon'
-import ProjectHappinessRatingList from './ProjectHappinessRatingList'
+import ProjectDayActivity from './ProjectDayActivity'
+import ProjectHappinessRatingList, { isProjectRatedForDay } from './ProjectHappinessRatingList'
 import styles, { colors, em2px, hexColorToRGBa } from '../styles/global'
 import useEscapeKey from '../../hooks/useEscapeKey'
+import useHappinessRatedDays from './useHappinessRatedDays'
+import useProjectDayStatistics from './useProjectDayStatistics'
 import useProjectHappinessEditor from './useProjectHappinessEditor'
 import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
@@ -35,6 +38,19 @@ export const isRatableHappinessDate = (date, now = Date.now()) => {
 }
 
 /**
+ * "N of M projects rated on this day" / "No ratings for this day yet".
+ *
+ * Counted from the editor's STORED entries, so a rating tapped a moment ago
+ * is included as soon as its write lands in the local cache — and a day that
+ * was rated last week reads as rated before anything is touched.
+ */
+export const getRatedProjectsSummary = (editor, projects) => {
+    const rated = projects.filter(project => isProjectRatedForDay(editor, project.id)).length
+    if (rated === 0) return translate('No ratings for this day yet')
+    return translate('happiness rated projects summary', { rated, total: projects.length })
+}
+
+/**
  * "Rate happiness" — the on-demand version of the new-day popup (AT-2392).
  *
  * Same card, same rows, same write path (`useProjectHappinessEditor` +
@@ -45,6 +61,12 @@ export const isRatableHappinessDate = (date, now = Date.now()) => {
  * Ratings are stored the moment they are tapped, exactly as in the new-day
  * popup, so "Done" only flushes an unsaved comment and closes. That is also
  * why closing by Escape or the × can never lose a rating.
+ *
+ * Three things tell the user where they stand before they rate: every row
+ * shows that day's "Tasks done" in the project (the same line the new-day
+ * popup shows, read from the same statistics documents), every row says
+ * whether the day is already rated in that project, and the date picker
+ * marks already-rated days with a dot.
  */
 export default function HappinessRatingModal({ onClose }) {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
@@ -56,16 +78,34 @@ export default function HappinessRatingModal({ onClose }) {
 
     const [selectedDate, setSelectedDate] = useState(getTodayHappinessDate)
     const [showDatePicker, setShowDatePicker] = useState(false)
+    // The month the calendar is showing — what the rated-day dots are read for.
+    const [visibleMonth, setVisibleMonth] = useState(selectedDate)
 
     const compactModalLayout = smallScreenNavigation || isMiddleScreen
     const happinessProjects = getHappinessProjects(loggedUserProjects, loggedUser)
+    const canReadData = !loggedUser.isAnonymous
 
     const happinessEditor = useProjectHappinessEditor({
         projects: happinessProjects,
         userId: loggedUser.uid,
         date: selectedDate,
-        watchEnabled: !loggedUser.isAnonymous,
+        watchEnabled: canReadData,
         watcherKeyPrefix: `settings_happiness_rating_${loggedUser.uid}`,
+    })
+
+    const { doneTasksByProject, maxDoneTasks } = useProjectDayStatistics({
+        projects: happinessProjects,
+        userId: loggedUser.uid,
+        date: selectedDate,
+        enabled: canReadData,
+    })
+
+    const ratedProjectsByDay = useHappinessRatedDays({
+        projects: happinessProjects,
+        userId: loggedUser.uid,
+        month: visibleMonth,
+        enabled: canReadData && showDatePicker,
+        watcherKeyPrefix: `settings_happiness_rated_days_${loggedUser.uid}`,
     })
 
     const close = () => {
@@ -93,7 +133,34 @@ export default function HappinessRatingModal({ onClose }) {
         // Switching the day flushes and clears the previous day's drafts —
         // see `useProjectHappinessEditor`.
         setSelectedDate(date)
+        setVisibleMonth(date)
     }
+
+    const openDatePicker = () => {
+        setVisibleMonth(selectedDate)
+        setShowDatePicker(true)
+    }
+
+    // Every already-rated day of the visible month gets a dot; the selected
+    // day keeps its outline on top of that.
+    const markedDates = Object.keys(ratedProjectsByDay).reduce((marked, day) => {
+        marked[day] = { marked: true, dotColor: colors.Primary200 }
+        return marked
+    }, {})
+    markedDates[selectedDateString] = {
+        ...markedDates[selectedDateString],
+        customStyles: customStylesMarkedDatesCalendar,
+        marked: true,
+        selected: false,
+    }
+
+    const renderProjectDayActivity = project => (
+        <ProjectDayActivity
+            doneTasks={doneTasksByProject[project.id]}
+            maxDoneTasks={maxDoneTasks}
+            testID={`happinessDayActivity_${project.id}`}
+        />
+    )
 
     return (
         <View style={[localStyles.parent, safeAreaOverlayPadding]}>
@@ -124,33 +191,43 @@ export default function HappinessRatingModal({ onClose }) {
                                     current={selectedDateString}
                                     maxDate={moment().format(CALENDAR_DATE_FORMAT)}
                                     onDayPress={selectDate}
+                                    onMonthChange={month =>
+                                        setVisibleMonth(moment(month.dateString, CALENDAR_DATE_FORMAT).valueOf())
+                                    }
                                     markingType="custom"
-                                    markedDates={{
-                                        [selectedDateString]: {
-                                            customStyles: customStylesMarkedDatesCalendar,
-                                            marked: true,
-                                            selected: false,
-                                        },
-                                    }}
+                                    markedDates={markedDates}
                                 />
+                                <Text style={localStyles.calendarHint}>
+                                    {translate('Days with a dot are already rated')}
+                                </Text>
                             </View>
                         }
                     >
                         <TouchableOpacity
                             style={localStyles.dateButton}
                             testID="happinessRatingDateButton"
-                            onPress={() => setShowDatePicker(true)}
+                            onPress={openDatePicker}
                         >
                             <Icon name="calendar" size={20} color="#ffffff" />
                             <Text style={localStyles.dateButtonText}>{selectedMoment.format(getDateFormat())}</Text>
                         </TouchableOpacity>
                     </AppPopover>
 
+                    {happinessProjects.length > 0 && (
+                        <View style={localStyles.summaryRow}>
+                            <Icon name="smile" size={16} color={colors.Text04} />
+                            <Text style={localStyles.summaryText} testID="happinessRatedSummary">
+                                {getRatedProjectsSummary(happinessEditor, happinessProjects)}
+                            </Text>
+                        </View>
+                    )}
+
                     {happinessProjects.length > 0 ? (
                         <ProjectHappinessRatingList
                             projects={happinessProjects}
                             editor={happinessEditor}
                             compact={compactModalLayout}
+                            renderProjectMeta={renderProjectDayActivity}
                         />
                     ) : (
                         <Text style={localStyles.emptyText}>{translate('No projects to rate')}</Text>
@@ -249,6 +326,23 @@ const localStyles = StyleSheet.create({
         padding: 12,
         boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
         elevation: 3,
+    },
+    calendarHint: {
+        ...styles.caption2,
+        color: colors.Text04,
+        marginTop: 8,
+        textAlign: 'center',
+    },
+    summaryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+    },
+    summaryText: {
+        ...styles.body2,
+        color: colors.Text04,
+        marginLeft: 6,
+        flexShrink: 1,
     },
     emptyText: {
         ...styles.body2,
