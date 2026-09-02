@@ -37,6 +37,7 @@ const {
 } = require('./FeedsConstants')
 const { getGlobalState } = require('../GlobalState/globalState')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const { reconcileObjectFeedPrivacy } = require('./objectFeedPrivacy')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const initialDates = {
@@ -449,80 +450,24 @@ async function loadFeedObject(projectId, objectId, objectTypes, lastChangeDate, 
     return feedObject
 }
 
-async function deleteObjectFeedStore(projectId, userId, objectId, path) {
-    const feedsToDelete = (
-        await admin
-            .firestore()
-            .collection(`/feedsStore/${projectId}/${userId}/feeds/${path}`)
-            .where('objectId', '==', objectId)
-            .get()
-    ).docs
-
-    const batch = new BatchWrapper(admin.firestore())
-    feedsToDelete.forEach(feedDoc => {
-        batch.delete(admin.firestore().doc(`/feedsStore/${projectId}/${userId}/feeds/${path}/${feedDoc.id}`))
-    })
-    await batch.commit()
-}
-
-async function updateInnerFeedsPrivacy(objectId, path, isPublicFor, batch) {
-    const feeds = (await admin.firestore().collection(path).where('objectId', '==', objectId).get()).docs
-    feeds.forEach(feedDoc => {
-        const feed = feedDoc.data()
-        const usersWithAccess = [...isPublicFor]
-        if (feed.isCommentPublicFor) {
-            feed.isCommentPublicFor.forEach(userId => {
-                if (!usersWithAccess.includes(userId)) {
-                    usersWithAccess.push(userId)
-                }
-            })
-        }
-        batch.set(db.doc(`${path}/${feedDoc.id}`), { isPublicFor: usersWithAccess }, { merge: true })
-    })
-}
-
+/**
+ * Re-privatises the stored activity of an object. The fan-out itself lives in
+ * `./objectFeedPrivacy.js`, which the object update triggers also run for client-originated
+ * privacy changes (a browser cannot reach the other members' followed stores under
+ * firestore.rules). Both paths converge on the same state.
+ */
 async function addPrivacyForFeedObject(projectId, isPrivate, feedObject, objectId, objectTypes, isPublicFor) {
     const { users } = getGlobalState()
-    const batch = new BatchWrapper(admin.firestore())
     feedObject.isPublicFor = isPublicFor
 
-    const userIds = users.map(user => user.uid)
-
-    const promises = []
-    if (isPrivate) {
-        const userIdsWithoutAccess = userIds.filter(userId => !isPublicFor.includes(userId))
-        userIdsWithoutAccess.forEach(userId => {
-            deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, BOTH_TABS, batch)
-            promises.push(deleteObjectFeedStore(projectId, userId, objectId, 'followed'))
-        })
-    }
-
-    const followersWithAccessIds = isPublicFor[0] === FEED_PUBLIC_FOR_ALL ? userIds : isPublicFor
-    followersWithAccessIds.forEach(userId => {
-        promises.push(
-            updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/${userId}/feeds/followed`, isPublicFor, batch)
-        )
+    await reconcileObjectFeedPrivacy({
+        database: admin.firestore(),
+        projectId,
+        objectType: objectTypes,
+        objectId,
+        isPublicFor,
+        projectUserIds: (users || []).map(user => user.uid),
     })
-
-    promises.push(updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/all`, isPublicFor, batch))
-    promises.push(
-        updateInnerFeedsPrivacy(
-            objectId,
-            `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/comments`,
-            isPublicFor,
-            batch
-        )
-    )
-    promises.push(
-        updateInnerFeedsPrivacy(
-            objectId,
-            `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`,
-            isPublicFor,
-            batch
-        )
-    )
-    promises.push(batch.commit())
-    await Promise.all(promises)
 }
 
 const getDateFormat = () => {

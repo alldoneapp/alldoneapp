@@ -60,6 +60,7 @@ import { buildBacklinkToken, getBacklinkIdsVisibleToField } from './firestoreAcc
 import { handleOptionalSnapshotError } from './optionalSnapshotError'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import { withoutServerAccessProjection } from './accessProjection'
+import { applyVisibleFeedPrivacy, deleteVisibleFollowedFeeds, getFeedPrivacyReaders } from './Feeds/feedPrivacy'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -4390,54 +4391,49 @@ export async function loadFeedObject(projectId, objectId, objectTypes, dateForma
     return feedObject
 }
 
-async function updateInnerFeedsPrivacy(objectId, path, isPublicFor, batch) {
-    const feeds = (await db.collection(path).where('objectId', '==', objectId).get()).docs
-    feeds.forEach(feedDoc => {
-        const feed = feedDoc.data()
-        const usersWithAccess = [...isPublicFor]
-        if (feed.isCommentPublicFor) {
-            feed.isCommentPublicFor.forEach(userId => {
-                if (!usersWithAccess.includes(userId)) {
-                    usersWithAccess.push(userId)
-                }
-            })
-        }
-        batch.set(db.doc(`${path}/${feedDoc.id}`), { isPublicFor: usersWithAccess }, { merge: true })
-    })
-}
-
+/**
+ * Re-privatises the stored activity of an object after its privacy changed. This is the browser
+ * half: it rewrites what the signed-in user can read (own followed store, shared store, the
+ * object's history) and clears the unread counters of the members that lost access. The followed
+ * stores of OTHER members are unreachable from a browser under firestore.rules, and are reconciled
+ * by the object's own update trigger (`functions/Feeds/objectFeedPrivacy.js`). See
+ * `utils/backends/Feeds/feedPrivacy.js` for the rule constraints that shape this.
+ *
+ * Callers do not await this; the `feedObject` mutation is synchronous because they read the new
+ * privacy off it right away, and nothing here can reject — a feed that fails to update is
+ * reported, not surfaced as an uncaught rejection in the console.
+ */
 export async function addPrivacyForFeedObject(projectId, isPrivate, feedObject, objectId, objectTypes, isPublicFor) {
-    const batch = new BatchWrapper(db)
     feedObject.isPublicFor = isPublicFor
-    const usersIds = getProjectUsersIds(projectId)
+
+    const loggedUserId = store.getState().loggedUser?.uid
+    const batch = new BatchWrapper(db)
     if (isPrivate) {
-        const userIdsWithoutAccess = usersIds.filter(userId => !isPublicFor.includes(userId))
-        userIdsWithoutAccess.forEach(userId => {
+        const { usersWithoutAccess } = getFeedPrivacyReaders(isPublicFor, getProjectUsersIds(projectId))
+        usersWithoutAccess.forEach(userId => {
             deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, BOTH_TABS, batch)
-            deleteObjectFeedStore(projectId, userId, objectId, 'followed')
         })
     }
 
-    const promises = []
-    const followersWithAccessIds = isPublicFor[0] === FEED_PUBLIC_FOR_ALL ? usersIds : isPublicFor
-    followersWithAccessIds.forEach(userId => {
-        promises.push(
-            updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/${userId}/feeds/followed`, isPublicFor, batch)
-        )
-    })
-
-    promises.push(updateInnerFeedsPrivacy(objectId, `/feedsStore/${projectId}/all`, isPublicFor, batch))
-
-    promises.push(
-        updateInnerFeedsPrivacy(
+    try {
+        await applyVisibleFeedPrivacy(db, batch, {
+            projectId,
             objectId,
-            `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`,
+            objectTypes,
             isPublicFor,
-            batch
-        )
-    )
-    await Promise.all(promises)
-    batch.commit()
+            loggedUserId,
+            readerId: getLoggedUserAccessReaderId(),
+        })
+        await batch.commit()
+    } catch (error) {
+        console.warn('[feeds privacy] Could not re-privatise the visible activity of an object', {
+            projectId,
+            objectTypes,
+            objectId,
+            code: error?.code,
+            message: error?.message,
+        })
+    }
 }
 
 ///// LAST STATE FEED OBJECTS MODELS ///////////
@@ -6226,7 +6222,7 @@ export async function removeFollower(projectId, followData, externalBatch) {
                 removeFollowerWithoutFeeds(projectId, userId, followObjectsType, subtaskId, batch)
                 removeFollowerFromChat(projectId, subtaskId, userId)
                 deleteObjectFeedCounter(projectId, userId, subtaskId, followObjectsType, BOTH_TABS, batch)
-                deleteObjectFeedStore(projectId, userId, subtaskId, 'followed')
+                deleteObjectFeedStore(projectId, userId, subtaskId)
             })
         }
     } else if (followObjectsType === 'notes') {
@@ -6563,16 +6559,27 @@ function deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, tabsT
     }
 }
 
-async function deleteObjectFeedStore(projectId, userId, objectId, path) {
-    const feedsToDelete = (
-        await db.collection(`/feedsStore/${projectId}/${userId}/feeds/${path}`).where('objectId', '==', objectId).get()
-    ).docs
-
+// Only the signed-in user's own followed store is readable from a browser, and only through the
+// reader projection; a request for another member's store is a no-op here and the server's job.
+async function deleteObjectFeedStore(projectId, userId, objectId) {
     const batch = new BatchWrapper(db)
-    feedsToDelete.forEach(feedDoc => {
-        batch.delete(db.doc(`/feedsStore/${projectId}/${userId}/feeds/${path}/${feedDoc.id}`))
-    })
-    batch.commit()
+    try {
+        const deleted = await deleteVisibleFollowedFeeds(db, batch, {
+            projectId,
+            userId,
+            loggedUserId: store.getState().loggedUser?.uid,
+            objectId,
+            readerId: getLoggedUserAccessReaderId(),
+        })
+        if (deleted > 0) await batch.commit()
+    } catch (error) {
+        console.warn('[feeds privacy] Could not remove an object from the followed activity store', {
+            projectId,
+            objectId,
+            code: error?.code,
+            message: error?.message,
+        })
+    }
 }
 
 ////////// FEEDS COUNT //////////////////

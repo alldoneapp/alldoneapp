@@ -1490,6 +1490,38 @@ a document the query just returned as "already gone"; any other delete failure s
 still reported. The other project member's browser races the shared `all` store the same way, so the
 tolerance matters even with the coalescing. Pinned by `utils/backends/Feeds/feedCleanup.test.js`.
 
+### A privacy change reaches the stored activity in two halves, and a browser owns only one
+
+Every activity entry of an object — `feedsStore/{projectId}/all`, each member's
+`feedsStore/{projectId}/{userId}/feeds/followed` store and the object's `projectsInnerFeeds`
+history — carries its own `isPublicFor`, and the access projection derives each entry's
+`readerIds` from THAT field. So making an object private (or public again) has to rewrite the
+entries that already exist, and the pre-rollout client did all of it: rewrote every store and
+deleted the entries out of the followed stores of the members that lost access. After the
+`readerIds` rollout that code failed on every privacy change **and on the creation of every
+private task** (an invoice task is one) with two uncaught `Missing or insufficient permissions`
+rejections, for two different reasons: a feed query with only `objectId ==` cannot prove
+`canReadObject` and is refused as a whole, and another member's followed store is gated on
+`request.auth.uid == userId`, so no query shape reaches it. Because the rejection came before the
+batch commit, the change wrote **nothing** — the unread counters, the shared store, all of it.
+
+The split is now explicit. `utils/backends/Feeds/feedPrivacy.js` is the **browser half**: every
+query carries `objectId ==` plus `readerIds array-contains <me>` (array-contains merges with
+equality filters on its own, no composite index), it touches only the signed-in user's own
+followed store, and a writer whose own access the change removes only deletes from that store —
+the update rule evaluates `canWriteObject` on the document as written, so an entry rewritten to a
+privacy that no longer names the writer would be refused. `functions/Feeds/objectFeedPrivacy.js`
+is the **server half**, run from the tasks/notes/goals/contacts/skills `onUpdate*` triggers next to
+`synchronizeAccessProjection` whenever the update moved `isPublicFor`: it deletes the entries and
+unread counters of every member outside the new list and rewrites everybody else's, with the Admin
+SDK. Both halves are idempotent merges toward the same state, so the browser's immediate pass, the
+trigger, a retried trigger and the assistant's own server-side chain
+(`globalFeedsHelper.addPrivacyForFeedObject`, which now delegates to the same module) can overlap
+freely. Neither half may reject into a caller: the client wraps its commit and warns, the trigger
+catches and logs, because the object update itself has already happened. Pinned by
+`utils/backends/Feeds/feedPrivacy.test.js`, `functions/Feeds/objectFeedPrivacy.test.js` and the
+`re-privatise only the activity it can see` case in `__tests__/Firestore/firestoreRules.emulator.test.js`.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
