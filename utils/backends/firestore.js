@@ -4102,6 +4102,13 @@ export function mapUserData(userId, user) {
         noticeAboutTheBotBehavior: user.noticeAboutTheBotBehavior ? user.noticeAboutTheBotBehavior : false,
         defaultProjectId: user.defaultProjectId ? user.defaultProjectId : '',
         apisConnected: user.apisConnected ? user.apisConnected : {},
+        // The account-level connection maps. Without them `listConnections` in
+        // utils/IntegrationProviders.js always falls back to synthesizing from
+        // `apisConnected`, which hardcodes `authInvalid: false` — so a connection the
+        // server had flagged as revoked rendered as perfectly healthy and the
+        // "Reconnect account" banner could never appear (AT-2491).
+        emailConnections: user.emailConnections ? user.emailConnections : {},
+        calendarConnections: user.calendarConnections ? user.calendarConnections : {},
         unlockedKeysByGuides: user.unlockedKeysByGuides ? user.unlockedKeysByGuides : {},
         inFocusTaskId: user.inFocusTaskId ? user.inFocusTaskId : '',
         inFocusTaskProjectId: user.inFocusTaskProjectId ? user.inFocusTaskProjectId : '',
