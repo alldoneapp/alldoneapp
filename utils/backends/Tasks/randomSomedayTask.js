@@ -11,34 +11,26 @@ import moment from 'moment'
 export async function selectRandomSomedayTask(userId) {
     try {
         const { somedayTaskTriggerPercent } = store.getState().loggedUser
-        console.log(`[SomedayTask] Starting random selection. Percent: ${somedayTaskTriggerPercent}%`)
 
         // Check if we should trigger based on percentage
         if (!somedayTaskTriggerPercent) {
-            console.log('[SomedayTask] Percentage is 0 or undefined, skipping.')
             return null
         }
         const triggerProbability = somedayTaskTriggerPercent / 100
         const randomValue = Math.random()
         if (randomValue >= triggerProbability) {
-            console.log(
-                `[SomedayTask] Skipped due to probability. Random: ${randomValue}, Trigger: ${triggerProbability}`
-            )
             return null
         }
 
-        console.log('[SomedayTask] Probability check passed. Fetching projects...')
         // Get all projects from Redux store
         const projects = store.getState().loggedUserProjects || []
 
         if (projects.length === 0) {
-            console.log('[SomedayTask] No projects found in store.')
             return null
         }
 
         // Collect all Someday tasks across all projects
         const somedayTasks = []
-        console.log(`[SomedayTask] Scanning ${projects.length} projects...`)
 
         for (const project of projects) {
             const projectId = project.id
@@ -68,19 +60,12 @@ export async function selectRandomSomedayTask(userId) {
 
         // If no Someday tasks found, return null
         if (somedayTasks.length === 0) {
-            console.log('[SomedayTask] No Someday tasks found across all projects.')
             return null
         }
-
-        console.log(`[SomedayTask] Found ${somedayTasks.length} Someday tasks candidates.`)
 
         // Randomly select one task
         const randomIndex = Math.floor(Math.random() * somedayTasks.length)
         const selectedTask = somedayTasks[randomIndex]
-
-        console.log(
-            `[SomedayTask] Selected task: "${selectedTask.data.name}" (${selectedTask.id}) in project: "${selectedTask.projectName}" (${selectedTask.projectId})`
-        )
 
         // Update the task's due date to today
         const todayDate = moment().startOf('day').valueOf()
