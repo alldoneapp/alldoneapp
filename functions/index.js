@@ -4890,18 +4890,6 @@ exports.resetInvoiceNumbersSecondGen = onSchedule(
     }
 )
 
-exports.scheduledFirestoreBackupSecondGen = onSchedule(
-    {
-        schedule: 'every 24 hours',
-        region: 'europe-west1',
-    },
-    event => {
-        const { scheduledFirestoreBackup } = require('./Utils/firestoreBackup.js')
-        const firebaseProjectId = process.env.GCLOUD_PROJECT
-        return scheduledFirestoreBackup(firebaseProjectId)
-    }
-)
-
 exports.checkForDemoteStickyNotesSecondGen = onSchedule(
     {
         schedule: 'every 30 minutes',
