@@ -2225,6 +2225,7 @@
     "Day-rate logging": "Day-rate logging",
     "Enabled": "Enabled",
     "Hours per day": "Hours per day",
+    "Day-rate hours hint": "Fills each day up to this amount and caps calendar time at it; time logged by hand is always kept",
     "Task trigger": "Task trigger",
     "Mark day worked": "Mark day worked",
     "Backfill from project start": "Backfill from project start",
