@@ -713,6 +713,9 @@ async function draftReply({
         projectId: resolveConnectionProjectId(userData, projectId),
         objectId: messageId,
         channel: connection.provider,
+        // Same model the cost was computed from, so goldStats.spendByModel attributes this
+        // line (AT-2487). The refunds below spread this context, so they match by construction.
+        model: composed.modelKey || '',
     }
 
     const goldResult = await deductGold(userId, goldCost, goldContext)
@@ -883,6 +886,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         projectId: targetProjectId,
         objectId: selectedMessageId,
         channel: connection.provider,
+        model: summary.modelKey || '',
     }
 
     const goldResult = await deductGold(userId, goldCost, goldContext)
