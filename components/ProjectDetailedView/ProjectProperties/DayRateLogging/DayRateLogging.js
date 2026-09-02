@@ -89,7 +89,6 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                     accessible={false}
                 />
             </View>
-            <Text style={localStyles.modalHint}>{translate('Day-rate hours hint')}</Text>
             <View style={localStyles.modalRow}>
                 <Text style={localStyles.modalLabel}>{translate('Task trigger')}</Text>
                 <TextInput
@@ -192,11 +191,6 @@ const localStyles = StyleSheet.create({
     modalLabel: {
         ...styles.subtitle2,
         color: colors.Text03,
-    },
-    modalHint: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginBottom: 8,
     },
     input: {
         ...styles.body1,

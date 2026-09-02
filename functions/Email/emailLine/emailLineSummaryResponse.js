@@ -8,6 +8,7 @@ const {
     getConnectionsMapField,
     materializeConnectionsMap,
 } = require('../../Integrations/providerConnections')
+const { Timestamp } = require('firebase-admin/firestore')
 const { isAuthError } = require('./emailLineErrors')
 
 function resolveEmailConnectionForKey(userData = {}, key = '', providedConnection = null) {
@@ -26,8 +27,16 @@ function buildEmailAuthInvalidUpdate(userData = {}, key = '', providedConnection
     const storedMap = userData[mapField]
     const hasStoredMap = storedMap && typeof storedMap === 'object' && Object.keys(storedMap).length > 0
 
+    // Stamp when the breakage was observed so Settings > Integrations can say how long the
+    // account has been dead. This is the provider-agnostic path, so it is also what gives a
+    // Microsoft connection its timestamp (AT-2491).
+    const invalidAt = Timestamp.now()
+
     if (hasStoredMap) {
-        return { [`${mapField}.${connection.connectionId}.authInvalid`]: true }
+        return {
+            [`${mapField}.${connection.connectionId}.authInvalid`]: true,
+            [`${mapField}.${connection.connectionId}.authInvalidAt`]: invalidAt,
+        }
     }
 
     // A nested one-field update would create a partial account map and hide any other
@@ -36,6 +45,7 @@ function buildEmailAuthInvalidUpdate(userData = {}, key = '', providedConnection
     const materialized = materializeConnectionsMap(CONNECTION_SERVICE_EMAIL, userData)
     if (!materialized[connection.connectionId]) return null
     materialized[connection.connectionId].authInvalid = true
+    materialized[connection.connectionId].authInvalidAt = invalidAt
     return { [mapField]: materialized }
 }
 
