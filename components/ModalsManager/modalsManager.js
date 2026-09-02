@@ -81,8 +81,6 @@ export const exitsOpenModals = excludedModalsIds => {
     const { openModals } = store.getState()
     const modalsIds = Object.keys(openModals)
 
-    console.log('exitsOpenModals checking. Open modals:', modalsIds, 'Excluded:', excludedModalsIds)
-
     if (excludedModalsIds && excludedModalsIds.length > 0) {
         let excludedOpensCount = 0
         for (let i = 0; i < excludedModalsIds.length; i++) {
