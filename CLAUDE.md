@@ -2129,28 +2129,29 @@ or one gcloud command away. What was found, and what is now in place:
   `WARM_INSTANCES` in `functions/index.js` is now `1` only when the deployment project is
   `alldonealeph`, so **staging never keeps one warm** (it paid EUR 54/month for an environment with
   no traffic). `onUpdateChat` lost its warm instance outright: a Firestore trigger has nobody
-  waiting on its latency. The four telephony ones (`whatsAppIncomingCall`, `phoneIncomingCall`,
-  `openAIRealtimeCallWebhook`, `runWhatsAppRealtimeCall`) keep theirs on purpose — their comments
-  cite measured cold starts of 7.7s and 14.5s that make a caller hang up — but note they are
-  ~EUR 36/month for a feature that handled three calls in August. That is a product decision, not
-  a config one.
+  waiting on its latency. The four telephony functions (`whatsAppIncomingCall`, `phoneIncomingCall`,
+  `openAIRealtimeCallWebhook`, `runWhatsAppRealtimeCall`) lost theirs the same day by decision:
+  their comments cited measured cold starts of 7.7s and 14.5s on a live call, but they cost
+  ~EUR 36/month for three calls in August. Only `askToBot` and `generatePreConfigTaskResult` keep
+  one, in production only. If phone calls become a real feature again, the cheap fix is one warm
+  `onRequest` routing all three webhooks, not four warm services.
 - **Staging's scheduled functions are paused** (all 40 Cloud Scheduler jobs, via
   `gcloud scheduler jobs pause`). They ran every production schedule against an idle database.
   Resume them with `gcloud scheduler jobs resume` if a scheduled feature needs staging QA; a
   staging functions deploy does NOT un-pause them.
-- **The notes collab server is an App Engine Flexible VM (EUR 40/month)** —
-  `alldone-notes-collab-server`, stock y-websocket 1.3.17 from
-  `gitlab.com/alldonegmbh/alldone-notes-collab-server`, manual scaling 1, deployed 2021-11-18. Its
-  URL reaches the web build through the GitLab CI variable `NOTES_COLLABORATION_SERVER`, not
-  through the repo. Cloud Run with `--min-instances=1 --max-instances=1 --session-affinity` costs
-  about EUR 17/month for the same thing (websockets keep the instance's CPU billed while a note is
-  open, so request-based billing is right and instance-based billing would cost as much as Flex).
-  A Dockerfile for it exists in that repo's history of this review; the move needs the CI variable
-  changed and a web deploy, then `gcloud app versions stop`. **Do not delete
-  `gs://us.artifacts.alldonealeph.appspot.com` before the Flex version is stopped** — the Flex
-  image lives there (`us.gcr.io/alldonealeph/appengine/...`) and a VM restart pulls from it. The
-  other three legacy Container Registry buckets (prod `eu.artifacts`, both staging ones, 246 GB)
-  are gone.
+- **The notes collab server moved from App Engine Flexible (EUR 40/month) to Cloud Run on
+  2026-09-02.** It is stock y-websocket 1.3.17 from
+  `gitlab.com/alldonegmbh/alldone-notes-collab-server` (a Dockerfile was added for the move),
+  deployed as `alldone-notes-collab-server` in `europe-west1` with `--min-instances=1
+--max-instances=1 --session-affinity --concurrency=1000 --timeout=3600` — one instance is
+  required, rooms live in memory. Request-based billing is right for it (idle min-instance plus
+  CPU while a note is open ≈ EUR 15-18/month); instance-based billing would cost as much as Flex.
+  The URL reaches the web build through the GitLab CI variable `NOTES_COLLABORATION_SERVER`
+  (shared by staging and production builds), not through the repo. The Flex version
+  `20211118t131148` is stopped, not deleted; its image lives in
+  `gs://us.artifacts.alldonealeph.appspot.com`, which is why that legacy bucket still exists —
+  delete both together once the Cloud Run server has run for a while. The other three legacy
+  Container Registry buckets (prod `eu.artifacts`, both staging ones, 246 GB) are gone.
 - **A second trigger on the same document path bills every write twice.**
   `onUpdateCalendarGoalRoutingFeedbackSecondGen` sat next to `onUpdateTaskSecondGen` on
   `items/{projectId}/tasks/{taskId}`, so every task update paid two invocations (387k + 464k in
