@@ -29,6 +29,10 @@ async function createCallSessionWithLease({
     twilioCallSid,
     language,
     channel = 'whatsapp_call',
+    // Frozen at session start rather than read at charge time (AT-2487). The realtime model
+    // comes from env config, so a config change mid-call would otherwise re-attribute Gold
+    // already spent under the previous model — the same reason a VM run freezes `tokensPerGold`.
+    realtimeModel = '',
 }) {
     const now = Date.now()
     const routeId = hashRoutingToken(routingToken, routingSecret)
@@ -66,6 +70,7 @@ async function createCallSessionWithLease({
             assistantId,
             chatId,
             channel,
+            realtimeModel: String(realtimeModel || '').trim() || null,
             twilioCallSid,
             language: String(language || '').trim() || null,
             routingId: routeId,
@@ -98,6 +103,7 @@ async function createDirectCallSessionWithLease({
     chatId,
     language,
     channel,
+    realtimeModel = '',
 }) {
     const now = Date.now()
     const sessionRef = getSessionRef(sessionId)
@@ -126,6 +132,7 @@ async function createDirectCallSessionWithLease({
             assistantId,
             chatId,
             channel,
+            realtimeModel: String(realtimeModel || '').trim() || null,
             twilioCallSid: null,
             language: String(language || '').trim() || null,
             routingId: null,
