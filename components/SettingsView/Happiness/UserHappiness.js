@@ -19,6 +19,7 @@ import { updateUserStatisticsFilter } from '../../../utils/backends/Users/usersF
 import Backend from '../../../utils/BackendBridge'
 
 export default function UserHappiness() {
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const filterData = useSelector(state => state.loggedUser.statisticsData)
@@ -63,9 +64,16 @@ export default function UserHappiness() {
 
     return (
         <View style={localStyles.container}>
-            <View style={localStyles.header}>
+            {/* On a phone the title and the two controls cannot share one
+                72px line: the "Rate happiness" button ended up squeezed
+                against the date filter. The header stacks and the controls
+                wrap instead. */}
+            <View style={[localStyles.header, mobile && localStyles.mobileHeader]} testID="happinessHeader">
                 <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('Happiness')}</Text>
-                <View style={localStyles.actionsContainer}>
+                <View
+                    style={[localStyles.actionsContainer, mobile && localStyles.mobileActionsContainer]}
+                    testID="happinessHeaderActions"
+                >
                     {/* The on-demand twin of the "new day" popup (AT-2392): the
                         same rating rows, for a day you pick. */}
                     <Button
@@ -96,16 +104,26 @@ const localStyles = StyleSheet.create({
         flex: 1,
     },
     header: {
-        height: 72,
+        minHeight: 72,
         paddingTop: 32,
         paddingBottom: 12,
         alignItems: 'center',
         flexDirection: 'row',
     },
+    mobileHeader: {
+        flexDirection: 'column',
+        alignItems: 'stretch',
+    },
     actionsContainer: {
         marginLeft: 'auto',
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    mobileActionsContainer: {
+        marginLeft: 0,
+        marginTop: 12,
+        flexWrap: 'wrap',
+        rowGap: 8,
     },
     rateButton: {
         marginRight: 8,

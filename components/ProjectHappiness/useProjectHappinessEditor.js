@@ -39,6 +39,11 @@ export default function useProjectHappinessEditor({
     const [ratings, setRatings] = useState({})
     const [comments, setComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
+    // What is already STORED for the rated day, per project — `null` once the
+    // day's watcher has answered "nothing", absent until it has answered at
+    // all. `ratings` cannot tell a stored rating from one tapped a second ago;
+    // this is what lets a row say "Rated" / "Not rated yet" for that day.
+    const [storedEntries, setStoredEntries] = useState({})
 
     const commentInputRefs = useRef({})
     const pendingCommentFocusProjectIdRef = useRef(null)
@@ -138,6 +143,7 @@ export default function useProjectHappinessEditor({
         setRatings({})
         setComments({})
         setVisibleComments({})
+        setStoredEntries({})
         pendingCommentFocusProjectIdRef.current = null
         dirtyHappinessProjectIdsRef.current.clear()
         happinessDraftsRef.current = {}
@@ -214,6 +220,12 @@ export default function useProjectHappinessEditor({
                 `${watcherKeyPrefix}_${project.id}`,
                 (projectId, entries) => {
                     const entry = entries[0]
+                    setStoredEntries(state => ({
+                        ...state,
+                        [projectId]: entry
+                            ? { rating: entry.rating, comment: entry.comment || '', updated: entry.updated }
+                            : null,
+                    }))
                     if (entry) {
                         happinessDraftsRef.current[projectId] = {
                             rating: entry.rating,
@@ -249,6 +261,7 @@ export default function useProjectHappinessEditor({
         ratings,
         comments,
         visibleComments,
+        storedEntries,
         setRating,
         setComment,
         saveComment,
