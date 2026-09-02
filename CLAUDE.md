@@ -1164,20 +1164,51 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
-### Per-project empty inbox — the smaller sibling (AT-2492)
+### Per-project empty inbox — the completed sweep (AT-2492)
 
 **Clearing one project is celebrated too, and the difference from the all-projects moment is one of
-KIND, not of degree.** `SelectedProjectEmptyInbox` — the Anna "tasks done" picture that has always
-shown when a project's list is clear — now arrives with a confetti burst and a small pop the first
-time you see it on a day you actually cleared that project. It reuses the AT-2445 machinery at a
-smaller tuning (`projectEmptyInboxCongratsMotion.js`: ~1.5s against ~3s;
-`EmptyInboxConfetti variant="burst"`: 10 pieces at 0.62x throw), and above all it **never renders the
-page-wide fall layer**. That layer is what makes the all-projects moment visible from across a room,
-so withholding it entirely is what keeps the ranking legible; tuning piece counts alone would have
-left the two reading as "the same celebration, slightly weaker". There is no headline, no achievement
-card, no green dot and no streak: the trigger is scoped to today's list per Karsten's decision on
-AT-2492, so this composes as N small flourishes on the way to the one big achievement. A settled
-block is byte-identical to what it rendered before.
+KIND, not of degree.** When a project's today/overdue list goes to zero, that project's own header
+row — the 56px `ProjectHeader` line — plays a **completed sweep**: a low-alpha wash in the
+project's own colour fills left→right behind a full-strength 3px leading edge, then both fade. On
+the selected-project board the Anna "tasks done" picture pops in on the same run id, so the two read
+as one event. There is no headline, no achievement card, no green dot, no streak, and — the absolute
+rule — **no confetti of any kind**. That layer is what makes the all-projects moment visible from
+across a room, so withholding it entirely is what keeps the ranking legible; the first pass of
+AT-2492 threw a smaller confetti burst here instead, and tuning piece counts alone left the two
+reading as "the same celebration, slightly weaker". Trigger is today's list per project, so N small
+flourishes compose on the way to the one big achievement. A settled row is byte-identical to before.
+
+**The project line, not the picture, because the picture does not exist where this usually happens.**
+`SelectedProjectEmptyInbox` only renders on the selected-project board, so a celebration living on
+it could never fire in **All Projects** — which is where a project is normally cleared. The header
+row exists in both views and is the same component in each, so moving the celebration onto it is
+what makes one implementation serve both boards. Colour is the **project's own**, not the app's
+green "done": a task turning green is a statement about that task, while a project line is an
+identity, and the two land within a second of each other so they must stay distinguishable.
+Pale project colours survive because the wash carries the fill and the full-strength edge carries
+the motion.
+
+**The hard part is that All Projects DROPS a cleared project from the board** (`hideProjectData` in
+`OpenTasksByProject`), header included, in the same commit that empties it — so "celebrate the
+project you just cleared" and "remove the project you just cleared" are in direct conflict.
+`useProjectCompletedSweep` returns a `holdProjectLine` that keeps the line for one sweep and then
+lets it go, the same grammar AT-2404 uses for a completing task row (sweep, then leave). The settled
+layout is unchanged; only the moment of departure moves, by under a second. The hold is bounded
+three ways because a project stranded on a board it should have left is a visible bug where a missed
+sweep is merely a missed flourish: it always expires on a timer, it is never taken when there will
+be no visible sweep (reduced motion, jest), and it is never taken for a line leaving for any other
+reason — applying a priority filter hides projects through the same code path and is not delayed at
+all.
+
+**Two store slices say "today is empty" and they race, which is what the probe is for.**
+`sidebarNumbers` (the unfiltered today+overdue count the marker records are keyed on) and
+`thereAreNotTasksInFirstDay` (which actually drives the hide) are written by two different Firestore
+listeners and land in whatever order the network gives them. When the hide wins, the line would be
+gone before we knew the project had been cleared. So a line that is both leaving **and** otherwise
+eligible gets a provisional `PROJECT_SWEEP_PROBE_MS` (120ms) hold while we find out. It is armed by
+a **render-phase state update** (React's documented "adjust state when a prop changes" pattern), not
+from an effect — an effect runs after the commit that already removed the block, so the user would
+see the project vanish and reappear.
 
 **"The list is empty" is not "the project was cleared", and conflating them is the whole bug this
 design avoids.** The reporting account has 78 projects, 64 of them guides, and most are empty on most
@@ -1198,29 +1229,41 @@ not a cleared project — `clearSidebarTasksAmount` wipes the whole map on an ac
 project with nothing due today never gets a key for that user at all; the celebration gate is
 deliberately **looser** (`projectTodayListLooksClear`, "not a positive count") because after a reload
 that same project reads `undefined` rather than `0`, which is the ordinary shape of the "cleared this
-morning, opened this afternoon" case. The decision lives in **today's `OpenTasksByDate` section, not
-in the block** — the block only mounts once the list is already clear, so a hook inside it could never
-see the transition that earns the celebration, and it renders once per empty date section, so with
-Later expanded it would fire a burst per empty day. And `useProjectEmptyInboxCelebration` does its
-**own** transition detection as well as reading the record, which is not redundancy for its own sake:
-effects run child-before-parent, so on the tick the count reaches zero the app-wide
-`useReachProjectEmptyInbox` (mounted in `InitLoadView` beside `useReachEmptyInbox`) has not written
-its record yet, and a hook that only read it would never fire for the live case.
+morning, opened this afternoon" case. The decision lives in **`OpenTasksByProject`**, the one
+component that stays mounted for every project whether or not that project has anything to show —
+not in `OpenTasksByDate` (where the first pass put it), which unmounts with the block it is trying to
+animate, and not in the empty block itself, which only mounts once the list is already clear and so
+could never see the transition. And `useProjectCompletedSweep` does its **own** transition detection
+as well as reading the record: effects run child-before-parent, so on the tick the count reaches zero
+the app-wide `useReachProjectEmptyInbox` (mounted in `InitLoadView` beside `useReachEmptyInbox`) has
+not written its record yet, and a hook that only read it would never fire for the live case.
 
-Four gates decide who may spend the day, and each closes a way of celebrating something that did not
-happen: the empty block must actually be on screen (the AT-2445 lesson — a marker spent by a frame
-nobody saw is a celebration that silently never happens); today's section only; the selected-project
-board only (All Projects hides an empty project's block via `hideProjectData`, but a project with
-visible OKRs still renders it, and a board of cleared projects would celebrate all of them at once);
-and no active task filters plus the board being the logged user's own — `amountTasks` comes from the
-**filtered** store, so a priority or VM filter empties the list without the project being done.
+Gates that decide who may spend the day, each closing a way of celebrating something that did not
+happen: **the project line must actually be on screen** (the AT-2445 lesson — a marker spent by a
+frame nobody saw is a celebration that silently never happens; in All Projects a project cleared
+earlier and arrived at later renders no header at all, so the day stays unspent and its own board can
+still celebrate it), no active task filters (`thereAreNotTasksInFirstDay` and the filtered store both
+describe a FILTERED list, so a filter empties a project without it being done), the board is the
+logged user's own, and not an assistant profile board. `OpenTasksByDate` keeps exactly one gate of its
+own — `dateIsToday` — because it renders once per date section and with Later expanded several can be
+empty at once.
+
+One dependency worth not breaking: `PROJECT_LINE_EXIT_HOLD_MS` > `SWEEP_TOTAL_MS`, and
+`PROJECT_CELEBRATION_CLAIM_SETTLE_MS` > the hold. The sweep's timer is started from the overlay
+inside `ProjectHeader` and the hold's from `OpenTasksByProject`, so nothing guarantees their order;
+both are derived rather than hand-tuned, and pinned from both sides.
+
 Known limit, and it degrades in the safe direction: the reached-record is per device, so clearing a
 project on your phone and opening it on your laptop shows no celebration. Pinned by
-`projectEmptyInboxCelebrationMarker.test.js`, `useProjectEmptyInboxCelebration.test.js`,
-`OpenTasksByDateProjectCelebration.test.js`, `hooks/useReachProjectEmptyInbox.test.js` and
-`ProjectEmptyInboxCelebration.test.js` — the last of which renders the real block against the real
-all-projects block and asserts comparatively, so a future change that quietly hands the small
-celebration the page-wide fall fails the build.
+`projectEmptyInboxCelebrationMarker.test.js`, `useProjectCompletedSweep.test.js` (the rules and the
+hold, mutation-checked), `ProjectCompletedSweep.test.js` (the visual contract — note the RN animation
+driver runs on rAF and does NOT advance under jest fake timers, so runs are driven by hand through
+the `Animated.Value` the component interpolates), `OpenTasksByProjectCompletedSweep.test.js` (the
+board-level conflict: the line stays for the sweep AND still leaves afterwards),
+`hooks/useReachProjectEmptyInbox.test.js`, and `ProjectEmptyInboxCelebration.test.js` — the last of
+which renders the real sweep against the real all-projects block and asserts comparatively, so a
+future change that quietly hands the small celebration confetti or a viewport-escaping layer fails
+the build.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
