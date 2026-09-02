@@ -2176,6 +2176,17 @@ or one gcloud command away. What was found, and what is now in place:
   (multi-region, double the regional read price). Server pollers account for only a few million;
   the rest is client-side and unattributed. Billing export to BigQuery
   (`alldonealeph:billing_export`) is enabled so the next review has per-SKU, per-day data.
+- **The nightly managed Firestore export was the single most expensive thing on the bill, and it
+  hid from every metric.** `scheduledFirestoreBackupSecondGen` exported all 5.27M documents to
+  `gs://alldonealeph-backups` every day. Google bills a managed export at **one read per document**
+  and states those reads do not appear in the usage console, so nothing in Monitoring showed
+  ~5.3M reads/day (~EUR 3/day, ~EUR 85/month). It had been failing silently under the compute
+  service account and only started succeeding on 2026-08-29 when functions moved to the Admin SDK
+  SA — which is what the September forecast jump was. Replaced on 2026-09-02 by a **native backup
+  schedule** (`gcloud firestore backups schedules create --recurrence=daily --retention=7d`,
+  storage-only billing, restore with `gcloud firestore databases restore`); the function and
+  `functions/Utils/firestoreBackup.js` are gone. Do not reintroduce `exportDocuments` on a
+  schedule; if an export is ever needed (e.g. BigQuery analysis), run it once by hand.
 - Deleted for good: a `us-central1` forwarding rule + target pool in staging left by GitLab
   "managed apps" in 2020 (EUR 17/month pointing at a GKE node that no longer existed).
 
