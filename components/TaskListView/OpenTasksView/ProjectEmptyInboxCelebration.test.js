@@ -149,10 +149,24 @@ describe('the per-project celebration, measured against the all-projects one (AT
             )
         })
 
-        it('is over well before the all-projects celebration would be', () => {
+        /**
+         * DURATION IS NO LONGER WHAT RANKS THEM, and that is a deliberate reversal.
+         *
+         * The second pass encoded the ranking as "half or less" (860ms against 3000ms). Karsten's
+         * verdict on the shipped result was that it works but is over before it registers — "make it
+         * more celebratory and maybe up to 3 seconds long" — so the third pass spends roughly the
+         * same wall clock as the all-projects moment and carries the ranking entirely in KIND: no
+         * confetti of any sort, bounded to one 56px row, no viewport-derived dimension anywhere.
+         * Those are the assertions above and below, and they are the ones that must not move.
+         *
+         * What survives here is only the ordering that would look like a mistake if it inverted: the
+         * small celebration must never OUTLAST the big one. Plus the window Karsten asked for, so a
+         * future retune cannot quietly hand the row back its old 860ms flash.
+         */
+        it('runs for the ~3s Karsten asked for, and still never outlasts the all-projects one', () => {
             expect(SWEEP_TOTAL_MS).toBeLessThan(CONGRATS_TOTAL_MS)
-            // Comfortably so, not marginally — half or less, or the ranking is not legible to a user.
-            expect(SWEEP_TOTAL_MS).toBeLessThanOrEqual(CONGRATS_TOTAL_MS / 2)
+            expect(SWEEP_TOTAL_MS).toBeGreaterThanOrEqual(2500)
+            expect(SWEEP_TOTAL_MS).toBeLessThanOrEqual(3000)
             // The picture's pop is tied to the sweep, so the two halves of the small celebration end
             // together instead of one outliving the other.
             expect(PROJECT_CONGRATS_TOTAL_MS).toBe(SWEEP_TOTAL_MS)

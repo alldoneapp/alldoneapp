@@ -77,8 +77,8 @@ import {
  * That is precisely the moment a project's today list empties in front of you. Every other reason a
  * project block disappears — a priority or VM filter, an assistant board, a project losing access —
  * never opens it and is not delayed by a single frame. And the celebrating case already holds the
- * line for `PROJECT_LINE_EXIT_HOLD_MS` (~980ms), so this cannot make a cleared project outstay the
- * sweep it is waiting for.
+ * line for `PROJECT_LINE_EXIT_HOLD_MS` (~2.9s since the sweep grew to four stages), so this cannot
+ * make a cleared project outstay the sweep it is waiting for.
  */
 export const PROJECT_SWEEP_PROBE_MS = 700
 

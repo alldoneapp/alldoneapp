@@ -17,7 +17,10 @@ import { legacy_createStore as createStore } from 'redux'
 
 import ProjectCompletedSweep from '../../components/TaskListView/Header/ProjectCompletedSweep'
 import useProjectCompletedSweep from '../../components/TaskListView/OpenTasksView/useProjectCompletedSweep'
-import { markProjectEmptyInboxDayReached } from '../../components/TaskListView/OpenTasksView/projectEmptyInboxCelebrationMarker'
+import {
+    hasCelebratedProjectEmptyInboxDay,
+    markProjectEmptyInboxDayReached,
+} from '../../components/TaskListView/OpenTasksView/projectEmptyInboxCelebrationMarker'
 
 const USER = 'user-1'
 const PROJECT = 'project-a'
@@ -77,25 +80,51 @@ function App() {
 window.__setCount = count =>
     store.dispatch({ type: 'SET', payload: { sidebarNumbers: { [PROJECT]: { [USER]: count } } } })
 window.__markReached = dayKey => markProjectEmptyInboxDayReached(USER, PROJECT, dayKey)
+// Asked through the marker's own API rather than by inspecting localStorage keys, so the
+// once-per-day assertion cannot silently pass on a renamed storage key.
+window.__hasCelebrated = dayKey => hasCelebratedProjectEmptyInboxDay(USER, PROJECT, dayKey)
 
-// What the user would actually see: the wash's painted width and its colour.
+/**
+ * What the user would actually see, per layer — PAINTED geometry (`getBoundingClientRect` resolves
+ * transforms) and computed opacity, never the `Animated.Value` behind them. That distinction is the
+ * whole point of this harness: jest can read the values and still be looking at an animation that
+ * never advances a pixel.
+ *
+ * Every layer of the four-stage run is reported, because "the sweep animates" was already true of
+ * the single-pass version — what has to be checked now is that each stage happens, in order, and
+ * that nothing is left painted on the row afterwards.
+ */
+const rect = testId => {
+    const node = document.querySelector(`[data-testid="${testId}"]`)
+    return node ? { node, box: node.getBoundingClientRect(), style: getComputedStyle(node) } : null
+}
+
 window.__measure = () => {
-    const el = document.querySelector('[data-testid="project-completed-sweep"]')
-    const w = document.querySelector('[data-testid="project-completed-sweep-wash"]')
-    const e = document.querySelector('[data-testid="project-completed-sweep-edge"]')
-    if (!el) return { present: false }
-    const box = el.getBoundingClientRect()
-    const washBox = w ? w.getBoundingClientRect() : null
-    const cs = w ? getComputedStyle(w) : null
+    const overlay = rect('project-completed-sweep')
+    if (!overlay) return { present: false }
+    const wash = rect('project-completed-sweep-wash')
+    const edge = rect('project-completed-sweep-edge')
+    const shimmer = rect('project-completed-sweep-shimmer')
+    const pulse = rect('project-completed-sweep-pulse')
+    const accent = rect('project-completed-sweep-accent')
+    const offsetIn = layer => (layer ? Math.round(layer.box.left - overlay.box.left) : null)
     return {
         present: true,
-        overlay: { top: box.top, height: box.height, width: box.width },
-        washWidth: washBox ? Math.round(washBox.width) : null,
-        washOpacity: cs ? cs.opacity : null,
-        washColor: cs ? cs.backgroundColor : null,
-        washTransform: cs ? cs.transform : null,
-        edgePresent: !!e,
-        edgeLeft: e ? Math.round(e.getBoundingClientRect().left - box.left) : null,
+        overlay: { top: overlay.box.top, height: overlay.box.height, width: overlay.box.width },
+        washWidth: wash ? Math.round(wash.box.width) : null,
+        washOpacity: wash ? Number(wash.style.opacity) : null,
+        washColor: wash ? wash.style.backgroundColor : null,
+        edgePresent: !!edge,
+        edgeLeft: offsetIn(edge),
+        shimmerPresent: !!shimmer,
+        shimmerLeft: offsetIn(shimmer),
+        shimmerWidth: shimmer ? Math.round(shimmer.box.width) : null,
+        // The breath: invisible (0) outside stage 3 by amplitude, never by unmounting.
+        pulseOpacity: pulse ? Number(pulse.style.opacity) : null,
+        // Draws with the fill (width) and thickens for the breath (height).
+        accentWidth: accent ? Math.round(accent.box.width) : null,
+        accentHeight: accent ? Number(accent.box.height.toFixed(2)) : null,
+        accentOpacity: accent ? Number(accent.style.opacity) : null,
     }
 }
 
