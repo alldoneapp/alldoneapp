@@ -2197,6 +2197,7 @@
     "Day-rate logging": "Registro de tarifa diaria",
     "Enabled": "Activado",
     "Hours per day": "Horas por día",
+    "Day-rate hours hint": "Completa cada día hasta esta cantidad y limita el tiempo de calendario a ella; el tiempo registrado a mano siempre se conserva",
     "Task trigger": "Activador de tareas",
     "Mark day worked": "Marcar día trabajado",
     "Backfill from project start": "Rellenar desde el inicio del proyecto",
