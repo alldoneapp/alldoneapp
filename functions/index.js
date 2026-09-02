@@ -56,7 +56,9 @@ if (adminSdkRuntimeServiceAccount) setGlobalOptions({ serviceAccount: adminSdkRu
 
 // A warm instance is billed around the clock (~EUR 8/month at 512MiB, ~EUR 11 at 1GiB) whether or not
 // anything calls it, so only production keeps them. Staging used to carry the same seven and paid
-// ~EUR 54/month for an environment with no traffic.
+// ~EUR 54/month for an environment with no traffic. Only the two assistant entry points keep one:
+// the four telephony functions used to as well (measured cold starts of 7.7s / 14.5s on a live
+// call), but at ~EUR 36/month for a handful of calls that was dropped on 2026-09-02.
 const WARM_INSTANCES = getDeploymentProjectId() === 'alldonealeph' ? 1 : 0
 
 // Helper function to get the correct base URL based on environment
@@ -6269,9 +6271,6 @@ exports.whatsAppIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        // Keep one instance warm: this is the Twilio entry point for a live phone call, so a
-        // cold start here adds seconds of dead air before the caller can be connected to Anna.
-        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleIncomingWhatsAppCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -6296,7 +6295,6 @@ exports.phoneIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleIncomingPhoneCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -6334,9 +6332,6 @@ exports.openAIRealtimeCallWebhook = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        // Keep one instance warm: OpenAI calls this to accept the live SIP call, and a cold
-        // start delays the accept (observed ~7.7s), which the caller experiences as silence.
-        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleOpenAIRealtimeCallWebhook } = require('./WhatsApp/whatsAppCallOpenAIWebhook')
@@ -6351,10 +6346,6 @@ exports.runWhatsAppRealtimeCall = onTaskDispatched(
         memory: '1GiB',
         retryConfig: { maxAttempts: 1 },
         rateLimits: { maxConcurrentDispatches: 5 },
-        // Keep one instance warm: this is the sideband controller that connects to OpenAI
-        // Realtime. A cold start here was observed to push setup latency to ~14.5s, long
-        // enough that the caller hangs up before Anna can greet (the call "doesn't connect").
-        minInstances: WARM_INSTANCES,
     },
     async req => {
         const sessionId = req.data && req.data.sessionId
