@@ -54,6 +54,11 @@ const ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS = {
 const adminSdkRuntimeServiceAccount = ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS[getDeploymentProjectId()]
 if (adminSdkRuntimeServiceAccount) setGlobalOptions({ serviceAccount: adminSdkRuntimeServiceAccount })
 
+// A warm instance is billed around the clock (~EUR 8/month at 512MiB, ~EUR 11 at 1GiB) whether or not
+// anything calls it, so only production keeps them. Staging used to carry the same seven and paid
+// ~EUR 54/month for an environment with no traffic.
+const WARM_INSTANCES = getDeploymentProjectId() === 'alldonealeph' ? 1 : 0
+
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
     if (process.env.FUNCTIONS_EMULATOR) {
@@ -2478,7 +2483,7 @@ exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: 1, // Keep 2 instances warm to avoid cold starts
+        minInstances: WARM_INSTANCES, // Keep one instance warm in production to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
         cors: true,
@@ -3092,7 +3097,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: 1, // Keep 1 instance warm
+        minInstances: WARM_INSTANCES, // Keep one instance warm in production
         maxInstances: 100,
         region: 'europe-west1',
         cors: true,
@@ -3728,7 +3733,6 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
         document: 'chatObjects/{projectId}/chats/{chatId}',
         timeoutSeconds: 540,
         memory: '256MB',
-        minInstances: 1,
         maxInstances: 100,
         region: 'europe-west1',
     },
@@ -3813,30 +3817,33 @@ exports.onCreateCalendarProjectRoutingFeedbackSecondGen = onDocumentCreated(
 
 // Same-project Goal picker actions update an existing task rather than creating a copy. Consume a
 // new marker only when its feedback id changes; other task updates can safely pass through.
-exports.onUpdateCalendarGoalRoutingFeedbackSecondGen = onDocumentUpdated(
-    {
-        document: 'items/{projectId}/tasks/{taskId}',
-        timeoutSeconds: 540,
-        memory: '512MiB',
-        region: 'europe-west1',
-        retry: true,
-    },
-    async event => {
-        const previousTaskData = event.data.before.data() || {}
-        const taskData = event.data.after.data() || {}
-        const previousFeedbackId = previousTaskData?.calendarData?.goalRoutingFeedback?.feedbackId
-        const feedbackId = taskData?.calendarData?.goalRoutingFeedback?.feedbackId
-        if (!feedbackId || feedbackId === previousFeedbackId) return
+// Calendar goal-routing feedback used to be its own onDocumentUpdated trigger on the same
+// `items/{projectId}/tasks/{taskId}` path, so every task update paid for two invocations
+// (387k and 464k in August 2026) and the second one returned immediately almost every time.
+// It now rides along inside onUpdateTaskSecondGen; the capture itself is unchanged.
+async function captureCalendarGoalRoutingFeedbackIfChanged(event) {
+    const previousTaskData = event.data.before.data() || {}
+    const taskData = event.data.after.data() || {}
+    const previousFeedbackId = previousTaskData?.calendarData?.goalRoutingFeedback?.feedbackId
+    const feedbackId = taskData?.calendarData?.goalRoutingFeedback?.feedbackId
+    if (!feedbackId || feedbackId === previousFeedbackId) return
 
-        const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
-        const { projectId, taskId } = event.params
+    const { captureCalendarGoalRoutingFeedback } = require('./GoogleCalendar/calendarGoalRoutingFeedback')
+    const { projectId, taskId } = event.params
+    try {
         await captureCalendarGoalRoutingFeedback({
             task: { ...taskData, id: taskId },
             previousTask: { ...previousTaskData, id: taskId },
             taskProjectId: projectId,
         })
+    } catch (error) {
+        console.error('[onUpdateTask] calendar goal routing feedback capture failed', {
+            projectId,
+            taskId,
+            error: error?.message || error,
+        })
     }
-)
+}
 
 exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
@@ -3852,6 +3859,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
         await Promise.all([
             onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
+            captureCalendarGoalRoutingFeedbackIfChanged(event),
         ])
     }
 )
@@ -6263,7 +6271,7 @@ exports.whatsAppIncomingCall = onRequest(
         region: 'europe-west1',
         // Keep one instance warm: this is the Twilio entry point for a live phone call, so a
         // cold start here adds seconds of dead air before the caller can be connected to Anna.
-        minInstances: 1,
+        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleIncomingWhatsAppCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -6288,7 +6296,7 @@ exports.phoneIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
-        minInstances: 1,
+        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleIncomingPhoneCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -6328,7 +6336,7 @@ exports.openAIRealtimeCallWebhook = onRequest(
         region: 'europe-west1',
         // Keep one instance warm: OpenAI calls this to accept the live SIP call, and a cold
         // start delays the accept (observed ~7.7s), which the caller experiences as silence.
-        minInstances: 1,
+        minInstances: WARM_INSTANCES,
     },
     async (req, res) => {
         const { handleOpenAIRealtimeCallWebhook } = require('./WhatsApp/whatsAppCallOpenAIWebhook')
@@ -6346,7 +6354,7 @@ exports.runWhatsAppRealtimeCall = onTaskDispatched(
         // Keep one instance warm: this is the sideband controller that connects to OpenAI
         // Realtime. A cold start here was observed to push setup latency to ~14.5s, long
         // enough that the caller hangs up before Anna can greet (the call "doesn't connect").
-        minInstances: 1,
+        minInstances: WARM_INSTANCES,
     },
     async req => {
         const sessionId = req.data && req.data.sessionId
