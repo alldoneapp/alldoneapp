@@ -1186,6 +1186,7 @@
     "Send": "Enviar",
     "Start new note": "Iniciar nueva nota",
     "Creating Note": "Creando nota",
+    "Note could not be created": "La nota no se pudo crear. Inténtalo de nuevo.",
     "Alldone is online": "Alldone está en línea",
     "Alldone is offline": "Alldone está desconectado",
     "Alldone is online again, all functionalities are available": "Alldone está en línea nuevamente, todas las funcionalidades están disponibles.",
