@@ -164,13 +164,13 @@ function RecordDot({ tint }) {
                     toValue: 0.35,
                     duration: DOT_PULSE_MS,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(pulse, {
                     toValue: 1,
                     duration: DOT_PULSE_MS,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         )

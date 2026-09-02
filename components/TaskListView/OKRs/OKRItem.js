@@ -82,7 +82,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
             toValue: 1,
             duration: 650,
             easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
+            useNativeDriver: false,
         }).start(() => {
             celebration.setValue(0)
         })

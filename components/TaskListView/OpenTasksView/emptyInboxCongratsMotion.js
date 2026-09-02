@@ -104,13 +104,13 @@ export default function useEmptyInboxCongratsCelebration(runId) {
                 // Linear driver: the shape of each beat lives in the interpolations that consume it,
                 // so the staging can be re-tuned without touching this sequence.
                 easing: Easing.linear,
-                useNativeDriver: true,
+                useNativeDriver: false,
             }),
             Animated.timing(confetti, {
                 toValue: 1,
                 duration: CONFETTI_MS,
                 easing: Easing.linear,
-                useNativeDriver: true,
+                useNativeDriver: false,
             }),
         ])
 

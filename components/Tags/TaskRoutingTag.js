@@ -81,13 +81,13 @@ function SparklePoint({ point, animate }) {
                     toValue: TWINKLE_MAX_OPACITY,
                     duration: TWINKLE_DURATION_MS / 2,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(twinkle, {
                     toValue: TWINKLE_MIN_OPACITY,
                     duration: TWINKLE_DURATION_MS / 2,
                     easing: Easing.inOut(Easing.ease),
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         )

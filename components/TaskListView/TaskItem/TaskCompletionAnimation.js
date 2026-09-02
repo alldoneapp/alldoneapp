@@ -70,13 +70,13 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                                         Animated.timing(opacity, {
                                             toValue: 1,
                                             duration: 300,
-                                            useNativeDriver: true,
+                                            useNativeDriver: false,
                                         }),
                                         Animated.delay(ANIMATION_DURATION - 600),
                                         Animated.timing(opacity, {
                                             toValue: 0,
                                             duration: 300,
-                                            useNativeDriver: true,
+                                            useNativeDriver: false,
                                         }),
                                     ]).start(() => {
                                         if (isMounted.current) {
