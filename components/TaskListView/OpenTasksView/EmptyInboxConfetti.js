@@ -36,6 +36,20 @@ export const CONFETTI_PAGE_PIECE_COUNT = 30
 export const CONFETTI_PIECE_COUNT = CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT
 
 /**
+ * AT-2492 — the `burst` variant: the same burst, fewer and smaller pieces, and NO page layer.
+ *
+ * The per-project moment has to read as smaller than the all-projects one, and the honest way to do
+ * that is to differ in KIND rather than in degree. The page-wide fall is the beat that makes the
+ * all-projects celebration visible from across a room; withholding it entirely is what keeps that
+ * moment the bigger one, and no amount of retuning piece counts would say the same thing as clearly.
+ * A user who clears one project sees a flourish over the block; a user who clears everything sees
+ * the room change.
+ */
+export const CONFETTI_COMPACT_BURST_PIECE_COUNT = 10
+// Pulls the throw in so it stays over the block instead of reaching the width of the column.
+const COMPACT_BURST_SCALE = 0.62
+
+/**
  * Lifts the fall above the page content it is falling over.
  *
  * It has to be applied in TWO places to mean anything, which is the part that is easy to get
@@ -73,7 +87,7 @@ const pseudoRandom = (index, salt) => {
     return value - Math.floor(value)
 }
 
-const buildBurstPieces = count =>
+const buildBurstPieces = (count, scale = 1) =>
     Array.from({ length: count }, (_unused, index) => {
         const spread = pseudoRandom(index, 1)
         const lift = pseudoRandom(index, 2)
@@ -86,11 +100,11 @@ const buildBurstPieces = count =>
             key: `piece-${index}`,
             color: PIECE_COLORS[index % PIECE_COLORS.length],
             // How far out to the side the piece ends up, in px from centre.
-            travelX: direction * (36 + spread * 230),
+            travelX: direction * (36 + spread * 230) * scale,
             // How high it is thrown before gravity takes over.
-            peakY: -(70 + lift * 90),
+            peakY: -(70 + lift * 90) * scale,
             // Where it has fallen to by the end of the run.
-            fallY: 150 + drift * 220,
+            fallY: (150 + drift * 220) * scale,
             rotations: (spin > 0.5 ? 1 : -1) * (1.6 + spin * 3),
             width: 6 + Math.round(spread * 5),
             height: 10 + Math.round(lift * 6),
@@ -197,11 +211,12 @@ const PagePiece = ({ confetti, piece }) => (
 /**
  * One piece of the burst: thrown up and out, then falling away.
  */
-const BurstPiece = ({ confetti, piece }) => {
+const BurstPiece = ({ confetti, piece, burstEnd }) => {
     const start = piece.delay
     // The burst is the opening beat, so it is over well before the page fall finishes; without this
-    // the thrown pieces would hang in the air above the headline for two more seconds.
-    const end = 0.55
+    // the thrown pieces would hang in the air above the headline for two more seconds. With no page
+    // layer to wait for (AT-2492) the burst IS the run, so it uses the whole value instead.
+    const end = burstEnd
 
     return (
         <Animated.View
@@ -255,8 +270,16 @@ const BurstPiece = ({ confetti, piece }) => {
  * @param {boolean} props.visible False under reduced motion, under jest, and whenever there is
  *   nothing to celebrate — in all three cases nothing is rendered at all, because confetti carries
  *   no information a static frame could preserve.
+ * @param {'full'|'burst'} [props.variant] `full` is the all-projects celebration (burst + page-wide
+ *   fall). `burst` is AT-2492's per-project one: the burst alone, fewer and smaller pieces, no
+ *   viewport layer at all.
  */
-export default function EmptyInboxConfetti({ confetti, visible }) {
+export default function EmptyInboxConfetti({ confetti, visible, variant = 'full' }) {
+    const compact = variant === 'burst'
+    const burstPieceCount = compact ? CONFETTI_COMPACT_BURST_PIECE_COUNT : CONFETTI_BURST_PIECE_COUNT
+    const burstScale = compact ? COMPACT_BURST_SCALE : 1
+    // With no page fall to finish after it, the burst owns the whole run rather than its first half.
+    const burstEnd = compact ? 0.94 : 0.55
     // `Dimensions.get('window')`, not `useWindowDimensions()` — the latter is not reliably provided
     // by this RN/web setup and throws at runtime (see CLAUDE.md).
     //
@@ -266,21 +289,25 @@ export default function EmptyInboxConfetti({ confetti, visible }) {
     // being resized during the ~3s run does rebuild them, which is the right trade — a fall sized
     // for the old viewport would leave a bald stripe or drop pieces off the edge.
     const { width, height } = Dimensions.get('window')
-    const burstPieces = useMemo(() => buildBurstPieces(CONFETTI_BURST_PIECE_COUNT), [])
+    const burstPieces = useMemo(() => buildBurstPieces(burstPieceCount, burstScale), [burstPieceCount, burstScale])
+    // Built unconditionally so the hook order cannot depend on `variant`; the `burst` variant simply
+    // never renders them, and building 30 plain objects costs nothing next to that guarantee.
     const pagePieces = useMemo(() => buildPagePieces(CONFETTI_PAGE_PIECE_COUNT, width, height), [width, height])
 
     if (!visible) return null
 
     return (
         <>
-            <View testID="empty-inbox-confetti" style={localStyles.pageLayer}>
-                {pagePieces.map(piece => (
-                    <PagePiece key={piece.key} confetti={confetti} piece={piece} />
-                ))}
-            </View>
+            {!compact && (
+                <View testID="empty-inbox-confetti" style={localStyles.pageLayer}>
+                    {pagePieces.map(piece => (
+                        <PagePiece key={piece.key} confetti={confetti} piece={piece} />
+                    ))}
+                </View>
+            )}
             <View testID="empty-inbox-confetti-burst" style={localStyles.burstLayer}>
                 {burstPieces.map(piece => (
-                    <BurstPiece key={piece.key} confetti={confetti} piece={piece} />
+                    <BurstPiece key={piece.key} confetti={confetti} piece={piece} burstEnd={burstEnd} />
                 ))}
             </View>
         </>
