@@ -54,12 +54,9 @@ const ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS = {
 const adminSdkRuntimeServiceAccount = ADMIN_SDK_RUNTIME_SERVICE_ACCOUNTS[getDeploymentProjectId()]
 if (adminSdkRuntimeServiceAccount) setGlobalOptions({ serviceAccount: adminSdkRuntimeServiceAccount })
 
-// A warm instance is billed around the clock (~EUR 8/month at 512MiB, ~EUR 11 at 1GiB) whether or not
-// anything calls it, so only production keeps them. Staging used to carry the same seven and paid
-// ~EUR 54/month for an environment with no traffic. Only the two assistant entry points keep one:
-// the four telephony functions used to as well (measured cold starts of 7.7s / 14.5s on a live
-// call), but at ~EUR 36/month for a handful of calls that was dropped on 2026-09-02.
-const WARM_INSTANCES = getDeploymentProjectId() === 'alldonealeph' ? 1 : 0
+// No function keeps a warm instance. Fourteen of them did until 2026-09-02 (EUR 123/month, half of
+// it on staging); the last two, the assistant entry points, were dropped by decision the same day.
+// Cold-start latency is the price; measure it from the request logs before ever adding one back.
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -2485,7 +2482,6 @@ exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: WARM_INSTANCES, // Keep one instance warm in production to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
         cors: true,
@@ -3099,7 +3095,6 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
-        minInstances: WARM_INSTANCES, // Keep one instance warm in production
         maxInstances: 100,
         region: 'europe-west1',
         cors: true,
