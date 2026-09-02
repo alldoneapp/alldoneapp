@@ -2155,11 +2155,12 @@ browser before trusting a bigger change.
   not serve `orderBy('completed','desc')`, and an inequality with no explicit order needs ASC).
   When rewriting a query's filter field, derive the new index list from the old one before
   shipping; `__tests__/Firestore/firestoreRequiredIndexes.test.js` pins the fifteen `readerIds`
-  shapes the client uses. **Known unindexable query**: the observed-tasks branch of
-  `getOpenTasksQuery` (`utils/backends/openTasks.js`) filters `roleIdsVisibleTo.<readerId>`
-  (a per-user map key) `array-contains` plus a `dueDate` range, which would need one composite
-  index per user — Firestore rejects it for every logged-in user, so that path must filter the
-  date in memory or query a non-per-user field.
+  shapes the client uses. Note the per-user access keys (`roleIdsVisibleTo.<readerId>`,
+  `followedByVisibleTo.<readerId>`, `backlinkIdsVisibleTo.<readerId>`) can **only ever be the
+  sole clause** of a query: a composite index on a map key is one index per user, which is not a
+  thing. The observed-tasks branch of `getOpenTasksQuery` (`utils/backends/openTasks.js`) keeps
+  its `dueDate` filters inside the assigned-tasks `else` branch for exactly that reason and
+  buckets observed tasks by date in memory — do not "tidy" the date filters out of the `else`.
 
 ### Cloud cost (reviewed 2026-09-02, August invoice EUR 334.79, ~EUR 306 of it Alldone)
 
