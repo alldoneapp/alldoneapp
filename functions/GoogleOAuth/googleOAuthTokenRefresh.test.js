@@ -273,12 +273,8 @@ describe('dead refresh token handling', () => {
         expect(stored.accessToken).toBeUndefined()
         expect(stored.tokenExpiry).toBeUndefined()
 
-        // The connection map is what the client renders, so it carries the breakage moment
-        // too — Settings > Integrations says how long the account has been dead (AT-2491).
         const userUpdate = recordedUpdates.find(entry => entry.path === `users/${USER_ID}`)
-        expect(userUpdate.update[`emailConnections.${CONNECTION_ID}.authInvalid`]).toBe(true)
-        expect(userUpdate.update[`emailConnections.${CONNECTION_ID}.authInvalidAt`]).toBeTruthy()
-        expect(Object.keys(userUpdate.update)).toHaveLength(2)
+        expect(userUpdate.update).toEqual({ [`emailConnections.${CONNECTION_ID}.authInvalid`]: true })
     })
 
     it('raises a typed EMAIL_AUTH_EXPIRED the email line maps to a reconnect state', async () => {

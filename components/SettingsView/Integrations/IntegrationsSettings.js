@@ -35,7 +35,6 @@ import ProjectListModal from '../../UIComponents/FloatModals/ProjectListModal/Pr
 import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
 import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
-import { brokenForDays, formatBrokenSince, getBreakageConsequenceKey, isConnectionBroken } from './connectionHealth'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -86,52 +85,14 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
     )
 }
 
-// The broken-account block. Deliberately loud: the previous treatment was a 14px yellow
-// "Reconnect account" line on an otherwise normal card, which is indistinguishable from a
-// hint at a glance — a production account sat dead for four days with that line showing
-// (AT-2491). This states what broke, what stopped working as a result, since when, and
-// gives the reconnect its own primary button instead of hiding it in a text link.
-export function ConnectionAuthAlert({ service, connection, onReconnect, busy, error }) {
-    const since = formatBrokenSince(connection.authInvalidAt)
-    const days = brokenForDays(connection.authInvalidAt)
-
-    return (
-        <View style={localStyles.alert} testID="connection-auth-alert">
-            <View style={localStyles.alertHeader}>
-                <Icon name="alert-circle" size={16} color={colors.UtilityRed200} />
-                <Text style={[styles.subtitle2, localStyles.alertTitle]}>{translate('Reconnect required')}</Text>
-            </View>
-            <Text style={[styles.body2, localStyles.alertBody]}>{translate(getBreakageConsequenceKey(service))}</Text>
-            {since && (
-                <Text style={[styles.caption1, localStyles.alertSince]}>
-                    {`${translate('Stopped working on')} ${since}`}
-                    {days > 0 ? ` · ${translate('Amount days ago', { amount: days })}` : ''}
-                </Text>
-            )}
-            {!!error && <Text style={[styles.caption1, localStyles.alertError]}>{error}</Text>}
-            <Button
-                title={translate('Reconnect account')}
-                icon="refresh-cw"
-                onPress={onReconnect}
-                disabled={busy}
-                processing={busy}
-                processingTitle={translate('Reconnecting')}
-                buttonStyle={localStyles.alertButton}
-            />
-        </View>
-    )
-}
-
-export function ConnectionCard({ service, connection, projects }) {
+function ConnectionCard({ service, connection, projects }) {
     const dispatch = useDispatch()
     const [busy, setBusy] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
     const settingsOpenRef = useRef(false)
     const [authStatus, setAuthStatus] = useState(null)
-    const [reconnectError, setReconnectError] = useState('')
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    const broken = isConnectionBroken(connection)
     const isGoogle = connection.provider !== PROVIDER_MICROSOFT
     const defaultProject = projects.find(project => project.id === connection.defaultProjectId)
     // Labeling is Gmail-only; calendar routing works for both providers.
@@ -191,17 +152,13 @@ export function ConnectionCard({ service, connection, projects }) {
         }
     }, [settingsOpen])
 
-    const runBusy = async (action, { onError } = {}) => {
+    const runBusy = async action => {
         if (busy) return
         setBusy(true)
         try {
             await action()
         } catch (error) {
             console.error('[Integrations] Connection action failed:', error)
-            // A reconnect can fail for reasons the user can act on — a blocked popup, a
-            // cancelled consent screen. Swallowing that into console.error left the button
-            // looking like it had simply done nothing.
-            if (onError) onError(error)
         } finally {
             setBusy(false)
         }
@@ -225,30 +182,25 @@ export function ConnectionCard({ service, connection, projects }) {
             )
         )
 
-    const reconnect = () => {
-        setReconnectError('')
-        return runBusy(
-            async () => {
-                if (isGoogle) {
-                    await startServerSideAuth(
-                        connection.defaultProjectId,
-                        googleServiceFor(service),
-                        undefined,
-                        connection.connectionId
-                    )
-                } else {
-                    await startMicrosoftServerSideAuth(
-                        connection.defaultProjectId,
-                        microsoftServiceFor(service),
-                        undefined,
-                        connection.connectionId
-                    )
-                }
-                setAuthStatus(null)
-            },
-            { onError: () => setReconnectError(translate('Reconnecting failed. Please try again.')) }
-        )
-    }
+    const reconnect = () =>
+        runBusy(async () => {
+            if (isGoogle) {
+                await startServerSideAuth(
+                    connection.defaultProjectId,
+                    googleServiceFor(service),
+                    undefined,
+                    connection.connectionId
+                )
+            } else {
+                await startMicrosoftServerSideAuth(
+                    connection.defaultProjectId,
+                    microsoftServiceFor(service),
+                    undefined,
+                    connection.connectionId
+                )
+            }
+            setAuthStatus(null)
+        })
 
     const disconnect = () =>
         runBusy(async () => {
@@ -260,29 +212,19 @@ export function ConnectionCard({ service, connection, projects }) {
         })
 
     return (
-        <View style={[localStyles.card, broken && localStyles.cardBroken]}>
+        <View style={localStyles.card}>
             <View style={localStyles.cardHeader}>
                 <View style={localStyles.cardHeaderLeft}>
                     <Icon
                         name={service === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'mail'}
                         size={16}
-                        color={broken ? colors.UtilityRed200 : colors.Text02}
+                        color={colors.Text02}
                     />
                     <View style={localStyles.cardTitleArea}>
                         <View style={localStyles.cardTitleRow}>
                             <Text style={[styles.subtitle1, localStyles.cardTitle]} numberOfLines={1}>
                                 {connection.email}
                             </Text>
-                            {/* The status badge outranks the "Default account" one: a dead
-                                default account showing only a green badge is exactly how this
-                                went unnoticed. */}
-                            {broken && (
-                                <View style={localStyles.brokenBadge}>
-                                    <Text style={[styles.caption2, localStyles.brokenBadgeText]}>
-                                        {translate('Not connected')}
-                                    </Text>
-                                </View>
-                            )}
                             {connection.isDefaultAccount && (
                                 <View style={localStyles.defaultBadge}>
                                     <Text style={[styles.caption2, localStyles.defaultBadgeText]}>
@@ -299,14 +241,11 @@ export function ConnectionCard({ service, connection, projects }) {
                 {busy && <ActivityIndicator size="small" color={colors.Primary100} />}
             </View>
 
-            {broken && (
-                <ConnectionAuthAlert
-                    service={service}
-                    connection={connection}
-                    onReconnect={reconnect}
-                    busy={busy}
-                    error={reconnectError}
-                />
+            {connection.authInvalid && (
+                <TouchableOpacity style={localStyles.reconnectBanner} onPress={reconnect} disabled={busy}>
+                    <Icon name="alert-circle" size={14} color={colors.UtilityYellow300} />
+                    <Text style={[styles.caption1, localStyles.reconnectText]}>{translate('Reconnect account')}</Text>
+                </TouchableOpacity>
             )}
 
             <View style={localStyles.cardControls}>
@@ -524,48 +463,14 @@ const localStyles = StyleSheet.create({
     providerText: {
         color: colors.Text03,
     },
-    cardBroken: {
-        borderColor: colors.UtilityRed150,
-        backgroundColor: colors.UtilityRed100,
-    },
-    brokenBadge: {
-        marginLeft: 8,
-        paddingHorizontal: 8,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: colors.UtilityRed200,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    brokenBadgeText: {
-        color: '#FFFFFF',
-    },
-    alert: {
-        marginTop: 12,
-    },
-    alertHeader: {
+    reconnectBanner: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginTop: 10,
     },
-    alertTitle: {
-        color: colors.UtilityRed300,
+    reconnectText: {
+        color: colors.UtilityYellow300,
         marginLeft: 6,
-    },
-    alertBody: {
-        color: colors.Text01,
-        marginTop: 6,
-    },
-    alertSince: {
-        color: colors.Text02,
-        marginTop: 4,
-    },
-    alertError: {
-        color: colors.UtilityRed300,
-        marginTop: 8,
-    },
-    alertButton: {
-        marginTop: 12,
-        alignSelf: 'flex-start',
     },
     cardControls: {
         flexDirection: 'row',
