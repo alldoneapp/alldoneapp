@@ -14,11 +14,6 @@ import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonConta
 import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
 import TaskListSkeleton from '../TaskListSkeleton'
-import useProjectEmptyInboxCelebration from './useProjectEmptyInboxCelebration'
-
-// Stable identity, so the `shallowEqual` filter selectors below cannot report a change on every
-// store update just because they built a fresh empty array.
-const EMPTY_FILTERS = []
 
 export default function OpenTasksByDate({
     projectId,
@@ -33,15 +28,12 @@ export default function OpenTasksByDate({
     assistantScheduleOccurrences = [],
     assistantScheduleContext = null,
     assistantTaskCreatorContext = null,
+    projectCelebrationRunId = 0,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const activeDragTaskModeInDate = useSelector(state => state.activeDragTaskModeInDate)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
-    const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const currentUserId = useSelector(state => state.currentUser?.uid)
-    const taskPriorityFilters = useSelector(state => state.taskPriorityFilters || EMPTY_FILTERS, shallowEqual)
-    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters || EMPTY_FILTERS, shallowEqual)
     const loggedUserProjectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
@@ -128,33 +120,18 @@ export default function OpenTasksByDate({
         initialLoadingEndObservedTasks
 
     /**
-     * AT-2492 — who may spend the once-per-day, per-project celebration.
+     * AT-2492 — the small pop the Anna "tasks done" picture makes when this project was cleared
+     * today.
      *
-     * Four gates, and each closes a way of celebrating something that did not happen:
-     *
-     *   • the empty block is actually on screen, so the marker can never be spent by a frame nobody
-     *     saw (the AT-2445 lesson, where a loading-window flash consumed the day's celebration and
-     *     the real moment later that day animated nothing);
-     *   • today's section only. This component renders once per date section, so with Later expanded
-     *     several of them can be empty at once — without this, one clearing would fire three bursts;
-     *   • the selected-project board only. All Projects hides an empty project's block entirely
-     *     (`hideProjectData`), but a project with visible OKRs still renders it, and a board showing
-     *     several cleared projects would otherwise celebrate all of them at once;
-     *   • no task filters, and the board is the logged user's own. `amountTasks` comes from the
-     *     FILTERED store, so a priority or VM filter empties the list without the project being
-     *     done; and an assistant's board is not your inbox.
-     *
-     * The hook still records the transition when this is false — the project was cleared either way.
+     * The DECISION is not made here any more. It moved up to `OpenTasksByProject` together with the
+     * celebration itself: the sweep it drives is on the project line, which in All Projects is
+     * dropped from the board at the very moment the list empties, so nothing below that component
+     * is still mounted to decide anything. All that is left here is forwarding, and one gate that
+     * genuinely belongs to a date section: `dateIsToday`. This component renders once per date
+     * section, so with Later expanded several of them can be empty at once, and without this a
+     * single clearing would pop three pictures.
      */
-    const celebrateProjectEmptyInbox =
-        showProjectEmptyInbox &&
-        dateIsToday &&
-        inSelectedProject &&
-        currentUserId === loggedUserId &&
-        taskPriorityFilters.length === 0 &&
-        taskVmStateFilters.length === 0
-
-    const projectEmptyInboxRunId = useProjectEmptyInboxCelebration(projectId, loggedUserId, celebrateProjectEmptyInbox)
+    const emptyInboxPopRunId = dateIsToday ? projectCelebrationRunId : 0
 
     const isActiveOrganizeMode =
         activeDragTaskModeInDate &&
@@ -202,7 +179,7 @@ export default function OpenTasksByDate({
                 <SelectedProjectEmptyInbox
                     projectId={projectId}
                     instanceKey={instanceKey}
-                    celebrationRunId={projectEmptyInboxRunId}
+                    celebrationRunId={emptyInboxPopRunId}
                 />
             )}
             {showTopShowMoreButton && (

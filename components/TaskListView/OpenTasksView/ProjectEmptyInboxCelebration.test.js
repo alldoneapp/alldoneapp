@@ -6,13 +6,11 @@ import { useSelector } from 'react-redux'
 
 import SelectedProjectEmptyInbox from './SelectedProjectEmptyInbox'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
-import {
-    CONFETTI_BURST_PIECE_COUNT,
-    CONFETTI_COMPACT_BURST_PIECE_COUNT,
-    CONFETTI_PAGE_PIECE_COUNT,
-} from './EmptyInboxConfetti'
+import ProjectCompletedSweep from '../Header/ProjectCompletedSweep'
+import { CONFETTI_BURST_PIECE_COUNT, CONFETTI_PAGE_PIECE_COUNT } from './EmptyInboxConfetti'
 import { CONGRATS_TOTAL_MS } from './emptyInboxCongratsMotion'
 import { PROJECT_CONGRATS_TOTAL_MS, PROJECT_ENTRANCE_MS } from './projectEmptyInboxCongratsMotion'
+import { SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
 import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
@@ -27,24 +25,34 @@ jest.mock('../../SettingsView/Profile/Achievements/AchievementsArea', () => ({
 }))
 
 /**
- * AT-2492 — drives the REAL per-project block through the REAL animated branch, and measures it
- * against the REAL all-projects block.
+ * AT-2492 — drives the REAL per-project celebration through the REAL animated branch, and measures
+ * it against the REAL all-projects one.
  *
  * The task is a statement about RANKING — "celebrate it already a little, but not as much as when we
  * achieve empty inbox across all projects" — so the assertions that matter are comparative. A suite
- * that only checked "the small one animates" would keep passing on the day somebody quietly gave it
- * the page-wide confetti fall, which is the one thing that must stay exclusive to the bigger moment.
+ * that only checked "the small one animates" would keep passing on the day somebody quietly handed
+ * it the page-wide confetti, which is the thing that must stay exclusive to the bigger moment.
+ *
+ * The SECOND PASS moved the per-project celebration off the Anna picture and onto the project line,
+ * and dropped confetti from it entirely. That makes the ranking a difference in KIND rather than in
+ * degree — one is a coloured sweep across a 56px row, the other is a headline plus a burst plus a
+ * fall across the whole viewport — and it is what lets the same celebration work in All Projects,
+ * where there is no picture at all. The exclusivity assertion below is therefore now absolute:
+ * the small celebration renders NO confetti of any kind, not merely less of it.
  *
  * Motion is inert under jest by convention here and stands down under reduced motion, so a suite
- * that wants to see what a user sees has to opt out of BOTH — otherwise every assertion below passes
+ * that wants to see what a user sees has to opt out of BOTH — otherwise every assertion passes
  * vacuously. That is exactly how AT-2445's predecessor rotted.
  */
 
 const VIEWPORT = { width: 1280, height: 800, scale: 1, fontScale: 1 }
+const PROJECT = 'project-a'
+const PROJECT_COLOR = '#2F80ED'
 
 const countOf = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false }).length
+const findOne = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false })[0]
 
-describe('the per-project empty-inbox celebration, end to end (AT-2492)', () => {
+describe('the per-project celebration, measured against the all-projects one (AT-2492)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
     const originalAddEventListener = AccessibilityInfo.addEventListener
     const originalNodeEnv = process.env.NODE_ENV
@@ -60,6 +68,7 @@ describe('the per-project empty-inbox celebration, end to end (AT-2492)', () => 
         useSelector.mockImplementation(selector =>
             selector({
                 loggedUser: { uid: 'user-1', emptyInboxDays: [] },
+                loggedUserProjectsMap: { [PROJECT]: { color: PROJECT_COLOR } },
                 isMiddleScreen: false,
                 thereAreLaterOpenTasks: {},
                 thereAreLaterEmptyGoals: {},
@@ -78,47 +87,25 @@ describe('the per-project empty-inbox celebration, end to end (AT-2492)', () => 
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const renderProjectBlock = async (celebrationRunId = 0) => {
+    const renderSweep = async (celebrationRunId = 0) => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<ProjectCompletedSweep runId={celebrationRunId} projectId={PROJECT} />)
+        })
+        return tree
+    }
+
+    const renderPicture = async (celebrationRunId = 0) => {
         let tree
         await act(async () => {
             tree = renderer.create(
-                <SelectedProjectEmptyInbox
-                    projectId="project-a"
-                    instanceKey="key"
-                    celebrationRunId={celebrationRunId}
-                />
+                <SelectedProjectEmptyInbox projectId={PROJECT} instanceKey="key" celebrationRunId={celebrationRunId} />
             )
         })
         return tree
     }
 
-    it('renders the plain picture and nothing else when there is nothing to celebrate', async () => {
-        const tree = await renderProjectBlock(0)
-
-        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(0)
-        expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(0)
-        expect(tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })).toBeTruthy()
-    })
-
-    it('throws a burst when the project is cleared', async () => {
-        const tree = await renderProjectBlock(1)
-
-        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(1)
-        expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(CONFETTI_COMPACT_BURST_PIECE_COUNT)
-    })
-
-    /**
-     * The line between the two celebrations, and it is a difference in KIND rather than in degree.
-     * The page-wide fall is what makes the all-projects moment visible from across a room; the
-     * per-project one stays a flourish over the block you are already looking at. Tuning piece
-     * counts alone would have left the two reading as "the same thing, slightly weaker".
-     */
-    it('never rains across the page — that stays exclusive to the all-projects moment', async () => {
-        const projectTree = await renderProjectBlock(1)
-
-        expect(countOf(projectTree, 'empty-inbox-confetti')).toBe(0)
-
-        // The all-projects block earns its own celebration from a day recorded on the user document.
+    const renderAllProjects = async () => {
         resetEmptyInboxCelebrationSessionMarkers()
         localStorage.clear()
         useSelector.mockImplementation(selector =>
@@ -127,94 +114,141 @@ describe('the per-project empty-inbox celebration, end to end (AT-2492)', () => 
                 isMiddleScreen: false,
             })
         )
-
-        let allProjectsTree
+        let tree
         await act(async () => {
-            allProjectsTree = renderer.create(<AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />)
+            tree = renderer.create(<AllProjectsEmptyInbox showEmptyInboxOverview celebrateNewDay />)
+        })
+        return tree
+    }
+
+    describe('the ranking', () => {
+        /**
+         * The line between the two celebrations, and after the second pass it is absolute rather
+         * than a matter of piece counts. Clearing one project sweeps the row you are looking at;
+         * clearing every project changes the whole screen.
+         */
+        it('never throws confetti of any kind — that stays exclusive to the all-projects moment', async () => {
+            const sweep = await renderSweep(1)
+            expect(countOf(sweep, 'empty-inbox-confetti')).toBe(0)
+            expect(countOf(sweep, 'empty-inbox-confetti-burst')).toBe(0)
+            expect(countOf(sweep, 'empty-inbox-confetti-piece')).toBe(0)
+
+            const picture = await renderPicture(1)
+            expect(countOf(picture, 'empty-inbox-confetti')).toBe(0)
+            expect(countOf(picture, 'empty-inbox-confetti-burst')).toBe(0)
+            expect(countOf(picture, 'empty-inbox-confetti-piece')).toBe(0)
         })
 
-        expect(countOf(allProjectsTree, 'empty-inbox-confetti')).toBe(1)
-        expect(countOf(allProjectsTree, 'empty-inbox-confetti-piece')).toBe(
-            CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT
-        )
-    })
+        it('leaves the all-projects celebration exactly as loud as it was', async () => {
+            const tree = await renderAllProjects()
 
-    it('is smaller and shorter than the all-projects celebration', () => {
-        expect(CONFETTI_COMPACT_BURST_PIECE_COUNT).toBeLessThan(CONFETTI_BURST_PIECE_COUNT)
-        expect(PROJECT_CONGRATS_TOTAL_MS).toBeLessThan(CONGRATS_TOTAL_MS)
-        // Comfortably so, not marginally — half or less, or the ranking is not legible to a user.
-        expect(PROJECT_CONGRATS_TOTAL_MS).toBeLessThanOrEqual(CONGRATS_TOTAL_MS / 2)
-    })
-
-    /**
-     * The burst is anchored to a zero-size absolute overlay and is `pointerEvents: none`, so it can
-     * neither move the picture while it plays nor swallow a tap on anything under it. This is the
-     * property that keeps it on the right side of the full-screen Giphy overlay AT-2404 retired.
-     */
-    it('cannot move or intercept anything while it plays', async () => {
-        const tree = await renderProjectBlock(1)
-        const burstLayer = tree.root.findByProps({ testID: 'empty-inbox-confetti-burst' }, { deep: false })
-        const style = StyleSheet.flatten(burstLayer.props.style)
-
-        expect(style.position).toBe('absolute')
-        expect(style.pointerEvents).toBe('none')
-    })
-
-    /**
-     * A settled block has to be byte-identical to the block that was there before the celebration —
-     * no residual transform, nothing left behind. Reloading the page and watching the animation
-     * finish must produce the same picture.
-     */
-    it('leaves no residue once the run settles', async () => {
-        const tree = await renderProjectBlock(1)
-
-        await act(async () => {
-            jest.advanceTimersByTime(PROJECT_CONGRATS_TOTAL_MS + 50)
+            expect(countOf(tree, 'empty-inbox-confetti')).toBe(1)
+            expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(1)
+            expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(
+                CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT
+            )
         })
 
-        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(0)
-        const picture = tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })
-        const style = StyleSheet.flatten(picture.props.style)
-        expect(style.transform).toBeUndefined()
-        expect(style.opacity).toBeUndefined()
+        it('is over well before the all-projects celebration would be', () => {
+            expect(SWEEP_TOTAL_MS).toBeLessThan(CONGRATS_TOTAL_MS)
+            // Comfortably so, not marginally — half or less, or the ranking is not legible to a user.
+            expect(SWEEP_TOTAL_MS).toBeLessThanOrEqual(CONGRATS_TOTAL_MS / 2)
+            // The picture's pop is tied to the sweep, so the two halves of the small celebration end
+            // together instead of one outliving the other.
+            expect(PROJECT_CONGRATS_TOTAL_MS).toBe(SWEEP_TOTAL_MS)
+            expect(PROJECT_ENTRANCE_MS).toBeLessThan(PROJECT_CONGRATS_TOTAL_MS)
+        })
+
+        /**
+         * The structural difference behind the ranking, and the reason it cannot be undone by
+         * retuning a duration: the all-projects fall is `position: fixed`, so it ESCAPES whatever it
+         * is rendered inside and covers the viewport — that is what makes it visible from across a
+         * room. The sweep is `position: absolute`, so it is bounded by the 56px row it belongs to and
+         * cannot spread however it is styled.
+         */
+        it('stays inside one row while the big one escapes to the viewport', async () => {
+            const sweep = await renderSweep(1)
+            const overlayStyle = StyleSheet.flatten(findOne(sweep, 'project-completed-sweep').props.style)
+
+            expect(overlayStyle.position).toBe('absolute')
+            // Pinned to its parent row's edges, with no viewport-derived dimension anywhere.
+            expect(overlayStyle.left).toBe(0)
+            expect(overlayStyle.right).toBe(0)
+            expect(overlayStyle.height).toBeUndefined()
+            expect(overlayStyle.width).toBeUndefined()
+            // Bounded vertically to the row's content band rather than filling it.
+            expect(overlayStyle.top).toBeGreaterThan(0)
+
+            const allProjects = await renderAllProjects()
+            const pageLayerStyle = StyleSheet.flatten(findOne(allProjects, 'empty-inbox-confetti').props.style)
+            expect(pageLayerStyle.position).toBe('fixed')
+        })
     })
 
-    /**
-     * The picture's own sizing moved out one level onto the animated wrapper so the transform could
-     * be applied without touching it. If the wrapper ever loses these, the illustration collapses —
-     * the exact layout risk the all-projects motion declined to take with its own picture.
-     */
-    it('keeps the picture sized exactly as it was before it could animate', async () => {
-        const tree = await renderProjectBlock(0)
-        const picture = tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })
-        const style = StyleSheet.flatten(picture.props.style)
+    describe('the picture that comes with it on the selected-project board', () => {
+        it('renders the plain picture when there is nothing to celebrate', async () => {
+            const tree = await renderPicture(0)
 
-        expect(style.flex).toBe(1)
-        expect(style.width).toBe('100%')
-        expect(style.maxWidth).toBe(432)
+            expect(tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })).toBeTruthy()
+        })
+
+        it('pops the picture in over the entrance window', async () => {
+            const tree = await renderPicture(1)
+            const style = StyleSheet.flatten(
+                tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false }).props.style
+            )
+
+            // Frame one: not yet visible and slightly under size.
+            expect(style.opacity.__getValue()).toBe(0)
+            expect(style.transform[0].scale.__getValue()).toBeLessThan(1)
+        })
+
+        /**
+         * A settled block has to be byte-identical to the block that was there before the
+         * celebration — no residual transform, nothing left behind. Reloading the page and watching
+         * the animation finish must produce the same picture.
+         */
+        it('leaves no residue once the run settles', async () => {
+            const tree = await renderPicture(1)
+
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_CONGRATS_TOTAL_MS + 50)
+            })
+
+            const style = StyleSheet.flatten(
+                tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false }).props.style
+            )
+            expect(style.transform).toBeUndefined()
+            expect(style.opacity).toBeUndefined()
+        })
+
+        /**
+         * The picture's own sizing moved out one level onto the animated wrapper so the transform
+         * could be applied without touching it. If the wrapper ever loses these, the illustration
+         * collapses — the exact layout risk the all-projects motion declined to take.
+         */
+        it('keeps the picture sized exactly as it was before it could animate', async () => {
+            const tree = await renderPicture(0)
+            const style = StyleSheet.flatten(
+                tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false }).props.style
+            )
+
+            expect(style.flex).toBe(1)
+            expect(style.width).toBe('100%')
+            expect(style.maxWidth).toBe(432)
+        })
     })
 
     it('stands down entirely under reduced motion, leaving the information on screen', async () => {
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
 
-        const tree = await renderProjectBlock(1)
+        // No sweep — it carries nothing a static frame could preserve, and the empty list already
+        // says the project is done.
+        const sweep = await renderSweep(1)
+        expect(countOf(sweep, 'project-completed-sweep')).toBe(0)
 
-        // No confetti at all — it carries nothing a static frame could preserve...
-        expect(countOf(tree, 'empty-inbox-confetti-burst')).toBe(0)
-        // ...and the picture, which IS the congratulation, is simply there.
-        expect(tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })).toBeTruthy()
-    })
-
-    it('animates the picture in over the entrance window', async () => {
-        const tree = await renderProjectBlock(1)
-        const picture = tree.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })
-        const style = StyleSheet.flatten(picture.props.style)
-
-        // Frame one: not yet visible and slightly under size.
-        expect(style.opacity.__getValue()).toBe(0)
-        expect(style.transform[0].scale.__getValue()).toBeLessThan(1)
-
-        // The entrance is over well before the burst is.
-        expect(PROJECT_ENTRANCE_MS).toBeLessThan(PROJECT_CONGRATS_TOTAL_MS)
+        // ...and the picture, which IS the congratulation on this board, is simply there.
+        const picture = await renderPicture(1)
+        expect(picture.root.findByProps({ testID: 'project-empty-inbox-picture' }, { deep: false })).toBeTruthy()
     })
 })

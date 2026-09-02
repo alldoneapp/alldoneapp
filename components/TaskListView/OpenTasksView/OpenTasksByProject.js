@@ -28,6 +28,7 @@ import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper
 import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
+import useProjectCompletedSweep from './useProjectCompletedSweep'
 
 function OpenTasksByProject({
     firstProject,
@@ -74,11 +75,45 @@ function OpenTasksByProject({
     const taskFiltersActive = taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0
     const hasMatchingFilteredTasks = filteredOpenTasks.some(section => section[AMOUNT_TASKS_INDEX] > 0)
     const hideProjectWithoutFilterMatches = !inSelectedProject && taskFiltersActive && !hasMatchingFilteredTasks
-    const hideProjectData =
+    const baseHideProjectData =
         hideProjectWithoutFilterMatches ||
         (!inSelectedProject &&
             visibleOkrsInAllProjects.length === 0 &&
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
+
+    /**
+     * AT-2492 — who may spend the once-per-day, per-project "completed sweep".
+     *
+     * The gates moved up here from `OpenTasksByDate` together with the celebration itself, and one
+     * of them is gone: the sweep is no longer restricted to the selected-project board, because the
+     * project line exists in All Projects too and clearing a project there is the ordinary case.
+     * What is left closes the remaining ways of celebrating something that did not happen:
+     *
+     *   • no task filters. `thereAreNotTasksInFirstDay` and the filtered store both describe a
+     *     FILTERED list, so a priority or VM filter empties a project on screen without the project
+     *     being done. (The marker records are keyed on the unfiltered `sidebarNumbers` count, so
+     *     this is belt and braces rather than the only defence.)
+     *   • the board is the logged user's own — an assistant's board is not your inbox;
+     *   • not an assistant profile board, which renders no project header at all;
+     *   • not anonymous.
+     *
+     * Two more gates live inside the hook and are the load-bearing ones: the project must actually
+     * have gone from "has tasks today" to "clear" TODAY (otherwise a 78-project account, 64 of them
+     * guides and empty most days, sweeps on every visit), and its line must actually be on screen.
+     */
+    const celebrationEnabled =
+        !assistantProfileMode && !isAnonymous && !taskFiltersActive && currentUserId === loggedUser.uid
+
+    const { celebrationRunId, holdProjectLine } = useProjectCompletedSweep({
+        projectId,
+        userId: loggedUser.uid,
+        enabled: celebrationEnabled,
+        lineWouldLeave: baseHideProjectData,
+    })
+
+    // The only thing the celebration is allowed to change about the board: a line that is leaving
+    // stays for one sweep and then goes. The settled result is identical either way.
+    const hideProjectData = baseHideProjectData && !holdProjectLine
 
     // AT-2430: which assistant this project's line speaks as — the project's own, the default
     // project's, or one the user picked with the line's switch — plus the switch's own options.
@@ -156,6 +191,7 @@ function OpenTasksByProject({
                             setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
+                            completedSweepRunId={celebrationRunId}
                         />
                     )}
                     {showAssistantLine && (
@@ -183,6 +219,7 @@ function OpenTasksByProject({
                                 assistantProfileMode={assistantProfileMode}
                                 assistantScheduleOccurrences={timelineDate.occurrences}
                                 assistantScheduleContext={assistantScheduleContext}
+                                projectCelebrationRunId={celebrationRunId}
                                 assistantTaskCreatorContext={
                                     assistantProfileMode && timelineDate.dateKey === TODAY_DATE
                                         ? assistantTaskCreatorContext

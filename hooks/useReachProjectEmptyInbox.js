@@ -20,8 +20,8 @@ import {
  * fix for the all-projects celebration, and this is the same fix one level down.
  *
  * It only ever WRITES a record. Whether that record is worth a celebration — and the once-per-day
- * accounting for it — belongs to `useProjectEmptyInboxCelebration` at the board, which also does its
- * own transition detection for the case where the project's board IS open (effects run
+ * accounting for it — belongs to `useProjectCompletedSweep` at the board, which also does its own
+ * transition detection for the case where the project's board IS open (effects run
  * child-before-parent, so this hook cannot be relied on to have run first on that tick).
  *
  * Costs nothing new: `sidebarNumbers` is already the live per-project count behind the sidebar

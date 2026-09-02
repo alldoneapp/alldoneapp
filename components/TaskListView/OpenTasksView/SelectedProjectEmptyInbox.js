@@ -3,7 +3,6 @@ import { Animated, StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import ModernImage from '../../../utils/ModernImage'
-import EmptyInboxConfetti from './EmptyInboxConfetti'
 import useProjectEmptyInboxCongratsCelebration from './projectEmptyInboxCongratsMotion'
 
 /**
@@ -15,15 +14,20 @@ import useProjectEmptyInboxCongratsCelebration from './projectEmptyInboxCongrats
  * that the FIRST time you see it on a day you actually cleared this project, it arrives instead of
  * simply being there.
  *
- * Deliberately smaller than the all-projects celebration in three ways, because the task is
- * explicitly about ranking the two: a burst with no page-wide fall (`variant="burst"`), ~1.5s
- * instead of ~3s, and no headline, achievement card, streak or green dot. Clearing one project is a
- * good moment; clearing every project is an achievement.
+ * This pop is the SMALLER HALF of that moment and only exists on the selected-project board. The
+ * statement is the completed sweep across the project line (`ProjectCompletedSweep`), which plays on
+ * both boards; the picture simply arrives with it on the one board that shows a picture at all.
  *
- * The DECISION is not made here — it arrives as `celebrationRunId` from `OpenTasksByDate`. This
- * block only mounts once the list is already clear, so a hook inside it could never see the
- * transition that earns the celebration, and it renders once per empty date section, so it is also
- * the wrong place to enforce "once".
+ * Deliberately smaller than the all-projects celebration, because the task is explicitly about
+ * ranking the two: no confetti of any kind (the second pass removed the burst this used to throw —
+ * the page-wide fall and its burst belong to the all-projects moment and nothing else may borrow
+ * them), no headline, no achievement card, no streak, no green dot. Clearing one project is a good
+ * moment; clearing every project is an achievement.
+ *
+ * The DECISION is not made here — it arrives as `celebrationRunId`, decided in `OpenTasksByProject`
+ * and forwarded by `OpenTasksByDate` for today's section only. This block only mounts once the list
+ * is already clear, so a hook inside it could never see the transition that earns the celebration,
+ * and it renders once per empty date section, so it is also the wrong place to enforce "once".
  */
 export default function SelectedProjectEmptyInbox({ projectId, instanceKey, celebrationRunId = 0 }) {
     const thereAreLaterOpenTasksInProject = useSelector(state => state.thereAreLaterOpenTasks[projectId])
@@ -32,8 +36,8 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey, cele
     const thereAreSomedayEmptyGoalsInProject = useSelector(state => state.thereAreSomedayEmptyGoals[projectId])
 
     // `celebrating` is false under reduced motion, under jest and whenever there is nothing to
-    // celebrate, so it is the single condition for "render the decorative layer".
-    const { entrance, celebrating, confetti } = useProjectEmptyInboxCongratsCelebration(celebrationRunId)
+    // celebrate, so it is the single condition for "animate the picture at all".
+    const { entrance, celebrating } = useProjectEmptyInboxCongratsCelebration(celebrationRunId)
 
     const randomImage = React.useMemo(() => {
         const images = [
@@ -87,9 +91,6 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey, cele
                 },
             ]}
         >
-            {/* Zero-size absolute overlay anchored to the top of the block, so the burst can never
-                move the picture while it plays and never intercepts a tap on anything. */}
-            <EmptyInboxConfetti variant="burst" confetti={confetti} visible={celebrating} />
             <Animated.View testID="project-empty-inbox-picture" style={[localStyles.picture, pictureStyle]}>
                 <ModernImage
                     srcWebp={randomImage.srcWebp}
