@@ -128,7 +128,7 @@ export function ConnectionAuthAlert({ service, connection, onReconnect, busy, er
     )
 }
 
-export function ConnectionCard({ service, connection, projects, health }) {
+export function ConnectionCard({ service, connection, projects, health, onReconnected }) {
     const dispatch = useDispatch()
     const [busy, setBusy] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
@@ -254,6 +254,10 @@ export function ConnectionCard({ service, connection, projects, health }) {
                     )
                 }
                 setAuthStatus(null)
+                // Re-verify. Redux clears `authInvalid` on a fresh consent, but the health
+                // result from the check that ran BEFORE the fix would otherwise keep forcing
+                // this card into the reconnect state.
+                if (onReconnected) onReconnected()
             },
             { onError: () => setReconnectError(translate('Reconnecting failed. Please try again.')) }
         )
@@ -389,7 +393,7 @@ export function ConnectionCard({ service, connection, projects, health }) {
     )
 }
 
-function ConnectionsSection({ service, title, connections, projects, healthByConnectionId = {} }) {
+function ConnectionsSection({ service, title, connections, projects, healthByConnectionId = {}, onReconnected }) {
     const [connectPicker, setConnectPicker] = useState(null) // null | 'google' | 'microsoft'
 
     const connectWith = (provider, project) => {
@@ -414,6 +418,7 @@ function ConnectionsSection({ service, title, connections, projects, healthByCon
                     connection={connection}
                     projects={projects}
                     health={healthByConnectionId[connection.connectionId]}
+                    onReconnected={onReconnected}
                 />
             ))}
             <View style={localStyles.connectRow}>
@@ -467,7 +472,7 @@ export default function IntegrationsSettings() {
     // Verify every account against its provider when the page opens. The stored flag is
     // only written when something tried to USE the account, so an untouched connection
     // whose grant died reads as healthy until some background job stumbles on it (AT-2491).
-    const healthByConnectionId = useConnectionHealth(
+    const { healthByConnectionId, recheck } = useConnectionHealth(
         [...emailConnections, ...calendarConnections].map(connection => connection.connectionId)
     )
 
@@ -486,6 +491,7 @@ export default function IntegrationsSettings() {
                 connections={emailConnections}
                 projects={projects}
                 healthByConnectionId={healthByConnectionId}
+                onReconnected={recheck}
             />
             <ConnectionsSection
                 service={CONNECTION_SERVICE_CALENDAR}
@@ -493,6 +499,7 @@ export default function IntegrationsSettings() {
                 connections={calendarConnections}
                 projects={projects}
                 healthByConnectionId={healthByConnectionId}
+                onReconnected={recheck}
             />
         </View>
     )

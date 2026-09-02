@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { runHttpsCallableFunction } from '../../../utils/backends/firestore'
 
@@ -23,6 +23,7 @@ export const HEALTH_UNKNOWN = 'unknown'
 export function useConnectionHealth(connectionIds = []) {
     const [healthByConnectionId, setHealthByConnectionId] = useState({})
     const requestedRef = useRef('')
+    const [recheckToken, setRecheckToken] = useState(0)
 
     // Join on the ids, not the array identity: the connection objects are rebuilt on every
     // logged-user snapshot, which would otherwise re-run the whole check on unrelated writes.
@@ -30,10 +31,11 @@ export function useConnectionHealth(connectionIds = []) {
 
     useEffect(() => {
         if (!key) return undefined
-        // A reconnect re-renders this with the same ids; the flag write already updated the
-        // card, and re-verifying would burn another refresh per account.
-        if (requestedRef.current === key) return undefined
-        requestedRef.current = key
+        // Re-render with the same accounts and no explicit request: nothing to re-verify,
+        // and asking again would burn another token refresh per account.
+        const requestKey = `${recheckToken}:${key}`
+        if (requestedRef.current === requestKey) return undefined
+        requestedRef.current = requestKey
 
         let cancelled = false
         const ids = key.split(',')
@@ -74,7 +76,13 @@ export function useConnectionHealth(connectionIds = []) {
         return () => {
             cancelled = true
         }
-    }, [key])
+    }, [key, recheckToken])
 
-    return healthByConnectionId
+    // Called after a reconnect. Without it the card would keep rendering the reconnect state
+    // from the check that ran BEFORE the user fixed the account: redux clears `authInvalid`,
+    // but a stale `reconnect_required` here would still force `broken` to true. Re-verifying
+    // (rather than just clearing) also confirms to the user that the fix actually worked.
+    const recheck = useCallback(() => setRecheckToken(token => token + 1), [])
+
+    return { healthByConnectionId, recheck }
 }

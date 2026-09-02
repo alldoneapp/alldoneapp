@@ -235,6 +235,32 @@ describe('ConnectionCard broken-account state (AT-2491)', () => {
         expect(output).not.toContain('Connection verified')
     })
 
+    test('a successful reconnect asks for a re-verification', async () => {
+        // Otherwise the health result from before the fix keeps forcing this card broken.
+        const onReconnected = jest.fn()
+        const tree = render({ connection: connection({ authInvalid: true }), onReconnected })
+        const reconnect = buttons(tree).find(button => button.props.title === 'Reconnect account')
+
+        await act(async () => {
+            await reconnect.props.onPress()
+        })
+
+        expect(onReconnected).toHaveBeenCalled()
+    })
+
+    test('a failed reconnect neither re-verifies nor pretends to have worked', async () => {
+        const onReconnected = jest.fn()
+        startServerSideAuth.mockRejectedValueOnce(new Error('OAuth flow was cancelled'))
+        const tree = render({ connection: connection({ authInvalid: true }), onReconnected })
+        const reconnect = buttons(tree).find(button => button.props.title === 'Reconnect account')
+
+        await act(async () => {
+            await reconnect.props.onPress()
+        })
+
+        expect(onReconnected).not.toHaveBeenCalled()
+    })
+
     test('a failed reconnect says so instead of looking like a dead button', async () => {
         startServerSideAuth.mockRejectedValueOnce(new Error('Failed to open OAuth popup'))
         const tree = render({ connection: connection({ authInvalid: true }) })
