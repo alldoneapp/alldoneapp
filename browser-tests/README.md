@@ -332,3 +332,26 @@ Two details are load-bearing:
 The reduced-motion half is run as a second context with `reducedMotion: 'reduce'`, where the rule
 inverts: the congratulation and the green dot are simply already there, and not one decorative
 layer is rendered.
+
+### `at2492/` — a cleared project's line must actually sweep
+
+"I don't see the animation on the project lines." AT-2492 shipped with 43 green Jest tests and was
+invisible in production, and the reason it *could* be is structural: `__mocks__/react-native.js`
+replaces `Animated.timing` with a no-op `{ start }` stub, so **no Jest test in this repo can watch
+an animation advance**, and jsdom computes no layout, so `onLayout` never fires and the sweep's
+leading edge — gated on a measured row width — never renders at all. Both are exactly the parts
+under test.
+
+The harness renders the real `ProjectCompletedSweep` driven by the real `useProjectCompletedSweep`
+inside a row reproducing `ProjectHeader`'s own box, and reads the wash's **painted width** frame by
+frame. That is what separated the two candidate diagnoses: the animation was never broken (96 →
+900px across the row, edge travelling with it, correct colour and geometry), the trigger simply
+never fired.
+
+It then reproduces the actual defect end to end — All Projects drops a cleared project's block, and
+the count proving it was cleared arrives from a *different* Firestore listener, so it routinely
+lands after the row has gone. Run it against the pre-fix commit and "a late clearing still sweeps"
+fails while every other check passes.
+
+`--reduce-motion` runs the second contract: nothing is rendered, and (checked in the Jest suites)
+the once-per-day marker is not spent either.

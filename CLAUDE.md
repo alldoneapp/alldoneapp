@@ -1205,10 +1205,52 @@ all.
 `thereAreNotTasksInFirstDay` (which actually drives the hide) are written by two different Firestore
 listeners and land in whatever order the network gives them. When the hide wins, the line would be
 gone before we knew the project had been cleared. So a line that is both leaving **and** otherwise
-eligible gets a provisional `PROJECT_SWEEP_PROBE_MS` (120ms) hold while we find out. It is armed by
+eligible gets a provisional `PROJECT_SWEEP_PROBE_MS` hold while we find out. It is armed by
 a **render-phase state update** (React's documented "adjust state when a prop changes" pattern), not
 from an effect — an effect runs after the commit that already removed the block, so the user would
 see the project vanish and reappear.
+
+**That probe shipped at 120ms and made the sweep effectively invisible ("I don't see the animation
+on the project lines").** Two things were wrong and they compounded. The window was far too tight:
+the two slices are not merely two listeners, they also arrive through different amounts of React
+work (`thereAreNotTasksInFirstDay` is derived up through `OpenTasksByProjectHandler` and the
+parent's state, `sidebarNumbers` through a store dispatch), so a skew of several hundred
+milliseconds is ordinary. And losing the race did not delay the celebration, it **deleted** it —
+which is the part worth remembering. `lineOnScreen` was treated as a PRECONDITION for celebrating,
+but in All Projects it is also a CONSEQUENCE of the celebration being declined: once the probe gave
+up, the board dropped the row, and the same **still-mounted** hook (it lives in `OpenTasksByProject`,
+not in the block it animates) then refused the very clearing it had been waiting for, forever —
+that project never renders a line again that day. So "not on screen" had to be split into its two
+meanings: a project that never had a line this session (an All Projects block for a project cleared
+earlier — correctly skipped, so its own board still celebrates it), and a line that has **just left
+because of the clearing we are being told about**. A clearing this hook WATCHED
+(`didProjectReachEmptyInbox` true here) is proof the line was there a moment ago, so it still plays
+and the hold puts the row back for it, bounded by `PROJECT_LATE_CLEARING_GRACE_MS`; past that the
+run is declined and the reached-record is left **unspent**, so the project's own board still gets
+it. The probe is now the prevention (raised to 700ms — it is only ever opened for a line that is
+both leaving AND fully eligible, i.e. exactly the moment a project empties in front of you, so
+nothing else on the board is delayed by a frame) and the grace is the cure for the tail.
+
+**Two more ways the same feature could show nothing, both fixed with it.** A run was marked "played"
+BEFORE the motion check, so a run arriving while motion was unavailable was consumed permanently and
+could never play once it became available — and that is reachable without touching a setting,
+because react-native-web's `isReduceMotionEnabled()` resolves to **`true`** whenever
+`window.matchMedia` is missing (it fails *closed*). Related: `useReducedMotion` seeded its state
+`false` and corrected a microtask later, so the first commit always assumed motion — harmless for a
+ghost, but this celebration claims its once-per-day marker in a layout effect on exactly that
+commit, i.e. it spent the day believing it was about to animate. It now reads the media query
+synchronously on first render (falling back to `false`, the safe direction), and the claim itself
+stands down when there will be nothing to see rather than being handed back afterwards — a day spent
+on a frame nobody saw is the AT-2445 failure.
+
+**Only a real browser can check any of this.** `__mocks__/react-native.js` replaces `Animated.timing`
+with a no-op `{start}` stub, so no jest test can observe this animation advancing, and jsdom computes
+no layout, so `onLayout` never fires and the leading edge (gated on a measured row width) never
+renders. Every test the feature shipped with was therefore green while the sweep was invisible in
+production. `browser-tests/at2492` drives the real component in real Chromium and asserts on painted
+width across the run; it also reproduces the All Projects late-count case end to end, and is the A/B
+that separated "the animation is broken" (it never was — wash 96→900px, edge travelling, correct
+colour and geometry) from "the trigger never fires".
 
 **"The list is empty" is not "the project was cleared", and conflating them is the whole bug this
 design avoids.** The reporting account has 78 projects, 64 of them guides, and most are empty on most
@@ -1239,10 +1281,11 @@ the app-wide `useReachProjectEmptyInbox` (mounted in `InitLoadView` beside `useR
 not written its record yet, and a hook that only read it would never fire for the live case.
 
 Gates that decide who may spend the day, each closing a way of celebrating something that did not
-happen: **the project line must actually be on screen** (the AT-2445 lesson — a marker spent by a
-frame nobody saw is a celebration that silently never happens; in All Projects a project cleared
-earlier and arrived at later renders no header at all, so the day stays unspent and its own board can
-still celebrate it), no active task filters (`thereAreNotTasksInFirstDay` and the filtered store both
+happen: **the project line must actually be on screen, or have just left because of this very
+clearing** (the AT-2445 lesson — a marker spent by a frame nobody saw is a celebration that silently
+never happens; in All Projects a project cleared earlier and arrived at later renders no header at
+all, so the day stays unspent and its own board can still celebrate it — but see the probe note
+above for why "on screen" alone was too strict), no active task filters (`thereAreNotTasksInFirstDay` and the filtered store both
 describe a FILTERED list, so a filter empties a project without it being done), the board is the
 logged user's own, and not an assistant profile board. `OpenTasksByDate` keeps exactly one gate of its
 own — `dateIsToday` — because it renders once per date section and with Later expanded several can be
@@ -1263,7 +1306,10 @@ board-level conflict: the line stays for the sweep AND still leaves afterwards),
 `hooks/useReachProjectEmptyInbox.test.js`, and `ProjectEmptyInboxCelebration.test.js` — the last of
 which renders the real sweep against the real all-projects block and asserts comparatively, so a
 future change that quietly hands the small celebration confetti or a viewport-escaping layer fails
-the build.
+the build. Plus `browser-tests/at2492`, which is the only place the sweep is ever seen actually
+painting: a suite that stubs reduced motion but not `window.matchMedia` still gets one fully
+animated commit, which is enough to hide a swallowed run, so both jest suites now drive the media
+query as well.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 

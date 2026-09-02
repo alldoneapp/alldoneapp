@@ -36,12 +36,38 @@ export const GHOST_STATIC_OPACITY = 0.7
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
 /**
+ * The preference as the browser can answer it RIGHT NOW, with no round trip.
+ *
+ * `AccessibilityInfo.isReduceMotionEnabled()` returns a Promise, so a hook seeded from it alone
+ * spends its first commit assuming motion is allowed and corrects a microtask later. For a ghost
+ * that only ever meant one wrong frame. For a celebration it is worse: AT-2492 claims its
+ * once-per-day marker in a layout effect on that first commit, so it would spend the day believing
+ * it was about to animate and then discover it must not — the day is handed back, but only because
+ * something remembered to hand it back. Reading the media query synchronously removes the window
+ * instead of compensating for it.
+ *
+ * Falls back to `false` (motion allowed) when the question cannot be asked here, which is the safe
+ * direction for a first frame: the async answer below still corrects it, and the alternative —
+ * react-native-web's own `isReduceMotionEnabled`, which resolves to TRUE when `matchMedia` is
+ * missing — would silently disable animation for an environment that merely could not answer.
+ */
+const currentReducedMotionPreference = () => {
+    try {
+        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? !!window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            : false
+    } catch (error) {
+        return false
+    }
+}
+
+/**
  * `AccessibilityInfo.isReduceMotionEnabled()` maps to `prefers-reduced-motion` on
  * react-native-web. Lifted out of TaskListSkeleton so every ghost honours it, and so the
  * subscribe/unsubscribe dance (the API changed shape across RN versions) exists once.
  */
 export const useReducedMotion = () => {
-    const [reducedMotion, setReducedMotion] = useState(false)
+    const [reducedMotion, setReducedMotion] = useState(currentReducedMotionPreference)
 
     useEffect(() => {
         let mounted = true

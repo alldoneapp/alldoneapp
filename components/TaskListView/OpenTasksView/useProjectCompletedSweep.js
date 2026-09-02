@@ -63,10 +63,36 @@ import {
 
 /**
  * How long a line that is leaving is held while we wait to hear whether its project was cleared.
- * Two animation frames' worth of slack, so a snapshot arriving in the next batch is still caught.
- * Long enough to absorb the ordering, short enough to be imperceptible when nothing comes of it.
+ *
+ * This started at two animation frames (120ms), which was far too tight and is why the sweep was
+ * effectively invisible in All Projects: the two snapshots this races are delivered by two
+ * independent Firestore listeners AND arrive through different amounts of React work
+ * (`thereAreNotTasksInFirstDay` is derived up through `OpenTasksByProjectHandler` and the parent's
+ * state, `sidebarNumbers` through a store dispatch), so a skew of several hundred milliseconds is
+ * ordinary rather than exceptional. Losing that race did not degrade the celebration, it deleted
+ * it — the block unmounts, the project never renders a line again that day, and the run is gone.
+ *
+ * It is safe to be generous here because of WHO opens the probe: only a line that is BOTH leaving
+ * AND fully eligible to celebrate (the logged user's own board, no task filters, motion enabled).
+ * That is precisely the moment a project's today list empties in front of you. Every other reason a
+ * project block disappears — a priority or VM filter, an assistant board, a project losing access —
+ * never opens it and is not delayed by a single frame. And the celebrating case already holds the
+ * line for `PROJECT_LINE_EXIT_HOLD_MS` (~980ms), so this cannot make a cleared project outstay the
+ * sweep it is waiting for.
  */
-export const PROJECT_SWEEP_PROBE_MS = 120
+export const PROJECT_SWEEP_PROBE_MS = 700
+
+/**
+ * How late a clearing this hook WATCHED may arrive and still be celebrated after the line has
+ * already been dropped.
+ *
+ * The probe above is the prevention: it keeps the line on screen so the sweep plays without the row
+ * ever moving. This is the cure for the tail — a count that lands after even that window. Taking it
+ * means the line comes back for one sweep, so it is deliberately bounded: beyond this the moment has
+ * passed and the run is declined, which costs nothing, because the reached-record is left UNSPENT
+ * and the project's own board will still play it the next time it is opened.
+ */
+export const PROJECT_LATE_CLEARING_GRACE_MS = 2000
 
 /**
  * How long a claimed day stays refundable. Same rule and reasoning as `CELEBRATION_CLAIM_SETTLE_MS`
@@ -79,6 +105,14 @@ export const PROJECT_SWEEP_PROBE_MS = 120
 export const PROJECT_CELEBRATION_CLAIM_SETTLE_MS = PROJECT_LINE_EXIT_HOLD_MS + 200
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
+
+/**
+ * Did this project's line leave the board recently enough that bringing it back for one sweep still
+ * reads as part of the same moment? A line that was never on screen answers false, which is what
+ * keeps an All Projects block for a project cleared hours ago from materialising just to celebrate.
+ */
+const lineLeftRecently = (lineWasOnScreenRef, lineLeftAtRef) =>
+    lineWasOnScreenRef.current && Date.now() - lineLeftAtRef.current <= PROJECT_LATE_CLEARING_GRACE_MS
 
 /**
  * @param {string} options.projectId
@@ -130,7 +164,24 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
      * within a component run in declaration order.
      */
     const lineOnScreenRef = useRef(lineOnScreen)
+    /**
+     * Has this project's line been on screen at all during this mount, and when did it last leave?
+     *
+     * These exist for the failure this hook shipped with. `lineOnScreen` was treated as a
+     * PRECONDITION for celebrating, but in All Projects it is also a CONSEQUENCE of the celebration
+     * being declined: the line is dropped when the probe gives up, and from then on the same hook —
+     * which is still mounted, because it lives in `OpenTasksByProject` rather than in the block —
+     * would refuse the very clearing it was waiting for, forever. "Not on screen" has to be split
+     * into its two meanings: a project that never had a line this session (an All Projects block for
+     * a project cleared earlier — correctly skipped, so its own board can still celebrate it), and a
+     * line that has JUST left because of the clearing we are being told about (which must still
+     * play).
+     */
+    const lineWasOnScreenRef = useRef(lineOnScreen)
+    const lineLeftAtRef = useRef(0)
     useLayoutEffect(() => {
+        if (lineOnScreen) lineWasOnScreenRef.current = true
+        else if (lineOnScreenRef.current) lineLeftAtRef.current = Date.now()
         lineOnScreenRef.current = lineOnScreen
     })
 
@@ -148,15 +199,34 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
         // thing on the same tick costs nothing. This hook keeps its own detection because effects
         // run child-before-parent — the app-wide detector mounted above has NOT run yet on the tick
         // the count reaches zero.
-        if (userId && projectId && didProjectReachEmptyInbox(previousCount, todayCount)) {
+        const watchedTheClearing = didProjectReachEmptyInbox(previousCount, todayCount)
+        if (userId && projectId && watchedTheClearing) {
             markProjectEmptyInboxDayReached(userId, projectId, todayKey)
         }
 
         if (!enabled || !userId || !projectId) return undefined
+        /**
+         * Claiming the day is what makes the celebration once-per-day, so it may only ever happen
+         * for a run that can actually be SEEN. Under reduced motion (and under jest) the sweep
+         * renders nothing at all by design — so claiming here would silently spend the day on a
+         * celebration nobody was shown, which is exactly the failure AT-2445 names. Standing down
+         * before the claim leaves the record intact instead.
+         *
+         * Worth knowing: react-native-web's `isReduceMotionEnabled()` resolves to `true` when
+         * `window.matchMedia` is unavailable, so this branch is reachable by an environment that
+         * merely cannot answer the question, not only by a user who asked for less motion.
+         */
+        if (!animated) return undefined
         // Nothing to sweep. In All Projects this is the ordinary case for a project cleared earlier
         // today and arrived at later: its block is not rendered at all, so the day stays unspent and
         // the project's own board can still celebrate it.
-        if (!lineOnScreenRef.current) return undefined
+        //
+        // A clearing this hook WATCHED is the exception, and it is the whole point of the two refs
+        // above: a project whose count we saw go from "has tasks" to "clear" necessarily had a line
+        // on screen a moment ago (a project with tasks due today renders its block on both boards),
+        // so a snapshot that arrives just after the board dropped the row is late, not ineligible.
+        if (!lineOnScreenRef.current && !(watchedTheClearing && lineLeftRecently(lineWasOnScreenRef, lineLeftAtRef)))
+            return undefined
         if (!projectTodayListLooksClear(todayCount)) return undefined
         if (claimedRef.current === todayKey) return undefined
         // Nothing was cleared today, so there is nothing to congratulate. This is what keeps a
@@ -170,8 +240,9 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
         setCelebrationRunId(runId => runId + 1)
         // Taken even on the selected-project board, where no line is leaving and it changes nothing.
         // Deciding here rather than at the call site keeps "how long does the sweep need" in one
-        // place, and a hold nobody consumes is free.
-        if (animated) setHolding(true)
+        // place, and a hold nobody consumes is free. Unconditional now that `!animated` has already
+        // returned above: when the line had just left, this is also what brings it back for the run.
+        setHolding(true)
 
         const playedTimer = setTimeout(() => {
             claimedRef.current = null
