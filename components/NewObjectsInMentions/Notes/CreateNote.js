@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import Backend from '../../../utils/BackendBridge'
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import Icon from '../../Icon'
 import styles, { colors } from '../../styles/global'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -31,6 +31,10 @@ import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/
 export default function CreateNote({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
+    // AT-2488 — a failed creation used to leave `sendingData` true forever (the
+    // promise had no rejection handler at all), so the form stayed locked and the
+    // global spinner never stopped. Report it and let the user retry instead.
+    const [creationError, setCreationError] = useState(null)
     const [note, setNote] = useState(TasksHelper.getNewDefaultNote())
     const [linkedParentNotesUrl, setLinkedParentNotesUrl] = useState([])
     const [linkedParentTasksUrl, setLinkedParentTasksUrl] = useState([])
@@ -94,25 +98,34 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
         if (newNote.extendedTitle.length > 0) {
             dispatch(startLoadingData())
             setSendingData(true)
+            setCreationError(null)
 
-            return uploadNewNote(projectId, newNote, true).then(noteDB => {
-                trySetLinkedObjects(noteDB)
+            return uploadNewNote(projectId, newNote).then(
+                noteDB => {
+                    trySetLinkedObjects(noteDB)
 
-                dispatch(stopLoadingData())
-                setSendingData(false)
+                    dispatch(stopLoadingData())
+                    setSendingData(false)
 
-                if (selectItemToMention) {
-                    selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
+                    if (selectItemToMention) {
+                        selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
+                    }
+
+                    if (openDetails) {
+                        NavigationService.navigate('NotesDetailedView', {
+                            noteId: noteDB.id,
+                            projectId,
+                        })
+                        store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
+                    }
+                },
+                error => {
+                    console.error('[notes] Could not create the note', error)
+                    dispatch(stopLoadingData())
+                    setSendingData(false)
+                    setCreationError(translate('Note could not be created'))
                 }
-
-                if (openDetails) {
-                    NavigationService.navigate('NotesDetailedView', {
-                        noteId: noteDB.id,
-                        projectId,
-                    })
-                    store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
-                }
-            })
+            )
         }
     }, RELEASE_AFTER_SUBMISSION)
 
@@ -166,6 +179,12 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                     />
                 </View>
             </View>
+            {!!creationError && (
+                <View style={localStyles.errorContainer} testID="create-note-creation-error" accessibilityRole="alert">
+                    <Icon name={'alert-circle'} size={16} color={colors.UtilityRed150} />
+                    <Text style={localStyles.errorText}>{creationError}</Text>
+                </View>
+            )}
             <View style={localStyles.buttonsContainer}>
                 <View style={localStyles.buttonsLeft}>
                     {/*<OpenButton onPress={open} disabled={!cleanedTitle || sendingData} />*/}
@@ -188,7 +207,12 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                     />
                 </View>
                 <View style={localStyles.buttonsRight}>
-                    <PlusButton onPress={() => addNote()} disabled={!cleanedTitle || sendingData} modalId={modalId} />
+                    <PlusButton
+                        onPress={() => addNote()}
+                        disabled={!cleanedTitle || sendingData}
+                        modalId={modalId}
+                        processing={sendingData}
+                    />
                 </View>
             </View>
         </View>
@@ -214,6 +238,19 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#162764',
         paddingVertical: 8,
         paddingHorizontal: 8,
+    },
+    // The card is dark, so the error uses the light red of the palette.
+    errorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+    },
+    errorText: {
+        ...styles.body2,
+        color: colors.UtilityRed150,
+        marginLeft: 8,
+        flex: 1,
     },
     buttonsLeft: {
         flexDirection: 'row',
