@@ -43,8 +43,8 @@ describe('useConnectionHealth', () => {
         runHttpsCallableFunction.mockReturnValue(new Promise(resolve => (resolveCall = resolve)))
 
         render([A, B])
-        expect(latest[A].status).toBe(HEALTH_CHECKING)
-        expect(latest[B].status).toBe(HEALTH_CHECKING)
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_CHECKING)
+        expect(latest.healthByConnectionId[B].status).toBe(HEALTH_CHECKING)
 
         await act(async () => {
             resolveCall({
@@ -55,8 +55,8 @@ describe('useConnectionHealth', () => {
             })
         })
 
-        expect(latest[A].status).toBe(HEALTH_CONNECTED)
-        expect(latest[B].status).toBe(HEALTH_RECONNECT_REQUIRED)
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_CONNECTED)
+        expect(latest.healthByConnectionId[B].status).toBe(HEALTH_RECONNECT_REQUIRED)
         expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
         expect(runHttpsCallableFunction).toHaveBeenCalledWith('checkConnectionHealthSecondGen', {
             connectionIds: [A, B].sort(),
@@ -72,7 +72,7 @@ describe('useConnectionHealth', () => {
         render([A])
         await act(async () => {})
 
-        expect(latest[A].status).toBe(HEALTH_UNKNOWN)
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_UNKNOWN)
         consoleWarn.mockRestore()
     })
 
@@ -82,8 +82,8 @@ describe('useConnectionHealth', () => {
         render([A, B])
         await act(async () => {})
 
-        expect(latest[A].status).toBe(HEALTH_CONNECTED)
-        expect(latest[B].status).toBe(HEALTH_UNKNOWN)
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_CONNECTED)
+        expect(latest.healthByConnectionId[B].status).toBe(HEALTH_UNKNOWN)
     })
 
     test('does not re-check on a re-render with the same accounts', async () => {
@@ -109,6 +109,26 @@ describe('useConnectionHealth', () => {
             tree.update(<Probe connectionIds={[A, B]} />)
         })
 
+        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
+    })
+
+    test('re-verifies on request, so a fixed account stops reporting as broken', async () => {
+        // The bug this exists for: redux clears `authInvalid` on a fresh consent, but a
+        // stale `reconnect_required` from the check that ran BEFORE the reconnect would keep
+        // the card in the broken state until a full remount.
+        runHttpsCallableFunction.mockResolvedValueOnce({
+            results: [{ connectionId: A, status: 'reconnect_required' }],
+        })
+        render([A])
+        await act(async () => {})
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_RECONNECT_REQUIRED)
+
+        runHttpsCallableFunction.mockResolvedValueOnce({ results: [{ connectionId: A, status: 'connected' }] })
+        await act(async () => {
+            latest.recheck()
+        })
+
+        expect(latest.healthByConnectionId[A].status).toBe(HEALTH_CONNECTED)
         expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
     })
 
