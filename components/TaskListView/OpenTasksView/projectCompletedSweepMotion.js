@@ -74,8 +74,16 @@ export default function useProjectCompletedSweepMotion(runId) {
 
     useEffect(() => {
         if (!runId || runId === playedRunRef.current) return undefined
-        playedRunRef.current = runId
+        /**
+         * The `animated` check comes BEFORE the run is marked played, and the order is the bug it
+         * fixes: marking first meant a run that arrived while motion was unavailable was consumed
+         * permanently, so it could never play even once motion became available. That is reachable
+         * on an ordinary load — `useReducedMotion` answers asynchronously, and react-native-web
+         * resolves the preference to `true` whenever `window.matchMedia` is missing — and it fails
+         * silently, because a swallowed run looks exactly like a run that was never requested.
+         */
         if (!animated) return undefined
+        playedRunRef.current = runId
 
         progress.setValue(0)
         fade.setValue(1)
