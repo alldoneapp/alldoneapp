@@ -2118,6 +2118,66 @@ browser before trusting a bigger change.
 - **Staging is not a superset of production.** It holds ~30 indexes production lacks, including 15 with hardcoded user IDs baked into field paths (`dueDateByObserversIds.<uid>`, plus malformed dot-less variants) created ad hoc from the console. Never fold those into the file — they would be created for two arbitrary users in production.
 - `.firebaserc` defaults to **`alldonestaging`**, so an index command without `--project` targets staging. Always pass `--project` explicitly.
 
+### Cloud cost (reviewed 2026-09-02, August invoice EUR 334.79, ~EUR 306 of it Alldone)
+
+Roughly half of the Alldone spend was idle capacity, not usage, and the levers are all in this repo
+or one gcloud command away. What was found, and what is now in place:
+
+- **Warm instances are the biggest line (EUR 123/month for 14 of them).** Seven functions carry
+  `minInstances` — the two assistant entry points, `onUpdateChat`, and the four telephony
+  webhooks/workers — and each costs ~EUR 8/month at 512MiB or ~EUR 11 at 1GiB around the clock.
+  `WARM_INSTANCES` in `functions/index.js` is now `1` only when the deployment project is
+  `alldonealeph`, so **staging never keeps one warm** (it paid EUR 54/month for an environment with
+  no traffic). `onUpdateChat` lost its warm instance outright: a Firestore trigger has nobody
+  waiting on its latency. The four telephony ones (`whatsAppIncomingCall`, `phoneIncomingCall`,
+  `openAIRealtimeCallWebhook`, `runWhatsAppRealtimeCall`) keep theirs on purpose — their comments
+  cite measured cold starts of 7.7s and 14.5s that make a caller hang up — but note they are
+  ~EUR 36/month for a feature that handled three calls in August. That is a product decision, not
+  a config one.
+- **Staging's scheduled functions are paused** (all 40 Cloud Scheduler jobs, via
+  `gcloud scheduler jobs pause`). They ran every production schedule against an idle database.
+  Resume them with `gcloud scheduler jobs resume` if a scheduled feature needs staging QA; a
+  staging functions deploy does NOT un-pause them.
+- **The notes collab server is an App Engine Flexible VM (EUR 40/month)** —
+  `alldone-notes-collab-server`, stock y-websocket 1.3.17 from
+  `gitlab.com/alldonegmbh/alldone-notes-collab-server`, manual scaling 1, deployed 2021-11-18. Its
+  URL reaches the web build through the GitLab CI variable `NOTES_COLLABORATION_SERVER`, not
+  through the repo. Cloud Run with `--min-instances=1 --max-instances=1 --session-affinity` costs
+  about EUR 17/month for the same thing (websockets keep the instance's CPU billed while a note is
+  open, so request-based billing is right and instance-based billing would cost as much as Flex).
+  A Dockerfile for it exists in that repo's history of this review; the move needs the CI variable
+  changed and a web deploy, then `gcloud app versions stop`. **Do not delete
+  `gs://us.artifacts.alldonealeph.appspot.com` before the Flex version is stopped** — the Flex
+  image lives there (`us.gcr.io/alldonealeph/appengine/...`) and a VM restart pulls from it. The
+  other three legacy Container Registry buckets (prod `eu.artifacts`, both staging ones, 246 GB)
+  are gone.
+- **A second trigger on the same document path bills every write twice.**
+  `onUpdateCalendarGoalRoutingFeedbackSecondGen` sat next to `onUpdateTaskSecondGen` on
+  `items/{projectId}/tasks/{taskId}`, so every task update paid two invocations (387k + 464k in
+  August) and the second returned immediately almost every time. It now runs inside
+  `onUpdateTaskSecondGen` (`captureCalendarGoalRoutingFeedbackIfChanged`). Before adding an
+  `onDocument*` trigger, check whether one already exists on that path.
+- **Request-based billing charges wall clock, so a poller that awaits reads one at a time pays for
+  the waiting.** `checkTaskAlerts` and `checkRecurringAssistantTasks` run every five minutes and
+  spent 24s and 40s per run on sequential Firestore queries (343k vCPU-seconds a month for the
+  latter, to conclude nothing was due). Both now fetch through
+  `functions/Utils/mapWithConcurrency.js`; the number of reads is unchanged.
+- **`onUpdateUser` re-indexed the whole user once per project on every write** — including
+  `lastLogin`, gold and xp — which was 56 GB/month of egress to the search index for records that
+  had not changed. `searchIndexedFieldsChanged` in `onUpdateUserFunctions.js` gates it on the
+  fields `mapUserData` actually indexes.
+- **Artifact Registry had no cleanup on `cloud-run-jobs`** (220 `vm-job-runner` images, 65 GB —
+  the runner is rebuilt on every `functions/**` change). Both projects now keep the 5 most recent
+  versions and delete anything older than 7 days; `gcf-artifacts` already had Firebase's own
+  1-day policy.
+- **Firestore reads (EUR 36/month, +37% MoM) are the one line that is real usage and growing**:
+  71M billed reads for ~10 users active in the last 30 days. The database is in `nam5`
+  (multi-region, double the regional read price). Server pollers account for only a few million;
+  the rest is client-side and unattributed. Billing export to BigQuery
+  (`alldonealeph:billing_export`) is enabled so the next review has per-SKU, per-day data.
+- Deleted for good: a `us-central1` forwarding rule + target pool in staging left by GitLab
+  "managed apps" in 2020 (EUR 17/month pointing at a GKE node that no longer existed).
+
 ### External Services
 
 - **Algolia**: Search and user mentions
