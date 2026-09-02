@@ -597,6 +597,7 @@ async function routeNewTaskToGoal({
                 projectId,
                 objectId: task.id,
                 channel: 'tasks',
+                model: routingModelKey || '',
             })
         }
 

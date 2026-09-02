@@ -395,6 +395,9 @@ describe('vmLlmProxy token Gold charging', () => {
                                         projectId: 'project-1',
                                         objectId: 'chat-1',
                                         objectType: 'topics',
+                                        correlationId: 'cid-1',
+                                        agentModel: 'gpt-5.6-sol',
+                                        tokenBillingExempt: false,
                                         ...pendingData,
                                     }),
                                 }
@@ -430,6 +433,17 @@ describe('vmLlmProxy token Gold charging', () => {
                 delta: -1,
                 source: 'vm_execution',
                 requireSufficientBalance: true,
+            })
+        )
+        // AT-2487: the incremental token charges must land in the same rollup bucket as the
+        // runner's final settlement, so they carry the job's own billing dimensions.
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                context: expect.objectContaining({
+                    model: 'gpt-5.6-sol',
+                    billingExempt: false,
+                    correlationId: 'cid-1',
+                }),
             })
         )
         expect(writes[writes.length - 1].data).toEqual(
