@@ -1331,6 +1331,7 @@ async function executePostLabelPrompt({
                 projectId: assistantProjectId,
                 objectId: normalizedMessage?.messageId || '',
                 channel: 'gmail',
+                model: executionModel || '',
             })
             if (goldResult?.success) {
                 goldSpent = estimatedNormalGoldCost
@@ -1629,6 +1630,9 @@ async function processSingleMessage({
         projectId: goldProjectId,
         objectId: normalizedMessage.messageId,
         channel: 'gmail',
+        // The classifier model this charge was priced from (AT-2487) — the first and second
+        // pass can resolve to different models, so the total alone hides a model change.
+        model: config?.model || '',
     })
     if (chargeResult?.success) {
         classificationGoldSpent = goldToCharge
@@ -1742,6 +1746,7 @@ async function processSingleMessage({
                 projectId: goldProjectId,
                 objectId: normalizedMessage.messageId,
                 channel: 'gmail',
+                model: config?.model || '',
                 note: 'Refund real classifier cost after Gmail label apply failure',
             })
         }
