@@ -16,6 +16,7 @@ import {
 import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
 import RootSectionNavigation from '../../RootView/RootSectionNavigation'
+import ProjectCompletedSweep from './ProjectCompletedSweep'
 
 export default function ProjectHeader({
     projectIndex,
@@ -28,6 +29,7 @@ export default function ProjectHeader({
     setPressedShowMoreMainSection,
     showRootSectionNavigation = false,
     showEmailLabels = false,
+    completedSweepRunId = 0,
 }) {
     const dispatch = useDispatch()
 
@@ -68,6 +70,11 @@ export default function ProjectHeader({
     return (
         <>
             <View style={localStyles.borderContainer}>
+                {/* AT-2492 — the "you cleared this project today" sweep. Absolutely positioned and
+                    pointer-transparent, so a header that is not celebrating anything renders exactly
+                    what it always did and the row's geometry is untouched either way. Every other
+                    caller of ProjectHeader passes no run id and gets nothing. */}
+                <ProjectCompletedSweep runId={completedSweepRunId} projectId={projectId} />
                 <View style={localStyles.container}>
                     <ProjectAndUserData
                         projectIndex={projectIndex}
