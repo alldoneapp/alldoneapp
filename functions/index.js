@@ -145,6 +145,30 @@ function accessProjectionOnly(event, additionalProjectionFields) {
     )
 }
 
+// A privacy change has to reach the object's stored activity (the Updates stores and its
+// history), and a browser can only rewrite the part of it that it may read. The rest is
+// reconciled here, from the object's own update. Never fails the trigger: the object update
+// has already happened, and the reconcile converges on a retry or the next privacy change.
+function reconcileFeedPrivacy(event, objectType) {
+    const { reconcileObjectFeedPrivacyOnUpdate } = require('./Feeds/objectFeedPrivacy')
+    const { projectId } = event.params
+    const objectId = event.data.after.id
+    return reconcileObjectFeedPrivacyOnUpdate({
+        projectId,
+        objectType,
+        objectId,
+        before: event.data.before.data() || {},
+        after: event.data.after.data() || {},
+    }).catch(error =>
+        console.error('[feeds privacy] Could not reconcile the activity of a re-privatised object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
 const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
 const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
 const ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION = 'firestoreAccessProjectionMigrations'
@@ -3857,6 +3881,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             onUpdateTask(taskId, projectId, event.data, event.id),
             synchronizeAccessProjection(event, 'observersIds', null, true),
             captureCalendarGoalRoutingFeedbackIfChanged(event),
+            reconcileFeedPrivacy(event, 'tasks'),
         ])
     }
 )
@@ -4113,7 +4138,11 @@ exports.onUpdateContactSecondGen = onDocumentUpdated(
         if (accessProjectionOnly(event)) return
         const { onUpdateContact } = require('./Contacts/onUpdateContactFunctions')
         const { projectId, contactId } = event.params
-        await Promise.all([onUpdateContact(projectId, contactId, event.data), synchronizeAccessProjection(event)])
+        await Promise.all([
+            onUpdateContact(projectId, contactId, event.data),
+            synchronizeAccessProjection(event),
+            reconcileFeedPrivacy(event, 'contacts'),
+        ])
     }
 )
 
@@ -4163,6 +4192,7 @@ exports.onUpdateGoalSecondGen = onDocumentUpdated(
         await Promise.all([
             onUpdateGoal(projectId, goalId, event.data),
             synchronizeAccessProjection(event, 'assigneesIds'),
+            reconcileFeedPrivacy(event, 'goals'),
         ])
     }
 )
@@ -4203,7 +4233,7 @@ exports.onUpdateSkillAccessProjectionSecondGen = onDocumentUpdated(
     },
     async event => {
         if (accessProjectionOnly(event)) return
-        await synchronizeAccessProjection(event)
+        await Promise.all([synchronizeAccessProjection(event), reconcileFeedPrivacy(event, 'skills')])
     }
 )
 
@@ -4371,6 +4401,7 @@ exports.onUpdateNoteSecondGen = onDocumentUpdated(
         await Promise.all([
             onUpdateNote(projectId, noteId, event.data),
             synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+            reconcileFeedPrivacy(event, 'notes'),
         ])
     }
 )
