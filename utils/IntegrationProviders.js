@@ -64,6 +64,19 @@ export function buildConnectionId(service, provider, emailAddress) {
     return `${normalizedService}_${normalizedProvider}_${hashEmailForConnectionId(normalizedEmail)}`
 }
 
+// Firestore hands a Timestamp to a live snapshot, a plain `{seconds}`-ish object to a
+// cached/JSON round trip (UserDataCache stringifies the logged user), and legacy writes
+// used raw millis. Anything unusable is 0 = unknown.
+function toMillisOrZero(value) {
+    if (!value) return 0
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    if (typeof value.toMillis === 'function') return value.toMillis()
+    if (value instanceof Date) return value.getTime()
+    const seconds = value.seconds ?? value._seconds
+    if (typeof seconds === 'number' && Number.isFinite(seconds)) return seconds * 1000
+    return 0
+}
+
 function normalizeStoredConnection(service, connectionId, stored = {}) {
     return {
         connectionId,
@@ -73,6 +86,10 @@ function normalizeStoredConnection(service, connectionId, stored = {}) {
         defaultProjectId: typeof stored.defaultProjectId === 'string' ? stored.defaultProjectId : '',
         isDefaultAccount: stored.isDefaultAccount === true,
         authInvalid: stored.authInvalid === true,
+        // Millis of the moment the connection was flagged, when the server recorded one.
+        // Connections flagged before AT-2491 carry no timestamp, so the UI must treat 0
+        // as "unknown" rather than as the epoch.
+        authInvalidAt: toMillisOrZero(stored.authInvalidAt),
         legacy: false,
     }
 }
@@ -98,6 +115,7 @@ function synthesizeConnectionsFromApisConnected(service, loggedUser = {}) {
                 defaultProjectId: projectId,
                 isDefaultAccount: resolved.isDefault,
                 authInvalid: false,
+                authInvalidAt: 0,
                 legacy: true,
             })
         } else if (resolved.isDefault && !existing.isDefaultAccount) {
