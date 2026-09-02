@@ -293,6 +293,22 @@ service cloud.firestore {
         (accessProjectionAbsent(data) && canWriteObject(projectId, data));
     }
 
+    // A read of a document that does not exist still evaluates the object's read rule, and every
+    // object rule dereferences resource.data — which is null for a missing document — so the
+    // evaluation ERRORS and the client is told `permission-denied` instead of "no such document".
+    // Production logs hundreds of those evaluation errors per active hour and next to no real
+    // denials (AT-2484). It matters because ids are denormalized: a task's subtaskIds/parentId, a
+    // note's inner-task list, a chat's object id can all point at something that is gone, and a
+    // probe that cannot tell "missing" from "forbidden" either fails the operation it precedes
+    // (the task-move undo capture) or fails a whole batch (a delete carrying a stale id). A
+    // project member may learn that an object does not exist; nobody else may, and an EXISTING
+    // private object is still governed by the ordinary read rule below because resource is not
+    // null for it. `resource == null` costs no document access, unlike the exists() probe the
+    // chatObjects rule predates this helper with.
+    function canProbeMissingObject(projectId) {
+      return resource == null && isProjectMember(projectId);
+    }
+
     function canReadUserScopedProjectData(projectId, userId) {
       return signedIn() && request.auth.uid == userId && isProjectMember(projectId);
     }
@@ -536,6 +552,7 @@ service cloud.firestore {
     }
 
     match /items/{projectId}/tasks/{taskId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if
@@ -548,16 +565,19 @@ service cloud.firestore {
         canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) &&
         accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /noteItems/{projectId}/notes/{noteId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /noteItemsVersions/{projectId}/{noteId}/{versionId} {
@@ -575,12 +595,14 @@ service cloud.firestore {
     }
 
     match /goals/{projectId}/items/{goalId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /chatObjects/{projectId}/chats/{chatId} {
@@ -594,33 +616,40 @@ service cloud.firestore {
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /projectsContacts/{projectId}/contacts/{contactId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /skills/{projectId}/items/{skillId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
         canReadSharedObject(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /okrs/{projectId}/projectOkrs/{okrId} {
+      allow get: if canProbeMissingObject(projectId);
       allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
     }
 
     match /assistants/{projectId}/items/{assistantId} {
