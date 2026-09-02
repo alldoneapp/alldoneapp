@@ -57,6 +57,22 @@ describe('goldDimensions.buildStatsDimensionKey', () => {
         expect(buildStatsDimensionKey(null, 'opus')).toBe('unknown__opus')
     })
 
+    // Firestore reserves field names matching __.*__ and rejects a write that uses one. The
+    // source segment can never be empty (it falls back to `unknown`) and the sanitizer strips
+    // leading underscores, so a key always opens on an alphanumeric — pinned here because the
+    // failure mode is a rejected rollup write for one source, not a visible error at the call site.
+    test('never produces a reserved __field__ name, whatever the inputs', () => {
+        const inputs = ['__proto__', '___', '__id__', '_leading', 'vm_execution', '', null, '!!!']
+        inputs.forEach(source =>
+            inputs.forEach(value => {
+                const key = buildStatsDimensionKey(source, value)
+                if (!key) return
+                expect(key).not.toMatch(/^__.*__$/)
+                expect(key).toMatch(/^[a-z0-9][a-z0-9_-]*$/)
+            })
+        )
+    })
+
     test('returns empty when the VALUE is unusable, because that is what makes it undeclared', () => {
         expect(buildStatsDimensionKey('vm_execution', '')).toBe('')
         expect(buildStatsDimensionKey('vm_execution', null)).toBe('')
