@@ -16,6 +16,23 @@ const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsClou
 const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
 /**
+ * A task that belongs to a goal must carry that goal's `isPublicFor` as `parentGoalIsPublicFor`:
+ * the open-task lists group a task under its goal only when this array says the reader may see
+ * the goal (`processTaskChange` in utils/backends/openTasks.js), and a task with a `parentGoalId`
+ * but no array is filed under "no goal" while still pointing at one. That is exactly what every
+ * recurrence copy used to produce: `recurringTasksCloud` clones the completed task into these
+ * params, so `parentGoalId` came through while this field was hardcoded to null - the new
+ * occurrence silently dropped out of its goal group in every list, week after week. Pass the
+ * caller's array through; a goal id with no usable array falls back to public-for-all, which is the
+ * same default `mapGoalData` applies to a goal document that has no `isPublicFor` of its own.
+ */
+function resolveParentGoalIsPublicFor(parentGoalId, parentGoalIsPublicFor) {
+    if (!parentGoalId) return null
+    if (Array.isArray(parentGoalIsPublicFor) && parentGoalIsPublicFor.length > 0) return parentGoalIsPublicFor
+    return [FEED_PUBLIC_FOR_ALL]
+}
+
+/**
  * Builds a complete task object with all required fields
  * @param {Object} params - Task creation parameters
  * @param {string} params.name - Task name (required)
@@ -51,6 +68,7 @@ function buildTaskObject({
     parentId = null,
     isSubtask = false,
     parentGoalId = null,
+    parentGoalIsPublicFor = null,
     recurrence = 'never',
     recurrenceOriginalDueDate = null,
     recurrenceBaseDateOverride = null,
@@ -173,7 +191,7 @@ function buildTaskObject({
         subtaskNames: [],
         parentDone: false,
         parentGoalId: parentGoalId,
-        parentGoalIsPublicFor: null,
+        parentGoalIsPublicFor: resolveParentGoalIsPublicFor(parentGoalId, parentGoalIsPublicFor),
 
         // Linking and references
         linkedParentNotesIds: [],
@@ -287,6 +305,7 @@ function createTaskObject(params) {
 // CommonJS export - works with Node.js and can be converted by bundlers
 module.exports = {
     buildTaskObject,
+    resolveParentGoalIsPublicFor,
     validateTaskParams,
     createTaskObject,
     OPEN_STEP,
