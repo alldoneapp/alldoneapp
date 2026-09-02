@@ -177,4 +177,47 @@ describe('Task DV heading layout (AT-2341)', () => {
             expect(tree.root.findByType(TaskTitle).instance.getMaxHeight()).toBe(EXPANDED_TITLE_MAX_HEIGHT)
         })
     })
+
+    describe('store subscription lifecycle', () => {
+        // The subscription used to be created in the constructor and torn down from state. Redux
+        // notifies a snapshot of its listener list, so a dispatch that unmounted the view still
+        // reached the listener once and logged "[TaskTitle] updateState called after unmount" on
+        // every navigation away from a task. The subscription now lives from mount to unmount and
+        // a late notification is ignored silently.
+        it('subscribes on mount, unsubscribes on unmount and ignores a notification after unmount', () => {
+            const store = require('../../../redux/store')
+            const unsubscribe = jest.fn()
+            const subscribeSpy = jest.spyOn(store, 'subscribe').mockImplementation(listener => {
+                mockStoreListener = listener
+                return unsubscribe
+            })
+            const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
+            const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+            try {
+                const tree = renderTitle(plainTask)
+                expect(subscribeSpy).toHaveBeenCalledTimes(1)
+                const instance = tree.root.findByType(TaskTitle).instance
+
+                mockStoreState.taskTitleInEditMode = true
+                act(() => {
+                    mockStoreListener()
+                })
+                expect(instance.state.taskTitleInEditMode).toBe(true)
+
+                act(() => {
+                    tree.unmount()
+                })
+                expect(unsubscribe).toHaveBeenCalledTimes(1)
+
+                mockStoreState.taskTitleInEditMode = false
+                expect(() => mockStoreListener()).not.toThrow()
+                expect(debugSpy).not.toHaveBeenCalled()
+                expect(logSpy).not.toHaveBeenCalled()
+            } finally {
+                subscribeSpy.mockRestore()
+                debugSpy.mockRestore()
+                logSpy.mockRestore()
+            }
+        })
+    })
 })
