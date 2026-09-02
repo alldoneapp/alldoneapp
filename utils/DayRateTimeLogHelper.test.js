@@ -44,6 +44,7 @@ import {
     DAY_RATE_TIME_LOG_TASK_NAME,
     DAY_RATE_TIME_LOG_TYPE,
     getDayRateTimeLogRange,
+    getDayRateCappedMinutes,
     getDayRateTaskEstimation,
     isDayRateTimeLogTask,
     normalizeDayRateTimezoneOffset,
@@ -273,6 +274,40 @@ describe('DayRateTimeLogHelper', () => {
         expect(result.adjustmentMinutes).toBe(240)
     })
 
+    it('caps a day above the target even when it does not qualify for a top-up', () => {
+        const result = calculateDayRateTimeLogAdjustment([task(360), task(240)], {
+            enabled: true,
+            targetMinutes: 480,
+            triggerTasks: 5,
+        })
+
+        expect(result.shouldLogDay).toBe(false)
+        expect(result.shouldCapDay).toBe(true)
+        expect(result.shouldPinDay).toBe(true)
+        expect(result.excessMinutes).toBe(120)
+        expect(result.adjustmentMinutes).toBe(0)
+    })
+
+    it('reports no excess for a day at or below the target', () => {
+        expect(calculateDayRateTimeLogAdjustment([task(480)], { enabled: true, targetMinutes: 480 })).toMatchObject({
+            excessMinutes: 0,
+            shouldCapDay: false,
+        })
+        expect(calculateDayRateTimeLogAdjustment([task(60)], { enabled: true, targetMinutes: 480 })).toMatchObject({
+            excessMinutes: 0,
+            shouldCapDay: false,
+            shouldPinDay: false,
+        })
+    })
+
+    it('reads the trimmed minutes back off a generated task', () => {
+        expect(getDayRateCappedMinutes({ genericData: { cappedMinutes: 120 } })).toBe(120)
+        expect(getDayRateCappedMinutes({ genericData: { cappedMinutes: '30' } })).toBe(30)
+        expect(getDayRateCappedMinutes({ genericData: { cappedMinutes: -5 } })).toBe(0)
+        expect(getDayRateCappedMinutes({ genericData: {} })).toBe(0)
+        expect(getDayRateCappedMinutes({})).toBe(0)
+    })
+
     it('recognizes generated day-rate tasks', () => {
         expect(isDayRateTimeLogTask({ genericData: { type: DAY_RATE_TIME_LOG_TYPE } })).toBe(true)
         expect(isDayRateTimeLogTask(task(60))).toBe(false)
@@ -345,6 +380,7 @@ describe('DayRateTimeLogHelper', () => {
 
         expect(result).toEqual({
             adjustmentMinutes: 390,
+            cappedMinutes: 0,
             realDoneTasksAmount: 5,
             realLoggedMinutes: 90,
             updated: true,
@@ -361,6 +397,7 @@ describe('DayRateTimeLogHelper', () => {
                     projectId: 'project-1',
                     day: '20260501',
                     manual: false,
+                    cappedMinutes: 0,
                 },
             })
         )
@@ -399,6 +436,7 @@ describe('DayRateTimeLogHelper', () => {
 
         expect(result).toEqual({
             adjustmentMinutes: 390,
+            cappedMinutes: 0,
             realDoneTasksAmount: 5,
             realLoggedMinutes: 90,
             updated: true,
@@ -450,6 +488,7 @@ describe('DayRateTimeLogHelper', () => {
 
         expect(result).toEqual({
             adjustmentMinutes: 390,
+            cappedMinutes: 0,
             realDoneTasksAmount: 5,
             realLoggedMinutes: 90,
             updated: true,
@@ -509,6 +548,208 @@ describe('DayRateTimeLogHelper', () => {
         )
     })
 
+    describe('day cap (no more than the target per day)', () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        const anchorPath = 'items/project-1/tasks/dayRateTimeLog_user-1_20260501'
+        const anchor = (estimation, genericData = {}) =>
+            storedTask(estimation, {
+                id: 'dayRateTimeLog_user-1_20260501',
+                completed,
+                genericData: { type: DAY_RATE_TIME_LOG_TYPE, manual: false, ...genericData },
+            })
+
+        beforeEach(() => {
+            ProjectHelper.getProjectById.mockReturnValue({
+                dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+            })
+        })
+
+        it('trims a day over the target that would never have qualified for a top-up', async () => {
+            // Two tasks with hand-logged time: below the task trigger AND manual non-calendar time,
+            // i.e. every reason the top-up stands down. The cap must not.
+            getDb.mockReturnValue(createMockDb([storedTask(360, { completed }), storedTask(240, { completed })]))
+
+            const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toEqual({
+                adjustmentMinutes: 0,
+                cappedMinutes: 120,
+                realDoneTasksAmount: 2,
+                realLoggedMinutes: 600,
+                updated: true,
+            })
+            expect(mockBatchSet).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({
+                    estimations: { Open: 0 },
+                    genericData: expect.objectContaining({ type: DAY_RATE_TIME_LOG_TYPE, cappedMinutes: 120 }),
+                })
+            )
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                120,
+                true,
+                true,
+                completed,
+                expect.anything()
+            )
+        })
+
+        it('trims a qualifying day over the target instead of only skipping the top-up', async () => {
+            getDb.mockReturnValue(
+                createMockDb([
+                    storedCalendarTask(120, { completed }),
+                    storedCalendarTask(120, { completed }),
+                    storedCalendarTask(120, { completed }),
+                    storedCalendarTask(120, { completed }),
+                    storedCalendarTask(120, { completed }),
+                ])
+            )
+
+            const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ adjustmentMinutes: 0, cappedMinutes: 120, updated: true })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                120,
+                true,
+                true,
+                completed,
+                expect.anything()
+            )
+        })
+
+        it('applies the cap from the after-task-change path when the day has no generated task yet', async () => {
+            // This is the path an ordinary estimation change takes, and it used to require a
+            // generated task to exist before it would touch the day at all.
+            getDb.mockReturnValue(createMockDb([storedTask(360, { completed }), storedTask(240, { completed })]))
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toEqual({
+                adjustmentMinutes: 0,
+                cappedMinutes: 120,
+                realDoneTasksAmount: 2,
+                realLoggedMinutes: 600,
+                updated: true,
+            })
+            expect(mockBatchSet).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({
+                    estimations: { Open: 0 },
+                    genericData: expect.objectContaining({ cappedMinutes: 120 }),
+                })
+            )
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                120,
+                true,
+                true,
+                completed,
+                expect.anything()
+            )
+        })
+
+        it('still leaves a day under the target alone when it has no generated task', async () => {
+            getDb.mockReturnValue(createMockDb([storedTask(60, { completed }), storedTask(30, { completed })]))
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toEqual({ updated: false })
+            expect(mockBatchSet).not.toHaveBeenCalled()
+            expect(mockBatchUpdate).not.toHaveBeenCalled()
+            expect(updateStatistics).not.toHaveBeenCalled()
+        })
+
+        it('re-running a capped day writes no statistics but keeps remembering the trimmed minutes', async () => {
+            getDb.mockReturnValue(
+                createMockDb(
+                    [storedTask(360, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    { 'statistics/project-1/user-1/01052026': { doneTime: 480 } }
+                )
+            )
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ cappedMinutes: 120, updated: true })
+            expect(updateStatistics).not.toHaveBeenCalled()
+            expect(mockBatchUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({ 'estimations.Open': 0, 'genericData.cappedMinutes': 120 })
+            )
+        })
+
+        it('gives the trimmed minutes back once the day drops under the target', async () => {
+            // The day was capped at 480 with 600 real minutes. The user then lowered a task from
+            // 360 to 160: the estimation path already wrote -360 +160 to the statistics, so they
+            // stand at 280 while the tasks add up to 400. Nothing qualifies the day for a top-up,
+            // so the statistics must return to the task total, i.e. get the 120 back.
+            getDb.mockReturnValue(
+                createMockDb(
+                    [storedTask(160, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    { 'statistics/project-1/user-1/01052026': { doneTime: 280 } }
+                )
+            )
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toEqual({
+                adjustmentMinutes: 0,
+                cappedMinutes: 0,
+                realDoneTasksAmount: 2,
+                realLoggedMinutes: 400,
+                updated: true,
+            })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                120,
+                false,
+                true,
+                completed,
+                expect.anything()
+            )
+            expect(mockBatchUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({ 'genericData.cappedMinutes': 0 })
+            )
+        })
+
+        it('re-trims to the new excess when a capped day shrinks but stays over the target', async () => {
+            // 600 capped to 480, then one task lowered 360 -> 260: statistics now 380, tasks 500.
+            getDb.mockReturnValue(
+                createMockDb(
+                    [storedTask(260, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    { 'statistics/project-1/user-1/01052026': { doneTime: 380 } }
+                )
+            )
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ cappedMinutes: 20, realLoggedMinutes: 500, updated: true })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                100,
+                false,
+                true,
+                completed,
+                expect.anything()
+            )
+            expect(mockBatchUpdate).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({ 'genericData.cappedMinutes': 20 })
+            )
+        })
+    })
+
     it('backfills from the project start once and stores the backfill cursor', async () => {
         const projectStartDate = Date.UTC(2026, 3, 28, 12, 0, 0)
         const qualifyingDay = Date.UTC(2026, 3, 29, 12, 0, 0)
@@ -539,6 +780,7 @@ describe('DayRateTimeLogHelper', () => {
         expect(results).toEqual([
             {
                 adjustmentMinutes: 390,
+                cappedMinutes: 0,
                 realDoneTasksAmount: 5,
                 realLoggedMinutes: 90,
                 updated: true,
@@ -588,6 +830,7 @@ describe('DayRateTimeLogHelper', () => {
         expect(results).toHaveLength(1)
         expect(results[0]).toMatchObject({
             adjustmentMinutes: 390,
+            cappedMinutes: 0,
             realDoneTasksAmount: 5,
             updated: true,
         })
@@ -636,6 +879,7 @@ describe('DayRateTimeLogHelper', () => {
         expect(results).toHaveLength(1)
         expect(results[0]).toMatchObject({
             adjustmentMinutes: 390,
+            cappedMinutes: 0,
             realDoneTasksAmount: 5,
             updated: true,
         })
