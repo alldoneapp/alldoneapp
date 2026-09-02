@@ -13,8 +13,8 @@ import { SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
  *
  * The first pass of AT-2492 threw a confetti burst here instead. That is gone — confetti belongs to
  * the all-projects empty-inbox moment, and borrowing it at a smaller size meant the two celebrations
- * could only differ in degree. What is left is a 380ms opacity-and-scale settle, sharing the sweep's
- * run id so the two beats are visibly one event.
+ * could only differ in degree. What is left is an opacity-and-scale settle, sharing the sweep's run
+ * id so the two beats are visibly one event.
  *
  * Reusing `useEmptyInboxCongratsCelebration` rather than writing a third animation hook is
  * deliberate, and its own docstring says why: the settle-on-a-timer rule, the play-once guard and
@@ -22,9 +22,17 @@ import { SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
  * simply not consumed here.
  */
 
-// A settle, not a bounce: the picture is a decoration on a board that has just been swept, not an
-// arrival that needs announcing.
-export const PROJECT_ENTRANCE_MS = 380
+/**
+ * A settle, not a bounce: the picture is a decoration on a board that has just been swept, not an
+ * arrival that needs announcing.
+ *
+ * Lengthened with the third pass's four-stage sweep, from 380ms. It is paced against the sweep's
+ * own opening beat rather than against the whole run — the picture arrives WITH the colour crossing
+ * the row, and then holds while the shimmer and the breath play out on the line. A snappier pop
+ * against a deliberately slower sweep read as two unrelated animations that happened to start
+ * together.
+ */
+export const PROJECT_ENTRANCE_MS = 620
 /**
  * Held for exactly as long as the sweep, so `celebrating` — and therefore the animated wrapper
  * around the picture — is torn down at the same moment the line stops being coloured. Derived rather

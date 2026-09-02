@@ -1168,8 +1168,7 @@ static branch forever.
 
 **Clearing one project is celebrated too, and the difference from the all-projects moment is one of
 KIND, not of degree.** When a project's today/overdue list goes to zero, that project's own header
-row — the 56px `ProjectHeader` line — plays a **completed sweep**: a low-alpha wash in the
-project's own colour fills left→right behind a full-strength 3px leading edge, then both fade. On
+row — the 56px `ProjectHeader` line — plays a **completed sweep** in the project's own colour. On
 the selected-project board the Anna "tasks done" picture pops in on the same run id, so the two read
 as one event. There is no headline, no achievement card, no green dot, no streak, and — the absolute
 rule — **no confetti of any kind**. That layer is what makes the all-projects moment visible from
@@ -1177,6 +1176,45 @@ across a room, so withholding it entirely is what keeps the ranking legible; the
 AT-2492 threw a smaller confetti burst here instead, and tuning piece counts alone left the two
 reading as "the same celebration, slightly weaker". Trigger is today's list per project, so N small
 flourishes compose on the way to the one big achievement. A settled row is byte-identical to before.
+
+**The run is FOUR sequential stages over ~2.8s, and the extra time buys stages rather than a slower
+sweep.** The version that first reached production was one 860ms pass (620 travel + 240 fade) and
+Karsten's verdict was that it works but is over before it registers — "make it more celebratory and
+maybe up to 3 seconds long". A single gesture cannot be stretched to three seconds: a 2.5s fill
+across a 900px row reads as a stuck progress bar. So `projectCompletedSweepMotion.js` runs
+`Animated.sequence` over four values, one per beat — **FILL 820ms** (the wash's `scaleX` behind a
+full-strength 3px leading edge, with a 2px accent bar drawing in along the bottom of the band),
+**SHIMMER 760ms** (a wide soft band of the same colour gliding over the now-filled row — light over
+coloured glass, which is what makes the row read as _finished_ rather than merely tinted), **PULSE
+540ms** (the whole band brightens once and eases back while the accent thickens 2px→4px — the
+confirmation), **SETTLE 660ms** (everything fades; the old 240ms exit is what made the whole thing
+feel clipped). Sequential, never parallel: the edge has to reach the end of the row before anything
+else starts, or the user sees a highlight fading in the middle of the line and the "it got all the
+way there" statement is lost — and a confirmation that overlaps the thing it confirms is a wobble.
+Within a stage everything derives from ONE value (the AT-2404 rule), and `pulse` is a normalised
+**clock**, not an amplitude, so the breath's shape lives in the interpolations and can be re-tuned
+without touching the sequence.
+
+**Two of the layers are gated by GEOMETRY, not by opacity, and that is deliberate.** The leading edge
+and the shimmer band each travel from fully off the left of the row to fully off the right of it, and
+the overlay clips (`overflow: 'hidden'`) — so each is invisible before and after its own stage with
+no per-stage bookkeeping that could get out of step with the sequence. The pulse glow gates itself
+the same way, by amplitude: both ends of `pulse` map to 0, which is also what leaves no residue.
+The accent bar exists because the **edge leaves the row** at the end of stage 1: without it a pale
+project colour would spend the shimmer and the breath as an almost invisible 20% tint, so the row
+keeps one full-strength element throughout.
+
+**Duration no longer ranks the two celebrations — KIND does, and that reversal is the point.** The
+previous pass encoded the ranking as "half or less" (860ms against the all-projects 3000ms);
+`ProjectEmptyInboxCelebration.test.js` now asserts only that the sweep never *outlasts* the big one
+plus the 2.5–3.0s window Karsten asked for, and the ranking is carried entirely by the structural
+assertions that were always there: no confetti of any sort, `position: absolute` bounded to one 56px
+row, no viewport-derived dimension anywhere (the all-projects fall is `position: fixed` and escapes
+to the viewport). Consequence worth knowing: `PROJECT_LINE_EXIT_HOLD_MS` is derived from the run, so
+in All Projects a cleared project now lingers **~2.9s** instead of ~1s before its block is dropped.
+That is the deliberate cost of putting a three-second celebration ON the row — the row has to survive
+its own celebration — and every bound below still holds, so the worst case for a bug is a line that
+leaves three seconds late rather than never.
 
 **The project line, not the picture, because the picture does not exist where this usually happens.**
 `SelectedProjectEmptyInbox` only renders on the selected-project board, so a celebration living on
@@ -1250,7 +1288,15 @@ renders. Every test the feature shipped with was therefore green while the sweep
 production. `browser-tests/at2492` drives the real component in real Chromium and asserts on painted
 width across the run; it also reproduces the All Projects late-count case end to end, and is the A/B
 that separated "the animation is broken" (it never was — wash 96→900px, edge travelling, correct
-colour and geometry) from "the trigger never fires".
+colour and geometry) from "the trigger never fires". It now samples the whole ~2.8s run every 60ms
+and checks **each stage where it is visible** — the wash growing, the edge crossing and leaving, the
+shimmer band travelling **over an already-full wash** (moving it during the fill would be a second
+wipe chasing the first), the breath rising and returning to zero, the accent thickening and
+returning, and every layer sharing one exit opacity. Run the same harness against `master` for the
+A/B: the shipped single-pass sweep scores 13/21 there, failing every stage-2/3 check and reporting
+`still painting at 840ms`. Its `--reduce-motion` mode asserts the **inverted** contract — no run, no
+paint, and the day left **unspent** — which is what it should always have done; it previously
+asserted the animated expectations and therefore reported the correct behaviour as a failure.
 
 **"The list is empty" is not "the project was cleared", and conflating them is the whole bug this
 design avoids.** The reporting account has 78 projects, 64 of them guides, and most are empty on most
