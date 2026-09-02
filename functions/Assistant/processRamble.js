@@ -246,8 +246,6 @@ const processRambleSecondGen = onCall(
             source: RAMBLER_GOLD_SOURCE,
             channel: normalizedTargetKind,
             projectId,
-            // Cleanup model the token half of the ramble price came from (AT-2487).
-            model: modelKey || '',
         })
         if (!goldResult?.success) {
             await failAfterDraining('resource-exhausted', 'Insufficient Gold to process dictation.')

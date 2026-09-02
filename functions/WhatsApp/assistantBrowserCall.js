@@ -173,7 +173,6 @@ async function startAssistantBrowserCall(data, auth) {
         chatId,
         language: user.language,
         channel: 'browser_call',
-        realtimeModel: config.realtimeModel,
     })
     if (!leaseResult.success) throw getHttpsErrorForEligibility(leaseResult.reason || 'active_call')
 

@@ -7828,7 +7828,7 @@ export async function createNoteInObject(
         userId: creatorId,
         creatorId,
     }
-    const note = await uploadNewNote(projectId, noteData, false)
+    const note = await uploadNewNote(projectId, noteData)
 
     if (objectType === 'tasks') {
         await setTaskNote(projectId, objectId, noteId)

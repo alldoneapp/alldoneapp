@@ -7,17 +7,6 @@
 // entry is aggregated exactly once, guarded by an `aggregatedAt` stamp on the source
 // doc. Re-running only processes entries that were not yet aggregated.
 //
-// It does NOT backfill the billing dimensions added in AT-2487 (`spendByBilling` /
-// `spendByModel`), and deliberately so. Entries written before that shipped carry no
-// `model`, `billingExempt` or `correlationId` at all, so there is nothing to roll up:
-// `computeStatsDeltas` returns an empty `dimensions` list for them and this script keeps
-// producing byte-identical rollups to the ones it produced before. The only way to
-// reconstruct them would be an approximate `vmJobs` match on projectId + objectId + a time
-// window — and several VM runs share one thread, so that would write silent misattribution
-// into buckets that today simply do not exist for the historical period. A dimension map
-// therefore covers only the period since the AT-2487 deploy; the direction totals
-// (`spend`, `count`, `spendBySource`) cover all of history and are unaffected.
-//
 // Usage:
 //   node migration/backfillGoldStats.js --firebase-project-id=<gcp-project-id>            (dry run)
 //   node migration/backfillGoldStats.js --firebase-project-id=<gcp-project-id> --execute  (apply)

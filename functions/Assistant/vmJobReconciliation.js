@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const crypto = require('crypto')
 const { VM_JOB_GOLD_REFUND_SOURCE } = require('./vmJob')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
@@ -148,7 +147,6 @@ async function finishTerminatedVmWorker(doc, pending, now) {
             projectId: pending.projectId,
             objectId: pending.objectId,
             objectType: pending.objectType,
-            ...buildVmGoldBillingDimensions(pending),
             note: 'VM worker stopped before task settlement',
         })
         if (!refund?.success) throw new Error(refund?.message || 'VM worker Gold refund failed')

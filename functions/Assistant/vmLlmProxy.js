@@ -25,7 +25,6 @@ const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
 const { resolveJobCredentialProvider } = require('./vmModelRouting')
-const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
@@ -666,11 +665,6 @@ async function chargeProxyTokenGold({
                     projectId: pendingData.projectId,
                     objectId: pendingData.objectId,
                     objectType: pendingData.objectType,
-                    // Billing dimensions (AT-2487). Taken from the job document the charge is
-                    // already priced from, so the incremental charges and the runner's final
-                    // settlement land in the same rollup bucket by construction rather than by
-                    // two matching derivations — the same reason `tokensPerGold` is read here.
-                    ...buildVmGoldBillingDimensions(pendingData),
                     note: `VM ${provider} live token charge (${nextTokens} tracked tokens)`,
                 },
                 requireSufficientBalance: true,
