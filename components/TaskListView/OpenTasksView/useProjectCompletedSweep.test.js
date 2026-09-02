@@ -5,6 +5,7 @@ import { AccessibilityInfo } from 'react-native'
 
 import useProjectCompletedSweep, {
     PROJECT_CELEBRATION_CLAIM_SETTLE_MS,
+    PROJECT_LATE_CLEARING_GRACE_MS,
     PROJECT_SWEEP_PROBE_MS,
 } from './useProjectCompletedSweep'
 import { PROJECT_LINE_EXIT_HOLD_MS, SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
@@ -39,6 +40,7 @@ const PINNED_NOW = new Date('2026-09-02T10:00:00Z')
 const todayKey = moment(PINNED_NOW).format('YYYY-MM-DD')
 
 let latest
+let matchMediaReducedMotion = false
 
 const Host = ({ projectId = PROJECT, userId = USER, enabled = true, lineWouldLeave = false }) => {
     latest = useProjectCompletedSweep({ projectId, userId, enabled, lineWouldLeave })
@@ -61,6 +63,17 @@ describe('useProjectCompletedSweep (AT-2492)', () => {
         resetProjectEmptyInboxCelebrationSessionMarkers()
         latest = undefined
         setTodayCount(0)
+        matchMediaReducedMotion = false
+        // `useReducedMotion` reads the media query synchronously on its first render, so a suite
+        // that only stubs the async `AccessibilityInfo` answer would claim the day for one commit
+        // before standing down — which is precisely the window this must be able to assert on.
+        window.matchMedia = jest.fn(query => ({
+            matches: query.includes('reduce') ? matchMediaReducedMotion : false,
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+            addListener: jest.fn(),
+            removeListener: jest.fn(),
+        }))
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -314,6 +327,96 @@ describe('useProjectCompletedSweep (AT-2492)', () => {
             await update(tree, { lineWouldLeave: true })
 
             expect(latest.holdProjectLine).toBe(false)
+        })
+
+        /**
+         * "I don't see the animation on the project lines" — the follow-up defect.
+         *
+         * The board drops a cleared project's block, and the hook used to treat "the line is on
+         * screen" as a PRECONDITION for celebrating. But in All Projects that is also a CONSEQUENCE
+         * of the probe giving up: once the row was dropped, the same still-mounted hook refused the
+         * clearing it had been waiting for, permanently — the project never renders a line again
+         * that day, so the run was not delayed, it was deleted. Two independent Firestore listeners
+         * feed this decision, so losing the race is ordinary rather than exotic.
+         *
+         * A clearing this hook WATCHED is proof the line was there a moment ago, so it must still
+         * play — and taking the hold is what puts the row back for it.
+         */
+        it('still sweeps a clearing that lands after the board already dropped the line', async () => {
+            setTodayCount(1)
+            const tree = await render({ lineWouldLeave: false })
+
+            // The hide lands first and the probe runs out with the count still stale.
+            await update(tree, { lineWouldLeave: true })
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_SWEEP_PROBE_MS + 10)
+            })
+            expect(latest.holdProjectLine).toBe(false)
+            expect(latest.celebrationRunId).toBe(0)
+
+            // Only now does the count listener report the clearing.
+            setTodayCount(0)
+            await update(tree, { lineWouldLeave: true })
+
+            expect(latest.celebrationRunId).toBe(1)
+            // ...and the row comes back for exactly one sweep, then goes.
+            expect(latest.holdProjectLine).toBe(true)
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_LINE_EXIT_HOLD_MS + 10)
+            })
+            expect(latest.holdProjectLine).toBe(false)
+        })
+
+        /**
+         * The cure above is bounded, so it cannot resurrect a row long after the moment passed. The
+         * day must stay unspent when it declines, or the project's own board would later show
+         * nothing.
+         */
+        it('lets a clearing go once the moment has passed, without spending the day', async () => {
+            setTodayCount(1)
+            const tree = await render({ lineWouldLeave: false })
+
+            await update(tree, { lineWouldLeave: true })
+            // Let the probe run out first, so the line has actually left and the grace is measured
+            // from that commit rather than from the end of one big timer batch.
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_SWEEP_PROBE_MS + 10)
+            })
+            expect(latest.holdProjectLine).toBe(false)
+
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_LATE_CLEARING_GRACE_MS + 100)
+            })
+
+            setTodayCount(0)
+            await update(tree, { lineWouldLeave: true })
+
+            expect(latest.celebrationRunId).toBe(0)
+            expect(latest.holdProjectLine).toBe(false)
+            expect(hasCelebratedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(false)
+            // The evidence survives, so opening the project's own board still celebrates it.
+            expect(hasReachedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(true)
+        })
+
+        /**
+         * A day spent on a run nobody was shown is a celebration that silently never happens
+         * (AT-2445). The sweep renders nothing at all under reduced motion, so the claim must not be
+         * made — react-native-web also resolves the preference to `true` whenever `matchMedia` is
+         * missing, so this branch is reachable by an environment that merely cannot answer.
+         */
+        it('never spends the day on a sweep that cannot be seen', async () => {
+            matchMediaReducedMotion = true
+            AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
+            setTodayCount(0)
+
+            await render()
+
+            expect(latest.celebrationRunId).toBe(0)
+            expect(latest.holdProjectLine).toBe(false)
+            expect(hasCelebratedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(false)
+            // The evidence survives, so the day is still there to be celebrated with motion on.
+            expect(hasReachedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(true)
         })
 
         /**

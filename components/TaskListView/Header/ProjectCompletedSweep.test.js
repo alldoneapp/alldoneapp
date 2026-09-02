@@ -21,6 +21,8 @@ const PROJECT = 'project-a'
 const PROJECT_COLOR = '#2F80ED'
 const ROW_WIDTH = 640
 
+let matchMediaReducedMotion = false
+
 const findOne = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false })[0]
 const countOf = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false }).length
 // The wash's `scaleX` IS the run's progress value, so this is the handle on the live animation.
@@ -35,6 +37,17 @@ describe('the project completed sweep (AT-2492)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         jest.useFakeTimers()
+        matchMediaReducedMotion = false
+        // `useReducedMotion` answers from the media query on its FIRST render, so a suite that only
+        // stubs the async `AccessibilityInfo` answer still gets one fully-animated commit — which
+        // is enough to hide a run being consumed while motion is unavailable.
+        window.matchMedia = jest.fn(query => ({
+            matches: query.includes('reduce') ? matchMediaReducedMotion : false,
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+            addListener: jest.fn(),
+            removeListener: jest.fn(),
+        }))
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         useSelector.mockImplementation(selector =>
@@ -214,10 +227,41 @@ describe('the project completed sweep (AT-2492)', () => {
     })
 
     it('stands down entirely under reduced motion', async () => {
+        matchMediaReducedMotion = true
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
 
         const tree = await renderSweep(1)
 
         expect(countOf(tree, 'project-completed-sweep')).toBe(0)
+    })
+
+    /**
+     * A run must be marked "played" only once it has actually played.
+     *
+     * The play-once guard used to consume the run id BEFORE testing whether motion was available,
+     * so a run that arrived while the preference said "reduce" was swallowed permanently — turning
+     * motion back on could never recover it, because the run looked like one already shown. The
+     * failure is silent: a swallowed run is indistinguishable from a run that was never requested.
+     * It is reachable without touching any setting, because react-native-web resolves the
+     * preference to `true` whenever `window.matchMedia` is missing.
+     */
+    it('still plays a run that arrived while motion was unavailable', async () => {
+        let notifyPreferenceChanged
+        matchMediaReducedMotion = true
+        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+        AccessibilityInfo.addEventListener = jest.fn((eventName, handler) => {
+            notifyPreferenceChanged = handler
+            return { remove: jest.fn() }
+        })
+
+        const tree = await renderSweep(1)
+        expect(countOf(tree, 'project-completed-sweep')).toBe(0)
+
+        // The user turns motion back on (or the environment can finally answer the question).
+        await act(async () => {
+            notifyPreferenceChanged(false)
+        })
+
+        expect(countOf(tree, 'project-completed-sweep')).toBe(1)
     })
 })
