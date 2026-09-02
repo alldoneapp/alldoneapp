@@ -120,6 +120,7 @@ async function routeCalendarEventsToProjects({
                 projectId: syncProjectId,
                 objectId: event.id,
                 channel: 'calendar',
+                model: config?.model || '',
             })
 
             if (!chargeResult?.success) {
