@@ -39,12 +39,9 @@ describe('emailLineSummaryResponse', () => {
         ).resolves.toEqual({ authExpired: true })
 
         expect(firestore.doc).toHaveBeenCalledWith('users/user-1')
-        // The flag AND the moment it happened: Settings > Integrations reports how long the
-        // account has been dead, which needs a timestamp on the map the client reads (AT-2491).
-        const [written] = update.mock.calls[0]
-        expect(written[`emailConnections.${accountConnectionId}.authInvalid`]).toBe(true)
-        expect(written[`emailConnections.${accountConnectionId}.authInvalidAt`]).toBeTruthy()
-        expect(Object.keys(written)).toHaveLength(2)
+        expect(update).toHaveBeenCalledWith({
+            [`emailConnections.${accountConnectionId}.authInvalid`]: true,
+        })
     })
 
     test('materializes every legacy account before marking the failed project connection invalid', async () => {
@@ -70,10 +67,6 @@ describe('emailLineSummaryResponse', () => {
         )
         expect(update.emailConnections[accountConnectionId].authInvalid).toBe(true)
         expect(update.emailConnections[secondConnectionId].authInvalid).toBe(false)
-        // Only the account that actually failed is stamped; the healthy one that was merely
-        // materialized alongside it must not look like it broke at the same moment.
-        expect(update.emailConnections[accountConnectionId].authInvalidAt).toBeTruthy()
-        expect(update.emailConnections[secondConnectionId].authInvalidAt).toBeUndefined()
 
         const firestoreUpdate = jest.fn().mockResolvedValue(undefined)
         const getSummary = jest.fn().mockRejectedValue(new EmailLineAuthError())
@@ -89,13 +82,7 @@ describe('emailLineSummaryResponse', () => {
                     }),
             })
         ).resolves.toEqual({ authExpired: true })
-        // Compare structurally rather than against `update`: each call stamps its own
-        // Timestamp.now(), so the two payloads are equal in everything but that moment.
-        const [written] = firestoreUpdate.mock.calls[0]
-        expect(Object.keys(written.emailConnections).sort()).toEqual(Object.keys(update.emailConnections).sort())
-        expect(written.emailConnections[accountConnectionId].authInvalid).toBe(true)
-        expect(written.emailConnections[accountConnectionId].authInvalidAt).toBeTruthy()
-        expect(written.emailConnections[secondConnectionId].authInvalid).toBe(false)
+        expect(firestoreUpdate).toHaveBeenCalledWith(update)
 
         const getSummaryAfterPersistence = jest.fn()
         await expect(
