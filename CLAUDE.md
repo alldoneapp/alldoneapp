@@ -2126,14 +2126,15 @@ or one gcloud command away. What was found, and what is now in place:
 - **Warm instances are the biggest line (EUR 123/month for 14 of them).** Seven functions carry
   `minInstances` — the two assistant entry points, `onUpdateChat`, and the four telephony
   webhooks/workers — and each costs ~EUR 8/month at 512MiB or ~EUR 11 at 1GiB around the clock.
-  `WARM_INSTANCES` in `functions/index.js` is now `1` only when the deployment project is
-  `alldonealeph`, so **staging never keeps one warm** (it paid EUR 54/month for an environment with
+  `minInstances` has been removed from every function in `functions/index.js`; the first pass
+  gated it on the deployment project so **staging never keeps one warm** (it paid EUR 54/month for an environment with
   no traffic). `onUpdateChat` lost its warm instance outright: a Firestore trigger has nobody
   waiting on its latency. The four telephony functions (`whatsAppIncomingCall`, `phoneIncomingCall`,
   `openAIRealtimeCallWebhook`, `runWhatsAppRealtimeCall`) lost theirs the same day by decision:
   their comments cited measured cold starts of 7.7s and 14.5s on a live call, but they cost
-  ~EUR 36/month for three calls in August. Only `askToBot` and `generatePreConfigTaskResult` keep
-  one, in production only. If phone calls become a real feature again, the cheap fix is one warm
+  ~EUR 36/month for three calls in August. The last two, `askToBot` and
+  `generatePreConfigTaskResult`, followed later that day, so **no function keeps a warm instance**
+  now; the only always-on service is the notes collab server, which holds rooms in memory. If phone calls become a real feature again, the cheap fix is one warm
   `onRequest` routing all three webhooks, not four warm services.
 - **Staging's scheduled functions are paused** (all 40 Cloud Scheduler jobs, via
   `gcloud scheduler jobs pause`). They ran every production schedule against an idle database.
