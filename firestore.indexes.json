@@ -4780,6 +4780,123 @@
                 { "fieldPath": "userId", "order": "ASCENDING" },
                 { "fieldPath": "completed", "order": "ASCENDING" }
             ]
+        },
+        {
+            "__comment__": "Goal DV task list by creation (firestore.js watchGoalTasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" },
+                { "fieldPath": "created", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Subtask list by sort order (firestore.js watchSubtasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "sortIndex", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Goal DV open subtasks, parentId != null (openGoalTasks.js watchOpenGoalSubtasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "completed", "order": "ASCENDING" },
+                { "fieldPath": "parentDone", "order": "ASCENDING" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Workstream show-more probe with due-date range (tasksShowMoreButton.js)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "dueDate", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Goal DV workflow subtasks, completed != null (workflowGoalTasks.js)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "isSubtask", "order": "ASCENDING" },
+                { "fieldPath": "parentDone", "order": "ASCENDING" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Goal DV workflow tasks, completed != null (workflowGoalTasks.js)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentGoalId", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Workflow board: own tasks handed to another reviewer, currentReviewerId != user (workflowTasks.js)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "currentReviewerId", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Notes list: non-sticky notes by last edition (firestore.js watchNotes / show-more)",
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "stickyData.days", "order": "ASCENDING" },
+                { "fieldPath": "lastEditionDate", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Notes list: sticky notes, stickyData.days > 0 (firestore.js watchStickyNotes)",
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "stickyData.days", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Object inner feeds by last change (firestore.js watchInnerFeeds, projectsInnerFeeds/*/feeds)",
+            "collectionGroup": "feeds",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "lastChangeDate", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Goals by owner within a milestone window (goalsFirestore.js watchGoalsByOwner)",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "ownerId", "order": "ASCENDING" },
+                { "fieldPath": "completionMilestoneDate", "order": "ASCENDING" }
+            ]
         }
     ],
     "fieldOverrides": [

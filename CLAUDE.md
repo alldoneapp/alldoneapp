@@ -2141,6 +2141,25 @@ browser before trusting a bigger change.
 - **`--only firestore:indexes` does not publish rules.** It compiles `firestore.rules` to validate them, but `release` is gated on `context.firestoreRules`, which that flag clears. `--dry-run` runs only the prepare phase, so it validates the file without any API writes — but it does _not_ print a create/delete plan; use the check script for that.
 - **Staging is not a superset of production.** It holds ~30 indexes production lacks, including 15 with hardcoded user IDs baked into field paths (`dueDateByObserversIds.<uid>`, plus malformed dot-less variants) created ad hoc from the console. Never fold those into the file — they would be created for two arbitrary users in production.
 - `.firebaserc` defaults to **`alldonestaging`**, so an index command without `--project` targets staging. Always pass `--project` explicitly.
+- **Swapping the access field of a query silently orphans every composite index it had (the
+  `readerIds` rollout, 2026-08-28).** A composite index is keyed on its exact field set, so when
+  "Harden Firestore access rollout" rewrote every list query from `isPublicFor array-contains-any`
+  to `readerIds array-contains`, each rewritten query needed a brand-new index and the ~55 `isPublicFor`
+  ones covered nothing. Only the views exercised during the work got theirs; the Done tab shipped
+  without its four and was **empty in production for five days** — `failed-precondition` in the
+  console, nothing in CI, because the drift check only compares this file against the live set and
+  the missing ones were absent from both. Two facts decide which queries need one, both verified
+  against production with a read-only `runQuery`: Firestore **merges `array-contains` with any
+  number of equality filters on its own**, so `readerIds` + `==` clauses need no composite; a
+  **range, a `!=`, or an `orderBy`** on top of it does, and direction counts (`completed ASC` does
+  not serve `orderBy('completed','desc')`, and an inequality with no explicit order needs ASC).
+  When rewriting a query's filter field, derive the new index list from the old one before
+  shipping; `__tests__/Firestore/firestoreRequiredIndexes.test.js` pins the fifteen `readerIds`
+  shapes the client uses. **Known unindexable query**: the observed-tasks branch of
+  `getOpenTasksQuery` (`utils/backends/openTasks.js`) filters `roleIdsVisibleTo.<readerId>`
+  (a per-user map key) `array-contains` plus a `dueDate` range, which would need one composite
+  index per user — Firestore rejects it for every logged-in user, so that path must filter the
+  date in memory or query a non-per-user field.
 
 ### Cloud cost (reviewed 2026-09-02, August invoice EUR 334.79, ~EUR 306 of it Alldone)
 
