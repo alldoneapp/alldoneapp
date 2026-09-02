@@ -1428,30 +1428,6 @@ repairs existing documents from the goal's current privacy. Pinned by
 `functions/Tasks/recurringTasksCloud.test.js`. The client-side `createRecurrentTask` in
 `tasksFirestore.js` has no callers; the cloud function is the only producer.
 
-### Day-rate logging: the target is a ceiling as well as a floor — for calendar time
-
-A project with day-rate logging on (`project.dayRateTimeLog`, `utils/DayRateTimeLogHelper.js`) bills
-the day, not the minutes, so its `targetMinutes` is a cap too: a day whose real tasks add up to more
-than the day's ceiling has its `statistics/{projectId}/{userId}/{DDMMYYYY}.doneTime` trimmed back to
-it. **The ceiling is the target, or the hand-logged non-calendar minutes when those are higher**
-(`dayCeilingMinutes`). Overlapping and long calendar events (a workshop, travel, a dinner) are what
-inflate a day past the target, so calendar time can only ever fill a day up to it; time typed onto a
-non-calendar task is the user's explicit record and is always kept — ten hours logged by hand stay
-ten hours, and a 3h event on top of them is trimmed, not the hours. The top-up and the cap are gated
-differently on purpose. The top-up waits for the task trigger or a manual "worked day" and stands
-down when a non-calendar task carries hand-logged time; the cap waits for neither (`shouldCapDay` in
-`calculateDayRateTimeLogAdjustment`). Both are one mechanism: a **pinned** day (`shouldPinDay`) ends
-at its ceiling through the same statistics repair delta, and the generated "Time log for day rate"
-task is the anchor — it holds the top-up as its estimation (0 on a capped day) and the trimmed
-minutes as `genericData.cappedMinutes`. That field is what makes the cap reversible: when a day later
-drops under its ceiling without qualifying for a top-up, the reconcile gives exactly those minutes
-back so the statistics return to the task total. It is derived from the excess, not from the repair
-delta, so re-reconciling an already-capped day (delta 0) does not forget them.
-`reconcileExistingDayRateTimeLog`, the path every ordinary task change takes, used to do nothing for
-a day with no anchor; it now creates one when the day is over its ceiling, because a calendar sync
-or an estimation change is precisely how a day goes over. Pinned by the `day cap` block in
-`utils/DayRateTimeLogHelper.test.js`.
-
 ### Happiness ratings — what a rating popup knows before you rate
 
 Both rating surfaces (the "new day" popup and Settings → Happiness → "Rate happiness") render
@@ -2141,26 +2117,6 @@ browser before trusting a bigger change.
 - **`--only firestore:indexes` does not publish rules.** It compiles `firestore.rules` to validate them, but `release` is gated on `context.firestoreRules`, which that flag clears. `--dry-run` runs only the prepare phase, so it validates the file without any API writes — but it does _not_ print a create/delete plan; use the check script for that.
 - **Staging is not a superset of production.** It holds ~30 indexes production lacks, including 15 with hardcoded user IDs baked into field paths (`dueDateByObserversIds.<uid>`, plus malformed dot-less variants) created ad hoc from the console. Never fold those into the file — they would be created for two arbitrary users in production.
 - `.firebaserc` defaults to **`alldonestaging`**, so an index command without `--project` targets staging. Always pass `--project` explicitly.
-- **Swapping the access field of a query silently orphans every composite index it had (the
-  `readerIds` rollout, 2026-08-28).** A composite index is keyed on its exact field set, so when
-  "Harden Firestore access rollout" rewrote every list query from `isPublicFor array-contains-any`
-  to `readerIds array-contains`, each rewritten query needed a brand-new index and the ~55 `isPublicFor`
-  ones covered nothing. Only the views exercised during the work got theirs; the Done tab shipped
-  without its four and was **empty in production for five days** — `failed-precondition` in the
-  console, nothing in CI, because the drift check only compares this file against the live set and
-  the missing ones were absent from both. Two facts decide which queries need one, both verified
-  against production with a read-only `runQuery`: Firestore **merges `array-contains` with any
-  number of equality filters on its own**, so `readerIds` + `==` clauses need no composite; a
-  **range, a `!=`, or an `orderBy`** on top of it does, and direction counts (`completed ASC` does
-  not serve `orderBy('completed','desc')`, and an inequality with no explicit order needs ASC).
-  When rewriting a query's filter field, derive the new index list from the old one before
-  shipping; `__tests__/Firestore/firestoreRequiredIndexes.test.js` pins the fifteen `readerIds`
-  shapes the client uses. Note the per-user access keys (`roleIdsVisibleTo.<readerId>`,
-  `followedByVisibleTo.<readerId>`, `backlinkIdsVisibleTo.<readerId>`) can **only ever be the
-  sole clause** of a query: a composite index on a map key is one index per user, which is not a
-  thing. The observed-tasks branch of `getOpenTasksQuery` (`utils/backends/openTasks.js`) keeps
-  its `dueDate` filters inside the assigned-tasks `else` branch for exactly that reason and
-  buckets observed tasks by date in memory — do not "tidy" the date filters out of the `else`.
 
 ### Cloud cost (reviewed 2026-09-02, August invoice EUR 334.79, ~EUR 306 of it Alldone)
 
