@@ -1428,6 +1428,30 @@ repairs existing documents from the goal's current privacy. Pinned by
 `functions/Tasks/recurringTasksCloud.test.js`. The client-side `createRecurrentTask` in
 `tasksFirestore.js` has no callers; the cloud function is the only producer.
 
+### Day-rate logging: the target is a ceiling as well as a floor — for calendar time
+
+A project with day-rate logging on (`project.dayRateTimeLog`, `utils/DayRateTimeLogHelper.js`) bills
+the day, not the minutes, so its `targetMinutes` is a cap too: a day whose real tasks add up to more
+than the day's ceiling has its `statistics/{projectId}/{userId}/{DDMMYYYY}.doneTime` trimmed back to
+it. **The ceiling is the target, or the hand-logged non-calendar minutes when those are higher**
+(`dayCeilingMinutes`). Overlapping and long calendar events (a workshop, travel, a dinner) are what
+inflate a day past the target, so calendar time can only ever fill a day up to it; time typed onto a
+non-calendar task is the user's explicit record and is always kept — ten hours logged by hand stay
+ten hours, and a 3h event on top of them is trimmed, not the hours. The top-up and the cap are gated
+differently on purpose. The top-up waits for the task trigger or a manual "worked day" and stands
+down when a non-calendar task carries hand-logged time; the cap waits for neither (`shouldCapDay` in
+`calculateDayRateTimeLogAdjustment`). Both are one mechanism: a **pinned** day (`shouldPinDay`) ends
+at its ceiling through the same statistics repair delta, and the generated "Time log for day rate"
+task is the anchor — it holds the top-up as its estimation (0 on a capped day) and the trimmed
+minutes as `genericData.cappedMinutes`. That field is what makes the cap reversible: when a day later
+drops under its ceiling without qualifying for a top-up, the reconcile gives exactly those minutes
+back so the statistics return to the task total. It is derived from the excess, not from the repair
+delta, so re-reconciling an already-capped day (delta 0) does not forget them.
+`reconcileExistingDayRateTimeLog`, the path every ordinary task change takes, used to do nothing for
+a day with no anchor; it now creates one when the day is over its ceiling, because a calendar sync
+or an estimation change is precisely how a day goes over. Pinned by the `day cap` block in
+`utils/DayRateTimeLogHelper.test.js`.
+
 ### Happiness ratings — what a rating popup knows before you rate
 
 Both rating surfaces (the "new day" popup and Settings → Happiness → "Rate happiness") render

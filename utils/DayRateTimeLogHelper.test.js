@@ -274,8 +274,8 @@ describe('DayRateTimeLogHelper', () => {
         expect(result.adjustmentMinutes).toBe(240)
     })
 
-    it('caps a day above the target even when it does not qualify for a top-up', () => {
-        const result = calculateDayRateTimeLogAdjustment([task(360), task(240)], {
+    it('caps calendar time above the target even when the day does not qualify for a top-up', () => {
+        const result = calculateDayRateTimeLogAdjustment([calendarTask(240), calendarTask(240), calendarTask(120)], {
             enabled: true,
             targetMinutes: 480,
             triggerTasks: 5,
@@ -284,8 +284,32 @@ describe('DayRateTimeLogHelper', () => {
         expect(result.shouldLogDay).toBe(false)
         expect(result.shouldCapDay).toBe(true)
         expect(result.shouldPinDay).toBe(true)
+        expect(result.dayCeilingMinutes).toBe(480)
         expect(result.excessMinutes).toBe(120)
         expect(result.adjustmentMinutes).toBe(0)
+    })
+
+    it('keeps hand-logged non-calendar time above the target', () => {
+        const result = calculateDayRateTimeLogAdjustment([task(360), task(240)], {
+            enabled: true,
+            targetMinutes: 480,
+            triggerTasks: 5,
+        })
+
+        expect(result.manualNonCalendarMinutes).toBe(600)
+        expect(result.dayCeilingMinutes).toBe(600)
+        expect(result.excessMinutes).toBe(0)
+        expect(result.shouldCapDay).toBe(false)
+        expect(result.shouldPinDay).toBe(false)
+    })
+
+    it('raises the ceiling to the hand-logged time and trims only the calendar time above it', () => {
+        expect(
+            calculateDayRateTimeLogAdjustment([task(600), calendarTask(180)], { enabled: true, targetMinutes: 480 })
+        ).toMatchObject({ realLoggedMinutes: 780, dayCeilingMinutes: 600, excessMinutes: 180, shouldCapDay: true })
+        expect(
+            calculateDayRateTimeLogAdjustment([task(120), calendarTask(540)], { enabled: true, targetMinutes: 480 })
+        ).toMatchObject({ realLoggedMinutes: 660, dayCeilingMinutes: 480, excessMinutes: 180, shouldCapDay: true })
     })
 
     it('reports no excess for a day at or below the target', () => {
@@ -548,7 +572,7 @@ describe('DayRateTimeLogHelper', () => {
         )
     })
 
-    describe('day cap (no more than the target per day)', () => {
+    describe('day cap (calendar time never logs more than the target; hand-logged time is kept)', () => {
         const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
         const anchorPath = 'items/project-1/tasks/dayRateTimeLog_user-1_20260501'
         const anchor = (estimation, genericData = {}) =>
@@ -557,6 +581,16 @@ describe('DayRateTimeLogHelper', () => {
                 completed,
                 genericData: { type: DAY_RATE_TIME_LOG_TYPE, manual: false, ...genericData },
             })
+        const expectStatisticsWrite = (minutes, subtract) =>
+            expect(updateStatistics).toHaveBeenCalledWith(
+                'project-1',
+                'user-1',
+                minutes,
+                subtract,
+                true,
+                completed,
+                expect.anything()
+            )
 
         beforeEach(() => {
             ProjectHelper.getProjectById.mockReturnValue({
@@ -564,17 +598,22 @@ describe('DayRateTimeLogHelper', () => {
             })
         })
 
-        it('trims a day over the target that would never have qualified for a top-up', async () => {
-            // Two tasks with hand-logged time: below the task trigger AND manual non-calendar time,
-            // i.e. every reason the top-up stands down. The cap must not.
-            getDb.mockReturnValue(createMockDb([storedTask(360, { completed }), storedTask(240, { completed })]))
+        it('trims calendar time over the target on a day that never qualified for a top-up', async () => {
+            // Three events, below the task trigger, so the top-up stands down. The cap must not.
+            getDb.mockReturnValue(
+                createMockDb([
+                    storedCalendarTask(240, { completed }),
+                    storedCalendarTask(240, { completed }),
+                    storedCalendarTask(120, { completed }),
+                ])
+            )
 
             const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
 
             expect(result).toEqual({
                 adjustmentMinutes: 0,
                 cappedMinutes: 120,
-                realDoneTasksAmount: 2,
+                realDoneTasksAmount: 3,
                 realLoggedMinutes: 600,
                 updated: true,
             })
@@ -586,15 +625,7 @@ describe('DayRateTimeLogHelper', () => {
                 })
             )
             expect(updateStatistics).toHaveBeenCalledTimes(1)
-            expect(updateStatistics).toHaveBeenCalledWith(
-                'project-1',
-                'user-1',
-                120,
-                true,
-                true,
-                completed,
-                expect.anything()
-            )
+            expectStatisticsWrite(120, true)
         })
 
         it('trims a qualifying day over the target instead of only skipping the top-up', async () => {
@@ -612,28 +643,77 @@ describe('DayRateTimeLogHelper', () => {
 
             expect(result).toMatchObject({ adjustmentMinutes: 0, cappedMinutes: 120, updated: true })
             expect(updateStatistics).toHaveBeenCalledTimes(1)
-            expect(updateStatistics).toHaveBeenCalledWith(
-                'project-1',
-                'user-1',
-                120,
-                true,
-                true,
-                completed,
-                expect.anything()
+            expectStatisticsWrite(120, true)
+        })
+
+        it('keeps hand-logged non-calendar time above the target untouched', async () => {
+            // Ten hours typed onto two tasks is the user's explicit record of the day: no generated
+            // task, no statistics write, from either entry point.
+            getDb.mockReturnValue(createMockDb([storedTask(360, { completed }), storedTask(240, { completed })]))
+
+            await expect(reconcileDayRateTimeLog('project-1', 'user-1', completed)).resolves.toEqual({
+                adjustmentMinutes: 0,
+                cappedMinutes: 0,
+                realDoneTasksAmount: 2,
+                realLoggedMinutes: 600,
+                updated: false,
+            })
+            await expect(reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)).resolves.toEqual({
+                updated: false,
+            })
+            expect(mockBatchSet).not.toHaveBeenCalled()
+            expect(mockBatchUpdate).not.toHaveBeenCalled()
+            expect(updateStatistics).not.toHaveBeenCalled()
+        })
+
+        it('caps a mixed day at the hand-logged time rather than at the target', async () => {
+            // 10h by hand plus a 3h calendar event: the hand-logged hours raise the ceiling to 10h,
+            // and only the calendar time above it is trimmed.
+            getDb.mockReturnValue(
+                createMockDb([storedTask(600, { completed }), storedCalendarTask(180, { completed })])
             )
+
+            const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ cappedMinutes: 180, realLoggedMinutes: 780, updated: true })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expectStatisticsWrite(180, true)
+            expect(mockBatchSet).toHaveBeenCalledWith(
+                expect.objectContaining({ path: anchorPath }),
+                expect.objectContaining({ genericData: expect.objectContaining({ cappedMinutes: 180 }) })
+            )
+        })
+
+        it('lets calendar time fill only up to the target next to hand-logged time', async () => {
+            // 2h by hand plus 9h of calendar events: the ceiling stays at the 8h target.
+            getDb.mockReturnValue(
+                createMockDb([storedTask(120, { completed }), storedCalendarTask(540, { completed })])
+            )
+
+            const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ cappedMinutes: 180, realLoggedMinutes: 660, updated: true })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expectStatisticsWrite(180, true)
         })
 
         it('applies the cap from the after-task-change path when the day has no generated task yet', async () => {
             // This is the path an ordinary estimation change takes, and it used to require a
             // generated task to exist before it would touch the day at all.
-            getDb.mockReturnValue(createMockDb([storedTask(360, { completed }), storedTask(240, { completed })]))
+            getDb.mockReturnValue(
+                createMockDb([
+                    storedCalendarTask(240, { completed }),
+                    storedCalendarTask(240, { completed }),
+                    storedCalendarTask(120, { completed }),
+                ])
+            )
 
             const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
 
             expect(result).toEqual({
                 adjustmentMinutes: 0,
                 cappedMinutes: 120,
-                realDoneTasksAmount: 2,
+                realDoneTasksAmount: 3,
                 realLoggedMinutes: 600,
                 updated: true,
             })
@@ -644,19 +724,13 @@ describe('DayRateTimeLogHelper', () => {
                     genericData: expect.objectContaining({ cappedMinutes: 120 }),
                 })
             )
-            expect(updateStatistics).toHaveBeenCalledWith(
-                'project-1',
-                'user-1',
-                120,
-                true,
-                true,
-                completed,
-                expect.anything()
-            )
+            expectStatisticsWrite(120, true)
         })
 
         it('still leaves a day under the target alone when it has no generated task', async () => {
-            getDb.mockReturnValue(createMockDb([storedTask(60, { completed }), storedTask(30, { completed })]))
+            getDb.mockReturnValue(
+                createMockDb([storedCalendarTask(60, { completed }), storedCalendarTask(30, { completed })])
+            )
 
             const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
 
@@ -669,7 +743,11 @@ describe('DayRateTimeLogHelper', () => {
         it('re-running a capped day writes no statistics but keeps remembering the trimmed minutes', async () => {
             getDb.mockReturnValue(
                 createMockDb(
-                    [storedTask(360, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    [
+                        storedCalendarTask(360, { completed }),
+                        storedCalendarTask(240, { completed }),
+                        anchor(0, { cappedMinutes: 120 }),
+                    ],
                     { 'statistics/project-1/user-1/01052026': { doneTime: 480 } }
                 )
             )
@@ -685,13 +763,17 @@ describe('DayRateTimeLogHelper', () => {
         })
 
         it('gives the trimmed minutes back once the day drops under the target', async () => {
-            // The day was capped at 480 with 600 real minutes. The user then lowered a task from
-            // 360 to 160: the estimation path already wrote -360 +160 to the statistics, so they
-            // stand at 280 while the tasks add up to 400. Nothing qualifies the day for a top-up,
-            // so the statistics must return to the task total, i.e. get the 120 back.
+            // The day was capped at 480 with 600 calendar minutes. One event then shrank from 360
+            // to 160: the estimation path already wrote -360 +160 to the statistics, so they stand
+            // at 280 while the tasks add up to 400. Nothing qualifies the day for a top-up, so the
+            // statistics must return to the task total, i.e. get the 120 back.
             getDb.mockReturnValue(
                 createMockDb(
-                    [storedTask(160, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    [
+                        storedCalendarTask(160, { completed }),
+                        storedCalendarTask(240, { completed }),
+                        anchor(0, { cappedMinutes: 120 }),
+                    ],
                     { 'statistics/project-1/user-1/01052026': { doneTime: 280 } }
                 )
             )
@@ -706,26 +788,46 @@ describe('DayRateTimeLogHelper', () => {
                 updated: true,
             })
             expect(updateStatistics).toHaveBeenCalledTimes(1)
-            expect(updateStatistics).toHaveBeenCalledWith(
-                'project-1',
-                'user-1',
-                120,
-                false,
-                true,
-                completed,
-                expect.anything()
-            )
+            expectStatisticsWrite(120, false)
             expect(mockBatchUpdate).toHaveBeenCalledWith(
                 expect.objectContaining({ path: anchorPath }),
                 expect.objectContaining({ 'genericData.cappedMinutes': 0 })
             )
         })
 
-        it('re-trims to the new excess when a capped day shrinks but stays over the target', async () => {
-            // 600 capped to 480, then one task lowered 360 -> 260: statistics now 380, tasks 500.
+        it('gives the trimmed minutes back when hand-logged time raises the ceiling past them', async () => {
+            // 600 calendar minutes capped at 480 (anchor remembers 120). The user then logs 10h by
+            // hand on a task: the estimation path added 600 to the statistics (now 1080), the
+            // ceiling is 600 and the tasks add up to 1200 — so the whole calendar time is now the
+            // excess, and the statistics end at the hand-logged 600.
             getDb.mockReturnValue(
                 createMockDb(
-                    [storedTask(260, { completed }), storedTask(240, { completed }), anchor(0, { cappedMinutes: 120 })],
+                    [
+                        storedCalendarTask(360, { completed }),
+                        storedCalendarTask(240, { completed }),
+                        storedTask(600, { completed }),
+                        anchor(0, { cappedMinutes: 120 }),
+                    ],
+                    { 'statistics/project-1/user-1/01052026': { doneTime: 1080 } }
+                )
+            )
+
+            const result = await reconcileExistingDayRateTimeLog('project-1', 'user-1', completed)
+
+            expect(result).toMatchObject({ cappedMinutes: 600, realLoggedMinutes: 1200, updated: true })
+            expect(updateStatistics).toHaveBeenCalledTimes(1)
+            expectStatisticsWrite(480, true)
+        })
+
+        it('re-trims to the new excess when a capped day shrinks but stays over the target', async () => {
+            // 600 capped to 480, then one event shortened 360 -> 260: statistics now 380, tasks 500.
+            getDb.mockReturnValue(
+                createMockDb(
+                    [
+                        storedCalendarTask(260, { completed }),
+                        storedCalendarTask(240, { completed }),
+                        anchor(0, { cappedMinutes: 120 }),
+                    ],
                     { 'statistics/project-1/user-1/01052026': { doneTime: 380 } }
                 )
             )
@@ -734,15 +836,7 @@ describe('DayRateTimeLogHelper', () => {
 
             expect(result).toMatchObject({ cappedMinutes: 20, realLoggedMinutes: 500, updated: true })
             expect(updateStatistics).toHaveBeenCalledTimes(1)
-            expect(updateStatistics).toHaveBeenCalledWith(
-                'project-1',
-                'user-1',
-                100,
-                false,
-                true,
-                completed,
-                expect.anything()
-            )
+            expectStatisticsWrite(100, false)
             expect(mockBatchUpdate).toHaveBeenCalledWith(
                 expect.objectContaining({ path: anchorPath }),
                 expect.objectContaining({ 'genericData.cappedMinutes': 20 })
