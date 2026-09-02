@@ -21,6 +21,16 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 
+/**
+ * Below this viewport width the five section labels no longer fit on one line in German or
+ * Spanish ("Aufgaben Ziele Notizen Kontakte Chats" needs ~372px at 16px + 10px padding, and a
+ * 390px phone leaves the card ~336px). English only just fits, which is why it was never noticed.
+ * The mobile layout above this width keeps the centred scroller; below it the tabs become a fixed
+ * single row with a smaller font and tighter padding (~300px), which fits all three languages on a
+ * 360px Android as well.
+ */
+export const COMPACT_TABS_BREAKPOINT = 420
+
 export default function MainSectionTabsHeader({
     showSectionToggle = false,
     renderSectionToggle = null,
@@ -39,6 +49,7 @@ export default function MainSectionTabsHeader({
     const [viewportWidth, setViewportWidth] = useState(getViewportWidth())
 
     const useMobileLayout = viewportWidth < SCREEN_BREAKPOINT_NAV
+    const useCompactMobileTabs = useMobileLayout && viewportWidth < COMPACT_TABS_BREAKPOINT
     const useCompactDesktopTabs = !useMobileLayout && viewportWidth < 1500
     const tabs = [
         { text: 'Tasks', value: DV_TAB_ROOT_TASKS },
@@ -88,46 +99,64 @@ export default function MainSectionTabsHeader({
         dispatch(actionsToDispatch)
     }
 
+    const renderMobileTabs = compact =>
+        tabs.map(tab => {
+            const selected = selectedSidebarTab === tab.value
+            return (
+                <TouchableOpacity
+                    key={tab.value}
+                    style={[
+                        localStyles.tabButton,
+                        localStyles.tabButtonMobile,
+                        compact && localStyles.tabButtonCompact,
+                        selected && localStyles.tabButtonSelected,
+                    ]}
+                    onPress={() => onPressSectionTab(tab.value)}
+                    disabled={!accessGranted}
+                    accessible={false}
+                >
+                    <Text
+                        style={[
+                            localStyles.tabText,
+                            localStyles.tabTextMobile,
+                            compact && localStyles.tabTextCompact,
+                            selected && localStyles.tabTextSelected,
+                        ]}
+                        numberOfLines={1}
+                    >
+                        {translate(tab.text)}
+                    </Text>
+                </TouchableOpacity>
+            )
+        })
+
     return (
         <View style={localStyles.container}>
             {useMobileLayout ? (
                 <View style={localStyles.controlsRowMobile}>
-                    <ScrollView
-                        horizontal={true}
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={[
-                            localStyles.tabsContainer,
-                            localStyles.tabsContainerMobile,
-                            !accessGranted && localStyles.tabsContainerDisabled,
-                        ]}
-                    >
-                        {tabs.map(tab => {
-                            const selected = selectedSidebarTab === tab.value
-                            return (
-                                <TouchableOpacity
-                                    key={tab.value}
-                                    style={[
-                                        localStyles.tabButton,
-                                        localStyles.tabButtonMobile,
-                                        selected && localStyles.tabButtonSelected,
-                                    ]}
-                                    onPress={() => onPressSectionTab(tab.value)}
-                                    disabled={!accessGranted}
-                                    accessible={false}
-                                >
-                                    <Text
-                                        style={[
-                                            localStyles.tabText,
-                                            localStyles.tabTextMobile,
-                                            selected && localStyles.tabTextSelected,
-                                        ]}
-                                    >
-                                        {translate(tab.text)}
-                                    </Text>
-                                </TouchableOpacity>
-                            )
-                        })}
-                    </ScrollView>
+                    {useCompactMobileTabs ? (
+                        <View
+                            style={[
+                                localStyles.tabsContainer,
+                                localStyles.tabsContainerCompact,
+                                !accessGranted && localStyles.tabsContainerDisabled,
+                            ]}
+                        >
+                            {renderMobileTabs(true)}
+                        </View>
+                    ) : (
+                        <ScrollView
+                            horizontal={true}
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={[
+                                localStyles.tabsContainer,
+                                localStyles.tabsContainerMobile,
+                                !accessGranted && localStyles.tabsContainerDisabled,
+                            ]}
+                        >
+                            {renderMobileTabs(false)}
+                        </ScrollView>
+                    )}
 
                     {showRightArea && (
                         <View style={localStyles.mobileControlsContainer}>
@@ -249,6 +278,10 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         justifyContent: 'center',
     },
+    tabsContainerCompact: {
+        width: '100%',
+        justifyContent: 'space-between',
+    },
     tabsContainerDisabled: {
         opacity: 0.6,
     },
@@ -270,6 +303,11 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 10,
         marginHorizontal: 0,
     },
+    tabButtonCompact: {
+        paddingHorizontal: 6,
+        flexShrink: 1,
+        minWidth: 0,
+    },
     tabButtonSelected: {
         borderBottomColor: colors.Primary100,
     },
@@ -279,6 +317,11 @@ const localStyles = StyleSheet.create({
     },
     tabTextMobile: {
         ...styles.subtitle1,
+    },
+    tabTextCompact: {
+        fontSize: 14,
+        lineHeight: 22,
+        letterSpacing: 0,
     },
     tabTextSelected: {
         color: colors.Text01,
