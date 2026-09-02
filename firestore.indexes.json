@@ -4734,6 +4734,52 @@
                 { "fieldPath": "userId", "order": "ASCENDING" },
                 { "fieldPath": "sortIndex", "order": "ASCENDING" }
             ]
+        },
+        {
+            "__comment__": "Done tab: newest done tasks of the day (doneTasks.js watchNewestDoneTasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "DESCENDING" },
+                { "fieldPath": "sortIndex", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Done tab: earlier done tasks page (doneTasks.js watchEarlierDoneTasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "done", "order": "ASCENDING" },
+                { "fieldPath": "parentId", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "DESCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Done tab: earlier done subtasks (doneTasks.js watchEarlierDoneSubtasks)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "parentDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" }
+            ]
+        },
+        {
+            "__comment__": "Done tab: show-more probe (doneTasks.js watchIfNeedToShowTheShowMoreButton)",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "readerIds", "arrayConfig": "CONTAINS" },
+                { "fieldPath": "inDone", "order": "ASCENDING" },
+                { "fieldPath": "userId", "order": "ASCENDING" },
+                { "fieldPath": "completed", "order": "ASCENDING" }
+            ]
         }
     ],
     "fieldOverrides": [
