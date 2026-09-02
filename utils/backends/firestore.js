@@ -7533,6 +7533,10 @@ export function unwatchHastagsColors(hashtagId) {
     }
 }
 
+// NOTES_COLLABORATION_SERVER is injected at build time from the GitLab CI variable of the same name
+// (ci/replace-envs.sh), not from a file in the repo. Since 2026-09-02 it points at the Cloud Run
+// service `alldone-notes-collab-server` (europe-west1, one instance, session affinity) — the same
+// stock y-websocket server that ran on App Engine Flexible from 2021 at three times the cost.
 export function getNotesCollaborationServerData() {
     return { NOTES_COLLABORATION_SERVER }
 }
