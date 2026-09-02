@@ -1409,6 +1409,23 @@ line exists to tell apart. Pinned by `functions/shared/voiceVocabularyTerms.test
 repeat the Deepgram call inline with its own copy of the options; it now calls
 `transcribeAudioBase64`, so the model, formatting and vocabulary cannot drift between the two paths.
 
+### A recurrence copy must carry its goal's privacy, not just its goal id
+
+`parentGoalId` and `parentGoalIsPublicFor` are one fact written as two fields: the open-task lists
+(`processTaskChange` in `utils/backends/openTasks.js`) group a task under its goal only when the
+array names the reader, so a task with a goal id and a null array is filed under "no goal" while
+still pointing at one, and the list warns `[OpenTasks] oldTask.parentGoalIsPublicFor missing/invalid`
+on its next edit. `functions/shared/TaskModelBuilder.js` used to hardcode the array to null while
+passing `parentGoalId` through, and `recurringTasksCloud` clones the whole completed task into it - so
+every new occurrence of a recurring task silently dropped out of its goal group (a production sweep on
+2026-09-02 found 282 such tasks on one account, all recurrence copies). The builder now resolves the
+array through `resolveParentGoalIsPublicFor` (caller's array, else public-for-all, matching
+`mapGoalData`'s default for a goal without `isPublicFor`); `migration/backfillParentGoalIsPublicFor.js`
+repairs existing documents from the goal's current privacy. Pinned by
+`functions/shared/TaskModelBuilder.test.js` and the goal-privacy block in
+`functions/Tasks/recurringTasksCloud.test.js`. The client-side `createRecurrentTask` in
+`tasksFirestore.js` has no callers; the cloud function is the only producer.
+
 ### Gold Transactions
 
 - Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
