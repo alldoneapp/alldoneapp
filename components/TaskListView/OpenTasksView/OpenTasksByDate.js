@@ -14,6 +14,11 @@ import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonConta
 import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
 import TaskListSkeleton from '../TaskListSkeleton'
+import useProjectEmptyInboxCelebration from './useProjectEmptyInboxCelebration'
+
+// Stable identity, so the `shallowEqual` filter selectors below cannot report a change on every
+// store update just because they built a fresh empty array.
+const EMPTY_FILTERS = []
 
 export default function OpenTasksByDate({
     projectId,
@@ -33,6 +38,10 @@ export default function OpenTasksByDate({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const activeDragTaskModeInDate = useSelector(state => state.activeDragTaskModeInDate)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const currentUserId = useSelector(state => state.currentUser?.uid)
+    const taskPriorityFilters = useSelector(state => state.taskPriorityFilters || EMPTY_FILTERS, shallowEqual)
+    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters || EMPTY_FILTERS, shallowEqual)
     const loggedUserProjectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
@@ -110,6 +119,43 @@ export default function OpenTasksByDate({
         }
     }, [])
 
+    const showProjectEmptyInbox =
+        !assistantProfileMode &&
+        amountTasks === 0 &&
+        assistantScheduleOccurrences.length === 0 &&
+        emptyGoalsAmount === 0 &&
+        initialLoadingEndOpenTasks &&
+        initialLoadingEndObservedTasks
+
+    /**
+     * AT-2492 — who may spend the once-per-day, per-project celebration.
+     *
+     * Four gates, and each closes a way of celebrating something that did not happen:
+     *
+     *   • the empty block is actually on screen, so the marker can never be spent by a frame nobody
+     *     saw (the AT-2445 lesson, where a loading-window flash consumed the day's celebration and
+     *     the real moment later that day animated nothing);
+     *   • today's section only. This component renders once per date section, so with Later expanded
+     *     several of them can be empty at once — without this, one clearing would fire three bursts;
+     *   • the selected-project board only. All Projects hides an empty project's block entirely
+     *     (`hideProjectData`), but a project with visible OKRs still renders it, and a board showing
+     *     several cleared projects would otherwise celebrate all of them at once;
+     *   • no task filters, and the board is the logged user's own. `amountTasks` comes from the
+     *     FILTERED store, so a priority or VM filter empties the list without the project being
+     *     done; and an assistant's board is not your inbox.
+     *
+     * The hook still records the transition when this is false — the project was cleared either way.
+     */
+    const celebrateProjectEmptyInbox =
+        showProjectEmptyInbox &&
+        dateIsToday &&
+        inSelectedProject &&
+        currentUserId === loggedUserId &&
+        taskPriorityFilters.length === 0 &&
+        taskVmStateFilters.length === 0
+
+    const projectEmptyInboxRunId = useProjectEmptyInboxCelebration(projectId, loggedUserId, celebrateProjectEmptyInbox)
+
     const isActiveOrganizeMode =
         activeDragTaskModeInDate &&
         activeDragTaskModeInDate.projectId === projectId &&
@@ -152,14 +198,13 @@ export default function OpenTasksByDate({
                     {...assistantScheduleContext}
                 />
             )}
-            {!assistantProfileMode &&
-                amountTasks === 0 &&
-                assistantScheduleOccurrences.length === 0 &&
-                emptyGoalsAmount === 0 &&
-                initialLoadingEndOpenTasks &&
-                initialLoadingEndObservedTasks && (
-                    <SelectedProjectEmptyInbox projectId={projectId} instanceKey={instanceKey} />
-                )}
+            {showProjectEmptyInbox && (
+                <SelectedProjectEmptyInbox
+                    projectId={projectId}
+                    instanceKey={instanceKey}
+                    celebrationRunId={projectEmptyInboxRunId}
+                />
+            )}
             {showTopShowMoreButton && (
                 <TopShowMoreButton
                     instanceKey={instanceKey}

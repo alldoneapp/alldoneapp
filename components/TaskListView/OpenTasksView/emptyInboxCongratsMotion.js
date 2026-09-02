@@ -61,11 +61,23 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
  * that render them, for the same reason `emptyInboxDotMotion` does: the headline and the confetti
  * are one event, and two independently started animations would read as exactly that.
  *
+ * AT-2492 made the three durations parameters rather than constants read from module scope, so the
+ * smaller per-project celebration can be the SAME motion at a shorter tuning instead of a second
+ * implementation of it. The defaults are the all-projects values, so every existing caller is
+ * unchanged. Nothing else about the hook is configurable on purpose: the settle-on-a-timer rule,
+ * the play-once guard and the reduced-motion branch are the parts that were expensive to get right,
+ * and a second copy of them is exactly what this avoids.
+ *
  * @param {number} runId 0 for "nothing to celebrate", otherwise the run to play once. Shared with
  *   the achievement card's dot, so the two beats belong to the same celebration.
+ * @param {object} [timing] Durations in ms. `totalMs` must outlast the longer of the other two, or
+ *   the settle would clip the run it is ending.
  * @returns {{entrance: Animated.Value, confetti: Animated.Value, animated: boolean, celebrating: boolean}}
  */
-export default function useEmptyInboxCongratsCelebration(runId) {
+export default function useEmptyInboxCongratsCelebration(
+    runId,
+    { entranceMs = HEADLINE_MS, confettiMs = CONFETTI_MS, totalMs = CONGRATS_TOTAL_MS } = {}
+) {
     const reducedMotion = useReducedMotion()
     const animated = !reducedMotion && !animationsAreDisabled()
     const [celebrating, setCelebrating] = useState(false)
@@ -100,7 +112,7 @@ export default function useEmptyInboxCongratsCelebration(runId) {
         const animation = Animated.parallel([
             Animated.timing(entrance, {
                 toValue: 1,
-                duration: HEADLINE_MS,
+                duration: entranceMs,
                 // Linear driver: the shape of each beat lives in the interpolations that consume it,
                 // so the staging can be re-tuned without touching this sequence.
                 easing: Easing.linear,
@@ -108,7 +120,7 @@ export default function useEmptyInboxCongratsCelebration(runId) {
             }),
             Animated.timing(confetti, {
                 toValue: 1,
-                duration: CONFETTI_MS,
+                duration: confettiMs,
                 easing: Easing.linear,
                 useNativeDriver: false,
             }),
@@ -125,13 +137,13 @@ export default function useEmptyInboxCongratsCelebration(runId) {
             setCelebrating(false)
             entrance.setValue(1)
             confetti.setValue(0)
-        }, CONGRATS_TOTAL_MS)
+        }, totalMs)
 
         return () => {
             clearTimeout(settleTimer)
             animation.stop()
         }
-    }, [runId, animated])
+    }, [runId, animated, entranceMs, confettiMs, totalMs])
 
     return { entrance, confetti, animated, celebrating }
 }

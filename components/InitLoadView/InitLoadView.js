@@ -12,6 +12,7 @@ import {
     setLoadedNewFeeds,
 } from '../../redux/actions'
 import useReachEmptyInbox from '../../hooks/useReachEmptyInbox'
+import useReachProjectEmptyInbox from '../../hooks/useReachProjectEmptyInbox'
 import {
     PROJECT_TYPE_ACTIVE,
     PROJECT_TYPE_GUIDE,
@@ -32,6 +33,9 @@ function InitLoadWatchers() {
     const [timeOfFeedsLoaded, setTimeOfFeedsLoaded] = useState(0)
     const [watchedProjectsIds, setWatchedProjectsIds] = useState([])
     useReachEmptyInbox()
+    // AT-2492: the per-project sibling. Records "this project's today list was cleared" wherever the
+    // user happens to be when it happens; the selected-project board decides what to do with it.
+    useReachProjectEmptyInbox()
     useSideBarTasksAmount()
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
