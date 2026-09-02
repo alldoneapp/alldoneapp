@@ -2,7 +2,29 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { FieldValue } = require('firebase-admin/firestore')
 
-const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'objectType', 'channel', 'note', 'callSessionId']
+const GOLD_CONTEXT_FIELDS = [
+    'projectId',
+    'goalId',
+    'objectId',
+    'objectType',
+    'channel',
+    'note',
+    'callSessionId',
+    // Billing dimensions (AT-2487). `model` is the pricing key the charge was computed
+    // with, stored verbatim so the exact value survives even though the rollup slugs it.
+    // `correlationId` is the VM run id: the ledger previously carried nothing that could
+    // be joined back to `vmJobs`, which is why answering "was this spend token-billed?"
+    // needed a manual, approximate match on projectId + objectId + timestamp.
+    'model',
+    'correlationId',
+]
+
+// Booleans need their own list because the string sanitizer below drops everything that is
+// not a non-empty string. `billingExempt` is a tristate — true / false / absent — and the
+// absent case is load-bearing (see goldDimensions.js), so it is persisted only when the
+// caller passes an actual boolean. An `undefined` from a charge site that has no concept of
+// billing exemption must never be written as `false`.
+const GOLD_CONTEXT_BOOLEAN_FIELDS = ['billingExempt']
 
 function sanitizeContext(context = {}) {
     const sanitized = {}
@@ -12,6 +34,14 @@ function sanitizeContext(context = {}) {
 
         if (typeof value === 'string' && value.trim()) {
             sanitized[field] = value.trim()
+        }
+    })
+
+    GOLD_CONTEXT_BOOLEAN_FIELDS.forEach(field => {
+        const value = context[field]
+
+        if (typeof value === 'boolean') {
+            sanitized[field] = value
         }
     })
 
@@ -179,6 +209,9 @@ async function applyGoldChange({
 }
 
 module.exports = {
+    GOLD_CONTEXT_FIELDS,
+    GOLD_CONTEXT_BOOLEAN_FIELDS,
+    sanitizeContext,
     applyGoldChange,
     applyGoldChangeInTransaction,
 }

@@ -103,6 +103,9 @@ describe('processRambleSecondGen', () => {
             source: 'rambler',
             channel: 'comment',
             projectId: 'project-1',
+            // The cleanup model the token half of the price came from — recorded so
+            // `goldStats.spendByModel` can attribute rambler spend (AT-2487).
+            model: 'MODEL_GPT5_6_SOL',
         })
         expect(result).toEqual({
             text: 'cleaned text',
@@ -191,6 +194,7 @@ describe('processRambleSecondGen', () => {
             source: 'rambler',
             channel: 'generic',
             projectId: 'project-1',
+            model: 'MODEL_GPT5_6_SOL',
         })
     })
 

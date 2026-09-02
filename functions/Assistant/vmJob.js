@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
+const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
@@ -585,6 +586,19 @@ async function startVmJob({
     const personalApiKeyUsed = credentialMode === 'byok'
     const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed
 
+    // Minted before the base reserve is charged so every ledger entry this run produces —
+    // including the very first one — carries the run id (AT-2487). Previously the ledger held
+    // nothing that could be joined back to `vmJobs` at all, so attributing a spend to its
+    // billing mode meant matching on projectId + objectId + timestamp, which is ambiguous the
+    // moment a thread has run more than once.
+    const correlationId = crypto.randomUUID()
+
+    // The billing dimensions carried by every Gold movement of this run. `billingExempt`
+    // records whether the MODEL TOKENS were Gold-billed; the base reserve and the per-minute
+    // compute charge are paid either way, so an exempt run still spends Gold — which is
+    // exactly the distinction `goldStats` could not previously express.
+    const goldBillingDimensions = { model: modelResult.value, billingExempt: tokenBillingExempt, correlationId }
+
     // Charge the up-front base reserve. The metered per-minute + per-token top-up is
     // charged by the worker on completion. The base is refunded if the run fails.
     const { deductGold } = require('../Gold/goldHelper')
@@ -594,6 +608,7 @@ async function startVmJob({
         projectId,
         objectId,
         objectType,
+        ...goldBillingDimensions,
         note: `VM task base reserve (${selectedAgent}/${taskType})`,
     })
     if (!goldResult || !goldResult.success) {
@@ -603,7 +618,6 @@ async function startVmJob({
         }
     }
 
-    const correlationId = crypto.randomUUID()
     const userIdsToNotify = [requestUserId]
     // Frozen routing context for the asynchronous callback. The task/chat can change while the VM
     // runs, so the worker must not re-resolve the assistant from their eventual state.
@@ -630,6 +644,7 @@ async function startVmJob({
             projectId,
             objectId,
             objectType,
+            ...goldBillingDimensions,
             note: 'VM task could not be queued',
         }).catch(() => {})
         return { success: false, message: 'Could not start the VM task right now. Your Gold has been refunded.' }
@@ -846,6 +861,7 @@ async function startVmJob({
         requestUserId,
         statusCommentId,
         assistantId,
+        goldBillingDimensions,
     })
     if (launch.outcome === 'ambiguous') {
         return {
@@ -903,6 +919,11 @@ async function performVmCloudRunLaunch({
     requestUserId,
     statusCommentId,
     assistantId = null,
+    // Billing dimensions for the refund this function may issue (AT-2487). Passed in
+    // rather than re-read here: both callers already hold the job state, and a refund
+    // that dropped them would leave `vm_execution_refund` unattributable while the
+    // matching charge was attributed — i.e. a NET-cost figure that silently does not add up.
+    goldBillingDimensions = {},
     executionAttemptId = crypto.randomUUID(),
 }) {
     // The HTTP request only launches the detached execution; the five-hour sliced E2B supervision
@@ -952,6 +973,7 @@ async function performVmCloudRunLaunch({
             projectId,
             objectId,
             objectType,
+            ...goldBillingDimensions,
             note: 'VM Cloud Run Job could not be launched',
         }).catch(() => {})
         await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
@@ -1029,6 +1051,7 @@ async function settleQueuedVmJobInsufficientGold(pending) {
         projectId: pending.projectId,
         objectId: pending.objectId,
         objectType: pending.objectType,
+        ...buildVmGoldBillingDimensions(pending),
         note: 'Queued VM task skipped — out of Gold',
     }).catch(() => {})
     await admin
@@ -1122,6 +1145,7 @@ async function settleOrphanedQueuedVmJob(correlationId, now = Date.now()) {
         projectId: pending.projectId,
         objectId: pending.objectId,
         objectType: pending.objectType,
+        ...buildVmGoldBillingDimensions(pending),
         note: 'Orphaned queued VM task',
     }).catch(() => {})
 
@@ -1196,6 +1220,7 @@ async function launchQueuedVmJob(correlationId) {
         requestUserId: pending.userId,
         statusCommentId: pending.statusCommentId,
         assistantId: pending.assistantId || null,
+        goldBillingDimensions: buildVmGoldBillingDimensions(pending),
     })
     return { success: launch.outcome !== 'failed', outcome: launch.outcome }
 }
@@ -1262,6 +1287,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
                 projectId: pending.projectId,
                 objectId: pending.objectId,
                 objectType: pending.objectType,
+                ...buildVmGoldBillingDimensions(pending),
                 note: 'VM Cloud Run Job launch could not be confirmed',
             }).catch(() => {})
             if (pending.statusCommentId) {

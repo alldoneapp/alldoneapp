@@ -2502,8 +2502,12 @@ async function collectAssistantTextWithToolCalls({
     }
 }
 
-async function spentGold(userId, goldToReduce, linkContext = {}) {
-    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext })
+// `model` is the pricing key the charge was computed from (getTokensPerGold), recorded on the
+// ledger so `goldStats.spendByModel` can attribute assistant spend without a join (AT-2487).
+// It is the second-largest spend line after the VM, and a model switch moves its Gold cost by
+// an order of magnitude (Sol 100 tokens/Gold vs Luna 500), so the total alone says very little.
+async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
+    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext, model })
     const { deductGold } = require('../Gold/goldHelper')
 
     return await deductGold(userId, goldToReduce, {
@@ -2512,6 +2516,7 @@ async function spentGold(userId, goldToReduce, linkContext = {}) {
         projectId: linkContext.projectId,
         objectId: linkContext.objectId,
         objectType: linkContext.objectType,
+        model,
     })
 }
 
@@ -2569,7 +2574,7 @@ const reduceGoldWhenChatWithAI = async (
         cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
     })
 
-    await spentGold(userId, goldToReduce, linkContext)
+    await spentGold(userId, goldToReduce, linkContext, aiModel)
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
 }
 
