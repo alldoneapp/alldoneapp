@@ -5198,6 +5198,24 @@ exports.syncActiveUsersCalendarsSecondGen = onSchedule(
     }
 )
 
+// Tells a user, in the app, that a connected email/calendar account stopped working.
+// Nothing did before AT-2491: the breakage was recorded on the user document and only
+// Settings > Integrations ever read it, so a dead Gmail connection went unnoticed for four
+// days in production. Offset from the calendar sweep so the two do not contend.
+exports.notifyBrokenConnectionsSecondGen = onSchedule(
+    {
+        schedule: '37 * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { sweepBrokenConnectionNotices } = require('./Integrations/connectionBrokenNotice')
+        return await sweepBrokenConnectionNotices()
+    }
+)
+
 exports.renewExpiredOKRsSecondGen = onSchedule(
     {
         schedule: '0 * * * *',
@@ -5663,6 +5681,48 @@ exports.googleOAuthCheckCredentials = onCall(
             console.error('Error checking credentials:', error)
             throw new HttpsError('internal', `Failed to check credentials: ${error.message}`)
         }
+    }
+)
+
+// Verifies that a connected email/calendar account still works, by forcing a token refresh
+// rather than re-reading the stored flag. `googleOAuthCheckCredentials` above only reports
+// what is already recorded, and that recording happens only when something tried to USE the
+// account — so an untouched account whose grant died reads as healthy until some background
+// job stumbles on it. Settings > Integrations calls this on open (AT-2491).
+exports.checkConnectionHealthSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        const connectionIds = Array.isArray(data?.connectionIds) ? data.connectionIds.slice(0, 20) : []
+        if (connectionIds.length === 0) return { results: [] }
+
+        const { checkConnectionHealth } = require('./Integrations/connectionHealthCheck')
+        const userId = auth.uid
+
+        // One user-document read shared by every connection instead of one per account.
+        const userDoc = await admin.firestore().collection('users').doc(userId).get()
+        const userData = userDoc.exists ? userDoc.data() || {} : {}
+
+        const results = await Promise.all(
+            connectionIds.map(connectionId =>
+                // A single unverifiable account must not fail the whole page's check.
+                checkConnectionHealth(userId, connectionId, { userData }).catch(error => {
+                    console.warn(`[connectionHealth] ${connectionId} failed: ${error?.message || error}`)
+                    return { connectionId, status: 'unknown', healthy: false, authInvalid: false }
+                })
+            )
+        )
+
+        return { results }
     }
 )
 

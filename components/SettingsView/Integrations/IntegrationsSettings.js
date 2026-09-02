@@ -36,6 +36,12 @@ import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
 import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
 import { brokenForDays, formatBrokenSince, getBreakageConsequenceKey, isConnectionBroken } from './connectionHealth'
+import {
+    HEALTH_CHECKING,
+    HEALTH_CONNECTED,
+    HEALTH_RECONNECT_REQUIRED,
+    useConnectionHealth,
+} from './useConnectionHealth'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -122,7 +128,7 @@ export function ConnectionAuthAlert({ service, connection, onReconnect, busy, er
     )
 }
 
-export function ConnectionCard({ service, connection, projects }) {
+export function ConnectionCard({ service, connection, projects, health }) {
     const dispatch = useDispatch()
     const [busy, setBusy] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
@@ -131,7 +137,10 @@ export function ConnectionCard({ service, connection, projects }) {
     const [reconnectError, setReconnectError] = useState('')
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    const broken = isConnectionBroken(connection)
+    // The stored flag is authoritative once set, but the live check can discover a dead
+    // grant the flag does not know about yet — an account nobody has used since it broke.
+    // `unknown` (offline, provider unreachable) deliberately proves nothing.
+    const broken = isConnectionBroken(connection) || health?.status === HEALTH_RECONNECT_REQUIRED
     const isGoogle = connection.provider !== PROVIDER_MICROSOFT
     const defaultProject = projects.find(project => project.id === connection.defaultProjectId)
     // Labeling is Gmail-only; calendar routing works for both providers.
@@ -291,9 +300,24 @@ export function ConnectionCard({ service, connection, projects }) {
                                 </View>
                             )}
                         </View>
-                        <Text style={[styles.caption1, localStyles.providerText]}>
-                            {getProviderLabel(connection.provider)}
-                        </Text>
+                        <View style={localStyles.providerRow}>
+                            <Text style={[styles.caption1, localStyles.providerText]}>
+                                {getProviderLabel(connection.provider)}
+                            </Text>
+                            {/* Live verification result. Only the two states the user can act
+                                on are shown: an `unknown` answer renders nothing rather than
+                                casting doubt on a mailbox that is probably fine. */}
+                            {!broken && health?.status === HEALTH_CHECKING && (
+                                <Text style={[styles.caption1, localStyles.checkingText]}>
+                                    {` · ${translate('Checking connection')}`}
+                                </Text>
+                            )}
+                            {!broken && health?.status === HEALTH_CONNECTED && (
+                                <Text style={[styles.caption1, localStyles.connectedText]}>
+                                    {` · ${translate('Connection verified')}`}
+                                </Text>
+                            )}
+                        </View>
                     </View>
                 </View>
                 {busy && <ActivityIndicator size="small" color={colors.Primary100} />}
@@ -365,7 +389,7 @@ export function ConnectionCard({ service, connection, projects }) {
     )
 }
 
-function ConnectionsSection({ service, title, connections, projects }) {
+function ConnectionsSection({ service, title, connections, projects, healthByConnectionId = {} }) {
     const [connectPicker, setConnectPicker] = useState(null) // null | 'google' | 'microsoft'
 
     const connectWith = (provider, project) => {
@@ -389,6 +413,7 @@ function ConnectionsSection({ service, title, connections, projects }) {
                     service={service}
                     connection={connection}
                     projects={projects}
+                    health={healthByConnectionId[connection.connectionId]}
                 />
             ))}
             <View style={localStyles.connectRow}>
@@ -439,6 +464,13 @@ export default function IntegrationsSettings() {
     const emailConnections = listEmailConnections(loggedUser)
     const calendarConnections = listCalendarConnections(loggedUser)
 
+    // Verify every account against its provider when the page opens. The stored flag is
+    // only written when something tried to USE the account, so an untouched connection
+    // whose grant died reads as healthy until some background job stumbles on it (AT-2491).
+    const healthByConnectionId = useConnectionHealth(
+        [...emailConnections, ...calendarConnections].map(connection => connection.connectionId)
+    )
+
     return (
         <View style={localStyles.container}>
             <Text style={[styles.body1, localStyles.description]}>{translate('IntegrationsSettingsDescription')}</Text>
@@ -453,12 +485,14 @@ export default function IntegrationsSettings() {
                 title="Email accounts"
                 connections={emailConnections}
                 projects={projects}
+                healthByConnectionId={healthByConnectionId}
             />
             <ConnectionsSection
                 service={CONNECTION_SERVICE_CALENDAR}
                 title="Calendar accounts"
                 connections={calendarConnections}
                 projects={projects}
+                healthByConnectionId={healthByConnectionId}
             />
         </View>
     )
@@ -521,8 +555,18 @@ const localStyles = StyleSheet.create({
     defaultBadgeText: {
         color: colors.UtilityGreen300,
     },
+    providerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     providerText: {
         color: colors.Text03,
+    },
+    checkingText: {
+        color: colors.Text03,
+    },
+    connectedText: {
+        color: colors.UtilityGreen300,
     },
     cardBroken: {
         borderColor: colors.UtilityRed150,

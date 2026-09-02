@@ -148,6 +148,10 @@ function normalizeStoredConnection(service, connectionId, stored = {}) {
         defaultProjectId: typeof stored.defaultProjectId === 'string' ? stored.defaultProjectId : '',
         isDefaultAccount: stored.isDefaultAccount === true,
         authInvalid: stored.authInvalid === true,
+        // When the grant broke, as stored (a Timestamp, or millis on older writes). Callers
+        // coerce with getTimestampMillis. Absent for anything flagged before AT-2491 started
+        // recording it, so it means "unknown", not the epoch.
+        authInvalidAt: stored.authInvalidAt || null,
         legacy: false,
     }
 }
@@ -174,6 +178,7 @@ function synthesizeConnectionsFromApisConnected(service, userData = {}) {
                 defaultProjectId: projectId,
                 isDefaultAccount: resolved.isDefault,
                 authInvalid: false,
+                authInvalidAt: null,
                 legacy: true,
             })
         } else if (resolved.isDefault && !existing.isDefaultAccount) {

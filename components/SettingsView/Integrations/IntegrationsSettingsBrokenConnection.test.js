@@ -194,6 +194,47 @@ describe('ConnectionCard broken-account state (AT-2491)', () => {
         expect(startServerSideAuth).not.toHaveBeenCalled()
     })
 
+    test('a live check can reveal a broken account the stored flag does not know about', () => {
+        // The flag is only written when something tried to USE the account. An untouched
+        // connection whose grant died carries authInvalid: false until a background job
+        // stumbles on it — verifying on open is what closes that window.
+        const tree = render({
+            connection: connection({ authInvalid: false }),
+            health: { status: 'reconnect_required' },
+        })
+
+        expect(alert(tree)).toBeDefined()
+        expect(JSON.stringify(tree.toJSON())).toContain('Reconnect required')
+    })
+
+    test('an unverifiable account is left alone, never marked broken', () => {
+        const tree = render({ connection: connection(), health: { status: 'unknown' } })
+
+        expect(alert(tree)).toBeUndefined()
+        const output = JSON.stringify(tree.toJSON())
+        expect(output).not.toContain('Reconnect required')
+        expect(output).not.toContain('Connection verified')
+    })
+
+    test('shows the check running, then its result', () => {
+        expect(JSON.stringify(render({ connection: connection(), health: { status: 'checking' } }).toJSON())).toContain(
+            'Checking connection'
+        )
+        expect(
+            JSON.stringify(render({ connection: connection(), health: { status: 'connected' } }).toJSON())
+        ).toContain('Connection verified')
+    })
+
+    test('never claims a broken account is verified', () => {
+        // A stale "connected" answer must not sit next to the reconnect alert.
+        const output = JSON.stringify(
+            render({ connection: connection({ authInvalid: true }), health: { status: 'connected' } }).toJSON()
+        )
+
+        expect(output).toContain('Reconnect required')
+        expect(output).not.toContain('Connection verified')
+    })
+
     test('a failed reconnect says so instead of looking like a dead button', async () => {
         startServerSideAuth.mockRejectedValueOnce(new Error('Failed to open OAuth popup'))
         const tree = render({ connection: connection({ authInvalid: true }) })

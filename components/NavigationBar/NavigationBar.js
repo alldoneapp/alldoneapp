@@ -9,7 +9,8 @@ import store from '../../redux/store'
 import { toggleNavPicker } from '../../redux/actions'
 import Hotkeys from 'react-hot-keys'
 import dom from 'react-dom'
-import { DV_TAB_SETTINGS_INVITATIONS, NAVBAR_ITEM_MAP } from '../../utils/TabNavigationConstants'
+import { NAVBAR_ITEM_MAP } from '../../utils/TabNavigationConstants'
+import { resolveTabBadgeAmount } from './tabBadges'
 
 const finalHeight = 56
 export default class NavigationBar extends Component {
@@ -237,8 +238,18 @@ export default class NavigationBar extends Component {
     }
 
     render() {
-        const { tabs, isSecondary, showFollowedNotifications, feedAmount, showSearchBadges, invitationsAmount, style } =
-            this.props
+        const {
+            tabs,
+            isSecondary,
+            showFollowedNotifications,
+            feedAmount,
+            showSearchBadges,
+            invitationsAmount,
+            integrationsAlertAmount,
+            style,
+        } = this.props
+
+        const badgeAmountFor = tabItem => resolveTabBadgeAmount(tabItem, { invitationsAmount, integrationsAlertAmount })
 
         const { height, forceTabletMargins, expanded, selectedNavItem, smallScreenNavigation } = this.state
         if (!smallScreenNavigation || isSecondary) {
@@ -280,11 +291,7 @@ export default class NavigationBar extends Component {
                                             (NAVBAR_ITEM_MAP[tabItem] === 'Updates' || tabItem === 'Updates') &&
                                             feedAmount
                                         }
-                                        invitationsAmount={
-                                            tabItem === DV_TAB_SETTINGS_INVITATIONS && invitationsAmount > 0
-                                                ? invitationsAmount
-                                                : 0
-                                        }
+                                        badgeAmount={badgeAmountFor(tabItem)}
                                         showFollowedNotifications={showFollowedNotifications}
                                         forceTabletMargins={forceTabletMargins}
                                         isNextShortcutTab={this.isNextShortcutTab(tabItem)}

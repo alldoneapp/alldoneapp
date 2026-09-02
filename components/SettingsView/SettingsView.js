@@ -52,6 +52,7 @@ import UserProfileSettings from './Profile/UserProfileSettings'
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import { countBrokenConnections } from './Integrations/connectionHealth'
 
 const SettingsView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -63,6 +64,10 @@ const SettingsView = ({ navigation }) => {
     const showProjectInvitationPopup = useSelector(state => state.showProjectInvitationPopup.visible)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const amountProjectInvitations = useSelector(state => state.loggedUser.invitedProjectIds.length)
+    // Broken email/calendar connections badge the Integrations tab. Selected as a count,
+    // not as the connection objects, so an unrelated write to the user document cannot
+    // re-render the whole settings shell (AT-2336's rule).
+    const brokenConnectionsAmount = useSelector(state => countBrokenConnections(state.loggedUser))
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -138,6 +143,7 @@ const SettingsView = ({ navigation }) => {
                                 isSecondary
                                 tabs={navigationTabs}
                                 invitationsAmount={amountProjectInvitations}
+                                integrationsAlertAmount={brokenConnectionsAmount}
                             />
                         </View>
                         {(() => {
