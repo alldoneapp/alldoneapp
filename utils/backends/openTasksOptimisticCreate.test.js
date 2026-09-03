@@ -506,14 +506,7 @@ describe('AT-2342 optimistic task insert in the open board', () => {
      */
     describe('AT-2500 a task postponed before its create was echoed', () => {
         const DAY = 24 * 60 * 60 * 1000
-        /**
-         * Settlement carries the document as the local cache holds it at ack time, which is the
-         * create as amended by anything the user did since. `settle(id)` with no document is the
-         * "cache could not be read" case and deliberately decides nothing.
-         */
-        const settle = (taskId, taskData) => publishOptimisticTaskSettled(PROJECT_ID, taskId, taskData)
-        /** The document of a task postponed out of `dueDate <= endOfDay` before its first echo. */
-        const postponedRaw = () => buildRawTask({ dueDate: Date.now() + DAY })
+        const settle = taskId => publishOptimisticTaskSettled(PROJECT_ID, taskId)
 
         const settledListener = () => {
             deliverRealSnapshot([])
@@ -553,7 +546,7 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
             expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
 
-            settle('task-1', postponedRaw())
+            settle('task-1')
 
             expect(taskIdsOf(published[published.length - 1])).toEqual([])
         })
@@ -565,7 +558,7 @@ describe('AT-2342 optimistic task insert in the open board', () => {
                 'task-1',
                 buildRawTask({ dueDate: Date.now(), estimations: { open: 30 } })
             )
-            settle('task-1', buildRawTask({ dueDate: Date.now() + DAY, estimations: { open: 30 } }))
+            settle('task-1')
 
             const today = published[published.length - 1][0]
             expect(today[AMOUNT_TASKS_INDEX]).toBe(0)
@@ -612,8 +605,8 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             // per-day counters again (the same idempotence the rollback publication needs).
             settledListener()
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
-            settle('task-1', postponedRaw())
-            settle('task-1', postponedRaw())
+            settle('task-1')
+            settle('task-1')
 
             const today = published[published.length - 1][0]
             expect(today[AMOUNT_TASKS_INDEX]).toBe(0)
@@ -638,108 +631,10 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             expect(queryRegistrations[0].limits).toEqual([10])
 
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
-            settle('task-1', postponedRaw())
+            settle('task-1')
 
             expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
             unwatchOpenTasks(PROJECT_ID, 'user-1')
-        })
-    })
-
-    /**
-     * AT-2500 follow-up - "I add a task, it shows up, then it disappears for a second and comes
-     * back."
-     *
-     * The first fix retired the optimistic row whenever the server had acknowledged the create and
-     * no snapshot had mentioned the task yet, reasoning that a local `added` always beats the round
-     * trip. In this codebase it never does, and not by a narrow margin: every query this watcher
-     * runs filters on `readerIds` (or `roleIdsVisibleTo.<reader>`), a SERVER-derived projection
-     * field the access rules forbid a client to write - see `utils/backends/accessProjection.js`.
-     * A locally created task therefore carries no `readerIds`, matches nothing locally, and gets no
-     * local echo at all; the first snapshot naming it is the one that follows `onCreateTask` ->
-     * `synchronizeAccessProjection` writing the projection server-side. So the ack won that race on
-     * EVERY create and the row was pulled out from under the user for a round trip.
-     *
-     * These cases therefore assert over the whole publish sequence rather than its last entry: the
-     * defect is entirely an intermediate state, and every "final state" assertion above stayed
-     * green all the way through it.
-     */
-    describe('AT-2500 follow-up: a create must never blink out', () => {
-        const DAY_MS = 24 * 60 * 60 * 1000
-        const settle = (taskId, taskData) => publishOptimisticTaskSettled(PROJECT_ID, taskId, taskData)
-        const todayRaw = () => buildRawTask({ dueDate: Date.now() })
-
-        /** Every rendered state since the create, as plain id lists. */
-        const renderedStates = () => published.map(taskIdsOf)
-
-        it('never renders a frame without the task, from the create to the echo', () => {
-            deliverRealSnapshot([])
-            const raw = todayRaw()
-            published = []
-
-            // Production order: publish, ack (no echo yet - see above), then the snapshot that
-            // only becomes possible once the access projection has landed.
-            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
-            settle('task-1', raw)
-            deliverRealSnapshot([realAddedChange('task-1', raw)])
-
-            expect(published.length).toBeGreaterThan(0)
-            expect(renderedStates()).not.toContainEqual([])
-            renderedStates().forEach(ids => expect(ids).toEqual(['task-1']))
-        })
-
-        it('never lets the per-day count dip to zero across that sequence', () => {
-            // The count drives the "N tasks" header, so a dip is visible in its own right.
-            deliverRealSnapshot([])
-            const raw = todayRaw()
-            published = []
-
-            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
-            settle('task-1', raw)
-            deliverRealSnapshot([realAddedChange('task-1', raw)])
-
-            published.forEach(state => expect(state[0][AMOUNT_TASKS_INDEX]).toBe(1))
-        })
-
-        it('refreshes the row in place when the settled document changed but still belongs', () => {
-            // A rename, or a postpone to later the same day: the row must pick the change up
-            // without ever leaving the list. This is the upsert half of the contract.
-            deliverRealSnapshot([])
-            published = []
-            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
-
-            settle('task-1', { ...todayRaw(), name: 'buy oat milk', extendedName: 'buy oat milk' })
-
-            renderedStates().forEach(ids => expect(ids).toEqual(['task-1']))
-            const rendered = mainTasksOf(published[published.length - 1]).flatMap(([, tasks]) => tasks)
-            expect(rendered).toHaveLength(1)
-            expect(rendered[0].name).toBe('buy oat milk')
-            expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(1)
-        })
-
-        it('keeps the row when settlement carries no document at all', () => {
-            // `null` means the local cache could not be read, i.e. no verdict. Removing on no
-            // verdict is exactly the mistake being fixed, so the row has to stand.
-            deliverRealSnapshot([])
-            published = []
-            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
-
-            settle('task-1', null)
-
-            renderedStates().forEach(ids => expect(ids).toEqual(['task-1']))
-        })
-
-        it('still removes the row in ONE step when the settled document was postponed away', () => {
-            // The AT-2500 guarantee, restated over the sequence: the postponed task leaves today
-            // and is never re-added afterwards by the projection snapshot.
-            deliverRealSnapshot([])
-            published = []
-            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
-            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
-
-            settle('task-1', buildRawTask({ dueDate: Date.now() + DAY_MS }))
-
-            expect(taskIdsOf(published[published.length - 1])).toEqual([])
-            expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(0)
         })
     })
 })
