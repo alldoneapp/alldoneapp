@@ -34,18 +34,38 @@ import NavigationService from '../../../utils/NavigationService'
  * an empty Done list means you have completed nothing today, which is the opposite of something to
  * congratulate. Worse, letting them celebrate would let them SPEND the day, so the one board that
  * should have celebrated would find it already gone.
+ *
+ * AT-2506 moved the decision one level further up again, for the two boards that opt in: they stay
+ * mounted while this block comes and goes, so they are the only place that can tell "the inbox just
+ * emptied in front of you" — which must always animate — from "you arrived at an empty inbox",
+ * which must not replay. They pass the result down as `celebrationRunId`, and this block keeps its
+ * own hook as the fallback for any caller that owns no board, so nothing about the four
+ * non-celebrating call sites changes. Exactly the arrangement `EmptyInboxOverview` already has with
+ * this component, one level down.
  */
-export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false, celebrateNewDay = false }) {
+export default function AllProjectsEmptyInbox({
+    showEmptyInboxOverview = false,
+    celebrateNewDay = false,
+    celebrationRunId = null,
+}) {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
     const emptyInboxDays = useMemo(
         () => getEmptyInboxDaysWithLegacyFallback(loggedUser),
         [loggedUser.emptyInboxDays, loggedUser.lastDayEmptyInbox]
     )
-    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay, loggedUser.uid)
+    // `celebrationRunId == null` is what disables the fallback: a caller that owns the run must be
+    // the only claimant, or the day would be spent twice and the second claim would win an argument
+    // it should never have been in.
+    const ownCelebrationRunId = useTodayEmptyInboxCelebration(
+        emptyInboxDays,
+        celebrateNewDay && celebrationRunId == null,
+        loggedUser.uid
+    )
+    const resolvedCelebrationRunId = celebrationRunId == null ? ownCelebrationRunId : celebrationRunId
     // `celebrating` is false on the reduced-motion and jest paths as well as when there is nothing
     // to celebrate, so it is the single condition for "render the decorative layers".
-    const { entrance, confetti, celebrating } = useEmptyInboxCongratsCelebration(celebrationRunId)
+    const { entrance, confetti, celebrating } = useEmptyInboxCongratsCelebration(resolvedCelebrationRunId)
 
     const openAchievements = () => {
         dispatch(
@@ -109,7 +129,7 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false, 
                     user={loggedUser}
                     style={localStyles.emptyInboxOverview}
                     onOpenAchievements={openAchievements}
-                    celebrationRunId={celebrationRunId}
+                    celebrationRunId={resolvedCelebrationRunId}
                 />
             )}
             <AllProjectsEmptyInboxPicture />
