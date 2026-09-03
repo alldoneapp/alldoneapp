@@ -4,11 +4,7 @@ import { cloneDeep, flow, isEqual, orderBy, set as setProperty, size, sortBy } f
 import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { getRoleIdsVisibleToField } from './firestoreAccess'
-import {
-    OPTIMISTIC_TASK_REMOVED,
-    OPTIMISTIC_TASK_SETTLED,
-    subscribeToOptimisticTaskCreates,
-} from './Tasks/optimisticTaskCreate'
+import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './Tasks/optimisticTaskCreate'
 import store from '../../redux/store'
 import {
     setGlobalDataByProject,
@@ -713,12 +709,6 @@ const watchUserOpenTasks = (
 
     let cacheChanges = []
     let initialSnapshotDelivered = false
-    // AT-2500 - ids this watcher rendered from an optimistic publication and has NOT yet seen in a
-    // real snapshot. Bounded by construction: an id is added when the row is inserted and removed
-    // the moment the document shows up in any snapshot's result set, so in steady state this is
-    // empty and during a create it holds one id for a few hundred milliseconds. Declared up here
-    // rather than beside the subscriber that fills it, because the snapshot handler reads it.
-    const unconfirmedOptimisticTaskIds = new Set()
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
@@ -734,16 +724,6 @@ const watchUserOpenTasks = (
             .filter(change =>
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
-
-        // AT-2500 - a document present in the result set is one Firestore has offered this list,
-        // so the optimistic row for it is confirmed and must never be retired on settlement. Read
-        // from `docs` rather than `docChanges()` deliberately: presence is what confirms, and a
-        // gate flush re-invokes this handler with an empty `docChanges()` but the real `docs`.
-        // Guarded on `size` so an ordinary snapshot pays nothing.
-        if (unconfirmedOptimisticTaskIds.size > 0) {
-            ;(querySnapshot.docs || []).forEach(doc => unconfirmedOptimisticTaskIds.delete(doc.id))
-        }
-
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
@@ -867,33 +847,7 @@ const watchUserOpenTasks = (
 
     const knownTaskIds = () => (areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById)
 
-    // Absence from a LIMITED foreground window says nothing - the task may simply be outside the
-    // ten documents it asked for. Only a complete listener may conclude "not in this query", the
-    // same rule `reconcileInitialSnapshotChanges` applies to its own synthetic removals.
-    const isAuthoritativeListener = !Number.isInteger(queryLimit) || queryLimit <= 0
-
-    /**
-     * The settlement handler. The row was published for a document the server has now accepted,
-     * and this list has still never been offered that document - so it does not belong here and
-     * has to go. Removal reuses the retained copy as the change payload, because `deleteTask`
-     * derives the bucket to clear from the change's own data and the retained copy is precisely
-     * what decided the bucket the row sits in.
-     */
-    const retireUnconfirmedOptimisticTask = taskId => {
-        if (!unconfirmedOptimisticTaskIds.delete(taskId) || !isAuthoritativeListener) return
-        const retainedTask = knownTaskIds()[taskId]
-        if (!retainedTask) return
-        deliverOpenTasksChanges([{ type: 'removed', doc: { id: taskId, data: () => retainedTask } }], {
-            optimistic: true,
-        })
-    }
-
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
-        if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            retireUnconfirmedOptimisticTask(change.doc.id)
-            return
-        }
-
         const taskData = change.doc.data()
         if (!isTaskInThisView(taskData)) return
 
@@ -902,10 +856,6 @@ const watchUserOpenTasks = (
         // `deleteTask` decrements the per-day task count and estimation total every time it runs.
         // A subtask lives in `subtasksMap`, not here, so let the pipeline judge that case itself.
         if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) return
-
-        change.type === OPTIMISTIC_TASK_REMOVED
-            ? unconfirmedOptimisticTaskIds.delete(change.doc.id)
-            : unconfirmedOptimisticTaskIds.add(change.doc.id)
 
         deliverOpenTasksChanges([change], { optimistic: true })
     })
@@ -1136,20 +1086,7 @@ const processTaskChange = (
     }
 
     //PROCESS THE CHANGE
-    // AT-2500: `added` is reconciled exactly like `modified`, never de-duped away. An `added` for a
-    // task this watcher already holds is not a duplicate to discard - it is the authoritative
-    // document arriving for a row that was put on screen from somewhere else, i.e. AT-2342's
-    // optimistic insert. The two payloads are only byte-identical while nobody edits the task in
-    // the gap between `publishOptimisticTaskCreated` and the echo; postponing a task the instant
-    // it is created lands squarely in that gap, and the old `if (notExistTask) addTask()` guard
-    // then threw the corrected document away and left the row in today's bucket for ever.
-    //
-    // Reconciling instead cannot duplicate the row: `wasNeedToProcessTheTask` is false for a task
-    // that is genuinely new, so this collapses to the plain `addTask()` the `added` branch used to
-    // do, and for a known task it is a delete-then-add, which is exactly one entry either way.
-    // `reconcileInitialSnapshotChanges` already rewrites known `added`s to `modified` for this very
-    // reason - this makes the live path agree with the initial-snapshot path.
-    if (changeType === 'modified' || changeType === 'added') {
+    if (changeType === 'modified') {
         const oldTask = areObservedTasks
             ? tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
@@ -1227,6 +1164,13 @@ const processTaskChange = (
             )
         }
         addTask()
+    } else if (changeType === 'added') {
+        const notExistTask = areObservedTasks
+            ? !tasksMap.observedTasksById[task.id]
+            : areStreamAndUserTasks
+              ? !tasksMap.streamAndUserTasksById[task.id]
+              : !tasksMap.userTasksById[task.id]
+        if (notExistTask) addTask()
     } else {
         if (needToProcessTheTask) deleteTask(date, taskTypeIndex, innerGroupKey, taskParentGoalId, estimation, false)
     }
