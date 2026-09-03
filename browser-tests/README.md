@@ -400,3 +400,34 @@ Four modes, and the last two exist for one bug each:
 Both leaving modes also sample past the run to watch the **abandoned-exit backstop**: the harness
 never unmounts the line, so an exit the board never finished has to put the row back rather than
 leave an erased, zero-height hole that a user can neither see nor click.
+
+### `at2503/` — the Undo notification's show/hide animation
+
+The Undo banner used to appear and vanish on a single frame. AT-2503 gave it four entry animations
+(drop, pop, glide, tilt), picked at random with a no-repeat rule, an exit that mirrors whichever one
+arrived, a small beat when its content changes in place, and a line along its bottom edge that
+drains over the ten seconds before it hides itself.
+
+Jest covers the two halves it can: `undoActionBarMotion.test.js` checks the keyframe geometry
+exhaustively (every entry lands at rest, every exit starts there, every entry overshoots, and no
+displacement exceeds the card's own height), and `UndoActionBar.motion.test.js` drives the real
+component through its real animated branch to check the lifecycle an exit animation needs — that a
+dismissed banner stays mounted long enough to animate, leaves as the variant it arrived as, and is
+then actually gone.
+
+Neither can see it move. `__mocks__/react-native.js` stubs `Animated.timing` to a no-op, so no Jest
+test in this repo has ever watched one of these variants advance by a frame; jsdom computes no
+layout, so the countdown line — whose entire behaviour is a painted width shrinking — has no
+observable width there; and `transformOrigin` is a react-native-web passthrough, so if RNW stopped
+forwarding it the line would silently start collapsing towards its own middle with every Jest
+assertion still green.
+
+So this harness drives the real `useUndoActionBarMotion` on a real banner node and reads what the
+browser painted: the computed transform matrix decomposed into travel, scale and rotation per frame,
+and the countdown's transformed bounding box. It forces each variant in turn by patching
+`Math.random` — which exercises the real picker, including the no-repeat rule, since the fraction has
+to be computed against the reduced pool.
+
+`--reduce-motion` asserts the **inverted** contract: no transform at all, no countdown line, and an
+instant unmount. CLAUDE.md records a harness that asserted the animated expectations under reduced
+motion and therefore reported the correct behaviour as a failure; this one does not repeat that.
