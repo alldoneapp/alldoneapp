@@ -9,7 +9,7 @@ import BotOptionsModal from '../EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { setAssistantEnabled, setShowNotificationAboutTheBotBehavior } from '../../../../redux/actions'
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
-import ThreadModelAssistantAvatar from '../EditorView/BotOption/ThreadModelAssistantAvatar'
+import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
 export default function BotOptionsModalWrapper({
     objectId,
@@ -96,16 +96,7 @@ export default function BotOptionsModalWrapper({
                 type={'ghost'}
                 noBorder={true}
                 onPress={openModal}
-                customIcon={
-                    <ThreadModelAssistantAvatar
-                        projectId={projectId}
-                        objectId={objectId}
-                        objectType={objectType}
-                        photoURL={photoURL50}
-                        assistantId={effectiveAssistantId}
-                        size={24}
-                    />
-                }
+                customIcon={<AssistantAvatar photoURL={photoURL50} assistantId={effectiveAssistantId} size={24} />}
                 title={finalDisplayName}
                 titleStyle={localStyles.text}
             />

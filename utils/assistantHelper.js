@@ -36,8 +36,6 @@ import { createObjectMessage } from './backends/Chats/chatsComments'
 import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
-import { getThreadAssistantModelOverride } from '../functions/Assistant/threadAssistantModel'
-import { readThreadAssistantModelOverride } from './backends/Assistants/threadAssistantModel'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
 import { ASSISTANT_WORKFLOW_FIRST_STEP_ID, resolveAssistantWorkflowExecutionMode } from './assistantWorkflow'
 import {
@@ -414,25 +412,14 @@ const createTopicForPreConfigTask = async (
 
 const activePreConfigPromptTaskExecutions = new Set()
 
-/**
- * `threadModel` is the model pinned on the thread this prompt is being run IN (AT-2502), or null.
- *
- * It is applied here rather than on the server because this is the only place that still knows
- * the difference between "the prompt was configured for this model" and "nobody chose, so the
- * assistant's default was filled in" — by the time the request reaches
- * `generatePreConfigTaskResult` both arrive as the same `aiSettings.model` and the complete
- * client-settings branch takes it as given. So the precedence is spelled out once, here:
- * the prompt's own model, then the thread's pin, then the assistant. (The ordinary chat path
- * sends no model at all and is resolved entirely server-side.)
- */
-const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings, threadModel = null) => {
+const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
     const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
     if (!aiSettings && !assistantDetails) return null
 
     const overrides = aiSettings || {}
     return {
         ...overrides,
-        model: overrides.model || threadModel || assistantDetails?.model,
+        model: overrides.model || assistantDetails?.model,
         temperature: overrides.temperature || assistantDetails?.temperature,
         reasoningEffort: resolvePreConfigTaskReasoningEffort(
             { aiReasoningEffort: overrides.reasoningEffort },
@@ -466,6 +453,7 @@ export const executePreConfigPromptForTask = ({
     activePreConfigPromptTaskExecutions.add(executionKey)
     store.dispatch(setPreConfigTaskExecuting(name))
 
+    const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
     const isPublicFor = task?.isPublicFor || [FEED_PUBLIC_FOR_ALL]
     const mergedTaskMetadata = {
         ...(taskMetadata || {}),
@@ -475,14 +463,6 @@ export const executePreConfigPromptForTask = ({
 
     return Promise.resolve()
         .then(async () => {
-            // This prompt runs INSIDE the task's own thread, so the thread's pinned model applies
-            // to it exactly as it would to a message typed there (AT-2502). Read from the task we
-            // were handed when it carries the field, so the ordinary case costs no extra read.
-            const threadModel =
-                getThreadAssistantModelOverride(task) ||
-                (await readThreadAssistantModelOverride(projectId, taskId, 'tasks'))
-            const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings, threadModel)
-
             await Promise.all([
                 task?.assistantId !== assistantId
                     ? setTaskAssistant(projectId, taskId, assistantId, !!task?.assistantId)
