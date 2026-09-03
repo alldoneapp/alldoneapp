@@ -628,18 +628,19 @@ class NoteService {
             // SIMPLIFIED APPROACH: Direct persistence similar to frontend
             const noteRef = this.options.database.collection(`noteItems/${finalProjectId}/notes`).doc(noteId)
 
-            // Store note content in Firebase Storage BEFORE the Firestore document.
-            //
-            // The body lives in Storage, but the only thing that triggers indexing is
-            // the Firestore write: `onCreateNote` -> `createRecord` -> `getNoteContent`,
-            // which downloads `notesData/{projectId}/{noteId}`. Writing the document
-            // first therefore raced the upload — a trigger that won read no file and
-            // indexed the note with an EMPTY body, and nothing re-indexes a note until
-            // its document changes again, so the body stayed unsearchable indefinitely
-            // (AT-2498). Content first makes the document write the point at which the
-            // note is complete, which is also the order every update path already uses
-            // (`updateContentMetadata` saves to Storage, then stamps the document).
-            let contentStorageRef = null
+            console.log('NoteService: Setting note document at path:', `noteItems/${finalProjectId}/notes/${noteId}`)
+
+            // Store note metadata (ensure title is lowercase like frontend)
+            const noteToStore = {
+                ...note,
+                title: note.title.toLowerCase(),
+            }
+            await noteRef.set(noteToStore)
+
+            console.log('NoteService: Note document stored successfully')
+
+            // Store note content in Firebase Storage
+            const storagePromises = []
             if (this.options.isCloudFunction && noteContent && noteContent.length > 0) {
                 try {
                     const admin = require('firebase-admin')
@@ -651,36 +652,21 @@ class NoteService {
 
                     console.log('NoteService: Final bucket name:', notesBucketName)
                     const notesBucket = admin.storage().bucket(notesBucketName)
-                    contentStorageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
+                    const storageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
+
+                    console.log(
+                        'NoteService: Storing content to Firebase Storage:',
+                        `notesData/${finalProjectId}/${noteId}`
+                    )
+                    const storagePromise = storageRef.save(noteContent)
+                    storagePromise.catch(() => {})
+                    storagePromises.push(storagePromise)
                 } catch (storageError) {
-                    // Setup-only catch, exactly as before: an unresolvable bucket is
-                    // logged and the note is still created. A failing upload, also as
-                    // before, rejects out of `persistNote`.
                     console.error('NoteService: Failed to store note content:', storageError)
                 }
             } else {
                 console.log('NoteService: Skipping content storage - no content or not in Cloud Functions')
             }
-
-            if (contentStorageRef) {
-                console.log(
-                    'NoteService: Storing content to Firebase Storage:',
-                    `notesData/${finalProjectId}/${noteId}`
-                )
-                await contentStorageRef.save(noteContent)
-                console.log('NoteService: Storage operations completed')
-            }
-
-            console.log('NoteService: Setting note document at path:', `noteItems/${finalProjectId}/notes/${noteId}`)
-
-            // Store note metadata (ensure title is lowercase like frontend)
-            const noteToStore = {
-                ...note,
-                title: note.title.toLowerCase(),
-            }
-            await noteRef.set(noteToStore)
-
-            console.log('NoteService: Note document stored successfully')
 
             // Create feeds using the same approach as frontend
             if (feedData && this.options.enableFeeds && this.options.isCloudFunction) {
@@ -734,6 +720,13 @@ class NoteService {
                 }
             } else {
                 console.log('NoteService: Skipping feeds - not enabled or not in Cloud Functions')
+            }
+
+            // Wait for storage operations to complete
+            if (storagePromises.length > 0) {
+                console.log('NoteService: Waiting for storage operations to complete')
+                await Promise.all(storagePromises)
+                console.log('NoteService: Storage operations completed')
             }
 
             return {
