@@ -33,10 +33,6 @@ const undoActionBarStyles = StyleSheet.create({
         alignItems: 'center',
         boxShadow: '0px 4px 8px rgba(0,0,0,0.20)',
         elevation: 8,
-        // AT-2503 — clips the countdown line to the card's rounded corners. `overflow` clips
-        // descendants only; an element's own `box-shadow` is painted outside its border box and is
-        // unaffected, so the banner keeps its drop shadow.
-        overflow: 'hidden',
     },
     dismissArea: {
         position: 'absolute',
@@ -53,24 +49,6 @@ const undoActionBarStyles = StyleSheet.create({
     },
     action: {
         color: colors.UtilityBlue200,
-    },
-    /**
-     * AT-2503 — the ten-second auto-hide, drawn. A bare draining fill with NO track behind it: a
-     * grey rail would announce a UI control in what is otherwise a sentence and a button, and it
-     * would still be sitting there after the bar had emptied. Same reasoning as the task-completion
-     * progress bar in AT-2404.
-     *
-     * `transformOrigin` is what makes the line drain from the right edge leftwards rather than
-     * shrinking towards its own middle; react-native-web passes it through to CSS `transform-origin`.
-     */
-    countdown: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        height: 2,
-        backgroundColor: hexColorToRGBa(colors.UtilityBlue200, 0.85),
-        transformOrigin: 'left center',
     },
 })
 
