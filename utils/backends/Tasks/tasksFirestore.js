@@ -3,11 +3,8 @@ import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import { preserveAutoAssignedGoal } from './autoAssignedGoalGuard'
-import {
-    publishOptimisticTaskCreateFailed,
-    publishOptimisticTaskCreated,
-    publishOptimisticTaskSettled,
-} from './optimisticTaskCreate'
+import { publishOptimisticTaskCreateFailed, publishOptimisticTaskCreated } from './optimisticTaskCreate'
+import { settleOptimisticTaskRow } from './optimisticTaskSettlement'
 import { getTaskFromLoadedTaskMaps } from './taskSnapshotCache'
 import {
     buildCrossUserTaskStatisticsMarker as buildTaskStatisticsMarker,
@@ -464,32 +461,6 @@ const scheduleResetLastAddedTaskId = taskId => {
     }, 5000)
 }
 
-/**
- * AT-2500 - announce that the create has been acknowledged, together with the document as it
- * stands NOW, so every list holding an optimistic row for it can re-check that row against its own
- * query instead of guessing from the absence of an echo.
- *
- * The read is `source: 'cache'` on purpose, and all three properties matter: it costs no billed
- * read and no round trip, it resolves from the local mutation queue and therefore reflects edits
- * the user has made since the create (the postpone this exists to catch), and it cannot hang -
- * the document was written through this very client a moment ago, so it is local by construction.
- *
- * Failure is absorbed into a no-verdict settlement (`null` data) rather than a rejection: a
- * publication that cannot say what the task looks like must leave the row alone, and nothing about
- * task creation may depend on this - the write has already succeeded by the time we are called.
- */
-const settleOptimisticTaskRow = async (projectId, taskId) => {
-    let latestTaskData = null
-    try {
-        const snapshot = await getDb().doc(`items/${projectId}/tasks/${taskId}`).get({ source: 'cache' })
-        if (snapshot && snapshot.exists) latestTaskData = snapshot.data()
-    } catch (error) {
-        // Cache miss (in-memory client evicted it, persistence unavailable) - no verdict, keep the row.
-        latestTaskData = null
-    }
-    publishOptimisticTaskSettled(projectId, taskId, latestTaskData)
-}
-
 export async function uploadNewTask(
     projectId,
     task,
@@ -660,9 +631,10 @@ export async function uploadNewTask(
         const onTaskWritten = isAwaited => () => {
             // AT-2500 - the server has the document, so each list can now settle the optimistic row
             // it published above against what the task ACTUALLY looks like now, rather than against
-            // the create-time payload. `settleOptimisticTaskRow` reads that from the local cache
-            // (no network, no billed read) and publishes it; a list holding an unconfirmed row
-            // re-checks it against its own query and keeps or drops the row on the evidence.
+            // the create-time payload. `settleOptimisticTaskRow` opens a settlement WINDOW rather
+            // than publishing once: the ack is only its start, and the row stays unconfirmed until
+            // the access projection lands, which production measures in seconds - long enough for
+            // the user to postpone the task with nobody listening. See optimisticTaskSettlement.js.
             // Offline this whole callback never runs, because `set()` only resolves on the server
             // ack, which is correct: offline the local cache holds the document and the row stands.
             settleOptimisticTaskRow(projectId, taskId)
