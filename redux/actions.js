@@ -3072,3 +3072,17 @@ export const setShowAllProjectsByTime = showAllProjectsByTime => {
     }
     return action
 }
+
+export const showTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Show task completion animation',
+    }
+    return action
+}
+
+export const hideTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Hide task completion animation',
+    }
+    return action
+}

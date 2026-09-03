@@ -17,8 +17,7 @@ import { OPEN_STEP, DONE_STEP, getTaskAutoEstimation, BACKLOG_DATE_NUMERIC } fro
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCommentModal/taskCommentAssistant'
-import { setLastSelectedDueDate } from '../../redux/actions'
-import { startTaskCompletionMotion } from '../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
+import { setLastSelectedDueDate, showTaskCompletionAnimation } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { updateNewAttachmentsData, STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { FOLLOW_UP_MODAL_ID, MENTION_MODAL_ID, removeModal, storeModal } from '../ModalsManager/modalsManager'
@@ -32,7 +31,7 @@ import RecurringTaskDateBasisModal, {
 const TODAY = 'Today'
 const TOMORROW = 'Tomorrow'
 
-export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopover, hidePopover, completionMotion }) {
+export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopover, hidePopover }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [inComments, setInComments] = useState(false)
@@ -167,23 +166,9 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
         }
     }
 
-    /**
-     * AT-2495 — this popup completes the task, so it plays the same row animation the checkbox
-     * does. The popup is hidden FIRST (it is anchored to the checkbox and centred on mobile, so it
-     * would otherwise cover the row it is animating), and the write is then held for as long as
-     * the row asks for. The attachment upload runs inside that hold rather than in front of it —
-     * see `taskCompletionHandoff.js`.
-     */
-    const completeTask = async recurrenceBaseDateOverride => {
+    const completeTask = recurrenceBaseDateOverride => {
         hidePopover()
-
-        // Started before the attachment upload, so the upload runs *inside* the animation rather
-        // than in front of it: a completion comment carrying a file adds no latency of its own
-        // unless it outlasts the whole run.
-        const motionRun = startTaskCompletionMotion(completionMotion, { isCompletion: true })
-
-        try {
-            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
+        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
             const needToCreateFolloUpTask = dateTimestamp
             if (estimation === undefined) {
                 // Defensive logging to validate missing OPEN_STEP estimation on some tasks (e.g., MCP-created)
@@ -196,9 +181,10 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
             const safeEstimation = estimation ?? 0
             const estimations = { [OPEN_STEP]: safeEstimation }
 
-            await motionRun.settled()
+            // Show completion animation
+            store.dispatch(showTaskCompletionAnimation())
 
-            await moveTasksFromOpen(
+            moveTasksFromOpen(
                 projectId,
                 task,
                 DONE_STEP,
@@ -211,12 +197,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
             if (needToCreateFolloUpTask) {
                 createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, safeEstimation)
             }
-        } catch (error) {
-            // The popup is already gone, so putting the collapsed row back is the only thing that
-            // can still be said in the UI. This path previously had no error handling at all.
-            motionRun.cancel()
-            console.error('[FollowUpModal] Could not complete task', { projectId, taskId: task?.id, error })
-        }
+        })
     }
 
     const onDonePress = () => {

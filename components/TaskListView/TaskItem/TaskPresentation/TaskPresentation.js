@@ -153,7 +153,6 @@ function TaskPresentation(
         completionProgress,
         completionWash,
         completionCelebration,
-        completionMotion,
         isCompleting,
     } = useTaskCompletionMotion({ retainRow, isDone: task.done })
 
@@ -479,7 +478,6 @@ function TaskPresentation(
                                         beginCompletionMotion={beginCompletionMotion}
                                         cancelCompletionMotion={cancelCompletionMotion}
                                         completionCelebration={completionCelebration}
-                                        completionMotion={completionMotion}
                                     />
                                     {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
                                         <GmailTag
@@ -596,7 +594,6 @@ function TaskPresentation(
                                 workflow={workflow}
                                 disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
                                 onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
-                                completionMotion={completionMotion}
                             />
                         )}
                     </View>
