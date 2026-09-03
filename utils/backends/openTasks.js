@@ -873,16 +873,56 @@ const watchUserOpenTasks = (
     const isAuthoritativeListener = !Number.isInteger(queryLimit) || queryLimit <= 0
 
     /**
-     * The settlement handler. The row was published for a document the server has now accepted,
-     * and this list has still never been offered that document - so it does not belong here and
-     * has to go. Removal reuses the retained copy as the change payload, because `deleteTask`
-     * derives the bucket to clear from the change's own data and the retained copy is precisely
-     * what decided the bucket the row sits in.
+     * The settlement handler. The server has accepted the create and `change.doc.data()` is the
+     * document as it stands now, so this is a re-evaluation of a row we put on screen ourselves -
+     * NOT a report that Firestore has nothing to say about it.
+     *
+     * The distinction is the whole of the AT-2500 follow-up. This used to retire the row purely
+     * because no snapshot had mentioned the task yet, on the reasoning that a local `added` always
+     * beats the server ack. It never does here: every query this watcher runs filters on
+     * `readerIds` / `roleIdsVisibleTo.<reader>`, which the access rules forbid a client to write,
+     * so a locally created task matches NOTHING locally and is first seen only once
+     * `synchronizeAccessProjection` has stamped the projection server-side and it has travelled
+     * back. The ack therefore won that race on every create, and the row blinked out for the
+     * duration of a round trip before reappearing.
+     *
+     * Deciding on the document instead has no race in it:
+     *   - still in this view  -> keep it, updating in place through the normal pipeline so the row
+     *                            picks up whatever changed (a rename, a postpone to later today)
+     *                            without ever leaving the list;
+     *   - no longer in view   -> remove it, which is the original AT-2500 case (postponed straight
+     *                            out of `dueDate <= endOfDay`, so no echo is ever coming);
+     *   - no document at all  -> no verdict, so leave the row exactly as it is.
+     *
+     * Removal reuses the retained copy as the change payload, because `deleteTask` derives the
+     * bucket to clear from the change's own data and the retained copy is precisely what decided
+     * the bucket the row sits in.
      */
-    const retireUnconfirmedOptimisticTask = taskId => {
-        if (!unconfirmedOptimisticTaskIds.delete(taskId) || !isAuthoritativeListener) return
+    const settleOptimisticTask = (taskId, latestTaskData) => {
+        if (!unconfirmedOptimisticTaskIds.has(taskId)) return
+
         const retainedTask = knownTaskIds()[taskId]
-        if (!retainedTask) return
+        if (!retainedTask) {
+            unconfirmedOptimisticTaskIds.delete(taskId)
+            return
+        }
+
+        // No verdict: the cache could not say what the task looks like. Keep the row and keep it
+        // unconfirmed, so the real snapshot still reconciles it when the projection lands.
+        if (!latestTaskData) return
+
+        if (isTaskInThisView(latestTaskData)) {
+            // The row stays; it is refreshed in place. `modified` is a delete-then-add inside ONE
+            // delivery, i.e. a single recompute and a single callback - the list never renders a
+            // frame without the task. Still unconfirmed: only a real snapshot confirms.
+            deliverOpenTasksChanges([{ type: 'modified', doc: { id: taskId, data: () => latestTaskData } }], {
+                optimistic: true,
+            })
+            return
+        }
+
+        if (!isAuthoritativeListener) return
+        unconfirmedOptimisticTaskIds.delete(taskId)
         deliverOpenTasksChanges([{ type: 'removed', doc: { id: taskId, data: () => retainedTask } }], {
             optimistic: true,
         })
@@ -890,7 +930,7 @@ const watchUserOpenTasks = (
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            retireUnconfirmedOptimisticTask(change.doc.id)
+            settleOptimisticTask(change.doc.id, change.doc.data())
             return
         }
 
