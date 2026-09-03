@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { multiSearchTypesense, searchTypesenseCollection } from '../../../utils/typesenseSearch'
+import { searchTypesenseCollection } from '../../../utils/typesenseSearch'
 import { formatTypesenseValue } from '../../GlobalSearchAlgolia/typesenseSearchFilters'
 
 import { colors } from '../../styles/global'
@@ -30,7 +30,7 @@ import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
-import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY, mergeMentionPages } from './MentionsModal/mentionSearch'
+import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY } from './MentionsModal/mentionSearch'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
 import Header from './MentionsModal/Header'
@@ -69,13 +69,6 @@ const MATCH_ALL_ON_OPEN_INDEXES = [
     CHATS_INDEX_NAME_PREFIX,
 ]
 
-// Not a collection — a marker for "the notes search, narrowed to the project being written
-// in", so the one filter builder keeps answering for both notes pages (AT-2497).
-const CURRENT_PROJECT_NOTES_SCOPE = 'current_project_notes'
-
-// One search per tab: contacts, tasks, notes, chats, goals.
-const SEARCHES_PER_PASS = 5
-
 export default function MentionsModal({
     mentionText,
     selectItemToMention,
@@ -105,9 +98,6 @@ export default function MentionsModal({
     const offsets = useRef({ top: 0, bottom: 0 })
     const newForm = useRef()
     const [showSpinner, setShowSpinner] = useState(true)
-    // How many of the per-tab searches the current `search()` pass still has outstanding.
-    // The spinner is a property of "a search is running", not of "a tab was clicked".
-    const searchesInFlight = useRef(0)
     const showNewForm = mentionModalStack[mentionModalStack.length - 1] === modalId.current
     const getInitValue = items => (items.length === 0 ? -1 : 0)
     const activeItemIndexRef = useRef(getInitValue(itemsRef.current))
@@ -262,11 +252,7 @@ export default function MentionsModal({
             itemsRef.current = itemsByTab[tab]
             setActiveItemIndex(-1)
             keepFocus()
-            // Only re-arm the spinner if a search is genuinely still running. It used to be
-            // set unconditionally and was cleared only by a completing search, so switching
-            // to a tab that had already finished and come back empty replaced the "no
-            // results" copy with a spinner that never stopped (AT-2497).
-            setShowSpinner(searchesInFlight.current > 0)
+            setShowSpinner(true)
         }
     }
 
@@ -290,12 +276,6 @@ export default function MentionsModal({
             // page and being discarded on arrival (AT-2393).
             const visibleProjectsScope = buildMentionProjectsScope(Object.keys(store.getState().loggedUserProjectsMap))
             return visibleProjectsScope ? `${visibleProjectsScope} && ${publicScope}` : publicScope
-        }
-        if (indexPrefix === CURRENT_PROJECT_NOTES_SCOPE) {
-            // The same notes search narrowed to the project being written in (AT-2497), so
-            // the shared page can never leave it unrepresented. Same privacy scope — this
-            // narrows reach, it never widens it.
-            return `${projectScope} && ${publicScope}`
         }
         if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
             return isGuide
@@ -332,24 +312,6 @@ export default function MentionsModal({
             .map(user => ({ ...user, projectId }))
     }
 
-    // Notes are fetched as TWO pages in one round trip: the project being written in, then
-    // everything the user can see. See mergeMentionPages (AT-2497) for why — a single shared
-    // page routinely contains nothing from the current project at all.
-    const getNoteMentions = async isGuide => {
-        const common = {
-            collection: NOTES_INDEX_NAME_PREFIX,
-            query: mentionText,
-            // Read from the same list as every other tab, so "which tabs suggest on open"
-            // stays declared in exactly one place.
-            matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(NOTES_INDEX_NAME_PREFIX),
-        }
-        const [currentProjectPage, visibleProjectsPage] = await multiSearchTypesense([
-            { ...common, filterBy: getTypesenseMentionFilter(CURRENT_PROJECT_NOTES_SCOPE, isGuide) },
-            { ...common, filterBy: getTypesenseMentionFilter(NOTES_INDEX_NAME_PREFIX, isGuide) },
-        ])
-        return mergeMentionPages(currentProjectPage.hits, visibleProjectsPage.hits)
-    }
-
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
@@ -357,28 +319,23 @@ export default function MentionsModal({
 
         let results
         try {
-            results =
-                indexPrefix === NOTES_INDEX_NAME_PREFIX
-                    ? { hits: await getNoteMentions(isGuide) }
-                    : await searchTypesenseCollection(
-                          indexPrefix,
-                          mentionText,
-                          getTypesenseMentionFilter(indexPrefix, isGuide),
-                          {
-                              // An @-mention is a name picker, not global search: it must not
-                              // match the contact's free-text description (AT-2393 — see
-                              // mentionSearch.js).
-                              ...(indexPrefix === CONTACTS_INDEX_NAME_PREFIX
-                                  ? { queryBy: MENTION_CONTACTS_QUERY_BY }
-                                  : {}),
-                              // A picker that has just opened has nothing typed yet, so ask
-                              // for the documented match-all wildcard and let the collection's
-                              // `sort_by` order it by recency (AT-2497 — see
-                              // TYPESENSE_MATCH_ALL_QUERY for why the wildcard rather than a
-                              // blank query, which is NOT the same guarantee).
-                              matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(indexPrefix),
-                          }
-                      )
+            results = await searchTypesenseCollection(
+                indexPrefix,
+                mentionText,
+                getTypesenseMentionFilter(indexPrefix, isGuide),
+                {
+                    // An @-mention is a name picker, not global search: it must not match the
+                    // contact's free-text description (AT-2393 — see mentionSearch.js).
+                    ...(indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? { queryBy: MENTION_CONTACTS_QUERY_BY } : {}),
+                    // A picker that has just opened has nothing typed yet, and Typesense
+                    // matches nothing for a blank query — so every tab read "There are not
+                    // results to show in this tab" until you started typing. Ask for the
+                    // wildcard instead, which the per-collection `sort_by` then orders by
+                    // recency: the notes you edited last, the tasks/goals you created last
+                    // (AT-2497).
+                    matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(indexPrefix),
+                }
+            )
         } catch (error) {
             console.log('Mentions search unavailable:', error.message)
             return indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? getLocalContactsFallback() : []
@@ -428,11 +385,6 @@ export default function MentionsModal({
         return items
     }
 
-    const finishSearch = () => {
-        searchesInFlight.current = Math.max(0, searchesInFlight.current - 1)
-        setShowSpinner(false)
-    }
-
     const updateResults = async (algoliaIndexNamePrefix, searchTab) => {
         const items = await getMentions(algoliaIndexNamePrefix)
 
@@ -445,7 +397,7 @@ export default function MentionsModal({
             activeItemIndexRef.current = getInitValue(items)
         }
 
-        finishSearch()
+        setShowSpinner(false)
     }
 
     const updateTasksWithPreConfigTasks = async () => {
@@ -478,12 +430,10 @@ export default function MentionsModal({
             activeItemIndexRef.current = getInitValue(mergedItems)
         }
 
-        finishSearch()
+        setShowSpinner(false)
     }
 
     const search = () => {
-        searchesInFlight.current = SEARCHES_PER_PASS
-        setShowSpinner(true)
         updateResults(CONTACTS_INDEX_NAME_PREFIX, MENTION_MODAL_CONTACTS_TAB)
         updateTasksWithPreConfigTasks()
         updateResults(NOTES_INDEX_NAME_PREFIX, MENTION_MODAL_NOTES_TAB)
