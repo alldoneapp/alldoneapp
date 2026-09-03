@@ -72,6 +72,25 @@ describe('AT-2497 — mergeMentionPages keeps the current project on the page', 
         expect(merged).toHaveLength(MENTION_NOTES_PAGE_SIZE)
     })
 
+    it('does not let a DORMANT current project push stale notes over most of the page', () => {
+        // The second round of AT-2497 feedback: "the last 2 recent notes appear but other
+        // ones seem older". The reserve is a safety net for a project that has earned no
+        // rows on the recency page — so every slot it takes is a row the user's actual
+        // recency did not justify. On the reporting account the current project's newest
+        // note is a fortnight old and its eighth is six weeks old, so a large reserve
+        // recreates the reported symptom in a new form: stale rows above fresh ones.
+        //
+        // This is a ratchet on the SIZE, not a restatement of the constant. An active
+        // current project needs no reserve at all — its notes are on the cross-project page
+        // by definition, and MentionsItemsGrouped renders that project's group first anyway.
+        expect(MENTION_NOTES_CURRENT_PROJECT_SLOTS).toBeLessThanOrEqual(MENTION_NOTES_PAGE_SIZE / 4)
+
+        const merged = mergeMentionPages(currentPage(20), crossPage(20))
+        const recencyEarned = merged.filter(item => item.projectId === 'p-other')
+
+        expect(recencyEarned.length).toBeGreaterThanOrEqual((MENTION_NOTES_PAGE_SIZE * 3) / 4)
+    })
+
     it('does not reserve slots the current project cannot fill', () => {
         // A project with two notes must not cost the page eight rows.
         const merged = mergeMentionPages(currentPage(2), crossPage(20))

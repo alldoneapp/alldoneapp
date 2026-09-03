@@ -79,8 +79,24 @@ export const buildMentionProjectsScope = (projectIds, extraProjectIds = []) => {
 // It is not "current project only": mention search is deliberately cross-project (AT-2393),
 // and a note you want to link frequently lives elsewhere. It is a reserved block at the top
 // so the project you are actually in can never be crowded off the page.
+//
+// The reserved block is deliberately SMALL, and that is the whole subtlety of the number.
+// It is a safety net for a DORMANT current project, not the mechanism for an active one: a
+// project you are actually working in puts its notes on the cross-project page by itself
+// (they are among your globally most recent), and MentionsItemsGrouped renders the current
+// project's group first regardless of merge order — so an active project already leads the
+// list with as many notes as it has earned. The reserve only ever adds rows the recency
+// page did NOT justify, which is exactly the case where a big block does damage: on the
+// reporting account eight slots reach back to a note last edited six weeks ago, and putting
+// six-week-old rows above genuinely recent ones is the very complaint this ticket is about
+// ("the last 2 recent notes appear but other ones seem older"). Five is enough to prove the
+// project is represented and to be a usable shortlist, and it leaves three quarters of the
+// page to real recency.
+//
+// Note this is a floor, not a cap: when the cross-project page is short, the third pass in
+// mergeMentionPages tops the page back up from the current project.
 export const MENTION_NOTES_PAGE_SIZE = 20
-export const MENTION_NOTES_CURRENT_PROJECT_SLOTS = 8
+export const MENTION_NOTES_CURRENT_PROJECT_SLOTS = 5
 
 const getMentionHitKey = hit => {
     if (!hit) return ''
