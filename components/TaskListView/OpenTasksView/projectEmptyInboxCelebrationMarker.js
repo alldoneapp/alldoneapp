@@ -19,6 +19,7 @@
  */
 
 import createDayCelebrationMarker from '../../SettingsView/Profile/Achievements/dayCelebrationMarker'
+import { didReachEmptyInbox } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
 
 const CELEBRATION_STORAGE_KEY = 'alldone.projectEmptyInboxDayCelebration'
 const REACHED_STORAGE_KEY = 'alldone.projectEmptyInboxDayReached'
@@ -65,19 +66,16 @@ export const releaseProjectEmptyInboxDayCelebration = (userId, projectId, dayKey
     marker.releaseDayCelebration(getProjectCelebrationScopeKey(userId, projectId), dayKey)
 
 /**
- * The transition rule, in one place because two callers apply it and they must agree exactly: the
- * board's own hook (which sees the moment when you clear the last task while looking at the project)
- * and the app-wide detector (which sees it when you clear it from My Day, All Projects or a chat).
+ * The transition rule, in one place because several callers apply it and they must agree exactly:
+ * the board's own hook (which sees the moment when you clear the last task while looking at the
+ * project), the app-wide detector (which sees it when you clear it from My Day, All Projects or a
+ * chat) and — since AT-2506 — the all-projects celebration, which re-arms on it.
  *
- * Deliberately STRICT — both sides must be real numbers and the new one exactly `0`. A count that
- * becomes `undefined` is not an empty project, it is an absent answer: `clearSidebarTasksAmount`
- * wipes the whole map on a user or project-list change, and a project that has had no task due today
- * since the day began never gets a key for this user at all. Treating either as "cleared" would
- * write a reached-record for work that was never done, which is the one failure this record exists
- * to prevent.
+ * AT-2506 moved the rule itself up to `emptyInboxCelebrationMarker.didReachEmptyInbox` so the two
+ * scopes cannot drift; this name is kept because every per-project call site reads better with it,
+ * and because the reasoning for the strictness (see there) was written about project counts.
  */
-export const didProjectReachEmptyInbox = (previousCount, nextCount) =>
-    Number.isFinite(previousCount) && previousCount > 0 && nextCount === 0
+export const didProjectReachEmptyInbox = didReachEmptyInbox
 
 /**
  * The celebration gate is deliberately LOOSER than the transition rule above: "not a positive

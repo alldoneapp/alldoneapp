@@ -13,20 +13,13 @@ import OptionButtons from './OptionButtons/OptionButtons'
 import QuickActionsToggle from './QuickActionsToggle'
 import AssistantAvatarButton from './AssistantAvatarButton'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { createBotQuickTopic } from '../../../../utils/assistantHelper'
+import { createBotQuickTopic, generateUserIdsToNotifyForNewComments } from '../../../../utils/assistantHelper'
 import Button from '../../../UIControls/Button'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
+import Spinner from '../../../UIComponents/Spinner'
 import Icon from '../../../Icon'
-// The canonical, dependency-free definition of the key — deliberately not the re-export from
-// `chatsComments`, which would drag the whole comments backend into this composer.
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../../utils/backends/Chats/chatNotificationPriority'
-import {
-    beginAssistantLineSend,
-    failAssistantLineSend,
-    markAssistantLineSendCreated,
-} from '../assistantLinePendingSend'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
@@ -73,6 +66,7 @@ export default function AssistantOptions({
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const gold = useSelector(state => state.loggedUser.gold)
     const [message, setMessage] = useState('')
+    const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
     const [controlsStacked, setControlsStacked] = useState(false)
@@ -156,14 +150,6 @@ export default function AssistantOptions({
         setQuickActionsExpanded(showAllQuickActions)
     }, [assistant?.uid, assistantProjectId, showAllQuickActions])
 
-    // Puts a submission back the way it was. Only reached when the send failed: the rich editor is
-    // uncontrolled, so `setMessage` alone would leave Quill empty while `canSend` claimed there was
-    // something to send.
-    const restoreComposer = useCallback(text => {
-        setMessage(text)
-        inputRef.current?.clearAndSetContent(text)
-    }, [])
-
     // `explicitText` is the push-to-talk path (AT-2405): a dictation that submits itself hands over
     // the composer text it just wrote, because the `message` state behind it is still a queued
     // setState at that point and reading it here would send the pre-dictation draft.
@@ -177,46 +163,10 @@ export default function AssistantOptions({
                 return
             }
 
-            // AT-2504 — the composer empties FIRST and the send finishes in the background.
-            //
-            // It used to clear only after `updateNewAttachmentsData` AND `createBotQuickTopic` had
-            // both resolved, and the second of those is two round trips (the
-            // `createBotQuickTopicSecondGen` callable, then the `createObjectMessage` write). So
-            // the text the user had just pressed Enter on sat there, greyed out and un-editable,
-            // for the whole of it — the app looked like it had not registered the keystroke.
-            //
-            // Nothing below needs the editor's contents: `trimmedMessage` is already captured, and
-            // `updateNewAttachmentsData` re-uploads from the `blob:` URLs inside that STRING, which
-            // stay alive until the document is unloaded (nothing here revokes them). So clearing
-            // early cannot cost an attachment.
-            //
-            // `isSendingRef` stays, but now only spans this synchronous block: it is the guard
-            // against one keystroke being handled twice, not a lock on the composer. Sending a
-            // second message while the first is still being created is allowed and creates its own
-            // topic, exactly as two sends always did.
+            inputRef.current?.blur()
+            Keyboard.dismiss()
             isSendingRef.current = true
-            let pendingSendId = null
-            try {
-                inputRef.current?.blur()
-                Keyboard.dismiss()
-                setMessage('')
-                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
-                setInputCursorIndex(0)
-                inputRef.current?.clear()
-
-                // Filed under the keys the real pointer will be written under, so the progress card
-                // appears in the same Last comment slot the answer will land in.
-                pendingSendId = beginAssistantLineSend({
-                    keys: [conversationProjectId, ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
-                    projectId: conversationProjectId,
-                    assistantId: assistant.uid,
-                    assistantName: assistant.displayName,
-                    text: trimmedMessage,
-                })
-            } finally {
-                isSendingRef.current = false
-            }
-
+            setIsSending(true)
             try {
                 // AT-2444: a dropped or pasted file is only a `blob:` object URL in the editor
                 // until here — this is the step that uploads it to Storage and rewrites the token
@@ -237,23 +187,39 @@ export default function AssistantOptions({
                 })
 
                 if (!topicData) {
-                    // `createBotQuickTopic` returns undefined only when it could not resolve a
-                    // project to write into — nothing was sent, so give the text back.
-                    failAssistantLineSend(pendingSendId)
-                    restoreComposer(trimmedMessage)
+                    isSendingRef.current = false
+                    setIsSending(false)
                     return
                 }
 
-                // The thread exists and carries the user's comment. What is left is the assistant's
-                // answer, and the Last comment slot says so until it arrives.
-                markAssistantLineSendCreated(pendingSendId, topicData.chatId)
+                setMessage('')
+                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+                setInputCursorIndex(0)
+                inputRef.current?.clear()
+
+                // Unblock the input now that the thread has been created
+                isSendingRef.current = false
+                setIsSending(false)
+
+                // Continue executing the task in the background without blocking the input
+                if (topicData.projectId && !conversationProject?.isTemplate) {
+                    try {
+                        const userIdsToNotify = generateUserIdsToNotifyForNewComments(
+                            topicData.projectId,
+                            topicData.isPublicFor,
+                            ''
+                        )
+                    } catch (error) {
+                        console.error('❌ [AssistantOptions] Error triggering assistant reply:', error)
+                    }
+                }
             } catch (error) {
                 console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
-                failAssistantLineSend(pendingSendId)
-                restoreComposer(trimmedMessage)
+                isSendingRef.current = false
+                setIsSending(false)
             }
         },
-        [assistant, conversationProjectId, message, gold, restoreComposer]
+        [assistant, conversationProject, conversationProjectId, message, gold]
     )
 
     // A composer holding an attachment is allowed to grow past the text cap so the image it is
@@ -337,12 +303,7 @@ export default function AssistantOptions({
     const hasQuickActions = true
     // An image on its own is a complete message — the serialized embed token IS the text, so this
     // is already non-empty for an attachment-only composer and needs no separate condition.
-    //
-    // AT-2504: there is no `&& !isSending` term any more. The composer empties synchronously on
-    // submit, so an in-flight send already leaves this false through `message`, and a SECOND
-    // message typed while the first is still being created is deliberately allowed — it gets its
-    // own topic, which is what two sends have always produced.
-    const canSend = message.trim().length > 0
+    const canSend = message.trim().length > 0 && !isSending
     const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked, composerMaxHeight)
 
     const sendLabel = translate('Send')
@@ -362,6 +323,7 @@ export default function AssistantOptions({
         <AttachmentDropZone
             testID="assistant-line-attachment-drop-zone"
             style={localStyles.container}
+            disabled={isSending}
             editor={editor}
             inputCursorIndex={inputCursorIndex}
             projectId={conversationProjectId}
@@ -394,6 +356,7 @@ export default function AssistantOptions({
                     placeholder={translate('Start a new chat')}
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
+                    disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
                     // AT-2444: hands the live editor + caret to the drop zone above, and declares
                     // the attachment formats. Declaring them is also what gives this composer
@@ -437,8 +400,8 @@ export default function AssistantOptions({
                             buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
                         />
                         <Button
-                            title={sendButtonTitle}
-                            icon={'send'}
+                            title={isSending ? null : sendButtonTitle}
+                            icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                             onPress={handleSendMessage}
                             disabled={!canSend}
                             buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}

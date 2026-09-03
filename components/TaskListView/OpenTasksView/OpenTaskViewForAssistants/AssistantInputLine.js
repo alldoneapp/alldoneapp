@@ -6,6 +6,7 @@ import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import Button from '../../../UIControls/Button'
+import Spinner from '../../../UIComponents/Spinner'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -30,6 +31,7 @@ const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageF
 export default function AssistantInputLine({ assistant, projectId, noBottomMargin }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const [message, setMessage] = useState('')
+    const [isSending, setIsSending] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
     const [controlsStacked, setControlsStacked] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
@@ -69,44 +71,20 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
         if (!text) setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
     }, [])
 
-    // Only reached when the send failed: the editor is uncontrolled, so the text has to be put back
-    // into Quill as well as into `message`.
-    const restoreComposer = useCallback(text => {
-        setMessage(text)
-        inputRef.current?.clearAndSetContent(text)
-    }, [])
-
     const handleSendMessage = useCallback(
         async explicitText => {
             const trimmedMessage = (typeof explicitText === 'string' ? explicitText : message).trim()
             if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
 
-            // AT-2504 — clear first, send in the background, exactly as the My Day assistant line
-            // does. These are the same composer and must not differ. The rich editor is
-            // uncontrolled, so `setMessage` alone would leave the text (and any attachment embed)
-            // sitting in Quill; `clear()` is what actually empties it.
-            //
-            // `isSendingRef` now only spans this synchronous block — it guards against one
-            // keystroke being handled twice, not against a second message.
+            inputRef.current?.blur()
+            Keyboard.dismiss()
             isSendingRef.current = true
-            try {
-                inputRef.current?.blur()
-                Keyboard.dismiss()
-                setMessage('')
-                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
-                setInputCursorIndex(0)
-                inputRef.current?.clear()
-            } finally {
-                isSendingRef.current = false
-            }
-
+            setIsSending(true)
             try {
                 // AT-2444: upload dropped/pasted files and rewrite their `blob:` tokens to real
                 // download URLs BEFORE the topic is created — the comment `createBotQuickTopic`
                 // writes is the one `mediaContext` is derived from, which is how the assistant
                 // gets to see the image. With no attachment tokens this takes no `await` at all.
-                // The `blob:` URLs live in the captured STRING and nothing revokes them, so
-                // emptying the editor above cannot cost an attachment.
                 const messageToSend = await updateNewAttachmentsData(projectId, trimmedMessage)
 
                 const topicData = await createBotQuickTopic(assistant, messageToSend, {
@@ -115,13 +93,27 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     projectId,
                 })
 
-                if (!topicData) restoreComposer(trimmedMessage)
+                if (!topicData) {
+                    isSendingRef.current = false
+                    setIsSending(false)
+                    return
+                }
+
+                setMessage('')
+                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+                setInputCursorIndex(0)
+                // The rich editor is uncontrolled — clearing `message` alone leaves the text (and
+                // any attachment embed) sitting in Quill, unlike the plain TextInput this replaced.
+                inputRef.current?.clear()
+                isSendingRef.current = false
+                setIsSending(false)
             } catch (error) {
                 console.error('Error sending assistant quick message:', error)
-                restoreComposer(trimmedMessage)
+                isSendingRef.current = false
+                setIsSending(false)
             }
         },
-        [assistant, message, projectId, restoreComposer]
+        [assistant, message, projectId]
     )
 
     // Enter-to-send, Shift+Enter for a newline — same handling as the My Day assistant line. It has
@@ -160,9 +152,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
     }, [handleKeyDown, handleKeyUp])
 
     // An image on its own is a complete message: the serialized embed token IS the text.
-    // AT-2504: no `&& !isSending` term — the composer empties synchronously on submit, so an
-    // in-flight send already leaves this false through `message`.
-    const canSend = message.trim().length > 0
+    const canSend = message.trim().length > 0 && !isSending
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
     const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
@@ -173,6 +163,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
         <AttachmentDropZone
             testID="assistant-input-line-attachment-drop-zone"
             style={[localStyles.container, noBottomMargin && { marginBottom: 8 }]}
+            disabled={isSending}
             editor={editor}
             inputCursorIndex={inputCursorIndex}
             projectId={projectId}
@@ -192,6 +183,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     placeholder={translate('Start a new chat')}
                     projectId={projectId}
                     styleTheme={TASK_THEME}
+                    disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
                     setEditor={setEditor}
                     setInputCursorIndex={setInputCursorIndex}
@@ -216,8 +208,8 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                         buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
                     />
                     <Button
-                        title={sendButtonTitle}
-                        icon={'send'}
+                        title={isSending ? null : sendButtonTitle}
+                        icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                         onPress={handleSendMessage}
                         disabled={!canSend}
                         buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}

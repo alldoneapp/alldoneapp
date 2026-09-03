@@ -10,17 +10,8 @@ import AssistantOptions, { DEFERRED_QUICK_ACTION_REFRESH_MS } from './AssistantO
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { writeAssistantTasksCache } from '../assistantLineCache'
-import {
-    PENDING_SEND_AWAITING_REPLY,
-    PENDING_SEND_FAILED,
-    PENDING_SEND_SENDING,
-    getPendingAssistantLineSend,
-    resetAssistantLinePendingSends,
-} from '../assistantLinePendingSend'
 
 const mockInputBlur = jest.fn()
-const mockInputClear = jest.fn()
-const mockInputClearAndSetContent = jest.fn()
 const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
     optionsLikeButtons: expanded
         ? [
@@ -137,8 +128,7 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const { TextInput } = require('react-native')
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({
-            clear: mockInputClear,
-            clearAndSetContent: mockInputClearAndSetContent,
+            clear: jest.fn(),
             blur: mockInputBlur,
             isFocused: () => false,
         }))
@@ -558,187 +548,5 @@ describe('AssistantOptions greeting', () => {
             expect(translations['How can I help?'].length).toBeGreaterThan(0)
             expect(translations['What can I do for you today?']).toBeUndefined()
         })
-    })
-})
-
-/**
- * AT-2504 — "wenn ich über die assistant line was abschicke, sollte es sofort verschwinden und
- * dann im Hintergrund weiterlaufen".
- *
- * The whole complaint is about ORDER, so every assertion here is about what has already happened
- * at a point in time where `createBotQuickTopic` has NOT resolved yet. A test that only checks the
- * end state passes just as well against the old code, which cleared the composer too — several
- * hundred milliseconds and two round trips later.
- */
-describe('AssistantOptions immediate clear (AT-2504)', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        localStorage.clear()
-        resetAssistantLinePendingSends()
-    })
-
-    const typeAndSend = async (tree, text) => {
-        await act(async () => {
-            tree.root.findByType(TextInput).props.onChangeText(text)
-        })
-        const sendButton = tree.root
-            .findAllByType(TouchableOpacity)
-            .find(node => node.props.accessibilityLabel === 'Send')
-        return sendButton.props.onPress()
-    }
-
-    it('empties the composer before the topic call resolves, and finishes in the background', async () => {
-        // Never resolved inside the assertion window: this is the "slow network" the user felt.
-        let releaseTopic
-        createBotQuickTopic.mockReturnValue(
-            new Promise(resolve => {
-                releaseTopic = resolve
-            })
-        )
-
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        let sendPromise
-        await act(async () => {
-            sendPromise = typeAndSend(tree, 'make this feel instant')
-        })
-
-        // The composer is already empty while the send is still in flight...
-        expect(createBotQuickTopic).toHaveBeenCalledTimes(1)
-        expect(mockInputClear).toHaveBeenCalledTimes(1)
-        expect(tree.root.findByType(TextInput).props.value ?? '').toBe('')
-
-        // ...and it is usable, not frozen. `disabledEdition` was what greyed it out for the whole
-        // round trip.
-        expect(tree.root.findByType(TextInput).props.disabledEdition).toBeFalsy()
-
-        // ...while the Last comment slot has something to show for it.
-        const pending = getPendingAssistantLineSend('selected-project')
-        expect(pending).toMatchObject({
-            status: PENDING_SEND_SENDING,
-            text: 'make this feel instant',
-            assistantName: 'Assistant',
-        })
-
-        await act(async () => {
-            releaseTopic({ projectId: 'selected-project', chatId: 'chat-1', isPublicFor: ['all'] })
-            await sendPromise
-        })
-
-        // Once the thread exists the wait is on the assistant, and the card says so.
-        expect(getPendingAssistantLineSend('selected-project')).toMatchObject({
-            status: PENDING_SEND_AWAITING_REPLY,
-            chatId: 'chat-1',
-        })
-    })
-
-    it('files the pending send under the same keys the real last-comment pointer uses', async () => {
-        createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
-
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-        await act(async () => {
-            await typeAndSend(tree, 'where does this show up')
-        })
-
-        // The conversation project's own line...
-        expect(getPendingAssistantLineSend('selected-project')).toBeTruthy()
-        // ...and the All-projects line, which is where the answer also lands.
-        expect(getPendingAssistantLineSend('allProjects')).toBeTruthy()
-        // ...but not a project this message has nothing to do with.
-        expect(getPendingAssistantLineSend('default-project')).toBeNull()
-    })
-
-    it('accepts a second message while the first is still being created', async () => {
-        let releaseFirst
-        createBotQuickTopic
-            .mockReturnValueOnce(
-                new Promise(resolve => {
-                    releaseFirst = resolve
-                })
-            )
-            .mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-2' })
-
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        let firstSend
-        await act(async () => {
-            firstSend = typeAndSend(tree, 'first message')
-        })
-        await act(async () => {
-            await typeAndSend(tree, 'second message')
-        })
-
-        // The old composer refused this outright — `isSendingRef` stayed true until the first
-        // topic existed, so the second message was silently dropped.
-        expect(createBotQuickTopic).toHaveBeenCalledTimes(2)
-        expect(createBotQuickTopic).toHaveBeenNthCalledWith(2, expect.anything(), 'second message', expect.anything())
-
-        await act(async () => {
-            releaseFirst({ projectId: 'selected-project', chatId: 'chat-1' })
-            await firstSend
-        })
-    })
-
-    it('gives the text back when the send fails, and says why', async () => {
-        createBotQuickTopic.mockRejectedValue(new Error('offline'))
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-        await act(async () => {
-            await typeAndSend(tree, 'this one fails')
-        })
-
-        // The rich editor is uncontrolled, so putting `message` back is not enough — the text has
-        // to go back into Quill too.
-        expect(mockInputClearAndSetContent).toHaveBeenCalledWith('this one fails')
-        expect(getPendingAssistantLineSend('selected-project')).toMatchObject({ status: PENDING_SEND_FAILED })
-
-        consoleError.mockRestore()
-    })
-
-    it('gives the text back when no project could be resolved to write into', async () => {
-        createBotQuickTopic.mockResolvedValue(undefined)
-
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-        await act(async () => {
-            await typeAndSend(tree, 'nowhere to put this')
-        })
-
-        expect(mockInputClearAndSetContent).toHaveBeenCalledWith('nowhere to put this')
-        expect(getPendingAssistantLineSend('selected-project')).toMatchObject({ status: PENDING_SEND_FAILED })
-    })
-
-    it('does not register a pending send, or clear the composer, when the user is out of gold', async () => {
-        mockState.loggedUser.gold = 0
-        try {
-            let tree
-            await act(async () => {
-                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-            })
-            await act(async () => {
-                await typeAndSend(tree, 'no gold left')
-            })
-
-            expect(createBotQuickTopic).not.toHaveBeenCalled()
-            expect(mockInputClear).not.toHaveBeenCalled()
-            expect(getPendingAssistantLineSend('selected-project')).toBeNull()
-        } finally {
-            mockState.loggedUser.gold = 100
-        }
     })
 })
