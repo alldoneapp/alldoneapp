@@ -336,7 +336,7 @@ layer is rendered.
 ### `at2492/` — a cleared project's line must actually sweep
 
 "I don't see the animation on the project lines." AT-2492 shipped with 43 green Jest tests and was
-invisible in production, and the reason it *could* be is structural: `__mocks__/react-native.js`
+invisible in production, and the reason it _could_ be is structural: `__mocks__/react-native.js`
 replaces `Animated.timing` with a no-op `{ start }` stub, so **no Jest test in this repo can watch
 an animation advance**, and jsdom computes no layout, so `onLayout` never fires and the sweep's
 leading edge — gated on a measured row width — never renders at all. Both are exactly the parts
@@ -349,9 +349,36 @@ frame. That is what separated the two candidate diagnoses: the animation was nev
 never fired.
 
 It then reproduces the actual defect end to end — All Projects drops a cleared project's block, and
-the count proving it was cleared arrives from a *different* Firestore listener, so it routinely
+the count proving it was cleared arrives from a _different_ Firestore listener, so it routinely
 lands after the row has gone. Run it against the pre-fix commit and "a late clearing still sweeps"
 fails while every other check passes.
 
 `--reduce-motion` runs the second contract: nothing is rendered, and (checked in the Jest suites)
 the once-per-day marker is not spent either.
+
+### `at2495/` — a completed task row must come apart, right to left, in 1.2s
+
+The row's exit is a CSS **mask** sliding across it, and jest cannot see one thing about that.
+jsdom's `CSSStyleDeclaration` silently drops properties it does not implement, so `mask-image`
+reads back as `''` there whether the code is right or completely wrong; `__mocks__/react-native.js`
+stubs `Animated.timing`, so nothing advances; and a style object is not a paint in any case.
+
+So the harness renders the real `useTaskCompletionMotion` driving the real `createRowExitStyle` on
+a row node with the real `TaskDisintegration` beside it, then **screenshots the row every ~50ms and
+counts surviving pixels per column**. That is the only measurement that can tell "a mask is
+applied" from "the mask erases the correct half, in the correct order, over the right amount of
+time". The screenshot is decoded back inside the page through a canvas, so no PNG dependency is
+needed.
+
+It caught two things a green Jest suite could not. The row node must be an `Animated.View`: handed
+the same style, a plain `View` renders the interpolations once through `toString()` and then never
+updates — the mask lands on the DOM correctly and is frozen at `0%` forever while the dust, which
+is animated properly, keeps moving. And the first grain generator jittered its alphas around a
+smooth ramp, which makes a band that takes a pixel, gives it back and takes it again as it slides:
+flicker, not dust.
+
+Run it against the pre-fix commit for the A/B — it scores 8/17 there, and the failure that matters
+is `RIGHT TO LEFT` reporting `0.84 > 0.84`: the old exit dimmed both halves of the row by exactly
+the same amount, which is the uniform shrink-and-fade this replaced.
+
+`--reduce-motion` asserts the inverted contract: no mask, no dust, no collapse, and a short hold.

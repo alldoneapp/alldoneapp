@@ -45,15 +45,6 @@ export function getIosShareExtensionPlugin() {
     return isCapacitorIosShell() ? getShellPlugin('IosShareExtension') : null
 }
 
-// Local native bridge owned by ios-app/ (CallAudioSessionPlugin.swift). It
-// configures the host app's AVAudioSession for a voice chat around an
-// assistant call so the `audio` UIBackgroundMode keeps the WebRTC capture
-// alive when the app is backgrounded (AT-2496). iOS only: Android is a TWA
-// where Chrome owns the microphone and its own foreground notification.
-export function getNativeCallAudioSessionPlugin() {
-    return isCapacitorIosShell() ? getShellPlugin('CallAudioSession') : null
-}
-
 // Provisioning can overlap when auth state changes quickly. Only the newest
 // attempt may publish a token to the App Group; logout invalidates every
 // attempt that was already waiting on the backend.

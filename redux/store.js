@@ -410,7 +410,6 @@ export const initialState = {
     lastTaskAddedId: '',
     openTasksShowMoreData: { hasFutureTasks: false, hasSomedayTasks: false },
     navigationSource: null,
-    showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
     triggerChatDraft: null,
     iframeModalData: { visible: false, url: '', name: '' },
@@ -3341,12 +3340,6 @@ export const theReducer = (state = initialState, action) => {
         case 'RESET_NAVIGATION_SOURCE':
             return { ...state, navigationSource: null }
 
-        case 'Show task completion animation':
-        case 'Set show task completion animation':
-            return {
-                ...state,
-                showTaskCompletionAnimation: action.showTaskCompletionAnimation,
-            }
         case 'Trigger chat submit':
             return {
                 ...state,
