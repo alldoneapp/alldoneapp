@@ -236,11 +236,29 @@ const seedStore = ({ confirmedFocusTaskId, calendarTasksById = {} }) => {
 
 const postpone = taskId => setTaskDueDate(PROJECT_ID, taskId, TOMORROW, { ...tasksById[taskId] }, false, null)
 
-/** A meeting in ANOTHER project, starting `minutes` from now. */
-const buildCalendarTask = (id, minutes) => ({
+/**
+ * A meeting in ANOTHER project, starting `minutes` from now (negative = already under way).
+ *
+ * `durationMinutes` matters since AT-2496: a meeting that has started keeps the focus until
+ * `min(end, start + 60min)`, so the end is what separates "still in it" from "it is over".
+ */
+const buildCalendarTask = (id, minutes, durationMinutes = 30) => {
+    const start = moment().add(minutes, 'minutes')
+    return {
+        ...buildTask(id, 5000),
+        calendarData: {
+            start: { dateTime: start.toISOString() },
+            end: { dateTime: start.clone().add(durationMinutes, 'minutes').toISOString() },
+        },
+    }
+}
+
+/** An all-day event covering today — a birthday or a multi-day stay, not a meeting. */
+const buildAllDayCalendarTask = id => ({
     ...buildTask(id, 5000),
     calendarData: {
-        start: { dateTime: moment().add(minutes, 'minutes').toISOString() },
+        start: { date: moment().startOf('day').format('YYYY-MM-DD') },
+        end: { date: moment().add(1, 'day').startOf('day').format('YYYY-MM-DD') },
     },
 })
 
@@ -301,8 +319,64 @@ describe('AT-2251 — the optimistic pick applies the imminent-calendar rule', (
         await inFlight
     })
 
-    it('ignores a meeting that already started', async () => {
-        setUp({ 'meeting-past': buildCalendarTask('meeting-past', -5) })
+    /**
+     * AT-2496 inverted this case deliberately. Finishing a task ten minutes INTO a meeting used to
+     * hand focus to an unrelated task, because only `[now, now+15min)` qualified.
+     */
+    it('takes a meeting that is already running (AT-2496)', async () => {
+        setUp({ 'meeting-past': buildCalendarTask('meeting-past', -5, 30) })
+
+        const inFlight = postpone('task-a')
+
+        expect(optimisticFocusTaskId()).toBe('meeting-past')
+
+        letBackendRespond()
+        await inFlight
+    })
+
+    it('ignores a meeting that has finished', async () => {
+        setUp({ 'meeting-over': buildCalendarTask('meeting-over', -40, 30) })
+
+        const inFlight = postpone('task-a')
+
+        expect(optimisticFocusTaskId()).toBe('task-b')
+
+        letBackendRespond()
+        await inFlight
+    })
+
+    /**
+     * The reason the running rule is capped. A 5-hour "Work Blocker" would otherwise own the focus
+     * task all afternoon, so every task finished inside the block handed focus back to the block.
+     */
+    it('releases a long block once its running window has expired', async () => {
+        setUp({ 'work-blocker': buildCalendarTask('work-blocker', -90, 300) })
+
+        const inFlight = postpone('task-a')
+
+        expect(optimisticFocusTaskId()).toBe('task-b')
+
+        letBackendRespond()
+        await inFlight
+    })
+
+    it('prefers an upcoming meeting over one already running', async () => {
+        setUp({
+            'meeting-running': buildCalendarTask('meeting-running', -5, 60),
+            'meeting-next': buildCalendarTask('meeting-next', 8),
+        })
+
+        const inFlight = postpone('task-a')
+
+        expect(optimisticFocusTaskId()).toBe('meeting-next')
+
+        letBackendRespond()
+        await inFlight
+    })
+
+    it('never treats an all-day event as a running meeting', async () => {
+        // A birthday covers the whole day; taking it would wipe out focus selection until midnight.
+        setUp({ birthday: buildAllDayCalendarTask('birthday') })
 
         const inFlight = postpone('task-a')
 
