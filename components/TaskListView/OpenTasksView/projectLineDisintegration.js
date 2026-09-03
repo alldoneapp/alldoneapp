@@ -1,45 +1,50 @@
-import { Animated } from 'react-native'
-
 /**
- * AT-2495 — how a completed task row LEAVES the list.
+ * AT-2495 (second pass) — how a CLEARED PROJECT'S LINE leaves the board.
  *
- * AT-2404 gave a completed row an exit: 320ms of `height -> 0`, `opacity -> 0` and a 6px lift. That
- * is a perfectly good *mechanism* — the list has to close the gap — and a poor *statement*. A row
- * that shrinks and fades reads as "deleted", which is the same thing the strike-through said before
- * AT-2404 replaced it with a progress bar, and it is what the reported feedback was about ("it
- * works but I don't like the animation"). The ask was for the row to come apart into dust, sweeping
- * across it, over 1.2 seconds.
+ * ── WHAT MOVED, AND WHY ───────────────────────────────────────────────────────────────────────
  *
- * So the exit is now a DISINTEGRATION, and it is built out of exactly three things, in this order:
+ * The first pass of this put the disintegration on the completed TASK row, and that was the wrong
+ * target: "make it look like the line disappears the way Thanos snaps his fingers" was asked about
+ * the PROJECT line, and a task row that comes apart into dust every time a checkbox is ticked turns
+ * a dozens-of-times-an-hour interaction into a 1.2-second cinematic. The task row therefore has its
+ * AT-2404 exit back, unchanged (`taskCompletionMotion.js`), and the disintegration lives here — on
+ * the one row that leaves the board at most once per project per day, and only ever because
+ * something worth marking has happened: the project's today list reached zero.
  *
- *   1. A DISSOLVE FRONT travelling right to left. The row's own pixels are erased by a CSS mask
- *      whose gradient slides across it — background, text, tags, checkbox and all, in one pass,
- *      with no duplicated content and no canvas.
- *   2. DUST lifting off that front. Small neutral motes that appear where the front has just
- *      passed, drift up and trail slightly to the right (i.e. behind the front, which is moving
- *      left), shrink and fade. See `TaskDisintegration.js`.
- *   3. The COLLAPSE, unchanged in kind but pushed to the very end: by the time the row's height
- *      starts closing there is nothing left in it to squash.
+ * That scarcity is the whole licence for the effect. It is also why the celebration
+ * (`ProjectLineDisintegration.js`'s sparks) belongs here and nowhere else.
+ *
+ * ── THE THREE LAYERS ──────────────────────────────────────────────────────────────────────────
+ *
+ *   1. A DISSOLVE FRONT travelling right to left. The line's own pixels are erased by a CSS mask
+ *      whose gradient slides across it — the project name, the avatar, the tags, the add-task
+ *      button, the bottom rule and the completed sweep's own coloured wash, in one pass, with no
+ *      duplicated content and no canvas.
+ *   2. DUST AND SPARKS lifting off that front (`ProjectLineDisintegration.js`). Neutral motes for
+ *      the texture of the disintegration, and a handful of small tinted sparkles as the "little
+ *      celebration" — both released exactly where the line has started to come apart, so the
+ *      celebration is visibly CAUSED by the line leaving rather than layered on top of it.
+ *   3. The COLLAPSE, pushed to the very end: by the time the row's height starts closing there is
+ *      nothing left in it to squash.
  *
  * ── WHY A MASK AND NOT PARTICLES ──────────────────────────────────────────────────────────────
  *
  * The honest way to disintegrate a DOM node is to erase it progressively, and `mask-image` is the
- * only thing on the platform that can do that to arbitrary live content — a row holds text, an
- * SVG checkbox, chips and an avatar, none of which can be sampled into particles without drawing
- * the row to a canvas first (`html2canvas`-shaped work: a full re-layout per completion, on the
- * one interaction that happens dozens of times an hour). One masked node costs a single
- * compositing layer for 1.2 seconds and is thrown away afterwards.
+ * only thing on the platform that can do that to arbitrary live content — the line holds text, an
+ * avatar image, chips and buttons, none of which can be sampled into particles without drawing the
+ * row to a canvas first (`html2canvas`-shaped work). One masked node costs a single compositing
+ * layer for 1.2 seconds and is thrown away afterwards.
  *
  * react-native-web 0.21 passes `maskImage` / `maskSize` / `maskRepeat` / `maskPosition` and their
  * `Webkit`-prefixed twins straight through `createReactDOMStyle` (the same passthrough
- * `filter: blur(3px)` and `transformOrigin` already rely on elsewhere in this row), and
- * `Animated.Value.interpolate` produces the position as a plain `'37%'` string, so the whole sweep
- * is ONE animated value on ONE existing node.
+ * `transformOrigin` already relies on in the sweep beside this), and `Animated.Value.interpolate`
+ * produces the position as a plain `'37%'` string, so the whole sweep is ONE animated value on ONE
+ * existing node.
  *
- * It degrades safely. If a browser ever ignores the mask, `createRowExitStyle` still fades the row
- * out over `CONTENT_FADE_*` and still collapses it, so the row leaves — it just leaves as a fade.
- * That fallback ramp is invisible when the mask works, because by then the mask has already erased
- * everything it would have dimmed.
+ * It degrades safely. If a browser ever ignores the mask, `createProjectLineExitStyle` still fades
+ * the row out over `CONTENT_FADE_*` and still collapses it, so the line leaves — it just leaves as
+ * a fade. That fallback ramp is invisible when the mask works, because by then the mask has already
+ * erased everything it would have dimmed.
  *
  * ── THE GEOMETRY, WHICH IS THE PART THAT IS EASY TO GET WRONG ─────────────────────────────────
  *
@@ -65,43 +70,28 @@ import { Animated } from 'react-native'
  * difference between dust and flicker.
  *
  * The irregularity is hashed from the stop index, never `Math.random()`: the gradient string is
- * built once at module load and has to be identical on every row and every run, or completing two
- * tasks in a row would visibly dissolve them differently for no reason.
+ * built once at module load and has to be identical on every row and every run, or two projects
+ * cleared in the same minute would visibly dissolve differently for no reason.
  */
 
 /**
  * The whole exit, from the first erased pixel to a flat row. Chosen by the user over a ~700ms
- * "subtle and fast" alternative — this is the cinematic one, and the cost of it is `EXIT_HOLD_MS`
- * below.
+ * "subtle and fast" alternative — this is the cinematic one.
+ *
+ * Nothing waits on it. Unlike the task-row exit it replaced, this delays no Firestore write at all:
+ * the write that empties the project happened when its last task was ticked, and all this holds is
+ * the moment the board drops a block it has already decided to drop (`PROJECT_LINE_EXIT_HOLD_MS` in
+ * `projectCompletedSweepMotion.js`).
  */
 export const DISINTEGRATION_DURATION_MS = 1200
-
-/**
- * When the exit starts, measured from the beginning of the completion sequence.
- *
- * The row is not allowed to start coming apart until the celebration has finished making its
- * point: the checkbox burst (560ms) and the title's progress sweep plus its confirmation pulse
- * (70 + 450 + 150 = 670ms) both land inside this. Sparks cut off mid-flight by a dissolving row is
- * the one way this reads as a glitch rather than as a sequence.
- */
-export const EXIT_DELAY_MS = 670
-
-/**
- * A row is only written to Firestore once it is flat and invisible — the snapshot that drops the
- * task from the list must not arrive while the row is still mid-exit. This is the margin between
- * the last frame and that write.
- */
-export const EXIT_WRITE_BUFFER_MS = 80
-
-/** What the caller must wait before persisting a completion that removes the row from its list. */
-export const EXIT_HOLD_MS = EXIT_DELAY_MS + DISINTEGRATION_DURATION_MS + EXIT_WRITE_BUFFER_MS
 
 /*
  * Everything below is a fraction of `DISINTEGRATION_DURATION_MS`, because every layer is
  * interpolated from ONE `Animated.Value` running 0 -> 1 across the exit. That is the same rule
- * AT-2404 applies to the title bar and the row wash, and for the same reason: the dissolve front,
- * the dust that lifts off it and the height that closes behind it are one gesture, and separate
- * timings for them would drift the moment any one duration is retuned.
+ * AT-2404 applies to the title bar and the row wash, and AT-2492 applies to the sweep's own stages,
+ * and for the same reason: the dissolve front, the dust that lifts off it and the height that
+ * closes behind it are one gesture, and separate timings for them would drift the moment any one
+ * duration is retuned.
  */
 
 /** The front carries its band off the row's left edge — the last pixel is erased — at 68% of the run. */
@@ -115,14 +105,14 @@ export const CONTENT_FADE_START = 0.6
 export const CONTENT_FADE_LEVEL = 0.35
 
 /**
- * The gap closes last, and deliberately after the dust has finished
- * (`maxDustMoteEnd() <= COLLAPSE_START`, pinned in the tests): a row whose height is collapsing
+ * The gap closes last, and deliberately after the dust and the sparks have finished
+ * (`maxParticleEnd() <= COLLAPSE_START`, pinned in the tests): a row whose height is collapsing
  * while motes are still drifting inside it clips them off mid-flight.
  */
 export const COLLAPSE_START = 0.81
 export const ROW_FADE_END = 0.95
 
-/** The row leaves upward into the gap it is closing rather than simply being removed. */
+/** The line leaves upward into the gap it is closing rather than simply being removed. */
 export const ROW_LIFT_PX = -6
 
 /**
@@ -171,6 +161,7 @@ export const DISSOLVE_GRAIN_SPREAD = 1.84
  * Deterministic per index — NOT `Math.random()`, for the same reason `EmptyInboxConfetti` hashes
  * its trajectories: a value read at build time must be identical on every row, and a value read
  * during render would re-roll on every re-render and teleport a mote onto a new path mid-flight.
+ * This row re-renders constantly — it is subscribed to the project's task counts.
  */
 const pseudoRandom = (index, salt) => {
     const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453
@@ -273,17 +264,17 @@ export const DUST_LIFT_BAND_FRACTION = bandFractionAtAlpha(DUST_LIFT_ALPHA)
 
 /**
  * The point of the run at which the row at `x` starts visibly coming apart (0 = the row's left
- * edge, 1 = its right). Derived from the mask rather than tuned by hand, so the dust cannot slide
- * out of step with the erasure the first time the band is retuned.
+ * edge, 1 = its right). Derived from the mask rather than tuned by hand, so neither the dust nor
+ * the sparks can slide out of step with the erasure the first time the band is retuned.
  */
-export const dustMoteLiftOff = x =>
+export const particleLiftOff = x =>
     clamp((DISSOLVE_END * (1 + DISSOLVE_BAND_RATIO * DUST_LIFT_BAND_FRACTION - clamp(x, 0, 1))) / DISSOLVE_TRAVEL, 0, 1)
 
 /**
  * Sparse on purpose. The dust is the texture of the effect, not the effect itself — the mask is
  * what actually removes the row — and every mote is an `Animated.View` restyled on every frame by
  * the JS driver. Eighteen across a full-width row is roughly one per 50px, which reads as dust
- * without turning a routine interaction into a particle system.
+ * without turning the board into a particle system.
  */
 export const DUST_MOTE_COUNT = 18
 /** A mote's life, as a fraction of the run: ~215ms, plus up to ~72ms of jitter. */
@@ -302,7 +293,7 @@ export const buildDustMotes = (count = DUST_MOTE_COUNT) =>
     Array.from({ length: count }, (_unused, index) => {
         const columnJitter = (pseudoRandom(index, 1) - 0.5) * (0.8 / count)
         const x = clamp((index + 0.5) / count + columnJitter, 0, 1)
-        const start = dustMoteLiftOff(x)
+        const start = particleLiftOff(x)
         const life = DUST_MOTE_LIFE + pseudoRandom(index, 6) * DUST_MOTE_LIFE_JITTER
 
         return {
@@ -325,12 +316,101 @@ export const buildDustMotes = (count = DUST_MOTE_COUNT) =>
 
 export const DUST_MOTES = buildDustMotes()
 
-export const maxDustMoteEnd = (motes = DUST_MOTES) => motes.reduce((latest, mote) => Math.max(latest, mote.end), 0)
+/* ── THE CELEBRATION ─────────────────────────────────────────────────────────────────────────────
+ *
+ * "Add a little celebration to the animation when the project line disappears."
+ *
+ * The constraint that shapes every number below is AT-2492's ranking rule, which this must not
+ * break: the all-projects empty inbox is the big moment and owns CONFETTI — sixteen pieces thrown
+ * from behind a headline plus thirty falling across the whole viewport, under gravity, spinning,
+ * on a `position: fixed` layer that escapes to the screen. Clearing ONE project is a smaller thing
+ * and has to stay smaller in KIND, not merely in degree, or the two read as the same celebration at
+ * two volumes — which is exactly what the first pass of AT-2492 got wrong and had to withdraw.
+ *
+ * So this is not confetti at a lower piece count. It is SPARKS, and it differs from confetti in
+ * every property that carries the difference:
+ *
+ *   • they are struck OFF the dissolve front — same `particleLiftOff` as the dust, so the
+ *     celebration is visibly caused by the line coming apart rather than thrown over it;
+ *   • they rise and fade; nothing falls, nothing spins, there is no gravity arc;
+ *   • they are a 4-point twinkle a few pixels across, not a tumbling rectangle;
+ *   • the layer is `position: absolute` and bounded to the one 56px row, so it can never escape to
+ *     the viewport the way the page fall deliberately does;
+ *   • there are nine of them against confetti's forty-six.
+ *
+ * The colours are the project's own tint plus a neutral highlight (resolved by the component), for
+ * AT-2492's reason: a project line is an identity, and the sweep that has just crossed it is in the
+ * project's colour, so the sparks it sheds should be too.
+ */
+
+/** Nine. Enough to read as a flourish, few enough that it can never read as confetti. */
+export const SPARK_COUNT = 9
+/** Longer-lived than dust — a spark is meant to be caught, a mote only to texture the edge. */
+export const SPARK_LIFE = 0.26
+export const SPARK_LIFE_JITTER = 0.08
+/**
+ * Later in its own life than a mote's peak (`DUST_MOTE_PEAK`, 0.22): a twinkle grows into its
+ * brightest frame and then goes, which is what makes it read as a spark rather than as a dot being
+ * switched on.
+ */
+export const SPARK_PEAK = 0.34
+/** How large a spark gets at its peak, relative to its resting size. */
+export const SPARK_PEAK_SCALE = 1
+export const SPARK_START_SCALE = 0.25
+export const SPARK_END_SCALE = 0.1
+
+export const buildSparks = (count = SPARK_COUNT) =>
+    Array.from({ length: count }, (_unused, index) => {
+        // Its own column grid, offset half a column from the dust's, so a spark never lands exactly
+        // on a mote and the two layers read as one shower rather than as paired dots.
+        const columnJitter = (pseudoRandom(index, 21) - 0.5) * (0.7 / count)
+        const x = clamp((index + 0.5) / count + columnJitter, 0, 1)
+        const start = particleLiftOff(x)
+        const life = SPARK_LIFE + pseudoRandom(index, 22) * SPARK_LIFE_JITTER
+
+        return {
+            key: `spark-${index}`,
+            x,
+            y: 0.2 + pseudoRandom(index, 23) * 0.6,
+            // 5–9px across the full star, i.e. a couple of pixels of visible arm. Small enough that
+            // nine of them across a 900px row is a sprinkle, not a burst.
+            size: 5 + pseudoRandom(index, 24) * 4,
+            // Rises further than dust does — this is the layer that is meant to be noticed.
+            rise: -(12 + pseudoRandom(index, 25) * 16),
+            // Drifts both ways, unlike the dust, which all trails behind the front. A celebration
+            // that leans in one direction reads as the same wipe again.
+            drift: (pseudoRandom(index, 26) - 0.5) * 22,
+            peakOpacity: 0.55 + pseudoRandom(index, 27) * 0.35,
+            // Every third spark is the neutral highlight; the rest carry the project's colour.
+            tinted: index % 3 !== 1,
+            start,
+            /**
+             * Clamped, not merely tuned. A spark lives longer than a mote, and the last few lift off
+             * near the row's left edge — late enough that an unclamped life would still be drifting
+             * when the height starts closing and the board pulls whatever is underneath up through
+             * it. Deriving the bound rather than picking a life that happens to fit means
+             * `SPARK_LIFE` can be retuned without silently reintroducing that overlap; the sparks
+             * that lift off early (most of them) get their full life, and only the last one or two
+             * are cut short — at the very end of their fade, where it is not visible.
+             */
+            end: Math.min(start + life, COLLAPSE_START),
+        }
+    })
+
+export const SPARKS = buildSparks()
 
 /**
- * The mask half of the exit. Separate from `createRowExitStyle` only so a caller can reason about
- * (and a test can assert on) the erasure without the collapse in the way; both are applied to the
- * same node.
+ * The last frame on which anything is still drifting. Pinned against `COLLAPSE_START` in the tests:
+ * the row must not start closing while a particle is still alive inside it, because the collapsing
+ * node clips its own overflow and would cut the particle off mid-flight.
+ */
+export const maxParticleEnd = (particles = [...DUST_MOTES, ...SPARKS]) =>
+    particles.reduce((latest, particle) => Math.max(latest, particle.end), 0)
+
+/**
+ * The mask half of the exit. Separate from `createProjectLineExitStyle` only so a caller can reason
+ * about (and a test can assert on) the erasure without the collapse in the way; both are applied to
+ * the same node.
  *
  * @param {Animated.Value} progress 0 -> 1 across `DISINTEGRATION_DURATION_MS`.
  */
@@ -360,14 +440,14 @@ export const createDissolveStyle = progress => {
 }
 
 /**
- * Everything the collapsing row node carries during its exit: the dissolve, the fallback fade, the
+ * Everything the leaving project line carries during its exit: the dissolve, the fallback fade, the
  * height that closes the gap and the lift that sends it upward into that gap.
  *
  * @param {Animated.Value} progress 0 -> 1 across `DISINTEGRATION_DURATION_MS`.
- * @param {number} rowHeight The row's measured height. The caller only builds this style once it
- *   has one — collapsing from an unknown height would jump.
+ * @param {number} rowHeight The line's measured height, frozen when the exit began. The caller only
+ *   builds this style once it has one — collapsing from an unknown height would jump.
  */
-export const createRowExitStyle = (progress, rowHeight) => ({
+export const createProjectLineExitStyle = (progress, rowHeight) => ({
     ...createDissolveStyle(progress),
     height: progress.interpolate({
         inputRange: [0, COLLAPSE_START, 1],

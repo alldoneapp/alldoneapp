@@ -152,6 +152,16 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
             // The line is still there, and it is sweeping.
             expect(countOf(tree, 'ProjectHeader')).toBe(1)
             expect(headerOf(tree).props.completedSweepRunId).toBe(1)
+            /**
+             * AT-2495 — and the header is told the line is on its way out, which is what turns the
+             * sweep's last stage from a settle into the disintegration.
+             *
+             * The value passed is the board's OWN verdict, deliberately not the held
+             * `hideProjectData`: that one is false for the whole hold — that is what the hold IS —
+             * so it could never say "this line is leaving" and the row would settle in place and
+             * then vanish.
+             */
+            expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(true)
 
             // And once the sweep is over the board returns to exactly what it renders today.
             await act(async () => {
@@ -178,6 +188,16 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
                 jest.advanceTimersByTime(PROJECT_SWEEP_PROBE_MS + 20)
             })
             expect(countOf(tree, 'ProjectHeader')).toBe(0)
+        })
+
+        it('never tells a staying line that it is leaving', async () => {
+            // A project with tasks left in it is not going anywhere, so its header must never be
+            // handed the exit — a masked, collapsed project line that stays on the board is a hole
+            // the user cannot click.
+            const tree = await render(buildState({ todayIsEmpty: false, todayCount: 1 }))
+
+            expect(countOf(tree, 'ProjectHeader')).toBe(1)
+            expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(false)
         })
 
         it('never sweeps a project that was already off the board when it mounted', async () => {

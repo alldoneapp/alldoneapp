@@ -192,6 +192,14 @@ function OpenTasksByProject({
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
                             completedSweepRunId={celebrationRunId}
+                            /**
+                             * AT-2495 — `baseHideProjectData`, deliberately NOT `hideProjectData`.
+                             * The second one is already false for the whole hold (that is what the
+                             * hold IS), so it can never say "this line is on its way out". The first
+                             * is the board's own verdict, and it is what decides whether the run
+                             * ends by settling in place or by the line disintegrating off the board.
+                             */
+                            completedSweepLineWillLeave={baseHideProjectData}
                         />
                     )}
                     {showAssistantLine && (

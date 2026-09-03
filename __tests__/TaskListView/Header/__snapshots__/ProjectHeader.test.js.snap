@@ -2,74 +2,85 @@
 
 exports[`ProjectHeader component ProjectHeader snapshot test should render correctly 1`] = `
 <div
-  className="css-view-g5y9jx r-borderBottomColor-tt9ieb r-borderBottomWidth-qklmqi"
+  className="css-view-g5y9jx r-position-bnwqim"
   dir={null}
 >
   <div
-    className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-maxHeight-ormnx7 r-minHeight-10gryf7 r-paddingBottom-12rqra3 r-paddingTop-qiwf3y"
+    className="css-view-g5y9jx"
+    data-testid="project-line"
     dir={null}
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1h0z5md r-maxHeight-1tsbciq"
+      className="css-view-g5y9jx r-borderBottomColor-tt9ieb r-borderBottomWidth-qklmqi"
       dir={null}
     >
       <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1wbh5a2 r-minWidth-bcqeeo"
+        className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-maxHeight-ormnx7 r-minHeight-10gryf7 r-paddingBottom-12rqra3 r-paddingTop-qiwf3y"
         dir={null}
-        style={
-          {
-            "maxWidth": "auto",
-          }
-        }
       >
         <div
-          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md"
+          className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1h0z5md r-maxHeight-1tsbciq"
           dir={null}
-          onClick={[Function]}
-          onContextMenu={[Function]}
-          onKeyDown={[Function]}
-          style={
-            {
-              "transitionDuration": "0s",
+        >
+          <div
+            className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1wbh5a2 r-minWidth-bcqeeo"
+            dir={null}
+            style={
+              {
+                "maxWidth": "auto",
+              }
             }
-          }
-          tabIndex="0"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md"
-            dir={null}
-          />
-        </div>
-        <div
-          className="css-view-g5y9jx r-backgroundColor-1542mo4 r-borderRadius-18c69zk r-opacity-orgf3d"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
           >
             <div
-              className="css-text-146c3p1"
-              dir="auto"
+              className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md"
+              dir={null}
+              onClick={[Function]}
+              onContextMenu={[Function]}
+              onKeyDown={[Function]}
               style={
                 {
-                  "color": "rgba(255,255,255,1.00)",
-                  "fontFamily": "alldone",
-                  "fontSize": "19px",
-                  "opacity": 1,
+                  "transitionDuration": "0s",
                 }
               }
+              tabIndex="0"
             >
-              
+              <div
+                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md"
+                dir={null}
+              />
+            </div>
+            <div
+              className="css-view-g5y9jx r-backgroundColor-1542mo4 r-borderRadius-18c69zk r-opacity-orgf3d"
+              dir={null}
+            >
+              <div
+                className="css-view-g5y9jx"
+                dir={null}
+              >
+                <div
+                  className="css-text-146c3p1"
+                  dir="auto"
+                  style={
+                    {
+                      "color": "rgba(255,255,255,1.00)",
+                      "fontFamily": "alldone",
+                      "fontSize": "19px",
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </div>
+              </div>
             </div>
           </div>
         </div>
+        <div
+          className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1q142lx r-height-1472mwg r-maxHeight-1tsbciq"
+          dir={null}
+        />
       </div>
     </div>
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1q142lx r-height-1472mwg r-maxHeight-1tsbciq"
-      dir={null}
-    />
   </div>
 </div>
 `;

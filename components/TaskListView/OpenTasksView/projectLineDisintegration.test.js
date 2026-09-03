@@ -15,28 +15,40 @@ import {
     DUST_LIFT_BAND_FRACTION,
     DUST_MOTES,
     DUST_MOTE_COUNT,
-    EXIT_DELAY_MS,
-    EXIT_HOLD_MS,
-    EXIT_WRITE_BUFFER_MS,
+    DUST_MOTE_LIFE,
+    DUST_MOTE_PEAK,
     ROW_FADE_END,
+    SPARKS,
+    SPARK_COUNT,
+    SPARK_LIFE,
+    SPARK_PEAK,
     buildDissolveMaskStops,
     buildDustMotes,
+    buildSparks,
     createDissolveStyle,
-    createRowExitStyle,
+    createProjectLineExitStyle,
     dissolveEdgeAt,
     dissolveFrontAt,
-    dustMoteLiftOff,
-    maxDustMoteEnd,
-} from './taskRowDisintegration'
+    particleLiftOff,
+    maxParticleEnd,
+} from './projectLineDisintegration'
+
+/** The real project header: a 56px content box plus its 1px bottom rule. */
+const ROW_HEIGHT = 57
 
 /**
- * AT-2495 — the geometry of the exit.
+ * AT-2495 (second pass) — the geometry of the PROJECT LINE's exit.
  *
  * The whole effect is one CSS mask sliding across the row, so almost everything that can go wrong
  * with it is arithmetic that produces a plausible-looking gradient which erases the wrong thing,
  * in the wrong direction, or never completely. None of that is observable from jest: jsdom has no
  * layout and `__mocks__/react-native.js` stubs `Animated.timing` to a no-op, so no suite here can
  * watch the animation run (that is what `browser-tests/at2495` is for).
+ *
+ * The task row this was originally written against got its old AT-2404 exit back — a completed task
+ * happens dozens of times an hour and cannot afford a 1.2s cinematic — and the disintegration moved
+ * to the one row that leaves at most once per project per day. The arithmetic is unchanged; what is
+ * new is the celebration that rides on it, and the fact that nothing waits on any of it.
  *
  * What CAN be checked here, and is, is the arithmetic — by re-deriving the CSS mask semantics from
  * the spec and sampling the resulting alpha across the row. `maskAlphaAt` below is that
@@ -221,9 +233,9 @@ describe('the dust (AT-2495)', () => {
             expect(mote.start).toBeGreaterThanOrEqual(byPosition[index].start)
         })
         // The rightmost column is the first to go, and the leftmost the last.
-        expect(dustMoteLiftOff(1)).toBeLessThan(dustMoteLiftOff(0))
-        expect(dustMoteLiftOff(1)).toBeGreaterThanOrEqual(0)
-        expect(dustMoteLiftOff(0)).toBeLessThan(DISSOLVE_END)
+        expect(particleLiftOff(1)).toBeLessThan(particleLiftOff(0))
+        expect(particleLiftOff(1)).toBeGreaterThanOrEqual(0)
+        expect(particleLiftOff(0)).toBeLessThan(DISSOLVE_END)
     })
 
     it('covers the whole row instead of clumping', () => {
@@ -269,25 +281,122 @@ describe('the dust (AT-2495)', () => {
     })
 })
 
+describe('the celebration (AT-2495)', () => {
+    /**
+     * The rule this whole block exists to protect is AT-2492's ranking: the ALL-PROJECTS empty inbox
+     * owns confetti — 46 pieces, gravity, spin, and a `position: fixed` layer that escapes to the
+     * viewport — and clearing ONE project has to stay smaller in KIND, not merely in degree. The
+     * first pass of AT-2492 threw a smaller confetti burst here and had to withdraw it, because
+     * tuning the piece count alone left the two reading as one celebration at two volumes.
+     *
+     * So each assertion below is one of the properties that carries that difference. A future change
+     * that quietly turns these into confetti fails here, and again — comparatively, against the real
+     * all-projects block — in `ProjectEmptyInboxCelebration.test.js`.
+     */
+    it('is a sprinkle, not a burst', () => {
+        expect(SPARK_COUNT).toBe(9)
+        expect(SPARKS).toHaveLength(SPARK_COUNT)
+        // Comfortably under the all-projects burst alone (16), let alone its 46-piece total.
+        expect(SPARK_COUNT).toBeLessThan(16)
+    })
+
+    it('is struck OFF the dissolve front, so the celebration is caused by the line leaving', () => {
+        // Not thrown over the top of it: a spark appears exactly where the row under it has started
+        // to come apart, on the same derivation the dust uses.
+        SPARKS.forEach(spark => {
+            expect(dissolveEdgeAt(spark.start, DUST_LIFT_BAND_FRACTION)).toBeCloseTo(spark.x, 6)
+            expect(dissolveFrontAt(spark.start)).toBeLessThan(spark.x)
+        })
+    })
+
+    it('rises and twinkles — nothing falls, nothing spins', () => {
+        // Gravity and rotation are confetti's vocabulary. A spark goes up and goes out.
+        SPARKS.forEach(spark => {
+            expect(spark.rise).toBeLessThan(0)
+            expect(spark).not.toHaveProperty('rotations')
+            expect(spark).not.toHaveProperty('fallY')
+        })
+        // Later in its own life than the dust's peak: a twinkle grows into its brightest frame,
+        // where a mote is at its brightest the moment it appears and only ever shrinks.
+        expect(SPARK_PEAK).toBeGreaterThan(DUST_MOTE_PEAK)
+    })
+
+    it('drifts both ways, unlike the dust that all trails behind the front', () => {
+        // A celebration that leans in one direction reads as the same wipe played twice.
+        expect(SPARKS.some(spark => spark.drift > 0)).toBe(true)
+        expect(SPARKS.some(spark => spark.drift < 0)).toBe(true)
+    })
+
+    it('stays small and inside the row', () => {
+        SPARKS.forEach(spark => {
+            expect(spark.size).toBeLessThanOrEqual(10)
+            expect(spark.y).toBeGreaterThan(0.1)
+            expect(spark.y).toBeLessThan(0.9)
+            expect(spark.x).toBeGreaterThanOrEqual(0)
+            expect(spark.x).toBeLessThanOrEqual(1)
+        })
+    })
+
+    it('mixes the project colour with a highlight, so a pale project still reads', () => {
+        expect(SPARKS.some(spark => spark.tinted)).toBe(true)
+        expect(SPARKS.some(spark => !spark.tinted)).toBe(true)
+        // The tint carries the majority — the line is the project's identity (AT-2492).
+        expect(SPARKS.filter(spark => spark.tinted).length).toBeGreaterThan(SPARKS.length / 2)
+    })
+
+    it('covers the row instead of clumping', () => {
+        const sorted = [...SPARKS].sort((a, b) => a.x - b.x)
+        sorted.slice(1).forEach((spark, index) => {
+            expect(spark.x - sorted[index].x).toBeLessThan(2 / SPARK_COUNT)
+        })
+    })
+
+    it('lifts off right to left, following the front', () => {
+        const byPosition = [...SPARKS].sort((a, b) => b.x - a.x)
+        byPosition.slice(1).forEach((spark, index) => {
+            expect(spark.start).toBeGreaterThanOrEqual(byPosition[index].start)
+        })
+    })
+
+    it('is deterministic, so two projects cleared in the same minute look the same', () => {
+        expect(buildSparks()).toEqual(SPARKS)
+        expect(buildSparks(4)).toHaveLength(4)
+    })
+
+    it('lives longer than a mote, because it is meant to be caught', () => {
+        expect(SPARK_LIFE).toBeGreaterThan(DUST_MOTE_LIFE)
+    })
+
+    it('never outlives the collapse, however long its life is retuned to be', () => {
+        /**
+         * The clamp, not the tuning. The last sparks lift off near the row's left edge, late enough
+         * that an unclamped life would still be drifting when the height starts closing and the
+         * board pulls whatever is underneath up through it. Mutating `SPARK_LIFE` upward must not
+         * be able to reintroduce that.
+         */
+        SPARKS.forEach(spark => expect(spark.end).toBeLessThanOrEqual(COLLAPSE_START))
+        const generous = buildSparks(SPARK_COUNT)
+        expect(Math.max(...generous.map(spark => spark.end))).toBeLessThanOrEqual(COLLAPSE_START)
+    })
+})
+
 describe('the exit timeline (AT-2495)', () => {
     it('lasts the 1.2 seconds that were asked for', () => {
         expect(DISINTEGRATION_DURATION_MS).toBe(1200)
     })
 
-    it('finishes every mote before the row starts closing the gap', () => {
-        // The dust layer is clipped by the collapsing row, so a mote still in flight when the
-        // height starts moving is cut off mid-air.
-        expect(maxDustMoteEnd()).toBeLessThanOrEqual(COLLAPSE_START)
+    it('finishes every mote AND every spark before the row starts closing the gap', () => {
+        // The particle layer keeps the row's frozen height while the row itself collapses, so a
+        // particle still in flight when the board pulls the content below upward is cut off
+        // mid-air.
+        expect(maxParticleEnd()).toBeLessThanOrEqual(COLLAPSE_START)
+        expect(maxParticleEnd(DUST_MOTES)).toBeLessThanOrEqual(COLLAPSE_START)
+        expect(maxParticleEnd(SPARKS)).toBeLessThanOrEqual(COLLAPSE_START)
     })
 
     it('erases the row before it starts closing the gap', () => {
         // Shrinking a row that is still visible is the "deleted" reading this pass replaced.
         expect(DISSOLVE_END).toBeLessThan(COLLAPSE_START)
-    })
-
-    it('keeps the whole run inside the write hold', () => {
-        expect(EXIT_HOLD_MS).toBe(EXIT_DELAY_MS + DISINTEGRATION_DURATION_MS + EXIT_WRITE_BUFFER_MS)
-        expect(EXIT_WRITE_BUFFER_MS).toBeGreaterThan(0)
     })
 
     it('keeps the fallback fade behind the mask, where it cannot be seen', () => {
@@ -337,15 +446,15 @@ describe('the styles handed to the row (AT-2495)', () => {
 
     it('closes the gap only at the end, and leaves upward as it goes', () => {
         const value = progress()
-        const style = createRowExitStyle(value, 48)
+        const style = createProjectLineExitStyle(value, ROW_HEIGHT)
 
-        expect(style.height.__getValue()).toBe(48)
+        expect(style.height.__getValue()).toBe(ROW_HEIGHT)
         expect(style.opacity.__getValue()).toBe(1)
         expect(style.transform[0].translateY.__getValue()).toBe(0)
         expect(style.overflow).toBe('hidden')
 
         value.setValue(COLLAPSE_START)
-        expect(style.height.__getValue()).toBe(48)
+        expect(style.height.__getValue()).toBe(ROW_HEIGHT)
 
         value.setValue(1)
         expect(style.height.__getValue()).toBe(0)
@@ -357,7 +466,7 @@ describe('the styles handed to the row (AT-2495)', () => {
         // The one thing that must survive a browser without mask support: the row leaves. It just
         // leaves as a fade.
         const value = progress()
-        const style = createRowExitStyle(value, 48)
+        const style = createProjectLineExitStyle(value, ROW_HEIGHT)
 
         value.setValue(COLLAPSE_START)
         expect(style.opacity.__getValue()).toBeLessThan(1)
