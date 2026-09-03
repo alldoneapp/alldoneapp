@@ -18,8 +18,8 @@ const getNoteByParentId = async (projectId, parentId, admin) => {
 }
 
 const copyNoteToOtherProject = async (oldProjectId, newProjectId, noteId, admin) => {
-    const { getNotesBucketName } = require('../shared/notesStorageBucket')
-    const notesBucketName = getNotesBucketName()
+    const { defineString } = require('firebase-functions/params')
+    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
 
     const notesBucket = admin.storage().bucket(notesBucketName)
     const noteContentFile = notesBucket.file(`notesData/${oldProjectId}/${noteId}`)
