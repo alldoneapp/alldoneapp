@@ -5,11 +5,7 @@ import { getRoleIdsVisibleToField } from '../firestoreAccess'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setMyDayAllTodayTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
-import {
-    OPTIMISTIC_TASK_REMOVED,
-    OPTIMISTIC_TASK_SETTLED,
-    subscribeToOptimisticTaskCreates,
-} from './optimisticTaskCreate'
+import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './optimisticTaskCreate'
 
 export const TO_ATTEND_TASKS_MY_DAY_TYPE = 'TO_ATTEND_TASKS_MY_DAY_TYPE'
 export const OBSERVED_TASKS_MY_DAY_TYPE = 'OBSERVED_TASKS_MY_DAY_TYPE'
@@ -64,17 +60,6 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
-        // AT-2500 - the server has the document, so this list's own snapshot is now the authority
-        // on whether it belongs here. Dropping the pending copy unconditionally is safe precisely
-        // because this watcher rebuilds from `latestDocs`: if the task really is in this query the
-        // snapshot already carries it and it keeps rendering from there (that is the same purge
-        // `emit` does below); if it is not - the user postponed it out of `dueDate <= endOfDay`
-        // before the create was ever echoed - this is the only thing that will ever remove it.
-        if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (pendingDocsById.delete(change.doc.id) && hasRealSnapshot) emit()
-            return
-        }
-
         if (!matchesTasksToAttendQuery(change.doc.data(), userId, endOfDay)) return
         change.type === OPTIMISTIC_TASK_REMOVED
             ? pendingDocsById.delete(change.doc.id)
