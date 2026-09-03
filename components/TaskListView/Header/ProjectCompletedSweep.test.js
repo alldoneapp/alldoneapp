@@ -4,6 +4,7 @@ import { AccessibilityInfo, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import ProjectCompletedSweep from './ProjectCompletedSweep'
+import useProjectCompletedSweepMotion from '../OpenTasksView/projectCompletedSweepMotion'
 import {
     SWEEP_FILL_MS,
     SWEEP_PULSE_MS,
@@ -22,6 +23,16 @@ jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
  * vacuously against a component that rendered `null` — which is exactly how AT-2445's predecessor
  * rotted.
  */
+
+/**
+ * AT-2495 moved the RUN up into `ProjectHeader`, because the same sequence now also drives the mask
+ * that erases the whole line and a child cannot mask its parent. The overlay is handed the values
+ * instead of calling the hook itself, so the suite calls the hook here — everything below still
+ * drives the real sequence through the real component, exactly as before.
+ */
+const SweepHarness = ({ runId, projectId, lineWillLeave = false }) => (
+    <ProjectCompletedSweep motion={useProjectCompletedSweepMotion(runId, lineWillLeave)} projectId={projectId} />
+)
 
 const PROJECT = 'project-a'
 const PROJECT_COLOR = '#2F80ED'
@@ -91,7 +102,7 @@ describe('the project completed sweep (AT-2492)', () => {
     const renderSweep = async (runId, { measure = true } = {}) => {
         let tree
         await act(async () => {
-            tree = renderer.create(<ProjectCompletedSweep runId={runId} projectId={PROJECT} />)
+            tree = renderer.create(<SweepHarness runId={runId} projectId={PROJECT} />)
         })
         if (measure && countOf(tree, 'project-completed-sweep') > 0) {
             await act(async () => {
@@ -243,14 +254,14 @@ describe('the project completed sweep (AT-2492)', () => {
         // The project row re-renders on every task write in the project; that must not rewind a
         // sweep already halfway across.
         await act(async () => {
-            tree.update(<ProjectCompletedSweep runId={1} projectId={PROJECT} />)
+            tree.update(<SweepHarness runId={1} projectId={PROJECT} />)
         })
 
         expect(progress.__getValue()).toBe(0.5)
 
         // A NEW run does start from the beginning, so clearing a second project still sweeps.
         await act(async () => {
-            tree.update(<ProjectCompletedSweep runId={2} projectId={PROJECT} />)
+            tree.update(<SweepHarness runId={2} projectId={PROJECT} />)
         })
         expect(progressValueOf(tree).__getValue()).toBe(0)
     })
