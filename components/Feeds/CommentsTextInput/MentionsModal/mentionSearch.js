@@ -63,3 +63,63 @@ export const buildMentionProjectsScope = (projectIds, extraProjectIds = []) => {
 
     return `projectId:=[${ids.map(formatTypesenseValue).join(',')}]`
 }
+
+// AT-2497 — the notes tab is ONE page shared by every project the user belongs to, so the
+// project being written in can contribute nothing at all.
+//
+// The engine side was never the problem: a page of `per_page` notes ordered by
+// `lastEditionDate:desc` is exactly what the modal asks for and exactly what comes back.
+// But it is a page of the user's *globally* most recent notes, and on the reporting account
+// the 20 most recently edited notes are 16 notes from one project plus four from four
+// others — the project this very ticket lives in has not made that page for two weeks. So
+// typing "@" in a note there and opening the Notes tab offers, correctly and uselessly,
+// twenty notes from somewhere else.
+//
+// The fix is a second, current-project-scoped page merged in front of the cross-project one.
+// It is not "current project only": mention search is deliberately cross-project (AT-2393),
+// and a note you want to link frequently lives elsewhere. It is a reserved block at the top
+// so the project you are actually in can never be crowded off the page.
+export const MENTION_NOTES_PAGE_SIZE = 20
+export const MENTION_NOTES_CURRENT_PROJECT_SLOTS = 8
+
+const getMentionHitKey = hit => {
+    if (!hit) return ''
+    if (hit.objectID) return String(hit.objectID)
+    if (hit.id) return `${hit.projectId || ''}:${hit.id}`
+    return ''
+}
+
+/**
+ * Merge the current project's page in front of the cross-project page.
+ *
+ * `reserved` slots are guaranteed to the current project when it has that many results;
+ * everything after that is filled from the cross-project page (which is the globally most
+ * recent set and may itself contain current-project notes — deduplicated here), and only
+ * then topped up from whatever is left over. Both inputs arrive already ordered by
+ * recency, and this preserves that order inside each block.
+ *
+ * A short page on either side is never padded with a placeholder: fewer suggestions is a
+ * correct answer, an invented one is not.
+ */
+export const mergeMentionPages = (currentProjectHits, crossProjectHits, options = {}) => {
+    const reserved = options.reserved != null ? options.reserved : MENTION_NOTES_CURRENT_PROJECT_SLOTS
+    const limit = options.limit != null ? options.limit : MENTION_NOTES_PAGE_SIZE
+
+    const current = Array.isArray(currentProjectHits) ? currentProjectHits : []
+    const cross = Array.isArray(crossProjectHits) ? crossProjectHits : []
+
+    const seen = new Set()
+    const merged = []
+    const push = hit => {
+        const key = getMentionHitKey(hit)
+        if (!key || seen.has(key) || merged.length >= limit) return
+        seen.add(key)
+        merged.push(hit)
+    }
+
+    current.slice(0, Math.max(0, reserved)).forEach(push)
+    cross.forEach(push)
+    current.forEach(push)
+
+    return merged
+}

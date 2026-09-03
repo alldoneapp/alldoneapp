@@ -17,9 +17,11 @@ const CURRENT_PROJECT_ID = 'project-current'
 const OTHER_PROJECT_ID = 'project-other'
 
 const mockSearchTypesenseCollection = jest.fn()
+const mockMultiSearchTypesense = jest.fn()
 
 jest.mock('../../../utils/typesenseSearch', () => ({
     searchTypesenseCollection: (...args) => mockSearchTypesenseCollection(...args),
+    multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
 }))
 
 jest.mock('../../../utils/backends/Assistants/assistantsFirestore', () => ({
@@ -113,6 +115,8 @@ describe('MentionsModal contacts search (AT-2393)', () => {
         jest.useFakeTimers()
         mockSearchTypesenseCollection.mockReset()
         mockSearchTypesenseCollection.mockResolvedValue({ hits: [] })
+        mockMultiSearchTypesense.mockReset()
+        mockMultiSearchTypesense.mockImplementation(async searches => searches.map(() => ({ hits: [] })))
     })
 
     afterEach(() => {
@@ -142,9 +146,15 @@ describe('MentionsModal contacts search (AT-2393)', () => {
     it('scopes the notes tab the same way, without the assistants carve-out', async () => {
         await renderAndSearch()
 
-        const notesCall = mockSearchTypesenseCollection.mock.calls.find(call => call[0] === NOTES_INDEX_NAME_PREFIX)
-        expect(notesCall[2]).toContain(`projectId:=[\`${CURRENT_PROJECT_ID}\`,\`${OTHER_PROJECT_ID}\`]`)
-        expect(notesCall[2]).not.toContain(GLOBAL_PROJECT_ID)
+        // Notes are fetched as two pages in one multi_search since AT-2497 (the current
+        // project, then everything visible), so the scope is asserted on the cross-project
+        // one — the page this AT-2393 rule was written for.
+        const notesSearches = (mockMultiSearchTypesense.mock.calls[0] || [[]])[0]
+        const crossProjectSearch = notesSearches.find(
+            search => search.collection === NOTES_INDEX_NAME_PREFIX && search.filterBy.includes(OTHER_PROJECT_ID)
+        )
+        expect(crossProjectSearch.filterBy).toContain(`projectId:=[\`${CURRENT_PROJECT_ID}\`,\`${OTHER_PROJECT_ID}\`]`)
+        expect(crossProjectSearch.filterBy).not.toContain(GLOBAL_PROJECT_ID)
     })
 
     it('leaves the other tabs on their collection default searchable fields', async () => {

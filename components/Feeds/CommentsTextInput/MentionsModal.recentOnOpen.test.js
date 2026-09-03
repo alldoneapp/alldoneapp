@@ -24,9 +24,11 @@ Platform.OS = 'web'
 const CURRENT_PROJECT_ID = 'project-current'
 
 const mockSearchTypesenseCollection = jest.fn()
+const mockMultiSearchTypesense = jest.fn()
 
 jest.mock('../../../utils/typesenseSearch', () => ({
     searchTypesenseCollection: (...args) => mockSearchTypesenseCollection(...args),
+    multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
 }))
 
 jest.mock('../../../utils/backends/Assistants/assistantsFirestore', () => ({
@@ -48,10 +50,13 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     },
 }))
 
+const OTHER_PROJECT_ID = 'project-other'
+
 const mockStoreState = {
     loggedUser: { uid: 'me' },
     loggedUserProjectsMap: {
         [CURRENT_PROJECT_ID]: { id: CURRENT_PROJECT_ID, name: 'Current', index: 0 },
+        [OTHER_PROJECT_ID]: { id: OTHER_PROJECT_ID, name: 'Other', index: 1 },
     },
     loggedUserProjects: [],
     projectUsers: {},
@@ -92,7 +97,17 @@ const {
     CHATS_INDEX_NAME_PREFIX,
 } = require('../../GlobalSearchAlgolia/searchHelper')
 
-const note = (id, title) => ({ id, title, projectId: CURRENT_PROJECT_ID, objectID: id + CURRENT_PROJECT_ID })
+const note = (id, title, projectId = CURRENT_PROJECT_ID) => ({
+    id,
+    title,
+    projectId,
+    objectID: id + projectId,
+})
+
+// Notes are fetched as two pages in one round trip (AT-2497), so they no longer come
+// through searchTypesenseCollection at all.
+const notesSearches = () => (mockMultiSearchTypesense.mock.calls[0] || [[]])[0]
+const notesSearchFor = predicate => notesSearches().find(predicate)
 
 const renderAndSearch = async (mentionText = '') => {
     let tree
@@ -124,6 +139,8 @@ describe('MentionsModal suggests recent items before anything is typed (AT-2497)
         mockRenderedItems.current = []
         mockSearchTypesenseCollection.mockReset()
         mockSearchTypesenseCollection.mockResolvedValue({ hits: [] })
+        mockMultiSearchTypesense.mockReset()
+        mockMultiSearchTypesense.mockImplementation(async searches => searches.map(() => ({ hits: [] })))
     })
 
     afterEach(() => {
@@ -133,9 +150,48 @@ describe('MentionsModal suggests recent items before anything is typed (AT-2497)
     it('asks the notes tab to match all when the mention text is still empty', async () => {
         await renderAndSearch('')
 
-        const notesCall = callFor(NOTES_INDEX_NAME_PREFIX)
-        expect(notesCall[1]).toBe('')
-        expect(notesCall[3].matchAllWhenEmpty).toBe(true)
+        expect(notesSearches()).toHaveLength(2)
+        notesSearches().forEach(search => {
+            expect(search.collection).toBe(NOTES_INDEX_NAME_PREFIX)
+            expect(search.query).toBe('')
+            expect(search.matchAllWhenEmpty).toBe(true)
+        })
+    })
+
+    it('fetches the current project as its own page beside the cross-project one', async () => {
+        // AT-2497: one shared page is drawn from every project the user belongs to, so the
+        // project being written in can contribute nothing at all. Measured in production:
+        // the twenty most recently edited notes on the reporting account contain zero from
+        // the project this ticket lives in.
+        await renderAndSearch('')
+
+        const currentProjectSearch = notesSearchFor(search => !search.filterBy.includes(OTHER_PROJECT_ID))
+        const crossProjectSearch = notesSearchFor(search => search.filterBy.includes(OTHER_PROJECT_ID))
+
+        expect(currentProjectSearch.filterBy).toContain(`projectId:=\`${CURRENT_PROJECT_ID}\``)
+        expect(crossProjectSearch.filterBy).toContain(CURRENT_PROJECT_ID)
+
+        // Both are ANDed with the same privacy scope: this narrows reach, never widens it.
+        notesSearches().forEach(search => {
+            expect(search.filterBy).toContain('isPublicFor:=[`0`,`me`]')
+        })
+    })
+
+    it('keeps the current project on the page when the cross-project page is full', async () => {
+        mockMultiSearchTypesense.mockImplementation(async searches =>
+            searches.map(search =>
+                search.filterBy.includes(OTHER_PROJECT_ID)
+                    ? { hits: Array.from({ length: 20 }, (_, i) => note(`x${i}`, `Theirs ${i}`, OTHER_PROJECT_ID)) }
+                    : { hits: [note('mine', 'Mine, edited two weeks ago')] }
+            )
+        )
+
+        const tree = await renderAndSearch('')
+        await act(async () => {
+            tree.root.findByProps({ text: 'Notes' }).props.onPress()
+        })
+
+        expect(mockRenderedItems.current[0].title).toBe('Mine, edited two weeks ago')
     })
 
     it('does the same for every other tab, so none of them opens blank', async () => {
@@ -166,22 +222,20 @@ describe('MentionsModal suggests recent items before anything is typed (AT-2497)
     it('still sends the typed text once the user types, and lets relevance rank it', async () => {
         await renderAndSearch('roadmap')
 
-        const notesCall = callFor(NOTES_INDEX_NAME_PREFIX)
-        expect(notesCall[1]).toBe('roadmap')
+        notesSearches().forEach(search => expect(search.query).toBe('roadmap'))
         // matchAllWhenEmpty is inert for a non-blank query - the flag stays on, the search
         // layer is what decides, and it only substitutes the wildcard for a blank query.
-        expect(notesCall[3].matchAllWhenEmpty).toBe(true)
+        notesSearches().forEach(search => expect(search.matchAllWhenEmpty).toBe(true))
     })
 
     it('renders the returned notes in the order the engine ranked them', async () => {
         // The engine returns most-recently-edited first; the modal only re-groups by project
         // (a stable sort), so the recency order has to survive into the rendered list.
-        mockSearchTypesenseCollection.mockImplementation(async indexPrefix => {
-            if (indexPrefix !== NOTES_INDEX_NAME_PREFIX) return { hits: [] }
-            return {
+        mockMultiSearchTypesense.mockImplementation(async searches =>
+            searches.map(() => ({
                 hits: [note('n1', 'Edited today'), note('n2', 'Edited yesterday'), note('n3', 'Edited last week')],
-            }
-        })
+            }))
+        )
 
         const tree = await renderAndSearch('')
         await act(async () => {
@@ -195,11 +249,47 @@ describe('MentionsModal suggests recent items before anything is typed (AT-2497)
         ])
     })
 
-    it('counts the prefilled notes in the tab badge, so the tab does not look empty', async () => {
-        mockSearchTypesenseCollection.mockImplementation(async indexPrefix => {
-            if (indexPrefix !== NOTES_INDEX_NAME_PREFIX) return { hits: [] }
-            return { hits: [note('n1', 'One'), note('n2', 'Two')] }
+    it('does not replace an empty tab with a spinner that never stops', async () => {
+        // changeTab used to set the spinner unconditionally, and only a COMPLETING search
+        // ever cleared it. Switching to a tab whose search had already finished and come
+        // back empty therefore swapped the "no results" copy for a spinner that spun for
+        // as long as the popup stayed open — which is what "I don't see my notes" looks
+        // like when there is genuinely nothing to show.
+        const EmptyMatch = require('./MentionsModal/EmptyMatch').default
+
+        const tree = await renderAndSearch('')
+        await act(async () => {
+            tree.root.findByProps({ text: 'Notes' }).props.onPress()
         })
+
+        expect(tree.root.findByType(EmptyMatch).props.showSpinner).toBe(false)
+    })
+
+    it('still shows the spinner while a search is actually running', async () => {
+        // The guard must not turn into "never show a spinner": before the first pass
+        // resolves there is nothing to render and a spinner is the honest answer.
+        let releaseNotes
+        mockMultiSearchTypesense.mockImplementation(
+            () => new Promise(resolve => (releaseNotes = () => resolve([{ hits: [] }, { hits: [] }])))
+        )
+        mockSearchTypesenseCollection.mockReturnValue(new Promise(() => {}))
+        const EmptyMatch = require('./MentionsModal/EmptyMatch').default
+
+        const tree = await renderAndSearch('')
+        await act(async () => {
+            tree.root.findByProps({ text: 'Notes' }).props.onPress()
+        })
+
+        expect(tree.root.findByType(EmptyMatch).props.showSpinner).toBe(true)
+        await act(async () => {
+            releaseNotes()
+        })
+    })
+
+    it('counts the prefilled notes in the tab badge, so the tab does not look empty', async () => {
+        mockMultiSearchTypesense.mockImplementation(async searches =>
+            searches.map(() => ({ hits: [note('n1', 'One'), note('n2', 'Two')] }))
+        )
 
         const tree = await renderAndSearch('')
 
