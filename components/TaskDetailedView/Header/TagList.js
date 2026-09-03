@@ -96,6 +96,7 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
                     assistantId={assistantId}
                     setAssistantId={setAssistantId}
                     objectId={task.id}
+                    showThreadModelBadge={true}
                     objectType={FEED_TASK_OBJECT_TYPE}
                     parentObject={task}
                     updateObjectState={updateObjectState}

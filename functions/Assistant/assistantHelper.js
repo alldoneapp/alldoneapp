@@ -96,6 +96,8 @@ const { addProjectRoutingReasonComment } = require('../shared/projectRoutingComm
 const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const { resolveThreadAssistantModel } = require('./threadAssistantModel')
+const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
 const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
 const {
     buildInitialAssistantRunStatusMessage,
@@ -11478,15 +11480,26 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
 }
 
 // New function to get task-level settings or fall back to assistant settings
-async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
+async function getTaskOrAssistantSettings(projectId, taskId, assistantId, threadContext = null) {
     const settingsStart = Date.now()
     console.log('⚙️ ASSISTANT SETTINGS: Getting task or assistant settings:', { projectId, taskId, assistantId })
 
     // Fetch task data and assistant settings in parallel
     const parallelStart = Date.now()
-    const [taskDoc, assistant] = await Promise.all([
+    // `threadContext` names the conversation this prompt runs in, so its model pin (AT-2502) can
+    // be read in the same round trip. Callers that have no thread pass nothing and behave exactly
+    // as they did before.
+    const [taskDoc, assistant, threadModelOverride] = await Promise.all([
         admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get(),
         getAssistantForChat(projectId, assistantId, null, { forceRefresh: true }),
+        threadContext?.objectId
+            ? readThreadAssistantModelOverride(
+                  admin.firestore(),
+                  projectId,
+                  threadContext.objectType,
+                  threadContext.objectId
+              )
+            : Promise.resolve(null),
     ])
     const parallelDuration = Date.now() - parallelStart
     console.log('⚙️ ASSISTANT SETTINGS: Parallel fetch completed', {
@@ -11513,8 +11526,16 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
 
     // Return task settings if they exist, otherwise use assistant settings with defaults
     const taskModelOverride = getPreConfigTaskModelOverride(task)
+    // A model configured on the pre-configured task itself was chosen for THAT prompt and keeps
+    // outranking the thread it happens to be run from; the thread pin only replaces the
+    // assistant's own default.
+    const { model: resolvedModel, source: resolvedModelSource } = resolveThreadAssistantModel({
+        explicitModel: taskModelOverride,
+        threadOverride: threadModelOverride,
+        assistantModel: assistant.model,
+    })
     const settings = {
-        model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
+        model: normalizeModelKey(resolvedModel || MODEL_GPT5_6_SOL),
         temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
         reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant.reasoningEffort),
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
@@ -11531,7 +11552,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         allowedTools: settings.allowedTools,
         modelTokensPerGold: getTokensPerGold(settings.model),
         settingsSource: {
-            model: taskModelOverride ? 'task_override' : 'assistant',
+            model: resolvedModelSource === 'explicit' ? 'task_override' : resolvedModelSource,
             temperature: 'assistant',
             reasoningEffort:
                 task && Object.prototype.hasOwnProperty.call(task, 'aiReasoningEffort') ? 'task' : 'assistant',

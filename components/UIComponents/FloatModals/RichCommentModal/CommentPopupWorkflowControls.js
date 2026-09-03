@@ -6,13 +6,8 @@ import store from '../../../../redux/store'
 import { startLoadingData } from '../../../../redux/actions'
 import { completeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 import { getWorkflowStepsIdsSorted } from '../../../../utils/HelperFunctions'
-import {
-    moveTasksFromDone,
-    moveTasksFromMiddleOfWorkflow,
-    moveTasksFromOpen,
-} from '../../../../utils/backends/Tasks/tasksFirestore'
+import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
-import { taskUsesWorkflowOutsideSteps } from './commentPopupWorkflowState'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
 import { getWorkflowStepName } from '../../../WorkflowModal/workflowNavigation'
@@ -61,64 +56,25 @@ function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppear
     )
 }
 
-/**
- * AT-2501 — the popup shows the workflow in all three states a task can be in, not just the
- * middle one. `currentStepId` is the id the step LIST highlights and the selector names, so it is
- * the position itself (`OPEN_STEP` / `DONE_STEP`) rather than the last entry of `stepHistory`:
- * a completed task's history still ends on the last step it was reviewed at, which is where it
- * goes BACK to, not where it is.
- *
- * `forwardStepId` is null in exactly one case — Done, which is terminal — and that is what hides
- * the forward button. Open has the mirror-image absence and has always expressed it as
- * `backwardStepId: null`; `MainButtons` was already hiding the backward button there.
- */
 export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
-    if (stepIds.length === 0) return null
-
     const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
-    const lastStepId = stepHistory[stepHistory.length - 1]
-    const currentStep = stepIds.indexOf(lastStepId)
+    const currentStepId = stepHistory[stepHistory.length - 1]
+    const isOpenWorkflowTask = task?.workflowTask === true && currentStepId === OPEN_STEP
+    const currentStep = isOpenWorkflowTask ? OPEN_STEP : stepIds.indexOf(currentStepId)
 
-    if (task?.done) {
-        if (!taskUsesWorkflowOutsideSteps(task)) return null
-
-        return {
-            currentStep: DONE_STEP,
-            currentStepId: DONE_STEP,
-            stepIds,
-            // One step back from Done is the step the task was last reviewed at — or Open, when it
-            // was completed without ever entering the workflow.
-            backwardStepId: currentStep >= 0 ? lastStepId : OPEN_STEP,
-            forwardStepId: null,
-        }
-    }
-
-    if (currentStep < 0) {
-        // Not standing on a step. Either the task has not entered the workflow yet (`OPEN_STEP`,
-        // which is what every task is created with) or it stands on a step that no longer exists,
-        // which stays unrepresentable exactly as it was before.
-        const isOpenTask = stepHistory.length === 0 || lastStepId === OPEN_STEP
-        if (!isOpenTask) return null
-        // An assistant workflow task is BORN into the workflow, so it is offered its steps
-        // regardless of the flags below — that is the AT-2146 behaviour and it stays untouched.
-        if (task?.workflowTask !== true && !taskUsesWorkflowOutsideSteps(task)) return null
-
-        return {
-            currentStep: OPEN_STEP,
-            currentStepId: OPEN_STEP,
-            stepIds,
-            backwardStepId: null,
-            forwardStepId: stepIds[0],
-        }
-    }
+    if (task?.done || (currentStep < 0 && !isOpenWorkflowTask) || stepIds.length === 0) return null
 
     return {
         currentStep,
-        currentStepId: lastStepId,
+        currentStepId,
         stepIds,
-        backwardStepId: currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
-        forwardStepId: currentStep + 1 < stepIds.length ? stepIds[currentStep + 1] : DONE_STEP,
+        backwardStepId: isOpenWorkflowTask ? null : currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
+        forwardStepId: isOpenWorkflowTask
+            ? stepIds[0]
+            : currentStep + 1 < stepIds.length
+              ? stepIds[currentStep + 1]
+              : DONE_STEP,
     }
 }
 
@@ -173,9 +129,6 @@ export default function CommentPopupWorkflowControls({
 
     const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
-        // Done has no forward destination (AT-2501). The button is hidden, so this only guards the
-        // keyboard/programmatic route into `moveTask`.
-        if (stepToMoveId === null || stepToMoveId === undefined) return
 
         submittingRef.current = true
         setSubmitting(true)
@@ -188,13 +141,7 @@ export default function CommentPopupWorkflowControls({
             // the forward/backward buttons stay exactly as immediate as they are today.
             await completeTaskWithMotion(completionMotion, { isCompletion: stepToMoveId === DONE_STEP }, async () => {
                 store.dispatch(startLoadingData())
-                // AT-2501 — reopening a completed task is its own transition, and it is the one
-                // the other two movers cannot express: only `moveTasksFromDone` clears `done` /
-                // `inDone`, restores the due date and reverses the completion statistics. Same
-                // three-way split `StatusPickerStepItem` and `WorkflowEstimation` already use.
-                if (task.done) {
-                    await moveTasksFromDone(projectId, task, stepToMoveId)
-                } else if (task.userIds.length === 1) {
+                if (task.userIds.length === 1) {
                     await moveTasksFromOpen(
                         projectId,
                         task,
@@ -317,7 +264,6 @@ export default function CommentPopupWorkflowControls({
                 narrow={narrow}
                 backwardStepName={backwardStepName}
                 forwardStepName={forwardStepName}
-                hideForwardButton={targets.forwardStepId == null}
             />
         </View>
     )
