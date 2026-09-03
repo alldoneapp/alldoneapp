@@ -72,8 +72,11 @@ const snapshotOf = docs => ({
 
 const fakeDoc = (id, data) => ({ id, data: () => data })
 
+const allDispatched = type =>
+    mockDispatch.mock.calls.map(call => call[0]).filter(action => action && action.type === type)
+
 const lastDispatched = type => {
-    const matching = mockDispatch.mock.calls.map(call => call[0]).filter(action => action && action.type === type)
+    const matching = allDispatched(type)
     return matching[matching.length - 1]
 }
 
@@ -170,12 +173,14 @@ describe('AT-2342 optimistic insert in the Goal detailed view', () => {
      * for the lifetime of the watcher. The write's server ack is what says no echo is coming.
      */
     describe('AT-2500 a task moved out of this list before its create was echoed', () => {
-        it('drops a pending copy the snapshot will never carry', () => {
+        it('drops a pending copy the settled document puts outside this goal', () => {
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
             expect(goalTaskIds()).toEqual(['task-1'])
 
-            // Re-assigned to another goal before the echo, so this query never sees it.
-            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+            // Re-assigned to another goal before the echo, so this query never sees it. The
+            // settled document is what says so - settlement on its own means only "the server has
+            // it", which for this query is still true of a task that moved to another goal.
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', goalTask({ parentGoalId: 'goal-2' }))
 
             expect(goalTaskIds()).toEqual([])
         })
@@ -195,6 +200,47 @@ describe('AT-2342 optimistic insert in the Goal detailed view', () => {
             publishOptimisticTaskSettled(PROJECT_ID, 'never-seen')
 
             expect(lastDispatched('Set goal open tasks data')).toBeUndefined()
+        })
+
+        /**
+         * AT-2500 follow-up - the pending copy used to be dropped on the ack alone, which made
+         * every ordinary create blink: this query filters on `readerIds`, a server-derived field
+         * the client may not write, so a just-created task is invisible to it until the access
+         * projection lands - always well after the ack.
+         */
+        it('never renders a frame without the task, from the create to the echo', () => {
+            const raw = goalTask()
+            mockDispatch.mockClear()
+
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', raw)
+            listeners[0](snapshotOf([fakeDoc('task-1', raw)]))
+
+            const states = allDispatched('Set goal open tasks data').map(action =>
+                action.goalOpenTasksData.flatMap(day => day[3].map(task => task.id))
+            )
+            expect(states.length).toBeGreaterThan(0)
+            expect(states).not.toContainEqual([])
+            states.forEach(ids => expect(ids).toEqual(['task-1']))
+        })
+
+        it('refreshes the pending copy in place when the settled document still belongs', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', goalTask({ name: 'buy oat milk' }))
+
+            expect(goalTaskIds()).toEqual(['task-1'])
+            const rendered = lastDispatched('Set goal open tasks data').goalOpenTasksData.flatMap(day => day[3])
+            expect(rendered).toHaveLength(1)
+            expect(rendered[0].name).toBe('buy oat milk')
+        })
+
+        it('keeps the pending copy when settlement carries no document', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', null)
+
+            expect(goalTaskIds()).toEqual(['task-1'])
         })
     })
 
@@ -282,11 +328,12 @@ describe('AT-2342 optimistic insert in My Day', () => {
      * purged and the task stayed in My Day, showing today, until the watcher restarted.
      */
     describe('AT-2500 a task postponed before its create was echoed', () => {
-        it('drops a pending copy the snapshot will never carry', () => {
+        it('drops a pending copy the settled document postpones out of today', () => {
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
             expect(myDayTaskIds()).toEqual(['task-1'])
 
-            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+            const tomorrow = Date.now() + 24 * 60 * 60 * 1000
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', myDayTask({ dueDate: tomorrow }))
 
             expect(myDayTaskIds()).toEqual([])
         })
@@ -306,6 +353,42 @@ describe('AT-2342 optimistic insert in My Day', () => {
             publishOptimisticTaskSettled(PROJECT_ID, 'never-seen')
 
             expect(lastDispatched('Set my day all today tasks')).toBeUndefined()
+        })
+
+        /**
+         * AT-2500 follow-up - My Day is where a task is most often added, and it flickered on
+         * every single create: the ack always precedes the first snapshot here, because this query
+         * filters on the server-derived `readerIds`.
+         */
+        it('never renders a frame without the task, from the create to the echo', () => {
+            const raw = myDayTask()
+            mockDispatch.mockClear()
+
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', raw)
+            listeners[0](snapshotOf([fakeDoc('task-1', raw)]))
+
+            const states = allDispatched('Set my day all today tasks').map(action => action.tasks.map(task => task.id))
+            expect(states.length).toBeGreaterThan(0)
+            expect(states).not.toContainEqual([])
+            states.forEach(ids => expect(ids).toEqual(['task-1']))
+        })
+
+        it('refreshes the pending copy in place when the settled document still belongs', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', myDayTask({ name: 'buy oat milk' }))
+
+            expect(myDayTaskIds()).toEqual(['task-1'])
+            expect(lastDispatched('Set my day all today tasks').tasks[0].name).toBe('buy oat milk')
+        })
+
+        it('keeps the pending copy when settlement carries no document', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1', null)
+
+            expect(myDayTaskIds()).toEqual(['task-1'])
         })
     })
 
