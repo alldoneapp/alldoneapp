@@ -1,5 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
+import moment from 'moment'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksViewAllProjects, {
@@ -11,6 +12,7 @@ import useNearViewportMount from '../../../hooks/useNearViewportMount'
 import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
 import TaskListSkeleton from '../TaskListSkeleton'
 import { getTaskColdStartDayKey } from '../../../utils/InitialLoad/taskColdStartCache'
+import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -123,9 +125,15 @@ describe('getProjectTaskStreamReadyState', () => {
     })
 })
 
+// AT-2506: the celebration marker is module state plus localStorage by design, so a claim made by
+// one render of this suite would silently answer for the next one.
+const todayKey = () => moment().format('YYYY-MM-DD')
+
 describe('OpenTasksViewAllProjects', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        resetEmptyInboxCelebrationSessionMarkers()
+        localStorage.clear()
         getProjectIdsForAllProjectsTasks.mockReturnValue(['project-1', 'project-2'])
         useDispatch.mockReturnValue(jest.fn())
         useNearViewportMount.mockImplementation(() => ({
@@ -217,8 +225,12 @@ describe('OpenTasksViewAllProjects', () => {
         expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
     })
 
+    // AT-2506: the board decides the run and hands it down, so the AT-2445 rule this pins — a
+    // same-day cached zero may paint the block but may never spend the day — is now expressed as
+    // "the block is rendered with no run", which is the same statement about the same marker.
     it('paints a same-day cached empty inbox immediately without spending the celebration marker', () => {
         const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.loggedUser.emptyInboxDays = [todayKey()]
         state.taskColdStartEmptyToday = {
             userId: 'user-1',
             dayKey: getTaskColdStartDayKey(),
@@ -229,11 +241,15 @@ describe('OpenTasksViewAllProjects', () => {
         const emptyInbox = tree.root.findByType('AllProjectsEmptyInbox')
 
         expect(emptyInbox.props.showEmptyInboxOverview).toBe(true)
-        expect(emptyInbox.props.celebrateNewDay).toBe(false)
+        expect(emptyInbox.props.celebrationRunId).toBe(0)
+        // The block's own fallback hook must stay disabled too, or it would spend the day from
+        // inside the very render this test says may not.
+        expect(emptyInbox.props.celebrateNewDay).toBeFalsy()
     })
 
     it('ignores an incomplete cached empty scope and lets the live result take over', () => {
         const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.loggedUser.emptyInboxDays = [todayKey()]
         state.taskColdStartEmptyToday = {
             userId: 'user-1',
             dayKey: getTaskColdStartDayKey(),
@@ -244,7 +260,7 @@ describe('OpenTasksViewAllProjects', () => {
 
         state.openTasksAmountLoaded = true
         const liveTree = renderView(state)
-        expect(liveTree.root.findByType('AllProjectsEmptyInbox').props.celebrateNewDay).toBe(true)
+        expect(liveTree.root.findByType('AllProjectsEmptyInbox').props.celebrationRunId).toBe(1)
     })
 
     // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer

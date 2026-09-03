@@ -66,6 +66,25 @@ import {
  * changes" pattern) rather than from an effect. That is not a micro-optimisation: an effect runs
  * AFTER the commit that already removed the block from the DOM, so the user would see the project
  * vanish and reappear. Adjusting during render means the block is never unmounted at all.
+ *
+ * ── AT-2506: A CLEARING IS AN EVENT, NOT A DAY ───────────────────────────────────────────────
+ *
+ * The once-per-day marker used to gate every run. A project you actually work out of is cleared,
+ * refilled and cleared again in the same day, and every clearing after the first swept nothing —
+ * which is what "we should always play the animation" is about. The marker now answers only for an
+ * arrival at a project that was ALREADY clear; a clearing this hook watched happen bypasses it. See
+ * the gate itself for the argument, and `useTodayEmptyInboxCelebration` for the identical change one
+ * scope up, so the two moments keep behaving the same way.
+ *
+ * One asymmetry with the all-projects hook is worth knowing rather than fixing. There, a run that
+ * is still on screen suppresses a second one; here it does not, because the decision effect lists
+ * `todayCount` and its cleanup hands an unsettled claim back — so a project that is refilled and
+ * re-cleared inside the ~3.6s claim window starts a fresh sweep. That is pre-existing AT-2492
+ * behaviour, it needs a colleague's task to land in the same project mid-animation to happen at
+ * all, and it errs toward showing the celebration rather than swallowing it, which is the direction
+ * AT-2506 asks for. Restructuring the refund the way `useTodayEmptyInboxCelebration` now does would
+ * be the fix, and it is not worth disturbing the probe/hold/late-clearing machinery around it for a
+ * case nobody has hit.
  */
 
 /**
@@ -241,7 +260,21 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
         // project that simply has no tasks — most of a 78-project account, most days — from sweeping
         // every time it is looked at.
         if (!hasReachedProjectEmptyInboxDay(userId, projectId, todayKey)) return undefined
-        if (hasCelebratedProjectEmptyInboxDay(userId, projectId, todayKey)) return undefined
+        /**
+         * AT-2506 — a clearing you WATCHED always sweeps, even on a day already spent.
+         *
+         * "Once per day" was the wrong unit for the same reason it was wrong for the all-projects
+         * celebration: clearing a project is an event, and a project you work out of is cleared,
+         * refilled and cleared again. Only the second half of the rule survives — an arrival at a
+         * project that was already clear (a reload, a project switch, opening All Projects hours
+         * later) still gets at most one sweep, which is what the marker is for and what keeps a
+         * 78-project account from sweeping every line it scrolls past.
+         *
+         * `watchedTheClearing` is computed from this hook's OWN previous count, so one transition
+         * produces exactly one `true` here however many times the effect re-runs — and the marker is
+         * still written below on both paths, so the run cannot be replayed by navigating back to it.
+         */
+        if (!watchedTheClearing && hasCelebratedProjectEmptyInboxDay(userId, projectId, todayKey)) return undefined
 
         markProjectEmptyInboxDayCelebrated(userId, projectId, todayKey)
         claimedRef.current = todayKey

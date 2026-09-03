@@ -25,6 +25,10 @@ jest.mock('../../../redux/actions', () => ({
 }))
 
 const EMPTY_STATE = {
+    // AT-2506: MyDayOpenTasks now decides the empty-inbox celebration itself (it is the component
+    // that outlives the congrats block and can therefore see today's list fall to zero), so it
+    // reads the achievement fields off the logged user.
+    loggedUser: { uid: 'user-1', emptyInboxDays: [], lastDayEmptyInbox: null },
     myDaySelectedTasks: [],
     myDayOtherTasks: [],
     myDayDoneTasks: [],

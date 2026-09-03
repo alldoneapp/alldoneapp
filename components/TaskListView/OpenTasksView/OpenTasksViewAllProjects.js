@@ -7,6 +7,7 @@ import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actio
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
+import useEmptyInboxCelebrationRun from './useEmptyInboxCelebrationRun'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import AllProjectsShowMoreAvailability from './AllProjectsShowMoreAvailability'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
@@ -347,6 +348,33 @@ export default function OpenTasksViewAllProjects() {
         !todayEmptyGoalsTotal &&
         !hasVisibleTaskContent
 
+    /**
+     * AT-2506 — the celebration is decided HERE, not inside the block it plays over.
+     *
+     * This board stays mounted while `AllProjectsEmptyInbox` comes and goes, so it is the only
+     * component on this screen that can see the count fall to zero. The block cannot: it mounts
+     * BECAUSE the count reached zero, so its first render already is the empty state and every
+     * mount looks exactly like a clearing. That distinction is the whole task — a clearing always
+     * animates, an arrival at an already-empty board never replays.
+     *
+     * `enabled` carries both halves of the existing rule and nothing new. The block being shown is
+     * what proves the inbox is empty (this hook runs on every render of a full board too, and the
+     * achievement day stays true for the rest of the day once earned — so without it, arriving at a
+     * board with fifty tasks would congratulate you). `openTasksAmountLoaded` is the AT-2445 rule,
+     * unchanged: a same-day cached zero may paint the useful empty state, but only the live count
+     * may spend the day.
+     *
+     * The amount handed over is `openTasksAmount` itself — the board's own number, already
+     * selected, so this costs no new store subscription on a board that renders ~78 project blocks.
+     * A watcher rebuild writes `null` there rather than `0` (`unwatchOpenTasksAmount`), and
+     * `didReachEmptyInbox` refuses `null` as "cleared", so a Later/Someday toggle cannot fake a
+     * clearing.
+     */
+    const emptyInboxCelebrationRunId = useEmptyInboxCelebrationRun({
+        enabled: needToShowEmptyBoardPicture && openTasksAmountLoaded,
+        todayInboxAmount: openTasksAmount,
+    })
+
     return (
         <View
             style={[
@@ -366,9 +394,11 @@ export default function OpenTasksViewAllProjects() {
             {needToShowEmptyBoardPicture && (
                 <AllProjectsEmptyInbox
                     showEmptyInboxOverview
-                    // A same-day cached zero is enough to paint the useful empty state, but only
-                    // the live count may spend the once-per-day celebration/achievement marker.
-                    celebrateNewDay={openTasksAmountLoaded}
+                    // AT-2506: the run is decided above, by the component that outlives this block
+                    // and therefore saw the inbox empty. A same-day cached zero is still enough to
+                    // paint the useful empty state, but only the live count may spend the day —
+                    // that rule now lives in the hook's `enabled`.
+                    celebrationRunId={emptyInboxCelebrationRunId}
                 />
             )}
             {EMAIL_LINE_ENABLED && <EmailLine />}
