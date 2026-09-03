@@ -440,6 +440,38 @@ names the mistake at runtime instead of swallowing it. Pinned by the tool-search
 `functions/Assistant/assistantHelper.test.js` and
 `functions/Assistant/assistantPreConfigTaskTopic.test.js`.
 
+### A callable that hosts an assistant run must be idempotent, because the browser will replay it
+
+A callable is not idempotent by itself, and an assistant prompt run — tens of seconds of wall clock —
+is exactly the request whose response a client loses. The reproducer is a laptop lid: a
+`generatePreConfigTaskResultSecondGen` POST went out at 11:33:06, `pmset` recorded
+`Entering Sleep state due to 'Clamshell Sleep'` at 11:33:22, the server finished the run at 11:33:36
+into a socket that was asleep, and at 11:37:41 — the same second as the wake — **Chrome
+retransmitted the identical request**. One user action, two answers in the thread and two 22-Gold
+charges. Nothing failed anywhere: both invocations logged success, and the only tells were the
+byte-identical `requestSize`, the **missing CORS preflight** on the second POST (a resumed fetch does
+not redo one, while every browser-initiated callable in the logs is preceded by an `OPTIONS`) and the
+fact that only **one** user comment exists — every JS path to that callable writes the comment before
+calling it, so the app demonstrably never ran that code twice.
+
+`askToBotSecondGen` had been guarded against this since the run-lock work; the pre-configured prompt
+path had not, although it receives the same client-generated `messageId` and already passes it down
+as `triggerMessageId`. Both now take `acquireAssistantRunLock` on
+`{projectId, objectType, objectId, messageId}` and settle it on **both** paths — a lock left
+`running` holds the coarse `assistantTaskRunLocks` slot for its 65-minute lease, which blocks
+workflow AI steps on that task and makes a legitimate retry look like a duplicate. **Add the lock
+when a new entry point starts hosting a prompt run**; `assistantRunIdempotencyHosts.test.js`
+ratchets it over the `index.js` source, the way `assistantRunLimits.test.js` does for timeouts.
+
+Two details are load-bearing. The lock is completed **before** `completeOnDemandAssistantTaskAfterRun`,
+so a crash between them leaves a settled lock rather than a running one — and the duplicate branch
+then reconciles the task completion itself (it is idempotent, `alreadyCompleted`) instead of leaving
+the task open. And a duplicate reports **no completion outcome of its own** while the original run is
+still going, so the client must not fall back to `moveTasksFromOpen`: `generateTaskFromPreConfig`
+treats `duplicate: true` as "another invocation owns this task", which is a third meaning alongside
+the contract's existing "server succeeded" and "no outcome reported". A request carrying no
+`messageId` (an empty prompt) acquires nothing and behaves exactly as before.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
