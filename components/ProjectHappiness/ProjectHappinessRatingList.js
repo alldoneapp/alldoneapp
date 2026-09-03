@@ -78,28 +78,28 @@ export default function ProjectHappinessRatingList({
                                 compact && localStyles.mobileHappinessProjectInfo,
                             ]}
                         >
-                            <Text style={localStyles.happinessProjectName} numberOfLines={1}>
-                                {getSafeTextValue(project.name, translate('Project'))}
-                            </Text>
+                            <View style={localStyles.happinessProjectNameRow}>
+                                <Text style={localStyles.happinessProjectName} numberOfLines={1}>
+                                    {getSafeTextValue(project.name, translate('Project'))}
+                                </Text>
+                                {renderRatedBadge(project)}
+                            </View>
                             {renderProjectMeta ? renderProjectMeta(project) : null}
                         </View>
-                        <View style={[localStyles.happinessRight, compact && localStyles.mobileHappinessRight]}>
-                            <View style={[localStyles.happinessActions, compact && localStyles.mobileHappinessActions]}>
-                                <TouchableOpacity
-                                    style={localStyles.commentButton}
-                                    testID={`happinessCommentButton_${project.id}`}
-                                    onPress={() => editor.toggleComment(project.id)}
-                                >
-                                    <Icon name="message-circle" size={20} color="#ffffff" />
-                                </TouchableOpacity>
-                                <HappinessRatingPicker
-                                    value={editor.ratings[project.id]}
-                                    onChange={rating => editor.setRating(project, rating)}
-                                    compact
-                                    light
-                                />
-                            </View>
-                            <View style={localStyles.happinessStatusContainer}>{renderRatedBadge(project)}</View>
+                        <View style={[localStyles.happinessActions, compact && localStyles.mobileHappinessActions]}>
+                            <TouchableOpacity
+                                style={localStyles.commentButton}
+                                testID={`happinessCommentButton_${project.id}`}
+                                onPress={() => editor.toggleComment(project.id)}
+                            >
+                                <Icon name="message-circle" size={20} color="#ffffff" />
+                            </TouchableOpacity>
+                            <HappinessRatingPicker
+                                value={editor.ratings[project.id]}
+                                onChange={rating => editor.setRating(project, rating)}
+                                compact
+                                light
+                            />
                         </View>
                     </View>
                     {editor.visibleComments[project.id] && (
@@ -161,35 +161,20 @@ const localStyles = StyleSheet.create({
         marginRight: 0,
         marginBottom: 10,
     },
+    happinessProjectNameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minWidth: 0,
+    },
     happinessProjectName: {
         ...styles.subtitle2,
         color: '#ffffff',
-    },
-    happinessRight: {
-        alignItems: 'flex-end',
-        flexShrink: 0,
-    },
-    mobileHappinessRight: {
-        alignSelf: 'stretch',
-    },
-    happinessActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
-    },
-    mobileHappinessActions: {
-        alignSelf: 'stretch',
-        justifyContent: 'space-between',
-    },
-    happinessStatusContainer: {
-        marginTop: 6,
-        minHeight: 20,
-        justifyContent: 'center',
-        alignItems: 'flex-end',
+        flexShrink: 1,
     },
     ratedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginLeft: 8,
         paddingHorizontal: 6,
         height: 20,
         borderRadius: 10,
@@ -206,7 +191,17 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         lineHeight: 14,
         color: colors.Text04,
+        marginLeft: 8,
         flexShrink: 0,
+    },
+    happinessActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+    },
+    mobileHappinessActions: {
+        alignSelf: 'stretch',
+        justifyContent: 'space-between',
     },
     commentButton: {
         width: 36,

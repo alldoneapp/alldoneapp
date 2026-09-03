@@ -75,7 +75,7 @@ const task = {
     estimationsByObserverIds: {},
 }
 
-const renderModal = () => {
+const renderModal = (props = {}) => {
     const hidePopover = jest.fn()
     const tree = renderer.create(
         <SuggestedModal
@@ -84,10 +84,16 @@ const renderModal = () => {
             hidePopover={hidePopover}
             cancelPopover={jest.fn()}
             checkBoxId="checkbox-1"
+            {...props}
         />
     )
     return { tree, hidePopover }
 }
+
+// AT-2495 — the suggested-task actions now issue their write from behind the row's completion
+// handoff, so it lands a couple of microtasks after the press instead of on the first one. Flushing
+// the task queue is stable across that, where counting `Promise.resolve()`s is not.
+const flushAsync = () => new Promise(resolve => setTimeout(resolve, 0))
 
 describe('SuggestedModal workflow bypass', () => {
     beforeEach(() => {
@@ -140,7 +146,7 @@ describe('SuggestedModal workflow bypass', () => {
         const { tree, hidePopover } = renderModal()
 
         tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
-        await Promise.resolve()
+        await flushAsync()
 
         expect(hidePopover).toHaveBeenCalledTimes(1)
         expect(moveSuggestedTaskToDoneBypassingWorkflow).toHaveBeenCalledWith({
@@ -159,7 +165,7 @@ describe('SuggestedModal workflow bypass', () => {
 
         bypass.props.onPress()
         bypass.props.onPress()
-        await Promise.resolve()
+        await flushAsync()
 
         expect(moveSuggestedTaskToDoneBypassingWorkflow).toHaveBeenCalledTimes(1)
     })
@@ -170,9 +176,108 @@ describe('SuggestedModal workflow bypass', () => {
         const { tree } = renderModal()
 
         tree.root.findByProps({ title: 'Go to next step' }).props.onPress()
-        await Promise.resolve()
+        await flushAsync()
 
         expect(nextStepSuggestedTask).toHaveBeenCalledWith(PROJECT_ID, 'step-1', task, { '-1': 30 }, '', 'checkbox-1')
         expect(moveSuggestedTaskToDoneBypassingWorkflow).not.toHaveBeenCalled()
+    })
+})
+/**
+ * AT-2495 — the suggested-task popup opens from a press and hold on the checkbox, so the actions
+ * that take the task out of the list play the same row animation ticking the checkbox does.
+ *
+ * The distinction that matters here is between "the task moved on" and "the task is finished":
+ * only the latter is celebrated, and accepting a suggestion is neither.
+ */
+describe('SuggestedModal row completion animation (AT-2495)', () => {
+    const withWorkflow = { 'step-1': { description: 'Review' } }
+    const makeMotion = () => ({ begin: jest.fn(() => 0), cancel: jest.fn() })
+    const flush = () => flushAsync()
+
+    const setUser = (workflow = withWorkflow) => {
+        store.getState.mockReturnValue({
+            smallScreenNavigation: false,
+            loggedUser: { uid: 'owner-1' },
+            currentUser: { uid: 'owner-1', workflow: { [PROJECT_ID]: workflow } },
+        })
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        getSuggestedTaskBypassLabel.mockReturnValue('Bypass workflow and mark done')
+        canBypassSuggestedTaskWorkflow.mockReturnValue(true)
+        setUser()
+    })
+
+    it('celebrates the bypass, which completes the task outright', async () => {
+        const completionMotion = makeMotion()
+        const { tree } = renderModal({ completionMotion })
+
+        tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
+        await flush()
+
+        expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: true })
+        expect(moveSuggestedTaskToDoneBypassingWorkflow).toHaveBeenCalledTimes(1)
+    })
+
+    it('celebrates the next step when there is no workflow to enter, so it lands on Done', async () => {
+        const { nextStepSuggestedTask } = require('../../utils/backends/Tasks/tasksFirestore')
+        setUser({})
+        const completionMotion = makeMotion()
+        const { tree } = renderModal({ completionMotion })
+
+        tree.root.findByProps({ title: 'Go to next step' }).props.onPress()
+        await flush()
+
+        expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: true })
+        expect(nextStepSuggestedTask).toHaveBeenCalledWith(PROJECT_ID, -2, task, { '-1': 30 }, '', 'checkbox-1')
+    })
+
+    it('exits without celebrating when the next step enters the workflow', async () => {
+        const completionMotion = makeMotion()
+        const { tree } = renderModal({ completionMotion })
+
+        tree.root.findByProps({ title: 'Go to next step' }).props.onPress()
+        await flush()
+
+        expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: false })
+    })
+
+    /**
+     * Accepting hands the task to its new owner and leaves it OPEN. Nothing is completed and
+     * nothing has to be swept off the list, so the row must be left entirely alone.
+     */
+    it('does not touch the row when the suggestion is merely accepted', async () => {
+        const completionMotion = makeMotion()
+        const { tree } = renderModal({ completionMotion })
+
+        tree.root.findByProps({ title: 'Accept' }).props.onPress()
+        await flush()
+
+        expect(completionMotion.begin).not.toHaveBeenCalled()
+        expect(completionMotion.cancel).not.toHaveBeenCalled()
+    })
+
+    it('puts the row back when the write fails', async () => {
+        moveSuggestedTaskToDoneBypassingWorkflow.mockRejectedValueOnce(new Error('permission-denied'))
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const completionMotion = makeMotion()
+        const { tree } = renderModal({ completionMotion })
+
+        tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
+        await flush()
+
+        expect(completionMotion.cancel).toHaveBeenCalledTimes(1)
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+    })
+
+    it('still writes when no row motion is available', async () => {
+        const { tree } = renderModal()
+
+        tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
+        await flush()
+
+        expect(moveSuggestedTaskToDoneBypassingWorkflow).toHaveBeenCalledTimes(1)
     })
 })
