@@ -64,28 +64,14 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
-        // AT-2500 - the server has the document and `change.doc.data()` is what it looks like now,
-        // so re-check the pending copy against this list's own query and keep or drop it on that.
-        //
-        // This used to drop the pending copy unconditionally, on the reasoning that a task which
-        // really belongs here would already be in `latestDocs` by settlement time. It is not: this
-        // query filters on `readerIds`, a server-derived projection field the access rules forbid a
-        // client to write, so a just-created task matches nothing locally and is first delivered
-        // only after `synchronizeAccessProjection` has written the projection and it has come back.
-        // The unconditional drop therefore fired on every ordinary create, a round trip before the
-        // snapshot arrived - the row blinked out and came back. Re-checking the document has no
-        // such race: a still-matching task is refreshed in place and never leaves the list, and one
-        // postponed out of `dueDate <= endOfDay` is removed just as promptly as before.
+        // AT-2500 - the server has the document, so this list's own snapshot is now the authority
+        // on whether it belongs here. Dropping the pending copy unconditionally is safe precisely
+        // because this watcher rebuilds from `latestDocs`: if the task really is in this query the
+        // snapshot already carries it and it keeps rendering from there (that is the same purge
+        // `emit` does below); if it is not - the user postponed it out of `dueDate <= endOfDay`
+        // before the create was ever echoed - this is the only thing that will ever remove it.
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (!pendingDocsById.has(change.doc.id)) return
-            const settledData = change.doc.data()
-            // No verdict (the cache could not be read): leave the pending copy in place, the real
-            // snapshot still reconciles it.
-            if (!settledData) return
-            matchesTasksToAttendQuery(settledData, userId, endOfDay)
-                ? pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
-                : pendingDocsById.delete(change.doc.id)
-            if (hasRealSnapshot) emit()
+            if (pendingDocsById.delete(change.doc.id) && hasRealSnapshot) emit()
             return
         }
 
