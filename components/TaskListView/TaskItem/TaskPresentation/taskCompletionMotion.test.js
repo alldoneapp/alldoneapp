@@ -104,6 +104,29 @@ describe('useTaskCompletionMotion', () => {
         process.env.NODE_ENV = 'development'
     }
 
+    /**
+     * AT-2495 — the same `begin`/`cancel` pair, bundled for the surfaces that complete a task from
+     * outside the row. Identity has to be stable: it is threaded through several components, and a
+     * fresh object per render would defeat any `React.memo` below it.
+     */
+    it('exposes a stable completion handoff for surfaces outside the row', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<Harness options={{ retainRow: false, isDone: false }} />)
+            await Promise.resolve()
+        })
+        const first = motion.completionMotion
+
+        expect(first.begin).toBe(motion.beginCompletionMotion)
+        expect(first.cancel).toBe(motion.cancelCompletionMotion)
+
+        await act(async () => {
+            tree.update(<Harness options={{ retainRow: false, isDone: false }} />)
+        })
+
+        expect(motion.completionMotion).toBe(first)
+    })
+
     it('mounts a row with no completion state and no forced height', async () => {
         await renderHarness()
 
@@ -195,6 +218,28 @@ describe('useTaskCompletionMotion', () => {
             expect(motion.completionProgress).not.toBeNull()
             expect(motion.completionWash).not.toBeNull()
             expect(motion.completionCelebration).not.toBeNull()
+        })
+
+        /**
+         * AT-2495 — the comment popup's workflow controls sit under a RETAINED row, and a step
+         * advance there neither draws anything (not a completion) nor collapses anything (nothing
+         * to leave). Holding the write would be pure latency with nothing on screen to justify it.
+         */
+        it('answers a zero hold for a step advance, which would show nothing at all', async () => {
+            enableAnimations()
+            await renderHarness({ retainRow: true })
+            act(() => motion.onRowLayout(layout(48)))
+
+            let holdMs
+            await act(async () => {
+                holdMs = motion.beginCompletionMotion({ isCompletion: false })
+            })
+
+            expect(holdMs).toBe(0)
+            expect(motion.isCompleting).toBe(false)
+            expect(motion.completionProgress).toBeNull()
+            expect(motion.completionCelebration).toBeNull()
+            expect(motion.rowStyle).toBeUndefined()
         })
 
         it('holds the write for less time than a collapsing row needs', async () => {

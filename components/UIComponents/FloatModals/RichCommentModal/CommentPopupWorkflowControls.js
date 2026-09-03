@@ -3,7 +3,8 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import v4 from 'uuid/v4'
 
 import store from '../../../../redux/store'
-import { showTaskCompletionAnimation, startLoadingData } from '../../../../redux/actions'
+import { startLoadingData } from '../../../../redux/actions'
+import { completeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 import { getWorkflowStepsIdsSorted } from '../../../../utils/HelperFunctions'
 import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
@@ -96,6 +97,13 @@ export default function CommentPopupWorkflowControls({
     onDirectionalTransitionSuccess,
     appearance,
     narrow = false,
+    /**
+     * AT-2495 — the row's completion animation, passed in by `TaskPresentation` when these
+     * controls sit under the comment-popup task header. Absent in `TaskChatWorkflowControls`
+     * (the task detailed view), where there is no row to animate and the write goes out
+     * immediately, exactly as it does today.
+     */
+    completionMotion,
 }) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
@@ -126,31 +134,35 @@ export default function CommentPopupWorkflowControls({
         setSubmitting(true)
         setSelectorOpen(false)
 
-        store.dispatch(startLoadingData())
-        if (stepToMoveId === DONE_STEP) store.dispatch(showTaskCompletionAnimation())
-
         try {
-            if (task.userIds.length === 1) {
-                await moveTasksFromOpen(
-                    projectId,
-                    task,
-                    stepToMoveId,
-                    null,
-                    null,
-                    task.estimations,
-                    checkBoxIdRef.current
-                )
-            } else {
-                await moveTasksFromMiddleOfWorkflow(
-                    projectId,
-                    task,
-                    stepToMoveId,
-                    null,
-                    null,
-                    task.estimations,
-                    checkBoxIdRef.current
-                )
-            }
+            // AT-2495 — the popup header renders the real task row, so completing from here plays
+            // the same motion the checkbox does. The header row is RETAINED (there is no list to
+            // leave), so a plain step advance draws nothing and the hook answers a zero hold —
+            // the forward/backward buttons stay exactly as immediate as they are today.
+            await completeTaskWithMotion(completionMotion, { isCompletion: stepToMoveId === DONE_STEP }, async () => {
+                store.dispatch(startLoadingData())
+                if (task.userIds.length === 1) {
+                    await moveTasksFromOpen(
+                        projectId,
+                        task,
+                        stepToMoveId,
+                        null,
+                        null,
+                        task.estimations,
+                        checkBoxIdRef.current
+                    )
+                } else {
+                    await moveTasksFromMiddleOfWorkflow(
+                        projectId,
+                        task,
+                        stepToMoveId,
+                        null,
+                        null,
+                        task.estimations,
+                        checkBoxIdRef.current
+                    )
+                }
+            })
             return true
         } catch (error) {
             console.error('[CommentPopupWorkflowControls] Could not move task', {
