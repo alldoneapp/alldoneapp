@@ -5,9 +5,11 @@
 import {
     OPTIMISTIC_TASK_ADDED,
     OPTIMISTIC_TASK_REMOVED,
+    OPTIMISTIC_TASK_SETTLED,
     buildOptimisticTaskChange,
     publishOptimisticTaskCreateFailed,
     publishOptimisticTaskCreated,
+    publishOptimisticTaskSettled,
     resetOptimisticTaskCreates,
     subscribeToOptimisticTaskCreates,
 } from './optimisticTaskCreate'
@@ -100,5 +102,46 @@ describe('optimistic task create bus', () => {
         publishOptimisticTaskCreated('', 'task-1', { name: 'x' })
 
         expect(received).toHaveLength(0)
+    })
+
+    /** AT-2500 - the third event: the server has the document, so lists may trust their own query. */
+    describe('settlement', () => {
+        it('announces the id, and deliberately carries no document data', () => {
+            const received = []
+            subscribeToOptimisticTaskCreates('project-1', change => received.push(change))
+
+            publishOptimisticTaskSettled('project-1', 'task-1')
+
+            expect(received).toHaveLength(1)
+            expect(received[0].type).toBe(OPTIMISTIC_TASK_SETTLED)
+            expect(received[0].doc.id).toBe('task-1')
+            // A subscriber must branch on the type before reading this - there is no document to
+            // publish, which is the whole point of the event.
+            expect(received[0].doc.data()).toBeNull()
+        })
+
+        it('is a distinct type, so an existing subscriber cannot mistake it for a create', () => {
+            expect(OPTIMISTIC_TASK_SETTLED).not.toBe(OPTIMISTIC_TASK_ADDED)
+            expect(OPTIMISTIC_TASK_SETTLED).not.toBe(OPTIMISTIC_TASK_REMOVED)
+        })
+
+        it('never leaks into another project', () => {
+            const received = []
+            subscribeToOptimisticTaskCreates('project-2', change => received.push(change))
+
+            publishOptimisticTaskSettled('project-1', 'task-1')
+
+            expect(received).toHaveLength(0)
+        })
+
+        it('ignores an incomplete publication', () => {
+            const received = []
+            subscribeToOptimisticTaskCreates('project-1', change => received.push(change))
+
+            publishOptimisticTaskSettled('project-1', '')
+            publishOptimisticTaskSettled('', 'task-1')
+
+            expect(received).toHaveLength(0)
+        })
     })
 })
