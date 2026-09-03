@@ -87,8 +87,11 @@ const getProjectFromList = (projectsList, projectId) => {
 
 const getNoteContent = async (projectId, noteId) => {
     console.log(`Getting content for note ${noteId} in project ${projectId}`)
-    const { defineString } = require('firebase-functions/params')
-    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+    // Deployed project identity wins over the configured parameter (AT-2498): a
+    // production indexer that reads the dev bucket does not degrade, it throws
+    // `storage.objects.get denied` and silently indexes nothing.
+    const { getNotesBucketName } = require('./shared/notesStorageBucket')
+    const notesBucketName = getNotesBucketName()
     console.log(`Using storage bucket: ${notesBucketName}`)
 
     const notesBucket = admin.storage().bucket(notesBucketName)
