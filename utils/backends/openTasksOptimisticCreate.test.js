@@ -93,14 +93,42 @@ const buildQuery = () => {
     return query
 }
 
+/**
+ * The task documents `optimisticTaskSettlement` reads and watches, keyed by path, so a test can
+ * drive the REAL settlement window end to end into the REAL watcher instead of hand-publishing the
+ * events it is supposed to produce.
+ */
+const documents = new Map()
+
+const documentState = path => {
+    if (!documents.has(path)) documents.set(path, { data: null, listeners: [], unsubscribes: [] })
+    return documents.get(path)
+}
+
+const buildDocument = path => ({
+    get: async () => {
+        const { data } = documentState(path)
+        return { exists: !!data, data: () => data }
+    },
+    onSnapshot: (options, handler) => {
+        const state = documentState(path)
+        const unsubscribe = jest.fn()
+        state.listeners.push(handler)
+        state.unsubscribes.push(unsubscribe)
+        return unsubscribe
+    },
+})
+
 jest.mock('./firestore', () => ({
-    getDb: () => ({ collection: () => buildQuery(), doc: () => buildQuery() }),
+    getDb: () => ({ collection: () => buildQuery(), doc: path => buildDocument(path) }),
     globalWatcherUnsub: {},
     mapGoalData: jest.fn(),
     mapMilestoneData: jest.fn(),
     // The pipeline maps the raw document itself; the id is the doc key, never a stored field.
     mapTaskData: (id, data) => ({ id, ...data }),
 }))
+
+import moment from 'moment'
 
 import {
     AMOUNT_TASKS_INDEX,
@@ -120,6 +148,7 @@ import {
     publishOptimisticTaskSettled,
     resetOptimisticTaskCreates,
 } from './Tasks/optimisticTaskCreate'
+import { settleOptimisticTaskRow, stopAllOptimisticTaskSettlements } from './Tasks/optimisticTaskSettlement'
 
 const PROJECT_ID = 'project-1'
 
@@ -166,6 +195,8 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         listenerUnsubscribes.length = 0
         queryRegistrations.length = 0
         published = []
+        documents.clear()
+        stopAllOptimisticTaskSettlements()
         mockDispatch.mockClear()
         resetOptimisticTaskCreates()
         mockState.globalDataByProject = {}
@@ -740,6 +771,161 @@ describe('AT-2342 optimistic task insert in the open board', () => {
 
             expect(taskIdsOf(published[published.length - 1])).toEqual([])
             expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(0)
+        })
+    })
+
+    /**
+     * AT-2500 second follow-up - "I add a task, immediately move it to another date, and it stays
+     * in today's list."
+     *
+     * The reported flow lands squarely between the two events the first follow-up reasons about.
+     * The create is acknowledged in a few hundred milliseconds, but the row stays UNCONFIRMED until
+     * a query snapshot names the document, and none can until `onCreateTask` ->
+     * `synchronizeAccessProjection` has written `readerIds` - ten seconds, on the create that was
+     * actually reported (`-P0cmKxbkjhYRGSriDKc`: created 19:40:22, postponed 19:40:24, server
+     * `updateTime` 19:40:32). Postponing inside that gap used to reach nobody at all, because the
+     * only settlement had already happened while the task was still due today.
+     *
+     * These cases replay that order at the watcher, one publication per real event, and assert over
+     * the WHOLE sequence - the row must never blink out at the ack, and must be gone once the
+     * settlement window reports the postponed document. `optimisticTaskSettlement.test.js` pins the
+     * other half, that the window publishes at all.
+     */
+    describe('AT-2500 second follow-up: postponed AFTER the create was acknowledged', () => {
+        const DAY_MS = 24 * 60 * 60 * 1000
+        const todayRaw = () => buildRawTask({ dueDate: Date.now() })
+        const postponedRaw = () => buildRawTask({ dueDate: Date.now() + DAY_MS, timesPostponed: 1 })
+        const renderedStates = () => published.map(taskIdsOf)
+
+        const TASK_PATH = `items/${PROJECT_ID}/tasks/task-1`
+
+        /** Puts a version of the task document in the client's local cache. */
+        const writeDocument = data => {
+            documentState(TASK_PATH).data = data
+        }
+
+        /** Plays a new local version of the document to the settlement window's own listener. */
+        const emitDocument = (data, metadata = { fromCache: true, hasPendingWrites: true }) => {
+            writeDocument(data)
+            documentState(TASK_PATH).listeners.forEach(handler =>
+                handler({ exists: !!data, data: () => data, metadata })
+            )
+        }
+
+        /** The create's server ack: this is the REAL writer-side settlement, not a hand-published event. */
+        const acknowledgeCreate = () => settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+
+        it('leaves today’s list when the postpone lands after the ack, with no reload', async () => {
+            deliverRealSnapshot([])
+            published = []
+
+            // 1. the create: the row is on screen in the same tick.
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+            // 2. the server ack, a few hundred ms in. The user has not postponed yet, so the
+            //    document still belongs here and the row must stay - this is the flicker case.
+            await acknowledgeCreate()
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+            // 3. the postpone, seconds later, while the row is STILL unconfirmed - no snapshot can
+            //    name the task until the access projection lands. Nothing carried this before.
+            emitDocument(postponedRaw())
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+            expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(0)
+        })
+
+        it('never renders a frame without the task before the postpone', async () => {
+            // The regression the first follow-up fixed, restated for this order: the ack verdict
+            // must refresh the row in place, never retire it.
+            deliverRealSnapshot([])
+            published = []
+
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            await acknowledgeCreate()
+            emitDocument(todayRaw())
+
+            expect(published.length).toBeGreaterThan(0)
+            renderedStates().forEach(ids => expect(ids).toEqual(['task-1']))
+        })
+
+        it('stays out when the access projection lands on the already-postponed document', async () => {
+            // The projection snapshot is the first one that could ever name this task, and by then
+            // the postponed document no longer matches the query - so the listener reports nothing
+            // and the row must already be gone rather than waiting for a change that never comes.
+            deliverRealSnapshot([])
+            published = []
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            await acknowledgeCreate()
+            emitDocument(postponedRaw())
+
+            deliverRealSnapshot([])
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+        })
+
+        it('stops watching the document once the projection makes the query authoritative', async () => {
+            // The window is not open-ended: once the lists can see the task themselves, further
+            // verdicts are redundant and the listener is a cost with no purpose.
+            deliverRealSnapshot([])
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            await acknowledgeCreate()
+
+            emitDocument({ ...todayRaw(), readerIds: [0, 'user-1'] }, { fromCache: false, hasPendingWrites: false })
+
+            expect(documentState(TASK_PATH).unsubscribes[0]).toHaveBeenCalledTimes(1)
+        })
+
+        it('is still absent after a reload, when a fresh listener reconciles its first snapshot', async () => {
+            // The second half of the report: "after reloading it is still shown there". A reload
+            // re-runs the whole watcher, so the authoritative first snapshot is the only input -
+            // and a postponed task is not in `dueDate <= endOfDay`, so it is simply not in it.
+            deliverRealSnapshot([])
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            await acknowledgeCreate()
+            emitDocument(postponedRaw())
+
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
+            listeners.length = 0
+            listenerUnsubscribes.length = 0
+            queryRegistrations.length = 0
+            published = []
+            watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1')
+
+            deliverRealSnapshot([])
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+            expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(0)
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
+        })
+
+        it('buckets a postponed task under its own date, never under today, when Later is expanded', () => {
+            // With "Later" expanded the query does return the task after a reload, so the grouping
+            // is what decides where the user sees it. `processTaskChange` keys the bucket off the
+            // task's own `dueDate`, so tomorrow's task belongs to tomorrow's day tuple and today's
+            // tuple stays empty - it is never both listed under today and shown with a later date.
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
+            listeners.length = 0
+            listenerUnsubscribes.length = 0
+            queryRegistrations.length = 0
+            published = []
+            watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), true, false, false, 'project-1user-1')
+
+            const postponed = postponedRaw()
+            deliverRealSnapshot([realAddedChange('task-1', postponed)])
+
+            const dayTuples = published[published.length - 1]
+            expect(taskIdsOf(dayTuples)).toEqual([])
+            const laterDay = dayTuples.find(tuple => tuple[0] === moment(postponed.dueDate).format('YYYYMMDD'))
+            expect(laterDay).toBeDefined()
+            expect(laterDay[MAIN_TASK_INDEX].flatMap(([, tasks]) => tasks.map(task => task.id))).toEqual(['task-1'])
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
         })
     })
 })
