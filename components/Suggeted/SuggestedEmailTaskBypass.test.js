@@ -103,6 +103,11 @@ const renderModal = (projectId = EMAIL_PROJECT_ID, task = emailTask) => {
     return { tree, hidePopover }
 }
 
+// AT-2495 — the suggested-task actions now issue their write from behind the row's completion
+// handoff, so it lands a couple of microtasks after the press instead of on the first one. Flushing
+// the task queue is stable across that, where counting `Promise.resolve()`s is not.
+const flushAsync = () => new Promise(resolve => setTimeout(resolve, 0))
+
 describe('suggested email task Accept/Reject popup', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -140,7 +145,7 @@ describe('suggested email task Accept/Reject popup', () => {
         const { tree, hidePopover } = renderModal()
 
         tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
-        await Promise.resolve()
+        await flushAsync()
 
         expect(hidePopover).toHaveBeenCalledTimes(1)
         expect(updateTaskData).toHaveBeenCalledWith(EMAIL_PROJECT_ID, 'task-1', { suggestedBy: null }, null)

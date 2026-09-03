@@ -12,7 +12,6 @@ import { colors } from '../../../styles/global'
 jest.mock('uuid/v4', () => () => 'popup-workflow-action')
 jest.mock('../../../../redux/store', () => ({ dispatch: jest.fn() }))
 jest.mock('../../../../redux/actions', () => ({
-    showTaskCompletionAnimation: () => ({ type: 'SHOW_COMPLETION' }),
     startLoadingData: () => ({ type: 'START_LOADING' }),
 }))
 jest.mock('../../../../utils/HelperFunctions', () => ({
@@ -252,6 +251,12 @@ describe('CommentPopupWorkflowControls', () => {
             done.props.onPress()
         })
 
+        // AT-2495 — the move is now issued from behind the row's completion handoff, so it lands
+        // one microtask after the press even when no row motion is attached. The double-click
+        // guard itself is still synchronous, which is exactly what this asserts: two presses,
+        // one write.
+        await act(async () => Promise.resolve())
+
         expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledTimes(1)
 
         await act(async () => {
@@ -399,6 +404,12 @@ describe('CommentPopupWorkflowControls', () => {
             move('FORWARD')
         })
 
+        // AT-2495 — the move is now issued from behind the row's completion handoff, so it lands
+        // one microtask after the press even when no row motion is attached. The double-click
+        // guard itself is still synchronous, which is exactly what this asserts: two presses,
+        // one write.
+        await act(async () => Promise.resolve())
+
         expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledTimes(1)
 
         await act(async () => {
@@ -467,5 +478,126 @@ describe('CommentPopupWorkflowControls', () => {
             task.estimations,
             'popup-workflow-action'
         )
+    })
+    /**
+     * AT-2495 — completing from the comment popup plays the same row animation the checkbox does.
+     *
+     * The header of that popup IS a real task row, so the motion is borrowed from it through the
+     * `completionMotion` handoff. The two things that must not drift are which moves count as a
+     * completion, and the fact that the write waits for the animation rather than racing it.
+     */
+    describe('row completion animation (AT-2495)', () => {
+        const makeMotion = (holdMs = 0) => ({ begin: jest.fn(() => holdMs), cancel: jest.fn() })
+
+        it('celebrates a move to Done', async () => {
+            const completionMotion = makeMotion()
+            const tree = renderer.create(
+                <CommentPopupWorkflowControls
+                    projectId="project-1"
+                    task={task}
+                    workflow={workflow}
+                    completionMotion={completionMotion}
+                />
+            )
+            await act(async () => Promise.resolve())
+            act(() => tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.onPress())
+
+            await act(async () =>
+                tree.root.findByProps({ accessibilityLabel: 'Select workflow step: Done' }).props.onPress()
+            )
+
+            expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: true })
+        })
+
+        /**
+         * Handing a task to the next reviewer is not finishing it, so it must not be swept to
+         * 100%, tinted green or celebrated at the checkbox — the same rule the checkbox applies.
+         */
+        it('does not celebrate a plain step advance', async () => {
+            const completionMotion = makeMotion()
+            const tree = renderer.create(
+                <CommentPopupWorkflowControls
+                    projectId="project-1"
+                    task={task}
+                    workflow={workflow}
+                    completionMotion={completionMotion}
+                />
+            )
+
+            await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
+
+            expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: false })
+        })
+
+        it('holds the write until the row has finished animating', async () => {
+            jest.useFakeTimers()
+            try {
+                const completionMotion = makeMotion(1070)
+                const tree = renderer.create(
+                    <CommentPopupWorkflowControls
+                        projectId="project-1"
+                        task={task}
+                        workflow={workflow}
+                        completionMotion={completionMotion}
+                    />
+                )
+                await act(async () => Promise.resolve())
+                act(() => tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.onPress())
+
+                let move
+                act(() => {
+                    move = tree.root.findByProps({ accessibilityLabel: 'Select workflow step: Done' }).props.onPress()
+                })
+                await act(async () => Promise.resolve())
+
+                expect(moveTasksFromMiddleOfWorkflow).not.toHaveBeenCalled()
+
+                await act(async () => {
+                    jest.advanceTimersByTime(1070)
+                    await move
+                })
+
+                expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledTimes(1)
+            } finally {
+                jest.useRealTimers()
+            }
+        })
+
+        /**
+         * The row has already collapsed to zero height by the time the write is attempted, so a
+         * failure that left it there would be an invisible row in the list.
+         */
+        it('puts the row back when the move fails', async () => {
+            const completionMotion = makeMotion()
+            moveTasksFromMiddleOfWorkflow.mockRejectedValueOnce(new Error('permission-denied'))
+            const tree = renderer.create(
+                <CommentPopupWorkflowControls
+                    projectId="project-1"
+                    task={task}
+                    workflow={workflow}
+                    completionMotion={completionMotion}
+                />
+            )
+
+            await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
+
+            expect(completionMotion.cancel).toHaveBeenCalledTimes(1)
+        })
+
+        it('leaves the row alone when the move succeeds', async () => {
+            const completionMotion = makeMotion()
+            const tree = renderer.create(
+                <CommentPopupWorkflowControls
+                    projectId="project-1"
+                    task={task}
+                    workflow={workflow}
+                    completionMotion={completionMotion}
+                />
+            )
+
+            await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
+
+            expect(completionMotion.cancel).not.toHaveBeenCalled()
+        })
     })
 })

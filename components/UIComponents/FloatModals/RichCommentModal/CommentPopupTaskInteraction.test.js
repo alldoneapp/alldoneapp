@@ -45,11 +45,6 @@ jest.mock(
     '../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxContainer',
     () => 'CheckBoxContainer'
 )
-jest.mock('../../../TaskListView/TaskItem/TaskCompletionAnimation', () => ({
-    __esModule: true,
-    default: () => null,
-    ANIMATION_DURATION: 1,
-}))
 jest.mock('../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal', () => ({
     __esModule: true,
     default: () => null,

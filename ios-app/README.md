@@ -106,31 +106,6 @@ loses on slow boots and produces an endless download→revert loop — and the
 E2E was verified in the simulator including an update applied while logged
 in. Store releases are now only needed for native shell changes.
 
-## Assistant voice calls in the background (AT-2496)
-
-The assistant call is a WebRTC connection inside the WKWebView
-(`components/UIComponents/AssistantVoiceCallButton.js`). Two native pieces let
-it keep running when the user presses Home or locks the screen:
-
-- `UIBackgroundModes: audio` in `ios/App/App/Info.plist`. WebKit proxies the web
-  view's AVAudioSession into the host app, so this mode is what keeps the app
-  (and with it the capture and the peer connection) alive in the background.
-  Without it iOS suspends the app seconds after it leaves the foreground and the
-  call dies. App Store review accepts it because the app really does play and
-  record audio in the background during a call.
-- `CallAudioSessionPlugin.swift` (`CallAudioSession` on `window.Capacitor.Plugins`).
-  The web side calls `begin()` before it opens the microphone (category
-  `.playAndRecord`, mode `.voiceChat`, Bluetooth + speaker allowed) and `end()`
-  after it has stopped its tracks. `begin()` reports `backgroundAudio`, i.e.
-  whether the running build carries the mode above, so an older shell logs a
-  warning instead of promising a background call it cannot deliver. All of this
-  is a no-op outside the shell (`utils/CapacitorShell.js`).
-
-Both are native shell changes and need a TestFlight / App Store release; OTA
-cannot add a background mode. Verify on a device, not the simulator: start a
-call, press Home, keep talking for a minute, lock the screen, return — the
-transcript in the call topic must show the turns spoken while backgrounded.
-
 ## Roadmap (in order)
 
 1. **Push notifications** — `@capacitor/push-notifications` via APNs/FCM,

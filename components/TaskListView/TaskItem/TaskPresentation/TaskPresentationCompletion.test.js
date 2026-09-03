@@ -139,6 +139,14 @@ jest.mock('../../../Workstreams/WorkstreamHelper', () => ({ WORKSTREAM_ID_PREFIX
 jest.mock('../../../ContactsView/Utils/ContactsHelper', () => ({ getUserWorkflow: () => ({}) }))
 jest.mock('../../../Premium/PremiumHelper', () => ({ checkIsLimitedByXp: () => false }))
 jest.mock('./CheckBoxContainer/TaskFlowModal', () => 'TaskFlowModal')
+// AT-2495 — the long-press popup is what hosts the "Done" button, so it has to actually mount for
+// the handoff to be observable. The real shell would render a bottom sheet at the jsdom viewport
+// width and is not what is under test here.
+jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
+    const React = require('react')
+    return ({ children, content, isOpen }) =>
+        React.createElement(React.Fragment, null, children, isOpen ? content : null)
+})
 jest.mock('./CheckBoxContainer/EmailTaskCompletionModal', () => 'EmailTaskCompletionModal')
 jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
     moveTasksFromDone: jest.fn().mockResolvedValue(undefined),
@@ -160,8 +168,10 @@ import path from 'path'
 
 import TaskPresentation from './TaskPresentation'
 import TaskCompletionCelebration from './CheckBoxContainer/TaskCompletionCelebration'
+import TaskDisintegration from './TaskDisintegration'
 import { moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from './taskCompletionMotion'
+import { DISSOLVE_END } from './taskRowDisintegration'
 
 const ROW_HEIGHT = 48
 
@@ -186,6 +196,7 @@ const baseTask = {
 
 const findRow = tree => tree.root.findAllByProps({ testID: 'task-completion-row' }, { deep: false })[0]
 const rowStyle = tree => Object.assign({}, ...[].concat(findRow(tree).props.style).filter(Boolean))
+const dustLayer = tree => tree.root.findAllByType(TaskDisintegration)[0]
 
 const renderRow = async (task, props) => {
     const ref = React.createRef()
@@ -239,6 +250,11 @@ describe('TaskPresentation completion (AT-2404)', () => {
         // No stale measured height on a row nobody has ticked.
         expect(rowStyle(tree).height).toBeUndefined()
         expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+        // AT-2495 — and no mask and no dust layer either. A permanent `mask-image` would cost
+        // every row in every list its own compositing layer for the sake of one second at the end
+        // of its life.
+        expect(rowStyle(tree).maskImage).toBeUndefined()
+        expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
     })
 
     describe('a top-level task', () => {
@@ -364,6 +380,204 @@ describe('TaskPresentation completion (AT-2404)', () => {
             // going anywhere and the user is undoing, not celebrating.
             expect(setTaskStatus).toHaveBeenCalledTimes(1)
             expect(setTaskStatus.mock.calls[0][2]).toBe(false)
+        })
+    })
+
+    /**
+     * AT-2495 — the SAME animation, reached from the long-press popup.
+     *
+     * Press and hold the checkbox and the row hands off to `TaskFlowModal`, whose "Done" button
+     * writes to Firestore directly. It sits three components below the row and had no way to reach
+     * the motion, so completing a task that way simply blinked it out of the list. The bug was
+     * purely in the WIRING, which is why it is asserted here through the real row and the real
+     * `CheckBoxWrapper` rather than against the handoff module in isolation.
+     */
+    describe('completing from the long-press checkbox popup', () => {
+        // A long press always routes to the popup for a task the checkbox would otherwise resolve
+        // through the workflow itself — which is the case AT-2495 is about. Kept to a single
+        // participant on purpose: a multi-user task is `pending`, and a pending row renders a
+        // clock instead of a checkbox, so the celebration correctly stands down and every
+        // assertion below would pass for the wrong reason.
+        const popupTask = { ...baseTask, genericData: null }
+
+        const openPopup = async () => {
+            const { tree, ref } = await renderRow(popupTask)
+            // Pressed and HELD, through the real checkbox. `TaskPresentation`'s imperative handle
+            // only ever reports a long press for pending/suggested/observed rows, so it cannot
+            // express this gesture — and the popup is exactly what the gesture opens.
+            const checkbox = tree.root.findAll(node => typeof node.props?.onLongPress === 'function')[0]
+            await act(async () => checkbox.props.onLongPress())
+            return { tree, ref }
+        }
+
+        const popupMotion = tree => tree.root.findByType('TaskFlowModal').props.completionMotion
+
+        it("hands the popup the row's completion motion", async () => {
+            const { tree } = await openPopup()
+
+            expect(typeof popupMotion(tree).begin).toBe('function')
+            expect(typeof popupMotion(tree).cancel).toBe('function')
+        })
+
+        it('plays the full completion on the row when the popup completes the task', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).not.toBeNull()
+            expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
+        })
+
+        it('tells the popup how long to hold its write', async () => {
+            const { tree } = await openPopup()
+
+            let holdMs
+            act(() => {
+                holdMs = popupMotion(tree).begin({ isCompletion: true })
+            })
+
+            expect(holdMs).toBe(COMPLETION_HOLD_MS)
+        })
+
+        /**
+         * Moving a workflow task to the next reviewer is not finishing it. The row still leaves
+         * this list, so it still collapses — but nothing is celebrated.
+         */
+        it('exits without celebrating for a plain step advance', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: false }))
+
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).toBeNull()
+            expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
+        })
+
+        it('puts the row back when the popup reports a failed write', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+            act(() => popupMotion(tree).cancel())
+
+            expect(rowStyle(tree).height).toBeUndefined()
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+        })
+
+        /**
+         * AT-2495 — the exit the popup borrows is the disintegration, not the old shrink. This is
+         * the path the whole task is about: pressing and HOLDING the checkbox opens a popup whose
+         * "Done" writes straight to Firestore, and until AT-2495 the row simply blinked out.
+         */
+        it('disintegrates the row when the popup completes the task', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+
+            expect(rowStyle(tree).maskImage).toContain('linear-gradient(to right')
+            expect(dustLayer(tree)).toBeDefined()
+            expect(dustLayer(tree).props.height).toBe(ROW_HEIGHT)
+        })
+
+        it('clears the dust as well as the row when the popup reports a failed write', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+            act(() => popupMotion(tree).cancel())
+
+            // A cancelled exit that left a mask behind would leave the row half-erased for good —
+            // the failure this recovery exists to avoid, one layer deeper than before.
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        /**
+         * The handoff is threaded through several components, and a fresh object on every render
+         * would make any `React.memo` below it useless.
+         */
+        it('keeps a stable identity across re-renders', async () => {
+            const { tree, ref } = await openPopup()
+            const first = popupMotion(tree)
+
+            await act(async () => {
+                tree.update(
+                    <TaskPresentation ref={ref} projectId={'project-1'} task={{ ...popupTask, name: 'renamed' }} />
+                )
+                await Promise.resolve()
+            })
+
+            expect(popupMotion(tree)).toBe(first)
+        })
+    })
+
+    /**
+     * AT-2495 — the row no longer shrinks away, it comes apart. These are the wiring assertions:
+     * that the mask lands on the row, that the dust does NOT (which would erase it), and that
+     * neither exists on a row that is not leaving.
+     */
+    describe('the disintegration exit', () => {
+        it('erases the row right to left when the checkbox is ticked', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            const style = rowStyle(tree)
+            expect(style.maskImage).toContain('linear-gradient(to right')
+            expect(style.maskRepeat).toBe('no-repeat')
+            expect(style.maskPosition.__getValue()).toBe('0%')
+            // Both spellings, because Safari served the prefixed one for years.
+            expect(style.WebkitMaskImage).toBe(style.maskImage)
+        })
+
+        /**
+         * THE structural rule of this feature, and the one mistake that is silent when made: a
+         * mask applies to an element AND its descendants, so dust rendered inside the row would be
+         * erased by the very front it is supposed to be shedding. It has to be a sibling.
+         */
+        it('renders the dust outside the masked row, not inside it', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(1)
+            expect(findRow(tree).findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        it('shares one value between the erasure and the dust', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            // The dust has to leave exactly where the mask has just erased. Two values, however
+            // carefully tuned, read as two animations that happen to overlap.
+            const { progress } = dustLayer(tree).props
+            act(() => progress.setValue(DISSOLVE_END))
+            expect(rowStyle(tree).maskPosition.__getValue()).toBe('100%')
+        })
+
+        it('never disintegrates a subtask, which is not leaving any list', async () => {
+            const { tree, ref } = await renderRow({ ...baseTask, isSubtask: true, parentId: 'parent-1' })
+
+            await tickCheckbox(ref)
+
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        it('falls back to a static frame and no dust under prefers-reduced-motion', async () => {
+            // The simple, fast fallback: the information (a full green bar, a green checkbox)
+            // survives, the motion does not. A 1.2s dissolve is exactly what somebody who asked
+            // for reduced motion has asked not to see.
+            AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(rowStyle(tree).height).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+            // …but the row is still told it is done.
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
         })
     })
 })

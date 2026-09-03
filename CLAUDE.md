@@ -1206,7 +1206,7 @@ keeps one full-strength element throughout.
 
 **Duration no longer ranks the two celebrations — KIND does, and that reversal is the point.** The
 previous pass encoded the ranking as "half or less" (860ms against the all-projects 3000ms);
-`ProjectEmptyInboxCelebration.test.js` now asserts only that the sweep never _outlasts_ the big one
+`ProjectEmptyInboxCelebration.test.js` now asserts only that the sweep never *outlasts* the big one
 plus the 2.5–3.0s window Karsten asked for, and the ranking is carried entirely by the structural
 assertions that were always there: no confetti of any sort, `position: absolute` bounded to one 56px
 row, no viewport-derived dimension anywhere (the all-projects fall is `position: fixed` and escapes
@@ -1273,7 +1273,7 @@ nothing else on the board is delayed by a frame) and the grace is the cure for t
 BEFORE the motion check, so a run arriving while motion was unavailable was consumed permanently and
 could never play once it became available — and that is reachable without touching a setting,
 because react-native-web's `isReduceMotionEnabled()` resolves to **`true`** whenever
-`window.matchMedia` is missing (it fails _closed_). Related: `useReducedMotion` seeded its state
+`window.matchMedia` is missing (it fails *closed*). Related: `useReducedMotion` seeded its state
 `false` and corrected a microtask later, so the first commit always assumed motion — harmless for a
 ghost, but this celebration claims its once-per-day marker in a layout effect on exactly that
 commit, i.e. it spent the day believing it was about to animate. It now reads the media query
@@ -1356,49 +1356,6 @@ the build. Plus `browser-tests/at2492`, which is the only place the sweep is eve
 painting: a suite that stubs reduced motion but not `window.matchMedia` still gets one fully
 animated commit, which is enough to hide a swallowed run, so both jest suites now drive the media
 query as well.
-
-### Assistant voice calls survive the background differently on every platform (AT-2496)
-
-**The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text
-transcript.** `AssistantVoiceCallButton` owns the `RTCPeerConnection`, the mic stream and a hidden
-`<audio>` element; the Cloud Function only brokers the SDP, and the sideband controller writes
-transcript turns into the call topic — no audio is ever recorded. So "the call continues in the
-background" means exactly one thing: the peer connection and the capture keep flowing while the
-page is hidden. What can keep them flowing is decided per platform, and
-`components/UIComponents/assistantCallBackground.js` is the one place that spells it out:
-desktop and Android (a TWA renders in Chrome, which owns the mic and its own "microphone in use"
-notification) keep a capturing tab alive on their own; the **iOS Capacitor shell** needs the
-`audio` entry in `UIBackgroundModes` (`ios-app/ios/App/App/Info.plist`) because WebKit proxies the
-web view's AVAudioSession into the host app, so the app's background mode is what keeps the
-capture alive after Home / lock; and an **iOS browser or home-screen PWA has no lever at all** —
-WebKit mutes the capture track while hidden and unmutes it on return, which is why the connected
-state shows a "keep Alldone open" hint there and nowhere else.
-
-Two rules follow and the component wires them to the connection's lifecycle. **A hidden page never
-opens the microphone**: `getUserMedia` is refused from a hidden page, and on iOS the muted track
-comes back by itself, so a stall or an `ended` track seen while hidden is only remembered
-(`micCheckPendingRef`) and replayed once visible — after `RETURN_MIC_SETTLE_MS`, because replacing
-the track during the window in which WebKit unmutes the original would drop the first words spoken
-after coming back. The first version of the health monitor did the opposite and, on iOS Safari,
-called `getUserMedia` from the background on every stall. **A `disconnected` peer connection gets a
-visibility-dependent grace** (`resolveDisconnectGraceMs`: 8s visible, 60s hidden), re-armed on
-every visibility flip so a call that really died in the background still ends within seconds of
-return rather than a minute later; `connected` cancels it and only `failed`/`closed` are terminal
-on their own. The iOS shell additionally gets `CallAudioSessionPlugin.swift` (`CallAudioSession` on
-`window.Capacitor.Plugins`): `begin()` configures `.playAndRecord`/`.voiceChat` **before** the web
-view opens the mic and reports whether the build carries the background mode, `end()` releases
-the session **after** the tracks are stopped; both are best-effort and a failing plugin never stops
-a call. The Media Session registration is what Android's ongoing-call notification is built from,
-and its `hangup` action is the only one wired to anything (play/pause/stop stay inert — a headset
-"stop" must not hang up).
-
-Only a device can verify any of it: jest has no WebRTC and no visibility semantics, so
-`AssistantVoiceCallButton.test.js` drives the REAL component against a fake peer connection and
-pins the rules, not the platform behaviour. Note the suite unmounts every tree it renders — a
-still-mounted component keeps its `visibilitychange` listener and reacts to the NEXT test's events
-with the next test's `getUserMedia` mock, which is how a "called twice" assertion came back as
-three. The Info.plist mode and the plugin are native shell changes and therefore need a TestFlight
-/ App Store release; OTA cannot add a background mode.
 
 ### Rambler dictation — a microphone can hand the browser digital silence (AT-2357)
 
