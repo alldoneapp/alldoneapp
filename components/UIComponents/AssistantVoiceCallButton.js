@@ -8,16 +8,25 @@ import Button from '../UIControls/Button'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Spinner from './Spinner'
+import {
+    BACKGROUND_SUPPORT_FOREGROUND_ONLY,
+    RETURN_MIC_SETTLE_MS,
+    beginNativeCallAudioSession,
+    createSilentAudioKeepalive,
+    describeBackgroundCallSupport,
+    destroySilentAudioKeepalive,
+    endNativeCallAudioSession,
+    isDocumentHidden,
+    resolveDisconnectGraceMs,
+    setupMediaSession,
+    shouldRecoverMicNow,
+    teardownMediaSession,
+} from './assistantCallBackground'
 
 const STATUS_IDLE = 'idle'
 const STATUS_CONNECTING = 'connecting'
 const STATUS_CONNECTED = 'connected'
 const ICE_GATHERING_TIMEOUT_MS = 5000
-
-// Delay before treating a 'disconnected' ICE state as terminal.
-// WebRTC frequently reports 'disconnected' transiently when the browser tab
-// goes into the background; it usually recovers within a few seconds.
-const DISCONNECTED_GRACE_MS = 8000
 
 // How often (ms) to poll RTCPeerConnection.getStats() looking for a stalled
 // outbound audio track — i.e. the mic has been suspended by the OS.
@@ -50,82 +59,12 @@ function waitForIceGatheringComplete(pc) {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Media Session helper — registers the call as an active media session so
-// Android treats the browser tab as a media-producing foreground activity.
-// This makes the OS less likely to suspend the audio pipeline on lock screen.
-// ---------------------------------------------------------------------------
-function setupMediaSession(assistantName) {
-    try {
-        if (!('mediaSession' in navigator)) return
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: assistantName
-                ? translate('Call with %s', assistantName) || `Call with ${assistantName}`
-                : translate('Voice call') || 'Voice call',
-            artist: 'Alldone',
-            album: '',
-        })
-        navigator.mediaSession.playbackState = 'playing'
-        // Register no-op action handlers so the OS shows media controls.
-        const actions = ['play', 'pause', 'stop']
-        actions.forEach(action => {
-            try {
-                navigator.mediaSession.setActionHandler(action, () => {})
-            } catch (_) {
-                /* handler not supported — fine */
-            }
-        })
-    } catch (_) {
-        /* Non-critical */
-    }
-}
-
-function teardownMediaSession() {
-    try {
-        if (!('mediaSession' in navigator)) return
-        navigator.mediaSession.metadata = null
-        navigator.mediaSession.playbackState = 'none'
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Silent audio keepalive — plays a near-silent looping audio signal so the
-// browser maintains an "active media playback" session.  Android gives higher
-// priority to tabs with active audio, reducing the chance the OS suspends the
-// mic when the screen locks.
-// ---------------------------------------------------------------------------
-function createSilentAudioKeepalive() {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)()
-        // Tiny-gain oscillator: inaudible but keeps AudioContext alive.
-        const oscillator = ctx.createOscillator()
-        const gain = ctx.createGain()
-        gain.gain.value = 0.001 // near-silent
-        oscillator.connect(gain)
-        gain.connect(ctx.destination)
-        oscillator.start()
-        return { audioContext: ctx, oscillator, gainNode: gain }
-    } catch (_) {
-        return null
-    }
-}
-
-function destroySilentAudioKeepalive(keepalive) {
-    if (!keepalive) return
-    try {
-        keepalive.oscillator.stop()
-    } catch (_) {
-        /* ignore */
-    }
-    try {
-        keepalive.audioContext.close()
-    } catch (_) {
-        /* ignore */
-    }
-}
-
+// The call survives the app going to the background differently on every
+// platform (native audio session on the iOS shell, Chrome's own capture
+// notification on Android, a running tab on desktop, nothing at all in an iOS
+// browser). The rules the component follows are spelled out in
+// ./assistantCallBackground.js; this file only wires them to the peer
+// connection's lifecycle.
 export default function AssistantVoiceCallButton({
     compact = false,
     buttonStyle,
@@ -147,14 +86,20 @@ export default function AssistantVoiceCallButton({
     const wakeLockRef = useRef(null)
     const disconnectTimerRef = useRef(null)
     const micHealthTimerRef = useRef(null)
+    const returnMicCheckTimerRef = useRef(null)
     const prevBytesSentRef = useRef(0)
     const stallCountRef = useRef(0)
     const micRecoveringRef = useRef(false)
+    // Set when the mic looked dead while the page was hidden. A hidden page must
+    // never reopen the microphone; the check is replayed once we are visible.
+    const micCheckPendingRef = useRef(false)
     const silentKeepaliveRef = useRef(null)
+    const nativeAudioSessionRef = useRef(false)
     // Stable ref for the mic-recovery function so that track listeners and the
     // health-monitor interval always call the latest version without circular
     // useCallback dependencies.
     const attemptMicRecoveryRef = useRef(null)
+    const cleanupRef = useRef(null)
 
     // Acquire a Screen Wake Lock so the device does not sleep while a call is
     // active.  This is best-effort — the API may not be available everywhere.
@@ -178,31 +123,74 @@ export default function AssistantVoiceCallButton({
         }
     }, [])
 
-    // Attach mute/unmute/ended listeners to a mic track.  If the track ends
-    // (e.g. OS revokes mic access), attempt recovery via the ref.
-    const attachTrackListeners = useCallback(track => {
-        if (!track) return
-        track.onended = () => {
-            console.warn('[VoiceCall] Mic track ended — attempting recovery')
-            attemptMicRecoveryRef.current?.()
-        }
-        track.onmute = () => {
-            console.warn('[VoiceCall] Mic track muted by OS')
-        }
-        track.onunmute = () => {
-            console.log('[VoiceCall] Mic track unmuted')
-            stallCountRef.current = 0
+    const clearDisconnectTimer = useCallback(() => {
+        if (disconnectTimerRef.current) {
+            clearTimeout(disconnectTimerRef.current)
+            disconnectTimerRef.current = null
         }
     }, [])
 
+    // Arm (or re-arm) the grace timer after which a still-not-connected peer
+    // connection is treated as dead. The grace depends on visibility: a hidden
+    // page gets a long one because ICE reports 'disconnected' on nearly every
+    // background transition and recovers seconds later.
+    const armDisconnectTimer = useCallback(
+        pc => {
+            clearDisconnectTimer()
+            const graceMs = resolveDisconnectGraceMs({ hidden: isDocumentHidden() })
+            disconnectTimerRef.current = setTimeout(() => {
+                disconnectTimerRef.current = null
+                if (pc.connectionState !== 'connected') cleanupRef.current?.()
+            }, graceMs)
+        },
+        [clearDisconnectTimer]
+    )
+
+    // Ask for the mic to be checked/replaced. While hidden the request is only
+    // remembered — getUserMedia is refused from a hidden page, and on iOS the
+    // muted track comes back by itself on return.
+    const requestMicRecovery = useCallback(() => {
+        if (isDocumentHidden()) {
+            micCheckPendingRef.current = true
+            return
+        }
+        attemptMicRecoveryRef.current?.()
+    }, [])
+
+    // Attach mute/unmute/ended listeners to a mic track.  If the track ends
+    // (e.g. OS revokes mic access), attempt recovery via the ref.
+    const attachTrackListeners = useCallback(
+        track => {
+            if (!track) return
+            track.onended = () => {
+                console.warn('[VoiceCall] Mic track ended — attempting recovery')
+                requestMicRecovery()
+            }
+            track.onmute = () => {
+                console.warn('[VoiceCall] Mic track muted by OS')
+            }
+            track.onunmute = () => {
+                console.log('[VoiceCall] Mic track unmuted')
+                stallCountRef.current = 0
+                micCheckPendingRef.current = false
+            }
+        },
+        [requestMicRecovery]
+    )
+
     // ------------------------------------------------------------------
-    // Mic health monitor — detects when Android suspends the mic track
+    // Mic health monitor — detects when the OS suspends the mic track
     // and attempts to re-acquire it via getUserMedia + replaceTrack.
     // ------------------------------------------------------------------
     const attemptMicRecovery = useCallback(async () => {
         const pc = peerConnectionRef.current
         if (!pc || micRecoveringRef.current) return
+        if (isDocumentHidden()) {
+            micCheckPendingRef.current = true
+            return
+        }
         micRecoveringRef.current = true
+        micCheckPendingRef.current = false
         try {
             const newStream = await navigator.mediaDevices.getUserMedia({ audio: true })
             const newTrack = newStream.getAudioTracks()[0]
@@ -265,8 +253,15 @@ export default function AssistantVoiceCallButton({
                         if (delta === 0) {
                             stallCountRef.current++
                             if (stallCountRef.current >= MIC_STALL_THRESHOLD) {
-                                console.warn('[VoiceCall] Mic stall detected — attempting recovery')
-                                attemptMicRecoveryRef.current?.()
+                                // A hidden page stalls legitimately on iOS (the
+                                // track is muted, not dead) — remember and
+                                // re-check on return instead of reopening the mic.
+                                if (isDocumentHidden()) {
+                                    micCheckPendingRef.current = true
+                                } else {
+                                    console.warn('[VoiceCall] Mic stall detected — attempting recovery')
+                                    attemptMicRecoveryRef.current?.()
+                                }
                             }
                         } else {
                             stallCountRef.current = 0
@@ -281,10 +276,12 @@ export default function AssistantVoiceCallButton({
 
     const cleanup = useCallback(
         (resetState = true) => {
-            if (disconnectTimerRef.current) {
-                clearTimeout(disconnectTimerRef.current)
-                disconnectTimerRef.current = null
+            clearDisconnectTimer()
+            if (returnMicCheckTimerRef.current) {
+                clearTimeout(returnMicCheckTimerRef.current)
+                returnMicCheckTimerRef.current = null
             }
+            micCheckPendingRef.current = false
             stopMicHealthMonitor()
             releaseWakeLock()
             teardownMediaSession()
@@ -305,48 +302,70 @@ export default function AssistantVoiceCallButton({
                 audio.remove()
             }
             audioElementRef.current = null
+
+            // Release the native audio session AFTER the capture is stopped, so
+            // the shell never deactivates a session the web view still records on.
+            if (nativeAudioSessionRef.current) {
+                nativeAudioSessionRef.current = false
+                endNativeCallAudioSession()
+            }
+
             if (resetState && mountedRef.current) {
                 setStatus(STATUS_IDLE)
             }
         },
-        [releaseWakeLock, stopMicHealthMonitor]
+        [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor]
     )
+    cleanupRef.current = cleanup
 
-    // When the page becomes visible again after being backgrounded, re-acquire
-    // the wake lock (browsers release it automatically on visibility:hidden),
-    // resume the AudioContext keepalive, nudge the audio element, and check if
-    // the mic track needs recovery.
+    // Visibility transitions. Hidden: nothing is torn down — the peer connection,
+    // the capture and the keepalive all stay up, and a pending disconnect grace
+    // is re-armed with the long hidden value. Visible: re-acquire the wake lock
+    // (browsers release it on hide), resume the keepalive AudioContext, nudge
+    // the audio element, collapse a pending disconnect grace back to the short
+    // value, and replay any mic check that was deferred while hidden.
     useEffect(() => {
         function handleVisibilityChange() {
-            if (document.visibilityState === 'visible') {
-                const pc = peerConnectionRef.current
-                if (!pc) return
+            const pc = peerConnectionRef.current
+            if (!pc) return
 
-                // Re-acquire wake lock released by the browser on hide.
-                acquireWakeLock()
+            if (document.visibilityState === 'hidden') {
+                if (disconnectTimerRef.current) armDisconnectTimer(pc)
+                return
+            }
 
-                // Resume the silent AudioContext if it was suspended.
-                const keepalive = silentKeepaliveRef.current
-                if (keepalive?.audioContext?.state === 'suspended') {
-                    keepalive.audioContext.resume().catch(() => {})
-                }
+            acquireWakeLock()
 
-                // Nudge the audio element — some browsers pause it in background.
-                const audio = audioElementRef.current
-                if (audio && audio.paused && audio.srcObject) {
-                    audio.play().catch(() => {})
-                }
+            const keepalive = silentKeepaliveRef.current
+            if (keepalive?.audioContext?.state === 'suspended') {
+                keepalive.audioContext.resume().catch(() => {})
+            }
 
-                // Check whether the mic track is still alive.  If it has ended
-                // or is muted (OS-level), attempt to re-acquire immediately
-                // rather than waiting for the next health poll.
-                const stream = localStreamRef.current
-                if (stream) {
-                    const track = stream.getAudioTracks()[0]
-                    if (track && (track.readyState === 'ended' || track.muted)) {
-                        attemptMicRecovery()
+            const audio = audioElementRef.current
+            if (audio && audio.paused && audio.srcObject) {
+                audio.play().catch(() => {})
+            }
+
+            if (disconnectTimerRef.current) armDisconnectTimer(pc)
+
+            // Give the OS a moment to hand the original track back before we
+            // decide it is dead and replace it.
+            const stream = localStreamRef.current
+            const track = stream?.getAudioTracks()[0]
+            const looksDead = shouldRecoverMicNow({ hidden: false, track })
+            if (micCheckPendingRef.current || looksDead) {
+                if (returnMicCheckTimerRef.current) clearTimeout(returnMicCheckTimerRef.current)
+                returnMicCheckTimerRef.current = setTimeout(() => {
+                    returnMicCheckTimerRef.current = null
+                    if (!peerConnectionRef.current) return
+                    const currentTrack = localStreamRef.current?.getAudioTracks()[0]
+                    if (shouldRecoverMicNow({ hidden: isDocumentHidden(), track: currentTrack })) {
+                        attemptMicRecoveryRef.current?.()
+                    } else {
+                        micCheckPendingRef.current = false
+                        stallCountRef.current = 0
                     }
-                }
+                }, RETURN_MIC_SETTLE_MS)
             }
         }
 
@@ -354,7 +373,7 @@ export default function AssistantVoiceCallButton({
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-    }, [acquireWakeLock, attemptMicRecovery])
+    }, [acquireWakeLock, armDisconnectTimer])
 
     useEffect(
         () => () => {
@@ -389,30 +408,27 @@ export default function AssistantVoiceCallButton({
                 audio.srcObject = event.streams[0]
             }
 
-            // Handle connection state changes with a grace period for transient
-            // 'disconnected' states.  Browsers commonly fire 'disconnected'
-            // when the tab moves to the background; the ICE agent usually
-            // recovers within seconds.  Only 'failed' and 'closed' are terminal.
+            // Only 'failed' and 'closed' are terminal on their own. A
+            // 'disconnected' state gets a visibility-dependent grace (see
+            // assistantCallBackground.js) and is re-evaluated when it ends.
             pc.onconnectionstatechange = () => {
                 const state = pc.connectionState
                 if (state === 'connected') {
-                    // Recovered — cancel any pending disconnect timer.
-                    if (disconnectTimerRef.current) {
-                        clearTimeout(disconnectTimerRef.current)
-                        disconnectTimerRef.current = null
-                    }
+                    clearDisconnectTimer()
                 } else if (state === 'disconnected') {
-                    // Start a grace timer; if the connection does not recover
-                    // within DISCONNECTED_GRACE_MS we treat it as terminal.
-                    if (!disconnectTimerRef.current) {
-                        disconnectTimerRef.current = setTimeout(() => {
-                            disconnectTimerRef.current = null
-                            if (pc.connectionState !== 'connected') cleanup()
-                        }, DISCONNECTED_GRACE_MS)
-                    }
+                    if (!disconnectTimerRef.current) armDisconnectTimer(pc)
                 } else if (state === 'failed' || state === 'closed') {
                     cleanup()
                 }
+            }
+
+            // On the iOS shell the host app's audio session has to be a voice
+            // chat BEFORE the web view opens the mic; the plugin also tells us
+            // whether this build can carry the call in the background at all.
+            const nativeSession = await beginNativeCallAudioSession()
+            nativeAudioSessionRef.current = !!nativeSession
+            if (nativeSession && nativeSession.backgroundAudio === false) {
+                console.warn('[VoiceCall] iOS shell build has no audio background mode — call pauses when backgrounded')
             }
 
             const localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -457,7 +473,13 @@ export default function AssistantVoiceCallButton({
 
             // Activate background-keepalive mechanisms.
             acquireWakeLock()
-            setupMediaSession(assistant?.displayName)
+            const assistantName = assistant?.displayName
+            setupMediaSession({
+                title: assistantName
+                    ? translate('Call with Assistant', { name: assistantName }) || `Call with ${assistantName}`
+                    : translate('Voice call') || 'Voice call',
+                onHangup: () => cleanupRef.current?.(),
+            })
             silentKeepaliveRef.current = createSilentAudioKeepalive()
             startMicHealthMonitor()
 
@@ -470,6 +492,8 @@ export default function AssistantVoiceCallButton({
     }, [
         assistant,
         cleanup,
+        clearDisconnectTimer,
+        armDisconnectTimer,
         acquireWakeLock,
         attachTrackListeners,
         startMicHealthMonitor,
@@ -483,6 +507,8 @@ export default function AssistantVoiceCallButton({
     const isConnecting = status === STATUS_CONNECTING
 
     if (status === STATUS_CONNECTED) {
+        const backgroundSupport = describeBackgroundCallSupport()
+        const showForegroundHint = !compact && backgroundSupport.level === BACKGROUND_SUPPORT_FOREGROUND_ONLY
         return (
             <View style={[localStyles.connectedContainer, compact && localStyles.connectedContainerCompact]}>
                 <Button
@@ -493,6 +519,13 @@ export default function AssistantVoiceCallButton({
                     accessibilityLabel={translate('End assistant call')}
                     accessible
                 />
+                {showForegroundHint && (
+                    <Text style={localStyles.foregroundHint} numberOfLines={2}>
+                        {translate(
+                            'Keep Alldone open during the call, this browser pauses the microphone in the background'
+                        )}
+                    </Text>
+                )}
             </View>
         )
     }
@@ -573,6 +606,12 @@ const localStyles = StyleSheet.create({
     linkText: {
         ...styles.body2,
         color: colors.Text03,
+    },
+    foregroundHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginLeft: 8,
+        flexShrink: 1,
     },
     error: {
         ...styles.caption2,
