@@ -168,8 +168,10 @@ import path from 'path'
 
 import TaskPresentation from './TaskPresentation'
 import TaskCompletionCelebration from './CheckBoxContainer/TaskCompletionCelebration'
+import TaskDisintegration from './TaskDisintegration'
 import { moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from './taskCompletionMotion'
+import { DISSOLVE_END } from './taskRowDisintegration'
 
 const ROW_HEIGHT = 48
 
@@ -194,6 +196,7 @@ const baseTask = {
 
 const findRow = tree => tree.root.findAllByProps({ testID: 'task-completion-row' }, { deep: false })[0]
 const rowStyle = tree => Object.assign({}, ...[].concat(findRow(tree).props.style).filter(Boolean))
+const dustLayer = tree => tree.root.findAllByType(TaskDisintegration)[0]
 
 const renderRow = async (task, props) => {
     const ref = React.createRef()
@@ -247,6 +250,11 @@ describe('TaskPresentation completion (AT-2404)', () => {
         // No stale measured height on a row nobody has ticked.
         expect(rowStyle(tree).height).toBeUndefined()
         expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+        // AT-2495 — and no mask and no dust layer either. A permanent `mask-image` would cost
+        // every row in every list its own compositing layer for the sake of one second at the end
+        // of its life.
+        expect(rowStyle(tree).maskImage).toBeUndefined()
+        expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
     })
 
     describe('a top-level task', () => {
@@ -457,6 +465,33 @@ describe('TaskPresentation completion (AT-2404)', () => {
         })
 
         /**
+         * AT-2495 — the exit the popup borrows is the disintegration, not the old shrink. This is
+         * the path the whole task is about: pressing and HOLDING the checkbox opens a popup whose
+         * "Done" writes straight to Firestore, and until AT-2495 the row simply blinked out.
+         */
+        it('disintegrates the row when the popup completes the task', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+
+            expect(rowStyle(tree).maskImage).toContain('linear-gradient(to right')
+            expect(dustLayer(tree)).toBeDefined()
+            expect(dustLayer(tree).props.height).toBe(ROW_HEIGHT)
+        })
+
+        it('clears the dust as well as the row when the popup reports a failed write', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+            act(() => popupMotion(tree).cancel())
+
+            // A cancelled exit that left a mask behind would leave the row half-erased for good —
+            // the failure this recovery exists to avoid, one layer deeper than before.
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        /**
          * The handoff is threaded through several components, and a fresh object on every render
          * would make any `React.memo` below it useless.
          */
@@ -472,6 +507,77 @@ describe('TaskPresentation completion (AT-2404)', () => {
             })
 
             expect(popupMotion(tree)).toBe(first)
+        })
+    })
+
+    /**
+     * AT-2495 — the row no longer shrinks away, it comes apart. These are the wiring assertions:
+     * that the mask lands on the row, that the dust does NOT (which would erase it), and that
+     * neither exists on a row that is not leaving.
+     */
+    describe('the disintegration exit', () => {
+        it('erases the row right to left when the checkbox is ticked', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            const style = rowStyle(tree)
+            expect(style.maskImage).toContain('linear-gradient(to right')
+            expect(style.maskRepeat).toBe('no-repeat')
+            expect(style.maskPosition.__getValue()).toBe('0%')
+            // Both spellings, because Safari served the prefixed one for years.
+            expect(style.WebkitMaskImage).toBe(style.maskImage)
+        })
+
+        /**
+         * THE structural rule of this feature, and the one mistake that is silent when made: a
+         * mask applies to an element AND its descendants, so dust rendered inside the row would be
+         * erased by the very front it is supposed to be shedding. It has to be a sibling.
+         */
+        it('renders the dust outside the masked row, not inside it', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(1)
+            expect(findRow(tree).findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        it('shares one value between the erasure and the dust', async () => {
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            // The dust has to leave exactly where the mask has just erased. Two values, however
+            // carefully tuned, read as two animations that happen to overlap.
+            const { progress } = dustLayer(tree).props
+            act(() => progress.setValue(DISSOLVE_END))
+            expect(rowStyle(tree).maskPosition.__getValue()).toBe('100%')
+        })
+
+        it('never disintegrates a subtask, which is not leaving any list', async () => {
+            const { tree, ref } = await renderRow({ ...baseTask, isSubtask: true, parentId: 'parent-1' })
+
+            await tickCheckbox(ref)
+
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+        })
+
+        it('falls back to a static frame and no dust under prefers-reduced-motion', async () => {
+            // The simple, fast fallback: the information (a full green bar, a green checkbox)
+            // survives, the motion does not. A 1.2s dissolve is exactly what somebody who asked
+            // for reduced motion has asked not to see.
+            AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+            const { tree, ref } = await renderRow(baseTask)
+
+            await tickCheckbox(ref)
+
+            expect(rowStyle(tree).maskImage).toBeUndefined()
+            expect(rowStyle(tree).height).toBeUndefined()
+            expect(tree.root.findAllByType(TaskDisintegration)).toHaveLength(0)
+            // …but the row is still told it is done.
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
         })
     })
 })

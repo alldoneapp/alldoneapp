@@ -4,9 +4,9 @@ import renderer, { act } from 'react-test-renderer'
 
 import useTaskCompletionMotion, {
     BURST_DURATION_MS,
-    COLLAPSE_DELAY_MS,
-    COLLAPSE_DURATION_MS,
     COMPLETION_HOLD_MS,
+    DISINTEGRATION_DURATION_MS,
+    EXIT_DELAY_MS,
     FLOURISH_FADE_IN_MS,
     PROGRESS_DELAY_MS,
     PROGRESS_DURATION_MS,
@@ -152,10 +152,91 @@ describe('useTaskCompletionMotion', () => {
 
             expect(holdMs).toBe(COMPLETION_HOLD_MS)
             // The write must land after the row is already flat and invisible, never during the
-            // collapse — otherwise the snapshot can unmount the row mid-animation.
-            expect(COLLAPSE_DELAY_MS + COLLAPSE_DURATION_MS).toBeLessThan(holdMs)
+            // exit — otherwise the snapshot can unmount the row mid-animation.
+            expect(EXIT_DELAY_MS + DISINTEGRATION_DURATION_MS).toBeLessThan(holdMs)
             expect(motion.isCompleting).toBe(true)
             expect(motion.rowStyle).toEqual(expect.objectContaining({ overflow: 'hidden' }))
+        })
+
+        /**
+         * AT-2495 — the exit is a disintegration, so the row itself has to carry the dissolve mask
+         * and a dust layer has to be handed out alongside it. Both are asserted here rather than
+         * only in `taskRowDisintegration.test.js` because this hook is what decides they exist at all:
+         * a retained row, a reduced-motion run and a row with no measured height each get neither.
+         */
+        it('turns the row to dust rather than shrinking it away', async () => {
+            enableAnimations()
+            await renderHarness()
+
+            act(() => motion.onRowLayout(layout(48)))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+
+            expect(motion.rowStyle.maskImage).toContain('linear-gradient(to right')
+            expect(motion.completionDust).toEqual({ progress: expect.anything(), height: 48 })
+            // The dust keeps the height the row had when it started leaving. Collapsing with the
+            // row would clip the motes off mid-flight.
+            expect(motion.completionDust.height).toBe(48)
+        })
+
+        it('erases the row from its right-hand edge to its left', async () => {
+            enableAnimations()
+            await renderHarness()
+
+            act(() => motion.onRowLayout(layout(48)))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+
+            // The mask starts flush with the row's left edge and travels the whole way across it,
+            // which — given the gradient's solid reservoir sits at its left — is what makes the
+            // erasure sweep right to left rather than the other way round.
+            const { progress } = motion.completionDust
+            act(() => progress.setValue(0))
+            expect(motion.rowStyle.maskPosition.__getValue()).toBe('0%')
+            act(() => progress.setValue(1))
+            expect(motion.rowStyle.maskPosition.__getValue()).toBe('100%')
+        })
+
+        it('holds the row at its full height until the dust has finished', async () => {
+            enableAnimations()
+            await renderHarness()
+
+            act(() => motion.onRowLayout(layout(48)))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+
+            const { progress } = motion.completionDust
+            // Halfway through the exit the row is being erased, not squashed: a height that
+            // shrinks while the mask is still working would make the row look like it is doing
+            // both at once.
+            act(() => progress.setValue(0.5))
+            expect(motion.rowStyle.height.__getValue()).toBe(48)
+            act(() => progress.setValue(1))
+            expect(motion.rowStyle.height.__getValue()).toBe(0)
+        })
+
+        it('carries no dust layer for a row it cannot measure', async () => {
+            enableAnimations()
+            await renderHarness()
+
+            await act(async () => motion.beginCompletionMotion({ isCompletion: true }))
+
+            expect(motion.completionDust).toBeNull()
+        })
+
+        /**
+         * Handing a workflow task to the next reviewer is not finishing it — but the row still
+         * leaves the list, and how a row leaves is one behaviour. It gets the whole exit and none
+         * of the green.
+         */
+        it('disintegrates a step advance too, without celebrating it', async () => {
+            enableAnimations()
+            await renderHarness()
+
+            act(() => motion.onRowLayout(layout(48)))
+            await act(async () => motion.beginCompletionMotion({ isCompletion: false }))
+
+            expect(motion.completionDust).not.toBeNull()
+            expect(motion.rowStyle.maskImage).toBeDefined()
+            expect(motion.completionProgress).toBeNull()
+            expect(motion.completionCelebration).toBeNull()
         })
 
         it('leaves upward into the gap it is closing', async () => {
@@ -472,16 +553,16 @@ describe('useTaskCompletionMotion', () => {
         })
 
         it('finishes the sweep and its confirmation before the row starts leaving', () => {
-            expect(PROGRESS_DELAY_MS + PROGRESS_DURATION_MS + PROGRESS_PULSE_MS).toBeLessThanOrEqual(COLLAPSE_DELAY_MS)
+            expect(PROGRESS_DELAY_MS + PROGRESS_DURATION_MS + PROGRESS_PULSE_MS).toBeLessThanOrEqual(EXIT_DELAY_MS)
         })
 
         it('finishes the burst before the row starts leaving', () => {
-            // Sparks cut off mid-flight by a collapsing row is the one way this reads as a glitch.
-            expect(BURST_DURATION_MS).toBeLessThanOrEqual(COLLAPSE_DELAY_MS)
+            // Sparks cut off mid-flight by a dissolving row is the one way this reads as a glitch.
+            expect(BURST_DURATION_MS).toBeLessThanOrEqual(EXIT_DELAY_MS)
         })
 
         it('keeps the whole sequence inside the write hold', () => {
-            expect(COLLAPSE_DELAY_MS + COLLAPSE_DURATION_MS).toBeLessThan(COMPLETION_HOLD_MS)
+            expect(EXIT_DELAY_MS + DISINTEGRATION_DURATION_MS).toBeLessThan(COMPLETION_HOLD_MS)
         })
 
         it('starts a retained row releasing only after its write has landed', () => {
@@ -500,10 +581,28 @@ describe('useTaskCompletionMotion', () => {
             )
         })
 
-        it('stays close enough to a second that clearing a list does not drag', () => {
-            // The user asked for a longer, richer sequence; "longer" is not "a beat per row".
-            expect(COMPLETION_HOLD_MS).toBeGreaterThan(700)
-            expect(COMPLETION_HOLD_MS).toBeLessThanOrEqual(1120)
+        /**
+         * AT-2495 moved this bound, and it is worth being explicit about why rather than quietly
+         * relaxing it. It used to read "stays close enough to a second that clearing a list does
+         * not drag" (<= 1120ms). The exit was then asked for as a cinematic 1.2s in place of the
+         * ~700ms alternative, which puts the hold at 1950ms and makes the old bound impossible to
+         * satisfy — so the question it was protecting has to be answered differently: the hold is
+         * per ROW and blocks nothing, the next task can be ticked while this one is still leaving,
+         * and the row is visually gone (fully erased by the mask) well before the hold ends. What
+         * is still worth pinning is that the hold is exactly the sequence plus a small write
+         * buffer — i.e. that nobody has added dead time to it.
+         */
+        it('holds the write for the sequence and a write buffer, and not a beat longer', () => {
+            const sequence = EXIT_DELAY_MS + DISINTEGRATION_DURATION_MS
+            expect(COMPLETION_HOLD_MS).toBeGreaterThan(sequence)
+            expect(COMPLETION_HOLD_MS - sequence).toBeLessThanOrEqual(150)
+        })
+
+        it('spends the extra time on the exit rather than on the celebration', () => {
+            // The lead-in — tap, burst, sweep, confirmation — is unchanged by AT-2495. Only the
+            // way the row leaves got longer, which is the whole of what was asked for.
+            expect(EXIT_DELAY_MS).toBe(670)
+            expect(DISINTEGRATION_DURATION_MS).toBe(1200)
         })
     })
 })

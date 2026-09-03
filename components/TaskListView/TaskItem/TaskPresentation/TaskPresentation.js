@@ -45,6 +45,7 @@ import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
 import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
 import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
+import TaskDisintegration from './TaskDisintegration'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 
 function TaskPresentation(
@@ -153,6 +154,7 @@ function TaskPresentation(
         completionProgress,
         completionWash,
         completionCelebration,
+        completionDust,
         completionMotion,
         isCompleting,
     } = useTaskCompletionMotion({ retainRow, isDone: task.done })
@@ -362,7 +364,12 @@ function TaskPresentation(
                 element so the height that animates to 0 is the whole row (swipe areas, shortcuts
                 and all); collapsing anything inner would leave its wrapper holding the space open
                 and the list would not close the gap. `completionRowStyle` is undefined except
-                during those ~260ms, so an ordinary row is never pinned to a measured height. */}
+                during the exit, so an ordinary row is never pinned to a measured height.
+                AT-2495 — that same style now also carries the dissolve MASK, which is what erases
+                the row right to left. Putting it here rather than on a new inner wrapper is what
+                keeps the change free for the ~99.9% of rows that are not being completed: no extra
+                node, no layout to re-verify, and the mask is applied to a node that is already
+                `overflow: hidden` for the duration, so it clips exactly what was already clipped. */}
             <Animated.View
                 style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
                 onLayout={onCompletionRowLayout}
@@ -602,6 +609,10 @@ function TaskPresentation(
                     </View>
                 </Swipeable>
             </Animated.View>
+            {/* AT-2495 — the dust, and a SIBLING of the row rather than a child of it. The row is
+                masked, and a child of a masked node is erased by that same mask — the dust has to
+                outlive the pixels it came off, which is the entire point of it. */}
+            {completionDust && <TaskDisintegration {...completionDust} />}
         </TaskFileDropZone>
     )
 }
