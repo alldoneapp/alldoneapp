@@ -46,8 +46,34 @@ const buildQuery = () => {
     return query
 }
 
+/**
+ * The task documents `optimisticTaskSettlement` reads and watches, so the AT-2500 second follow-up
+ * can be driven end to end here too: the real settlement window feeding the real watcher, rather
+ * than a hand-published settlement standing in for it.
+ */
+const documents = new Map()
+
+const documentState = path => {
+    if (!documents.has(path)) documents.set(path, { data: null, listeners: [], unsubscribes: [] })
+    return documents.get(path)
+}
+
+const buildDocument = path => ({
+    get: async () => {
+        const { data } = documentState(path)
+        return { exists: !!data, data: () => data }
+    },
+    onSnapshot: (options, handler) => {
+        const state = documentState(path)
+        const unsubscribe = jest.fn()
+        state.listeners.push(handler)
+        state.unsubscribes.push(unsubscribe)
+        return unsubscribe
+    },
+})
+
 jest.mock('../firestore', () => ({
-    getDb: () => ({ collection: () => buildQuery() }),
+    getDb: () => ({ collection: () => buildQuery(), doc: path => buildDocument(path) }),
     globalWatcherUnsub: {},
     mapTaskData: (id, data) => ({ id, ...data }),
 }))
@@ -59,6 +85,22 @@ import {
     publishOptimisticTaskSettled,
     resetOptimisticTaskCreates,
 } from './optimisticTaskCreate'
+import { settleOptimisticTaskRow, stopAllOptimisticTaskSettlements } from './optimisticTaskSettlement'
+
+const TASK_PATH = taskId => `items/project-1/tasks/${taskId}`
+
+/** Puts a version of a task document in the client's local cache. */
+const writeDocument = (taskId, data) => {
+    documentState(TASK_PATH(taskId)).data = data
+}
+
+/** Plays a new local version of the document to the settlement window's own listener. */
+const emitDocument = (taskId, data, metadata = { fromCache: true, hasPendingWrites: true }) => {
+    writeDocument(taskId, data)
+    documentState(TASK_PATH(taskId)).listeners.forEach(handler =>
+        handler({ exists: !!data, data: () => data, metadata })
+    )
+}
 
 const PROJECT_ID = 'project-1'
 const GOAL_ID = 'goal-1'
@@ -108,6 +150,8 @@ describe('AT-2342 optimistic insert in the Goal detailed view', () => {
 
     beforeEach(() => {
         listeners.length = 0
+        documents.clear()
+        stopAllOptimisticTaskSettlements()
         mockDispatch.mockClear()
         resetOptimisticTaskCreates()
         watchOpenGoalTasks(PROJECT_ID, GOAL_ID, 'watcher-key')
@@ -242,6 +286,37 @@ describe('AT-2342 optimistic insert in the Goal detailed view', () => {
 
             expect(goalTaskIds()).toEqual(['task-1'])
         })
+
+        /**
+         * AT-2500 second follow-up - the ack is the START of the window in which the row can be
+         * orphaned, not the end of it. Nothing here can see the task until the access projection
+         * lands, so an edit made in between reached this list through nothing at all.
+         */
+        it('drops the pending copy for an edit made AFTER the ack', async () => {
+            writeDocument('task-1', goalTask())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
+            await settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+            expect(goalTaskIds()).toEqual(['task-1'])
+
+            emitDocument('task-1', goalTask({ parentGoalId: 'goal-2' }))
+
+            expect(goalTaskIds()).toEqual([])
+        })
+
+        it('keeps an ordinary create in place across that whole window', async () => {
+            mockDispatch.mockClear()
+            writeDocument('task-1', goalTask())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
+            await settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+            emitDocument('task-1', goalTask())
+            emitDocument('task-1', { ...goalTask(), readerIds: [0] }, { fromCache: false, hasPendingWrites: false })
+
+            const states = allDispatched('Set goal open tasks data').map(action =>
+                action.goalOpenTasksData.flatMap(day => day[3].map(task => task.id))
+            )
+            expect(states.length).toBeGreaterThan(0)
+            states.forEach(ids => expect(ids).toEqual(['task-1']))
+        })
     })
 
     describe('matchesOpenGoalTasksQuery', () => {
@@ -289,6 +364,8 @@ describe('AT-2342 optimistic insert in My Day', () => {
 
     beforeEach(async () => {
         listeners.length = 0
+        documents.clear()
+        stopAllOptimisticTaskSettlements()
         mockDispatch.mockClear()
         resetOptimisticTaskCreates()
         await watchTasksToAttend(PROJECT_ID, 'user-1', 'watcher-key')
@@ -389,6 +466,35 @@ describe('AT-2342 optimistic insert in My Day', () => {
             publishOptimisticTaskSettled(PROJECT_ID, 'task-1', null)
 
             expect(myDayTaskIds()).toEqual(['task-1'])
+        })
+
+        /**
+         * AT-2500 second follow-up - the reported flow, in the view where a task is most often
+         * added: create, ack a few hundred milliseconds later, postpone seconds after that, while
+         * the row is still invisible to this query. Only the settlement window carries it.
+         */
+        it('drops the pending copy for a postpone made AFTER the ack', async () => {
+            writeDocument('task-1', myDayTask())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+            await settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+            expect(myDayTaskIds()).toEqual(['task-1'])
+
+            emitDocument('task-1', myDayTask({ dueDate: Date.now() + 24 * 60 * 60 * 1000, timesPostponed: 1 }))
+
+            expect(myDayTaskIds()).toEqual([])
+        })
+
+        it('keeps an ordinary create in place across that whole window', async () => {
+            mockDispatch.mockClear()
+            writeDocument('task-1', myDayTask())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+            await settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+            emitDocument('task-1', myDayTask())
+            emitDocument('task-1', { ...myDayTask(), readerIds: [0] }, { fromCache: false, hasPendingWrites: false })
+
+            const states = allDispatched('Set my day all today tasks').map(action => action.tasks.map(task => task.id))
+            expect(states.length).toBeGreaterThan(0)
+            states.forEach(ids => expect(ids).toEqual(['task-1']))
         })
     })
 
