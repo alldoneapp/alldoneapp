@@ -71,12 +71,19 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
-        // AT-2500 - see the same block in myDayTasks.js. Once the server has the document this
-        // watcher's own snapshot decides whether the task belongs here, so the pending copy is
-        // dropped: it either keeps rendering from `latestDocs`, or it was edited out of this
-        // query before its first echo and nothing else would ever have taken it off the list.
+        // AT-2500 - see the same block in myDayTasks.js, including why settlement is a
+        // re-evaluation of the pending copy against this query and not a signal that the snapshot
+        // has already spoken. This query filters on `readerIds` too, so a just-created task is
+        // invisible to it until the server-side projection lands; dropping the copy on the ack
+        // alone made every ordinary create blink out and come back.
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (pendingDocsById.delete(change.doc.id) && hasRealSnapshot) emit()
+            if (!pendingDocsById.has(change.doc.id)) return
+            const settledData = change.doc.data()
+            if (!settledData) return
+            matchesOpenGoalTasksQuery(settledData, goalId, allowUserIds)
+                ? pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
+                : pendingDocsById.delete(change.doc.id)
+            if (hasRealSnapshot) emit()
             return
         }
 
