@@ -139,6 +139,17 @@ export const subscribeToOptimisticTaskCreates = (projectId, handler) => {
     }
 }
 
+/**
+ * Whether any list is currently holding rows for this project.
+ *
+ * `optimisticTaskSettlement` asks before it opens a settlement window: with no subscriber there is
+ * no optimistic row anywhere, so there is nothing to reconcile and no reason to watch the document.
+ */
+export const hasOptimisticTaskSubscribers = projectId => {
+    const subscribers = subscribersByProject.get(projectId)
+    return !!subscribers && subscribers.size > 0
+}
+
 const publish = (projectId, change) => {
     const subscribers = subscribersByProject.get(projectId)
     if (!subscribers || subscribers.size === 0) return
@@ -166,14 +177,19 @@ export const publishOptimisticTaskCreateFailed = (projectId, taskId, taskData) =
 }
 
 /**
- * AT-2500 - the server has acknowledged the create, and `taskData` is the document as the local
- * cache held it at that moment: the create plus every local edit made since, which is exactly the
- * postpone this event exists to notice.
+ * AT-2500 - `taskData` is the document as the local cache holds it now: the create plus every local
+ * edit made since, which is exactly the postpone this event exists to notice.
  *
  * A subscriber holding an unconfirmed optimistic row for this id re-checks `taskData` against its
  * own query and keeps (updating the row in place) or removes accordingly. `taskData` is `null`
  * when the cache could not be read, which means "no verdict" and must leave the row standing -
  * see the module header for why removal is never the safe default here.
+ *
+ * This is published MORE THAN ONCE per create - see `optimisticTaskSettlement.js`. The ack is only
+ * the start of the window in which a row can be orphaned; it stays open until the access projection
+ * lands and the lists' own queries take over, which production measures in seconds, not
+ * milliseconds. Subscribers must therefore treat every settlement as an idempotent re-evaluation of
+ * the current row, never as a one-shot "the create is done" signal.
  */
 export const publishOptimisticTaskSettled = (projectId, taskId, taskData = null) => {
     if (!projectId || !taskId) return
