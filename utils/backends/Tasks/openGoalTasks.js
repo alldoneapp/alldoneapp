@@ -8,7 +8,11 @@ import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
 import { sortTasksByPriority } from '../../TaskPriority'
-import { OPTIMISTIC_TASK_REMOVED, subscribeToOptimisticTaskCreates } from './optimisticTaskCreate'
+import {
+    OPTIMISTIC_TASK_REMOVED,
+    OPTIMISTIC_TASK_SETTLED,
+    subscribeToOptimisticTaskCreates,
+} from './optimisticTaskCreate'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -67,6 +71,15 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+        // AT-2500 - see the same block in myDayTasks.js. Once the server has the document this
+        // watcher's own snapshot decides whether the task belongs here, so the pending copy is
+        // dropped: it either keeps rendering from `latestDocs`, or it was edited out of this
+        // query before its first echo and nothing else would ever have taken it off the list.
+        if (change.type === OPTIMISTIC_TASK_SETTLED) {
+            if (pendingDocsById.delete(change.doc.id) && hasRealSnapshot) emit()
+            return
+        }
+
         if (!matchesOpenGoalTasksQuery(change.doc.data(), goalId, allowUserIds)) return
         change.type === OPTIMISTIC_TASK_REMOVED
             ? pendingDocsById.delete(change.doc.id)
