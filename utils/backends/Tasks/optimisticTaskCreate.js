@@ -55,32 +55,11 @@
  * a date it no longer has, until the whole watcher restarts.
  *
  * `publishOptimisticTaskSettled` closes that hole with the one fact only the writer knows: the
- * `set()` has been acknowledged by the SERVER, plus the document as the local cache holds it at
- * that moment - which is the create as amended by every local edit made since, the postpone
- * included.
- *
- * It carries that document because the FIRST version of this event did not, and the difference is
- * the whole of AT-2500's follow-up. That version treated settlement itself as proof that the echo
- * had already been delivered ("Firestore raises the local `added` as soon as the mutation is
- * applied locally, well before the round trip"), so a subscriber that had not seen the document by
- * then concluded it was not in its query and dropped the row. The premise is false in this
- * codebase, and not marginally so: every one of these watchers filters on `readerIds` (or
- * `roleIdsVisibleTo.<reader>`), which is a SERVER-DERIVED projection field - the access hardening
- * rules reject a client write that so much as mentions it, see `accessProjection.js`. A locally
- * created task therefore carries no `readerIds` at all, matches none of those queries locally, and
- * gets NO local echo. The first snapshot naming it is the one produced after `onCreateTask` ->
- * `synchronizeAccessProjection` has written the projection server-side and it has come back down.
- *
- * So the ack always won that race, on every single create: the row appeared, was dropped a few
- * hundred milliseconds later at settlement, and reappeared a beat afterwards when the projection
- * landed - "it shows up, blinks out for a second, and comes back".
- *
- * Carrying the document turns the decision from a race into a question the subscriber can answer
- * outright: re-check the settled document against the very predicate that admitted the row, and
- * KEEP (updating in place), or REMOVE, accordingly. No timer, no inference from absence, and the
- * ordinary create never blinks because its document still matches. `null` data means "could not
- * be read", which is deliberately the KEEP case - a stale row corrects itself on the next
- * snapshot, whereas a wrongly removed one looks like the task was lost.
+ * `set()` has been acknowledged by the SERVER. Firestore raises the local `added` for a matching
+ * document as soon as the mutation is applied locally, which is always well before the round trip
+ * completes - so by settlement time a document that belongs in a list has already been offered to
+ * that list. A subscriber that has still not seen the document therefore knows it is not in its
+ * query, and may drop the optimistic row instead of waiting for an echo that is never coming.
  *
  * Deliberately NOT published when the write is still in flight offline: `set()` only resolves on
  * the server ack, so an offline create keeps its optimistic row (the local cache holds the
@@ -92,9 +71,9 @@ const subscribersByProject = new Map()
 export const OPTIMISTIC_TASK_ADDED = 'added'
 export const OPTIMISTIC_TASK_REMOVED = 'removed'
 /**
- * Carries the document as the local cache held it at the moment the server acknowledged the
- * create, or `null` when it could not be read. Subscribers must branch on this type BEFORE using
- * `doc.data()` as a create payload: this is a re-evaluation, not an insert.
+ * Carries an id only - by definition there is no document data to publish, since the point of the
+ * event is that the authoritative document is now Firestore's to describe, not ours. Subscribers
+ * must branch on this type BEFORE reading `doc.data()`.
  */
 export const OPTIMISTIC_TASK_SETTLED = 'settled'
 
@@ -166,25 +145,16 @@ export const publishOptimisticTaskCreateFailed = (projectId, taskId, taskData) =
 }
 
 /**
- * AT-2500 - the server has acknowledged the create, and `taskData` is the document as the local
- * cache held it at that moment: the create plus every local edit made since, which is exactly the
- * postpone this event exists to notice.
- *
- * A subscriber holding an unconfirmed optimistic row for this id re-checks `taskData` against its
- * own query and keeps (updating the row in place) or removes accordingly. `taskData` is `null`
- * when the cache could not be read, which means "no verdict" and must leave the row standing -
- * see the module header for why removal is never the safe default here.
+ * AT-2500 - the server has acknowledged the create, so every list may now trust its own view of
+ * the document over the payload we published optimistically. Carries no data on purpose: a
+ * subscriber that still has an unconfirmed row for this id must drop it, and one that has seen
+ * the real document has nothing to do.
  */
-export const publishOptimisticTaskSettled = (projectId, taskId, taskData = null) => {
+export const publishOptimisticTaskSettled = (projectId, taskId) => {
     if (!projectId || !taskId) return
     publish(projectId, {
         type: OPTIMISTIC_TASK_SETTLED,
-        doc: {
-            id: taskId,
-            exists: !!taskData,
-            data: () => taskData || null,
-            metadata: { fromCache: true, hasPendingWrites: false },
-        },
+        doc: { id: taskId, exists: true, data: () => null, metadata: { fromCache: false } },
     })
 }
 
