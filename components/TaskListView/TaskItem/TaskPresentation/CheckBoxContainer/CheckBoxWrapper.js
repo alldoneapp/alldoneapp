@@ -44,7 +44,6 @@ function CheckBoxWrapper(
         beginCompletionMotion,
         cancelCompletionMotion,
         completionCelebration,
-        completionMotion,
     },
     ref
 ) {
@@ -458,7 +457,6 @@ function CheckBoxWrapper(
                             cancelPopover={closeModal}
                             checkBoxIdRef={checkBoxIdRef}
                             setVisiblePopover={setFlowModalVisibility}
-                            completionMotion={completionMotion}
                         />
                     }
                     onClickOutside={closeModal}

@@ -19,6 +19,7 @@ import ConfirmPopup from './ConfirmPopup'
 import CheatSheetModal from './ShortcutCheatSheet/CheatSheetModal'
 import EndCopyProjectNotification from '../ProjectDetailedView/ProjectProperties/CopyProject/EndCopyProjectNotification'
 import NotificationModalOptional from './FloatModals/NotificationModalOptional'
+import TaskCompletionAnimation from '../TaskListView/TaskItem/TaskCompletionAnimation'
 import IframeModal from './FloatModals/IframeModal/IframeModal'
 import GlobalPreConfigTaskModal from './FloatModals/PreConfigTaskGeneratorModal/GlobalPreConfigTaskModal'
 import ConnectionStateToast from './FloatModals/ConnectionStateToast'
@@ -43,6 +44,7 @@ export default function GlobalModalsContainerApp() {
     const showCheatSheet = useSelector(state => state.showCheatSheet)
     const showEndCopyProjectPopupData = useSelector(state => state.endCopyProjectPopupData.visible)
     const showOptionalVersionNotification = useSelector(state => state.showOptionalVersionNotification)
+    const showTaskCompletionAnimation = useSelector(state => state.showTaskCompletionAnimation)
     const [showLevelUpModal, setShowLevelUpModal] = useState(false)
 
     useEffect(() => {
@@ -51,6 +53,12 @@ export default function GlobalModalsContainerApp() {
 
     return (
         <>
+            {showTaskCompletionAnimation && (
+                <TaskCompletionAnimation
+                    visible={showTaskCompletionAnimation}
+                    onAnimationComplete={() => dispatch({ type: 'Hide task completion animation' })}
+                />
+            )}
             {showOptionalVersionNotification && <NotificationModalOptional />}
             {showEndCopyProjectPopupData && <EndCopyProjectNotification />}
             {showCheatSheet && !smallScreenNavigation && <CheatSheetModal />}

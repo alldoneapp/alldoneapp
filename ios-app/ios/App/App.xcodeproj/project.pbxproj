@@ -13,6 +13,7 @@
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		A10000000000000000000001 /* AlldoneBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* AlldoneBridgeViewController.swift */; };
 		A10000000000000000000002 /* IosShareExtensionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* IosShareExtensionPlugin.swift */; };
+		A10000000000000000000007 /* CallAudioSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* CallAudioSessionPlugin.swift */; };
 		A10000000000000000000003 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* ShareViewController.swift */; };
 		A10000000000000000000004 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -61,6 +62,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		B10000000000000000000001 /* AlldoneBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlldoneBridgeViewController.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* IosShareExtensionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosShareExtensionPlugin.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* CallAudioSessionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallAudioSessionPlugin.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		B10000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10000000000000000000005 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
@@ -112,6 +114,7 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				B10000000000000000000001 /* AlldoneBridgeViewController.swift */,
 				B10000000000000000000002 /* IosShareExtensionPlugin.swift */,
+				B10000000000000000000007 /* CallAudioSessionPlugin.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -253,6 +256,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A10000000000000000000001 /* AlldoneBridgeViewController.swift in Sources */,
 				A10000000000000000000002 /* IosShareExtensionPlugin.swift in Sources */,
+				A10000000000000000000007 /* CallAudioSessionPlugin.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
