@@ -665,7 +665,16 @@ export const generateTaskFromPreConfig = async (
             // Old Functions deployments do not return taskCompletion, while a transient server
             // completion failure can still be recovered by the live client. The server is the
             // authoritative owner once it reports success, avoiding duplicate completion writes.
-            if (executionResult && shouldUseClientTaskCompletionFallback(executionResult.taskCompletion)) {
+            // A `duplicate` response reports no outcome of its own — another invocation of this very
+            // request (a retransmitted POST after the machine slept) owns the run and will complete
+            // the task itself, so completing it here would be a second completion write.
+            const shouldCompleteOnClient = !executionResult
+                ? false
+                : executionResult.taskCompletion
+                  ? shouldUseClientTaskCompletionFallback(executionResult.taskCompletion)
+                  : !executionResult.duplicate
+
+            if (shouldCompleteOnClient) {
                 await moveTasksFromOpen(
                     projectId,
                     taskWithPublicFor,
