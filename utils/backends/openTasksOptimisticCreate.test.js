@@ -104,6 +104,7 @@ jest.mock('./firestore', () => ({
 
 import {
     AMOUNT_TASKS_INDEX,
+    ESTIMATION_TASKS_INDEX,
     DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS,
     DEFERRED_OBSERVED_TASK_STREAM_DELAY_MS,
     DEFERRED_REMAINING_TASK_STREAMS_DELAY_MS,
@@ -116,6 +117,7 @@ import { resetOpenTasksBackgroundHydrationQueue } from './openTasksBackgroundQue
 import {
     publishOptimisticTaskCreateFailed,
     publishOptimisticTaskCreated,
+    publishOptimisticTaskSettled,
     resetOptimisticTaskCreates,
 } from './Tasks/optimisticTaskCreate'
 
@@ -186,6 +188,21 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             metadata: { fromCache: false, hasPendingWrites: false },
         })
     }
+    /**
+     * A snapshot whose result set is wider than its change list - the shape a cachedSnapshotGate
+     * flush re-invokes the handler with (empty `docChanges()`, real `docs`).
+     */
+    const deliverSnapshotWithDocs = (changes, docs) => {
+        listeners[0]({
+            docChanges: () => changes,
+            docs,
+            size: docs.length,
+            empty: docs.length === 0,
+            forEach: callback => docs.forEach(callback),
+            metadata: { fromCache: false, hasPendingWrites: false },
+        })
+    }
+
     /** Feeds a change through the FIRST registered listener - the logged user's own open tasks. */
     const deliverRealSnapshot = changes => deliverSnapshot(0, changes)
 
@@ -475,6 +492,150 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: nextWeek }))
 
         expect(published).toHaveLength(0)
+    })
+
+    /**
+     * AT-2500 - "I add a task and immediately move it to another date; the postpone happens but
+     * the task is still shown in today's list."
+     *
+     * The optimistic row of AT-2342 is published from the document as it looked at CREATE time,
+     * and both of the ways it used to become permanent live here. Every case therefore starts by
+     * delivering an empty first snapshot: the initial snapshot goes through
+     * `reconcileInitialSnapshotChanges`, which already rewrites a known `added` to `modified`, so
+     * a test that publishes before the first snapshot exercises the one path that was never broken.
+     */
+    describe('AT-2500 a task postponed before its create was echoed', () => {
+        const DAY = 24 * 60 * 60 * 1000
+        const settle = taskId => publishOptimisticTaskSettled(PROJECT_ID, taskId)
+
+        const settledListener = () => {
+            deliverRealSnapshot([])
+            return buildRawTask({ dueDate: Date.now() })
+        }
+
+        it('re-buckets the row when the echo arrives as `added` carrying the postponed date', () => {
+            // Firestore raises one `added` holding the FINAL document when the create and the
+            // postpone are applied before the listener ever emitted. The old `notExistTask`
+            // de-dupe threw that document away, keeping the create-time row in today's bucket.
+            const todayRaw = settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw)
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+            deliverRealSnapshot([realAddedChange('task-1', buildRawTask({ dueDate: Date.now() + DAY }))])
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+        })
+
+        it('counts the row once, not twice, when that `added` keeps it in today', () => {
+            // The de-dupe it replaces existed to stop a double insert, so the reconcile must not
+            // reintroduce one - `amountOfTasksByDate` is what a double insert corrupts first.
+            const todayRaw = settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw)
+            deliverRealSnapshot([realAddedChange('task-1', { ...todayRaw, name: 'buy oat milk' })])
+
+            const today = published[published.length - 1][0]
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+            expect(today[AMOUNT_TASKS_INDEX]).toBe(1)
+        })
+
+        it('retires the row on settlement when the postpone took it out of the query for good', () => {
+            // The harder half: postponed past `dueDate <= endOfDay`, the document matches no
+            // change this listener will ever receive - no `added` to correct it, no `removed` to
+            // take it away. Only the write's server ack can say the echo is not coming.
+            settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+            settle('task-1')
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+        })
+
+        it('keeps the per-day totals honest when it retires that row', () => {
+            settledListener()
+            publishOptimisticTaskCreated(
+                PROJECT_ID,
+                'task-1',
+                buildRawTask({ dueDate: Date.now(), estimations: { open: 30 } })
+            )
+            settle('task-1')
+
+            const today = published[published.length - 1][0]
+            expect(today[AMOUNT_TASKS_INDEX]).toBe(0)
+            expect(today[ESTIMATION_TASKS_INDEX]).toBe(0)
+        })
+
+        it('leaves an ordinary create alone - settlement must not delete a task nobody moved', () => {
+            // The regression this fix could most easily cause: every created task settles, so a
+            // confirmed row must survive it untouched.
+            const todayRaw = settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw)
+            deliverRealSnapshot([realAddedChange('task-1', todayRaw)])
+
+            settle('task-1')
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+            expect(published[published.length - 1][0][AMOUNT_TASKS_INDEX]).toBe(1)
+        })
+
+        it('treats a document seen in the result set as confirmed even with no change for it', () => {
+            // Confirmation is read from `docs`, not `docChanges()`: a cachedSnapshotGate flush
+            // re-invokes the handler with an empty `docChanges()` and the real `docs`, and that
+            // flush must still count as "Firestore has offered this list the document".
+            const todayRaw = settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw)
+            deliverSnapshotWithDocs([], [{ id: 'task-1', data: () => todayRaw }])
+
+            settle('task-1')
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+        })
+
+        it('settling an unrelated task never touches the row', () => {
+            const todayRaw = settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw)
+
+            settle('some-other-task')
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+        })
+
+        it('retires the row only once, however often the write settles', () => {
+            // Cloud/undo paths can re-run a create; a second settlement must not decrement the
+            // per-day counters again (the same idempotence the rollback publication needs).
+            settledListener()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
+            settle('task-1')
+            settle('task-1')
+
+            const today = published[published.length - 1][0]
+            expect(today[AMOUNT_TASKS_INDEX]).toBe(0)
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
+        })
+
+        it('does not let a LIMITED foreground window conclude the task is gone', () => {
+            // Absence from a ten-document window says nothing about the project, so only a
+            // complete listener may retire a row - the rule reconcileInitialSnapshotChanges
+            // already applies to its own synthetic removals.
+            jest.useFakeTimers()
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
+            listeners.length = 0
+            listenerUnsubscribes.length = 0
+            queryRegistrations.length = 0
+            published = []
+
+            watchOpenTasks(PROJECT_ID, tasks => published.push(tasks), false, false, false, 'project-1user-1', false, {
+                deferSecondaryStreams: true,
+            })
+            deliverSnapshot(0, [])
+            expect(queryRegistrations[0].limits).toEqual([10])
+
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', buildRawTask({ dueDate: Date.now() }))
+            settle('task-1')
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+            unwatchOpenTasks(PROJECT_ID, 'user-1')
+        })
     })
 })
 

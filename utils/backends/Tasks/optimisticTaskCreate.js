@@ -45,12 +45,37 @@
  * rollback deterministic for lists whose watcher is not currently mounted. Subscribers must
  * therefore treat removal as IDEMPOTENT - see the existence check in `openTasks.js`, without
  * which the two removals would decrement the per-day task/estimation counters twice.
+ *
+ * Settlement (AT-2500). The two events above are not enough on their own, because they only ever
+ * describe the task as it looked at the moment it was created. A user who postpones the task
+ * before the echo arrives changes the document underneath the published row, and a watcher can
+ * then be left holding a row that Firestore will never mention again: the task no longer matches
+ * the list's query (`dueDate <= endOfDay` for today's board and for My Day), so there is no
+ * `added` to correct it and no `removed` to take it away. The row stays in today's list, showing
+ * a date it no longer has, until the whole watcher restarts.
+ *
+ * `publishOptimisticTaskSettled` closes that hole with the one fact only the writer knows: the
+ * `set()` has been acknowledged by the SERVER. Firestore raises the local `added` for a matching
+ * document as soon as the mutation is applied locally, which is always well before the round trip
+ * completes - so by settlement time a document that belongs in a list has already been offered to
+ * that list. A subscriber that has still not seen the document therefore knows it is not in its
+ * query, and may drop the optimistic row instead of waiting for an echo that is never coming.
+ *
+ * Deliberately NOT published when the write is still in flight offline: `set()` only resolves on
+ * the server ack, so an offline create keeps its optimistic row (the local cache holds the
+ * document and the row is correct), which is exactly what should happen.
  */
 
 const subscribersByProject = new Map()
 
 export const OPTIMISTIC_TASK_ADDED = 'added'
 export const OPTIMISTIC_TASK_REMOVED = 'removed'
+/**
+ * Carries an id only - by definition there is no document data to publish, since the point of the
+ * event is that the authoritative document is now Firestore's to describe, not ours. Subscribers
+ * must branch on this type BEFORE reading `doc.data()`.
+ */
+export const OPTIMISTIC_TASK_SETTLED = 'settled'
 
 /**
  * Shapes a published task exactly like a Firestore `docChanges()` entry, so a subscriber can
@@ -117,6 +142,20 @@ export const publishOptimisticTaskCreated = (projectId, taskId, taskData) => {
 export const publishOptimisticTaskCreateFailed = (projectId, taskId, taskData) => {
     if (!projectId || !taskId || !taskData) return
     publish(projectId, buildOptimisticTaskChange(OPTIMISTIC_TASK_REMOVED, taskId, taskData))
+}
+
+/**
+ * AT-2500 - the server has acknowledged the create, so every list may now trust its own view of
+ * the document over the payload we published optimistically. Carries no data on purpose: a
+ * subscriber that still has an unconfirmed row for this id must drop it, and one that has seen
+ * the real document has nothing to do.
+ */
+export const publishOptimisticTaskSettled = (projectId, taskId) => {
+    if (!projectId || !taskId) return
+    publish(projectId, {
+        type: OPTIMISTIC_TASK_SETTLED,
+        doc: { id: taskId, exists: true, data: () => null, metadata: { fromCache: false } },
+    })
 }
 
 /** Test-only: the bus is module state, so suites must be able to start from a clean one. */
