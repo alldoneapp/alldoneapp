@@ -1716,65 +1716,6 @@ line exists to tell apart. Pinned by `functions/shared/voiceVocabularyTerms.test
 repeat the Deepgram call inline with its own copy of the options; it now calls
 `transcribeAudioBase64`, so the model, formatting and vocabulary cannot drift between the two paths.
 
-### A note's body lives in a bucket, and two rules used to disagree about which one (AT-2498)
-
-**A note document carries no `content` field** — the body is a Yjs binary at
-`notesData/{projectId}/{noteId}` in a per-environment Storage bucket
-(`notescontentprod` / `notescontentstaging` / `notescontentdev`). So every note reader and
-writer has to resolve that bucket name, and until AT-2498 they did it two incompatible
-ways. `NoteService.getBucketName`, `noteContextHelper` and the assistant's `create_note` /
-`update_note` handlers each treat the **deployed project** as authoritative and ignore a
-configured value that disagrees with it; `searchHelper.getNoteContent` and the
-copy/template/delete paths took `defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET')`
-as written. Both rules returned the same answer right up until the production value of that
-parameter became `notescontentdev` on **2026-08-29** (the same deploy that moved functions
-onto the `firebase-adminsdk` SA). From then on the writers kept writing to
-`notescontentprod` while the search indexer asked a bucket in **another Google Cloud
-project** for the body, and the production SA cannot read it — so `getNoteContent` threw
-`storage.objects.get denied` on **every** note create and update, and no note body reached
-Typesense at all.
-
-The failure had no product symptom, which is the part worth remembering: notes saved, the
-assistant reported success, the Firestore trigger fired, the AT-2340 content gate correctly
-passed — a production trace reads `Processing update for notes …` → `Getting content for
-note …` → `Using storage bucket: notescontentdev` → permission denied. Only search went
-quietly stale, and note search is exactly the thing nobody notices missing for a week.
-`functions/shared/notesStorageBucket.js` is now the single authority
-(`resolveNotesBucketName` / `getNotesBucketName`): deployed project identity wins, a
-disagreeing configuration is warned about **once per instance** rather than per note, and a
-project that is neither production nor staging still honours its configured value — which
-is what makes the change provably inert for the emulator, CI and local scripts. Note it
-deliberately does **not** match `NoteService.getBucketName`'s stricter rule for unknown
-projects (that one forces `notescontentdev` and is pinned by `NoteService.bucket.test.js`);
-the two are different questions and both are correct.
-
-**Two smaller reliability gaps on the create path went with it, both invisible for the same
-reason.** `onCreateNote` collected its work into a `promises` array and **never awaited it**
-— so `createRecord`, which downloads the body and upserts it into Typesense, was
-fire-and-forget: Cloud Run may freeze the container the moment the function returns, and an
-indexing failure surfaced as an unhandled rejection instead of a failed invocation, which is
-how a `storage.objects.get denied` on literally every note create went unreported.
-(`onUpdateNote` and `onDeleteNote` have always awaited theirs.) And `persistNote` wrote the
-Firestore document **before** uploading the body, merely starting the upload alongside it —
-but the document write is what fires the indexing trigger, so the two raced: a trigger that
-won read no file and indexed the note with an **empty** body, and nothing re-indexes a note
-until its document changes again. Content is now stored first, which is also the order every
-update path already used (`updateContentMetadata` saves to Storage, then stamps `preview` +
-`lastEditionDate`). All assistant-created notes — `create_note`, contact notes, user memory,
-menubar/meeting notes — go through that one method.
-
-**The assistant's `update_note` was never the problem, and it is worth knowing why.** All
-three of its content sub-paths (`addFormattedContentToStorage` for prepend,
-`applyPatchEditsToStorage` and `replaceContentInStorage` via `updateContentMetadata`) write
-`preview` + `lastEditionDate` after saving the body, and that pair is precisely the content
-signal `noteUpdateNeedsIndexing` requires — so the sync fires correctly. The caveat is that
-those metadata writes are wrapped in catch-and-log blocks that still report the tool call as
-successful: if the document update fails, the body has changed, the note document has not,
-`onUpdateNote` never fires and the new text is never indexed. Pinned by
-`functions/shared/notesStorageBucket.test.js`, `functions/searchHelper.notesBucket.test.js`,
-`functions/Notes/onCreateNoteFunctions.test.js` and
-`functions/shared/NoteService.persistOrder.test.js`.
-
 ### A recurrence copy must carry its goal's privacy, not just its goal id
 
 `parentGoalId` and `parentGoalIsPublicFor` are one fact written as two fields: the open-task lists
