@@ -8,8 +8,8 @@ const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentPro
 const { deleteOpenManagedFollowUpTasks } = require('./contactFollowUpTasks')
 
 const moveContactNoteToProject = async (sourceProjectId, targetProjectId, noteId) => {
-    const { defineString } = require('firebase-functions/params')
-    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+    const { getNotesBucketName } = require('../shared/notesStorageBucket')
+    const notesBucketName = getNotesBucketName()
 
     await moveNoteToDifferentProject({
         database: admin.firestore(),

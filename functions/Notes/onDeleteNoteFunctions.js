@@ -10,8 +10,8 @@ const { deleteNote } = require('./notesFirestoreCloud')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const removeNoteContent = async (projectId, noteId) => {
-    const { defineString } = require('firebase-functions/params')
-    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+    const { getNotesBucketName } = require('../shared/notesStorageBucket')
+    const notesBucketName = getNotesBucketName()
 
     const notesBucket = admin.storage().bucket(notesBucketName)
     const noteContentFile = notesBucket.file(`notesData/${projectId}/${noteId}`)

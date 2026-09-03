@@ -43,6 +43,32 @@ export const TYPESENSE_QUERY_CONFIG = {
 const PER_PAGE = 20
 const CREDENTIAL_REFRESH_SKEW_SECONDS = 60
 
+// Typesense has no notion of an "empty query": `q: ''` tokenizes to nothing and the search
+// matches nothing. `*` is the documented wildcard that returns every document the
+// `filter_by` admits — which is what a PICKER opened with nothing typed wants (AT-2497:
+// the @-mention modal's Notes tab was blank until you typed, instead of offering the notes
+// you edited most recently).
+//
+// It is opt-in per call rather than automatic because the two kinds of caller want opposite
+// things. A picker starts empty and should suggest something; global search starts empty and
+// must stay quiet (it already refuses to run at all on blank input), and a filter builder
+// that silently produces an empty `filterBy` must not turn into "show the user everything".
+export const TYPESENSE_MATCH_ALL_QUERY = '*'
+
+export const isBlankQuery = query => typeof query !== 'string' || query.trim() === ''
+
+// For a wildcard query every document scores the same `_text_match`, so leading with it only
+// obscures the field that actually orders the list. Dropping it makes the recency sort the
+// primary criterion, which is the whole point of the match-all request.
+export const buildSortBy = (sortBy, isMatchAll) => {
+    if (!isMatchAll || typeof sortBy !== 'string') return sortBy
+    const withoutTextMatch = sortBy
+        .split(',')
+        .filter(criterion => !criterion.trim().startsWith('_text_match'))
+        .join(',')
+    return withoutTextMatch || sortBy
+}
+
 let cachedCredentials = null
 let credentialsPromise = null
 
@@ -128,10 +154,13 @@ export const adaptTypesenseHit = hit => {
     return { ...document, ...privacyData, id: bareId, objectID }
 }
 
-// searches: [{ collection, query, filterBy }] → resolves [{ hits }] in the same order.
-// One HTTP round-trip for any number of collections. A per-collection error (e.g. a
-// collection that does not exist yet) yields { hits: [], error } for that entry rather
-// than failing the others.
+// searches: [{ collection, query, filterBy, queryBy, matchAllWhenEmpty }] → resolves
+// [{ hits }] in the same order. One HTTP round-trip for any number of collections. A
+// per-collection error (e.g. a collection that does not exist yet) yields { hits: [], error }
+// for that entry rather than failing the others.
+//
+// `matchAllWhenEmpty` turns a blank query into the `*` wildcard so the caller gets the
+// collection's most recent records instead of nothing — see TYPESENSE_MATCH_ALL_QUERY.
 export const multiSearchTypesense = async searches => {
     // Search has no offline index — fail fast with an identifiable error so the
     // consumers (global search, mentions) can degrade instead of hanging on a
@@ -143,18 +172,19 @@ export const multiSearchTypesense = async searches => {
     }
 
     const body = {
-        searches: searches.map(({ collection, query, filterBy, queryBy }) => {
+        searches: searches.map(({ collection, query, filterBy, queryBy, matchAllWhenEmpty }) => {
             const config = TYPESENSE_QUERY_CONFIG[collection]
+            const isMatchAll = !!matchAllWhenEmpty && isBlankQuery(query)
             return {
                 collection,
-                q: query,
+                q: isMatchAll ? TYPESENSE_MATCH_ALL_QUERY : query,
                 // `queryBy` narrows the searched fields for one call without moving the
                 // collection default. A picker can be stricter than global search about
                 // what counts as a match — the @-mention contact picker is (AT-2393) —
                 // while global search keeps the full field list.
                 query_by: queryBy || config.query_by,
                 num_typos: config.num_typos,
-                sort_by: config.sort_by,
+                sort_by: buildSortBy(config.sort_by, isMatchAll),
                 filter_by: filterBy,
                 per_page: PER_PAGE,
                 highlight_fields: 'none',
@@ -196,7 +226,17 @@ export const multiSearchTypesense = async searches => {
 
 // Drop-in analogue of algoliaIndex.search(query, { filters }) for one collection.
 // `options.queryBy` overrides the collection's default searchable fields for this call.
+// `options.matchAllWhenEmpty` makes a blank query return the most recent records instead
+// of nothing (AT-2497).
 export const searchTypesenseCollection = async (collection, query, filterBy, options = {}) => {
-    const [result] = await multiSearchTypesense([{ collection, query, filterBy, queryBy: options.queryBy }])
+    const [result] = await multiSearchTypesense([
+        {
+            collection,
+            query,
+            filterBy,
+            queryBy: options.queryBy,
+            matchAllWhenEmpty: options.matchAllWhenEmpty,
+        },
+    ])
     return result
 }
