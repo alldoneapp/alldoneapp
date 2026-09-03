@@ -131,6 +131,11 @@ import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../Day
 import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
 import { compareTasksByCalendarPlacement } from '../../CalendarTaskOrder'
 import {
+    compareCalendarFocusCandidacy,
+    getCalendarFocusCandidacy,
+    getCalendarFocusDueDateWindow,
+} from '../../CalendarFocusWindow'
+import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
     buildTaskUpdateOperation,
@@ -4187,14 +4192,18 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
 /**
  * AT-2251 — the imminent-calendar rule, mirrored for the optimistic pick.
  *
- * Both authoritative pickers run this phase FIRST and let it beat everything else: a meeting that
- * starts within the next 15 minutes becomes the focus task, and it is searched for across every
- * project rather than just the one the completed task lived in (findAndSetNewFocusedTask above,
- * and FocusTaskService's Phase 1 in the Cloud Function). The optimistic pick did the opposite — it
- * filtered calendar tasks out entirely and never left the current project — so completing a focus
- * task 10 minutes before a meeting showed an ordinary task and then visibly flipped to the meeting
- * a moment later. That flip is the same class of bug as the random pick this ticket started with:
- * two pickers, one answer expected.
+ * Both authoritative pickers run this phase FIRST and let it beat everything else, and it is
+ * searched for across every project rather than just the one the completed task lived in
+ * (findAndSetNewFocusedTask above, and FocusTaskService's Phase 1 in the Cloud Function). The
+ * optimistic pick did the opposite — it filtered calendar tasks out entirely and never left the
+ * current project — so completing a focus task 10 minutes before a meeting showed an ordinary task
+ * and then visibly flipped to the meeting a moment later. That flip is the same class of bug as the
+ * random pick this ticket started with: two pickers, one answer expected.
+ *
+ * AT-2496 — which meetings qualify now lives in `utils/CalendarFocusWindow.js`, shared by all
+ * three pickers, and covers a meeting already under way as well as one about to start. Writing the
+ * rule out by hand in each picker is what let the other two rot: they keyed it on `sortIndex`, and
+ * went silently dead when AT-2259 stopped storing the event start there.
  *
  * Scanning every project in `openTasksMap` is cheap because it is already in Redux. A project the
  * client has not loaded is invisible here, which is the one case that can still flip — the
@@ -4204,11 +4213,10 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
  * just lost its focus task, and the optimistic slice is read per project.
  */
 function pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserId }) {
-    const now = moment()
-    const fifteenMinutesFromNow = moment().add(15, 'minutes')
+    const nowMs = moment().valueOf()
 
-    let earliest = null
-    let earliestStart = null
+    let best = null
+    let bestCandidacy = null
 
     Object.keys(openTasksMap || {}).forEach(candidateProjectId => {
         Object.values(openTasksMap[candidateProjectId] || {}).forEach(task => {
@@ -4217,22 +4225,20 @@ function pickImminentCalendarFocusTask({ openTasksMap, completedTask, focusUserI
             if (task.done || task.isSubtask) return
             if (!isTaskOnUserPlate(task, focusUserId)) return
 
-            const start = task.calendarData && task.calendarData.start
-            if (!start) return
+            // AT-2496: the rule itself lives in utils/CalendarFocusWindow.js so this pick and the
+            // two authoritative ones cannot disagree — which is exactly what they did while the
+            // authoritative pair's `sortIndex` pre-filter silently matched nothing.
+            const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
+            if (!candidacy) return
 
-            const startDateTime = start.dateTime || start.date
-            if (!startDateTime) return
+            if (compareCalendarFocusCandidacy(candidacy, bestCandidacy) >= 0) return
 
-            const taskStartTime = moment(startDateTime)
-            if (!taskStartTime.isBetween(now, fifteenMinutesFromNow, undefined, '[)')) return
-            if (earliestStart && !taskStartTime.isBefore(earliestStart)) return
-
-            earliest = { task, projectId: candidateProjectId }
-            earliestStart = taskStartTime
+            best = { task, projectId: candidateProjectId }
+            bestCandidacy = candidacy
         })
     })
 
-    return earliest
+    return best
 }
 
 /**
@@ -4522,10 +4528,12 @@ async function findAndSetNewFocusedTask(
     }
 
     const currentTime = moment()
-    const fifteenMinutesFromNow = moment().add(15, 'minutes')
+    const nowMs = currentTime.valueOf()
+    // AT-2496: a `dueDate` window in place of the dead `sortIndex` one — see the query below.
+    const calendarDueDateWindow = getCalendarFocusDueDateWindow(nowMs)
     let earliestUpcomingCalendarTask = null
     let earliestUpcomingCalendarTaskProject = null
-    let earliestStartTime = moment().add(16, 'minutes') // Initialize to be later than any valid upcoming task
+    let bestCalendarCandidacy = null
 
     // Declare Redux state variables once at a higher scope
     const { projectUsers, loggedUserProjects, loggedUser } = store.getState() // Added loggedUser here
@@ -4558,12 +4566,18 @@ async function findAndSetNewFocusedTask(
             // permission-denied" on every checkbox that released the user's focus task.
             .where('readerIds', 'array-contains', userId)
             .where('userId', '==', userId)
-            .where('done', '==', false)
             .where('inDone', '==', false)
-            .where('isSubtask', '==', false)
-            .where('sortIndex', '>=', currentTime.valueOf())
-            .where('sortIndex', '<', fifteenMinutesFromNow.valueOf())
-            .orderBy('sortIndex', 'asc')
+            // AT-2496: this used to pre-filter on `sortIndex >= now && sortIndex < now + 15min`,
+            // which stopped selecting anything the day AT-2259 took the event start out of
+            // `sortIndex` (it is the sync-time arrival index now, always in the past), leaving the
+            // whole imminent-meeting exception dead. A calendar task's `dueDate` IS its event day,
+            // so this window is a cheap superset of the candidates and rides the existing
+            // `readerIds | inDone | userId | dueDate` index. `done`/`isSubtask` are filtered in
+            // memory rather than in the query so no new composite index is needed — this repo
+            // deploys those by hand. What actually decides is getCalendarFocusCandidacy.
+            .where('dueDate', '>=', calendarDueDateWindow.from)
+            .where('dueDate', '<=', calendarDueDateWindow.to)
+            .orderBy('dueDate', 'asc')
 
         const snapshot = await calendarQuery.get()
 
@@ -4571,21 +4585,17 @@ async function findAndSetNewFocusedTask(
             for (const doc of snapshot.docs) {
                 const task = { id: doc.id, ...doc.data() }
                 if (excludedTaskIds.has(task.id)) continue // AT-2191: never re-pick a just-released task
+                if (task.done || task.isSubtask) continue
                 // AT-2193: skip tasks already handed on to another reviewer's workflow step.
                 if (!isTaskOnUserPlate(task, userId)) continue
-                // Verify it IS a calendar task and its explicit start time is within the window
-                if (task.calendarData && task.calendarData.start) {
-                    const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
-                    const taskStartTime = moment(taskStartTimeString)
 
-                    if (
-                        taskStartTime.isBetween(currentTime, fifteenMinutesFromNow, undefined, '[)') &&
-                        taskStartTime.isBefore(earliestStartTime)
-                    ) {
-                        earliestUpcomingCalendarTask = task
-                        earliestUpcomingCalendarTaskProject = pid
-                        earliestStartTime = taskStartTime
-                    }
+                const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
+                if (!candidacy) continue
+
+                if (compareCalendarFocusCandidacy(candidacy, bestCalendarCandidacy) < 0) {
+                    earliestUpcomingCalendarTask = task
+                    earliestUpcomingCalendarTaskProject = pid
+                    bestCalendarCandidacy = candidacy
                 }
             }
         }

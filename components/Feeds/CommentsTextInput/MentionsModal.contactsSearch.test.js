@@ -124,7 +124,7 @@ describe('MentionsModal contacts search (AT-2393)', () => {
 
         const call = contactsSearchCall()
         expect(call).toBeDefined()
-        expect(call[3].queryBy).toEqual('displayName,role,company')
+        expect(call[3]).toEqual({ queryBy: 'displayName,role,company' })
         expect(call[3].queryBy).not.toContain('cleanDescription')
     })
 
@@ -147,12 +147,12 @@ describe('MentionsModal contacts search (AT-2393)', () => {
         expect(notesCall[2]).not.toContain(GLOBAL_PROJECT_ID)
     })
 
-    it('leaves the other tabs on their collection default searchable fields', async () => {
+    it('leaves the other tabs on their collection defaults', async () => {
         await renderAndSearch()
 
         mockSearchTypesenseCollection.mock.calls
             .filter(call => call[0] !== CONTACTS_INDEX_NAME_PREFIX)
-            .forEach(call => expect(call[3].queryBy).toBeUndefined())
+            .forEach(call => expect(call[3]).toBeUndefined())
     })
 
     it('keeps one row per project for a person shared across projects, current project first', async () => {
