@@ -58,17 +58,6 @@ import useTextChange from './useTextChange'
 import store from '../../../redux/store'
 import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
 
-// Tabs that suggest something the moment the picker opens, before anything is typed
-// (AT-2497). Every tab's `sort_by` already falls back to a recency field, so the wildcard
-// query yields "the ones you touched last" rather than an arbitrary page.
-const MATCH_ALL_ON_OPEN_INDEXES = [
-    NOTES_INDEX_NAME_PREFIX,
-    TASKS_INDEX_NAME_PREFIX,
-    GOALS_INDEX_NAME_PREFIX,
-    CONTACTS_INDEX_NAME_PREFIX,
-    CHATS_INDEX_NAME_PREFIX,
-]
-
 export default function MentionsModal({
     mentionText,
     selectItemToMention,
@@ -323,18 +312,9 @@ export default function MentionsModal({
                 indexPrefix,
                 mentionText,
                 getTypesenseMentionFilter(indexPrefix, isGuide),
-                {
-                    // An @-mention is a name picker, not global search: it must not match the
-                    // contact's free-text description (AT-2393 — see mentionSearch.js).
-                    ...(indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? { queryBy: MENTION_CONTACTS_QUERY_BY } : {}),
-                    // A picker that has just opened has nothing typed yet, and Typesense
-                    // matches nothing for a blank query — so every tab read "There are not
-                    // results to show in this tab" until you started typing. Ask for the
-                    // wildcard instead, which the per-collection `sort_by` then orders by
-                    // recency: the notes you edited last, the tasks/goals you created last
-                    // (AT-2497).
-                    matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(indexPrefix),
-                }
+                // An @-mention is a name picker, not global search: it must not match the
+                // contact's free-text description (AT-2393 — see mentionSearch.js).
+                indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? { queryBy: MENTION_CONTACTS_QUERY_BY } : undefined
             )
         } catch (error) {
             console.log('Mentions search unavailable:', error.message)
