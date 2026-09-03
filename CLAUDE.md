@@ -472,6 +472,58 @@ treats `duplicate: true` as "another invocation owns this task", which is a thir
 the contract's existing "server succeeded" and "no outcome reported". A request carrying no
 `messageId` (an empty prompt) acquires nothing and behaves exactly as before.
 
+### A thread can pin its own assistant model (AT-2502)
+
+**The model lives on the THREAD's own document, next to the assistant that answers there.**
+`assistantId` and `isAssistantEnabled` already describe one thread and already live on its host
+document — the task doc for a task thread, `chatObjects/{projectId}/chats/{id}` for a topic, the
+note/goal/contact/skill/user doc for those — so `assistantModelOverride` joins them there rather
+than in a new collection. Nothing new to authorize (whoever may change a thread's assistant may
+change its model), no rules change, no index. Both sides address that document through the **same**
+`getObjectDocPath` in `functions/shared/privacyAccess.js` — the client to write it, Cloud Functions
+to read it — because a writer and a reader that each carry their own objectType→path map is how a
+pin gets stored somewhere nothing looks. `functions/Assistant/threadAssistantModel.js` is the
+dependency-light shared module (validation, picker options, precedence) and is imported by both.
+
+**It is resolved on the SERVER, because the interactive chat path has no model to forge.**
+`askToBotSecondGen` receives no model at all — it never did — so `assistantNormalTalk_optimized`
+reads the pin alongside the user and the assistant in the existing `Promise.all` (no extra wall
+clock) and resolves the effective model there. **Never assign it back onto the assistant object**:
+`getAssistantForChat` returns a module-level cache entry keyed on (projectId, assistantId), shared
+by every thread a warm instance serves, so `assistant.model = …` leaks one conversation's pin into
+the next conversation — a wrong model and a wrong Gold rate, vanishing whenever the instance
+recycles. `threadAssistantModelCallSites.test.js` ratchets both that and the read itself, because
+neither failure reports anything.
+
+**Precedence is: the model chosen for the WORK, then the thread, then the assistant.** A
+pre-configured task carrying its own `aiModelOverride` was configured for that model deliberately,
+and the thread it happens to run in must not re-point it. That ordering is applied twice, and the
+split is deliberate: server-side in `getTaskOrAssistantSettings`, and client-side in
+`resolvePreConfigAiSettings` — the prompt path sends complete `aiSettings` and by the time they
+reach `generatePreConfigTaskResult` "configured for this model" and "the assistant's default was
+filled in" are the same string, so the client is the last place that can still tell them apart.
+Deliberately **not** applied to unattended runs (heartbeats, recurring tasks, workflow AI steps).
+
+**A stored model key is validated on every read, never trusted.** The `featureModelPreferences`
+lesson with teeth: an unknown key makes `getModel` answer `gpt-5.6-sol` while `getTokensPerGold`
+answers `undefined`, which `calculateGoldCostFromTokens` turns into a charge of **zero** — so a
+thread pinned to a model that is later retired would run free, forever, silently. An override that
+is not currently in `SELECTABLE_ASSISTANT_MODELS` is treated as absent. Clearing deletes the field
+rather than writing null, and the write carries no edition data (a settings choice is not content —
+stamping `lastEditionDate` would re-download the note on every other open client, AT-2340).
+
+**Assistant threads are excluded on purpose.** An assistant's own board is the one thread where "the
+thread's model" and "the assistant's model" are the same question, and the two sides disagree about
+which document an assistant even is (the app stores assistants as user docs, `getObjectDocPath` maps
+them to the assistants collection), so a pin there would be written and never read back.
+
+UI is one row in the existing assistant popup (`BotOptionsModal`, reached from all four buttons) plus
+a dot on the assistant avatar. The badge costs one document read, so it is **opt-in**:
+`DvBotButton` is both the detail-view header avatar and the task-list row button, and the list must
+never badge — that would be one read per visible task. `threadAssistantModelState.js` holds the one
+cache the row, the picker and the badge share; it is deliberately not redux, since a slice keyed by
+object id re-renders every subscriber on every write (AT-2336) for state that concerns one thread.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

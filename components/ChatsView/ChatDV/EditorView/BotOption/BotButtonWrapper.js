@@ -135,6 +135,8 @@ export default function BotButtonWrapper({
                 <BotButtonInModal
                     onPress={onPress}
                     projectId={projectId}
+                    objectId={objectId}
+                    objectType={objectType}
                     assistantId={effectiveAssistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
                 />
@@ -142,6 +144,8 @@ export default function BotButtonWrapper({
                 <BotButton
                     onPress={onPress}
                     projectId={projectId}
+                    objectId={objectId}
+                    objectType={objectType}
                     assistantId={effectiveAssistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
                 />

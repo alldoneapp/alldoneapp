@@ -16,6 +16,8 @@ const {
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
 const { maybeCompactAssistantThread } = require('./rollingThreadCompaction')
+const { resolveThreadAssistantModel } = require('./threadAssistantModel')
+const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
 
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -141,9 +143,13 @@ async function askToOpenAIBotOptimized(
 
         // Step 1: Fetch user and assistant data in parallel
         const step1Start = Date.now()
-        const [user, assistant] = await Promise.all([
+        // The thread's own model pin (AT-2502) is read alongside the other two, so honouring it
+        // costs no wall clock. It is best-effort: a failed read answers null and the run uses the
+        // assistant's model exactly as it did before the feature existed.
+        const [user, assistant, threadModelOverride] = await Promise.all([
             getUserData(userId),
             getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
+            readThreadAssistantModelOverride(admin.firestore(), projectId, objectType, objectId),
         ])
         const step1Duration = Date.now() - step1Start
 
@@ -152,6 +158,7 @@ async function askToOpenAIBotOptimized(
             hasAssistant: !!assistant,
             userGold: user?.gold,
             assistantModel: assistant?.model,
+            threadModelOverride,
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
 
@@ -165,7 +172,23 @@ async function askToOpenAIBotOptimized(
         }
         await throwIfAssistantRunCancelled(assistantRunLockRef)
 
-        const { model, temperature, instructions, displayName } = assistant
+        const { temperature, instructions, displayName } = assistant
+        // Resolve the effective model WITHOUT touching `assistant`. `getAssistantForChat` hands
+        // back a cached object keyed on (projectId, assistantId), so assigning the thread's model
+        // onto it would leak this one conversation's pin into every other thread the same warm
+        // instance serves next.
+        const { model, source: modelSource } = resolveThreadAssistantModel({
+            threadOverride: threadModelOverride,
+            assistantModel: assistant.model,
+        })
+        console.log('🤖 [MODEL] Resolved chat model', {
+            model,
+            modelSource,
+            assistantModel: assistant.model,
+            projectId,
+            objectType,
+            objectId,
+        })
 
         // Extract user timezone
         const userTimezoneOffset = resolveUserTimezoneOffset(user)
