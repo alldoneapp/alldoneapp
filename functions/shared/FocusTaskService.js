@@ -23,6 +23,11 @@ const { ProjectService } = require('./ProjectService')
 const { isTaskOnUserPlate } = require('./focusTaskEligibility')
 const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
 const { compareTasksByCalendarPlacement } = require('./calendarTaskOrder')
+const {
+    compareCalendarFocusCandidacy,
+    getCalendarFocusCandidacy,
+    getCalendarFocusDueDateWindow,
+} = require('./calendarFocusWindow')
 
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
@@ -574,34 +579,41 @@ class FocusTaskService {
 
             // Apply user's timezone for accurate time-based task selection
             const currentTime = this.applyTimezone(this.options.moment(), timezoneOffset)
-            const fifteenMinutesFromNow = this.applyTimezone(this.options.moment(), timezoneOffset).add(15, 'minutes')
             const endOfToday = this.applyTimezone(this.options.moment(), timezoneOffset).endOf('day').valueOf()
 
             console.log('FocusTaskService: Time calculations with user timezone', {
                 userId,
                 timezoneOffset,
                 currentTime: currentTime.format('YYYY-MM-DD HH:mm:ss'),
-                fifteenMinutesFromNow: fifteenMinutesFromNow.format('YYYY-MM-DD HH:mm:ss'),
                 endOfToday: new Date(endOfToday).toISOString(),
             })
 
-            // Phase 1: Check for upcoming calendar tasks across all user projects
-            // Note: Calendar tasks are NOT randomized - we always select the earliest upcoming task
+            // Phase 1: Check for calendar tasks in their focus window across all user projects.
+            // Note: Calendar tasks are NOT randomized - the shared rule picks deterministically.
+            //
+            // AT-2496 - this used to pre-filter on `sortIndex >= now && sortIndex < now + 15min`,
+            // which selected nothing at all once AT-2259 stopped writing the event start into
+            // `sortIndex` (it is the sync-time arrival index now, always in the past). The window
+            // is `dueDate`-based instead: a calendar task's `dueDate` IS its event day, so the
+            // range is a cheap superset of the candidates, and it rides the existing
+            // `inDone | userId | dueDate` index. What actually decides is
+            // `getCalendarFocusCandidacy`; `done`/`isSubtask` are filtered in memory so the query
+            // needs no index this project would have to deploy by hand.
             let earliestUpcomingCalendarTask = null
             let earliestUpcomingCalendarTaskProject = null
-            let earliestStartTime = this.applyTimezone(this.options.moment(), timezoneOffset).add(16, 'minutes')
+            let bestCalendarCandidacy = null
+            const nowMs = currentTime.valueOf()
+            const calendarDueDateWindow = getCalendarFocusDueDateWindow(nowMs)
 
             for (const projectId of userProjectIds) {
                 try {
                     const calendarQuery = this.options.database
                         .collection(`items/${projectId}/tasks`)
                         .where('userId', '==', userId)
-                        .where('done', '==', false)
                         .where('inDone', '==', false)
-                        .where('isSubtask', '==', false)
-                        .where('sortIndex', '>=', currentTime.valueOf())
-                        .where('sortIndex', '<', fifteenMinutesFromNow.valueOf())
-                        .orderBy('sortIndex', 'asc')
+                        .where('dueDate', '>=', calendarDueDateWindow.from)
+                        .where('dueDate', '<=', calendarDueDateWindow.to)
+                        .orderBy('dueDate', 'asc')
 
                     const snapshot = await calendarQuery.get()
 
@@ -611,26 +623,22 @@ class FocusTaskService {
                         if (excludeTaskId && task.id === excludeTaskId) {
                             continue
                         }
+                        if (task.done || task.isSubtask) {
+                            continue
+                        }
                         // AT-2193: never focus a task that has already moved on to another
                         // reviewer's workflow step, even when the user still owns it.
                         if (!isTaskOnUserPlate(task, userId)) {
                             continue
                         }
-                        if (task.calendarData && task.calendarData.start) {
-                            const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
-                            // Apply timezone to task start time for accurate comparison
-                            const taskStartTime = this.applyTimezone(
-                                this.options.moment(taskStartTimeString),
-                                timezoneOffset
-                            )
-                            if (
-                                taskStartTime.isBetween(currentTime, fifteenMinutesFromNow, undefined, '[)') &&
-                                taskStartTime.isBefore(earliestStartTime)
-                            ) {
-                                earliestUpcomingCalendarTask = task
-                                earliestUpcomingCalendarTaskProject = projectId
-                                earliestStartTime = taskStartTime
-                            }
+
+                        const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
+                        if (!candidacy) continue
+
+                        if (compareCalendarFocusCandidacy(candidacy, bestCalendarCandidacy) < 0) {
+                            earliestUpcomingCalendarTask = task
+                            earliestUpcomingCalendarTaskProject = projectId
+                            bestCalendarCandidacy = candidacy
                         }
                     }
                 } catch (error) {
