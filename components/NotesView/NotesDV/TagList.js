@@ -69,6 +69,7 @@ export default function TagList({
                     assistantId={assistantId}
                     setAssistantId={setAssistantId}
                     objectId={note.id}
+                    showThreadModelBadge={true}
                     objectType={FEED_NOTE_OBJECT_TYPE}
                     parentObject={note}
                     updateObjectState={updateObjectState}
