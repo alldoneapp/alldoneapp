@@ -69,30 +69,30 @@ export default function MentionsItemsGrouped({
 }) {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
-    // Group items by project, with current project first
+    // Group items by project, with current project first.
+    //
+    // AT-2497 — this GROUPS, it does not REORDER. `items` arrives already ordered: the
+    // engine sorts notes by `lastEditionDate:desc` and the modal puts the current project
+    // in front, so "the most recent notes" is a property of the list handed in here.
+    // Sorting the other projects by their sidebar `index` instead threw that away — with
+    // three projects interleaved in the page, the single most recently edited note rendered
+    // EIGHTH, under a project header, because its project happened to sit third in the
+    // sidebar. Project order now follows first appearance, so reading the list top to
+    // bottom is reading it newest first.
     const groupedItems = {}
+    const projectIdsInOrder = []
 
     items.forEach(item => {
         const pId = item.projectId
         if (!groupedItems[pId]) {
             groupedItems[pId] = []
+            projectIdsInOrder.push(pId)
         }
         groupedItems[pId].push(item)
     })
 
-    const projectIds = Object.keys(groupedItems)
-
     const currentProjectItems = groupedItems[currentProjectId] || []
-    const otherProjectIds = projectIds.filter(pId => pId !== currentProjectId)
-
-    // Sort other projects by their index
-    otherProjectIds.sort((a, b) => {
-        const projectA = loggedUserProjectsMap[a]
-        const projectB = loggedUserProjectsMap[b]
-        const indexA = projectA ? projectA.index : 999
-        const indexB = projectB ? projectB.index : 999
-        return indexA - indexB
-    })
+    const otherProjectIds = projectIdsInOrder.filter(pId => pId !== currentProjectId)
 
     // Build ordered list: current project first (if has items), then others
     const orderedProjectIds = []
