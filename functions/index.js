@@ -3178,21 +3178,92 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 })
                 throw new HttpsError('permission-denied', 'No access to requested task context')
             }
-            const result = await generatePreConfigTaskResult(
+            // A callable is not idempotent on its own, and a 30-second assistant run is exactly the
+            // window in which a client loses its response: a laptop whose lid closed 16s after the
+            // POST slept through the whole run, and Chrome retransmitted the identical request on
+            // wake 4m35s later — a second answer in the thread and a second Gold charge, from one
+            // user action. `askToBotSecondGen` has been guarded by the per-message run lock for
+            // exactly this; this path already receives the same `messageId` (it passes it down as
+            // `triggerMessageId`) and now takes the same lock. A request carrying no messageId --
+            // an empty prompt -- acquires nothing and behaves as before.
+            const {
+                acquireAssistantRunLock,
+                completeAssistantRunLock,
+                failAssistantRunLock,
+            } = require('./Assistant/assistantRunIdempotency')
+            const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
                 userId,
+                messageId,
                 projectId,
-                taskId,
-                userIdsToNotify,
-                isPublicFor,
-                assistantId,
-                prompt,
-                language,
-                aiSettings,
-                taskMetadata,
-                functionEntryTime, // Pass entry time for time-to-first-token tracking
                 objectType,
-                { triggerMessageId: messageId }
-            )
+                objectId: taskId,
+                assistantId,
+            })
+            if (!assistantRunLock.acquired) {
+                console.warn('generatePreConfigTaskResultSecondGen: duplicate assistant run skipped', {
+                    userId,
+                    messageId,
+                    projectId,
+                    objectType,
+                    taskId,
+                    assistantId,
+                    lockId: assistantRunLock.lockId,
+                    reason: assistantRunLock.reason,
+                })
+                // The original invocation owns the answer. Reconcile the task completion anyway once
+                // that run is settled: it is idempotent (`alreadyCompleted`) and covers the window
+                // where the first invocation died between releasing its lock and completing the
+                // task. While the other run is still going we report no outcome and rely on
+                // `duplicate` to stop the client completing the task under it.
+                const duplicateTaskCompletion =
+                    assistantRunLock.reason === 'already_completed'
+                        ? await completeOnDemandAssistantTaskAfterRun({
+                              taskResult: { success: true },
+                              projectId,
+                              taskId,
+                              userId,
+                              assistantId,
+                              taskMetadata,
+                          })
+                        : null
+
+                return {
+                    success: true,
+                    duplicate: true,
+                    status: assistantRunLock.reason,
+                    messageId: messageId || null,
+                    ...(duplicateTaskCompletion ? { taskCompletion: duplicateTaskCompletion } : {}),
+                }
+            }
+
+            let result
+            try {
+                result = await generatePreConfigTaskResult(
+                    userId,
+                    projectId,
+                    taskId,
+                    userIdsToNotify,
+                    isPublicFor,
+                    assistantId,
+                    prompt,
+                    language,
+                    aiSettings,
+                    taskMetadata,
+                    functionEntryTime, // Pass entry time for time-to-first-token tracking
+                    objectType,
+                    { triggerMessageId: messageId }
+                )
+                // Released before the task completion below so a crash in between leaves a settled
+                // lock the duplicate branch can reconcile, rather than a running one that would make
+                // a legitimate retry wait out the 65-minute lease.
+                await completeAssistantRunLock(assistantRunLock.lockRef)
+            } catch (error) {
+                // Also releases the coarse per-task slot; leaving it held would block workflow AI
+                // steps on this task for the rest of the lease.
+                await failAssistantRunLock(assistantRunLock.lockRef, error)
+                throw error
+            }
+
             const taskCompletion = await completeOnDemandAssistantTaskAfterRun({
                 taskResult: result,
                 projectId,
