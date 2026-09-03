@@ -23,9 +23,6 @@ import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 import Backend from '../../../../../utils/BackendBridge'
 import { normalizeAssistantObjectType, setAssistantForObject } from './objectAssistantHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
-import SelectModelOption from './SelectModelOption'
-import ThreadAssistantModelModal from './ThreadAssistantModelModal'
-import { useThreadAssistantModel } from './threadAssistantModelState'
 
 export default function BotOptionsModal({
     objectType,
@@ -43,15 +40,9 @@ export default function BotOptionsModal({
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
     const [showAssistants, setShowAssistants] = useState(false)
-    const [showModels, setShowModels] = useState(false)
     const [linkedNoteTitle, setLinkedNoteTitle] = useState(null)
     const [width, height] = useWindowSize()
     const normalizedObjectType = normalizeAssistantObjectType(objectType)
-    const {
-        model: threadModel,
-        isSupported: canPinThreadModel,
-        updateModel: updateThreadModel,
-    } = useThreadAssistantModel(projectId, objectId, normalizedObjectType)
 
     const linkedNoteId = parentObject?.noteId
     useEffect(() => {
@@ -161,15 +152,6 @@ export default function BotOptionsModal({
                     updateAssistant={updateAssistant}
                     currentAssistantId={assistantId || assistant?.uid}
                 />
-            ) : showModels ? (
-                <ThreadAssistantModelModal
-                    closeModal={() => {
-                        setShowModels(false)
-                    }}
-                    selectedModel={threadModel}
-                    assistantModel={assistant?.model}
-                    updateModel={updateThreadModel}
-                />
             ) : selectedTask ? (
                 <PreConfigTaskGeneratorModal
                     projectId={projectId}
@@ -223,16 +205,6 @@ export default function BotOptionsModal({
                     {normalizedObjectType !== 'assistants' && (
                         <>
                             <SelectAssistantsOption setShowAssistants={setShowAssistants} />
-                            <Line style={{ marginVertical: 4 }} />
-                        </>
-                    )}
-                    {canPinThreadModel && (
-                        <>
-                            <SelectModelOption
-                                threadModel={threadModel}
-                                assistantModel={assistant?.model}
-                                onPress={() => setShowModels(true)}
-                            />
                             <Line style={{ marginVertical: 4 }} />
                         </>
                     )}

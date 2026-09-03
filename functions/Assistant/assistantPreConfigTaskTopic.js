@@ -255,7 +255,7 @@ async function generatePreConfigTaskResult(
         }
     } else {
         const [settingsResult, fetchedUser] = await Promise.all([
-            getTaskOrAssistantSettings(projectId, objectId, assistantId, { objectType, objectId }),
+            getTaskOrAssistantSettings(projectId, objectId, assistantId),
             userPromise,
         ])
         settings = settingsResult
