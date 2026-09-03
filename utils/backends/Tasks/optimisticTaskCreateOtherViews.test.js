@@ -54,7 +54,11 @@ jest.mock('../firestore', () => ({
 
 import { matchesOpenGoalTasksQuery, watchOpenGoalTasks } from './openGoalTasks'
 import { matchesTasksToAttendQuery, watchTasksToAttend } from './myDayTasks'
-import { publishOptimisticTaskCreated, resetOptimisticTaskCreates } from './optimisticTaskCreate'
+import {
+    publishOptimisticTaskCreated,
+    publishOptimisticTaskSettled,
+    resetOptimisticTaskCreates,
+} from './optimisticTaskCreate'
 
 const PROJECT_ID = 'project-1'
 const GOAL_ID = 'goal-1'
@@ -160,6 +164,40 @@ describe('AT-2342 optimistic insert in the Goal detailed view', () => {
         expect(goalTaskIds()).toBeNull()
     })
 
+    /**
+     * AT-2500 - the pending copy is only ever purged by an id APPEARING in a snapshot, so a task
+     * edited out of this query before its create was echoed would be merged into every rebuild
+     * for the lifetime of the watcher. The write's server ack is what says no echo is coming.
+     */
+    describe('AT-2500 a task moved out of this list before its create was echoed', () => {
+        it('drops a pending copy the snapshot will never carry', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', goalTask())
+            expect(goalTaskIds()).toEqual(['task-1'])
+
+            // Re-assigned to another goal before the echo, so this query never sees it.
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+
+            expect(goalTaskIds()).toEqual([])
+        })
+
+        it('leaves a task the snapshot did carry exactly where it is', () => {
+            const raw = goalTask()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
+            listeners[0](snapshotOf([fakeDoc('task-1', raw)]))
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+
+            expect(goalTaskIds()).toEqual(['task-1'])
+        })
+
+        it('settling an unknown task publishes nothing at all', () => {
+            mockDispatch.mockClear()
+            publishOptimisticTaskSettled(PROJECT_ID, 'never-seen')
+
+            expect(lastDispatched('Set goal open tasks data')).toBeUndefined()
+        })
+    })
+
     describe('matchesOpenGoalTasksQuery', () => {
         const allow = [0, 'user-1']
 
@@ -236,6 +274,39 @@ describe('AT-2342 optimistic insert in My Day', () => {
         publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask({ currentReviewerId: 'user-2' }))
 
         expect(myDayTaskIds()).toBeNull()
+    })
+
+    /**
+     * AT-2500 - My Day's query IS `dueDate <= endOfDay`, so postponing a task to tomorrow always
+     * takes it out of this list. Done before the create was echoed, the pending copy was never
+     * purged and the task stayed in My Day, showing today, until the watcher restarted.
+     */
+    describe('AT-2500 a task postponed before its create was echoed', () => {
+        it('drops a pending copy the snapshot will never carry', () => {
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+            expect(myDayTaskIds()).toEqual(['task-1'])
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+
+            expect(myDayTaskIds()).toEqual([])
+        })
+
+        it('leaves a task the snapshot did carry exactly where it is', () => {
+            const raw = myDayTask()
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', raw)
+            listeners[0](snapshotOf([fakeDoc('task-1', raw)]))
+
+            publishOptimisticTaskSettled(PROJECT_ID, 'task-1')
+
+            expect(myDayTaskIds()).toEqual(['task-1'])
+        })
+
+        it('settling an unknown task publishes nothing at all', () => {
+            mockDispatch.mockClear()
+            publishOptimisticTaskSettled(PROJECT_ID, 'never-seen')
+
+            expect(lastDispatched('Set my day all today tasks')).toBeUndefined()
+        })
     })
 
     describe('matchesTasksToAttendQuery', () => {

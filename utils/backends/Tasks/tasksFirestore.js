@@ -3,7 +3,11 @@ import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import { preserveAutoAssignedGoal } from './autoAssignedGoalGuard'
-import { publishOptimisticTaskCreateFailed, publishOptimisticTaskCreated } from './optimisticTaskCreate'
+import {
+    publishOptimisticTaskCreateFailed,
+    publishOptimisticTaskCreated,
+    publishOptimisticTaskSettled,
+} from './optimisticTaskCreate'
 import { getTaskFromLoadedTaskMaps } from './taskSnapshotCache'
 import {
     buildCrossUserTaskStatisticsMarker as buildTaskStatisticsMarker,
@@ -628,6 +632,13 @@ export async function uploadNewTask(
         publishOptimisticTaskCreated(projectId, taskId, safeTaskCopy)
 
         const onTaskWritten = isAwaited => () => {
+            // AT-2500 - the server has the document, so each list can now trust its own query over
+            // the payload published above. A list still holding an unconfirmed optimistic row for
+            // this id learns from this that no echo is coming (the task was edited out of that
+            // query before it was ever echoed - postponing a task the moment it is created) and
+            // drops the row. Offline this never runs, because `set()` only resolves on the server
+            // ack, which is correct: offline the local cache holds the document and the row stands.
+            publishOptimisticTaskSettled(projectId, taskId)
             queueUndoAction({
                 label: `Created task “${taskCopy.name}”`,
                 operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
