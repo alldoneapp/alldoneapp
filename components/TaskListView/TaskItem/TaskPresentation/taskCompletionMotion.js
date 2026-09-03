@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
-import { DISINTEGRATION_DURATION_MS, EXIT_DELAY_MS, EXIT_HOLD_MS, createRowExitStyle } from './taskRowDisintegration'
 
 /**
  * AT-2404 — the motion a task row plays when it is checked off.
@@ -38,19 +37,28 @@ import { DISINTEGRATION_DURATION_MS, EXIT_DELAY_MS, EXIT_HOLD_MS, createRowExitS
  *   5. PULSE (t=520, 150ms) — 100%. The finished bar thickens briefly and settles, and the head
  *      blooms out. Strictly AFTER the fill (same `Animated.sequence`), because a confirmation that
  *      can overlap the thing it is confirming is just a wobble.
- *   6. EXIT (t=670, 1200ms) — the row DISINTEGRATES: a dissolve front sweeps right to left erasing
- *      it, dust lifts off that front, and the height closes behind it with a 6px lift. AT-2495
- *      replaced the original 320ms shrink-and-fade here, which was a perfectly good mechanism and
- *      the wrong statement — a row that shrinks and fades reads as "deleted". All of the geometry
- *      and every one of its sub-timings live in `taskRowDisintegration.js`; this module only decides
- *      WHEN it runs and how long the write waits for it.
+ *   6. EXIT (t=670, 320ms) — height to 0, opacity to 0, and a 6px lift, so the row leaves upward
+ *      into the gap it is closing rather than just being deleted.
  *
- * ~1870ms of motion inside a 1950ms hold. That hold is much longer than the 1070ms this sequence
- * used to take, and it is a deliberate product choice: the exit was asked for as a cinematic 1.2s
- * rather than the ~700ms alternative. It costs nothing but the row's own removal — the hold is per
- * row, nothing is blocked while it runs, and the next task can be ticked immediately. Undo is
- * untouched either way: a 10s bar over 7-day retention (`utils/undo/`), entirely independent of
- * this.
+ * ~990ms of motion inside a 1070ms hold. The sweep itself is the "super quick" 450ms that was
+ * asked for; the extra 70ms over the previous pass is the confirmation pulse, which has to finish
+ * before the row is allowed to start leaving. Undo is untouched: a 10s bar over 7-day retention
+ * (`utils/undo/`), entirely independent of this.
+ *
+ * ── THE EXIT IS DELIBERATELY THIS AND NOT A DISINTEGRATION (AT-2495) ──────────────────────────
+ *
+ * Beat 6 was briefly replaced by a 1.2-second right-to-left dust disintegration and put back. The
+ * ask it was built for ("make it look like the line disappears the way Thanos snaps his fingers")
+ * turned out to be about the PROJECT line, not the task row, and the difference is not a matter of
+ * taste: a task is completed dozens of times an hour, often in bursts while a list is cleared, so
+ * its exit has to be short, quiet and repeatable — the same argument that keeps the row wash at
+ * `UtilityGreen125` 0.55 while the 24px checkbox gets the saturated colour and the sparks. A
+ * cinematic exit is affordable exactly once per project per day, which is where it now lives:
+ * `components/TaskListView/OpenTasksView/projectLineDisintegration.js`.
+ *
+ * The other half of AT-2495 stayed: the completion motion still plays when a task is finished from
+ * the long-press checkbox popup, through `taskCompletionHandoff.js`. Only the shape of beat 6 was
+ * reverted, so the hold is 1070ms again rather than 1950ms.
  *
  * ── SUBTASKS DO NOT COLLAPSE ──────────────────────────────────────────────────────────────────
  *
@@ -91,13 +99,10 @@ export const PROGRESS_DELAY_MS = 70
 export const PROGRESS_DURATION_MS = 450
 // The confirmation at 100%. Deliberately short — it is punctuation, not a beat of its own.
 export const PROGRESS_PULSE_MS = 150
-/**
- * The exit. Re-exported from `taskRowDisintegration.js` rather than restated, so the delay this
- * module schedules and the timeline that module draws cannot drift apart.
- */
-export { DISINTEGRATION_DURATION_MS, EXIT_DELAY_MS }
-// 670 + 1200 = 1870ms of motion, then ~80ms of buffer before the write.
-export const COMPLETION_HOLD_MS = EXIT_HOLD_MS
+export const COLLAPSE_DELAY_MS = 670
+export const COLLAPSE_DURATION_MS = 320
+// 670 + 320 = 990ms of motion, then ~80ms of buffer before the write.
+export const COMPLETION_HOLD_MS = 1070
 
 // Retained rows (subtasks): no collapse, so the flourish is wound back down instead.
 export const RELEASE_DELAY_MS = 690
@@ -170,17 +175,10 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
     const reducedMotion = useReducedMotion()
 
     const [completion, setCompletion] = useState(null)
-    /**
-     * The height the row had when its exit began, or 0 when it is not leaving. It is STATE rather
-     * than a ref because `createRowExitStyle` needs it to build its interpolations at render time
-     * — which is what lets one `Animated.Value` drive the dissolve, the dust and the collapse
-     * instead of three timings that have to be kept in step by hand.
-     */
-    const [collapseHeight, setCollapseHeight] = useState(0)
+    const [collapsing, setCollapsing] = useState(false)
 
-    // Every value here runs on the JS driver. `height` and the mask cannot be driven natively at
-    // all, and mixing drivers on one Animated.Value throws at runtime — so nothing in this module
-    // opts in, and a future beat that wants to must not share a value with one that cannot.
+    // Native driver: transform and opacity only, and never shared with the height pair below.
+    // Mixing drivers on one Animated.Value throws at runtime.
     const punch = useRef(new Animated.Value(1)).current
     const burst = useRef(new Animated.Value(0)).current
     // The 0 → 100% sweep. Drives the title's progress bar AND the row wash, so the wash's leading
@@ -192,14 +190,10 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
     // shape of the confirmation without touching the sequence.
     const pulse = useRef(new Animated.Value(0)).current
     const flourish = useRef(new Animated.Value(0)).current
-    /**
-     * AT-2495 — the exit, 0 → 1 across `DISINTEGRATION_DURATION_MS`. ONE value for the dissolve
-     * front, the dust that lifts off it, the fallback fade and the height that closes behind it,
-     * for the same reason the sweep and the row wash share one: the dust has to leave exactly
-     * where the mask has just erased, and two values — however carefully tuned — read as two
-     * animations that happen to overlap.
-     */
-    const disintegrate = useRef(new Animated.Value(0)).current
+    // Non-native: `height` cannot be driven natively, and the row's opacity rides with it on the
+    // same node so both stay on the same driver.
+    const rowOpacity = useRef(new Animated.Value(1)).current
+    const rowHeight = useRef(new Animated.Value(0)).current
 
     const rowHeightRef = useRef(0)
     const animationRef = useRef(null)
@@ -238,10 +232,11 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
         sweep.setValue(0)
         pulse.setValue(0)
         flourish.setValue(0)
-        disintegrate.setValue(0)
-        setCollapseHeight(0)
+        rowOpacity.setValue(1)
+        rowHeight.setValue(0)
+        setCollapsing(false)
         setCompletion(null)
-    }, [punch, burst, sweep, pulse, flourish, disintegrate])
+    }, [punch, burst, sweep, pulse, flourish, rowOpacity, rowHeight])
 
     /**
      * Reopening a completed subtask has to hand back a completely ordinary row. The release at the
@@ -324,7 +319,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
             sweep.setValue(0)
             pulse.setValue(0)
             flourish.setValue(0)
-            disintegrate.setValue(0)
+            rowOpacity.setValue(1)
 
             const beats = [
                 // Beat 1 — the point of contact. Dip fast, then spring back through an overshoot.
@@ -397,29 +392,29 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
                 )
             } else if (measuredHeight > 0) {
                 // Beat 6b — the exit. A row that has never been laid out (measured height 0) still
-                // sweeps and sparkles; it just cannot disintegrate, because both the mask and the
-                // dust are laid out against a box, and collapsing to 0 from an unknown start would
-                // jump.
-                setCollapseHeight(measuredHeight)
+                // sweeps and sparkles; it just cannot collapse, because animating to 0 from an
+                // unknown start would jump.
+                rowHeight.setValue(measuredHeight)
+                setCollapsing(true)
                 beats.push(
                     Animated.sequence([
-                        Animated.delay(EXIT_DELAY_MS),
-                        Animated.timing(disintegrate, {
-                            toValue: 1,
-                            duration: DISINTEGRATION_DURATION_MS,
-                            /**
-                             * LINEAR, and the one easing here that must not be "improved". The
-                             * dissolve front is a physical thing crossing the row at a speed the
-                             * eye tracks; an eased front accelerates away and then appears to
-                             * stall against the left-hand edge, which reads as the animation
-                             * hitching rather than as the row coming apart. Every non-linear
-                             * shape in this exit — a mote's fade, its rise, the height closing —
-                             * lives in the interpolations in `taskRowDisintegration.js`, where it
-                             * belongs to the layer that needs it.
-                             */
-                            easing: Easing.linear,
-                            useNativeDriver: false,
-                        }),
+                        Animated.delay(COLLAPSE_DELAY_MS),
+                        Animated.parallel([
+                            Animated.timing(rowHeight, {
+                                toValue: 0,
+                                duration: COLLAPSE_DURATION_MS,
+                                easing: Easing.in(Easing.cubic),
+                                useNativeDriver: false,
+                            }),
+                            Animated.timing(rowOpacity, {
+                                toValue: 0,
+                                // Beats the height so the row is invisible before it is flat —
+                                // fading and shrinking at the same rate reads as a squash.
+                                duration: COLLAPSE_DURATION_MS - 80,
+                                easing: Easing.in(Easing.quad),
+                                useNativeDriver: false,
+                            }),
+                        ]),
                     ])
                 )
             }
@@ -434,22 +429,26 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
 
             return retainRow ? RETAINED_HOLD_MS : COMPLETION_HOLD_MS
         },
-        [reducedMotion, retainRow, punch, burst, sweep, pulse, flourish, disintegrate, scheduleRelease]
+        [reducedMotion, retainRow, punch, burst, sweep, pulse, flourish, rowOpacity, rowHeight, scheduleRelease]
     )
 
-    /**
-     * Only built while the row is leaving. Left off otherwise so an ordinary row is never pinned to
-     * a stale measured height, never carries a mask (which would cost it a compositing layer for
-     * its whole life), and — on a retained row, which never sets a collapse height — cannot
-     * disintegrate at all. That last one is the subtask guarantee.
-     */
-    const rowStyle = useMemo(
-        // Memoised, not merely conditional: the row re-renders while it is leaving (its own
-        // `setCollapseHeight`, and any parent that happens to update), and rebuilding the
-        // interpolations would detach and reattach live animated nodes mid-exit.
-        () => (collapseHeight > 0 ? createRowExitStyle(disintegrate, collapseHeight) : undefined),
-        [disintegrate, collapseHeight]
-    )
+    // Only applied while collapsing. Left off otherwise so the row is never pinned to a stale
+    // measured height during ordinary renders — and never applied at all on a retained row, which
+    // is the whole subtask guarantee.
+    const rowStyle = collapsing
+        ? {
+              height: rowHeight,
+              opacity: rowOpacity,
+              overflow: 'hidden',
+              // Leaves upward into the gap it is closing. Same non-native driver as the pair above,
+              // so it can share their node.
+              transform: [
+                  {
+                      translateY: rowOpacity.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }),
+                  },
+              ],
+          }
+        : undefined
 
     /**
      * AT-2495 — the same `begin`/`cancel` pair, bundled once with a stable identity so it can be
@@ -479,18 +478,6 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
         completionCelebration: isCompletionRun
             ? { punch, burst, opacity: flourish, animated: completion.animated }
             : null,
-        /**
-         * AT-2495 — the dust layer's props, and null unless the row is genuinely disintegrating.
-         *
-         * Deliberately NOT gated on `isCompletion`: a workflow step advance leaves the list too,
-         * and how a row disappears is one behaviour. What the step advance does not get is the
-         * green — no sweep, no wash, no checkbox burst — because it has handed the task on rather
-         * than finished it. Dust is neutral, so it says nothing either way.
-         *
-         * `height` is the frozen measurement rather than a live one: the row underneath is
-         * collapsing, and dust that collapsed with it would be clipped off mid-flight.
-         */
-        completionDust: collapseHeight > 0 ? { progress: disintegrate, height: collapseHeight } : null,
         isCompleting: !!completion,
     }
 }

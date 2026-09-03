@@ -3,7 +3,6 @@ import { Animated, StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors, hexColorToRGBa } from '../../styles/global'
-import useProjectCompletedSweepMotion from '../OpenTasksView/projectCompletedSweepMotion'
 
 /**
  * AT-2492 — the "completed sweep": the celebration a project's header row plays when that project's
@@ -33,6 +32,12 @@ import useProjectCompletedSweepMotion from '../OpenTasksView/projectCompletedSwe
  *   2. SHIMMER  `shimmer`  → the shimmer band's `translateX`.
  *   3. PULSE    `pulse`    → the pulse glow's `opacity` and the accent's `scaleY`.
  *   4. SETTLE   `fade`     → every layer's `opacity`.
+ *
+ * Stage 4 only runs for a line that is STAYING (AT-2495). A line that is leaving the board
+ * disintegrates instead, and this overlay draws nothing special for that: it is a child of the
+ * masked row, so the dissolve front carries the wash and the accent off with everything else — which
+ * is the point, and is why `fade` is left at 1 for that branch rather than fading the colour away
+ * first and then dissolving a plain row.
  *
  * Two of those layers need no stage gating at all, which is deliberate rather than lucky: the EDGE
  * and the SHIMMER BAND both travel from fully off the left of the row to fully off the right of it,
@@ -95,15 +100,19 @@ const PULSE_ALPHA = 0.13
 const ACCENT_PULSE_SCALE = 2
 
 /**
- * @param {number} props.runId 0 for "nothing to celebrate", otherwise the run to play once.
+ * @param {object} props.motion The run, from `useProjectCompletedSweepMotion`. It is OWNED by
+ *   `ProjectHeader` rather than by this overlay (AT-2495): the same run also drives the
+ *   disintegration that erases the whole line, and a mask cannot be applied by a child to its own
+ *   parent. Passing the values down keeps one sequence driving both halves — the alternative, a
+ *   second hook call up there, would be two sequences racing over one row.
  * @param {string} props.projectId Used only to resolve the project's colour. A primitive is selected
  *   out of `loggedUserProjectsMap` rather than the project object (let alone the map) — the AT-2336
  *   rule: selecting the object would hand every project header a fresh identity on every per-project
  *   write, and this component is mounted once per project on a board that can hold 78 of them.
  */
-export default function ProjectCompletedSweep({ runId, projectId }) {
+export default function ProjectCompletedSweep({ motion, projectId }) {
     const projectColor = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.color)
-    const { progress, shimmer, pulse, fade, sweeping } = useProjectCompletedSweepMotion(runId)
+    const { progress, shimmer, pulse, fade, sweeping } = motion
     const [rowWidth, setRowWidth] = useState(0)
 
     if (!sweeping) return null

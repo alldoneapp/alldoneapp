@@ -7,10 +7,16 @@ import { useSelector } from 'react-redux'
 import SelectedProjectEmptyInbox from './SelectedProjectEmptyInbox'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import ProjectCompletedSweep from '../Header/ProjectCompletedSweep'
+import ProjectLineDisintegration from '../Header/ProjectLineDisintegration'
 import { CONFETTI_BURST_PIECE_COUNT, CONFETTI_PAGE_PIECE_COUNT } from './EmptyInboxConfetti'
 import { CONGRATS_TOTAL_MS } from './emptyInboxCongratsMotion'
 import { PROJECT_CONGRATS_TOTAL_MS, PROJECT_ENTRANCE_MS } from './projectEmptyInboxCongratsMotion'
-import { SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
+import useProjectCompletedSweepMotion, {
+    SWEEP_EXIT_TOTAL_MS,
+    SWEEP_TOTAL_MS,
+    useProjectLineExit,
+} from './projectCompletedSweepMotion'
+import { SPARK_COUNT } from './projectLineDisintegration'
 import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
@@ -48,6 +54,7 @@ jest.mock('../../SettingsView/Profile/Achievements/AchievementsArea', () => ({
 const VIEWPORT = { width: 1280, height: 800, scale: 1, fontScale: 1 }
 const PROJECT = 'project-a'
 const PROJECT_COLOR = '#2F80ED'
+const ROW_HEIGHT = 57
 
 const countOf = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false }).length
 const findOne = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false })[0]
@@ -87,10 +94,52 @@ describe('the per-project celebration, measured against the all-projects one (AT
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const renderSweep = async (celebrationRunId = 0) => {
+    /**
+     * The whole per-project celebration as `ProjectHeader` assembles it: one run driving the sweep
+     * overlay INSIDE the row and the disintegration particles BESIDE it. Rendering only the overlay
+     * — which is what this suite did before AT-2495 — would have left the new spark layer outside
+     * every comparative assertion here, i.e. outside the one place the ranking is actually enforced.
+     */
+    const ProjectLineHarness = ({ runId, lineWillLeave }) => {
+        const motion = useProjectCompletedSweepMotion(runId, lineWillLeave)
+        const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion)
+        return (
+            <>
+                <ProjectCompletedSweep motion={motion} projectId={PROJECT} />
+                {exitStyle ? (
+                    <ProjectLineDisintegration
+                        progress={motion.disintegrate}
+                        height={exitHeight}
+                        tint={PROJECT_COLOR}
+                    />
+                ) : null}
+                <MeasureHook onLineLayout={onLineLayout} />
+            </>
+        )
+    }
+
+    // jsdom lays nothing out, so the row's height has to be handed to the exit by hand — the same
+    // measurement `ProjectHeader` gets from `onLayout` in a browser.
+    const MeasureHook = ({ onLineLayout }) => {
+        React.useEffect(() => {
+            onLineLayout({ nativeEvent: { layout: { height: ROW_HEIGHT, width: 900 } } })
+        }, [onLineLayout])
+        return null
+    }
+
+    const renderSweep = async (celebrationRunId = 0, { lineWillLeave = false } = {}) => {
         let tree
         await act(async () => {
-            tree = renderer.create(<ProjectCompletedSweep runId={celebrationRunId} projectId={PROJECT} />)
+            tree = renderer.create(<ProjectLineHarness runId={celebrationRunId} lineWillLeave={lineWillLeave} />)
+        })
+        return tree
+    }
+
+    /** Drives a leaving line all the way into its disintegration, the way All Projects does. */
+    const renderLeavingLine = async () => {
+        const tree = await renderSweep(1, { lineWillLeave: true })
+        await act(async () => {
+            jest.advanceTimersByTime(SWEEP_EXIT_TOTAL_MS - 100)
         })
         return tree
     }
@@ -133,10 +182,26 @@ describe('the per-project celebration, measured against the all-projects one (AT
             expect(countOf(sweep, 'empty-inbox-confetti-burst')).toBe(0)
             expect(countOf(sweep, 'empty-inbox-confetti-piece')).toBe(0)
 
+            // …including while the line is disintegrating, which is the beat AT-2495 added a
+            // celebration to and therefore the one that could most easily grow into confetti.
+            const leaving = await renderLeavingLine()
+            expect(countOf(leaving, 'empty-inbox-confetti')).toBe(0)
+            expect(countOf(leaving, 'empty-inbox-confetti-burst')).toBe(0)
+            expect(countOf(leaving, 'empty-inbox-confetti-piece')).toBe(0)
+
             const picture = await renderPicture(1)
             expect(countOf(picture, 'empty-inbox-confetti')).toBe(0)
             expect(countOf(picture, 'empty-inbox-confetti-burst')).toBe(0)
             expect(countOf(picture, 'empty-inbox-confetti-piece')).toBe(0)
+        })
+
+        it('celebrates the departing line with a sprinkle an order of magnitude below the confetti', async () => {
+            const leaving = await renderLeavingLine()
+
+            expect(countOf(leaving, 'project-line-disintegration-spark')).toBe(SPARK_COUNT)
+            // Nine against forty-six. The ranking has to survive a piece-count retune on either
+            // side, hence the comparison rather than two literals.
+            expect(SPARK_COUNT).toBeLessThan((CONFETTI_BURST_PIECE_COUNT + CONFETTI_PAGE_PIECE_COUNT) / 3)
         })
 
         it('leaves the all-projects celebration exactly as loud as it was', async () => {
@@ -167,6 +232,15 @@ describe('the per-project celebration, measured against the all-projects one (AT
             expect(SWEEP_TOTAL_MS).toBeLessThan(CONGRATS_TOTAL_MS)
             expect(SWEEP_TOTAL_MS).toBeGreaterThanOrEqual(2500)
             expect(SWEEP_TOTAL_MS).toBeLessThanOrEqual(3000)
+            /**
+             * A LEAVING line spends longer, because its last stage is its 1.2s departure rather than
+             * a 660ms settle — and that is the one number here allowed to exceed the all-projects
+             * run, because it is not celebration time, it is the row physically leaving the board.
+             * It is still bounded, so a future retune cannot leave a cleared project sitting on the
+             * board for five seconds.
+             */
+            expect(SWEEP_EXIT_TOTAL_MS).toBeGreaterThan(SWEEP_TOTAL_MS)
+            expect(SWEEP_EXIT_TOTAL_MS).toBeLessThanOrEqual(3600)
             // The picture's pop is tied to the sweep, so the two halves of the small celebration end
             // together instead of one outliving the other.
             expect(PROJECT_CONGRATS_TOTAL_MS).toBe(SWEEP_TOTAL_MS)
@@ -192,6 +266,15 @@ describe('the per-project celebration, measured against the all-projects one (AT
             expect(overlayStyle.width).toBeUndefined()
             // Bounded vertically to the row's content band rather than filling it.
             expect(overlayStyle.top).toBeGreaterThan(0)
+
+            // The celebration that rides on the line's departure is bounded the same way: absolute,
+            // and exactly as tall as the row it came off. It cannot spread however it is styled.
+            const leaving = await renderLeavingLine()
+            const particleStyle = StyleSheet.flatten(findOne(leaving, 'project-line-disintegration').props.style)
+            expect(particleStyle.position).toBe('absolute')
+            expect(particleStyle.height).toBe(ROW_HEIGHT)
+            expect(particleStyle.left).toBe(0)
+            expect(particleStyle.right).toBe(0)
 
             const allProjects = await renderAllProjects()
             const pageLayerStyle = StyleSheet.flatten(findOne(allProjects, 'empty-inbox-confetti').props.style)
@@ -260,6 +343,12 @@ describe('the per-project celebration, measured against the all-projects one (AT
         // says the project is done.
         const sweep = await renderSweep(1)
         expect(countOf(sweep, 'project-completed-sweep')).toBe(0)
+
+        // …and no disintegration or sparks either: a line that cannot be celebrated leaves exactly
+        // the way it always did.
+        const leaving = await renderLeavingLine()
+        expect(countOf(leaving, 'project-line-disintegration')).toBe(0)
+        expect(countOf(leaving, 'project-line-disintegration-spark')).toBe(0)
 
         // ...and the picture, which IS the congratulation on this board, is simply there.
         const picture = await renderPicture(1)

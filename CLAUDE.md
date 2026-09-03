@@ -1357,6 +1357,75 @@ painting: a suite that stubs reduced motion but not `window.matchMedia` still ge
 animated commit, which is enough to hide a swallowed run, so both jest suites now drive the media
 query as well.
 
+### The cleared project's line disintegrates, and the task row does not (AT-2495)
+
+**The 1.2s right-to-left dust disintegration belongs to the PROJECT line, and putting it on the task
+row first was the mistake worth remembering.** The ask — "make it look like the line disappears the
+way Thanos snaps his fingers" — was about the project line; the first pass read it as the completed
+task row and shipped it there. It is not a matter of taste which row gets it: a task is completed
+dozens of times an hour, often in bursts while a list is cleared, and **every one of those
+completions holds its Firestore write for the length of the animation** (`COMPLETION_HOLD_MS`), so
+the cinematic version cost 1950ms per row against 1070ms. A project's line leaves the board at most
+once per project per day, and only ever because something worth marking has happened. That scarcity
+is the whole licence for the effect, and it is also why the celebration lives there and nowhere
+else. The task row therefore has its AT-2404 exit back unchanged — 320ms of height→0, opacity→0 and
+a 6px lift — pinned by the `leaves by collapsing` case in `TaskPresentationCompletion.test.js`,
+because the modules it would need still exist one directory away. The other half of AT-2495 stayed:
+the completion motion still plays when a task is finished from the long-press checkbox popup
+(`taskCompletionHandoff.js`).
+
+**The exit is the sweep's fourth stage, not a second animation after it.** AT-2492's run is
+FILL → SHIMMER → PULSE → SETTLE; a line that is LEAVING replaces the 660ms settle with the 1200ms
+disintegration, so the whole thing is 3320ms rather than 2780 and reads as one gesture. The settle is
+subsumed rather than skipped: the sweep overlay is a CHILD of the masked row, so the dissolve front
+carries the coloured wash and the accent bar off with everything else — fading them out first and
+then dissolving an already-plain row would spend 660ms throwing away the thing worth watching.
+Nothing waits on any of it; the only cost is `PROJECT_LINE_EXIT_HOLD_MS` (~3.4s), which postpones
+the board dropping a block it has already decided to drop.
+
+**Which of the two stage-4s runs is read 2.1 seconds in, from a ref, and that is load-bearing.** The
+celebration starts on the `sidebarNumbers` snapshot; "the board is dropping this block"
+(`thereAreNotTasksInFirstDay`, threaded down as `completedSweepLineWillLeave`) arrives through a
+different listener and is routinely SECOND — the same skew `PROJECT_SWEEP_PROBE_MS` exists to
+absorb. Deciding at `start()` would therefore have picked the settle for the ordinary case and
+silently lost the disintegration, and it fails invisibly, because a settle is a perfectly
+plausible-looking animation. The value passed down is `baseHideProjectData`, deliberately **not**
+`hideProjectData`: the second is false for the whole hold — that is what the hold IS — so it could
+never say "this line is leaving".
+
+**The mask goes on the row; the particles go beside it.** `ProjectHeader` owns the run
+(`useProjectCompletedSweepMotion` + `useProjectLineExit`) because a child cannot mask its parent, and
+`ProjectCompletedSweep` became presentational. `ProjectLineDisintegration` is a SIBLING of the masked
+node — a child would be erased by the very front it is shedding — inside a wrapper `View` so its
+absolute placement resolves against that row and nothing else. Two failure modes are guarded
+explicitly: an exit whose verdict is **withdrawn** mid-run (a task landing back in the project) is
+reset, and an exit the board **never finishes** is put back after `EXIT_RECOVERY_MS`, because an
+erased zero-height row is a hole the user can neither see nor click and has to reload to clear. The
+row's height is frozen when the exit begins, so the collapse cannot overwrite what it is collapsing
+from and the particle layer keeps the full height while the row closes underneath it.
+
+**The celebration is nine sparks, and it must never become confetti.** AT-2492's ranking rule
+stands: the all-projects empty inbox owns confetti (46 pieces, gravity, spin, a `position: fixed`
+layer that escapes to the viewport), and clearing one project stays smaller in KIND. So these are
+struck OFF the dissolve front on the same `particleLiftOff` derivation the dust uses — the
+celebration is visibly caused by the line leaving rather than thrown over it — they rise and twinkle
+(grow into their peak, where a mote only ever shrinks), nothing falls or spins, they carry the
+project's own colour with every third one gold so a pale project still reads, and the layer is
+`position: absolute` bounded to the 56px row. Their life is CLAMPED to `COLLAPSE_START` rather than
+tuned to fit, so `SPARK_LIFE` can be retuned without leaving a particle drifting while the board
+pulls the content below up through it.
+
+Pinned by `projectLineDisintegration.test.js` (the mask arithmetic re-derived from the CSS spec, the
+grain, the dust and the celebration), `ProjectLineDisintegration.test.js`,
+`projectCompletedSweepMotion.test.js` (the branch, both arrival orders, both recoveries),
+`ProjectHeaderLineExit.test.js` (the wiring — the mask on the right node, the particles outside it,
+and every other board in the app unaffected), and the AT-2495 blocks in
+`ProjectEmptyInboxCelebration.test.js`, which measures the sparks against the real all-projects
+confetti so a future change that quietly promotes them fails the build. Plus `browser-tests/at2495`,
+which is the only place any of this is ever seen: jsdom drops `mask-image` without a word and
+`__mocks__/react-native.js` stubs `Animated.timing`, so it screenshots the row every ~50ms and counts
+surviving pixels per column, in four modes (leaving, late verdict, staying, reduced motion).
+
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 
 **The call is a browser WebRTC connection to OpenAI, and the "recording" is a server-side text

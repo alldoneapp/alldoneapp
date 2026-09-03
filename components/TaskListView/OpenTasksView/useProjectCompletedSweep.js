@@ -34,12 +34,19 @@ import {
  * about. The resolution Karsten picked is the same grammar AT-2404 already uses for a completing
  * task row — sweep, THEN leave — so this hook returns `holdProjectLine`, and the board keeps the
  * line for one sweep before dropping it. The settled layout is unchanged; only the moment of
- * departure moves, by under a second.
+ * departure moves.
+ *
+ * Since AT-2495 the line does not merely wait out the sweep and vanish: its last stage IS its
+ * departure, a 1.2s right-to-left disintegration into dust and sparks. Nothing here changes for
+ * that — the hold is still one number, still derived from the run in
+ * `projectCompletedSweepMotion.js`, and still the only thing this hook lends the board.
  *
  * The hold is bounded three ways, because a project stuck on a board it should have left is a
  * visible bug where a missed sweep is merely a missed flourish: it always expires on a timer, it is
  * never taken when there will be no visible sweep (reduced motion, jest), and it is never taken for
- * a line leaving for some other reason.
+ * a line leaving for some other reason. It delays no Firestore write either: the write that emptied
+ * the project happened when its last task was ticked, and this only postpones the board dropping a
+ * block it has already decided to drop.
  *
  * ── THE PROBE, AND WHY IT EXISTS ─────────────────────────────────────────────────────────────────
  *
@@ -77,8 +84,9 @@ import {
  * That is precisely the moment a project's today list empties in front of you. Every other reason a
  * project block disappears — a priority or VM filter, an assistant board, a project losing access —
  * never opens it and is not delayed by a single frame. And the celebrating case already holds the
- * line for `PROJECT_LINE_EXIT_HOLD_MS` (~2.9s since the sweep grew to four stages), so this cannot
- * make a cleared project outstay the sweep it is waiting for.
+ * line for `PROJECT_LINE_EXIT_HOLD_MS` (~3.2s since the sweep grew to four stages and its last one
+ * became the disintegration), so this cannot make a cleared project outstay the sweep it is waiting
+ * for.
  */
 export const PROJECT_SWEEP_PROBE_MS = 700
 
