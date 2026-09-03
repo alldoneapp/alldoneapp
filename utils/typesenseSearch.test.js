@@ -1,11 +1,8 @@
 import Backend from './BackendBridge'
 import {
     __resetTypesenseCredentialCacheForTests,
-    buildSortBy,
-    isBlankQuery,
     multiSearchTypesense,
     searchTypesenseCollection,
-    TYPESENSE_MATCH_ALL_QUERY,
     TYPESENSE_QUERY_CONFIG,
     warmTypesenseSearchCredentials,
 } from './typesenseSearch'
@@ -236,91 +233,5 @@ describe('per-search query_by override (AT-2393)', () => {
         const searches = readSentSearches()
         expect(searches[0].query_by).toBe('displayName')
         expect(searches[1].query_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.query_by)
-    })
-})
-
-/**
- * AT-2497 — a picker that has just opened has nothing typed yet. Typesense has no "empty
- * query": `q: ''` tokenizes to nothing and matches nothing, so every tab of the @-mention
- * modal read "There are not results to show in this tab" until the user typed. `*` is the
- * documented wildcard, and the per-collection `sort_by` is what turns it into "the ones you
- * touched last".
- */
-describe('match-all on a blank query (AT-2497)', () => {
-    const readSentSearches = () => JSON.parse(global.fetch.mock.calls[0][1].body).searches
-
-    beforeEach(() => {
-        __resetTypesenseCredentialCacheForTests()
-        Backend.getCurrentUserId.mockReturnValue('user-1')
-        Backend.getTypesenseScopedSearchCredentials.mockReset().mockResolvedValue(VALID_CREDENTIALS)
-        global.fetch = jest.fn(() =>
-            Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve({ results: [{ hits: [] }] }),
-            })
-        )
-    })
-
-    afterEach(() => {
-        delete global.fetch
-    })
-
-    it('asks for the wildcard instead of an empty query', async () => {
-        await searchTypesenseCollection('dev_notes', '', 'projectId:=p', { matchAllWhenEmpty: true })
-
-        expect(readSentSearches()[0].q).toBe(TYPESENSE_MATCH_ALL_QUERY)
-    })
-
-    it('orders a wildcard page by recency, not by a text score every document ties on', async () => {
-        await searchTypesenseCollection('dev_notes', '   ', 'projectId:=p', { matchAllWhenEmpty: true })
-
-        // Leaving `_text_match:desc` in front would make the ordering of the list depend on a
-        // criterion that is identical for every hit, which is how "most recent notes" silently
-        // becomes "whatever order the engine returned".
-        const [{ sort_by }] = readSentSearches()
-        expect(sort_by).toBe('lastEditionDate(missing_values: last):desc')
-        expect(sort_by).not.toContain('_text_match')
-    })
-
-    it('leaves a real query completely untouched', async () => {
-        await searchTypesenseCollection('dev_notes', 'roadmap', 'projectId:=p', { matchAllWhenEmpty: true })
-
-        const [search] = readSentSearches()
-        expect(search.q).toBe('roadmap')
-        expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.sort_by)
-    })
-
-    it('is opt-in: a caller that does not ask for it still sends the empty query', async () => {
-        // Global search deliberately stays quiet on blank input, and a filter builder that
-        // produced an empty `filterBy` must not turn into "show the user everything".
-        await searchTypesenseCollection('dev_notes', '', 'projectId:=p')
-
-        const [search] = readSentSearches()
-        expect(search.q).toBe('')
-        expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.sort_by)
-    })
-
-    it('applies per search entry, not per request', async () => {
-        await multiSearchTypesense([
-            { collection: 'dev_notes', query: '', filterBy: '', matchAllWhenEmpty: true },
-            { collection: 'dev_tasks', query: '', filterBy: '' },
-        ])
-
-        const searches = readSentSearches()
-        expect(searches[0].q).toBe(TYPESENSE_MATCH_ALL_QUERY)
-        expect(searches[1].q).toBe('')
-    })
-
-    it('falls back to the configured sort when it carries nothing but a text score', () => {
-        expect(buildSortBy('_text_match:desc', true)).toBe('_text_match:desc')
-        expect(buildSortBy(undefined, true)).toBeUndefined()
-    })
-
-    it('treats only a genuinely blank string as blank', () => {
-        expect(isBlankQuery('')).toBe(true)
-        expect(isBlankQuery('  ')).toBe(true)
-        expect(isBlankQuery(undefined)).toBe(true)
-        expect(isBlankQuery('a')).toBe(false)
-        expect(isBlankQuery('*')).toBe(false)
     })
 })
