@@ -139,6 +139,14 @@ jest.mock('../../../Workstreams/WorkstreamHelper', () => ({ WORKSTREAM_ID_PREFIX
 jest.mock('../../../ContactsView/Utils/ContactsHelper', () => ({ getUserWorkflow: () => ({}) }))
 jest.mock('../../../Premium/PremiumHelper', () => ({ checkIsLimitedByXp: () => false }))
 jest.mock('./CheckBoxContainer/TaskFlowModal', () => 'TaskFlowModal')
+// AT-2495 — the long-press popup is what hosts the "Done" button, so it has to actually mount for
+// the handoff to be observable. The real shell would render a bottom sheet at the jsdom viewport
+// width and is not what is under test here.
+jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
+    const React = require('react')
+    return ({ children, content, isOpen }) =>
+        React.createElement(React.Fragment, null, children, isOpen ? content : null)
+})
 jest.mock('./CheckBoxContainer/EmailTaskCompletionModal', () => 'EmailTaskCompletionModal')
 jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
     moveTasksFromDone: jest.fn().mockResolvedValue(undefined),
@@ -364,6 +372,106 @@ describe('TaskPresentation completion (AT-2404)', () => {
             // going anywhere and the user is undoing, not celebrating.
             expect(setTaskStatus).toHaveBeenCalledTimes(1)
             expect(setTaskStatus.mock.calls[0][2]).toBe(false)
+        })
+    })
+
+    /**
+     * AT-2495 — the SAME animation, reached from the long-press popup.
+     *
+     * Press and hold the checkbox and the row hands off to `TaskFlowModal`, whose "Done" button
+     * writes to Firestore directly. It sits three components below the row and had no way to reach
+     * the motion, so completing a task that way simply blinked it out of the list. The bug was
+     * purely in the WIRING, which is why it is asserted here through the real row and the real
+     * `CheckBoxWrapper` rather than against the handoff module in isolation.
+     */
+    describe('completing from the long-press checkbox popup', () => {
+        // A long press always routes to the popup for a task the checkbox would otherwise resolve
+        // through the workflow itself — which is the case AT-2495 is about. Kept to a single
+        // participant on purpose: a multi-user task is `pending`, and a pending row renders a
+        // clock instead of a checkbox, so the celebration correctly stands down and every
+        // assertion below would pass for the wrong reason.
+        const popupTask = { ...baseTask, genericData: null }
+
+        const openPopup = async () => {
+            const { tree, ref } = await renderRow(popupTask)
+            // Pressed and HELD, through the real checkbox. `TaskPresentation`'s imperative handle
+            // only ever reports a long press for pending/suggested/observed rows, so it cannot
+            // express this gesture — and the popup is exactly what the gesture opens.
+            const checkbox = tree.root.findAll(node => typeof node.props?.onLongPress === 'function')[0]
+            await act(async () => checkbox.props.onLongPress())
+            return { tree, ref }
+        }
+
+        const popupMotion = tree => tree.root.findByType('TaskFlowModal').props.completionMotion
+
+        it("hands the popup the row's completion motion", async () => {
+            const { tree } = await openPopup()
+
+            expect(typeof popupMotion(tree).begin).toBe('function')
+            expect(typeof popupMotion(tree).cancel).toBe('function')
+        })
+
+        it('plays the full completion on the row when the popup completes the task', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).not.toBeNull()
+            expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
+        })
+
+        it('tells the popup how long to hold its write', async () => {
+            const { tree } = await openPopup()
+
+            let holdMs
+            act(() => {
+                holdMs = popupMotion(tree).begin({ isCompletion: true })
+            })
+
+            expect(holdMs).toBe(COMPLETION_HOLD_MS)
+        })
+
+        /**
+         * Moving a workflow task to the next reviewer is not finishing it. The row still leaves
+         * this list, so it still collapses — but nothing is celebrated.
+         */
+        it('exits without celebrating for a plain step advance', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: false }))
+
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+            expect(tree.root.findByType('TitleContainer').props.completionProgress).toBeNull()
+            expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
+        })
+
+        it('puts the row back when the popup reports a failed write', async () => {
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
+            act(() => popupMotion(tree).cancel())
+
+            expect(rowStyle(tree).height).toBeUndefined()
+            expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(0)
+        })
+
+        /**
+         * The handoff is threaded through several components, and a fresh object on every render
+         * would make any `React.memo` below it useless.
+         */
+        it('keeps a stable identity across re-renders', async () => {
+            const { tree, ref } = await openPopup()
+            const first = popupMotion(tree)
+
+            await act(async () => {
+                tree.update(
+                    <TaskPresentation ref={ref} projectId={'project-1'} task={{ ...popupTask, name: 'renamed' }} />
+                )
+                await Promise.resolve()
+            })
+
+            expect(popupMotion(tree)).toBe(first)
         })
     })
 })

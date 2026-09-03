@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
@@ -25,9 +25,9 @@ import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
  *   2. BURST (t=0, 560ms) — a ring expands out of the checkbox and six short sparks fly out with
  *      it. Deliberately anchored TO THE CHECKBOX and clipped to the row's own neighbourhood: no
  *      portal, no full-screen confetti, no cloud round trip. (The random full-screen Giphy overlay
- *      that used to fire here is exactly the gimmick this replaces — see
- *      `TaskCompletionAnimation.js`, still wired to the deliberate one-off workflow paths and
- *      nothing else.)
+ *      that used to fire here is exactly the gimmick this replaces — and AT-2495 removed the last
+ *      of it, because the paths it was still wired to had been dispatching an action the reducer
+ *      turned into `undefined`, so it rendered nothing at all.)
  *   3. GREEN (t=0) — the checkbox fills with `UtilityGreen200` and a white check, over the top of
  *      the real checkbox rather than by restyling it. Nothing about the persistent done state
  *      changes, so there is no colour to unwind later.
@@ -265,6 +265,16 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
      */
     const begin = useCallback(
         ({ isCompletion = true } = {}) => {
+            /**
+             * A run that draws nothing AND collapses nothing has nothing to wait for, so holding
+             * the write would be pure latency. That is exactly a workflow step advance on a
+             * RETAINED row: the comment-popup header has no list to leave (no collapse) and the
+             * task is not done (no sweep, no wash, no checkbox burst). Answering 0 here is what
+             * keeps `CommentPopupWorkflowControls`' forward/backward buttons as immediate as they
+             * are today, while its "Done" still gets the full run.
+             */
+            if (!isCompletion && retainRow) return 0
+
             const staticOnly = reducedMotion || animationsAreDisabled()
             setCompletion({ isCompletion, animated: !staticOnly })
 
@@ -425,6 +435,16 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
           }
         : undefined
 
+    /**
+     * AT-2495 — the same `begin`/`cancel` pair, bundled once with a stable identity so it can be
+     * threaded to the surfaces that complete a task from OUTSIDE the row (the long-press checkbox
+     * popup, the comment-popup workflow controls). Built here rather than at each consumer so
+     * there is exactly one object per row to pass around, and so a `React.memo`'d consumer is not
+     * re-rendered by a fresh literal on every parent render. See `taskCompletionHandoff.js` for
+     * how it is used.
+     */
+    const completionMotion = useMemo(() => ({ begin, cancel: reset }), [begin, reset])
+
     // Null for the overwhelming majority of rows, so none of the completion layers is even mounted
     // until the row is actually being completed. All three are gated on `isCompletion`, because a
     // workflow step advance is not a completion and must not be congratulated as one.
@@ -435,6 +455,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
         rowStyle,
         beginCompletionMotion: begin,
         cancelCompletionMotion: reset,
+        completionMotion,
         completionProgress: isCompletionRun
             ? { progress: sweep, pulse, opacity: flourish, animated: completion.animated }
             : null,
