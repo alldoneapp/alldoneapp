@@ -43,11 +43,24 @@ export const TYPESENSE_QUERY_CONFIG = {
 const PER_PAGE = 20
 const CREDENTIAL_REFRESH_SKEW_SECONDS = 60
 
-// Typesense has no notion of an "empty query": `q: ''` tokenizes to nothing and the search
-// matches nothing. `*` is the documented wildcard that returns every document the
-// `filter_by` admits — which is what a PICKER opened with nothing typed wants (AT-2497:
-// the @-mention modal's Notes tab was blank until you typed, instead of offering the notes
-// you edited most recently).
+// `*` is Typesense's DOCUMENTED match-all: it returns every document the `filter_by` admits,
+// which is what a PICKER opened with nothing typed wants.
+//
+// Read the history here before changing it, because the obvious reading of it is wrong.
+// This was introduced (AT-2497, MR !495) on the belief that `q: ''` "tokenizes to nothing and
+// matches nothing", i.e. that the @-mention Notes tab was BLANK until you typed. That is not
+// true, and the ticket did not improve for the user because of it: driven against a real
+// Typesense server, `q: ''` returns exactly the same page, in exactly the same order, as
+// `q: '*'` — including under the pre-existing `_text_match:desc,lastEditionDate:desc` sort,
+// because every document ties on the text score. The mention picker was already being handed
+// the user's most recently edited notes; what was wrong with AT-2497 was downstream of this
+// module (see mentionSearch.js and MentionsItemsGrouped.js).
+//
+// It is kept anyway, on the honest reason rather than the invented one: `*` is specified,
+// an empty `q` is not — Typesense documents `q=*` as the way to match all documents and
+// makes no promise at all about `''`, so relying on today's behaviour of a blank query is
+// relying on an implementation detail across future engine upgrades. It is also the form
+// that lets `buildSortBy` below know a page is unranked.
 //
 // It is opt-in per call rather than automatic because the two kinds of caller want opposite
 // things. A picker starts empty and should suggest something; global search starts empty and
