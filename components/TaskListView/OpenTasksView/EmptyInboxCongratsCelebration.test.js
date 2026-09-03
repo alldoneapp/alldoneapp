@@ -116,6 +116,42 @@ describe('the empty-inbox congrats celebration, end to end (AT-2445)', () => {
     })
 
     /**
+     * AT-2506 — the second clearing of the day throws confetti too.
+     *
+     * The decision now lives in the boards and arrives here as `celebrationRunId`, so this is the
+     * end of that chain: a new run id has to reach the REAL motion and produce a REAL second burst.
+     * `useEmptyInboxCongratsCelebration`'s play-once guard is keyed on the run id rather than on a
+     * boolean, which is the property that makes this possible at all — and the property nothing
+     * else in the suite would notice being lost.
+     */
+    it('throws confetti again the next time the inbox is cleared that day', async () => {
+        useSelector.mockImplementation(selector =>
+            selector({ loggedUser: { uid: 'user-1', emptyInboxDays: [yesterdayKey, todayKey] } })
+        )
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AllProjectsEmptyInbox showEmptyInboxOverview celebrationRunId={1} />)
+        })
+        expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(CONFETTI_PIECE_COUNT)
+
+        // The run finishes and the block settles back to what a reload paints.
+        await act(async () => {
+            jest.advanceTimersByTime(CONGRATS_TOTAL_MS)
+        })
+        expect(countOf(tree, 'empty-inbox-confetti')).toBe(0)
+
+        // The afternoon's tasks land and are cleared. Before AT-2506 no second run id was ever
+        // produced, so this block simply stayed settled for the rest of the day.
+        await act(async () => {
+            tree.update(<AllProjectsEmptyInbox showEmptyInboxOverview celebrationRunId={2} />)
+        })
+
+        expect(countOf(tree, 'empty-inbox-confetti')).toBe(1)
+        expect(countOf(tree, 'empty-inbox-confetti-piece')).toBe(CONFETTI_PIECE_COUNT)
+    })
+
+    /**
      * AT-2460 — the page layer is the reason this is "much more celebratory", so the two properties
      * that keep it acceptable are pinned rather than left to review.
      *

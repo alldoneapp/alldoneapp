@@ -258,6 +258,27 @@ describe('the completed sweep exit branch (AT-2495)', () => {
             tree.unmount()
         })
 
+        /**
+         * AT-2506 — clearing the project again later the same day is a NEW run, and the play-once
+         * guard must let it through. It is keyed on the run id precisely so that it can: a
+         * boolean "already played" would have made "always play the animation" unimplementable
+         * without touching this hook, which is why the id is the key and not a flag.
+         */
+        it('sweeps again for a second run, once the first has finished', async () => {
+            const tree = await mount({ runId: 1 })
+            expect(state.motion.sweeping).toBe(true)
+
+            await advance(SWEEP_TOTAL_MS + 110)
+            expect(state.motion.sweeping).toBe(false)
+
+            await update(tree, { runId: 2, lineWillLeave: false })
+            expect(state.motion.sweeping).toBe(true)
+
+            await advance(SWEEP_TOTAL_MS + 110)
+            expect(state.motion.sweeping).toBe(false)
+            tree.unmount()
+        })
+
         it('plays once per run rather than restarting on every re-render', async () => {
             // The project row re-renders on every task write in the project.
             const tree = await mount({ lineWillLeave: true })
