@@ -420,6 +420,53 @@ describe('useProjectCompletedSweep (AT-2492)', () => {
         })
 
         /**
+         * AT-2506 — "when empty inbox for today is reached we should ALWAYS play the animation".
+         *
+         * A project you actually work out of is cleared, refilled and cleared again on the same
+         * day, and the once-per-day marker swallowed every clearing after the first. These two
+         * cases are the halves of the replacement rule and they pull against each other on
+         * purpose — a clearing always sweeps, an arrival never replays — so neither passes if the
+         * other one is implemented alone.
+         */
+        it('sweeps again every time the project is cleared, not only the first time today', async () => {
+            setTodayCount(3)
+            const tree = await render()
+            expect(latest.celebrationRunId).toBe(0)
+
+            setTodayCount(0)
+            await update(tree)
+            expect(latest.celebrationRunId).toBe(1)
+            // The run has to be allowed to finish before the next one, or it is suppressed as a
+            // restart of the sweep already on screen.
+            await act(async () => jest.advanceTimersByTime(PROJECT_CELEBRATION_CLAIM_SETTLE_MS))
+
+            // New work lands in the project and is cleared again.
+            setTodayCount(2)
+            await update(tree)
+            setTodayCount(0)
+            await update(tree)
+
+            expect(latest.celebrationRunId).toBe(2)
+        })
+
+        it('still sweeps a project that was already clear only once', async () => {
+            setTodayCount(3)
+            const tree = await render()
+            setTodayCount(0)
+            await update(tree)
+            expect(latest.celebrationRunId).toBe(1)
+            await act(async () => jest.advanceTimersByTime(PROJECT_CELEBRATION_CLAIM_SETTLE_MS))
+            await act(async () => tree.unmount())
+
+            // Switching back to this project, reloading, or scrolling All Projects past its line
+            // again: the list is still clear, but nothing happened, so nothing is celebrated.
+            const revisit = await render()
+
+            expect(latest.celebrationRunId).toBe(0)
+            expect(revisit).toBeTruthy()
+        })
+
+        /**
          * The two timers are started from different components — the sweep from the overlay inside
          * `ProjectHeader`, the hold from `OpenTasksByProject` — so nothing guarantees their order.
          * The hold has to be the longer of the two or the line can leave mid-sweep.

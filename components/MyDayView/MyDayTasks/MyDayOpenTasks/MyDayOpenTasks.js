@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { DragDropContext } from '@hello-pangea/dnd'
 
 import AllProjectsEmptyInbox from '../../../TaskListView/OpenTasksView/AllProjectsEmptyInbox'
+import useEmptyInboxCelebrationRun from '../../../TaskListView/OpenTasksView/useEmptyInboxCelebrationRun'
 import MyDaySelectedTasks from './MyDaySelectedTasks'
 import MoreTasksLine from './MoreTasksLine'
 import MyDayOtherTasks from './MyDayOtherTasks'
@@ -34,6 +35,22 @@ export default function MyDayOpenTasks() {
     // scrolling — but it never pushes the assistant composer / last comment down.
     const showEmptyInbox = tasksLoaded && needToShowEmptyBoardPicture
 
+    /**
+     * AT-2506 — decided here rather than inside the block, for the same reason as on the All
+     * Projects board: this component stays mounted while the block comes and goes, so it is the one
+     * that can see today's list fall to zero. A clearing you watched always animates; arriving at an
+     * already-empty My Day does not replay.
+     *
+     * The count is My Day's own today list — the two amounts it already selects, which is exactly
+     * what `needToShowEmptyBoardPicture` is built from, so the number that decides the block is the
+     * number that decides the celebration. `undefined` until `tasksLoaded`, never `0`: an
+     * unanswered count must not be read as an inbox that had tasks and then emptied.
+     */
+    const emptyInboxCelebrationRunId = useEmptyInboxCelebrationRun({
+        enabled: showEmptyInbox,
+        todayInboxAmount: tasksLoaded ? selectedTasksAmount + myDayOtherTasksAmount : undefined,
+    })
+
     return (
         <>
             <AllProjectsLine />
@@ -44,7 +61,7 @@ export default function MyDayOpenTasks() {
                 once-per-day marker as the all-projects board, so whichever you reach first plays it
                 and the other does not repeat it. `tasksLoaded` has always guarded this render, which
                 is what keeps a loading flash from spending the day. */}
-            {showEmptyInbox && <AllProjectsEmptyInbox celebrateNewDay />}
+            {showEmptyInbox && <AllProjectsEmptyInbox celebrationRunId={emptyInboxCelebrationRunId} />}
             {!showEmptyInbox && (
                 <DragDropContext onDragEnd={onDragEnd} onBeforeCapture={onBeforeCapture}>
                     <View style={{ marginTop: 16, marginBottom: 32 }}>
