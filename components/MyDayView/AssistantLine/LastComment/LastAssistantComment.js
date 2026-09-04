@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -28,6 +28,7 @@ import {
     PREVIEW_TITLE_HEIGHT,
     PREVIEW_VERTICAL_PADDING,
 } from './lastCommentLayout'
+import { useLastCommentArrivalMotion } from './lastCommentArrivalMotion'
 
 export {
     LAST_COMMENT_PREVIEW_HEIGHT,
@@ -39,6 +40,11 @@ export {
 
 // The preview reserves a constant height so the assistant line (and everything below it) never
 // reflows when the last comment changes length: one clipped title line plus two clipped body lines.
+//
+// AT-2511 — `arrivalId` is a fresh number whenever this slot starts showing a comment it has not
+// shown before (see `lastCommentArrival.js`); it drives the arrival motion and nothing else. It is
+// deliberately not derived here: a comment landing in another chat REMOUNTS this component, so
+// anything this component could compare against itself is born empty exactly when it matters.
 export default function LastAssistantComment({
     projectId,
     commentText,
@@ -48,8 +54,10 @@ export default function LastAssistantComment({
     unreadComments,
     isFollowedNotification,
     compact = false,
+    arrivalId = null,
 }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
+    const motion = useLastCommentArrivalMotion(arrivalId)
 
     const text = shrinkTagText(commentText.replace(/\s\s+/g, ' '), 500)
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -62,12 +70,36 @@ export default function LastAssistantComment({
 
     if (compact) {
         return (
-            <TouchableOpacity onPress={onPress} style={localStyles.compactContainer}>
-                <Icon name={'message-circle'} color={colors.Text03} size={14} />
-                <Text numberOfLines={1} style={localStyles.compactText}>
-                    {text}
-                </Text>
-                {isNew && <UnreadCommentsBadge amount={unreadComments} followed={isFollowedNotification} />}
+            <TouchableOpacity
+                onPress={onPress}
+                style={localStyles.compactContainer}
+                onLayout={motion.onCardLayout}
+                testID="last-comment-card"
+            >
+                {motion.showBand && (
+                    <View style={localStyles.bandClip} pointerEvents="none">
+                        <Animated.View
+                            style={[localStyles.band, motion.bandStyle]}
+                            testID="last-comment-arrival-band"
+                        />
+                    </View>
+                )}
+                <Animated.View
+                    style={[localStyles.compactContent, motion.contentStyle]}
+                    testID="last-comment-arrival-content"
+                >
+                    <Icon name={'message-circle'} color={colors.Text03} size={14} />
+                    <Text numberOfLines={1} style={localStyles.compactText}>
+                        {text}
+                    </Text>
+                </Animated.View>
+                {isNew && (
+                    <UnreadCommentsBadge
+                        amount={unreadComments}
+                        followed={isFollowedNotification}
+                        style={motion.badgeStyle}
+                    />
+                )}
             </TouchableOpacity>
         )
     }
@@ -75,94 +107,115 @@ export default function LastAssistantComment({
     const parsedElements = parseFeedComment(text)
 
     return (
-        <TouchableOpacity onPress={onPress} style={[localStyles.container]}>
-            <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
-            <View style={localStyles.textContainer}>
-                <View style={localStyles.titleRow}>
-                    {!!objectName && (
-                        <Text numberOfLines={2} style={localStyles.title}>
-                            {objectName}
-                        </Text>
-                    )}
+        <TouchableOpacity
+            onPress={onPress}
+            style={[localStyles.container]}
+            onLayout={motion.onCardLayout}
+            testID="last-comment-card"
+        >
+            {motion.showBand && (
+                <View style={localStyles.bandClip} pointerEvents="none">
+                    <Animated.View style={[localStyles.band, motion.bandStyle]} testID="last-comment-arrival-band" />
                 </View>
-                <View style={localStyles.parsedTextContainer}>
-                    <View style={localStyles.parsedTextBody}>
-                        {parsedElements.map((element, index) => {
-                            const { type, text: elemText, link, email } = element
-                            if (type === TEXT_ELEMENT) {
-                                return elemText ? (
-                                    <Text key={index} style={localStyles.text}>
-                                        {elemText}{' '}
-                                    </Text>
-                                ) : null
-                            } else if (type === HASH_ELEMENT) {
-                                return (
-                                    <HashTag
-                                        key={index}
-                                        projectId={projectId}
-                                        text={elemText}
-                                        useCommentTagStyle={true}
-                                        tagStyle={localStyles.element}
-                                    />
-                                )
-                            } else if (type === URL_ELEMENT) {
-                                const people = tryToextractPeopleForMention(projectId, link)
-                                if (people) {
-                                    const { peopleName } = people
+            )}
+            <Animated.View
+                style={[localStyles.animatedContent, motion.contentStyle]}
+                testID="last-comment-arrival-content"
+            >
+                <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
+                <View style={localStyles.textContainer}>
+                    <View style={localStyles.titleRow}>
+                        {!!objectName && (
+                            <Text numberOfLines={2} style={localStyles.title}>
+                                {objectName}
+                            </Text>
+                        )}
+                    </View>
+                    <View style={localStyles.parsedTextContainer}>
+                        <View style={localStyles.parsedTextBody}>
+                            {parsedElements.map((element, index) => {
+                                const { type, text: elemText, link, email } = element
+                                if (type === TEXT_ELEMENT) {
+                                    return elemText ? (
+                                        <Text key={index} style={localStyles.text}>
+                                            {elemText}{' '}
+                                        </Text>
+                                    ) : null
+                                } else if (type === HASH_ELEMENT) {
+                                    return (
+                                        <HashTag
+                                            key={index}
+                                            projectId={projectId}
+                                            text={elemText}
+                                            useCommentTagStyle={true}
+                                            tagStyle={localStyles.element}
+                                        />
+                                    )
+                                } else if (type === URL_ELEMENT) {
+                                    const people = tryToextractPeopleForMention(projectId, link)
+                                    if (people) {
+                                        const { peopleName } = people
+                                        return (
+                                            <MentionTag
+                                                key={index}
+                                                text={peopleName}
+                                                useCommentTagStyle={true}
+                                                user={people}
+                                                tagStyle={localStyles.element}
+                                                projectId={projectId}
+                                            />
+                                        )
+                                    }
+                                    return (
+                                        <LinkTag
+                                            key={index}
+                                            link={link}
+                                            useCommentTagStyle={true}
+                                            text={'Link ' + getLinkCounter()}
+                                            tagStyle={localStyles.element}
+                                        />
+                                    )
+                                } else if (type === MENTION_ELEMENT) {
+                                    const { mention, user } = TasksHelper.getDataFromMention(elemText, projectId)
                                     return (
                                         <MentionTag
                                             key={index}
-                                            text={peopleName}
+                                            text={mention}
                                             useCommentTagStyle={true}
-                                            user={people}
+                                            user={user}
                                             tagStyle={localStyles.element}
                                             projectId={projectId}
                                         />
                                     )
+                                } else if (type === EMAIL_ELEMENT) {
+                                    return (
+                                        <EmailTag
+                                            key={index}
+                                            email={email}
+                                            useCommentTagStyle={true}
+                                            address={email}
+                                            tagStyle={localStyles.element}
+                                        />
+                                    )
                                 }
                                 return (
-                                    <LinkTag
-                                        key={index}
-                                        link={link}
-                                        useCommentTagStyle={true}
-                                        text={'Link ' + getLinkCounter()}
-                                        tagStyle={localStyles.element}
-                                    />
+                                    <Text key={index} style={localStyles.text}>
+                                        {elemText || link || email || ''}{' '}
+                                    </Text>
                                 )
-                            } else if (type === MENTION_ELEMENT) {
-                                const { mention, user } = TasksHelper.getDataFromMention(elemText, projectId)
-                                return (
-                                    <MentionTag
-                                        key={index}
-                                        text={mention}
-                                        useCommentTagStyle={true}
-                                        user={user}
-                                        tagStyle={localStyles.element}
-                                        projectId={projectId}
-                                    />
-                                )
-                            } else if (type === EMAIL_ELEMENT) {
-                                return (
-                                    <EmailTag
-                                        key={index}
-                                        email={email}
-                                        useCommentTagStyle={true}
-                                        address={email}
-                                        tagStyle={localStyles.element}
-                                    />
-                                )
-                            }
-                            return (
-                                <Text key={index} style={localStyles.text}>
-                                    {elemText || link || email || ''}{' '}
-                                </Text>
-                            )
-                        })}
+                            })}
+                        </View>
                     </View>
                 </View>
-            </View>
-            <ProjectTagIndicator projectId={projectId} />
-            {isNew && <UnreadCommentsBadge amount={unreadComments} followed={isFollowedNotification} />}
+                <ProjectTagIndicator projectId={projectId} />
+            </Animated.View>
+            {isNew && (
+                <UnreadCommentsBadge
+                    amount={unreadComments}
+                    followed={isFollowedNotification}
+                    style={motion.badgeStyle}
+                />
+            )}
         </TouchableOpacity>
     )
 }
@@ -178,6 +231,37 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         paddingHorizontal: 4,
         paddingVertical: PREVIEW_VERTICAL_PADDING,
+    },
+    /**
+     * AT-2511 — the arrival motion moves the CONTENT, never the card. The card keeps its own
+     * `flexDirection: 'row'` and its fixed height; this wrapper repeats the row and fills it
+     * (`flex: 1`), so the icon, the text block and the project tag lay out exactly as they did when
+     * they were the card's direct children — the animated layer changes no measured dimension. That
+     * is the whole reason the motion is here and not on the card: fading or scaling the card itself
+     * turns the slot into a hole and the line below it appears to move.
+     */
+    animatedContent: {
+        flexDirection: 'row',
+        flex: 1,
+    },
+    compactContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        overflow: 'hidden',
+    },
+    // The band is clipped by its own rounded layer rather than by the card, because the card
+    // deliberately does NOT clip: the unread badge sits outside it at top/right -5.
+    bandClip: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    band: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
     },
     textContainer: {
         width: '100%',
