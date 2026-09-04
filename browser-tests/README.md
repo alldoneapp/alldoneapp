@@ -431,3 +431,41 @@ to be computed against the reduced pool.
 `--reduce-motion` asserts the **inverted** contract: no transform at all, no countdown line, and an
 instant unmount. CLAUDE.md records a harness that asserted the animated expectations under reduced
 motion and therefore reported the correct behaviour as a failure; this one does not repeat that.
+
+### `at2507/` — a cleared goal's section must leave gracefully, not pop
+
+When the last task a goal had for today is completed, the goal block used to be deleted between two
+frames. It now fades over 1180ms while its height closes from 380ms to 1400ms, pulling the content
+below it up rather than teleporting it.
+
+Deliberately the quietest of the four completion effects: no flourish, no colour, no particles. The
+app already congratulates the user twice within a second at that moment (the task row's green sweep,
+and — if the project is also cleared — the project line's four-stage sweep and disintegration), so
+the goal tier is the one that REMOVES a jarring frame rather than adding a happy one.
+
+Jest can see none of it. `__mocks__/react-native.js` stubs `Animated.timing` to a no-op `{start}`,
+so nothing advances, and jsdom computes no layout — which matters twice here, because the collapse
+animates a MEASURED height and an unmeasured section deliberately falls back to fading only. Every
+unit assertion can be green while the section still pops.
+
+So this harness drives the REAL `useGoalSectionExit` and `useGoalSectionExitMotion`, triggered by
+the REAL `publishGoalTaskCompletion` — the same call `TaskPresentation` makes — and reads painted
+geometry: the section's transformed bounding box and computed opacity, frame by frame.
+
+The check it exists for is not on the section at all. A pop is jarring because the content
+underneath TELEPORTS, so the board renders a sibling block below the goal and asserts its `top`
+moves continuously (largest single step well under the section's own height). A version that
+collapsed correctly but let the list jump would pass every other check here.
+
+Three of the cases are about NOT animating, because a goal block disappears for several reasons and
+only one of them is finished work:
+
+- a cleared goal that is still active today does not leave at all — it comes back as an `EmptyGoal`
+  under the same key, so it must be left alone;
+- a section whose last task was moved or deleted rather than completed leaves instantly, exactly as
+  it always did;
+- finishing one of two tasks starts nothing.
+
+`--reduce-motion` asserts the **inverted** contract: the hold is not taken and the section is
+dropped instantly. Holding it anyway would strand a block on the board for 1.4s doing nothing —
+a worse bug than the pop.

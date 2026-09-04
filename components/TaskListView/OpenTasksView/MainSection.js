@@ -41,6 +41,7 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { createSectionRenderBudget } from './sectionRenderBudget'
 import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
+import useGoalSectionExit from './useGoalSectionExit'
 
 export default function MainSection({
     projectId,
@@ -69,7 +70,7 @@ export default function MainSection({
     const taskGroupingRef = useRef(undefined)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const liveMainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
-    const mainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
+    const heldMainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
     const emptyGoalsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
@@ -92,6 +93,11 @@ export default function MainSection({
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const showMoreInMainSection = useSelector(state => state.showMoreInMainSection)
+    // AT-2507 — the same two slices `OpenTasksByProject` reads for the per-project sweep's filter
+    // gate. `shallowEqual` because both are arrays the reducer replaces wholesale.
+    const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
+    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
+    const taskFiltersActive = taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const selectedGoalDataInTasksListWhenAddTask = useSelector(state => state.selectedGoalDataInTasksListWhenAddTask)
@@ -109,6 +115,46 @@ export default function MainSection({
     const tmpGoalsByIdRef = React.useRef({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
+
+    /**
+     * AT-2507 — may a goal section on this list leave gracefully instead of popping?
+     *
+     * Each gate closes a way of animating a departure that is not the one being fixed, and they
+     * mirror the per-project gates in `OpenTasksByProject` one scope down:
+     *
+     *   • TODAY only. The reported behaviour is about today's list, and with Later expanded several
+     *     day sections are on screen at once.
+     *   • No task filters. This whole list comes from `filteredOpenTasksStore`, so with a priority
+     *     or VM filter on, "every task the section had" means "every task the filter let through" —
+     *     completing the one visible task of a goal that still has three hidden ones must not be
+     *     read as the goal's work being finished. (A filter also removes goals through this very
+     *     code path, and none of those departures is an achievement.)
+     *   • The board is the logged user's own, and not an assistant profile board.
+     *   • Not while organising, where sections are being dragged rather than worked.
+     *
+     * The lists that do NOT get this are as deliberate: only `MainSection` passes an `exitRunId`,
+     * so the observed / mention / suggested / originally-from lists — which group by goal through
+     * the same `ParentGoalSection` — keep today's instant removal. Finishing every task somebody
+     * else is observing under a goal is not the same event.
+     */
+    const goalSectionExitEnabled =
+        dateFormated === TODAY_DATE &&
+        accessGranted &&
+        !isActiveOrganizeMode &&
+        !isAssistant &&
+        !isAnonymous &&
+        !taskFiltersActive &&
+        loggedUserId === currentUserId
+
+    const { mainTasksWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+        projectId,
+        mainTasks: heldMainTasks,
+        emptyGoals,
+        enabled: goalSectionExitEnabled,
+    })
+    // Everything downstream — the counts, the sort, the render — treats a leaving section as an
+    // ordinary (empty) one, so nothing else in this component needs to know about the hold.
+    const mainTasks = mainTasksWithExits
 
     const expandTasks = () => {
         setTimeout(() => {
@@ -269,7 +315,7 @@ export default function MainSection({
     // having no tasks and therefore lists it among the empty goals. Rendering
     // both would show the same goal twice, so the held section wins until the
     // next idle render puts everything back in sync.
-    const heldSectionIds = mainTasks === liveMainTasks ? null : new Set(mainTasks.map(([sectionId]) => sectionId))
+    const heldSectionIds = heldMainTasks === liveMainTasks ? null : new Set(mainTasks.map(([sectionId]) => sectionId))
     const visibleEmptyGoals = heldSectionIds ? emptyGoals.filter(goal => !heldSectionIds.has(goal.id)) : emptyGoals
 
     const { mainItemsAmount, showMainListShowMore } = getMainItemsData()
@@ -526,7 +572,16 @@ export default function MainSection({
                               : globalAmountToRender
                     )
 
-                    if (sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList)) return null // Adjusted condition for amountToRender
+                    // AT-2507 — a section playing its departure carries no tasks, so the budget
+                    // would skip it on any truncated list and the exit would never be seen. See
+                    // `sectionRenderBudget.shouldSkip` for why leaving is a carve-out there.
+                    const exitRunId = exitRunIdByGoalId[goalId] || 0
+                    if (
+                        sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList, {
+                            leaving: !!exitRunId,
+                        })
+                    )
+                        return null // Adjusted condition for amountToRender
 
                     sectionBudget.remember(goalId, amountToRenderForGoal)
 
@@ -557,6 +612,7 @@ export default function MainSection({
                             }
                             isTemplateProject={isTemplateProject}
                             focusedTaskId={effectiveFocusTaskId}
+                            exitRunId={exitRunId}
                         />
                     )
                 }
