@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useDebugValue } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, View } from 'react-native'
 import GoalItem from '../../GoalsView/GoalItem'
 import Backend from '../../../utils/BackendBridge'
 import { useSelector } from 'react-redux'
@@ -12,7 +12,7 @@ import { objectIsLockedForUser } from '../../Guides/guidesHelper'
 import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/LockedGoalModal'
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
-import useGoalCompletedFlourish from './useGoalCompletedFlourish'
+import useGoalSectionExitMotion from './goalSectionExitMotion'
 
 export default function ParentGoalSection({
     projectId,
@@ -33,7 +33,7 @@ export default function ParentGoalSection({
     expandTasksList,
     isTemplateProject,
     focusedTaskId,
-    celebrateCompletion = false,
+    exitRunId = 0,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -55,17 +55,12 @@ export default function ParentGoalSection({
     // AT-2160: keep this above the early return — hooks must run on every render.
     const hiddenByOptimisticPostpone = useOptimisticGoalPostponeHidden(projectId, goalId)
     /**
-     * AT-2507 — the run id the goal row celebrates with when the last of the tasks below it is
-     * ticked. Lives here rather than in `MainSection` because this is the component that owns one
-     * goal's task list, and rather than in `GoalItemPresentation` because that row is also the
-     * goals-board row, which has no day-scoped task list at all.
+     * AT-2507 — the graceful departure this block plays when its goal leaves today's list because
+     * everything under it is done. `exitRunId` is 0 for every ordinary section, so an ordinary
+     * block carries no animated wrapper at all. `MainSection` decides WHETHER a section is leaving
+     * and keeps it mounted for the run; this only draws it.
      */
-    const completedRunId = useGoalCompletedFlourish({
-        projectId,
-        goalId,
-        taskList,
-        enabled: celebrateCompletion,
-    })
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
 
     const setDismissibleRefs = ref => {
         dismissibleRef.current = ref
@@ -113,12 +108,16 @@ export default function ParentGoalSection({
     if (hiddenByOptimisticPostpone) return null
 
     return (
-        <View
+        <Animated.View
+            onLayout={onSectionLayout}
             style={[
                 containerStyle,
                 isLocked &&
                     showingTasks &&
                     !isAnonymous && { minHeight: (smallScreenNavigation ? 332 : 258) + (editing ? 168 : 86) },
+                // Last, so the pinned height wins over the locked-goal `minHeight` above it — a
+                // floor left in place would stop the collapse dead at 258px.
+                sectionStyle,
             ]}
         >
             {!isMiddleScreen && !smallScreenNavigation && (
@@ -144,7 +143,6 @@ export default function ParentGoalSection({
                     setEditing={setEditing}
                     showingTasks={showingTasks}
                     toggleTasksList={toggleTasksList}
-                    completedRunId={completedRunId}
                 />
             )}
             {goal && showingTasks && (
@@ -205,7 +203,7 @@ export default function ParentGoalSection({
                     date={goal.assigneesReminderDate[currentUserId]}
                 />
             ) : null}
-        </View>
+        </Animated.View>
     )
 }
 

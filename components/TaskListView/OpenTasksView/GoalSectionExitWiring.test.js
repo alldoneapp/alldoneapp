@@ -1,25 +1,19 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { AccessibilityInfo } from 'react-native'
 
 /**
- * AT-2507 — the CHAIN, end to end: a task row announcing its completion must end in a flourish
- * painted on the real goal row above it.
+ * AT-2507 — the goal section actually WEARING its exit.
  *
- * `useGoalCompletedFlourish.test.js` pins the rule, `GoalCompletedFlourish.test.js` pins what is
- * drawn and how it ranks against the bigger celebrations, and `taskCompletionMotion.test.js` pins
- * which ticks are announced at all. None of them would notice the one failure that matters most in
- * practice: a prop that stops being threaded somewhere along
+ * `useGoalSectionExit.test.js` pins which departures qualify and `goalSectionExitMotion.test.js`
+ * pins the shape of the style. Neither would notice the failure that matters most in practice: the
+ * style being computed correctly and then not reaching the node — a wrapper that stayed a plain
+ * `View` (which renders an interpolation once through `toString()` and never updates again), a
+ * `sectionStyle` dropped from the style array, or a `minHeight` floor left in front of it. That is
+ * the AT-2454 lesson: the row rendered nothing and every unit test stayed green.
  *
- *     MainSection → ParentGoalSection → GoalItem → GoalItemPresentation → GoalCompletedFlourish
- *
- * five components, four of which have nothing to do with animation. That is the AT-2454 lesson —
- * the row rendered nothing and every unit test stayed green — so this suite renders the REAL
- * `ParentGoalSection` with the REAL goal row inside it and publishes REAL completion events.
- *
- * Motion is inert under jest by convention and stands down under reduced motion, so this opts out
- * of both; otherwise the flourish correctly draws nothing and every assertion here passes
- * vacuously.
+ * So this renders the REAL `ParentGoalSection` and reads the props the real wrapper node ends up
+ * with. Motion is inert under jest by convention and the hook stands down under reduced motion, so
+ * this opts out of both — otherwise every assertion here passes vacuously.
  */
 
 jest.mock('react-native-gesture-handler/Swipeable', () =>
@@ -88,9 +82,9 @@ jest.mock('../../Guides/guidesHelper', () => ({ objectIsLockedForUser: () => fal
 jest.mock('../Utils/TasksHelper', () => ({ BACKLOG_DATE_NUMERIC: Number.MAX_SAFE_INTEGER }))
 jest.mock('../../GoalsView/GoalsHelper', () => ({ DYNAMIC_PERCENT: 'DYNAMIC_PERCENT' }))
 
-// Everything below the goal row. None of it decides whether the flourish plays, and every one of
-// them drags in Firebase or the editor if left real. `GoalCompletedFlourish` is deliberately NOT
-// among them — it is the thing under test.
+// Everything inside the section. None of it decides whether the exit plays, and every one of them
+// drags in Firebase or the editor if left real. The section's own wrapper is deliberately NOT
+// mocked — it is the thing under test.
 jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./NewTaskSection', () => 'NewTaskSection')
 jest.mock('../../GoalsView/SortModeActiveInfo', () => 'SortModeActiveInfo')
@@ -120,9 +114,8 @@ jest.mock('../../../utils/BackendBridge', () => ({
     },
 }))
 
+import { AccessibilityInfo, Animated } from 'react-native'
 import ParentGoalSection from './ParentGoalSection'
-import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
-import { GOAL_FLOURISH_TOTAL_MS } from './goalCompletedFlourishMotion'
 
 const PROJECT = 'project-1'
 const GOAL = 'goal-1'
@@ -150,11 +143,18 @@ const goalDoc = {
     inDoneMilestone: false,
 }
 
-const task = id => ({ id, dueDate: Date.now() })
+const SECTION_HEIGHT = 184
 
-const flourishOf = tree => tree.root.findAllByProps({ testID: 'goal-completed-flourish' }, { deep: false })[0]
+/**
+ * The section's own wrapper: the outermost node `ParentGoalSection` renders, identified by the
+ * `onLayout` handler it is the only node to carry. Looked up that way rather than by index so a
+ * future wrapper added around it cannot silently move the assertions onto the wrong node.
+ */
+const wrapperOf = tree => tree.root.findAll(node => node.type === Animated.View && !!node.props.onLayout)[0]
 
-const renderSection = async ({ taskList, celebrateCompletion = true }) => {
+const flatStyleOf = node => Object.assign({}, ...[].concat(node.props.style).filter(Boolean))
+
+const renderSection = async ({ exitRunId = 0, measure = true } = {}) => {
     let tree
     await act(async () => {
         tree = renderer.create(
@@ -162,13 +162,13 @@ const renderSection = async ({ taskList, celebrateCompletion = true }) => {
                 projectId={PROJECT}
                 dateIndex={0}
                 goalId={GOAL}
-                taskList={taskList}
+                taskList={[]}
                 taskListIndex={3}
                 instanceKey={'instance-1'}
                 inMainSection={true}
                 goalIndex={0}
-                amountToRender={taskList.length}
-                celebrateCompletion={celebrateCompletion}
+                amountToRender={0}
+                exitRunId={exitRunId}
             />
         )
         await Promise.resolve()
@@ -178,15 +178,37 @@ const renderSection = async ({ taskList, celebrateCompletion = true }) => {
         mockWatchGoal.mock.calls[mockWatchGoal.mock.calls.length - 1][3](goalDoc)
         await Promise.resolve()
     })
+    if (measure) {
+        // jsdom lays nothing out, so the measurement the wrapper gets from `onLayout` in a browser
+        // has to be handed over by hand — without it the collapse has no height to collapse from.
+        await act(async () => {
+            wrapperOf(tree).props.onLayout({ nativeEvent: { layout: { height: SECTION_HEIGHT, width: 600 } } })
+        })
+    }
     return tree
 }
 
-const complete = taskId =>
-    act(() => {
-        publishGoalTaskCompletion({ projectId: PROJECT, goalId: GOAL, taskId })
+const startExit = async tree => {
+    await act(async () => {
+        tree.update(
+            <ParentGoalSection
+                projectId={PROJECT}
+                dateIndex={0}
+                goalId={GOAL}
+                taskList={[]}
+                taskListIndex={3}
+                instanceKey={'instance-1'}
+                inMainSection={true}
+                goalIndex={0}
+                amountToRender={0}
+                exitRunId={1}
+            />
+        )
+        await Promise.resolve()
     })
+}
 
-describe('the goal flourish, wired end to end (AT-2507)', () => {
+describe('a goal section wearing its exit (AT-2507)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
     const originalAddEventListener = AccessibilityInfo.addEventListener
     const originalNodeEnv = process.env.NODE_ENV
@@ -194,7 +216,6 @@ describe('the goal flourish, wired end to end (AT-2507)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         mockWatchGoal.mockClear()
-        resetGoalTaskCompletionListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -207,60 +228,65 @@ describe('the goal flourish, wired end to end (AT-2507)', () => {
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    it('paints nothing on a goal that still has work on it', async () => {
-        const tree = await renderSection({ taskList: [task('t1'), task('t2')] })
+    it('leaves an ordinary section completely untouched', async () => {
+        const tree = await renderSection()
+        const style = flatStyleOf(wrapperOf(tree))
 
-        expect(flourishOf(tree)).toBeUndefined()
-
-        await complete('t1')
-
-        expect(flourishOf(tree)).toBeUndefined()
+        expect(style.opacity).toBeUndefined()
+        expect(style.height).toBeUndefined()
+        expect(style.overflow).toBeUndefined()
+        expect(style.pointerEvents).toBeUndefined()
     })
 
-    it('paints the flourish on the real goal row when its last task is completed', async () => {
-        const tree = await renderSection({ taskList: [task('t1'), task('t2')] })
+    /**
+     * The wrapper MUST be an `Animated.View`. Handed the same style, a plain `View` resolves the
+     * interpolations once through `toString()` and then never updates — the section would take the
+     * first frame of the exit and freeze there, with every other assertion in this file still green.
+     */
+    it('is animatable, not a plain View', async () => {
+        const tree = await renderSection()
 
-        await complete('t1')
-        await complete('t2')
-
-        expect(flourishOf(tree)).toBeDefined()
+        expect(wrapperOf(tree)).toBeDefined()
     })
 
-    it('hands the row back exactly as it found it', async () => {
-        // The goal usually STAYS on the board after being cleared — as an `EmptyGoal` with its
-        // add-task line — so a bar left behind here would be permanent.
-        const tree = await renderSection({ taskList: [task('t1')] })
+    it('wears the exit style once it is leaving', async () => {
+        const tree = await renderSection()
+        await startExit(tree)
 
-        await complete('t1')
-        expect(flourishOf(tree)).toBeDefined()
-
-        await act(async () => {
-            jest.advanceTimersByTime(GOAL_FLOURISH_TOTAL_MS + 200)
-        })
-
-        expect(flourishOf(tree)).toBeUndefined()
+        const style = flatStyleOf(wrapperOf(tree))
+        expect(style.overflow).toBe('hidden')
+        expect(style.opacity).toBeDefined()
+        expect(style.height).toBeDefined()
+        expect(style.transform).toHaveLength(1)
     })
 
-    it('stays silent on a section that may not celebrate', async () => {
-        // What `MainSection` passes for a non-today date section, a filtered list, somebody else's
-        // board, or an assistant profile board.
-        const tree = await renderSection({ taskList: [task('t1')], celebrateCompletion: false })
+    it('stops accepting taps on its way out', async () => {
+        // Everything in the block — the goal row, its add-task line — is about to cease to exist,
+        // and it is fading under the pointer. Carried in the style rather than as a prop, because
+        // react-native-web 0.21 deprecates the prop form and warns.
+        const tree = await renderSection()
+        await startExit(tree)
 
-        await complete('t1')
-
-        expect(flourishOf(tree)).toBeUndefined()
+        expect(flatStyleOf(wrapperOf(tree)).pointerEvents).toBe('none')
     })
 
-    it('paints in the goal row own accent rather than the task green', async () => {
-        // Green is the app's statement about a TASK being done, and it lands on the task row a beat
-        // earlier; reusing it here would make the two moments read as one.
-        const tree = await renderSection({ taskList: [task('t1')] })
-        await complete('t1')
+    it('puts the exit style LAST, so no earlier floor can outrank it', async () => {
+        const tree = await renderSection()
+        await startExit(tree)
 
-        const bar = tree.root.findAllByProps({ testID: 'goal-completed-flourish-bar' }, { deep: false })[0]
-        const style = Object.assign({}, ...[].concat(bar.props.style).filter(Boolean))
-        const { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } = require('../../../Themes/Modern/ProjectColors')
+        const styles = [].concat(wrapperOf(tree).props.style).filter(Boolean)
+        expect(styles[styles.length - 1].height).toBeDefined()
+    })
 
-        expect(style.backgroundColor).toBe(PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT].PROJECT_ITEM_ACTIVE)
+    it('stands down under reduced motion', async () => {
+        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
+        const tree = await renderSection()
+
+        await startExit(tree)
+
+        const style = flatStyleOf(wrapperOf(tree))
+        expect(style.opacity).toBeUndefined()
+        expect(style.height).toBeUndefined()
+        expect(style.pointerEvents).toBeUndefined()
     })
 })

@@ -23,7 +23,6 @@ export default function GoalItem({
     setEditing,
     showingTasks,
     toggleTasksList,
-    completedRunId,
 }) {
     const activeDragGoalMode = useSelector(state => state.activeDragGoalMode === milestoneId)
 
@@ -58,7 +57,6 @@ export default function GoalItem({
                     inParentGoal={inParentGoal}
                     parentGoaltasks={parentGoaltasks}
                     isEmptyGoal={isEmptyGoal}
-                    completedRunId={completedRunId}
                 />
             }
             modalComponent={
