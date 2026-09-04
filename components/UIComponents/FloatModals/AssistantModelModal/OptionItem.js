@@ -9,9 +9,17 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../../UIControls/Shortcut'
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantModelGoldRate from '../../AssistantModelGoldRate'
 
+/**
+ * `text` is a TRANSLATION KEY, never a finished string — it is passed straight to `translate()`.
+ *
+ * An option whose label needs a runtime value (the thread picker names the assistant's own model)
+ * must therefore supply that value as `textParams` and let the key interpolate it, rather than
+ * building the sentence itself: a pre-translated string reaches `translate()` as an unknown key
+ * and renders as `[missing "en.…" translation]` (AT-2512).
+ */
 export default function OptionItem({ modelData, selectedModel, selectModel, disabledShorcut }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    let { text, model, shortcutKey, tokensPerGold } = modelData
+    let { text, textParams, model, shortcutKey, tokensPerGold } = modelData
 
     const selectOption = () => {
         selectModel(model)
@@ -21,7 +29,7 @@ export default function OptionItem({ modelData, selectedModel, selectModel, disa
         <TouchableOpacity style={localStyles.container} onPress={selectOption}>
             <Hotkeys keyName={shortcutKey} onKeyDown={selectOption} filter={e => true} disabled={disabledShorcut}>
                 <View style={localStyles.containerOption}>
-                    <Text style={localStyles.text}>{translate(text)}</Text>
+                    <Text style={localStyles.text}>{translate(text, textParams)}</Text>
                     <AssistantModelGoldRate tokensPerGold={tokensPerGold} />
                 </View>
                 <View style={{ justifyContent: 'center', flexDirection: 'row' }}>
