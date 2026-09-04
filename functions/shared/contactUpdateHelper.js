@@ -19,6 +19,24 @@ function buildUpdatedContact(contact, updates, userId) {
     return nextContact
 }
 
+async function loadFeedsStateForContactWrite({ db, projectId, feedUser, userId }) {
+    const admin = require('firebase-admin')
+    const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+    let projectData = { userIds: [] }
+    try {
+        const projectRef = db.doc(`projects/${projectId}`)
+        const projectSnap = typeof projectRef?.get === 'function' ? await projectRef.get() : null
+        if (projectSnap?.exists) projectData = projectSnap.data() || projectData
+    } catch (error) {
+        console.warn('[contactUpdateHelper] Could not read the project for feed state', {
+            projectId,
+            error: error.message,
+        })
+    }
+    const creator = feedUser || { uid: userId, id: userId }
+    loadFeedsGlobalState(admin, admin, creator, { ...projectData, id: projectId }, [], null)
+}
+
 async function updateContactFields({ db, projectId, contact, userId, feedUser, updates = {} }) {
     const contactId = contact?.uid
     if (!contactId) {
@@ -60,6 +78,13 @@ async function updateContactFields({ db, projectId, contact, userId, feedUser, u
             contact,
         }
     }
+
+    // The feed and follower helpers read `admin`, `feedCreator` and `project` from a per-instance
+    // global state that every caller is expected to load first (TaskService, NoteService and the
+    // cloud triggers all do). This helper never did, so update_contact only worked on a warm
+    // instance where an earlier task or note write had loaded it, and crashed inside
+    // tryAddFollower ("Cannot read properties of undefined (reading 'firestore')") on a cold one.
+    await loadFeedsStateForContactWrite({ db, projectId, feedUser, userId })
 
     const batch = new BatchWrapper(db)
     const contactRef = db.doc(`projectsContacts/${projectId}/contacts/${contactId}`)
@@ -105,5 +130,6 @@ async function updateContactFields({ db, projectId, contact, userId, feedUser, u
 }
 
 module.exports = {
+    loadFeedsStateForContactWrite,
     updateContactFields,
 }

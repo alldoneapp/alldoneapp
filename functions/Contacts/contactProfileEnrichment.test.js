@@ -125,7 +125,13 @@ describe('startContactProfileEnrichment', () => {
         expect(Object.prototype.hasOwnProperty.call(args[8], 'reasoningEffort')).toBe(false)
         expect(args[10]).toBe(1000)
         expect(args[11]).toBe('contacts')
-        expect(args[12]).toEqual({ triggerMessageId: 'req-123', disableToolSearch: true })
+        expect(args[12]).toEqual({
+            triggerMessageId: 'req-123',
+            disableToolSearch: true,
+            // Without this the gate in storeChunks answers "Tool not permitted: fetch_url" for any
+            // assistant whose persisted allowedTools predate the research tools (seen in production).
+            serverGrantedTools: CONTACT_ENRICHMENT_TOOLS,
+        })
 
         expect(result).toEqual({
             success: true,

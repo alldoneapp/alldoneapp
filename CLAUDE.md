@@ -2007,11 +2007,25 @@ timeout and the per-request run lock like every other host — it is in `ASSISTA
 `RUN_LOCK_HOSTS`, and the client-generated `requestId` doubles as the id of the request comment so a
 replayed POST lands on the same comment and the same lock.
 
-Three things are load-bearing. **The run's tools are passed explicitly**
-(`CONTACT_ENRICHMENT_TOOLS`: `web_search`, `fetch_url`, `find_profile_photo`, `update_contact`,
-`get_contacts`) through the `aiSettings.allowedTools` override, because an assistant's persisted
-`allowedTools` predates the two new tools; an existing assistant only gets them for ordinary chats
-once its owner enables them in Tools Access. **The contact is switched to `isAssistantEnabled: true`**
+Three things are load-bearing. **The run's tools are passed twice, and both halves are needed.**
+`aiSettings.allowedTools` (`CONTACT_ENRICHMENT_TOOLS`: `web_search`, `fetch_url`,
+`find_profile_photo`, `update_contact`, `get_contacts`) only decides which SCHEMAS the model sees;
+the execution gate in `storeChunks` authorises each call against the **assistant document's**
+persisted `allowedTools`, which predates the two new tools. The first production run therefore
+researched for twenty seconds and died on `Tool not permitted: fetch_url`. A server-authored run
+passes the same list as `options.serverGrantedTools`, which `generatePreConfigTaskResult` copies
+onto the runtime context and `runToolGrants.resolveRunAllowedTools` unions into the gate — only
+Functions code builds that context, so a client cannot grant itself tools this way. An existing
+assistant still needs the tools enabled in Tools Access for ordinary chats.
+
+**`update_contact` used to work only on a warm instance.** `updateContactFields` calls the feed and
+follower helpers, which read `admin`/`feedCreator`/`project` from the per-instance global state
+(`GlobalState/globalState.js`) that every other caller loads first via `loadFeedsGlobalState` —
+TaskService, NoteService, the cloud triggers. It never did, so on a cold instance `tryAddFollower`
+threw `Cannot read properties of undefined (reading 'firestore')` after the model had done all its
+research, and the batch was never committed. `loadFeedsStateForContactWrite` now loads it from the
+project document before the write. If a feed helper ever throws that error, look for the missing
+`loadFeedsGlobalState` call before suspecting the SDK. **The contact is switched to `isAssistantEnabled: true`**
 before the run, because "ask the user which of these two people it is" only works if the user's reply
 in the contact chat reaches the assistant, and `createObjectMessage` calls it only when the parent
 object says so. And **`fetch_url` refuses LinkedIn and private/link-local addresses up front**

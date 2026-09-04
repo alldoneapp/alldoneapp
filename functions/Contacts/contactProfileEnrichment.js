@@ -186,7 +186,10 @@ async function startContactProfileEnrichment({
             functionEntryTime,
             'contacts',
             // Unattended once started: the user is watching the chat, not retrying tool searches.
-            { triggerMessageId: commentId, disableToolSearch: true }
+            // serverGrantedTools is what lets the run EXECUTE fetch_url/find_profile_photo: the
+            // aiSettings list above only shows the model their schemas, while the execution gate
+            // reads the assistant document, which predates both tools.
+            { triggerMessageId: commentId, disableToolSearch: true, serverGrantedTools: CONTACT_ENRICHMENT_TOOLS }
         )
 
         return {

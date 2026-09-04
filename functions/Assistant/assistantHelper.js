@@ -10531,8 +10531,12 @@ async function storeChunks(
                     // Check permissions
                     await throwIfCancelled(true)
                     const assistant = await getRunAssistant()
+                    // The persisted list is the gate for anything a client could have asked for; a
+                    // server-authored run (contact enrichment) adds its own grant on the runtime
+                    // context, see runToolGrants.js.
+                    const { resolveRunAllowedTools } = require('./runToolGrants')
                     const allowed = await isToolAllowedForExecution(
-                        Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
+                        resolveRunAllowedTools(assistant.allowedTools, runtimeContextForTools),
                         toolName,
                         runtimeContextForTools
                     )
