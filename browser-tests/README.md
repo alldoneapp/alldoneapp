@@ -470,46 +470,53 @@ only one of them is finished work:
 dropped instantly. Holding it anyway would strand a block on the board for 1.4s doing nothing —
 a worse bug than the pop.
 
-### `at2511/` — a newly arrived comment must be visibly ANNOUNCED, without moving the card
+### `at2511/` — a newly arrived comment must ROLL in, without moving the card
 
 When a comment lands in the assistant line's "Last comment" slot, the card used to swap its text
 silently — indistinguishable from a re-render — so the moment the assistant answers, the payoff of
-the whole line, had no shape at all.
+the whole line, had no shape at all. It now plays a **ticker roll**: the comment that was on screen
+travels up and out of the card while the new one comes in from below, like a departure board.
 
 The harness drives the REAL `LastAssistantComment` through the REAL `useLastCommentArrivalMotion`
-and samples painted geometry every 25ms across the ~600ms run, checking each beat where it is
-visible rather than where its `Animated.Value` is:
+and samples painted geometry across the run, checking each beat where it is visible rather than
+where its `Animated.Value` is:
 
-1. **RISE** — the content fades in from transparent and travels UP into its resting place
-2. **GLOW** — an accent band crosses the card and LEAVES it, so no accent is parked on the card
-3. **POP** — the unread badge grows to full size through a small overshoot
-4. **REST** — everything settles on the finished frame and the band is unmounted
+0. **NO FLASH** — the first painted frame is the START of the roll, never the finished state
+1. **ROLL** — both rows travel one full card height, and the row leaving is the OLD comment
+2. **CLIP** — neither row is ever painted outside the card
+3. **POP** — the unread badge grows to full size, stays pinned to the card's corner, is never clipped
+4. **REST** — the new comment settles exactly where the old one was and the outgoing row unmounts
 
 Neither jest suite can answer any of it: `__mocks__/react-native.js` stubs `Animated.timing` with a
-no-op, and jsdom computes no layout, so `onLayout` never fires and the band — gated on a MEASURED
-card width by design, so it can never sweep a guessed distance — is never rendered at all.
+no-op, and jsdom computes no layout — so `onLayout` never fires, the roll distance falls back to a
+constant, and `overflow: hidden` clips nothing because nothing has a box.
 
-Two checks carry most of the value:
+Four checks carry most of the value:
 
 - **The card's height is constant across every frame**, including the resting ones. That fixed
-  `LAST_COMMENT_PREVIEW_HEIGHT` is what stops the assistant line reflowing (AT-2344/AT-2504), and it
-  is why the motion is on the card's CONTENTS rather than on the card: fading or scaling the card
-  would turn the slot into a hole and the line below it would appear to move.
-- **The band fades to fully transparent at both edges.** This is the check that found the one real
-  defect on the harness's first green run: the stops were built with
-  `hexColorToRGBa(colors.Primary100, 0)`, whose alpha branch is `if (alpha)` — `0` is falsy, so it
-  returned an OPAQUE `rgb(...)` and the "soft band" was a hard accent rectangle with a slightly
-  different middle. jsdom reports no computed gradient, so no jest suite could ever have seen it.
-  (The same call still exists in `ghostShimmerStyles`, where white-on-grey hides it.)
+  `LAST_COMMENT_PREVIEW_HEIGHT` is what stops the assistant line reflowing (AT-2344/AT-2504), so the
+  roll is clipped by a viewport that fills the card rather than by resizing anything.
+- **The two rows stay exactly one card apart** for the whole roll, so no band of empty card is ever
+  visible between them. That is what one shared `Animated.Value` buys, and painted pixels are the
+  only place it is observable.
+- **The row rolling away is the old comment and the row rolling in is the new one**, read from the
+  rendered text. No positional check can prove this — a roll that animated the same text twice
+  would pass every one of them.
+- **The first painted frame is the start of the roll.** This is the check that found the one real
+  defect: the animation's values were reset in a *passive* effect, which runs after paint, so frame
+  0 of every arrival painted the FINISHED state (`outgoing y: -90`) and only frame 1 jumped back to
+  the start (`-0.06`). The answer appeared, then visibly fell back down to roll in again. Fixed by
+  moving the reset into a `useLayoutEffect` — the same reason AT-2418 claims its celebration marker
+  in one.
 
-Also pinned: the unread badge stays `position: absolute` at the card's corner while it pops — it is
-animated through its own `style` prop rather than a wrapper, because a react-native-web `View` is
-`position: relative` by default and a wrapper would silently re-anchor the badge to a zero-sized
-box.
+Also pinned: the clip is INSIDE the card, not on it, and the unread badge lives outside the clip —
+it sits at `top/right: -5`, so clipping the card would cut its corner off. The badge is animated
+through its own `style` prop rather than a wrapper, because a react-native-web `View` is
+`position: relative` by default and a wrapper would silently re-anchor it to a zero-sized box.
 
-`--reduce-motion` asserts the **inverted** contract: the finished frame is rendered directly, with
-no fade, no travel, no band and no pop. Nothing is lost — "this is new" is carried by the unread
-badge, which is static. `--compact` runs the same run against the 24px collapsed chip.
+`--reduce-motion` asserts the **inverted** contract: the new comment is shown immediately, with no
+outgoing row mounted at all, no travel and no pop. Nothing is lost — "this is new" is carried by the
+unread badge, which is static. `--compact` runs the same roll against the 24px collapsed chip.
 
 ```bash
 node browser-tests/at2511/run.js

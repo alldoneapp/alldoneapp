@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { StyleSheet, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import LastUserOrAssistantCommentContainer from './LastUserOrAssistantCommentContainer'
@@ -178,40 +178,123 @@ describe('AT-2511 — the arrival signal reaches the card', () => {
     })
 })
 
-describe('AT-2511 — the card is unchanged by the animation', () => {
-    const renderCard = extraProps =>
-        renderer.create(
-            <LastAssistantComment
-                projectId="project-1"
-                commentText="An answer"
-                objectName="A chat title"
-                onPress={() => {}}
-                {...extraProps}
-            />
-        )
+describe('AT-2511 — the card rolls the old comment away', () => {
+    const OLD = 'The comment that was already on screen'
+    const NEW = 'The answer that just landed'
+
+    const cardElement = props => (
+        <LastAssistantComment projectId="project-1" objectName="A chat title" onPress={() => {}} {...props} />
+    )
+    const renderCard = props => renderer.create(cardElement(props))
 
     const cardStyle = tree => StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
+    // `SocialText`-style rendering splits a comment into one <Text> per word, and each carries a
+    // trailing space as a second child — so the words have to be flattened and re-joined before any
+    // phrase is findable.
+    const rowTexts = (tree, testID) => {
+        const row = tree.root.findAllByProps({ testID })[0]
+        if (!row) return ''
+        return row
+            .findAllByType(Text)
+            .flatMap(node => [].concat(node.props.children))
+            .filter(child => typeof child === 'string')
+            .join('')
+            .replace(/\s+/g, ' ')
+            .trim()
+    }
+
+    /**
+     * jest keeps every animation in this codebase inert, so the roll has to be opted into to be
+     * observable at all — otherwise "there is no outgoing row" passes because there is never one.
+     */
+    const withAnimationsEnabled = fn => {
+        const previous = process.env.NODE_ENV
+        process.env.NODE_ENV = 'development'
+        try {
+            return fn()
+        } finally {
+            process.env.NODE_ENV = previous
+        }
+    }
 
     it('reserves the same height whether or not a comment just arrived', () => {
-        expect(cardStyle(renderCard({ arrivalId: null })).height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
-        expect(cardStyle(renderCard({ arrivalId: 7 })).height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
+        expect(cardStyle(renderCard({ commentText: NEW, arrivalId: null })).height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
+        expect(cardStyle(renderCard({ commentText: NEW, arrivalId: 7 })).height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
     })
 
     it('keeps the compact chip at its own fixed height during an arrival', () => {
-        expect(cardStyle(renderCard({ arrivalId: 7, compact: true })).height).toBe(24)
+        expect(cardStyle(renderCard({ commentText: NEW, arrivalId: 7, compact: true })).height).toBe(24)
     })
 
-    // The house convention: animations are inert under jest, so no suite has to advance timers to
-    // reach a stable tree. `lastCommentArrivalMotion.test.js` opts out to assert the real branch.
-    it('paints no band under jest', () => {
-        expect(renderCard({ arrivalId: 7 }).root.findAllByProps({ testID: 'last-comment-arrival-band' })).toHaveLength(
-            0
-        )
+    it('mounts no outgoing row at rest', () => {
+        const tree = renderCard({ commentText: NEW, arrivalId: null })
+        expect(tree.root.findAllByProps({ testID: 'last-comment-outgoing-row' })).toHaveLength(0)
+    })
+
+    // The house convention: animations are inert under jest unless a suite opts out.
+    it('mounts no outgoing row under jest', () => {
+        const tree = renderCard({ commentText: NEW, arrivalId: 7 })
+        expect(tree.root.findAllByProps({ testID: 'last-comment-outgoing-row' })).toHaveLength(0)
+    })
+
+    /**
+     * The whole feature in one assertion: on the frame an arrival lands, the card shows BOTH
+     * comments — the previous one on its way out, the new one on its way in. It is also the case
+     * that proves the previous comment is captured from what was PAINTED rather than from props,
+     * since by this point the props only carry the new one.
+     */
+    it('renders the previous comment and the new one together while rolling', () => {
+        withAnimationsEnabled(() => {
+            let tree
+            act(() => {
+                tree = renderer.create(cardElement({ commentText: OLD, arrivalId: null }))
+            })
+            act(() => {
+                tree.update(cardElement({ commentText: NEW, arrivalId: 1 }))
+            })
+
+            expect(rowTexts(tree, 'last-comment-outgoing-row')).toContain('already on screen')
+            expect(rowTexts(tree, 'last-comment-incoming-row')).toContain('just landed')
+        })
+    })
+
+    it('never lets the outgoing comment take a press', () => {
+        withAnimationsEnabled(() => {
+            let tree
+            act(() => {
+                tree = renderer.create(cardElement({ commentText: OLD, arrivalId: null }))
+            })
+            act(() => {
+                tree.update(cardElement({ commentText: NEW, arrivalId: 1 }))
+            })
+
+            expect(tree.root.findByProps({ testID: 'last-comment-outgoing-row' }).props.pointerEvents).toBe('none')
+        })
+    })
+
+    /**
+     * The roll has to be clipped by a viewport INSIDE the card rather than by the card itself: the
+     * unread badge sits at `top/right: -5`, outside the card's own box, so clipping the card would
+     * cut the badge off.
+     */
+    it('clips the roll with a viewport that does not contain the badge', () => {
+        const tree = renderCard({ commentText: NEW, arrivalId: null, isNew: true, unreadComments: 2 })
+        const viewport = tree.root.findAllByProps({ testID: 'last-comment-roll-viewport' })[0]
+        const viewportStyle = StyleSheet.flatten(viewport.props.style)
+
+        expect(viewportStyle.overflow).toBe('hidden')
+        expect(viewportStyle.borderRadius).toBeGreaterThan(0)
+        expect(viewport.findAllByProps({ testID: 'unread-comments-badge' })).toHaveLength(0)
+        expect(tree.root.findAllByProps({ testID: 'unread-comments-badge' }).length).toBeGreaterThan(0)
+    })
+
+    it('does not clip the card itself, so the badge can overhang it', () => {
+        expect(cardStyle(renderCard({ commentText: NEW, arrivalId: null })).overflow).toBeUndefined()
     })
 
     it('still opens the thread while a comment is arriving', () => {
         const onPress = jest.fn()
-        const tree = renderCard({ arrivalId: 7, onPress })
+        const tree = renderCard({ commentText: NEW, arrivalId: 7, onPress })
         act(() => tree.root.findByType(TouchableOpacity).props.onPress())
         expect(onPress).toHaveBeenCalled()
     })

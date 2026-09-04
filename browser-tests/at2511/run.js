@@ -1,21 +1,29 @@
 /**
- * AT-2511 browser-level test — the last-comment arrival motion, actually painting.
+ * AT-2511 browser-level test — the last-comment ticker roll, actually painting.
  *
  * A new comment landing in the assistant line's "Last comment" slot used to swap its text
  * silently, which is indistinguishable from a re-render — so the moment the assistant answers, the
- * payoff of the whole line, had no shape at all. This checks the shape it now has, frame by frame:
+ * payoff of the whole line, had no shape at all. It now rolls: the comment that was on screen
+ * travels UP and out of the card while the new one comes in from below, like a departure board.
  *
- *   1. RISE   the content fades in from transparent and travels UP into its resting place
- *   2. GLOW   an accent band crosses the card and leaves it, clipped to the card's rounded rect
- *   3. POP    the unread badge grows to full size — and stays pinned to the card's corner
- *   4. REST   everything settles at the finished frame and the band is gone
+ * Sampled every 25ms across the run, each beat checked where it is visible rather than where its
+ * `Animated.Value` is:
+ *
+ *   1. ROLL   both rows travel one full card height, together, and the OLD comment is the one
+ *             leaving — which is only provable by reading the text in each row
+ *   2. CLIP   neither row is ever painted outside the card, so the roll cannot smear over the
+ *             composer above it or the task list below it
+ *   3. POP    the unread badge grows to full size, stays pinned to the card's corner, and is
+ *             NEVER clipped — it sits outside the card at top/right: -5
+ *   4. REST   the new comment settles exactly where the old one was and the outgoing row is gone
  *
  * And the non-negotiable throughout: the card's height NEVER changes. That fixed
  * `LAST_COMMENT_PREVIEW_HEIGHT` is what keeps the assistant line from reflowing (AT-2344/AT-2504),
  * and an animation that broke it would be a regression well beyond a missing flourish.
  *
- * Neither of the jest suites can answer any of this: `Animated.timing` is a no-op stub there, and
- * jsdom computes no layout, so the band (gated on a MEASURED width by design) never renders.
+ * Neither jest suite can answer any of this: `Animated.timing` is a no-op stub there, and jsdom
+ * computes no layout — so `onLayout` never fires, the roll distance falls back to a constant, and
+ * `overflow: hidden` clips nothing because nothing has a box.
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -111,11 +119,11 @@ async function main() {
     const expectedHeight = await page.evaluate(() => window.__expectedCardHeight)
     const atRest = await page.evaluate(() => window.__measure())
 
-    // Before anything arrives, the card must already be complete. A hook seeded at the START of its
-    // animation would leave every first paint, reload and navigation invisible.
+    // Before anything arrives, the card must already be complete and in place. A hook seeded at the
+    // START of its roll would leave every first paint, reload and navigation rolled off the top.
     check('the card is mounted', atRest.present, '')
-    check('at rest the content is fully opaque', atRest.contentOpacity === 1, `opacity=${atRest.contentOpacity}`)
-    check('at rest there is no band', !atRest.bandPresent, '')
+    check('at rest the comment sits at the top of the card', atRest.incomingY === 0, `y=${atRest.incomingY}`)
+    check('at rest there is no outgoing row', !atRest.outgoingPresent, '')
     if (!compact) {
         check(
             'at rest the card is exactly its reserved height',
@@ -124,15 +132,47 @@ async function main() {
         )
     }
 
-    const restingContentTop = atRest.contentTop
+    /**
+     * The clip has to be INSIDE the card, not on it: the unread badge sits at `top/right: -5`, so a
+     * card that clipped its own overflow would cut the badge's corner off.
+     */
+    check(
+        'the roll is clipped by a viewport inside the card',
+        atRest.viewportOverflow === 'hidden' && parseFloat(atRest.viewportRadius) > 0,
+        `viewport overflow=${atRest.viewportOverflow} radius=${atRest.viewportRadius}`
+    )
+    check(
+        'the card itself does not clip, so the badge can overhang it',
+        atRest.cardOverflow !== 'hidden',
+        `card overflow=${atRest.cardOverflow}`
+    )
+    check(
+        'the badge overhangs the card, unclipped',
+        atRest.badgePresent && atRest.badgeAboveCard > 0,
+        `${atRest.badgeAboveCard}px above the card top`
+    )
+
     const restingHeight = atRest.cardHeight
 
-    // The arrival.
-    await page.evaluate(() => window.__arrive())
+    /**
+     * The arrival, and the FIRST painted frame of it captured before any sampling gap.
+     *
+     * This is what caught the one real defect in this feature: the animation's values were reset in
+     * a passive effect, which runs after paint — so frame 0 of every arrival painted the FINISHED
+     * state (the new comment already in place, the old one already gone) and only frame 1 jumped
+     * back to the start of the roll. The answer appeared, then visibly fell back down to roll in
+     * again. `requestAnimationFrame` puts this read in the same frame the arrival is painted in.
+     */
+    const firstPaint = await page.evaluate(
+        () =>
+            new Promise(resolve => {
+                window.__arrive()
+                requestAnimationFrame(() => resolve(window.__measure()))
+            })
+    )
 
-    // ~600ms of motion, sampled every 25ms so each beat gets a dozen frames of its own.
     const SAMPLE_MS = 25
-    const SAMPLES = 40
+    const SAMPLES = 32
     const frames = []
     for (let i = 0; i < SAMPLES; i++) {
         frames.push({ t: i * SAMPLE_MS, ...(await page.evaluate(() => window.__measure())) })
@@ -142,23 +182,20 @@ async function main() {
     const at = key => frames.map(f => f[key])
     const spark = values => values.map(v => (v === null || v === undefined ? '-' : v)).join(' ')
 
-    console.log('    card h x w  :', `${restingHeight} x ${atRest.cardWidth}`)
-    console.log('    content op  :', spark(at('contentOpacity')))
-    console.log(
-        '    content dy  :',
-        spark(frames.map(f => (f.contentTop === null ? null : +(f.contentTop - restingContentTop).toFixed(1))))
-    )
-    console.log('    band left   :', spark(at('bandLeft')))
-    console.log('    badge width :', spark(at('badgeWidth')))
-    console.log('    card height :', spark(at('cardHeight')))
+    console.log('    card h x w   :', `${restingHeight} x ${atRest.cardWidth}`)
+    console.log('    outgoing y   :', spark(at('outgoingY')))
+    console.log('    incoming y   :', spark(at('incomingY')))
+    console.log('    out visible  :', spark(at('outgoingVisible')))
+    console.log('    in visible   :', spark(at('incomingVisible')))
+    console.log('    badge width  :', spark(at('badgeWidth')))
+    console.log('    card height  :', spark(at('cardHeight')))
 
     /**
      * ── the card never moves ─────────────────────────────────────────────────────────────────────
      *
-     * Asserted first and over EVERY frame, including the resting ones, because it is the contract
-     * the flourish is a guest inside. The whole design puts the motion on the card's CONTENTS for
-     * exactly this reason: fading or scaling the card itself would make the slot a hole, and the
-     * line below it would appear to move.
+     * Asserted first and over EVERY frame, because it is the contract the flourish is a guest
+     * inside. It is also why the roll is clipped by a viewport that fills the card rather than by
+     * resizing anything.
      */
     const heights = new Set(at('cardHeight').filter(h => h !== null && h !== undefined))
     check(
@@ -174,19 +211,14 @@ async function main() {
          * which is a static element — so the correct amount of motion is none.
          */
         check(
-            'reduced motion — the content never fades',
-            at('contentOpacity').every(o => o === 1),
-            `opacities seen: ${[...new Set(at('contentOpacity'))].join(', ')}`
-        )
-        check(
-            'reduced motion — the content never travels',
-            frames.every(f => f.contentTop === null || Math.abs(f.contentTop - restingContentTop) < 0.5),
+            'reduced motion — no outgoing row is ever mounted',
+            frames.every(f => !f.outgoingPresent),
             ''
         )
         check(
-            'reduced motion — no band is ever painted',
-            frames.every(f => !f.bandPresent),
-            ''
+            'reduced motion — the comment never travels',
+            frames.every(f => f.incomingY === 0),
+            `offsets seen: ${[...new Set(at('incomingY'))].join(', ')}`
         )
         const badgeWidths = new Set(at('badgeWidth').filter(w => w !== null))
         check(
@@ -194,134 +226,142 @@ async function main() {
             badgeWidths.size === 1,
             `widths seen: ${[...badgeWidths].join(', ')}`
         )
+        check(
+            'reduced motion — the new comment is shown immediately',
+            frames[0].incomingText && frames[0].incomingText.includes('moved the three overdue tasks'),
+            ''
+        )
     } else {
-        // ── beat 1: the rise ─────────────────────────────────────────────────────────────────────
-        const opacities = at('contentOpacity').filter(o => o !== null)
+        /**
+         * ── beat 0: no flash ─────────────────────────────────────────────────────────────────────
+         *
+         * The very first painted frame must be the START of the roll — the old comment still in
+         * place, the new one still below the card — never the finished state. Anything else is the
+         * new comment appearing and then falling back down to roll in, which reads as a stutter and
+         * is worse than no animation at all.
+         */
         check(
-            'beat 1 — the content starts transparent',
-            Math.min(...opacities) < 0.35,
-            `min opacity ${Math.min(...opacities)}`
+            'beat 0 — the first painted frame is the START of the roll, not the end',
+            firstPaint.outgoingPresent && firstPaint.outgoingY > -2 && firstPaint.incomingY >= restingHeight - 2,
+            `outgoing y=${firstPaint.outgoingY}, incoming y=${firstPaint.incomingY}, card ${restingHeight}px`
         )
         check(
-            'beat 1 — the content reaches full opacity',
-            Math.max(...opacities) === 1,
-            `max opacity ${Math.max(...opacities)}`
-        )
-        check(
-            'beat 1 — the opacity actually advances (not a single frame jump)',
-            new Set(opacities).size >= 4,
-            `${new Set(opacities).size} distinct opacities`
-        )
-
-        const offsets = frames.filter(f => f.contentTop !== null).map(f => f.contentTop - restingContentTop)
-        check(
-            'beat 1 — the content starts BELOW its resting place',
-            Math.max(...offsets) > 3,
-            `max offset +${Math.max(...offsets).toFixed(1)}px`
-        )
-        check(
-            'beat 1 — and travels up to exactly where it rests',
-            Math.abs(offsets[offsets.length - 1]) < 0.5,
-            `final offset ${offsets[offsets.length - 1].toFixed(1)}px`
-        )
-        check(
-            'beat 1 — it only ever rises (never overshoots above its place)',
-            Math.min(...offsets) > -0.5,
-            `min offset ${Math.min(...offsets).toFixed(1)}px`
+            'beat 0 — the new comment is not painted in place before it rolls in',
+            firstPaint.incomingVisible !== null && firstPaint.incomingVisible < 0.1,
+            `incoming visible fraction ${firstPaint.incomingVisible}`
         )
 
-        // ── beat 2: the glow ─────────────────────────────────────────────────────────────────────
-        const banded = frames.filter(f => f.bandPresent)
-        check('beat 2 — the band is painted', banded.length > 0, `${banded.length}/${SAMPLES} frames`)
+        // ── beat 1: the roll ─────────────────────────────────────────────────────────────────────
+        const rolling = frames.filter(f => f.outgoingPresent)
+        check('beat 1 — an outgoing row is mounted', rolling.length > 0, `${rolling.length}/${SAMPLES} frames`)
 
-        if (banded.length) {
-            const lefts = banded.map(f => f.bandLeft)
-            const bandWidth = banded[0].bandWidth
+        if (rolling.length) {
+            /**
+             * The row leaving must be the OLD comment and the row arriving the NEW one. Nothing
+             * about the geometry can prove this — a roll that animated the same text twice would
+             * pass every positional check — so the text itself is read out of each row.
+             */
             check(
-                'beat 2 — the band travels across the card',
-                new Set(lefts).size >= 4,
-                `${new Set(lefts).size} distinct positions, ${Math.min(...lefts)}px → ${Math.max(...lefts)}px`
+                'beat 1 — the row rolling away is the comment that WAS on screen',
+                rolling.every(f => f.outgoingText && f.outgoingText.includes('already on screen')),
+                `outgoing: "${(rolling[0].outgoingText || '').slice(0, 48)}…"`
             )
             check(
-                'beat 2 — it starts fully off the left edge',
-                Math.min(...lefts) <= -bandWidth + 2,
-                `min left ${Math.min(...lefts)}px, band ${bandWidth}px`
+                'beat 1 — the row rolling in is the comment that just arrived',
+                rolling.every(f => f.incomingText && f.incomingText.includes('moved the three overdue tasks')),
+                `incoming: "${(rolling[0].incomingText || '').slice(0, 48)}…"`
+            )
+
+            const outs = rolling.map(f => f.outgoingY)
+            const ins = rolling.map(f => f.incomingY)
+
+            check(
+                'beat 1 — the old comment starts in place and the new one a full card below',
+                Math.max(...outs) > -2 && Math.max(...ins) >= restingHeight - 2,
+                `outgoing max ${Math.max(...outs)}px, incoming max ${Math.max(...ins)}px of ${restingHeight}px`
             )
             check(
-                'beat 2 — and leaves past the right edge, so no accent is parked on the card',
-                Math.max(...lefts) >= atRest.cardWidth - 2,
-                `max left ${Math.max(...lefts)}px of ${atRest.cardWidth}px`
+                'beat 1 — it rolls UPWARD: the old comment never travels down',
+                outs.every(y => y <= 0.5) && ins.every(y => y >= -0.5),
+                `outgoing ${Math.min(...outs)}px → ${Math.max(...outs)}px`
             )
             check(
-                'beat 2 — the band is a gradient, never a solid rectangle',
-                banded[0].bandImage.includes('gradient'),
-                banded[0].bandImage.slice(0, 60)
+                'beat 1 — the roll actually advances (not a single frame jump)',
+                new Set(outs).size >= 4,
+                `${new Set(outs).size} distinct positions, ${Math.min(...outs)}px → ${Math.max(...outs)}px`
             )
             /**
-             * The assertion that caught the real defect on this harness's first green run: the
-             * stops were built with `hexColorToRGBa(color, 0)`, whose alpha branch is `if (alpha)`
-             * — so `0` fell through to an OPAQUE `rgb(...)` and the "soft band" was a hard accent
-             * rectangle with a slightly different middle. jsdom reports no computed gradient at
-             * all, so no jest suite could ever have seen it.
+             * THE contract of a ticker: the two rows stay exactly one card apart, so no band of
+             * empty card is ever visible between them. That is what one shared `Animated.Value`
+             * buys, and this is where it is actually observable — in painted pixels.
              */
-            const stops = banded[0].bandImage.match(/rgba?\([^)]*\)/g) || []
+            const gaps = rolling.map(f => Number((f.incomingY - f.outgoingY).toFixed(2)))
             check(
-                'beat 2 — the band fades out at BOTH edges (no hard accent rectangle)',
-                stops.length >= 3 &&
-                    /rgba\([^)]*,\s*0\)/.test(stops[0]) &&
-                    /rgba\([^)]*,\s*0\)/.test(stops[stops.length - 1]),
-                `stops: ${stops.join(' | ')}`
+                'beat 1 — the two rows stay exactly one card apart, so no gap opens',
+                gaps.every(gap => Math.abs(gap - restingHeight) < 1.5),
+                `gaps seen: ${Math.min(...gaps)}px … ${Math.max(...gaps)}px, card ${restingHeight}px`
             )
             check(
-                'beat 2 — and is only faintly tinted at its peak',
-                stops.some(stop => {
-                    const alpha = Number((stop.match(/,\s*([0-9.]+)\)$/) || [])[1])
-                    return alpha > 0 && alpha <= 0.3
-                }),
-                `stops: ${stops.join(' | ')}`
+                'beat 1 — the old comment leaves the card completely',
+                Math.min(...outs) <= -restingHeight + 2,
+                `min ${Math.min(...outs)}px, card ${restingHeight}px`
+            )
+
+            // ── beat 2: the clip ─────────────────────────────────────────────────────────────────
+            const outside = await page.evaluate(() => window.__paintedOutsideCard())
+            check(
+                'beat 2 — the roll is clipped: neither row paints outside the card',
+                rolling.every(f => f.outgoingVisible <= 1.001 && f.incomingVisible <= 1.001),
+                `max visible fractions out=${Math.max(...rolling.map(f => f.outgoingVisible))} in=${Math.max(...rolling.map(f => f.incomingVisible))}`
             )
             check(
-                'beat 2 — the band is scoped to this card, not the viewport',
-                bandWidth < atRest.cardWidth,
-                `${bandWidth}px of ${atRest.cardWidth}px`
+                'beat 2 — the two rows together never over-fill the card',
+                rolling.every(f => f.outgoingVisible + f.incomingVisible <= 1.05),
+                `max combined ${Math.max(...rolling.map(f => f.outgoingVisible + f.incomingVisible)).toFixed(3)}`
+            )
+            console.log('    painted outside card at rest:', JSON.stringify(outside))
+
+            // ── beat 3: the badge ────────────────────────────────────────────────────────────────
+            const badgeWidths = at('badgeWidth').filter(w => w !== null)
+            check(
+                'beat 3 — the badge pops from smaller to full size',
+                new Set(badgeWidths).size >= 3 && Math.min(...badgeWidths) < Math.max(...badgeWidths),
+                `${Math.min(...badgeWidths)}px → ${Math.max(...badgeWidths)}px`
+            )
+            /**
+             * The badge is `position: absolute` against the card's corner and a react-native-web
+             * `View` is `position: relative` by default, so animating it through a WRAPPER would
+             * silently re-anchor it to a zero-sized box. It is animated through its own style for
+             * that reason, and this is the assertion that would catch a regression back to one.
+             */
+            const finalBadge = frames[frames.length - 1]
+            check(
+                'beat 3 — the badge stays pinned to the card corner throughout',
+                finalBadge.badgePosition === 'absolute' && Math.abs(finalBadge.badgeRight - 5) < 1.5,
+                `position=${finalBadge.badgePosition}, right overhang ${finalBadge.badgeRight}px (expected ~5)`
             )
             check(
-                'beat 2 — the band is retired once it has left',
-                !frames[frames.length - 1].bandPresent,
-                `last frame bandPresent=${frames[frames.length - 1].bandPresent}`
+                'beat 3 — the badge is never clipped by the roll viewport',
+                frames.every(f => f.badgePresent && f.badgeAboveCard > 0),
+                `min above card ${Math.min(...at('badgeAboveCard'))}px`
             )
         }
-
-        // ── beat 3: the badge ────────────────────────────────────────────────────────────────────
-        const badgeWidths = at('badgeWidth').filter(w => w !== null)
-        check(
-            'beat 3 — the badge pops from smaller to full size',
-            new Set(badgeWidths).size >= 3 && Math.min(...badgeWidths) < Math.max(...badgeWidths),
-            `${Math.min(...badgeWidths)}px → ${Math.max(...badgeWidths)}px`
-        )
-        /**
-         * The badge is `position: absolute` against the card's corner and a react-native-web `View`
-         * is `position: relative` by default, so animating it through a WRAPPER would silently
-         * re-anchor it to a zero-sized box. It is animated through its own style for that reason,
-         * and this is the assertion that would catch a regression back to a wrapper.
-         */
-        const finalBadge = frames[frames.length - 1]
-        check(
-            'beat 3 — the badge stays pinned to the card corner throughout',
-            finalBadge.badgePosition === 'absolute' && Math.abs(finalBadge.badgeRight - 5) < 1.5,
-            `position=${finalBadge.badgePosition}, right overhang ${finalBadge.badgeRight}px (expected ~5)`
-        )
     }
 
     // ── beat 4: rest ─────────────────────────────────────────────────────────────────────────────
-    await sleep(400)
+    await sleep(500)
     const settled = await page.evaluate(() => window.__measure())
+    check('beat 4 — the outgoing row is unmounted', !settled.outgoingPresent, '')
     check(
-        'beat 4 — the content settles fully opaque',
-        settled.contentOpacity === 1,
-        `opacity=${settled.contentOpacity}`
+        'beat 4 — the new comment settles exactly where the old one was',
+        settled.incomingY === 0,
+        `y=${settled.incomingY}`
     )
-    check('beat 4 — no band is left behind', !settled.bandPresent, '')
+    check(
+        'beat 4 — the new comment is what is left on screen',
+        settled.incomingText && settled.incomingText.includes('moved the three overdue tasks'),
+        ''
+    )
     check(
         'beat 4 — the card is still exactly its resting height',
         settled.cardHeight === restingHeight,
@@ -332,6 +372,11 @@ async function main() {
         Math.abs(settled.cardTop - atRest.cardTop) < 0.5,
         `top moved ${(settled.cardTop - atRest.cardTop).toFixed(1)}px`
     )
+
+    // A finished roll must STAY finished: nothing may re-arm it without a new arrival.
+    await sleep(700)
+    const later = await page.evaluate(() => window.__measure())
+    check('beat 4 — it does not roll again on its own', !later.outgoingPresent && later.incomingY === 0, '')
 
     // The comment is already stored and already interactive — nothing is held for the animation.
     await page.evaluate(() => document.querySelector('[data-testid="last-comment-card"]').click())

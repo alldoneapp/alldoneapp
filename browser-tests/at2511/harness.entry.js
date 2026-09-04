@@ -1,18 +1,19 @@
 /**
- * AT-2511 browser harness — the last-comment arrival motion, actually painting.
+ * AT-2511 browser harness — the last-comment ticker roll, actually painting.
  *
- * Renders the REAL `LastAssistantComment` driven by the REAL `useLastCommentArrivalMotion`, inside
- * the REAL `LastCommentArea` inset geometry, against a real react-redux store.
+ * Renders the REAL `LastAssistantComment` driven by the REAL `useLastCommentArrivalMotion`, in the
+ * REAL `LastCommentArea` inset geometry, against the app's real redux store.
  *
  * Jest can observe none of this, for two independent reasons that both matter:
  *   - `__mocks__/react-native.js` replaces `Animated.timing` with a no-op `{start}` stub, so no
- *     value ever advances; and
- *   - jsdom computes no layout, so `onLayout` never fires and the band — which is gated on a
- *     MEASURED card width, deliberately, so it can never sweep a guessed distance — is never
- *     rendered at all.
+ *     value ever advances on its own; and
+ *   - jsdom computes no layout, so `onLayout` never fires and the roll distance would fall back to
+ *     a constant — the very thing that has to be checked is that the two rows travel exactly one
+ *     real card height, measured, with no gap opening between them.
  *
- * So the jest suites can prove the motion is ARMED and that the card's geometry is untouched. Only
- * this harness can prove a pixel moves, and that the card is still exactly as tall while it does.
+ * So the jest suites prove the roll is ARMED and that both rows share one value. Only this harness
+ * proves a pixel moves, that the card CLIPS the roll, and that the card is still exactly as tall
+ * while it happens.
  */
 import React from 'react'
 import { createRoot } from 'react-dom/client'
@@ -47,7 +48,7 @@ const FIRST = 'The first thing this slot ever showed, already on screen before a
 const ARRIVED = 'Done — I moved the three overdue tasks to today and left a note in the thread.'
 
 // `LastCommentArea`'s own inset for the non-compact card (`previewInset` 16 + `LastComment`'s 16),
-// so the band's clip and the badge's -5 overhang are measured inside the box they really ship in.
+// so the clip and the badge's -5 overhang are measured inside the box they really ship in.
 const areaStyles = StyleSheet.create({
     area: { width: 560, paddingLeft: 32, paddingTop: 24, backgroundColor: '#FFFFFF' },
 })
@@ -58,6 +59,8 @@ function App() {
     const [compact, setCompact] = React.useState(false)
 
     window.__arrive = () => {
+        // The new comment and a fresh arrival id land in the SAME commit, exactly as they do in the
+        // app — `LastUserOrAssistantCommentContainer` recomputes both from one Firestore snapshot.
         setCommentText(ARRIVED)
         setArrivalId(id => (id || 0) + 1)
     }
@@ -88,37 +91,77 @@ const rect = testId => {
 }
 
 /**
- * PAINTED geometry (`getBoundingClientRect` resolves transforms) and computed opacity, never the
+ * PAINTED geometry (`getBoundingClientRect` resolves transforms) and computed style, never the
  * `Animated.Value` behind them. That distinction is the whole point: jest can read a value and
  * still be looking at an animation that never advanced a pixel.
  */
 window.__measure = () => {
     const card = rect('last-comment-card')
     if (!card) return { present: false }
-    const content = rect('last-comment-arrival-content')
-    const band = rect('last-comment-arrival-band')
+    const viewport = rect('last-comment-roll-viewport')
+    const incoming = rect('last-comment-incoming-row')
+    const outgoing = rect('last-comment-outgoing-row')
     const badge = rect('unread-comments-badge')
+
+    // Each row's offset from where it rests, i.e. from the top of the card.
+    const offsetIn = layer => (layer ? Number((layer.box.top - card.box.top).toFixed(2)) : null)
 
     return {
         present: true,
         cardHeight: Number(card.box.height.toFixed(2)),
         cardWidth: Math.round(card.box.width),
         cardTop: Number(card.box.top.toFixed(2)),
-        // The content's own opacity, and how far below its resting place it currently sits.
-        contentOpacity: content ? Number(content.style.opacity) : null,
-        contentTop: content ? Number(content.box.top.toFixed(2)) : null,
-        bandPresent: !!band,
-        bandLeft: band ? Math.round(band.box.left - card.box.left) : null,
-        bandWidth: band ? Math.round(band.box.width) : null,
-        // A hard-edged accent rectangle sliding over the card would be worse than no band, so the
-        // gradient is the only paint there is.
-        bandImage: band ? band.style.backgroundImage : null,
-        bandColor: band ? band.style.backgroundColor : null,
+        cardOverflow: card.style.overflow,
+        viewportOverflow: viewport ? viewport.style.overflow : null,
+        viewportRadius: viewport ? viewport.style.borderRadius : null,
+        incomingPresent: !!incoming,
+        incomingY: offsetIn(incoming),
+        outgoingPresent: !!outgoing,
+        outgoingY: offsetIn(outgoing),
+        // What the user can actually READ in each row — the check that the row rolling away is the
+        // OLD comment and the one rolling in is the new one.
+        incomingText: incoming ? incoming.node.textContent : null,
+        outgoingText: outgoing ? outgoing.node.textContent : null,
+        // How much of each row is inside the card's own box. The clip is what makes the roll a
+        // roll rather than two comments sliding over the neighbouring UI.
+        incomingVisible: incoming ? visibleFraction(incoming.box, card.box) : null,
+        outgoingVisible: outgoing ? visibleFraction(outgoing.box, card.box) : null,
         badgePresent: !!badge,
         badgeWidth: badge ? Number(badge.box.width.toFixed(2)) : null,
         badgeRight: badge ? Number((badge.box.right - card.box.right).toFixed(2)) : null,
         badgePosition: badge ? badge.style.position : null,
+        // The badge must remain fully painted throughout: it sits OUTSIDE the card, so a clip in
+        // the wrong place would cut it off.
+        badgeAboveCard: badge ? Number((card.box.top - badge.box.top).toFixed(2)) : null,
     }
+}
+
+const visibleFraction = (box, cardBox) => {
+    const top = Math.max(box.top, cardBox.top)
+    const bottom = Math.min(box.bottom, cardBox.bottom)
+    if (box.height <= 0) return 0
+    return Number((Math.max(0, bottom - top) / box.height).toFixed(3))
+}
+
+/**
+ * What the user would see if the clip were missing or in the wrong place. Read from the real
+ * painted tree rather than assumed: a `position: fixed` portal or a stray `overflow: visible`
+ * anywhere up the chain would show here as content painted outside the card.
+ */
+window.__paintedOutsideCard = () => {
+    const card = rect('last-comment-card')
+    if (!card) return null
+    return ['last-comment-incoming-row', 'last-comment-outgoing-row']
+        .map(testId => {
+            const layer = rect(testId)
+            if (!layer) return null
+            return {
+                testId,
+                aboveCard: Number(Math.max(0, card.box.top - layer.box.top).toFixed(2)),
+                belowCard: Number(Math.max(0, layer.box.bottom - card.box.bottom).toFixed(2)),
+            }
+        })
+        .filter(Boolean)
 }
 
 window.__expectedCardHeight = LAST_COMMENT_PREVIEW_HEIGHT
