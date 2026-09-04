@@ -1,18 +1,23 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Animated, StyleSheet, Text } from 'react-native'
 
 import { colors } from '../../../styles/global'
 
-export default function UnreadCommentsBadge({ amount, followed }) {
+// AT-2511 — `style` carries the arrival pop, and it is taken as a prop rather than applied by a
+// wrapper on purpose: this badge is `position: absolute` against the comment card's corner, and a
+// react-native-web `View` is `position: relative` by default, so wrapping it would re-anchor it to
+// a zero-sized box instead of the card. An `Animated.View` accepting the transform directly keeps
+// the badge exactly where it has always been, animated or not.
+export default function UnreadCommentsBadge({ amount, followed, style }) {
     if (!(amount > 0)) return null
 
     const displayedAmount = amount > 99 ? '+99' : amount
     const backgroundColor = followed ? colors.UtilityRed200 : colors.Gray500
 
     return (
-        <View style={[localStyles.container, { backgroundColor }]} testID="unread-comments-badge">
+        <Animated.View style={[localStyles.container, { backgroundColor }, style]} testID="unread-comments-badge">
             <Text style={localStyles.text}>{displayedAmount}</Text>
-        </View>
+        </Animated.View>
     )
 }
 

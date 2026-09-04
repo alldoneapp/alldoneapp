@@ -55,6 +55,14 @@ export default function LastCommentArea({
     const followedProjectChatLastNotification = projectChatLastNotification?.followed
         ? projectChatLastNotification
         : null
+    // AT-2511 — identifies THIS Last comment slot for arrival detection. It has to outlive the
+    // subtree (a comment arriving in another chat remounts it, and so does the AT-2504 pending →
+    // reply handoff), so the memory is keyed on the slot rather than held in a component. The user
+    // is part of it so an account switch cannot inherit the previous user's "already seen", and the
+    // assistant is part of it only when the slot is scoped to one, matching `projectKey` above.
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const scopeKey = `${loggedUserId || ''}:${projectKey}:${scopeToAssistant ? assistantId || '' : ''}`
+
     const [aModalIsOpen, setAModalIsOpen] = useState(false)
     const [currentProjectChatLastNotification, setCurrentProjectChatLastNotification] = useState(
         followedProjectChatLastNotification
@@ -160,6 +168,7 @@ export default function LastCommentArea({
                 currentProjectChatLastNotification={currentProjectChatLastNotification}
                 currentLastAssistantCommentData={currentLastAssistantCommentData}
                 compact={compact}
+                scopeKey={scopeKey}
             />
         </View>
     )

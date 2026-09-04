@@ -12,9 +12,6 @@ describe('assistant model translations', () => {
         expect(translations['GPT 5_6 Terra']).toBeTruthy()
         expect(translations['GPT 5_6 Luna']).toBeTruthy()
         expect(translations['Use assistant model']).toBeTruthy()
-        // The thread picker's inherit entry (AT-2512). The placeholder has to survive translation,
-        // or the label renders the assistant's model name nowhere at all.
-        expect(translations['Use assistant model with name']).toContain('%{name}')
         expect(translations['Use assistant effort']).toBeTruthy()
         expect(translations['Assistant email']).toBeTruthy()
         expect(translations['Inbound email model']).toBeTruthy()

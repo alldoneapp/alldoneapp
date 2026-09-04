@@ -1,0 +1,122 @@
+import { useEffect, useRef, useState } from 'react'
+
+/**
+ * AT-2511 — "is the comment in this slot one the user has not seen here yet?"
+ *
+ * The Last comment card swaps its content silently today, so the moment the assistant answers —
+ * the payoff of the whole assistant line — looks identical to a re-render. Animating it needs one
+ * thing the card cannot get from its own props: a way to tell an ARRIVAL from a RE-RENDER, and from
+ * a first paint.
+ *
+ * ## Why this is not just `prevProps.commentText !== commentText`
+ *
+ * `LastComment` keys its child on the chat (`project:chatType:chatId`), so a comment arriving in a
+ * DIFFERENT chat than the one on screen — which is the ordinary case for a heartbeat, a VM result,
+ * or any thread other than the one you just wrote in — REMOUNTS the subtree. A component-local
+ * "previous value" ref is born empty on that mount and can therefore never see the change it is
+ * supposed to animate. The AT-2504 pending → reply handoff remounts for the same reason.
+ *
+ * So the memory has to outlive the mount, which is what this module is: a per-scope record of the
+ * comment identity that slot last DISPLAYED. It is module state rather than redux for the reason
+ * spelled out in `assistantLinePendingSend.js` and `threadAssistantModelState.js` (AT-2502): this
+ * concerns one widget for half a second, and per AT-2336 a slice keyed by project id re-renders
+ * every subscriber of that map on every write.
+ *
+ * ## First paint is never an arrival
+ *
+ * An empty record means "we have not shown anything here yet", NOT "everything is new" — the
+ * AT-2445 lesson (a count of 0 also means "not counted yet"). A scope's first comment is therefore
+ * recorded silently. That is what keeps the animation off a reload, a login, a project switch and
+ * every navigation back into the view: those all show a comment that was already there, and
+ * celebrating them would make the effect meaningless exactly when it should mean something.
+ *
+ * The memory is in-process on purpose. Persisting it would let a comment that arrived while the tab
+ * was closed animate on the next boot, which is the same "congratulate the user for state, not for
+ * an event" mistake in a different disguise.
+ *
+ * ## Identity is what is DISPLAYED, not the comment id
+ *
+ * `LastUserOrAssistantCommentContainer` renders from two sources: the localStorage preview cache
+ * (`assistantLineCache`, which stores text + chat and NO comment id) and, a second later, the
+ * Firestore watcher (which does carry `id`). Keying on the id where available and on the text
+ * otherwise would make the cache → watcher handover look like a change and fire the animation on
+ * every single load. One consistent identity — the chat plus the rendered text — cannot do that,
+ * and it is also the honest question: if the text is identical, nothing visibly arrived.
+ */
+
+// A scope's record survives remounts but not a reload. Keyed by the caller's `scopeKey`, which
+// `LastCommentArea` builds from the user, the project key it subscribes to and the assistant it is
+// scoped to — i.e. exactly the identity of "this Last comment slot".
+const seenCommentKeys = new Map()
+
+let arrivalCounter = 0
+
+/**
+ * FNV-1a over `chat|text`. The identity has to be comparable and bounded — a raw 500-character
+ * comment as a Map key held for the session is a needless retention — and a collision here costs a
+ * missed animation, nothing else.
+ */
+const digest = value => {
+    let hash = 0x811c9dc5
+    for (let index = 0; index < value.length; index++) {
+        hash ^= value.charCodeAt(index)
+        hash = Math.imul(hash, 0x01000193)
+    }
+    return (hash >>> 0).toString(36)
+}
+
+export const buildLastCommentKey = ({ objectType, objectId, commentText }) => {
+    if (typeof commentText !== 'string') return null
+    return `${objectType || ''}:${objectId || ''}:${commentText.length}:${digest(commentText)}`
+}
+
+export const getSeenLastCommentKey = scopeKey => (scopeKey ? seenCommentKeys.get(scopeKey) || null : null)
+
+export const markLastCommentSeen = (scopeKey, commentKey) => {
+    if (!scopeKey || !commentKey) return
+    seenCommentKeys.set(scopeKey, commentKey)
+}
+
+/** Exported for tests: module-level state outlives a test file otherwise. */
+export const resetLastCommentArrivals = () => {
+    seenCommentKeys.clear()
+    arrivalCounter = 0
+}
+
+/**
+ * Returns a fresh `arrivalId` on the render after this scope starts showing a comment it has not
+ * shown before, and `null` otherwise. A NUMBER rather than a boolean so two arrivals in a row
+ * restart the motion instead of the second one being swallowed as "already animating" — the card
+ * passes it straight into the animation's effect dependency list.
+ *
+ * The decision is made in an effect, not during render: the record write and the decision have to
+ * be one atomic step, and a render-phase write would be re-run by React's double-invocation in
+ * development and by any re-render before the commit lands.
+ */
+export const useLastCommentArrival = ({ scopeKey, commentKey, enabled = true }) => {
+    const [arrival, setArrival] = useState(null)
+    // Guards the case where the same key is delivered again after an unrelated re-render: the
+    // effect would find its own record and correctly do nothing, but only because the record was
+    // written. This keeps that true even if the scope is cleared underneath us.
+    const lastAnimatedKeyRef = useRef(null)
+
+    useEffect(() => {
+        if (!scopeKey || !commentKey) return
+
+        const seen = getSeenLastCommentKey(scopeKey)
+        markLastCommentSeen(scopeKey, commentKey)
+
+        // Nothing shown here before — record it and stay quiet.
+        if (!seen) return
+        if (seen === commentKey) return
+        if (lastAnimatedKeyRef.current === commentKey) return
+
+        lastAnimatedKeyRef.current = commentKey
+        if (enabled) {
+            arrivalCounter += 1
+            setArrival(arrivalCounter)
+        }
+    }, [scopeKey, commentKey, enabled])
+
+    return enabled ? arrival : null
+}
