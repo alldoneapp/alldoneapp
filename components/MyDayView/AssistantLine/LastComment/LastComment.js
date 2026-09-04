@@ -11,6 +11,7 @@ export default function LastComment({
     currentLastAssistantCommentData,
     compact = false,
     assistant,
+    scopeKey = null,
 }) {
     const followedNotification = currentProjectChatLastNotification?.followed
         ? currentProjectChatLastNotification
@@ -40,6 +41,7 @@ export default function LastComment({
                     fromChatNotification={true}
                     isFollowedNotification={true}
                     compact={compact}
+                    scopeKey={scopeKey}
                 />
             ) : (
                 <LastUserOrAssistantCommentContainer
@@ -49,6 +51,7 @@ export default function LastComment({
                     objectType={currentLastAssistantCommentData.objectType}
                     setAModalIsOpen={setAModalIsOpen}
                     compact={compact}
+                    scopeKey={scopeKey}
                 />
             )}
         </View>

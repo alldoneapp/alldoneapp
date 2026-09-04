@@ -9,6 +9,7 @@ import { watchComments } from '../../../../utils/backends/Chats/chatsComments'
 import { getAllUnreadCommentIds, getUnreadCommentsCount } from './unreadCommentsHelper'
 import { LastCommentPreviewSkeleton } from '../AssistantLineSkeleton'
 import { readLastCommentCache, writeLastCommentCache } from '../assistantLineCache'
+import { buildLastCommentKey, useLastCommentArrival } from './lastCommentArrival'
 
 const MAX_COMMENTS_TO_VERIFY_UNREAD = 100
 export const DEFERRED_LAST_COMMENT_REFRESH_MS = 1000
@@ -21,6 +22,7 @@ export default function LastUserOrAssistantCommentContainer({
     fromChatNotification,
     isFollowedNotification,
     compact = false,
+    scopeKey = null,
 }) {
     const userId = useSelector(state => state.loggedUser.uid)
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
@@ -94,6 +96,15 @@ export default function LastUserOrAssistantCommentContainer({
         )
     }, [chat, commentText, objectId, objectType, project.id, userId])
 
+    // AT-2511 — the identity of what this slot is DISPLAYING, resolved here because this is the one
+    // component that sees both sources the preview renders from (the localStorage cache and the
+    // Firestore watcher) and can therefore give them the same key. See `lastCommentArrival.js` for
+    // why the same key has to come out of both, and why the memory outlives this mount.
+    const arrivalId = useLastCommentArrival({
+        scopeKey,
+        commentKey: buildLastCommentKey({ objectType, objectId, commentText }),
+    })
+
     if (commentText === null || commentText === undefined || !chat) {
         return <LastCommentPreviewSkeleton compact={compact} />
     }
@@ -115,6 +126,7 @@ export default function LastUserOrAssistantCommentContainer({
             commentText={commentText}
             setAModalIsOpen={setAModalIsOpen}
             compact={compact}
+            arrivalId={arrivalId}
         />
     )
 }
