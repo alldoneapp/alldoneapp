@@ -49,10 +49,17 @@ import {
 } from '../../utils/backends/Contacts/contactsFirestore'
 import { MENTION_MODAL_CONTACTS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
 import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
+import Spinner from '../UIComponents/Spinner'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 
 export default class EditContact extends Component {
+    // AT-2508 - the form can be dismissed while a creation is still in flight (react-dismissible
+    // still owns Escape and outside clicks, deliberately, so a hung write can never trap the
+    // user behind a disabled Cancel), so every continuation below has to know whether there is
+    // still a component to talk to.
+    _isMounted = false
+
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -70,6 +77,11 @@ export default class EditContact extends Component {
             tmpContact: clonedContact,
             isEmail: false,
             contactChanged: false,
+            // AT-2508 - adding a person takes a visible moment. The form stays on screen and
+            // says so until the write is acknowledged, instead of vanishing into a list that
+            // will not show the new row for several seconds yet.
+            creatingContact: false,
+            creationError: null,
             showInfoModal: false,
             showPictureModal: false,
             showCopyContactModal: false,
@@ -82,16 +94,19 @@ export default class EditContact extends Component {
     }
 
     componentDidMount() {
+        this._isMounted = true
         store.dispatch(setLastAddNewContact({ projectId: this.props.projectId }))
         document.addEventListener('keydown', this.onPressKey)
     }
 
     componentWillUnmount() {
+        this._isMounted = false
         document.removeEventListener('keydown', this.onPressKey)
         this.state.unsubscribe()
     }
 
     updateState = () => {
+        if (!this._isMounted) return
         const storeState = store.getState()
 
         this.setState({
@@ -107,6 +122,9 @@ export default class EditContact extends Component {
 
     enterActionKey = e => {
         const { showFloatPopup } = store.getState()
+        // While the contact is being written the form is locked and showing its progress; a
+        // stray Enter must not close it or queue a second write (AT-2508).
+        if (this.state.creatingContact) return
         if (!showFloatPopup) {
             const { isNew } = this.props
             const { tmpContact } = this.state
@@ -372,6 +390,8 @@ export default class EditContact extends Component {
             contactToCopy,
             loggedUserProjectsMap,
             loggedUserId,
+            creatingContact,
+            creationError,
         } = this.state
         const { onCancelAction, style, projectId, isNew, projectIndex, isMember, dismissibleRef, contact } = this.props
         const buttonItemStyle = { marginHorizontal: smallScreen ? 4 : 2 }
@@ -395,6 +415,14 @@ export default class EditContact extends Component {
             ? userIsLoggedUser || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
             : loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
+        // While the contact is being written, every control that would start a second write or
+        // throw away the in-flight one is locked (AT-2508). The two `Hotkeys` wrappers have
+        // always been stricter than the buttons they wrap - they drop the `isNew` qualifier, so
+        // alt+O / alt+1 are inert on an unchanged EDIT form while the buttons stay live. That
+        // difference predates this change and is preserved rather than quietly flattened.
+        const secondaryButtonsDisabled = (isNew && !contactChanged) || isEmail || creatingContact
+        const hotkeysDisabled = !contactChanged || isEmail || creatingContact
+
         return (
             <View
                 style={[localStyles.container, mobile ? localStyles.containerUnderBreakpoint : undefined, style]}
@@ -408,7 +436,13 @@ export default class EditContact extends Component {
                             mobile && (!isNew ? { left: 8 } : localStyles.iconMobile),
                         ]}
                     >
-                        {isNew ? (
+                        {isNew && creatingContact ? (
+                            // The leading "+" turns into a spinner in place, so the row the user
+                            // is looking at is itself the progress indicator (AT-2508).
+                            <View testID="edit-contact-creating-spinner">
+                                <Spinner containerSize={24} spinnerSize={20} containerColor={'transparent'} />
+                            </View>
+                        ) : isNew ? (
                             <Icon name={'plus-square'} size={24} color={colors.Primary100} />
                         ) : (
                             <View style={localStyles.userPhoto}>
@@ -456,17 +490,31 @@ export default class EditContact extends Component {
                             placeholderTextColor={colors.Text03}
                             projectId={projectId}
                             forceTriggerEnterActionForBreakLines={this.enterActionKey}
-                            disabledEdition={!loggedUserCanUpdateObject}
+                            disabledEdition={!loggedUserCanUpdateObject || creatingContact}
                             onMentionSelected={isNew ? undefined : this.onMentionSelected}
                         />
                     )}
                 </View>
+
+                {!!creationError && (
+                    // Sits between the input and the button bar, so a failed creation explains
+                    // itself right where the name the user typed is still visible (AT-2508).
+                    <View
+                        style={localStyles.errorContainer}
+                        testID="edit-contact-creation-error"
+                        accessibilityRole="alert"
+                    >
+                        <Icon name="alert-circle" size={16} color={colors.UtilityRed200} />
+                        <Text style={localStyles.errorText}>{creationError}</Text>
+                    </View>
+                )}
+
                 <View style={localStyles.buttonContainer}>
                     <View style={[localStyles.buttonSection]}>
                         <View style={smallScreen ? undefined : { marginRight: 32 }}>
                             <Hotkeys
                                 keyName={'alt+O'}
-                                disabled={!contactChanged || isEmail}
+                                disabled={hotkeysDisabled}
                                 onKeyDown={(sht, event) =>
                                     execShortcutFn(
                                         this.openBtnRef,
@@ -485,7 +533,7 @@ export default class EditContact extends Component {
                                     iconColor={'#8A94A6'}
                                     buttonStyle={buttonItemStyle}
                                     onPress={isNew ? this.openBeforeCreate : this.onUserPress}
-                                    disabled={(isNew && !contactChanged) || isEmail}
+                                    disabled={secondaryButtonsDisabled}
                                     shortcutText={'O'}
                                 />
                             </Hotkeys>
@@ -527,7 +575,7 @@ export default class EditContact extends Component {
                                         icon={'info'}
                                         buttonStyle={buttonItemStyle}
                                         onPress={this.showInfoModal}
-                                        disabled={(isNew && !contactChanged) || isEmail}
+                                        disabled={secondaryButtonsDisabled}
                                         shortcutText={'I'}
                                     />
                                 </Hotkeys>
@@ -553,7 +601,7 @@ export default class EditContact extends Component {
                             >
                                 <Hotkeys
                                     keyName={'alt+1'}
-                                    disabled={!contactChanged || isEmail}
+                                    disabled={hotkeysDisabled}
                                     onKeyDown={(sht, event) =>
                                         execShortcutFn(this.pictureBtnRef, this.showPictureModal, event)
                                     }
@@ -567,7 +615,7 @@ export default class EditContact extends Component {
                                         icon={contactPhoto50 === '' ? 'image' : <Picture photoURL={contactPhoto50} />}
                                         buttonStyle={buttonItemStyle}
                                         onPress={this.showPictureModal}
-                                        disabled={(isNew && !contactChanged) || isEmail}
+                                        disabled={secondaryButtonsDisabled}
                                         shortcutText={'1'}
                                     />
                                 </Hotkeys>
@@ -579,7 +627,7 @@ export default class EditContact extends Component {
                                 projectId={projectId}
                                 object={tmpContact}
                                 objectType={isMember ? FEED_USER_OBJECT_TYPE : FEED_CONTACT_OBJECT_TYPE}
-                                disabled={(isNew && !contactChanged) || isEmail}
+                                disabled={secondaryButtonsDisabled}
                                 savePrivacyBeforeSaveObject={isNew && this.setPrivacyBeforeSave}
                                 inEditComponent={true}
                                 style={buttonItemStyle}
@@ -604,7 +652,7 @@ export default class EditContact extends Component {
                                 projectId={projectId}
                                 object={tmpContact}
                                 objectType={isMember ? FEED_USER_OBJECT_TYPE : FEED_CONTACT_OBJECT_TYPE}
-                                disabled={(isNew && !contactChanged) || isEmail}
+                                disabled={secondaryButtonsDisabled}
                                 saveHighlightBeforeSaveObject={color => this.setHighlightBeforeSave(color, !isNew)}
                                 inEditComponent={true}
                                 style={buttonItemStyle}
@@ -619,7 +667,7 @@ export default class EditContact extends Component {
                                 contact={tmpContact}
                                 isMember={isMember}
                                 buttonStyle={buttonItemStyle}
-                                disabled={(isNew && !contactChanged) || isEmail}
+                                disabled={secondaryButtonsDisabled}
                                 savePhoneBeforeSaveContact={isNew && this.setPhoneBeforeSave}
                                 saveEmailBeforeSaveContact={isNew && this.setEmailBeforeSave}
                                 dismissEditMode={this.dismiss}
@@ -634,6 +682,7 @@ export default class EditContact extends Component {
                                 type={'secondary'}
                                 buttonStyle={{ marginHorizontal: 4 }}
                                 onPress={onCancelAction}
+                                disabled={creatingContact}
                                 shortcutText={'Esc'}
                             />
                         )}
@@ -647,9 +696,20 @@ export default class EditContact extends Component {
                                       : 'Ok'
                             }
                             type={'primary'}
-                            icon={smallScreen ? (contactChanged ? (isNew ? 'plus' : 'save') : 'x') : null}
+                            icon={
+                                smallScreen && !creatingContact
+                                    ? contactChanged
+                                        ? isNew
+                                            ? 'plus'
+                                            : 'save'
+                                        : 'x'
+                                    : null
+                            }
                             onPress={() => (isNew ? this.addProjectContact() : this.onSubmit())}
-                            shortcutText={'Enter'}
+                            shortcutText={creatingContact ? '' : 'Enter'}
+                            disabled={creatingContact}
+                            processing={creatingContact}
+                            processingTitle={smallScreen ? '' : `${translate('Adding person')}...`}
                         />
                     </View>
                 </View>
@@ -699,7 +759,10 @@ export default class EditContact extends Component {
     // callback and the done button at once, and `addContactToProject` mints a
     // new contact id per call, so creation is guarded.
     addProjectContact = (openDetails = false) => {
-        const { tmpContact, contactChanged } = this.state
+        const { tmpContact, contactChanged, creatingContact } = this.state
+        // A creation is already on screen and in flight - neither start another nor dismiss the
+        // progress the user is looking at (AT-2508).
+        if (creatingContact) return
         // Nothing to create: dismiss without consuming the single submission.
         if (!contactChanged || tmpContact.displayName.trim().length === 0) {
             this.dismiss()
@@ -713,55 +776,99 @@ export default class EditContact extends Component {
         const { tmpContact, contactChanged } = this.state
         tmpContact.displayName = tmpContact.displayName.trim()
 
-        let creation
-
-        if (contactChanged) {
-            if (tmpContact.displayName.length > 0) {
-                store.dispatch(setTmpInputTextContact(''))
-
-                // If contact name is an email, then send an invitation
-                if (HelperFunctions.isValidEmail(tmpContact.displayName)) {
-                    Backend.inviteUserToProject(tmpContact.displayName, projectId, tmpContact.recorderUserId)
-                    store.dispatch([setSelectedNavItem(DV_TAB_PROJECT_TEAM_MEMBERS)])
-                    NavigationService.navigate('ProjectDetailedView', {
-                        projectIndex: ProjectHelper.getProjectIndexById(projectId),
-                    })
-                } else {
-                    store.dispatch(startLoadingData())
-
-                    if (tmpContact.photoURL !== '' && tmpContact.photoURL != null) {
-                        const src =
-                            typeof tmpContact.photoURL === 'string'
-                                ? tmpContact.photoURL
-                                : URL.createObjectURL(tmpContact.photoURL)
-
-                        const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
-                        const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
-
-                        tmpContact.photoURL = await HelperFunctions.convertURItoBlob(tmpContact.photoURL)
-                        tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
-                        tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
-                    }
-                    creation = addContactToProject(projectId, tmpContact, contact => {
-                        store.dispatch(stopLoadingData())
-
-                        if (openDetails) {
-                            NavigationService.navigate('ContactDetailedView', {
-                                contact: contact,
-                                project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
-                            })
-                            store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
-                        }
-                    })
-                }
-            }
+        if (!contactChanged || tmpContact.displayName.length === 0) {
             this.dismiss()
-        } else {
-            this.dismiss()
+            return
         }
 
-        return creation
+        // If contact name is an email, then send an invitation. Nothing local is written, and
+        // the view navigates away immediately, so this branch keeps its old shape.
+        if (HelperFunctions.isValidEmail(tmpContact.displayName)) {
+            store.dispatch(setTmpInputTextContact(''))
+            Backend.inviteUserToProject(tmpContact.displayName, projectId, tmpContact.recorderUserId)
+            store.dispatch([setSelectedNavItem(DV_TAB_PROJECT_TEAM_MEMBERS)])
+            NavigationService.navigate('ProjectDetailedView', {
+                projectIndex: ProjectHelper.getProjectIndexById(projectId),
+            })
+            this.dismiss()
+            return
+        }
+
+        // AT-2508: the form used to be torn down here, synchronously, while the write was still
+        // in flight - so the user was left looking at an unchanged list with no spinner, no row
+        // and no sign anything had happened. It now stays up in an "Adding person..." state
+        // until the write is acknowledged, and the optimistic row published by
+        // `addContactToProject` carries the rest of the wait (the several seconds until the
+        // access projection lands and the list query can finally see the contact).
+        this.setState({ creatingContact: true, creationError: null })
+        store.dispatch(startLoadingData())
+
+        let createdContact = null
+
+        try {
+            if (tmpContact.photoURL !== '' && tmpContact.photoURL != null) {
+                const src =
+                    typeof tmpContact.photoURL === 'string'
+                        ? tmpContact.photoURL
+                        : URL.createObjectURL(tmpContact.photoURL)
+
+                const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
+                const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
+
+                tmpContact.photoURL = await HelperFunctions.convertURItoBlob(tmpContact.photoURL)
+                tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
+                tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+            }
+
+            await addContactToProject(projectId, tmpContact, contact => {
+                createdContact = contact
+            })
+        } catch (error) {
+            this.onFailedAddProjectContact(error)
+            return
+        } finally {
+            // Exactly one stop per start, on every path. It used to live inside the completion
+            // callback, which a rejected write never reaches - so a failure pinned the global
+            // loading refcount (and its spinner) for the rest of the session.
+            store.dispatch(stopLoadingData())
+        }
+
+        // The contact exists now, so the draft that survives a dismissed form is spent. Closing
+        // the editor here - rather than at submit time - is what keeps the progress state on
+        // screen for the whole wait. It is skipped when the form is already gone: `dismiss` runs
+        // `onCancelAction`, which is a toggle, so calling it on a dismissed form would REOPEN it.
+        store.dispatch(setTmpInputTextContact(''))
+        if (this._isMounted) this.dismiss()
+
+        if (openDetails && createdContact) {
+            NavigationService.navigate('ContactDetailedView', {
+                contact: createdContact,
+                project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
+            })
+            store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
+        }
     })
+
+    /**
+     * AT-2508 - a failed creation used to silently close the form and drop the typed name, which
+     * is the exact "did something go wrong?" moment this task is about. Keep the form, keep the
+     * text, say what happened, allow a retry.
+     */
+    onFailedAddProjectContact = error => {
+        console.error('[contacts] Could not add the person', error)
+
+        // `runAddProjectContact` is one-shot by design, and it observed this rejection as a
+        // resolution (it is handled here), so it would stay locked and silently swallow the
+        // retry. Release it explicitly.
+        this.runAddProjectContact.reset()
+
+        if (!this._isMounted) return
+
+        this.setState({
+            creatingContact: false,
+            creationError: translate('Person could not be added'),
+        })
+    }
 
     openBeforeCreate = () => {
         this.addProjectContact(true)
@@ -825,6 +932,20 @@ const localStyles = StyleSheet.create({
     },
     buttonSectionRight: {
         justifyContent: 'flex-end',
+    },
+    // AT-2508 - sits between the input and the button bar, so a failed creation explains itself
+    // right where the name the user typed is still visible.
+    errorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+    },
+    errorText: {
+        ...styles.body2,
+        color: colors.UtilityRed200,
+        marginLeft: 8,
+        flex: 1,
     },
     inputContainer: {
         //height: 56,
