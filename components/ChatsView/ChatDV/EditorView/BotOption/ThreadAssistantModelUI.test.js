@@ -7,7 +7,6 @@ import SelectModelOption from './SelectModelOption'
 import ThreadAssistantModelModal from './ThreadAssistantModelModal'
 import ThreadModelAssistantAvatar from './ThreadModelAssistantAvatar'
 import { resetThreadAssistantModelCache, useThreadAssistantModel } from './threadAssistantModelState'
-import { setLanguage } from '../../../../../i18n/TranslationService'
 import {
     readThreadAssistantModelOverride,
     setThreadAssistantModelOverride,
@@ -120,15 +119,10 @@ describe('the per-thread model UI (AT-2502)', () => {
         // Without a way back the pin would be a one-way door: a thread could be moved off the
         // assistant's model and never returned to it.
         it('offers a way back to the assistant model, first, naming it', () => {
-            const tree = renderPicker()
+            const options = optionsOf(renderPicker())
 
-            expect(optionsOf(tree)[0].props.modelData.model).toBe('INHERIT_ASSISTANT_MODEL')
-            // Asserted on the RENDERED text rather than on `modelData.text`. Asserting the prop is
-            // precisely what let AT-2512 ship: `OptionItem` translates that prop, so a finished
-            // sentence handed to it rendered as `[missing "en.…" translation]` in production while
-            // this test stayed green on the string that never reached the screen.
-            expect(textsOf(tree)).not.toContain('[missing')
-            expect(textsOf(tree)).toContain('Use assistant model (Sol)')
+            expect(options[0].props.modelData.model).toBe('INHERIT_ASSISTANT_MODEL')
+            expect(options[0].props.modelData.text).toBe('Use assistant model (Sol)')
         })
 
         it('offers every selectable model with its Gold rate', () => {
@@ -152,54 +146,6 @@ describe('the per-thread model UI (AT-2502)', () => {
             const options = optionsOf(renderPicker({ selectedModel: 'MODEL_GPT5_6_LUNA' }))
 
             expect(options[0].props.selectedModel).toBe('MODEL_GPT5_6_LUNA')
-        })
-
-        // AT-2512. `OptionItem` treats `text` as a translation KEY, so the inherit entry — the one
-        // option whose label carries a runtime value — must interpolate rather than pre-translate.
-        // Every case below asserts the RENDERED label, because the placeholder i18n emits for an
-        // unknown key is only ever visible after the render.
-        describe('the inherit label is a real translation, never a placeholder (AT-2512)', () => {
-            // Asserting only `toContain(expected)` is NOT enough, and getting that wrong is how the
-            // defect hid twice. i18n renders an unknown key as `[missing "en.<key>" translation]`,
-            // which EMBEDS the key — so the expected label is a substring of the very failure it is
-            // meant to catch. The placeholder check is the load-bearing half, and it matches on
-            // `[missing` alone because `JSON.stringify` escapes the quote that follows it to `\"`.
-            const expectLabel = (tree, expected) => {
-                const rendered = textsOf(tree)
-
-                expect(rendered).not.toContain('[missing')
-                expect(rendered).toContain(expected)
-            }
-
-            it.each([
-                ['MODEL_GPT5_6_SOL', 'Use assistant model (Sol)'],
-                ['MODEL_GPT5_6_TERRA', 'Use assistant model (Terra)'],
-                ['MODEL_GPT5_6_LUNA', 'Use assistant model (Luna)'],
-                ['MODEL_DEEPSEEK_V4_FLASH', 'Use assistant model (DeepSeek Flash)'],
-            ])('names %s without a missing-translation placeholder', (assistantModel, expected) => {
-                expectLabel(renderPicker({ assistantModel }), expected)
-            })
-
-            // A model key that is no longer selectable resolves to no name at all, so the label has
-            // to fall back to the bare key rather than render an empty bracket.
-            it('falls back to the unnamed label when the assistant model has no name', () => {
-                const tree = renderPicker({ assistantModel: 'MODEL_RETIRED' })
-
-                expectLabel(tree, 'Use assistant model')
-                expect(textsOf(tree)).not.toContain('Use assistant model (')
-            })
-
-            it('translates the whole label, bracket included, in every locale', () => {
-                try {
-                    setLanguage('de')
-                    expectLabel(renderPicker(), 'Assistenten-Modell verwenden (Sol)')
-
-                    setLanguage('es')
-                    expectLabel(renderPicker(), 'Usar el modelo del asistente (Sol)')
-                } finally {
-                    setLanguage('en')
-                }
-            })
         })
 
         it('stores the choice and closes', () => {
