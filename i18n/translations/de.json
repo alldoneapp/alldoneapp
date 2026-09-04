@@ -1059,6 +1059,8 @@
     "Start new note": "Starte eine neue Notiz hinzu",
     "Creating Note": "Notiz wird erstellt",
     "Note could not be created": "Notiz konnte nicht erstellt werden. Bitte versuche es erneut.",
+    "Adding person": "Person wird hinzugefügt",
+    "Person could not be added": "Person konnte nicht hinzugefügt werden. Bitte versuche es erneut.",
     "Alldone is online": "Alldone ist online",
     "Alldone is offline": "Alldone ist offline",
     "Alldone is online again, all functionalities are available": "Alldone ist wieder online - alles klappt wieder",

@@ -44,22 +44,9 @@ export const createSectionRenderBudget = (isUserEditing, amountsRef) => {
 
         /**
          * True when the section must not render at all. `amount <= 0` alone is
-         * not enough, and there are two carve-outs:
-         *
-         *  - a mounted section stays mounted until the user is done (AT-2203);
-         *  - a section that is LEAVING stays mounted until it has left
-         *    (AT-2507). A goal section playing its departure carries no tasks,
-         *    because its rows have already collapsed, so it resolves to
-         *    `amount === 0` and would be skipped on every truncated list — i.e.
-         *    on the ordinary board, where the day is cut to the user's "number
-         *    of today tasks" setting. It would render `null` while the hold
-         *    still kept its space out of the layout: the same pop, one
-         *    animation later. Skipping it is wrong on its own terms too — this
-         *    budget exists to stop a list rendering more rows than were asked
-         *    for, and a leaving section is rendering none.
+         * not enough: a mounted section stays mounted until the user is done.
          */
-        shouldSkip: (sectionId, amount, baseCondition, { leaving = false } = {}) =>
-            !!baseCondition && amount <= 0 && !wasMounted(sectionId) && !leaving,
+        shouldSkip: (sectionId, amount, baseCondition) => !!baseCondition && amount <= 0 && !wasMounted(sectionId),
 
         /** Record what a section actually rendered (idle renders only). */
         remember: (sectionId, amount) => {
