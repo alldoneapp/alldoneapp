@@ -1,110 +1,110 @@
 /**
- * AT-2507 browser harness — the goal flourish's whole chain, actually painting.
+ * AT-2507 browser harness — a goal section's graceful departure, actually painting.
  *
- * Renders the REAL `GoalCompletedFlourish` inside a box that reproduces the goal card
- * (`GoalItemPresentation`'s `container` + `borderInside`: min-height 40, border radius 4),
- * driven by the REAL `useGoalCompletedFlourish` and triggered by the REAL
- * `publishGoalTaskCompletion` — i.e. the same call the task row makes from
+ * Drives the REAL `useGoalSectionExit` (which decides a goal is leaving and holds it) and the REAL
+ * `useGoalSectionExitMotion` (which draws the departure), triggered by the REAL
+ * `publishGoalTaskCompletion` — the same call `TaskPresentation` makes from
  * `beginCompletionMotion`. Nothing between the tick and the paint is stubbed.
  *
- * Jest can answer none of it: `__mocks__/react-native.js` replaces `Animated.timing` with a
- * no-op `{start}` stub, so no jest test can watch this advance a single pixel, and jsdom
- * computes no layout at all. Both are exactly what is under test here.
+ * The board reproduces the two things the effect is measured against: a goal section shaped like
+ * `ParentGoalSection`'s block (a goal row plus its task rows), and a SIBLING BLOCK BELOW IT, which
+ * is how "the gap closes gracefully" becomes observable at all — the whole point of the collapse is
+ * that the content underneath is pulled up rather than jumping.
+ *
+ * Jest can answer none of it: `__mocks__/react-native.js` replaces `Animated.timing` with a no-op
+ * `{start}` stub, so no jest test can watch this advance a pixel, and jsdom computes no layout, so
+ * the section is never measured and the collapse has no height to collapse from.
  */
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, View } from 'react-native'
 
-import GoalCompletedFlourish from '../../components/GoalsView/GoalCompletedFlourish'
-import useGoalCompletedFlourish from '../../components/TaskListView/OpenTasksView/useGoalCompletedFlourish'
+import useGoalSectionExit from '../../components/TaskListView/OpenTasksView/useGoalSectionExit'
+import useGoalSectionExitMotion from '../../components/TaskListView/OpenTasksView/goalSectionExitMotion'
 import { publishGoalTaskCompletion } from '../../components/TaskListView/OpenTasksView/goalCompletionSignal'
 
 const PROJECT = 'project-a'
 const GOAL = 'goal-1'
-const ACCENT = '#6C63FF'
 
-// `GoalItemPresentation`'s own box, so the overlay's absolute fill and its `borderRadius: 4` are
-// measured against the card it actually ships against.
-const cardStyles = StyleSheet.create({
-    globalContainer: { paddingVertical: 4 },
-    container: { minHeight: 40 },
-    // Absolute, exactly as the row draws it — otherwise the border box stacks with the content and
-    // the card measures twice its real height, which would quietly weaken every geometry check.
-    border: { position: 'absolute', left: 0, top: 0, minHeight: 40, width: '100%', height: '100%' },
-    borderInside: { height: '100%', minHeight: 40, borderRadius: 4, borderColor: '#DDD', borderWidth: 1 },
-    content: { minHeight: 40, paddingLeft: 8, paddingTop: 10 },
+const styles = StyleSheet.create({
+    board: { width: 640, backgroundColor: 'white', padding: 12 },
+    section: { marginBottom: 32 },
+    goalRow: { minHeight: 40, borderRadius: 4, borderWidth: 1, borderColor: '#DDD', paddingLeft: 8, paddingTop: 10 },
+    addTask: { height: 32 },
+    taskRow: { height: 34, paddingLeft: 8 },
+    below: { height: 60, backgroundColor: '#F3F3F3' },
 })
 
-function GoalRow({ taskList }) {
-    const completedRunId = useGoalCompletedFlourish({
-        projectId: PROJECT,
-        goalId: GOAL,
-        taskList,
-        enabled: true,
-    })
-    window.__runId = completedRunId
+function GoalSection({ goalId, tasks, exitRunId }) {
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
     return (
-        <View style={cardStyles.globalContainer}>
-            <View style={cardStyles.container} nativeID="goal-card">
-                <View style={cardStyles.border}>
-                    <View style={cardStyles.borderInside} />
-                </View>
-                <View style={cardStyles.content} />
-                <GoalCompletedFlourish completedRunId={completedRunId} accentColor={ACCENT} />
-            </View>
-        </View>
+        <Animated.View nativeID={`section-${goalId}`} onLayout={onSectionLayout} style={[styles.section, sectionStyle]}>
+            <View style={styles.goalRow} />
+            <View style={styles.addTask} />
+            {tasks.map(task => (
+                <View key={task.id} style={styles.taskRow} />
+            ))}
+        </Animated.View>
     )
 }
 
-function App() {
-    const [taskList, setTaskList] = React.useState([{ id: 't1' }, { id: 't2' }])
-    window.__setTaskList = setTaskList
+function Board() {
+    const [mainTasks, setMainTasks] = React.useState([[GOAL, [{ id: 't1' }, { id: 't2' }]]])
+    const [emptyGoals, setEmptyGoals] = React.useState([])
+    const { mainTasksWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+        projectId: PROJECT,
+        mainTasks,
+        emptyGoals,
+        enabled: true,
+    })
+
+    window.__setMainTasks = setMainTasks
+    window.__setEmptyGoals = setEmptyGoals
+    // What the board is actually rendering, i.e. whether the hold is keeping the section alive.
+    window.__sections = mainTasksWithExits.map(group => group[0])
+    window.__exits = { ...exitRunIdByGoalId }
+
     return (
-        <View style={{ width: 620, backgroundColor: 'white', padding: 12 }}>
-            <GoalRow taskList={taskList} />
+        <View style={styles.board}>
+            {mainTasksWithExits.map(([goalId, tasks]) => (
+                <GoalSection key={goalId} goalId={goalId} tasks={tasks} exitRunId={exitRunIdByGoalId[goalId] || 0} />
+            ))}
+            {/* The next thing down the board. Its `top` is how the collapse is measured. */}
+            <View nativeID="below" style={styles.below} />
         </View>
     )
 }
 
 /** Exactly what `TaskPresentation` publishes when a task row starts a genuine completion. */
 window.__completeTask = taskId => publishGoalTaskCompletion({ projectId: PROJECT, goalId: GOAL, taskId })
-
-/**
- * What the user would actually see, per layer — PAINTED geometry (`getBoundingClientRect` resolves
- * transforms) and computed opacity, never the `Animated.Value` behind them. That distinction is the
- * whole point of this harness: jest can read those values and still be looking at an animation that
- * never moves a pixel.
- */
-const rect = testId => {
-    const node = document.querySelector(`[data-testid="${testId}"]`)
-    return node ? { node, box: node.getBoundingClientRect(), style: getComputedStyle(node) } : null
+/** The snapshot landing: the goal's bucket is gone from the day's main tasks. */
+window.__dropSection = () => window.__setMainTasks([])
+/** The other fork: the goal is still active today, so it comes back as an empty goal instead. */
+window.__moveToEmptyGoals = () => {
+    window.__setMainTasks([])
+    window.__setEmptyGoals([{ id: GOAL }])
 }
 
+/**
+ * What the user would actually see — PAINTED geometry (`getBoundingClientRect` resolves transforms)
+ * and computed opacity, never the `Animated.Value` behind them. That distinction is the whole point
+ * of this harness: jest can read those values and still be looking at an animation that never moves
+ * a pixel.
+ */
+const nodeOf = id => document.querySelector(`[data-nativeid="${id}"]`) || document.getElementById(id)
+
 window.__measure = () => {
-    const overlay = rect('goal-completed-flourish')
-    if (!overlay) return { present: false }
-    const wash = rect('goal-completed-flourish-wash')
-    const bar = rect('goal-completed-flourish-bar')
-    const card = document.querySelector('[data-nativeid="goal-card"]') || document.getElementById('goal-card')
+    const section = nodeOf(`section-${GOAL}`)
+    const below = nodeOf('below')
     return {
-        present: true,
-        overlay: {
-            top: Math.round(overlay.box.top),
-            height: Math.round(overlay.box.height),
-            width: Math.round(overlay.box.width),
-        },
-        cardWidth: card ? Math.round(card.getBoundingClientRect().width) : null,
-        overlayOpacity: Number(overlay.style.opacity),
-        washWidth: wash ? Math.round(wash.box.width) : null,
-        washOpacity: wash ? Number(Number(wash.style.opacity).toFixed(3)) : null,
-        washColor: wash ? wash.style.backgroundColor : null,
-        // Draws with the fill (width) and thickens once for the breath (height).
-        barWidth: bar ? Math.round(bar.box.width) : null,
-        barHeight: bar ? Number(bar.box.height.toFixed(2)) : null,
-        barColor: bar ? bar.style.backgroundColor : null,
-        barLeft: bar ? Math.round(bar.box.left - overlay.box.left) : null,
+        present: !!section,
+        height: section ? Number(section.getBoundingClientRect().height.toFixed(1)) : null,
+        opacity: section ? Number(Number(getComputedStyle(section).opacity).toFixed(3)) : null,
+        // The layout underneath. This is what "the gap closes" means, and it is invisible from
+        // inside the section itself.
+        belowTop: below ? Math.round(below.getBoundingClientRect().top) : null,
     }
 }
 
-createRoot(document.getElementById('root')).render(<App />)
+createRoot(document.getElementById('root')).render(<Board />)
 window.__ready = true
