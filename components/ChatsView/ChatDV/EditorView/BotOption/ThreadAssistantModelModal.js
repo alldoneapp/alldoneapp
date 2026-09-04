@@ -30,10 +30,13 @@ export default function ThreadAssistantModelModal({ closeModal, selectedModel, a
     const [, height] = useWindowSize()
 
     const assistantName = getThreadAssistantModelName(assistantModel)
+    // The name is handed over as an interpolation param, NOT spliced into an already-translated
+    // string: `OptionItem` translates `text` itself, so a finished sentence arrives there as an
+    // unknown key and renders as `[missing "en.Use assistant model (Luna)" translation]`
+    // (AT-2512). Keeping the whole label in one key also lets a translator place the bracket.
     const inheritOption = {
-        text: assistantName
-            ? `${translate('Use assistant model')} (${assistantName})`
-            : translate('Use assistant model'),
+        text: assistantName ? 'Use assistant model with name' : 'Use assistant model',
+        textParams: assistantName ? { name: assistantName } : undefined,
         model: INHERIT_ASSISTANT_MODEL,
         shortcutKey: '',
     }
