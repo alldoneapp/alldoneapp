@@ -64,13 +64,35 @@ const renderMotion = ({ arrivalId = null, row = FIRST, compact = false } = {}) =
             act(() => {
                 latest().onCardLayout(layoutEvent(height))
             }),
-        // An arrival: the new comment and a fresh id land in the SAME commit, exactly as they do in
-        // the app (`LastUserOrAssistantCommentContainer` recomputes both from one snapshot).
+        /**
+         * An arrival delivered in ONE commit. Convenient, and NOT the shape the app produces — a
+         * comment for `arriveDeferred` below, which is the shape it does produce.
+         */
         arrive: (nextId, nextRow) =>
             act(() => {
                 Object.assign(props, { arrivalId: nextId, row: nextRow })
                 tree.update(<Probe {...props} />)
             }),
+        /**
+         * The arrival as `LastUserOrAssistantCommentContainer` actually delivers it: the new comment
+         * text paints first, and the `arrivalId` derived from it only lands in the NEXT commit,
+         * because the container publishes it from an effect.
+         *
+         * That one-commit gap is what broke the roll in production. A card that captured "the row
+         * painted last commit" had already advanced to the NEW row by the time it armed, so it
+         * rolled the fresh answer out from under itself — two identical rows, which passes every
+         * geometric assertion and reads as a rendering glitch.
+         */
+        arriveDeferred: (nextId, nextRow) => {
+            act(() => {
+                Object.assign(props, { row: nextRow })
+                tree.update(<Probe {...props} />)
+            })
+            act(() => {
+                Object.assign(props, { arrivalId: nextId })
+                tree.update(<Probe {...props} />)
+            })
+        },
         drive: value =>
             act(() => {
                 latest().rollValue.setValue(value)
@@ -114,6 +136,42 @@ describe('lastCommentArrivalMotion — the ticker roll', () => {
                 const probe = renderMotion({ row: FIRST })
                 probe.arrive(1, SECOND)
                 expect(probe.latest().outgoingRow).toEqual(FIRST)
+            })
+        })
+
+        /**
+         * The same claim, against the delivery the app really makes. This is the case that was
+         * broken in production: with a one-slot "last painted row" ref the outgoing row here is
+         * SECOND — the comment that just arrived, rolling out from under itself.
+         */
+        it('still rolls the previous comment when the id lands a commit after the text', () => {
+            withAnimationsEnabled(() => {
+                const probe = renderMotion({ row: FIRST })
+                probe.arriveDeferred(1, SECOND)
+                expect(probe.latest().outgoingRow).toEqual(FIRST)
+            })
+        })
+
+        it('chains deferred arrivals without ever repeating the arriving comment', () => {
+            withAnimationsEnabled(() => {
+                const probe = renderMotion({ row: FIRST })
+                probe.arriveDeferred(1, SECOND)
+                probe.arriveDeferred(2, THIRD)
+                expect(probe.latest().outgoingRow).toEqual(SECOND)
+            })
+        })
+
+        /**
+         * A card BORN showing the arriving comment — the remount case, which is the ordinary shape
+         * for a heartbeat or a VM result — has nothing to roll away and must not invent one. The
+         * incoming row still rises into place, so the arrival is announced either way.
+         */
+        it('mounts no outgoing row when the card never showed a different comment', () => {
+            withAnimationsEnabled(() => {
+                const probe = renderMotion({ row: SECOND })
+                probe.arrive(1, SECOND)
+                expect(probe.latest().outgoingRow).toBeNull()
+                expect(incomingY(probe.latest())).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
             })
         })
 
