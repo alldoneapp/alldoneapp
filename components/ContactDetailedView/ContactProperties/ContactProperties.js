@@ -50,10 +50,6 @@ import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactS
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 
-// Flat fee of the research run, mirrored from CONTACT_ENRICHMENT_GOLD_COST in
-// functions/Contacts/contactProfileEnrichment.js; the assistant's own token usage is metered on top.
-export const ENRICH_PROFILE_GOLD_COST = 10
-
 class ContactProperties extends Component {
     constructor(props) {
         super(props)
@@ -198,7 +194,8 @@ class ContactProperties extends Component {
         const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
         if (!contact) return
 
-        if (loggedUser.gold < ENRICH_PROFILE_GOLD_COST) {
+        // The run is billed as ordinary assistant usage; there is no flat fee, only "any Gold at all".
+        if (!(loggedUser.gold > 0)) {
             store.dispatch(
                 setShowLimitedFeatureModal({
                     title: translate('Not enough Gold'),
@@ -359,33 +356,43 @@ class ContactProperties extends Component {
                                 )}
                             </View>
                         </View>
-                        <AppPopover
-                            content={
-                                <ChangeContactInfoModal
-                                    projectId={projectId}
-                                    closePopover={() => this.hideModal('showInfoModal')}
-                                    onSaveData={value => this.changePropertyValue('info', value)}
-                                    currentRole={userRole ? userRole : ''}
-                                    currentCompany={userCompany ? userCompany : ''}
-                                    currentDescription={userDescription ? userDescription : ''}
-                                    disabled={!loggedUserCanUpdateObject}
+                        <View style={localStyles.profileActions}>
+                            <AppPopover
+                                content={
+                                    <ChangeContactInfoModal
+                                        projectId={projectId}
+                                        closePopover={() => this.hideModal('showInfoModal')}
+                                        onSaveData={value => this.changePropertyValue('info', value)}
+                                        currentRole={userRole ? userRole : ''}
+                                        currentCompany={userCompany ? userCompany : ''}
+                                        currentDescription={userDescription ? userDescription : ''}
+                                        disabled={!loggedUserCanUpdateObject}
+                                    />
+                                }
+                                onClickOutside={() => this.hideModal('showInfoModal')}
+                                isOpen={showInfoModal}
+                                position={['bottom', 'left', 'right', 'top']}
+                                padding={4}
+                                align={'end'}
+                                contentLocation={mobile ? null : undefined}
+                            >
+                                <Button
+                                    icon={'edit-2'}
+                                    type={'ghost'}
+                                    onPress={() => this.showModal('showInfoModal')}
+                                    disabled={!accessGranted || !loggedUserCanUpdateObject}
                                 />
-                            }
-                            onClickOutside={() => this.hideModal('showInfoModal')}
-                            isOpen={showInfoModal}
-                            position={['bottom', 'left', 'right', 'top']}
-                            padding={4}
-                            align={'end'}
-                            contentLocation={mobile ? null : undefined}
-                        >
-                            <Button
-                                icon={'edit-2'}
-                                type={'ghost'}
-                                onPress={() => this.showModal('showInfoModal')}
-                                disabled={!accessGranted || !loggedUserCanUpdateObject}
-                                buttonStyle={localStyles.profileEditButton}
-                            />
-                        </AppPopover>
+                            </AppPopover>
+                            {!isGuide && (
+                                <Button
+                                    icon={'search'}
+                                    title={isEnriching ? translate('Loading') : translate('Enrich profile')}
+                                    type={'ghost'}
+                                    onPress={this.enrichContact}
+                                    disabled={!accessGranted || !loggedUserCanUpdateObject || isEnriching}
+                                />
+                            )}
+                        </View>
                     </View>
 
                     <View style={[localStyles.properties, mobile ? localStyles.propertiesMobile : undefined]}>
@@ -469,23 +476,6 @@ class ContactProperties extends Component {
                                             {user.linkedInUrl}
                                         </Text>
                                     </TouchableOpacity>
-                                )}
-
-                                {accessGranted && loggedUserCanUpdateObject && !isGuide && (
-                                    <View style={{ paddingLeft: 32, paddingBottom: 8 }}>
-                                        <Button
-                                            title={
-                                                isEnriching
-                                                    ? translate('Loading')
-                                                    : `${translate('Enrich profile')} (${ENRICH_PROFILE_GOLD_COST} ${translate(
-                                                          'Gold + assistant usage'
-                                                      )})`
-                                            }
-                                            type={'ghost'}
-                                            onPress={this.enrichContact}
-                                            disabled={isEnriching}
-                                        />
-                                    </View>
                                 )}
                             </View>
 
@@ -781,7 +771,9 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         minHeight: 120,
     },
-    profileEditButton: {
+    profileActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
         alignSelf: 'flex-start',
     },
     properties: {
