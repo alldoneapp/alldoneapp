@@ -10,6 +10,7 @@ import { getAllUnreadCommentIds, getUnreadCommentsCount } from './unreadComments
 import { LastCommentPreviewSkeleton } from '../AssistantLineSkeleton'
 import { readLastCommentCache, writeLastCommentCache } from '../assistantLineCache'
 import { buildLastCommentKey, useLastCommentArrival } from './lastCommentArrival'
+import { isLiveComment } from './liveComment'
 
 const MAX_COMMENTS_TO_VERIFY_UNREAD = 100
 export const DEFERRED_LAST_COMMENT_REFRESH_MS = 1000
@@ -100,9 +101,18 @@ export default function LastUserOrAssistantCommentContainer({
     // component that sees both sources the preview renders from (the localStorage cache and the
     // Firestore watcher) and can therefore give them the same key. See `lastCommentArrival.js` for
     // why the same key has to come out of both, and why the memory outlives this mount.
+    //
+    // The streaming signal is read here for the same reason: `commentText` is all the card below
+    // ever receives, and a half-written answer is indistinguishable from a finished one by its text.
+    // Only the raw watcher documents carry the run flags, and this is the last component that holds
+    // them. The cached preview has no comment object at all, which is correct — it is a first paint,
+    // never an arrival.
+    const displayedComment = recentComments[0]
     const arrivalId = useLastCommentArrival({
         scopeKey,
         commentKey: buildLastCommentKey({ objectType, objectId, commentText }),
+        commentId: displayedComment?.id ?? null,
+        isStreaming: isLiveComment(displayedComment),
     })
 
     if (commentText === null || commentText === undefined || !chat) {

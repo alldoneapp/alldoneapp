@@ -113,12 +113,26 @@ const withAnimationsEnabled = fn => {
     }
 }
 
-const emitComment = commentText => {
+const emitComment = (commentText, extra = {}) => {
     const handler = watchComments.mock.calls[watchComments.mock.calls.length - 1][5]
     act(() => {
-        handler([{ id: commentText, commentText }])
+        handler([{ id: commentText, commentText, ...extra }])
     })
 }
+
+/**
+ * One streaming write, the shape `storeChunks` actually produces: the SAME document id rewritten
+ * with a longer `commentText` while `isLoading` stays true and the run is `running`. The id is what
+ * makes it one answer rather than five, which is exactly what the suppression keys on.
+ */
+const emitStreamingChunk = (commentId, commentText) =>
+    emitComment(commentText, { id: commentId, isLoading: true, assistantRun: { status: 'running' } })
+
+/** The settling write: same id, `isLoading` false, and — because writes are batched — longer text. */
+const emitStreamCompletion = (commentId, commentText) =>
+    emitComment(commentText, { id: commentId, isLoading: false, assistantRun: { status: 'completed' } })
+
+const outgoingRows = tree => tree.root.findAllByProps({ testID: 'last-comment-outgoing-row' }, { deep: false })
 
 const renderContainer = ({ objectId = 'chat-1', scopeKey = 'user-1:project-1:' } = {}) => {
     let tree
@@ -232,6 +246,126 @@ describe('AT-2511 — a comment arriving through the real update path animates',
 
             expect(rowText(second, 'last-comment-incoming-row')).toContain('just landed')
             expect(second.root.findAllByProps({ testID: 'last-comment-outgoing-row' }, { deep: false })).toHaveLength(0)
+        })
+    })
+})
+
+/**
+ * AT-2511 follow-up — "when we are streaming the answer don't play the animation, just stream it".
+ *
+ * The streaming answer is written into ONE comment document that is rewritten as tokens accumulate,
+ * so every batched write changed the text, changed the arrival key and fired a fresh roll. The card
+ * rolled once per chunk: a slot machine, not an answer being typed.
+ *
+ * These cases drive the real container with the real watcher shape, because the whole question is
+ * whether the run flags on the watcher documents reach the arrival detector — the card below sees
+ * only `commentText`, by which a half-written answer and a finished one are identical.
+ */
+describe('AT-2511 — a streaming answer updates in place and never rolls', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        localStorage.clear()
+        resetLastCommentArrivals()
+    })
+
+    it('never mounts an outgoing row across a whole streamed answer', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+
+            const chunks = ['Working', 'Working on it', 'Working on it. Here is', 'Working on it. Here is the plan']
+            chunks.forEach(text => {
+                emitStreamingChunk('answer-1', text)
+                expect(outgoingRows(tree)).toHaveLength(0)
+            })
+        })
+    })
+
+    it('shows each chunk in place, so the answer visibly grows', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+
+            emitStreamingChunk('answer-1', 'Working on it')
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('Working on it')
+
+            emitStreamingChunk('answer-1', 'Working on it. Here is the plan')
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('Here is the plan')
+        })
+    })
+
+    /**
+     * The edge that a bare "is it live right now?" check misses. Streaming writes are batched and
+     * the run ends with a flush plus a final write, so the settled text is normally LONGER than the
+     * last text written while live — a brand-new arrival key, arriving at the exact moment the user
+     * has just finished watching the text appear.
+     */
+    it('stays still when the stream settles with more text than the last live write', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+
+            emitStreamingChunk('answer-1', 'Working on it. Here is')
+            emitStreamCompletion('answer-1', 'Working on it. Here is the plan for tomorrow.')
+
+            expect(outgoingRows(tree)).toHaveLength(0)
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('the plan for tomorrow')
+        })
+    })
+
+    /**
+     * The suppression must not outlive the answer it was granted for. The next genuinely new
+     * comment is a different document, and it animates exactly as before — this is the assertion
+     * that keeps the fix from degenerating into "the animation is off".
+     */
+    it('animates the NEXT comment normally once the stream has settled', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+
+            emitStreamingChunk('answer-1', 'Working on it')
+            emitStreamCompletion('answer-1', 'Working on it. All done.')
+            expect(outgoingRows(tree)).toHaveLength(0)
+
+            emitComment(NEW)
+
+            expect(outgoingRows(tree)).toHaveLength(1)
+            expect(rowText(tree, 'last-comment-outgoing-row')).toContain('All done')
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('just landed')
+        })
+    })
+
+    /**
+     * A comment that was never streamed in THIS slot is a genuine arrival even though it is an
+     * assistant answer — the user did not watch it appear here. This is the ordinary heartbeat / VM
+     * result / other-thread case, and it must keep its flourish.
+     */
+    it('animates a settled answer that this slot never watched stream', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+            emitStreamCompletion('answer-1', 'A finished answer from another thread')
+
+            expect(outgoingRows(tree)).toHaveLength(1)
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('finished answer')
+        })
+    })
+
+    /**
+     * A stream that is superseded before it settles must not leave a record behind that swallows a
+     * later, genuine arrival of that same document.
+     */
+    it('does not let an abandoned stream suppress a later arrival of the same comment', () => {
+        withAnimationsEnabled(() => {
+            const tree = renderContainer()
+            emitComment(OLD)
+
+            emitStreamingChunk('answer-1', 'Half written')
+            emitComment(NEW)
+            emitStreamCompletion('answer-1', 'Half written, now finished')
+
+            expect(outgoingRows(tree)).toHaveLength(1)
+            expect(rowText(tree, 'last-comment-incoming-row')).toContain('now finished')
         })
     })
 })

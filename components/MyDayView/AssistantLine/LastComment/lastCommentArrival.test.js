@@ -14,8 +14,8 @@ import {
     useLastCommentArrival,
 } from './lastCommentArrival'
 
-const Probe = ({ scopeKey, commentKey, enabled = true, onArrival }) => {
-    const arrival = useLastCommentArrival({ scopeKey, commentKey, enabled })
+const Probe = ({ scopeKey, commentKey, commentId = null, isStreaming = false, enabled = true, onArrival }) => {
+    const arrival = useLastCommentArrival({ scopeKey, commentKey, commentId, isStreaming, enabled })
     onArrival(arrival)
     return <Text>{String(arrival)}</Text>
 }
@@ -165,6 +165,87 @@ describe('lastCommentArrival', () => {
             markLastCommentSeen('scope', null)
             markLastCommentSeen(null, 'key')
             expect(getSeenLastCommentKey('scope')).toBeNull()
+        })
+    })
+
+    /**
+     * AT-2511 follow-up — a streamed answer is watched, not announced.
+     *
+     * The state machine in isolation. The end-to-end suite proves the run flags travel from the
+     * watcher documents to here; these cases pin what happens once they arrive, including the two
+     * boundaries that are easy to get wrong: the settling write (same comment, new text) and the
+     * abandoned stream (a record that must not outlive its answer).
+     */
+    describe('streaming', () => {
+        const SCOPE = 'user-1:allProjects'
+
+        it('reports no arrival for any chunk of a streamed answer', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            const chunks = ['c1', 'c2', 'c3', 'c4', 'c5']
+
+            chunks.forEach(commentKey => {
+                probe.update({ commentKey, commentId: 'answer-1', isStreaming: true })
+                expect(probe.arrival()).toBeNull()
+            })
+        })
+
+        it('still records each chunk as seen, so nothing is owed an animation afterwards', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            probe.update({ commentKey: 'chunk-2', commentId: 'answer-1', isStreaming: true })
+
+            expect(getSeenLastCommentKey(SCOPE)).toBe('chunk-2')
+        })
+
+        // The settling write carries the full text, which is normally longer than the last text
+        // written while live — a new key at the exact moment the user finished watching it appear.
+        it('reports no arrival when the streamed comment settles with different text', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            probe.update({ commentKey: 'partial', commentId: 'answer-1', isStreaming: true })
+            probe.update({ commentKey: 'complete', commentId: 'answer-1', isStreaming: false })
+
+            expect(probe.arrival()).toBeNull()
+        })
+
+        it('reports an arrival for the next comment after a stream settles', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            probe.update({ commentKey: 'partial', commentId: 'answer-1', isStreaming: true })
+            probe.update({ commentKey: 'complete', commentId: 'answer-1', isStreaming: false })
+            probe.update({ commentKey: 'next', commentId: 'answer-2', isStreaming: false })
+
+            expect(probe.arrival()).toEqual(expect.any(Number))
+        })
+
+        // The user never watched this one appear here, so it is a genuine arrival.
+        it('reports an arrival for a settled comment this scope never watched stream', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            probe.update({ commentKey: 'landed', commentId: 'answer-1', isStreaming: false })
+
+            expect(probe.arrival()).toEqual(expect.any(Number))
+        })
+
+        it('does not let an abandoned stream suppress that comment arriving later', () => {
+            const probe = renderProbe({ scopeKey: SCOPE, commentKey: 'previous' })
+            probe.update({ commentKey: 'partial', commentId: 'answer-1', isStreaming: true })
+            // Something else takes the slot before the stream settles.
+            probe.update({ commentKey: 'other', commentId: 'answer-2', isStreaming: false })
+            const afterOther = probe.arrival()
+            probe.update({ commentKey: 'complete', commentId: 'answer-1', isStreaming: false })
+
+            expect(probe.arrival()).toBeGreaterThan(afterOther)
+        })
+
+        // The suppression is keyed on the comment id, so a stream in one slot cannot silence a
+        // different comment that happens to settle in another.
+        it('keeps the streaming record per scope', () => {
+            renderProbe({ scopeKey: 'scope-a', commentKey: 'seed-a' }).update({
+                commentKey: 'partial',
+                commentId: 'answer-1',
+                isStreaming: true,
+            })
+            const other = renderProbe({ scopeKey: 'scope-b', commentKey: 'seed-b' })
+            other.update({ commentKey: 'complete', commentId: 'answer-1', isStreaming: false })
+
+            expect(other.arrival()).toEqual(expect.any(Number))
         })
     })
 })

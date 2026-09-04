@@ -61,6 +61,26 @@ import { useEffect, useRef, useState } from 'react'
  */
 const seenCommentKeys = new Map()
 
+/**
+ * AT-2511 follow-up — the comment id this slot is currently watching STREAM, per scope.
+ *
+ * Needed because "do not animate while streaming" is not enough on its own. The assistant's
+ * streaming writes are batched (`BATCH_UPDATE_CHUNK_THRESHOLD` in `storeChunks`) and the run ends
+ * with `flushPendingUpdate()` + a final `safeCommentUpdate({ commentText, isLoading: false })`, so
+ * the settled text is normally LONGER than the last text that was written while live. Suppressing
+ * only the live renders would therefore let that final write through as a brand-new key and roll
+ * the finished answer away and back in — the one moment the animation looks most like a glitch,
+ * because the user has just watched the text appear.
+ *
+ * So the episode is remembered by comment id, which is stable across the whole stream (it is one
+ * document being rewritten), and the settling write of that same id is swallowed too.
+ *
+ * It lives beside `seenCommentKeys` rather than in a ref for the same reason that map does: a
+ * comment streaming in ANOTHER chat replaces this subtree, so a component-local memory is born
+ * empty exactly when it is needed.
+ */
+const streamingCommentIds = new Map()
+
 let arrivalCounter = 0
 
 /**
@@ -89,9 +109,22 @@ export const markLastCommentSeen = (scopeKey, commentKey) => {
     seenCommentKeys.set(scopeKey, commentKey)
 }
 
+export const getStreamingCommentId = scopeKey => (scopeKey ? streamingCommentIds.get(scopeKey) || null : null)
+
+export const markLastCommentStreaming = (scopeKey, commentId) => {
+    if (!scopeKey || !commentId) return
+    streamingCommentIds.set(scopeKey, commentId)
+}
+
+export const clearLastCommentStreaming = scopeKey => {
+    if (!scopeKey) return
+    streamingCommentIds.delete(scopeKey)
+}
+
 /** Exported for tests: module-level state outlives a test file otherwise. */
 export const resetLastCommentArrivals = () => {
     seenCommentKeys.clear()
+    streamingCommentIds.clear()
     arrivalCounter = 0
 }
 
@@ -105,7 +138,13 @@ export const resetLastCommentArrivals = () => {
  * be one atomic step, and a render-phase write would be re-run by React's double-invocation in
  * development and by any re-render before the commit lands.
  */
-export const useLastCommentArrival = ({ scopeKey, commentKey, enabled = true }) => {
+export const useLastCommentArrival = ({
+    scopeKey,
+    commentKey,
+    commentId = null,
+    isStreaming = false,
+    enabled = true,
+}) => {
     const [arrival, setArrival] = useState(null)
     // Guards the case where the same key is delivered again after an unrelated re-render: the
     // effect would find its own record and correctly do nothing, but only because the record was
@@ -118,6 +157,37 @@ export const useLastCommentArrival = ({ scopeKey, commentKey, enabled = true }) 
         const seen = getSeenLastCommentKey(scopeKey)
         markLastCommentSeen(scopeKey, commentKey)
 
+        /**
+         * A streamed answer is WATCHED, not announced.
+         *
+         * Every batched write during a stream changes `commentText` and therefore the key, so
+         * without this the ticker rolled once per chunk — measured at one full roll per write — and
+         * the card read as a slot machine rather than as an answer being typed. The text still
+         * updates in place on every chunk; only the motion stands down.
+         *
+         * Recording the key on the way out is what makes the suppression self-limiting: by the time
+         * the run settles, every text this slot has displayed is already marked seen, so nothing is
+         * owed an animation retroactively.
+         */
+        if (isStreaming) {
+            markLastCommentStreaming(scopeKey, commentId)
+            lastAnimatedKeyRef.current = commentKey
+            return
+        }
+
+        // The settling write of the very comment we just watched stream. Its text is normally
+        // longer than the last live write (batched updates + a final flush), so it arrives as a new
+        // key and would otherwise roll the finished answer away and back in.
+        if (commentId && getStreamingCommentId(scopeKey) === commentId) {
+            clearLastCommentStreaming(scopeKey)
+            lastAnimatedKeyRef.current = commentKey
+            return
+        }
+
+        // Any other comment ends the episode: a stream that was superseded before it settled must
+        // not leave a record that suppresses a later, genuine arrival of the same id.
+        clearLastCommentStreaming(scopeKey)
+
         // Nothing shown here before — record it and stay quiet.
         if (!seen) return
         if (seen === commentKey) return
@@ -128,7 +198,7 @@ export const useLastCommentArrival = ({ scopeKey, commentKey, enabled = true }) 
             arrivalCounter += 1
             setArrival(arrivalCounter)
         }
-    }, [scopeKey, commentKey, enabled])
+    }, [scopeKey, commentKey, commentId, isStreaming, enabled])
 
     return enabled ? arrival : null
 }
