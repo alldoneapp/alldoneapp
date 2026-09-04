@@ -53,6 +53,11 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { CROSS_PROJECT_DESTINATION_WRITE } from '../accessProjection'
 import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
+import {
+    mergePendingContacts,
+    publishOptimisticContactCreated,
+    publishOptimisticContactCreateFailed,
+} from './optimisticContactCreate'
 
 const normalizeContactEmail = value =>
     String(value || '')
@@ -123,7 +128,11 @@ export async function watchProjectContacts(
         contactList.forEach(contact => {
             contacts.push(mapContactData(contact.id, contact.data()))
         })
-        callback(contacts)
+        // AT-2508 - a contact the user just added is invisible to this query until the server
+        // has written its `readerIds` projection, so it is carried alongside the snapshot until
+        // this very snapshot can speak for it. Retiring the pending copy here, in the same
+        // delivery that brings the real one, is what stops the row blinking.
+        callback(mergePendingContacts(projectId, contacts))
     }
 
     const unsubscribe = getDb()
@@ -203,21 +212,44 @@ export async function addContactToProject(projectId, contact, onComplete) {
     const contactToStore = { ...contact, ...buildContactEmailFields(contact, contact.email, false) }
     let feedPhotoUrl = contact.photoURL
 
-    if (contact.photoURL) {
-        const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
-        const urlList = await uploadAvatarPhotos(
-            pictures,
-            `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
-            `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
-        )
+    // AT-2508 - put the row on screen NOW, before the avatar upload and the write. Every field
+    // is already known locally (the id was minted above), and the list query cannot match this
+    // document for several seconds yet - see `optimisticContactCreate.js` for the measurement.
+    //
+    // The photo fields are deliberately emptied: at this point `photoURL` may still be a Blob or
+    // an object URL awaiting `uploadAvatarPhotos`, and this object goes into the shared
+    // `projectContacts` slice that the mentions picker and the assistant read too. The pending
+    // row draws a spinner in the avatar slot, and the real snapshot brings the real picture.
+    publishOptimisticContactCreated(
+        projectId,
+        contactId,
+        mapContactData(contactId, { ...contactToStore, photoURL: '', photoURL50: '', photoURL300: '' })
+    )
 
-        contactToStore.photoURL = urlList[0]
-        contactToStore.photoURL50 = urlList[1]
-        contactToStore.photoURL300 = urlList[2]
-        feedPhotoUrl = urlList[3]
+    try {
+        if (contact.photoURL) {
+            const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
+            const urlList = await uploadAvatarPhotos(
+                pictures,
+                `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
+                `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
+            )
+
+            contactToStore.photoURL = urlList[0]
+            contactToStore.photoURL50 = urlList[1]
+            contactToStore.photoURL300 = urlList[2]
+            feedPhotoUrl = urlList[3]
+        }
+
+        await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
+    } catch (error) {
+        // Nothing was stored, so the row is a lie - take it away and let the caller report it.
+        // Note this only fires on a real rejection: offline the `set()` never settles at all and
+        // the contact is genuinely queued, so the row correctly stays.
+        publishOptimisticContactCreateFailed(projectId, contactId)
+        throw error
     }
 
-    await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
     if (onComplete) onComplete({ uid: contactId, ...contactToStore })
 
     addContactFeedsChain(projectId, contact, feedPhotoUrl, contactId)

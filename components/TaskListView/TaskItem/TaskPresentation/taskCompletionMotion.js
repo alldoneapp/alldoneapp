@@ -171,17 +171,7 @@ export const rowRemainsAfterCompletion = (task, { inCommentPopup = false } = {})
  * @param {boolean} options.isDone The task's persisted done state, watched only for the done → open
  *   transition: reopening a subtask must wipe any completion styling that is still on screen.
  */
-/**
- * @param {object} [options]
- * @param {boolean} [options.retainRow] The subtask guarantee — see `rowRemainsAfterCompletion`.
- * @param {boolean} [options.isDone] The task's persisted done flag, watched for the reopen reset.
- * @param {Function} [options.onCompletionStart] AT-2507 — called once, synchronously, when a
- *   GENUINE completion of a row that is LEAVING the list begins. Not called for a workflow
- *   hand-off and not called for a retained row, because neither empties the list the row is in.
- *   Must have a stable identity (the caller's own `useCallback`), since it is a dependency of
- *   `begin` and therefore of the `completionMotion` handoff object.
- */
-export default function useTaskCompletionMotion({ retainRow = false, isDone = false, onCompletionStart } = {}) {
+export default function useTaskCompletionMotion({ retainRow = false, isDone = false } = {}) {
     const reducedMotion = useReducedMotion()
 
     const [completion, setCompletion] = useState(null)
@@ -299,21 +289,6 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
              * are today, while its "Done" still gets the full run.
              */
             if (!isCompletion && retainRow) return 0
-
-            /**
-             * AT-2507 — announced HERE rather than at the checkbox because this is the one funnel
-             * every completion passes through (the checkbox, and `taskCompletionHandoff` for the
-             * long-press popup), and because the two conditions that make a completion worth
-             * announcing to the goal above the row are both already resolved at this point:
-             * `isCompletion` (a workflow hand-off is not a completion) and `retainRow` (a subtask
-             * keeps its row and so empties nothing). The caller supplies the announcement itself,
-             * so this module stays ignorant of goals and projects.
-             *
-             * Before the reduced-motion branch below on purpose: whether the ROW draws anything
-             * says nothing about whether the goal section should be told the work is finished, and
-             * the goal's own celebration makes its own reduced-motion decision.
-             */
-            if (isCompletion && !retainRow && typeof onCompletionStart === 'function') onCompletionStart()
 
             const staticOnly = reducedMotion || animationsAreDisabled()
             setCompletion({ isCompletion, animated: !staticOnly })
@@ -454,19 +429,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
 
             return retainRow ? RETAINED_HOLD_MS : COMPLETION_HOLD_MS
         },
-        [
-            reducedMotion,
-            retainRow,
-            onCompletionStart,
-            punch,
-            burst,
-            sweep,
-            pulse,
-            flourish,
-            rowOpacity,
-            rowHeight,
-            scheduleRelease,
-        ]
+        [reducedMotion, retainRow, punch, burst, sweep, pulse, flourish, rowOpacity, rowHeight, scheduleRelease]
     )
 
     // Only applied while collapsing. Left off otherwise so the row is never pinned to a stale

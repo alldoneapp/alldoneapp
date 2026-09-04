@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
@@ -45,7 +45,6 @@ import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
 import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
 import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
-import { publishGoalTaskCompletion } from '../../OpenTasksView/goalCompletionSignal'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 
 function TaskPresentation(
@@ -146,18 +145,6 @@ function TaskPresentation(
      * matters.
      */
     const retainRow = rowRemainsAfterCompletion(task, { inCommentPopup })
-    /**
-     * AT-2507 — tells the goal section above this row that one of its tasks is being completed, so
-     * it can celebrate when the one being ticked is the last one it had for the day.
-     *
-     * The hook calls this only for a genuine completion of a row that is leaving the list, so the
-     * one condition left here is the one the hook cannot know: whether the task belongs to a goal
-     * at all. A task with no `parentGoalId` renders in the general-tasks block, which has no goal
-     * row to celebrate on.
-     */
-    const announceGoalTaskCompletion = useCallback(() => {
-        publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
-    }, [projectId, task.parentGoalId, task.id])
     const {
         onRowLayout: onCompletionRowLayout,
         rowStyle: completionRowStyle,
@@ -168,7 +155,7 @@ function TaskPresentation(
         completionCelebration,
         completionMotion,
         isCompleting,
-    } = useTaskCompletionMotion({ retainRow, isDone: task.done, onCompletionStart: announceGoalTaskCompletion })
+    } = useTaskCompletionMotion({ retainRow, isDone: task.done })
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,

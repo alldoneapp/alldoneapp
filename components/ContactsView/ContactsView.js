@@ -38,6 +38,7 @@ import {
 } from '../../utils/InitialLoad/secondaryViewCache'
 import useNearViewportMount from '../../hooks/useNearViewportMount'
 import ContactsListSkeleton from './ContactsListSkeleton'
+import { isPendingContact } from '../../utils/backends/Contacts/pendingContact'
 
 export const CONTACTS_ALL_PROJECTS_CACHE_ROWS = 3
 export const CONTACTS_SELECTED_PROJECT_CACHE_ROWS = 10
@@ -83,7 +84,10 @@ export const buildContactsViewCacheSnapshot = ({
     const projectsById = {}
     projects.forEach(project => {
         const members = filteredProjectsUsers[project.id] || []
-        const contacts = filteredProjectsContacts[project.id] || []
+        // AT-2508 - a contact still being written is a live, bounded state, not something to
+        // remember. Caching it would replay "Adding person..." on the next mount for a contact
+        // whose creation finished (or failed) long ago, with nothing left to retire the row.
+        const contacts = (filteredProjectsContacts[project.id] || []).filter(contact => !isPendingContact(contact))
         const visibleRows = [...members, ...contacts].sort(sortCachedContacts).slice(0, rowsPerProject)
         projectsById[project.id] = {
             members: visibleRows.filter(contact => !contact.hasOwnProperty('recorderUserId')),
