@@ -1917,6 +1917,7 @@
     "Click here to start a new chat": "Click para comenzar un nuevo chat",
     "AI Settings": "Configuración de IA",
     "Use assistant model": "Usar el modelo del asistente",
+    "Use assistant model with name": "Usar el modelo del asistente (%{name})",
     "Choose AI model": "Elegir modelo de IA",
     "AI Model": "Modelo de IA",
     "Choose temperature": "Elegir temperatura",
