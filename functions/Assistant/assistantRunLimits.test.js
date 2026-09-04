@@ -37,8 +37,6 @@ const SCHEDULE_TRIGGER_MAX_TIMEOUT_SECONDS = 1800
 const ASSISTANT_RUN_HOSTS = [
     { name: 'askToBotSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     { name: 'generatePreConfigTaskResultSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
-    // Hosts the contact "Enrich profile" research run inside the contact's chat.
-    { name: 'enrichContactProfileSecondGen', maxRunWallClockMs: ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     // Deliberately shorter: these execute inline inside an onSchedule function, so they are sized to
     // Cloud Scheduler's attempt deadline rather than to what the function timeout would allow.
     { name: 'checkRecurringAssistantTasks', maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS },

@@ -50,7 +50,6 @@ function getTransactionLabel(source) {
         task_goal_routing: 'Automatic goal assignment',
         linkedin_enrichment: 'LinkedIn enrichment',
         linkedin_search: 'LinkedIn search',
-        contact_enrichment: 'Contact enrichment',
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
         meeting_transcription: 'Meeting transcription',
@@ -84,7 +83,6 @@ function getTransactionSubtitle(entry) {
     if (entry?.channel === 'assistant') return translate('Triggered from the assistant')
     if (entry?.channel === 'whatsapp') return translate('Triggered from WhatsApp')
     if (entry?.channel === 'linkedin') return translate('Triggered from LinkedIn')
-    if (entry?.channel === 'contact') return translate('Triggered from a contact')
     if (entry?.channel === 'admin_panel') return translate('Changed from the admin panel')
     if (entry?.channel === 'menubar_app') return translate('Triggered from the Anna Alldone app')
     if (entry?.channel === 'guides') return translate('Triggered from a guide unlock')
@@ -107,7 +105,7 @@ function getTransactionLink(entry) {
         }
     }
 
-    if ((source === 'linkedin_enrichment' || source === 'contact_enrichment') && projectId && objectId) {
+    if (source === 'linkedin_enrichment' && projectId && objectId) {
         return {
             label: translate('Open contact'),
             url: `${window.location.origin}/projects/${projectId}/contacts/${objectId}`,

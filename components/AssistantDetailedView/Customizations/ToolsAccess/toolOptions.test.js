@@ -50,20 +50,6 @@ describe('assistant tool options', () => {
         expect(OPT_IN_ONLY_TOOLS.has('correct_email_classification')).toBe(false)
     })
 
-    test('includes the contact research tools in the selectable assistant permissions', () => {
-        // Contact enrichment passes these explicitly for its own run; the registry entries are what
-        // let an owner enable them for ordinary chats, where the follow-up question is answered.
-        expect(TOOL_OPTIONS).toEqual(
-            expect.arrayContaining([
-                { key: 'fetch_url', labelKey: 'Read a web page' },
-                { key: 'find_profile_photo', labelKey: 'Find a profile photo' },
-            ])
-        )
-        expect(DEFAULT_ALLOWED_TOOLS).toContain('fetch_url')
-        expect(DEFAULT_ALLOWED_TOOLS).toContain('find_profile_photo')
-        expect(OPT_IN_ONLY_TOOLS.has('fetch_url')).toBe(false)
-    })
-
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

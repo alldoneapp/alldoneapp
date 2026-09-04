@@ -2,7 +2,8 @@ import firebase from 'firebase/compat/app'
 
 import {
     addContactFeedsChain,
-    callEnrichContactProfile,
+    callEnrichContactViaLinkedIn,
+    callSearchLinkedInProfile,
     deleteFolderFilesInStorage,
     getDb,
     getId,
@@ -625,22 +626,75 @@ export async function setProjectContactLinkedInUrl(projectId, contact, contactId
     await updateContactData(projectId, contactId, { linkedInUrl: newUrl }, null)
 }
 
-/**
- * "Enrich profile": starts an assistant research run in the contact's chat. Resolves as soon as
- * the run has posted its answer (or asked its question) — callers should not block the UI on it.
- * A client-generated requestId keys the server's run lock, so a request the browser replays after
- * a sleep/wake lands on the same comment and the same run.
- */
-export async function enrichContactProfile(projectId, contactId, assistantId) {
-    const requestId = getId()
-    const result = await callEnrichContactProfile({
+export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
+    console.log('[LinkedIn Enrichment Client] Calling cloud function with URL:', contact.linkedInUrl)
+    const result = await callEnrichContactViaLinkedIn({
+        linkedInUrl: contact.linkedInUrl,
         projectId,
         contactId,
-        assistantId: assistantId || '',
-        requestId,
     })
-    if (result?.error === 'insufficient_gold') {
-        return { success: false, error: 'insufficient_gold', requestId }
+    console.log('[LinkedIn Enrichment Client] Cloud function result:', JSON.stringify(result.data))
+
+    if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Enrichment Client] Insufficient gold')
+        return { success: false, error: 'insufficient_gold' }
     }
-    return { ...(result || {}), requestId }
+
+    if (result.data.success) {
+        const enrichedData = result.data.data
+        const updates = {}
+
+        if (enrichedData.displayName) updates.displayName = enrichedData.displayName
+        if (enrichedData.company) updates.company = enrichedData.company
+        if (enrichedData.role) updates.role = enrichedData.role
+        if (enrichedData.email) updates.email = enrichedData.email
+        if (enrichedData.phone) updates.phone = enrichedData.phone
+        if (enrichedData.description) {
+            updates.description = enrichedData.description
+            updates.extendedDescription = enrichedData.description
+        }
+        if (enrichedData.photoURL) {
+            updates.photoURL = enrichedData.photoURL
+            updates.photoURL50 = enrichedData.photoURL
+            updates.photoURL300 = enrichedData.photoURL
+        }
+
+        console.log('[LinkedIn Enrichment Client] Fields to update:', Object.keys(updates))
+        if (Object.keys(updates).length > 0) {
+            await updateContactData(projectId, contactId, updates, null)
+            console.log('[LinkedIn Enrichment Client] Contact updated successfully')
+        } else {
+            console.log('[LinkedIn Enrichment Client] No empty fields to update')
+        }
+
+        return { success: true, updated: Object.keys(updates), data: enrichedData }
+    }
+
+    console.error('[LinkedIn Enrichment Client] Enrichment failed - unexpected response')
+    throw new Error('Enrichment failed')
+}
+
+export async function searchLinkedInProfile(projectId, contact, contactId) {
+    console.log('[LinkedIn Search Client] Searching for contact:', contact.displayName)
+    const result = await callSearchLinkedInProfile({
+        displayName: contact.displayName || '',
+        company: contact.company || '',
+        role: contact.role || '',
+        email: contact.email || '',
+    })
+    console.log('[LinkedIn Search Client] Search result:', JSON.stringify(result.data))
+
+    if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Search Client] Insufficient gold')
+        return { success: false, error: 'insufficient_gold' }
+    }
+
+    if (result.data.success && result.data.linkedInUrl) {
+        await updateContactData(projectId, contactId, { linkedInUrl: result.data.linkedInUrl }, null)
+        console.log('[LinkedIn Search Client] LinkedIn URL saved:', result.data.linkedInUrl)
+        return { success: true, linkedInUrl: result.data.linkedInUrl }
+    }
+
+    console.log('[LinkedIn Search Client] No LinkedIn profile found')
+    return { success: true, linkedInUrl: null }
 }

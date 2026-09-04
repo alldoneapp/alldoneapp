@@ -92,6 +92,11 @@ export default function MainSection({
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const showMoreInMainSection = useSelector(state => state.showMoreInMainSection)
+    // AT-2507 — the same two slices `OpenTasksByProject` reads for the per-project sweep's filter
+    // gate. `shallowEqual` because both are arrays the reducer replaces wholesale.
+    const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
+    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
+    const taskFiltersActive = taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const selectedGoalDataInTasksListWhenAddTask = useSelector(state => state.selectedGoalDataInTasksListWhenAddTask)
@@ -141,6 +146,37 @@ export default function MainSection({
     }
 
     const isMainDay = dateFormated === TODAY_DATE
+
+    /**
+     * AT-2507 — may a goal section on this list celebrate having its last task of the day completed?
+     *
+     * Each gate closes a way of celebrating something that did not happen, and they mirror the
+     * per-project gates in `OpenTasksByProject` one scope down:
+     *
+     *   • TODAY only. The task is "all the tasks of a goal for today are done"; clearing tomorrow's
+     *     bucket is not an achievement today, and with Later expanded several day sections are on
+     *     screen at once.
+     *   • No task filters. This whole list comes from `filteredOpenTasksStore`, so with a priority
+     *     or VM filter on, "every task in the section" means "every task the filter let through" —
+     *     completing the one visible task of a goal that still has three hidden ones would
+     *     otherwise be celebrated as clearing the goal.
+     *   • The board is the logged user's own, and not an assistant profile board. Somebody else's
+     *     list is not your work.
+     *   • Not while organising, where rows are being dragged rather than worked.
+     *
+     * The sections that do NOT get this are as deliberate: only `MainSection` passes it, so the
+     * observed / mention / suggested / originally-from lists — which group by goal through the same
+     * `ParentGoalSection` — stay silent. Finishing every task somebody else is observing under a
+     * goal is not the same event.
+     */
+    const celebrateGoalCompletion =
+        isMainDay &&
+        accessGranted &&
+        !isActiveOrganizeMode &&
+        !isAssistant &&
+        !isAnonymous &&
+        !taskFiltersActive &&
+        loggedUserId === currentUserId
 
     const getMainItemsData = () => {
         let mainItemsAmount = emptyGoalsAmount
@@ -557,6 +593,7 @@ export default function MainSection({
                             }
                             isTemplateProject={isTemplateProject}
                             focusedTaskId={effectiveFocusTaskId}
+                            celebrateCompletion={celebrateGoalCompletion}
                         />
                     )
                 }

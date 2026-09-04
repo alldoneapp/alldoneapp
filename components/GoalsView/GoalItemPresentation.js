@@ -11,6 +11,7 @@ import SocialText from '../UIControls/SocialText/SocialText'
 import GoalProgressBar from './GoalProgressBar'
 import GoalDoneProgressBar from './GoalDoneProgressBar'
 import GoalsSwipeBackground from './GoalsSwipeBackground'
+import GoalCompletedFlourish from './GoalCompletedFlourish'
 import NavigationService from '../../utils/NavigationService'
 import {
     hideFloatPopup,
@@ -430,6 +431,7 @@ export default class GoalItemPresentation extends PureComponent {
             parentGoaltasks,
             areObservedTask,
             inCommentPopup,
+            completedRunId,
         } = this.props
         const {
             extendedName,
@@ -658,6 +660,13 @@ export default class GoalItemPresentation extends PureComponent {
                             />
                         )}
                     </Swipeable>
+                    {/* AT-2507 — the celebration for "every task this goal had today is done".
+                        A sibling of the Swipeable rather than a child of it, so the swipe's own
+                        transform can never drag it off the card, and last inside `container` so it
+                        paints over the row's content. It draws nothing at all for an ordinary row:
+                        `completedRunId` is 0 everywhere except a today section of the user's own
+                        unfiltered board. */}
+                    <GoalCompletedFlourish completedRunId={completedRunId} accentColor={highLightColor} />
                     <GoalSwipeDateRangeWrapper
                         goal={goal}
                         projectId={projectId}

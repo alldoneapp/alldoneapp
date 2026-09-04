@@ -1,0 +1,317 @@
+const admin = require('firebase-admin')
+const { getEnvFunctions } = require('../envFunctionsHelper')
+const { deductGold } = require('../Gold/goldHelper')
+
+const ENRICHMENT_GOLD_COST = 30
+
+function isValidHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
+}
+
+function addUrlCandidate(candidates, source, url) {
+    if (!isValidHttpUrl(url)) return
+    candidates.push({ source, url: url.trim() })
+}
+
+function buildUrlFromVectorImage(vectorImage) {
+    if (!vectorImage || typeof vectorImage !== 'object') return null
+    const rootUrl = vectorImage.rootUrl
+    const artifacts = Array.isArray(vectorImage.artifacts) ? vectorImage.artifacts : []
+    if (!isValidHttpUrl(rootUrl) || artifacts.length === 0) return null
+
+    const sortedArtifacts = [...artifacts].sort((a, b) => {
+        const areaA = (a?.width || 0) * (a?.height || 0)
+        const areaB = (b?.width || 0) * (b?.height || 0)
+        return areaB - areaA
+    })
+
+    for (const artifact of sortedArtifacts) {
+        const segment = artifact?.fileIdentifyingUrlPathSegment || artifact?.fileIdentifyingUrl
+        if (typeof segment === 'string' && segment.trim()) {
+            return `${rootUrl}${segment}`
+        }
+    }
+    return null
+}
+
+function collectUrlsFromImageObject(candidates, source, imageObject) {
+    if (!imageObject || typeof imageObject !== 'object') return
+
+    addUrlCandidate(candidates, source, imageObject.url)
+    addUrlCandidate(candidates, source, imageObject.imageUrl)
+    addUrlCandidate(candidates, source, imageObject.originalUrl)
+    addUrlCandidate(candidates, source, imageObject.croppedImage)
+    addUrlCandidate(candidates, source, imageObject.displayImage)
+
+    const fromVectorImage = buildUrlFromVectorImage(imageObject.vectorImage)
+    addUrlCandidate(candidates, source, fromVectorImage)
+}
+
+function getLinkedInPhotoCandidate(profile) {
+    const candidates = []
+
+    addUrlCandidate(candidates, 'profile.profilePicHighQuality', profile.profilePicHighQuality)
+    addUrlCandidate(candidates, 'profile.profilePic', profile.profilePic)
+    addUrlCandidate(candidates, 'profile.profilePicture', profile.profilePicture)
+    addUrlCandidate(candidates, 'profile.avatar', profile.avatar)
+
+    if (Array.isArray(profile.profilePicAllDimensions)) {
+        profile.profilePicAllDimensions.forEach((item, index) =>
+            collectUrlsFromImageObject(candidates, `profile.profilePicAllDimensions[${index}]`, item)
+        )
+    } else {
+        collectUrlsFromImageObject(candidates, 'profile.profilePicAllDimensions', profile.profilePicAllDimensions)
+    }
+
+    if (Array.isArray(profile.profilePictureAllDimensions)) {
+        profile.profilePictureAllDimensions.forEach((item, index) =>
+            collectUrlsFromImageObject(candidates, `profile.profilePictureAllDimensions[${index}]`, item)
+        )
+    } else {
+        collectUrlsFromImageObject(
+            candidates,
+            'profile.profilePictureAllDimensions',
+            profile.profilePictureAllDimensions
+        )
+    }
+
+    const preferredCandidate =
+        candidates.find(c => c.source.includes('HighQuality')) ||
+        candidates.find(c => c.source.includes('AllDimensions')) ||
+        candidates[0]
+
+    return preferredCandidate || { source: 'none', url: '' }
+}
+
+async function uploadLinkedInPhoto(photoUrl, projectId, contactId) {
+    console.log('[LinkedIn Enrichment] Downloading photo from:', photoUrl)
+    const photoResponse = await fetch(photoUrl, {
+        headers: {
+            Accept: 'image/*,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (compatible; AlldoneBot/1.0)',
+        },
+    })
+    if (!photoResponse.ok) {
+        console.warn('[LinkedIn Enrichment] Failed to download photo:', photoResponse.status)
+        return null
+    }
+
+    const contentType = photoResponse.headers.get('content-type') || 'image/jpeg'
+    const buffer = Buffer.from(await photoResponse.arrayBuffer())
+    console.log('[LinkedIn Enrichment] Photo downloaded, size:', buffer.length, 'bytes')
+
+    const bucket = admin.storage().bucket()
+    const timestamp = Date.now()
+    const filePath = `projectsContacts/${projectId}/${contactId}/${contactId}@${timestamp}`
+
+    const file = bucket.file(filePath)
+    await file.save(buffer, {
+        metadata: { contentType },
+    })
+    await file.makePublic()
+
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`
+    console.log('[LinkedIn Enrichment] Photo uploaded to:', publicUrl)
+    return publicUrl
+}
+
+const enrichContactViaLinkedIn = async (data, userId) => {
+    console.log('[LinkedIn Enrichment] Starting enrichment for user:', userId)
+    console.log('[LinkedIn Enrichment] Input data:', JSON.stringify(data))
+
+    const { APIFY_API_KEY } = getEnvFunctions()
+    const { linkedInUrl, projectId, contactId } = data
+
+    if (!APIFY_API_KEY) {
+        console.error('[LinkedIn Enrichment] APIFY_API_KEY is not configured')
+        throw new Error('APIFY_API_KEY is not configured')
+    }
+
+    if (!linkedInUrl) {
+        console.error('[LinkedIn Enrichment] No LinkedIn URL provided')
+        throw new Error('LinkedIn URL is required')
+    }
+
+    console.log('[LinkedIn Enrichment] Deducting', ENRICHMENT_GOLD_COST, 'gold from user:', userId)
+    const goldResult = await deductGold(userId, ENRICHMENT_GOLD_COST, {
+        source: 'linkedin_enrichment',
+        projectId,
+        objectId: contactId,
+        channel: 'linkedin',
+    })
+    console.log('[LinkedIn Enrichment] Gold deduction result:', JSON.stringify(goldResult))
+
+    if (!goldResult.success) {
+        console.warn('[LinkedIn Enrichment] Insufficient gold for user:', userId)
+        return { success: false, error: 'insufficient_gold', message: goldResult.message }
+    }
+
+    console.log('[LinkedIn Enrichment] Calling Apify API for URL:', linkedInUrl)
+    const response = await fetch(
+        `https://api.apify.com/v2/acts/dev_fusion~linkedin-profile-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profileUrls: [linkedInUrl] }),
+        }
+    )
+
+    console.log('[LinkedIn Enrichment] Apify response status:', response.status)
+
+    if (!response.ok) {
+        const errorText = await response.text()
+        console.error('[LinkedIn Enrichment] Apify API error:', response.status, errorText)
+        throw new Error(`Apify API error: ${response.status} - ${errorText}`)
+    }
+
+    const results = await response.json()
+    console.log('[LinkedIn Enrichment] Apify returned', results?.length || 0, 'results')
+
+    if (!results || results.length === 0) {
+        console.error('[LinkedIn Enrichment] No profile data returned')
+        throw new Error('No profile data returned from LinkedIn')
+    }
+
+    const profile = results[0]
+    console.log('[LinkedIn Enrichment] Raw profile keys:', Object.keys(profile))
+    console.log('[LinkedIn Enrichment] Raw profile data:', JSON.stringify(profile).substring(0, 2000))
+    console.log('[LinkedIn Enrichment] Profile succeeded:', profile.succeeded !== false)
+
+    if (profile.succeeded === false) {
+        console.error('[LinkedIn Enrichment] Scraping failed:', profile.error)
+        throw new Error(profile.error || 'Failed to scrape LinkedIn profile')
+    }
+
+    const enrichedData = {
+        displayName: profile.fullName || '',
+        company: profile.companyName || '',
+        role: profile.jobTitle || profile.headline || '',
+        email: profile.email || '',
+        phone: profile.mobileNumber || '',
+        description: profile.about || '',
+    }
+
+    // Upload LinkedIn photo to Firebase Storage if available.
+    // Apify may return null for profilePic/profilePicHighQuality while still providing URLs in profilePicAllDimensions.
+    const { source: linkedInPhotoSource, url: linkedInPhotoUrl } = getLinkedInPhotoCandidate(profile)
+    console.log('[LinkedIn Enrichment] Selected photo source:', linkedInPhotoSource)
+    if (linkedInPhotoUrl && projectId && contactId) {
+        try {
+            const storageUrl = await uploadLinkedInPhoto(linkedInPhotoUrl, projectId, contactId)
+            if (storageUrl) {
+                enrichedData.photoURL = storageUrl
+            }
+        } catch (photoError) {
+            console.warn('[LinkedIn Enrichment] Photo upload failed:', photoError.message)
+        }
+    } else {
+        console.log('[LinkedIn Enrichment] No usable LinkedIn photo URL found for this profile')
+    }
+
+    console.log('[LinkedIn Enrichment] Enriched data:', JSON.stringify(enrichedData))
+    console.log('[LinkedIn Enrichment] Enrichment completed successfully')
+
+    return {
+        success: true,
+        data: enrichedData,
+    }
+}
+
+const SEARCH_GOLD_COST = 20
+
+const searchLinkedInProfile = async (data, userId) => {
+    console.log('[LinkedIn Search] Starting search for user:', userId)
+    console.log('[LinkedIn Search] Input data:', JSON.stringify(data))
+
+    const { TAVILY_API_KEY } = getEnvFunctions()
+    const { displayName, company, role, email } = data
+
+    if (!TAVILY_API_KEY || TAVILY_API_KEY === '' || TAVILY_API_KEY.startsWith('your_')) {
+        console.error('[LinkedIn Search] TAVILY_API_KEY is not configured')
+        throw new Error('TAVILY_API_KEY is not configured')
+    }
+
+    if (!displayName && !email) {
+        console.error('[LinkedIn Search] No contact info provided')
+        throw new Error('At least a name or email is required to search')
+    }
+
+    console.log('[LinkedIn Search] Deducting', SEARCH_GOLD_COST, 'gold from user:', userId)
+    const goldResult = await deductGold(userId, SEARCH_GOLD_COST, {
+        source: 'linkedin_search',
+        channel: 'linkedin',
+    })
+    console.log('[LinkedIn Search] Gold deduction result:', JSON.stringify(goldResult))
+
+    if (!goldResult.success) {
+        console.warn('[LinkedIn Search] Insufficient gold for user:', userId)
+        return { success: false, error: 'insufficient_gold', message: goldResult.message }
+    }
+
+    try {
+        const { tavily } = require('@tavily/core')
+        const tvly = tavily({ apiKey: TAVILY_API_KEY })
+
+        // Build search queries with fallback strategy
+        const queries = []
+
+        // Primary: name + company with domain filter
+        if (displayName && company) {
+            queries.push(`"${displayName}" "${company}" LinkedIn profile`)
+            queries.push(`"${displayName}" ${company} LinkedIn`)
+        }
+
+        // Fallback: name only with domain filter
+        if (displayName) {
+            queries.push(`"${displayName}" LinkedIn profile`)
+        }
+
+        // Fallback: email-based search
+        if (email) {
+            queries.push(`"${email}" LinkedIn`)
+        }
+
+        let linkedInResult = null
+
+        for (const query of queries) {
+            console.log('[LinkedIn Search] Trying query:', query)
+
+            const response = await tvly.search(query, {
+                searchDepth: 'basic',
+                maxResults: 5,
+                includeDomains: ['linkedin.com'],
+            })
+
+            console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
+            if (response.results) {
+                response.results.forEach((r, i) => {
+                    console.log(`[LinkedIn Search] Result ${i}: ${r.url} - ${r.title}`)
+                })
+            }
+
+            // Find the first linkedin.com/in/ URL
+            linkedInResult = response.results?.find(r => r.url && r.url.includes('linkedin.com/in/'))
+
+            if (linkedInResult) {
+                console.log('[LinkedIn Search] Found LinkedIn URL:', linkedInResult.url)
+                break
+            }
+        }
+
+        if (linkedInResult) {
+            return {
+                success: true,
+                linkedInUrl: linkedInResult.url,
+                title: linkedInResult.title || '',
+            }
+        }
+
+        console.log('[LinkedIn Search] No LinkedIn profile URL found after all attempts')
+        return { success: true, linkedInUrl: null }
+    } catch (error) {
+        console.error('[LinkedIn Search] Tavily search failed:', error.message)
+        throw new Error('LinkedIn search failed: ' + error.message)
+    }
+}
+
+module.exports = { enrichContactViaLinkedIn, searchLinkedInProfile, ENRICHMENT_GOLD_COST, SEARCH_GOLD_COST }

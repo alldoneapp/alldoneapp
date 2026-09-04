@@ -37,8 +37,6 @@ export const TOOL_OPTIONS = [
     { key: 'delete_calendar_event', labelKey: 'Delete Calendar event' },
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
-    { key: 'fetch_url', labelKey: 'Read a web page' },
-    { key: 'find_profile_photo', labelKey: 'Find a profile photo' },
     { key: 'get_route_info', labelKey: 'Check distance and route between locations' },
     { key: 'get_local_recommendations', labelKey: 'Get local recommendations nearby' },
     { key: 'get_weather', labelKey: 'Check the weather' },

@@ -64,6 +64,7 @@ const getEnvFunctions = () => {
             ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+            APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
             OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
@@ -112,6 +113,7 @@ const getEnvFunctions = () => {
                     ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: envJson.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
+                    APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
                     // AT-2230. This map is an explicit allowlist, NOT a passthrough of the JSON: a
                     // key added to GOOGLE_FUNCTIONS_ENV_DEV/_PROD but missing here is silently
@@ -176,6 +178,7 @@ const getEnvFunctions = () => {
                         ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                        APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
                         VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
@@ -256,6 +259,7 @@ const getEnvFunctions = () => {
                 ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                 OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',

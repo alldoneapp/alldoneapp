@@ -15,20 +15,13 @@ import ChangeTextFieldModal from '../../UIComponents/FloatModals/ChangeTextField
 import ChangeContactInfoModal from '../../UIComponents/FloatModals/ChangeContactInfoModal'
 import HelperFunctions from '../../../utils/HelperFunctions'
 import ImagePickerModal from '../../UIComponents/FloatModals/ImagePickerModal'
-import { showConfirmPopup, setShowLimitedFeatureModal, setSelectedNavItem } from '../../../redux/actions'
+import { showConfirmPopup, setShowLimitedFeatureModal } from '../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PROJECT_CONTACT } from '../../UIComponents/ConfirmPopup'
-import URLsContacts, {
-    URL_CONTACT_DETAILS_CHAT,
-    URL_CONTACT_DETAILS_PROPERTIES,
-} from '../../../URLSystem/Contacts/URLsContacts'
+import URLsContacts, { URL_CONTACT_DETAILS_PROPERTIES } from '../../../URLSystem/Contacts/URLsContacts'
 import ContactsHelper, { PHOTO_SIZE_300, PHOTO_SIZE_50 } from '../../ContactsView/Utils/ContactsHelper'
 import FollowObject from '../../Followers/FollowObject'
 import { FOLLOWER_CONTACTS_TYPE } from '../../Followers/FollowerConstants'
-import {
-    DV_TAB_CONTACT_CHAT,
-    DV_TAB_CONTACT_PROPERTIES,
-    DV_TAB_ROOT_CONTACTS,
-} from '../../../utils/TabNavigationConstants'
+import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_ROOT_CONTACTS } from '../../../utils/TabNavigationConstants'
 import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
 import { FEED_CONTACT_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import HighlightButton from '../../UIComponents/FloatModals/HighlightColorModal/HighlightButton'
@@ -43,16 +36,12 @@ import {
     setProjectContactPhone,
     setProjectContactPicture,
     setProjectContactLinkedInUrl,
-    enrichContactProfile,
+    enrichContactViaLinkedIn,
+    searchLinkedInProfile,
 } from '../../../utils/backends/Contacts/contactsFirestore'
-import { resolveAssistantForProjectObject } from '../../AdminPanel/Assistants/assistantsHelper'
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
-
-// Flat fee of the research run, mirrored from CONTACT_ENRICHMENT_GOLD_COST in
-// functions/Contacts/contactProfileEnrichment.js; the assistant's own token usage is metered on top.
-export const ENRICH_PROFILE_GOLD_COST = 10
 
 class ContactProperties extends Component {
     constructor(props) {
@@ -68,6 +57,7 @@ class ContactProperties extends Component {
             showPhoneModal: false,
             showLinkedInModal: false,
             isEnriching: false,
+            isSearchingLinkedIn: false,
             showAddTaskModal: false,
             loggedUser: storeState.loggedUser,
             selectedTab: storeState.selectedNavItem,
@@ -87,7 +77,6 @@ class ContactProperties extends Component {
     }
 
     componentWillUnmount() {
-        this.unmounted = true
         this.state.unsubscribe()
     }
 
@@ -188,17 +177,14 @@ class ContactProperties extends Component {
         return emails.join('\n')
     }
 
-    // "Enrich profile": the assistant researches the person from public sources and fills the
-    // card from inside the contact chat, asking there when it cannot tell two people apart. The
-    // callable hosts the whole run (minutes), so the user is sent to the chat to watch it rather
-    // than kept waiting on this tab.
     enrichContact = async () => {
         const { projectContacts, loggedUser } = this.state
         const { projectId, user: userProp } = this.props
         const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
-        if (!contact) return
 
-        if (loggedUser.gold < ENRICH_PROFILE_GOLD_COST) {
+        if (!contact?.linkedInUrl) return
+
+        if (loggedUser.gold < 30) {
             store.dispatch(
                 setShowLimitedFeatureModal({
                     title: translate('Not enough Gold'),
@@ -208,18 +194,9 @@ class ContactProperties extends Component {
             return
         }
 
-        const assistantId = resolveAssistantForProjectObject(projectId, contact.assistantId)?.uid || ''
         this.setState({ isEnriching: true })
-
-        const run = enrichContactProfile(projectId, contact.uid, assistantId)
-        run.catch(error => console.error('Contact enrichment failed:', error))
-
-        // The request comment and the assistant's answers land in the chat tab.
-        store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_CHAT))
-        URLsContacts.push(URL_CONTACT_DETAILS_CHAT, { projectId, userId: contact.uid }, projectId, contact.uid)
-
         try {
-            const result = await run
+            const result = await enrichContactViaLinkedIn(projectId, contact, contact.uid)
             if (result && result.error === 'insufficient_gold') {
                 store.dispatch(
                     setShowLimitedFeatureModal({
@@ -229,9 +206,43 @@ class ContactProperties extends Component {
                 )
             }
         } catch (error) {
-            // already logged above
+            console.error('LinkedIn enrichment failed:', error)
         }
-        if (!this.unmounted) this.setState({ isEnriching: false })
+        this.setState({ isEnriching: false })
+    }
+
+    searchLinkedIn = async () => {
+        const { projectContacts, loggedUser } = this.state
+        const { projectId, user: userProp } = this.props
+        const contact = (projectContacts[projectId] || []).find(c => c.uid === userProp.uid)
+
+        if (loggedUser.gold < 20) {
+            store.dispatch(
+                setShowLimitedFeatureModal({
+                    title: translate('Not enough Gold'),
+                    description: translate('Not enough Gold description'),
+                })
+            )
+            return
+        }
+
+        this.setState({ isSearchingLinkedIn: true })
+        try {
+            const result = await searchLinkedInProfile(projectId, contact, contact.uid)
+            if (result && result.error === 'insufficient_gold') {
+                store.dispatch(
+                    setShowLimitedFeatureModal({
+                        title: translate('Not enough Gold'),
+                        description: translate('Not enough Gold description'),
+                    })
+                )
+            } else if (result && result.success && !result.linkedInUrl) {
+                alert(translate('No LinkedIn profile found'))
+            }
+        } catch (error) {
+            console.error('LinkedIn search failed:', error)
+        }
+        this.setState({ isSearchingLinkedIn: false })
     }
 
     writeBrowserURL = () => {
@@ -254,6 +265,7 @@ class ContactProperties extends Component {
             showPhoneModal,
             showLinkedInModal,
             isEnriching,
+            isSearchingLinkedIn,
             showAddTaskModal,
             loggedUser,
         } = this.state
@@ -471,20 +483,32 @@ class ContactProperties extends Component {
                                     </TouchableOpacity>
                                 )}
 
-                                {accessGranted && loggedUserCanUpdateObject && !isGuide && (
+                                {accessGranted && loggedUserCanUpdateObject && (
                                     <View style={{ paddingLeft: 32, paddingBottom: 8 }}>
-                                        <Button
-                                            title={
-                                                isEnriching
-                                                    ? translate('Loading')
-                                                    : `${translate('Enrich profile')} (${ENRICH_PROFILE_GOLD_COST} ${translate(
-                                                          'Gold + assistant usage'
-                                                      )})`
-                                            }
-                                            type={'ghost'}
-                                            onPress={this.enrichContact}
-                                            disabled={isEnriching}
-                                        />
+                                        {user.linkedInUrl === '' && (
+                                            <Button
+                                                title={
+                                                    isSearchingLinkedIn
+                                                        ? translate('Loading')
+                                                        : `${translate('Search LinkedIn')} (20 Gold)`
+                                                }
+                                                type={'ghost'}
+                                                onPress={this.searchLinkedIn}
+                                                disabled={isSearchingLinkedIn}
+                                            />
+                                        )}
+                                        {user.linkedInUrl !== '' && (
+                                            <Button
+                                                title={
+                                                    isEnriching
+                                                        ? translate('Loading')
+                                                        : `${translate('Enrich via LinkedIn')} (30 Gold)`
+                                                }
+                                                type={'ghost'}
+                                                onPress={this.enrichContact}
+                                                disabled={isEnriching}
+                                            />
+                                        )}
                                     </View>
                                 )}
                             </View>

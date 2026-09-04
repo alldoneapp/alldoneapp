@@ -1735,98 +1735,38 @@ exports.giphyRandomGif = onCall(
     }
 )
 
-// "Enrich profile" on a contact (replaces the Apify LinkedIn scraper). Hosts a full assistant
-// prompt run inside the contact's chat, so it carries the prompt-run timeout and the per-request run
-// lock: a laptop that sleeps mid-run makes the browser replay the identical POST on wake, and without
-// the lock that replay would post a second request comment, charge the fee twice and run twice.
-exports.enrichContactProfileSecondGen = onCall(
+exports.enrichContactViaLinkedIn = onCall(
     {
-        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
-        memory: '1GiB',
+        timeoutSeconds: 300,
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
     async request => {
-        const functionEntryTime = Date.now()
         const { data, auth } = request
-        if (!auth) {
+        if (auth) {
+            const { enrichContactViaLinkedIn } = require('./Apify/enrichContactViaLinkedIn')
+            return await enrichContactViaLinkedIn(data, auth.uid)
+        } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }
-        const userId = auth.uid
-        const projectId = typeof data?.projectId === 'string' ? data.projectId.trim() : ''
-        const contactId = typeof data?.contactId === 'string' ? data.contactId.trim() : ''
-        const assistantId = typeof data?.assistantId === 'string' ? data.assistantId.trim() : ''
-        const requestId = typeof data?.requestId === 'string' ? data.requestId.trim() : ''
-        const objectType = 'contacts'
-        if (!projectId || !contactId || !requestId) {
-            throw new HttpsError('invalid-argument', 'projectId, contactId and requestId are required')
-        }
-        try {
-            await assertObjectAccess(admin.firestore(), userId, projectId, objectType, contactId)
-        } catch (error) {
-            console.warn('enrichContactProfileSecondGen: access denied', {
-                userId,
-                projectId,
-                contactId,
-                error: error.message,
-            })
-            throw new HttpsError('permission-denied', 'No access to the requested contact')
-        }
+    }
+)
 
-        const {
-            acquireAssistantRunLock,
-            completeAssistantRunLock,
-            failAssistantRunLock,
-        } = require('./Assistant/assistantRunIdempotency')
-        // The client-generated requestId doubles as the id of the request comment, so a replayed
-        // request keys the same lock and lands on the same comment.
-        const messageId = requestId
-        const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
-            userId,
-            messageId,
-            projectId,
-            objectType,
-            objectId: contactId,
-            assistantId,
-        })
-        if (!assistantRunLock.acquired) {
-            console.warn('enrichContactProfileSecondGen: duplicate enrichment run skipped', {
-                userId,
-                messageId,
-                projectId,
-                contactId,
-                lockId: assistantRunLock.lockId,
-                reason: assistantRunLock.reason,
-            })
-            return {
-                success: true,
-                duplicate: true,
-                status: assistantRunLock.reason,
-                messageId,
-            }
-        }
-
-        try {
-            const { startContactProfileEnrichment } = require('./Contacts/contactProfileEnrichment')
-            const result = await startContactProfileEnrichment({
-                userId,
-                projectId,
-                contactId,
-                assistantId,
-                requestId,
-                functionEntryTime,
-            })
-            await completeAssistantRunLock(assistantRunLock.lockRef)
-            return result
-        } catch (error) {
-            await failAssistantRunLock(assistantRunLock.lockRef, error)
-            console.error('enrichContactProfileSecondGen: enrichment failed', {
-                userId,
-                projectId,
-                contactId,
-                error: error.message,
-            })
-            throw new HttpsError('internal', error.message || 'Contact enrichment failed')
+exports.searchLinkedInProfile = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { searchLinkedInProfile } = require('./Apify/enrichContactViaLinkedIn')
+            return await searchLinkedInProfile(data, auth.uid)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
         }
     }
 )

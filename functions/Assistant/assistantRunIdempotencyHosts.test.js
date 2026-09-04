@@ -10,7 +10,7 @@ const path = require('path')
 //
 // Both callables already receive the client-generated `messageId` of the comment that triggered the
 // run, which is exactly the idempotency key `acquireAssistantRunLock` wants.
-const RUN_LOCK_HOSTS = ['askToBotSecondGen', 'generatePreConfigTaskResultSecondGen', 'enrichContactProfileSecondGen']
+const RUN_LOCK_HOSTS = ['askToBotSecondGen', 'generatePreConfigTaskResultSecondGen']
 
 // index.js cannot be require()d here (it registers every function and pulls in the whole runtime), so
 // the registration is read as source — same approach as assistantRunLimits.test.js.

@@ -638,52 +638,10 @@ describe('Update note assistant tool schema', () => {
 
 describe('Update contact assistant tool schema', () => {
     test('supports contact-targeted updates with email writes', () => {
-        // Since profile enrichment, an email is one of several optional fields; the executor
-        // rejects a call that changes nothing at all.
-        expect(toolSchemas.update_contact.function.parameters.required).toEqual([])
+        expect(toolSchemas.update_contact.function.parameters.required).toEqual(['email'])
         expect(toolSchemas.update_contact.function.parameters.properties.contactId.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.contactName.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.contactEmail.type).toBe('string')
         expect(toolSchemas.update_contact.function.parameters.properties.email.type).toBe('string')
-    })
-})
-
-describe('Contact research tool schemas (profile enrichment)', () => {
-    test('exposes fetch_url and find_profile_photo when allowed', () => {
-        expect(getToolSchemas(['fetch_url', 'find_profile_photo']).map(schema => schema.function.name)).toEqual([
-            'fetch_url',
-            'find_profile_photo',
-        ])
-    })
-
-    test('fetch_url requires only the url and warns the model off LinkedIn', () => {
-        const schema = toolSchemas.fetch_url.function
-        expect(schema.parameters.required).toEqual(['url'])
-        expect(schema.description).toMatch(/LinkedIn pages cannot be read/)
-    })
-
-    test('find_profile_photo takes any combination of email, GitHub and page URLs', () => {
-        const { properties, required } = toolSchemas.find_profile_photo.function.parameters
-        expect(Object.keys(properties)).toEqual(['email', 'githubUsername', 'pageUrls'])
-        expect(properties.pageUrls.type).toBe('array')
-        expect(required).toEqual([])
-    })
-
-    test('update_contact accepts the enrichment fields and no longer forces an email', () => {
-        const { properties, required } = toolSchemas.update_contact.function.parameters
-        for (const field of [
-            'email',
-            'displayName',
-            'company',
-            'role',
-            'phone',
-            'linkedInUrl',
-            'description',
-            'photoUrl',
-        ]) {
-            expect(properties[field]).toBeDefined()
-        }
-        expect(required).toEqual([])
-        expect(properties.photoUrl.description).toMatch(/find_profile_photo/)
     })
 })

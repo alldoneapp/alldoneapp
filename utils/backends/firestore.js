@@ -6945,11 +6945,12 @@ export async function sendPushNotification(data) {
     runHttpsCallableFunction('sendPushNotificationSecondGen', data).catch(() => {})
 }
 
-// Hosts a full assistant research run in the contact's chat, so it can take minutes; the timeout
-// matches the other prompt-run callables. The result is informational — the visible outcome is
-// the assistant's comments in the contact chat.
-export async function callEnrichContactProfile(data) {
-    return runHttpsCallableFunction('enrichContactProfileSecondGen', data, { timeout: 540000 })
+export async function callEnrichContactViaLinkedIn(data) {
+    return asCallableEnvelope('enrichContactViaLinkedIn', data)
+}
+
+export async function callSearchLinkedInProfile(data) {
+    return asCallableEnvelope('searchLinkedInProfile', data)
 }
 
 // --- GitLab repo connection (per-project repo + per-user token, used by the VM coding flow) ---
