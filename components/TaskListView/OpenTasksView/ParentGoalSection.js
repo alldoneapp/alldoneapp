@@ -12,6 +12,7 @@ import { objectIsLockedForUser } from '../../Guides/guidesHelper'
 import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/LockedGoalModal'
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
+import useGoalCompletedFlourish from './useGoalCompletedFlourish'
 
 export default function ParentGoalSection({
     projectId,
@@ -32,6 +33,7 @@ export default function ParentGoalSection({
     expandTasksList,
     isTemplateProject,
     focusedTaskId,
+    celebrateCompletion = false,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -52,6 +54,18 @@ export default function ParentGoalSection({
     const dismissibleRef = useRef(null)
     // AT-2160: keep this above the early return — hooks must run on every render.
     const hiddenByOptimisticPostpone = useOptimisticGoalPostponeHidden(projectId, goalId)
+    /**
+     * AT-2507 — the run id the goal row celebrates with when the last of the tasks below it is
+     * ticked. Lives here rather than in `MainSection` because this is the component that owns one
+     * goal's task list, and rather than in `GoalItemPresentation` because that row is also the
+     * goals-board row, which has no day-scoped task list at all.
+     */
+    const completedRunId = useGoalCompletedFlourish({
+        projectId,
+        goalId,
+        taskList,
+        enabled: celebrateCompletion,
+    })
 
     const setDismissibleRefs = ref => {
         dismissibleRef.current = ref
@@ -130,6 +144,7 @@ export default function ParentGoalSection({
                     setEditing={setEditing}
                     showingTasks={showingTasks}
                     toggleTasksList={toggleTasksList}
+                    completedRunId={completedRunId}
                 />
             )}
             {goal && showingTasks && (

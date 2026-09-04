@@ -431,3 +431,38 @@ to be computed against the reduced pool.
 `--reduce-motion` asserts the **inverted** contract: no transform at all, no countdown line, and an
 instant unmount. CLAUDE.md records a harness that asserted the animated expectations under reduced
 motion and therefore reported the correct behaviour as a failure; this one does not repeat that.
+
+### `at2507/` — a cleared goal must flourish, and hand its row straight back
+
+The smallest of the four completion celebrations: when the last task a goal had for today is
+ticked, a slim bar in the goal's own accent colour draws itself along the bottom edge of the goal
+card, breathes once, and fades — ~900ms, nothing outside the card, and deliberately no particles of
+any kind, which is what keeps it below the project line's departure (`at2492`/`at2495`).
+
+Jest is blind to all of it for the usual two reasons — `__mocks__/react-native.js` stubs
+`Animated.timing` to a no-op `{start}`, and jsdom lays nothing out — so the unit suites can assert
+every rule of this feature and still be looking at an animation that never moves a pixel. This
+harness drives the REAL `useGoalCompletedFlourish` and triggers it through the REAL
+`publishGoalTaskCompletion`, i.e. the same call the task row makes from `beginCompletionMotion`,
+then reads what the browser actually painted each frame: the bar's transformed width and height,
+the wash's computed opacity and the overlay's own fade.
+
+Two of the checks are about the trigger rather than the paint, because the interesting failure here
+is celebrating the wrong thing: completing the FIRST of the goal's two tasks must paint nothing at
+all, and only the last one starts a run.
+
+Three others are load-bearing:
+
+- **the bar grows from the left edge, not from its middle.** `transform-origin` is a
+  react-native-web passthrough, so the day RNW stops forwarding it the bar silently starts expanding
+  out of its own centre and stops reading as progress — with every Jest assertion still green.
+- **the card is handed back with nothing painted on it.** Unlike the project line, a cleared goal
+  usually STAYS on the board (as an `EmptyGoal` with its add-task line), so a residue here would be
+  a permanent decoration on an ordinary row rather than a frame nobody sees.
+- **the whole run fits inside the completing task's write hold.** That 1070ms hold is the only
+  reason the goal section is still mounted while this plays, and it is what lets AT-2507 skip the
+  probe-and-hold machinery AT-2492 needed. The harness reports the last frame that actually painted,
+  so an overrun is measured rather than assumed.
+
+`--reduce-motion` asserts the **inverted** contract: the trigger still fires — whether the row
+animates is a separate question from whether the work was finished — and nothing is painted.
