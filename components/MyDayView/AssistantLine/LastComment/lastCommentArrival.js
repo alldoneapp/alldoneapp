@@ -44,9 +44,21 @@ import { useEffect, useRef, useState } from 'react'
  * and it is also the honest question: if the text is identical, nothing visibly arrived.
  */
 
-// A scope's record survives remounts but not a reload. Keyed by the caller's `scopeKey`, which
-// `LastCommentArea` builds from the user, the project key it subscribes to and the assistant it is
-// scoped to — i.e. exactly the identity of "this Last comment slot".
+/**
+ * A scope's record survives remounts but not a reload. Keyed by the caller's `scopeKey`, which
+ * `LastCommentArea` builds from the user, the project key it subscribes to and the assistant it is
+ * scoped to — i.e. exactly the identity of "this Last comment slot".
+ *
+ * Known trade-off: if two slots sharing one scope were ever mounted AT THE SAME TIME, the first
+ * one's effect records the arrival and the second then finds its own record and stays still, so
+ * only one of the two would animate. That is why the record is written and read in the same effect
+ * rather than guarded per component — a shared scope must converge on "seen", never double-count.
+ * It is not reachable today: every `AssistantLine` mount site is a mutually exclusive view or tab
+ * (MyDay's open/done/workflow, the project board's open/done/pending/workflow, the assistant
+ * board), and the collapsed chip replaces the expanded card rather than joining it. The failure
+ * mode if that ever changes is a missing flourish on one of two visible cards — never a wrong
+ * state, and never a crash.
+ */
 const seenCommentKeys = new Map()
 
 let arrivalCounter = 0
