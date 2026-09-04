@@ -34,6 +34,17 @@
  *   node browser-tests/at2511/run.js
  *   node browser-tests/at2511/run.js --reduce-motion
  *   node browser-tests/at2511/run.js --compact
+ *   node browser-tests/at2511/run.js --real-chain
+ *
+ * `--real-chain` is the mode that matters most and the one this harness originally lacked. The
+ * three modes above render `LastAssistantComment` DIRECTLY with a hand-written `arrivalId`, which
+ * is why all 78 of their checks passed while the feature was inert in production:
+ * `LastAssistantCommentWrapper` — the component that actually decides whether the card is ever told
+ * about an arrival — was in nobody's tree, and its ordinary branch dropped the prop. `--real-chain`
+ * mounts container → wrapper → card and delivers a comment through a `watchComments` callback.
+ *
+ * Run it against the pre-fix commit for the A/B: `incoming y : 0 0 0 0 …` for the whole run, no
+ * outgoing row, 5 of 11 checks failing — i.e. the reported symptom, reproduced.
  */
 const path = require('path')
 const http = require('http')
@@ -49,7 +60,7 @@ const HTML = `<!doctype html>
 <style>html,body,#root{margin:0;padding:0;box-sizing:border-box;background:#fff}</style></head>
 <body><div id="root"></div><script src="/harness.js"></script></body></html>`
 
-function build() {
+function build({ entry = ENTRY, out = BUILD_DIR, setup = null } = {}) {
     const webpackBin = path.join(ROOT, 'web-bundler', 'node_modules', '.bin', 'webpack')
     if (!fs.existsSync(webpackBin)) throw new Error('web-bundler deps missing: (cd web-bundler && npm install)')
     execFileSync(
@@ -60,19 +71,20 @@ function build() {
             '--mode',
             'development',
             '--env',
-            `harnessEntry=${ENTRY}`,
+            `harnessEntry=${entry}`,
             '--env',
-            `harnessOut=${BUILD_DIR}`,
+            `harnessOut=${out}`,
+            ...(setup ? ['--env', `harnessSetup=${setup}`] : []),
         ],
         { cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1400' } }
     )
-    fs.writeFileSync(path.join(BUILD_DIR, 'index.html'), HTML)
+    fs.writeFileSync(path.join(out, 'index.html'), HTML)
 }
 
-function serve() {
+function serve(dir = BUILD_DIR) {
     const server = http.createServer((req, res) => {
         const url = req.url === '/' ? '/index.html' : req.url.split('?')[0]
-        const file = path.join(BUILD_DIR, url)
+        const file = path.join(dir, url)
         if (!fs.existsSync(file)) {
             res.writeHead(404)
             return res.end('not found')
@@ -91,7 +103,172 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`)
 }
 
+/**
+ * ── the real-chain mode ──────────────────────────────────────────────────────────────────────────
+ *
+ * Everything above renders `LastAssistantComment` directly and hands it an `arrivalId`. That is what
+ * let AT-2511 ship an animation that could not run: `LastAssistantCommentWrapper` sits between the
+ * container and the card in production, and its ordinary (no-modal) branch dropped the prop — so the
+ * card was always told `null`, and no harness had that component in its tree to notice.
+ *
+ * This mode mounts the REAL container → REAL wrapper → REAL card and delivers a comment the way the
+ * app does, through a `watchComments` callback. It also covers the second defect that shape hid: the
+ * container publishes `arrivalId` from an effect, one commit AFTER the text, so a card that captured
+ * "the row painted last commit" had already advanced to the NEW row and rolled the fresh answer out
+ * from under itself — identical text in both rows, which no positional check can see.
+ */
+async function realChainMain() {
+    const OUT = path.join(__dirname, '.build-realchain')
+    build({
+        entry: path.join(__dirname, 'realChain.entry.js'),
+        out: OUT,
+        setup: path.join(__dirname, 'realChain.setup.js'),
+    })
+    const server = await serve(OUT)
+    const port = server.address().port
+    const { chromium } = require('playwright')
+    const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, reducedMotion: 'no-preference' })
+    page.on('pageerror', e => console.log('PAGE ERROR:', e.message))
+    await page.goto(`http://127.0.0.1:${port}/`)
+    await page.waitForFunction('window.__ready === true')
+    await sleep(150)
+
+    console.log('\n--- mode: REAL chain (container → wrapper → card), comment delivered by watcher ---\n')
+
+    // The slot loads its first comment. That is not an arrival — it was already there.
+    await page.evaluate(() => window.__emitComment(window.__texts.FIRST))
+    await sleep(120)
+    const loaded = await page.evaluate(() => window.__measure())
+    check('the real chain mounts a card at all', loaded.present, loaded.present ? '' : 'still showing the skeleton')
+    check(
+        'the first comment shows without animating',
+        loaded.present && !loaded.outgoingPresent && loaded.incomingY === 0,
+        `y=${loaded.incomingY}`
+    )
+
+    /**
+     * The arrival. Captured on the FIRST painted frame, because that is where the earlier
+     * passive-effect flash lived and where a missing arm shows as "already finished".
+     */
+    const firstPaint = await page.evaluate(
+        () =>
+            new Promise(resolve => {
+                window.__emitComment(window.__texts.ARRIVED)
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
+            })
+    )
+
+    const frames = [firstPaint]
+    for (let i = 0; i < 24; i++) {
+        await sleep(25)
+        frames.push(await page.evaluate(() => window.__measure()))
+    }
+    const at = key => frames.map(f => f[key])
+    console.log(
+        '    outgoing y   :',
+        at('outgoingY')
+            .map(v => (v === null ? '-' : v))
+            .join(' ')
+    )
+    console.log(
+        '    incoming y   :',
+        at('incomingY')
+            .map(v => (v === null ? '-' : v))
+            .join(' ')
+    )
+    console.log('    outgoing text:', JSON.stringify((firstPaint.outgoingText || '').slice(0, 42)))
+    console.log('    incoming text:', JSON.stringify((firstPaint.incomingText || '').slice(0, 42)))
+
+    // THE regression: through the real chain, a comment that arrives must animate at all.
+    check(
+        'a comment arriving through the real chain mounts an outgoing row',
+        frames.some(f => f.outgoingPresent),
+        frames.some(f => f.outgoingPresent) ? '' : 'the card was never told an arrival happened'
+    )
+    // THE second defect: the row leaving must be the OLD comment, not a copy of the new one.
+    const outgoingTexts = at('outgoingText').filter(Boolean)
+    check(
+        'the row rolling away carries the PREVIOUS comment',
+        outgoingTexts.length > 0 && outgoingTexts.every(t => t.includes('already on screen before anything arrived')),
+        outgoingTexts.length ? JSON.stringify(outgoingTexts[0].slice(0, 60)) : 'no outgoing row at all'
+    )
+    check(
+        'the row rolling in carries the new comment',
+        at('incomingText')
+            .filter(Boolean)
+            .every(t => t.includes('moved the three overdue tasks')),
+        ''
+    )
+    // The roll actually travels, rather than jumping between two states.
+    const outgoingPositions = new Set(at('outgoingY').filter(v => v !== null))
+    check(
+        'the roll advances through many positions',
+        outgoingPositions.size >= 5,
+        `${outgoingPositions.size} distinct positions, ${Math.min(...outgoingPositions)}px → ${Math.max(...outgoingPositions)}px`
+    )
+    check(
+        'it rolls upward and clears the card',
+        Math.min(...outgoingPositions) <= -(loaded.cardHeight - 1),
+        `min ${Math.min(...outgoingPositions)}px, card ${loaded.cardHeight}px`
+    )
+    const cardHeights = new Set(at('cardHeight').filter(Boolean))
+    check(
+        'the card height is constant through the real arrival',
+        cardHeights.size === 1,
+        `heights seen: ${[...cardHeights].join(', ')}`
+    )
+
+    await sleep(600)
+    const settled = await page.evaluate(() => window.__measure())
+    check(
+        'it settles with only the new comment',
+        !settled.outgoingPresent && settled.incomingY === 0,
+        `y=${settled.incomingY}`
+    )
+
+    /**
+     * The remount case — a comment landing in a DIFFERENT chat, which is the ordinary shape for a
+     * heartbeat or a VM result. The subtree is replaced, so the card is born already showing the new
+     * comment: it must roll in alone rather than invent a departure that never happened.
+     */
+    await page.evaluate(() => window.__setChat('chat-2'))
+    await sleep(60)
+    const remountPaint = await page.evaluate(
+        () =>
+            new Promise(resolve => {
+                window.__emitComment('A completely different answer, in another thread entirely.')
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
+            })
+    )
+    const remountFrames = [remountPaint]
+    for (let i = 0; i < 12; i++) {
+        await sleep(25)
+        remountFrames.push(await page.evaluate(() => window.__measure()))
+    }
+    check(
+        'a comment arriving across a remount rolls in with no phantom copy leaving',
+        remountFrames.every(f => !f.outgoingPresent),
+        remountFrames.some(f => f.outgoingPresent)
+            ? JSON.stringify((remountFrames.find(f => f.outgoingText) || {}).outgoingText || '').slice(0, 60)
+            : ''
+    )
+    check(
+        'the remounted card still announces the arrival by rolling in',
+        remountFrames.some(f => f.incomingY > 1),
+        `max incoming offset ${Math.max(...remountFrames.map(f => f.incomingY || 0))}px`
+    )
+
+    await browser.close()
+    server.close()
+
+    const failures = results.filter(r => !r.ok)
+    console.log(`\n${results.length - failures.length}/${results.length} checks passed`)
+    process.exit(failures.length ? 1 : 0)
+}
+
 async function main() {
+    if (process.argv.includes('--real-chain')) return realChainMain()
     const reduceMotion = process.argv.includes('--reduce-motion')
     const compact = process.argv.includes('--compact')
     build()
