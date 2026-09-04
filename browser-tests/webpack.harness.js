@@ -36,7 +36,31 @@ module.exports = (env, argv) => {
         return patched
     }
 
-    return {
+    /**
+     * Optional per-harness hook: `--env harnessSetup=<path>` names a module exporting
+     * `(config, webpack) => config`. Inert unless a harness passes it.
+     *
+     * It exists so a harness can render a REAL container — one that imports the Firestore backend —
+     * by replacing those leaf modules with fakes, the way a jest suite does with `jest.mock`.
+     * Without it a browser harness can only ever mount presentational components with hand-fed
+     * props, which is precisely the blind spot that let AT-2511 ship an animation that could not run
+     * (see `at2511/realChain.entry.js`).
+     */
+    const applyHarnessSetup = config => {
+        const setupPath = env && env.harnessSetup
+        if (!setupPath) return config
+        /**
+         * webpack resolved from web-bundler, NOT from the repo root. The root still carries
+         * webpack 4 (`node_modules/webpack@4.43.0`, an expo-era leftover) while these harnesses
+         * build on web-bundler's webpack 5 — and a plugin instance from the wrong major taps the
+         * same hooks with the wrong contract, so the build dies with "beforeResolve ... is no
+         * longer a waterfall hook" rather than anything that names the mismatch.
+         */
+        const webpack = require(require.resolve('webpack', { paths: [path.join(rootDir, 'web-bundler')] }))
+        return require(setupPath)(config, webpack)
+    }
+
+    return applyHarnessSetup({
         ...base,
         module: { ...base.module, rules: (base.module.rules || []).map(useHarnessBabelConfig) },
         entry: [entry],
@@ -53,5 +77,5 @@ module.exports = (env, argv) => {
             plugin => plugin.constructor.name !== 'CopyPlugin' && plugin.constructor.name !== 'HtmlWebpackPlugin'
         ),
         stats: 'errors-warnings',
-    }
+    })
 }

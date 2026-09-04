@@ -65,10 +65,35 @@ export const resolveRollDistance = (measuredHeight, compact) =>
     measuredHeight > 0 ? measuredHeight : compact ? COMPACT_CARD_HEIGHT : LAST_COMMENT_PREVIEW_HEIGHT
 
 /**
+ * Which comment, if any, should be rolling AWAY — given the card's own two-slot history and the
+ * comment it is rendering right now.
+ *
+ * `null` is a first-class answer and is the honest one whenever the card cannot name a different
+ * comment it was previously showing. That covers the ordinary remount: a comment landing in another
+ * chat (a heartbeat, a VM result, the AT-2504 pending → reply handoff) replaces this subtree, so the
+ * card is BORN already showing the new comment and there was never an old one on screen here. The
+ * incoming row still rolls up into place — `rolling` gates only whether an outgoing row is mounted,
+ * never whether the animation runs — so the arrival is still announced, without inventing a
+ * departure that did not happen.
+ *
+ * The equality guard is the belt to that braces: a phantom row carrying the SAME text as the one
+ * arriving is indistinguishable from a rendering glitch, and reads far worse than no roll at all.
+ */
+export const resolveOutgoingRow = (rows, currentRow) => {
+    const arriving = currentRow?.commentText
+    // Most recent first. Which of the two slots holds the departing comment depends on whether the
+    // arrival id reached this card in the same commit as the text it describes (it does not, in the
+    // app — see `rowsRef` below), so the rule is stated once as "the newest one that is not the
+    // comment arriving" rather than as two cases that could drift apart.
+    return [rows?.shown, rows?.previous].find(row => row && row.commentText !== arriving) || null
+}
+
+/**
  * @param arrivalId a fresh number per arrival (see `lastCommentArrival.js`), or null for "nothing
  *        has arrived". A number rather than a boolean so two arrivals in a row restart the roll.
- * @param row       the comment currently being rendered. Captured on each commit so that, on the
- *        render an arrival lands, the PREVIOUS one is still available to roll away.
+ * @param row       the comment currently being rendered. A two-entry history of it is kept (see
+ *        `rowsRef`) so that, on the render an arrival lands, the previous DISTINCT comment is still
+ *        available to roll away — whether the id arrived with the text or one commit behind it.
  */
 export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = false) => {
     const reducedMotion = useReducedMotion()
@@ -83,12 +108,25 @@ export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = fal
     const [run, setRun] = useState({ id: null, outgoing: null })
 
     /**
-     * What was PAINTED last time. Updated in an effect, i.e. after the commit, which is precisely
-     * what makes it hold the previous comment during the render an arrival arrives on.
+     * The last TWO distinct comments this card has painted — not "whatever was painted last time".
+     *
+     * The distinction is the whole point, and a one-slot ref gets it wrong in the app while looking
+     * right in a test. `arrivalId` does NOT arrive in the same commit as the comment it describes:
+     * the container publishes it from an effect (`useLastCommentArrival`), so the new text paints in
+     * commit N and the id only lands in commit N+1. A ref overwritten on every commit has therefore
+     * already been advanced to the NEW row by the time the card arms, and the "departure board"
+     * rolled the fresh answer out from under itself — two identical rows, which passes every
+     * positional assertion there is.
+     *
+     * Advancing only when the displayed comment actually changes keeps the previous one available
+     * across that one-commit gap. `commentText` is the identity because it is what the roll shows,
+     * and it is the same thing `buildLastCommentKey` calls an arrival.
      */
-    const lastRowRef = useRef(row)
+    const rowsRef = useRef({ shown: row, previous: null })
     useEffect(() => {
-        lastRowRef.current = row
+        if (rowsRef.current.shown?.commentText !== row?.commentText) {
+            rowsRef.current = { shown: row, previous: rowsRef.current.shown }
+        }
     })
 
     /**
@@ -99,7 +137,7 @@ export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = fal
      * underneath it. Here the very first painted frame of an arrival already has both rows.
      */
     if (animated && arrivalId && arrivalId !== run.id) {
-        setRun({ id: arrivalId, outgoing: lastRowRef.current })
+        setRun({ id: arrivalId, outgoing: resolveOutgoingRow(rowsRef.current, row) })
     }
 
     /**
