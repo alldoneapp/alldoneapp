@@ -2,8 +2,7 @@ import firebase from 'firebase/compat/app'
 
 import {
     addContactFeedsChain,
-    callEnrichContactViaLinkedIn,
-    callSearchLinkedInProfile,
+    callEnrichContactProfile,
     deleteFolderFilesInStorage,
     getDb,
     getId,
@@ -53,11 +52,6 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { CROSS_PROJECT_DESTINATION_WRITE } from '../accessProjection'
 import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
-import {
-    mergePendingContacts,
-    publishOptimisticContactCreated,
-    publishOptimisticContactCreateFailed,
-} from './optimisticContactCreate'
 
 const normalizeContactEmail = value =>
     String(value || '')
@@ -128,11 +122,7 @@ export async function watchProjectContacts(
         contactList.forEach(contact => {
             contacts.push(mapContactData(contact.id, contact.data()))
         })
-        // AT-2508 - a contact the user just added is invisible to this query until the server
-        // has written its `readerIds` projection, so it is carried alongside the snapshot until
-        // this very snapshot can speak for it. Retiring the pending copy here, in the same
-        // delivery that brings the real one, is what stops the row blinking.
-        callback(mergePendingContacts(projectId, contacts))
+        callback(contacts)
     }
 
     const unsubscribe = getDb()
@@ -212,44 +202,21 @@ export async function addContactToProject(projectId, contact, onComplete) {
     const contactToStore = { ...contact, ...buildContactEmailFields(contact, contact.email, false) }
     let feedPhotoUrl = contact.photoURL
 
-    // AT-2508 - put the row on screen NOW, before the avatar upload and the write. Every field
-    // is already known locally (the id was minted above), and the list query cannot match this
-    // document for several seconds yet - see `optimisticContactCreate.js` for the measurement.
-    //
-    // The photo fields are deliberately emptied: at this point `photoURL` may still be a Blob or
-    // an object URL awaiting `uploadAvatarPhotos`, and this object goes into the shared
-    // `projectContacts` slice that the mentions picker and the assistant read too. The pending
-    // row draws a spinner in the avatar slot, and the real snapshot brings the real picture.
-    publishOptimisticContactCreated(
-        projectId,
-        contactId,
-        mapContactData(contactId, { ...contactToStore, photoURL: '', photoURL50: '', photoURL300: '' })
-    )
+    if (contact.photoURL) {
+        const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
+            `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
+        )
 
-    try {
-        if (contact.photoURL) {
-            const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
-            const urlList = await uploadAvatarPhotos(
-                pictures,
-                `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
-                `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
-            )
-
-            contactToStore.photoURL = urlList[0]
-            contactToStore.photoURL50 = urlList[1]
-            contactToStore.photoURL300 = urlList[2]
-            feedPhotoUrl = urlList[3]
-        }
-
-        await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
-    } catch (error) {
-        // Nothing was stored, so the row is a lie - take it away and let the caller report it.
-        // Note this only fires on a real rejection: offline the `set()` never settles at all and
-        // the contact is genuinely queued, so the row correctly stays.
-        publishOptimisticContactCreateFailed(projectId, contactId)
-        throw error
+        contactToStore.photoURL = urlList[0]
+        contactToStore.photoURL50 = urlList[1]
+        contactToStore.photoURL300 = urlList[2]
+        feedPhotoUrl = urlList[3]
     }
 
+    await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
     if (onComplete) onComplete({ uid: contactId, ...contactToStore })
 
     addContactFeedsChain(projectId, contact, feedPhotoUrl, contactId)
@@ -658,75 +625,22 @@ export async function setProjectContactLinkedInUrl(projectId, contact, contactId
     await updateContactData(projectId, contactId, { linkedInUrl: newUrl }, null)
 }
 
-export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
-    console.log('[LinkedIn Enrichment Client] Calling cloud function with URL:', contact.linkedInUrl)
-    const result = await callEnrichContactViaLinkedIn({
-        linkedInUrl: contact.linkedInUrl,
+/**
+ * "Enrich profile": starts an assistant research run in the contact's chat. Resolves as soon as
+ * the run has posted its answer (or asked its question) — callers should not block the UI on it.
+ * A client-generated requestId keys the server's run lock, so a request the browser replays after
+ * a sleep/wake lands on the same comment and the same run.
+ */
+export async function enrichContactProfile(projectId, contactId, assistantId) {
+    const requestId = getId()
+    const result = await callEnrichContactProfile({
         projectId,
         contactId,
+        assistantId: assistantId || '',
+        requestId,
     })
-    console.log('[LinkedIn Enrichment Client] Cloud function result:', JSON.stringify(result.data))
-
-    if (result.data.error === 'insufficient_gold') {
-        console.warn('[LinkedIn Enrichment Client] Insufficient gold')
-        return { success: false, error: 'insufficient_gold' }
+    if (result?.error === 'insufficient_gold') {
+        return { success: false, error: 'insufficient_gold', requestId }
     }
-
-    if (result.data.success) {
-        const enrichedData = result.data.data
-        const updates = {}
-
-        if (enrichedData.displayName) updates.displayName = enrichedData.displayName
-        if (enrichedData.company) updates.company = enrichedData.company
-        if (enrichedData.role) updates.role = enrichedData.role
-        if (enrichedData.email) updates.email = enrichedData.email
-        if (enrichedData.phone) updates.phone = enrichedData.phone
-        if (enrichedData.description) {
-            updates.description = enrichedData.description
-            updates.extendedDescription = enrichedData.description
-        }
-        if (enrichedData.photoURL) {
-            updates.photoURL = enrichedData.photoURL
-            updates.photoURL50 = enrichedData.photoURL
-            updates.photoURL300 = enrichedData.photoURL
-        }
-
-        console.log('[LinkedIn Enrichment Client] Fields to update:', Object.keys(updates))
-        if (Object.keys(updates).length > 0) {
-            await updateContactData(projectId, contactId, updates, null)
-            console.log('[LinkedIn Enrichment Client] Contact updated successfully')
-        } else {
-            console.log('[LinkedIn Enrichment Client] No empty fields to update')
-        }
-
-        return { success: true, updated: Object.keys(updates), data: enrichedData }
-    }
-
-    console.error('[LinkedIn Enrichment Client] Enrichment failed - unexpected response')
-    throw new Error('Enrichment failed')
-}
-
-export async function searchLinkedInProfile(projectId, contact, contactId) {
-    console.log('[LinkedIn Search Client] Searching for contact:', contact.displayName)
-    const result = await callSearchLinkedInProfile({
-        displayName: contact.displayName || '',
-        company: contact.company || '',
-        role: contact.role || '',
-        email: contact.email || '',
-    })
-    console.log('[LinkedIn Search Client] Search result:', JSON.stringify(result.data))
-
-    if (result.data.error === 'insufficient_gold') {
-        console.warn('[LinkedIn Search Client] Insufficient gold')
-        return { success: false, error: 'insufficient_gold' }
-    }
-
-    if (result.data.success && result.data.linkedInUrl) {
-        await updateContactData(projectId, contactId, { linkedInUrl: result.data.linkedInUrl }, null)
-        console.log('[LinkedIn Search Client] LinkedIn URL saved:', result.data.linkedInUrl)
-        return { success: true, linkedInUrl: result.data.linkedInUrl }
-    }
-
-    console.log('[LinkedIn Search Client] No LinkedIn profile found')
-    return { success: true, linkedInUrl: null }
+    return { ...(result || {}), requestId }
 }

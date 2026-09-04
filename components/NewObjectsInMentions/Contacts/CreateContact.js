@@ -79,44 +79,36 @@ export default function CreateContact({ projectId, containerStyle, selectItemToM
             dispatch(startLoadingData())
             setSendingData(true)
 
-            // AT-2508 - this cleanup used to live only inside the completion callback below,
-            // which a rejected write never reaches: one failure left `sendingData` true forever
-            // (the card frozen) and the global loading refcount pinned, so the app-wide spinner
-            // span for the rest of the session. Same defect AT-2488 fixed in CreateNote.
-            try {
-                if (newContact.photoURL !== '' && newContact.photoURL != null) {
-                    const src =
-                        typeof newContact.photoURL === 'string'
-                            ? newContact.photoURL
-                            : URL.createObjectURL(newContact.photoURL)
+            if (newContact.photoURL !== '' && newContact.photoURL != null) {
+                const src =
+                    typeof newContact.photoURL === 'string'
+                        ? newContact.photoURL
+                        : URL.createObjectURL(newContact.photoURL)
 
-                    const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
-                    const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
+                const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
+                const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
 
-                    newContact.photoURL = await HelperFunctions.convertURItoBlob(newContact.photoURL)
-                    newContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
-                    newContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
-                }
+                newContact.photoURL = await HelperFunctions.convertURItoBlob(newContact.photoURL)
+                newContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
+                newContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+            }
 
-                await addContactToProject(projectId, newContact, contactDB => {
-                    if (selectItemToMention) {
-                        selectItemToMention(contactDB, MENTION_MODAL_CONTACTS_TAB, projectId)
-                    }
-
-                    if (openDetails) {
-                        NavigationService.navigate('ContactDetailedView', {
-                            contact: contactDB,
-                            project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
-                        })
-                        store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
-                    }
-                })
-            } catch (error) {
-                console.error('[contacts] Could not add the person from the mentions card', error)
-            } finally {
+            await addContactToProject(projectId, newContact, contactDB => {
                 dispatch(stopLoadingData())
                 setSendingData(false)
-            }
+
+                if (selectItemToMention) {
+                    selectItemToMention(contactDB, MENTION_MODAL_CONTACTS_TAB, projectId)
+                }
+
+                if (openDetails) {
+                    NavigationService.navigate('ContactDetailedView', {
+                        contact: contactDB,
+                        project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
+                    })
+                    store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
+                }
+            })
         }
     }, RELEASE_AFTER_SUBMISSION)
 
