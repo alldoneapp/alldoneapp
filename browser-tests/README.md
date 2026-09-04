@@ -432,37 +432,40 @@ to be computed against the reduced pool.
 instant unmount. CLAUDE.md records a harness that asserted the animated expectations under reduced
 motion and therefore reported the correct behaviour as a failure; this one does not repeat that.
 
-### `at2507/` — a cleared goal must flourish, and hand its row straight back
+### `at2507/` — a cleared goal's section must leave gracefully, not pop
 
-The smallest of the four completion celebrations: when the last task a goal had for today is
-ticked, a slim bar in the goal's own accent colour draws itself along the bottom edge of the goal
-card, breathes once, and fades — ~900ms, nothing outside the card, and deliberately no particles of
-any kind, which is what keeps it below the project line's departure (`at2492`/`at2495`).
+When the last task a goal had for today is completed, the goal block used to be deleted between two
+frames. It now fades over 1180ms while its height closes from 380ms to 1400ms, pulling the content
+below it up rather than teleporting it.
 
-Jest is blind to all of it for the usual two reasons — `__mocks__/react-native.js` stubs
-`Animated.timing` to a no-op `{start}`, and jsdom lays nothing out — so the unit suites can assert
-every rule of this feature and still be looking at an animation that never moves a pixel. This
-harness drives the REAL `useGoalCompletedFlourish` and triggers it through the REAL
-`publishGoalTaskCompletion`, i.e. the same call the task row makes from `beginCompletionMotion`,
-then reads what the browser actually painted each frame: the bar's transformed width and height,
-the wash's computed opacity and the overlay's own fade.
+Deliberately the quietest of the four completion effects: no flourish, no colour, no particles. The
+app already congratulates the user twice within a second at that moment (the task row's green sweep,
+and — if the project is also cleared — the project line's four-stage sweep and disintegration), so
+the goal tier is the one that REMOVES a jarring frame rather than adding a happy one.
 
-Two of the checks are about the trigger rather than the paint, because the interesting failure here
-is celebrating the wrong thing: completing the FIRST of the goal's two tasks must paint nothing at
-all, and only the last one starts a run.
+Jest can see none of it. `__mocks__/react-native.js` stubs `Animated.timing` to a no-op `{start}`,
+so nothing advances, and jsdom computes no layout — which matters twice here, because the collapse
+animates a MEASURED height and an unmeasured section deliberately falls back to fading only. Every
+unit assertion can be green while the section still pops.
 
-Three others are load-bearing:
+So this harness drives the REAL `useGoalSectionExit` and `useGoalSectionExitMotion`, triggered by
+the REAL `publishGoalTaskCompletion` — the same call `TaskPresentation` makes — and reads painted
+geometry: the section's transformed bounding box and computed opacity, frame by frame.
 
-- **the bar grows from the left edge, not from its middle.** `transform-origin` is a
-  react-native-web passthrough, so the day RNW stops forwarding it the bar silently starts expanding
-  out of its own centre and stops reading as progress — with every Jest assertion still green.
-- **the card is handed back with nothing painted on it.** Unlike the project line, a cleared goal
-  usually STAYS on the board (as an `EmptyGoal` with its add-task line), so a residue here would be
-  a permanent decoration on an ordinary row rather than a frame nobody sees.
-- **the whole run fits inside the completing task's write hold.** That 1070ms hold is the only
-  reason the goal section is still mounted while this plays, and it is what lets AT-2507 skip the
-  probe-and-hold machinery AT-2492 needed. The harness reports the last frame that actually painted,
-  so an overrun is measured rather than assumed.
+The check it exists for is not on the section at all. A pop is jarring because the content
+underneath TELEPORTS, so the board renders a sibling block below the goal and asserts its `top`
+moves continuously (largest single step well under the section's own height). A version that
+collapsed correctly but let the list jump would pass every other check here.
 
-`--reduce-motion` asserts the **inverted** contract: the trigger still fires — whether the row
-animates is a separate question from whether the work was finished — and nothing is painted.
+Three of the cases are about NOT animating, because a goal block disappears for several reasons and
+only one of them is finished work:
+
+- a cleared goal that is still active today does not leave at all — it comes back as an `EmptyGoal`
+  under the same key, so it must be left alone;
+- a section whose last task was moved or deleted rather than completed leaves instantly, exactly as
+  it always did;
+- finishing one of two tasks starts nothing.
+
+`--reduce-motion` asserts the **inverted** contract: the hold is not taken and the section is
+dropped instantly. Holding it anyway would strand a block on the board for 1.4s doing nothing —
+a worse bug than the pop.

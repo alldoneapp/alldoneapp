@@ -1,19 +1,25 @@
 /**
- * AT-2507 browser-level test — the goal flourish, actually painting.
+ * AT-2507 browser-level test — a cleared goal's section leaving today's list gracefully.
  *
- * The smallest of the app's four completion celebrations, and the only place it can ever be seen:
- * `__mocks__/react-native.js` stubs `Animated.timing` with a no-op `{start}`, so a jest suite can
- * assert on every one of this feature's rules and still be looking at an animation that never moves
- * a pixel. That is not hypothetical here — it is exactly how AT-2492's sweep shipped invisible.
+ * The reported behaviour was that the goal "just pops away". The fix is deliberately the quietest
+ * one available — no flourish, no colour, just a fade and a collapse over ~1.4s — and that is
+ * precisely the kind of change a jest suite cannot check: `__mocks__/react-native.js` stubs
+ * `Animated.timing` with a no-op `{start}`, so nothing advances, and jsdom computes no layout, so
+ * the section is never measured and the collapse has no height to collapse from. Every assertion in
+ * the unit suites can be green while the section still pops.
  *
- * What is checked, in the order the run happens:
+ * What is checked, in the order it happens:
  *
- *   0. the TRIGGER — completing the first of two tasks paints nothing; completing the last starts
- *      a run. Driven through the real `publishGoalTaskCompletion`, the same call the task row makes.
- *   1. FILL    the bar grows across the card and the wash fades in behind it
- *   2. PULSE   the bar thickens for one breath and comes back
- *   3. FADE    every layer goes, and the card is handed back with nothing painted on it
- *   4. BUDGET  the whole run is over before the completing task's write would take the row away
+ *   0. the TRIGGER — completing the first of two tasks and dropping nothing changes nothing; a goal
+ *      that merely becomes an EMPTY GOAL is not animated (it is not leaving); a section that leaves
+ *      WITHOUT its tasks having been completed still leaves instantly.
+ *   1. the HOLD    — the board drops the section and it is STILL THERE, wearing an exit.
+ *   2. FADE        — its opacity falls.
+ *   3. COLLAPSE    — its painted height falls to nothing, and the content below is pulled up with
+ *                    it rather than jumping.
+ *   4. ORDER       — it is invisible before it is flat (fading and shrinking together reads as a
+ *                    squash), and the layout is left alone for a beat before it starts moving.
+ *   5. the END     — the section is finally gone, and the board is settled.
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -33,9 +39,10 @@ const ROOT = path.resolve(__dirname, '..', '..')
 const BUILD_DIR = path.join(__dirname, '.build')
 const ENTRY = path.join(__dirname, 'harness.entry.js')
 
-/** Kept in step with `goalCompletedFlourishMotion.js` / `taskCompletionMotion.js`. */
-const GOAL_FLOURISH_TOTAL_MS = 900
-const COMPLETION_HOLD_MS = 1070
+/** Kept in step with `goalSectionExitMotion.js`. */
+const GOAL_EXIT_COLLAPSE_DELAY_MS = 380
+const GOAL_EXIT_FADE_MS = 1180
+const GOAL_SECTION_EXIT_TOTAL_MS = 1400
 
 const HTML = `<!doctype html>
 <html><head><meta charset="utf-8"><title>AT-2507</title>
@@ -92,13 +99,13 @@ async function main() {
     const { chromium } = require('playwright')
     const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
     const page = await browser.newPage({
-        viewport: { width: 800, height: 400 },
+        viewport: { width: 820, height: 600 },
         reducedMotion: reduceMotion ? 'reduce' : 'no-preference',
     })
     page.on('pageerror', e => console.log('PAGE ERROR:', e.message))
     await page.goto(`http://127.0.0.1:${port}/`)
     await page.waitForFunction('window.__ready === true')
-    // Let the reduce-motion preference resolve before anything can be claimed.
+    // Let the reduce-motion preference resolve before anything can be held.
     await sleep(150)
 
     console.log(`\n--- mode: ${reduceMotion ? 'prefers-reduced-motion: reduce' : 'normal motion'} ---\n`)
@@ -111,150 +118,177 @@ async function main() {
         process.exit(failures.length ? 1 : 0)
     }
 
-    // ── the trigger ──────────────────────────────────────────────────────────────────────────────
-    // The goal still has a second task on it, so finishing the first one is not an achievement.
-    await page.evaluate(() => window.__completeTask('t1'))
-    await sleep(60)
-    const afterFirst = await page.evaluate(() => ({ runId: window.__runId, painted: window.__measure().present }))
-    check('a goal with work left on it is not celebrated', afterFirst.runId === 0 && !afterFirst.painted, '')
+    const settled = await page.evaluate(() => window.__measure())
+    const restingHeight = settled.height
+    const restingBelowTop = settled.belowTop
+    console.log(`    section at rest: ${restingHeight}px, content below at y=${restingBelowTop}`)
 
-    await page.evaluate(() => window.__completeTask('t2'))
+    // ── 0a. a goal that only loses its tasks is NOT leaving ───────────────────────────────────────
+    // It comes back as an `EmptyGoal` under the same key, with its add-task line. Animating it out
+    // would fade a row that is about to be redrawn.
+    await page.evaluate(() => {
+        window.__completeTask('t1')
+        window.__completeTask('t2')
+        window.__moveToEmptyGoals()
+    })
+    await sleep(80)
+    const asEmptyGoal = await page.evaluate(() => ({ sections: window.__sections, exits: window.__exits }))
+    check(
+        'a cleared goal that stays as an empty goal is not animated out',
+        asEmptyGoal.sections.length === 0 && Object.keys(asEmptyGoal.exits).length === 0,
+        `sections=${JSON.stringify(asEmptyGoal.sections)} exits=${JSON.stringify(asEmptyGoal.exits)}`
+    )
+
+    // Back to a full section for the remaining cases.
+    await page.evaluate(() => {
+        window.__setEmptyGoals([])
+        window.__setMainTasks([['goal-1', [{ id: 'a1' }, { id: 'a2' }]]])
+    })
+    await sleep(120)
+
+    // ── 0b. a departure that is not finished work leaves instantly ───────────────────────────────
+    await page.evaluate(() => window.__dropSection())
+    await sleep(80)
+    const movedAway = await page.evaluate(() => ({ ...window.__measure(), sections: window.__sections }))
+    check(
+        'a section whose tasks were moved or deleted still leaves instantly',
+        !movedAway.present && movedAway.sections.length === 0,
+        `present=${movedAway.present}`
+    )
+
+    // ── the real case ────────────────────────────────────────────────────────────────────────────
+    await page.evaluate(() => window.__setMainTasks([['goal-1', [{ id: 'b1' }, { id: 'b2' }]]]))
+    await sleep(120)
+
+    await page.evaluate(() => window.__completeTask('b1'))
+    await sleep(40)
+    const afterFirst = await page.evaluate(() => window.__exits)
+    check('finishing one of two tasks starts nothing', Object.keys(afterFirst).length === 0, '')
+
+    await page.evaluate(() => {
+        window.__completeTask('b2')
+        window.__dropSection()
+    })
     await sleep(30)
-    const runId = await page.evaluate(() => window.__runId)
-    check('finishing the last task of the goal starts a run', runId === 1, `runId=${runId}`)
+
+    const held = await page.evaluate(() => ({ ...window.__measure(), sections: window.__sections }))
 
     /**
-     * Under reduced motion the CONTRACT INVERTS. The flourish deliberately draws nothing — the goal
-     * section emptying already says the work is done, so unlike the task row's progress bar there is
-     * no information here worth a static frame — while the TRIGGER still fires, because whether the
-     * row animates is a separate question from whether the work was finished.
+     * Under reduced motion the CONTRACT INVERTS. There is nothing to see, so the hold is not taken
+     * at all and the section leaves exactly as it always did — instantly. Taking the hold anyway
+     * would strand a block on the board for 1.4s doing nothing, which is a worse bug than the pop.
      */
     if (reduceMotion) {
-        await sleep(400)
-        const painted = await page.evaluate(() => window.__measure())
-        check('reduced motion — nothing is painted on the card', !painted.present, '')
+        check(
+            'reduced motion — the section is dropped instantly, with no hold',
+            !held.present && held.sections.length === 0,
+            `present=${held.present}`
+        )
         return finish()
     }
 
-    // ── the run, sampled every 40ms so each of the three beats gets several frames ────────────────
-    const SAMPLE_MS = 40
-    const SAMPLES = 32
+    check(
+        'the board drops the section and the hold keeps it on screen',
+        held.present && held.sections.length === 1,
+        `present=${held.present} height=${held.height}px`
+    )
+
+    // ── the run, sampled every 50ms ──────────────────────────────────────────────────────────────
+    const SAMPLE_MS = 50
+    const SAMPLES = 34
     const frames = []
     for (let i = 0; i < SAMPLES; i++) {
         frames.push({ t: i * SAMPLE_MS, ...(await page.evaluate(() => window.__measure())) })
         await sleep(SAMPLE_MS)
     }
 
-    const present = frames.filter(f => f.present)
-    check('the flourish is mounted and painted', present.length > 0, `${present.length}/${SAMPLES} frames`)
+    const painted = frames.filter(f => f.present)
+    check('the section stays mounted for its exit', painted.length > 4, `${painted.length}/${SAMPLES} frames`)
 
-    if (present.length) {
-        const cardWidth = present[0].overlay.width
-        const at = key => present.map(f => f[key])
+    if (painted.length) {
+        const at = key => painted.map(f => f[key])
         const spark = values => values.map(v => (v === null ? '-' : v)).join(' ')
+        console.log('    height  :', spark(at('height')))
+        console.log('    opacity :', spark(at('opacity')))
+        console.log('    below y :', spark(at('belowTop')))
 
-        console.log('    overlay box :', JSON.stringify(present[0].overlay))
-        console.log('    bar colour  :', present[0].barColor)
-        console.log('    wash colour :', present[0].washColor)
-        console.log('    bar width   :', spark(at('barWidth')))
-        console.log('    bar height  :', spark(at('barHeight')))
-        console.log('    wash opacity:', spark(at('washOpacity')))
-        console.log('    overlay op. :', spark(at('overlayOpacity')))
-
-        // ── stage 1: the fill ────────────────────────────────────────────────────────────────────
-        const barWidths = at('barWidth').filter(v => v !== null)
-        const maxBar = Math.max(...barWidths)
-        check('stage 1 — the bar actually grows (the animation advances)', maxBar > 40, `max painted ${maxBar}px`)
+        // ── the fade ─────────────────────────────────────────────────────────────────────────────
+        const opacities = at('opacity')
         check(
-            'stage 1 — the bar reaches the full width of the card',
-            maxBar > cardWidth * 0.95,
-            `${maxBar}px of ${cardWidth}px`
+            'it fades out',
+            Math.max(...opacities) > 0.9 && Math.min(...opacities) < 0.05,
+            `${Math.max(...opacities)} → ${Math.min(...opacities)}`
         )
         check(
-            'stage 1 — it grows from the left edge, not from the middle',
-            // `transform-origin: left bottom`. Growing from the centre would keep `left` moving
-            // leftwards as the bar widens, which is what makes it stop reading as progress.
-            at('barLeft')
-                .filter(v => v !== null)
-                .every(left => Math.abs(left) <= 2),
-            `left offsets ${Array.from(new Set(at('barLeft'))).join(',')}`
-        )
-        const washOpacities = at('washOpacity').filter(v => v !== null)
-        check(
-            'stage 1 — the wash fades in behind it',
-            Math.max(...washOpacities) > 0.5 && Math.min(...washOpacities) < 0.5,
-            `${Math.min(...washOpacities)} → ${Math.max(...washOpacities)}`
+            'the fade is gradual, not a cut',
+            opacities.filter(o => o > 0.05 && o < 0.95).length >= 4,
+            `${opacities.filter(o => o > 0.05 && o < 0.95).length} intermediate frames`
         )
 
-        // ── stage 2: the breath ──────────────────────────────────────────────────────────────────
-        // It must rise AND come back: a bar left thick is a visible residue on a row that stays.
-        const barHeights = at('barHeight').filter(v => v !== null)
-        const peakHeight = Math.max(...barHeights)
-        const baseHeight = Math.min(...barHeights)
+        // ── the collapse ─────────────────────────────────────────────────────────────────────────
+        const heights = at('height')
         check(
-            'stage 2 — the bar thickens for one breath',
-            peakHeight > baseHeight + 0.5,
-            `${baseHeight}px → ${peakHeight}px`
+            'its height collapses to nothing',
+            Math.max(...heights) > 60 && Math.min(...heights) < 4,
+            `${Math.max(...heights)}px → ${Math.min(...heights)}px`
         )
-        const peakIndex = barHeights.indexOf(peakHeight)
         check(
-            'stage 2 — and settles back to its resting thickness',
-            barHeights.slice(peakIndex).some(h => h <= baseHeight + 0.2),
-            `ends at ${barHeights[barHeights.length - 1]}px`
+            'the collapse is gradual, not a cut',
+            heights.filter(h => h > 4 && h < Math.max(...heights) - 4).length >= 4,
+            `${heights.filter(h => h > 4 && h < Math.max(...heights) - 4).length} intermediate frames`
         )
+
         /**
-         * The breath brightens the WASH too, and this is the check that earns its keep: the first
-         * version of the fill took the wash to opacity 1 and had the breath add on top of it, which
-         * the browser clamps — so the layer sat pinned at 1 for the whole confirmation and the beat
-         * silently did nothing. No jest assertion can see that (nothing is painted there and the
-         * `Animated.Value` arithmetic is perfectly correct); only a computed opacity can.
+         * THE check this harness exists for. Everything above is about the section itself; this is
+         * about the list. A pop is jarring because the content underneath teleports upward, so the
+         * fix only works if the gap closes CONTINUOUSLY.
          */
-        // The plateau is read from the END of the run rather than from before the breath: the wash
-        // keeps its own opacity through stage 3 (the fade is applied once, on the overlay above it),
-        // so the last sample IS where the fill settled — and it has to be the same value the breath
-        // returned to.
-        const washPlateau = washOpacities[washOpacities.length - 1]
-        const washPeak = Math.max(...washOpacities)
+        const belowTops = at('belowTop').filter(v => v !== null)
+        const belowSteps = belowTops.slice(1).map((top, i) => Math.abs(top - belowTops[i]))
         check(
-            'stage 2 — the wash brightens for the breath instead of clamping at full',
-            washPeak > washPlateau + 0.05 && washPeak <= 1 && washPlateau < 1,
-            `settles ${washPlateau}, peaks ${washPeak}`
+            'the content below is pulled up as the gap closes',
+            Math.max(...belowTops) - Math.min(...belowTops) > 60,
+            `y ${Math.max(...belowTops)} → ${Math.min(...belowTops)}`
+        )
+        check(
+            'and it never jumps',
+            // A pop would move it the whole section height in one frame.
+            Math.max(...belowSteps) < restingHeight * 0.5,
+            `largest single step ${Math.max(...belowSteps)}px of a ${restingHeight}px section`
         )
 
-        // ── stage 3: the fade ────────────────────────────────────────────────────────────────────
-        const overlayOpacities = at('overlayOpacity').filter(v => v !== null)
+        // ── the order of the two beats ───────────────────────────────────────────────────────────
+        const firstMove = painted.find(f => f.height < Math.max(...heights) - 2)
         check(
-            'stage 3 — every layer fades out together',
-            Math.min(...overlayOpacities) < 0.5,
-            `min overlay opacity ${Math.min(...overlayOpacities)}`
+            'the layout is left alone for a beat before it starts moving',
+            !firstMove || firstMove.t >= GOAL_EXIT_COLLAPSE_DELAY_MS - 2 * SAMPLE_MS,
+            firstMove ? `first movement at ${firstMove.t}ms, delay is ${GOAL_EXIT_COLLAPSE_DELAY_MS}ms` : 'never moved'
         )
-
-        // ── geometry ─────────────────────────────────────────────────────────────────────────────
+        const invisibleAt = painted.find(f => f.opacity < 0.02)
+        const flatAt = painted.find(f => f.height < 2)
         check(
-            'the overlay covers the goal card and nothing beyond it',
-            present[0].overlay.height > 10 && present[0].overlay.width === present[0].cardWidth,
-            `${present[0].overlay.width}x${present[0].overlay.height} vs card ${present[0].cardWidth}`
+            'it is invisible before it is flat',
+            // Fading and shrinking at the same rate reads as a squash (the AT-2404 rule).
+            !!invisibleAt && (!flatAt || invisibleAt.t <= flatAt.t),
+            invisibleAt
+                ? `invisible at ${invisibleAt.t}ms, flat at ${flatAt ? `${flatAt.t}ms` : 'never'}`
+                : 'never faded'
         )
         check(
-            'it paints in the goal accent, not the task green',
-            present[0].barColor === 'rgb(108, 99, 255)',
-            present[0].barColor
+            'the whole run is the ~1.4s that was asked for',
+            painted[painted.length - 1].t < GOAL_SECTION_EXIT_TOTAL_MS + 400,
+            `last painted frame at ${painted[painted.length - 1].t}ms`
         )
+        check('the fade finishes first by design', GOAL_EXIT_FADE_MS < GOAL_SECTION_EXIT_TOTAL_MS, '')
     }
 
-    // ── nothing is left behind ───────────────────────────────────────────────────────────────────
-    // The goal row USUALLY STAYS on the board after being cleared (as an `EmptyGoal` with its
-    // add-task line), so a bar left painted here would be permanent, not a frame nobody sees.
-    await sleep(400)
-    const settled = await page.evaluate(() => window.__measure())
-    check('the card is handed back with nothing painted on it', !settled.present, '')
-
-    // ── the budget ───────────────────────────────────────────────────────────────────────────────
-    const lastPaintedAt = present.length ? present[present.length - 1].t : 0
+    // ── the end ──────────────────────────────────────────────────────────────────────────────────
+    await sleep(600)
+    const gone = await page.evaluate(() => ({ ...window.__measure(), sections: window.__sections }))
     check(
-        'the whole run fits inside the completing task write hold',
-        lastPaintedAt < COMPLETION_HOLD_MS,
-        `last painted frame at ${lastPaintedAt}ms, budget ${GOAL_FLOURISH_TOTAL_MS}ms of ${COMPLETION_HOLD_MS}ms`
+        'the section is finally dropped and the board is settled',
+        !gone.present && gone.sections.length === 0 && gone.belowTop !== null,
+        `present=${gone.present} below y=${gone.belowTop}`
     )
 
     return finish()

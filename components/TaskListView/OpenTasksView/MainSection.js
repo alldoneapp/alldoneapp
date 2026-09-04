@@ -41,6 +41,7 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { createSectionRenderBudget } from './sectionRenderBudget'
 import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
+import useGoalSectionExit from './useGoalSectionExit'
 
 export default function MainSection({
     projectId,
@@ -69,7 +70,7 @@ export default function MainSection({
     const taskGroupingRef = useRef(undefined)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const liveMainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
-    const mainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
+    const heldMainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
     const emptyGoalsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
@@ -115,6 +116,46 @@ export default function MainSection({
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
+    /**
+     * AT-2507 — may a goal section on this list leave gracefully instead of popping?
+     *
+     * Each gate closes a way of animating a departure that is not the one being fixed, and they
+     * mirror the per-project gates in `OpenTasksByProject` one scope down:
+     *
+     *   • TODAY only. The reported behaviour is about today's list, and with Later expanded several
+     *     day sections are on screen at once.
+     *   • No task filters. This whole list comes from `filteredOpenTasksStore`, so with a priority
+     *     or VM filter on, "every task the section had" means "every task the filter let through" —
+     *     completing the one visible task of a goal that still has three hidden ones must not be
+     *     read as the goal's work being finished. (A filter also removes goals through this very
+     *     code path, and none of those departures is an achievement.)
+     *   • The board is the logged user's own, and not an assistant profile board.
+     *   • Not while organising, where sections are being dragged rather than worked.
+     *
+     * The lists that do NOT get this are as deliberate: only `MainSection` passes an `exitRunId`,
+     * so the observed / mention / suggested / originally-from lists — which group by goal through
+     * the same `ParentGoalSection` — keep today's instant removal. Finishing every task somebody
+     * else is observing under a goal is not the same event.
+     */
+    const goalSectionExitEnabled =
+        dateFormated === TODAY_DATE &&
+        accessGranted &&
+        !isActiveOrganizeMode &&
+        !isAssistant &&
+        !isAnonymous &&
+        !taskFiltersActive &&
+        loggedUserId === currentUserId
+
+    const { mainTasksWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+        projectId,
+        mainTasks: heldMainTasks,
+        emptyGoals,
+        enabled: goalSectionExitEnabled,
+    })
+    // Everything downstream — the counts, the sort, the render — treats a leaving section as an
+    // ordinary (empty) one, so nothing else in this component needs to know about the hold.
+    const mainTasks = mainTasksWithExits
+
     const expandTasks = () => {
         setTimeout(() => {
             const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -146,37 +187,6 @@ export default function MainSection({
     }
 
     const isMainDay = dateFormated === TODAY_DATE
-
-    /**
-     * AT-2507 — may a goal section on this list celebrate having its last task of the day completed?
-     *
-     * Each gate closes a way of celebrating something that did not happen, and they mirror the
-     * per-project gates in `OpenTasksByProject` one scope down:
-     *
-     *   • TODAY only. The task is "all the tasks of a goal for today are done"; clearing tomorrow's
-     *     bucket is not an achievement today, and with Later expanded several day sections are on
-     *     screen at once.
-     *   • No task filters. This whole list comes from `filteredOpenTasksStore`, so with a priority
-     *     or VM filter on, "every task in the section" means "every task the filter let through" —
-     *     completing the one visible task of a goal that still has three hidden ones would
-     *     otherwise be celebrated as clearing the goal.
-     *   • The board is the logged user's own, and not an assistant profile board. Somebody else's
-     *     list is not your work.
-     *   • Not while organising, where rows are being dragged rather than worked.
-     *
-     * The sections that do NOT get this are as deliberate: only `MainSection` passes it, so the
-     * observed / mention / suggested / originally-from lists — which group by goal through the same
-     * `ParentGoalSection` — stay silent. Finishing every task somebody else is observing under a
-     * goal is not the same event.
-     */
-    const celebrateGoalCompletion =
-        isMainDay &&
-        accessGranted &&
-        !isActiveOrganizeMode &&
-        !isAssistant &&
-        !isAnonymous &&
-        !taskFiltersActive &&
-        loggedUserId === currentUserId
 
     const getMainItemsData = () => {
         let mainItemsAmount = emptyGoalsAmount
@@ -305,7 +315,7 @@ export default function MainSection({
     // having no tasks and therefore lists it among the empty goals. Rendering
     // both would show the same goal twice, so the held section wins until the
     // next idle render puts everything back in sync.
-    const heldSectionIds = mainTasks === liveMainTasks ? null : new Set(mainTasks.map(([sectionId]) => sectionId))
+    const heldSectionIds = heldMainTasks === liveMainTasks ? null : new Set(mainTasks.map(([sectionId]) => sectionId))
     const visibleEmptyGoals = heldSectionIds ? emptyGoals.filter(goal => !heldSectionIds.has(goal.id)) : emptyGoals
 
     const { mainItemsAmount, showMainListShowMore } = getMainItemsData()
@@ -562,7 +572,16 @@ export default function MainSection({
                               : globalAmountToRender
                     )
 
-                    if (sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList)) return null // Adjusted condition for amountToRender
+                    // AT-2507 — a section playing its departure carries no tasks, so the budget
+                    // would skip it on any truncated list and the exit would never be seen. See
+                    // `sectionRenderBudget.shouldSkip` for why leaving is a carve-out there.
+                    const exitRunId = exitRunIdByGoalId[goalId] || 0
+                    if (
+                        sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList, {
+                            leaving: !!exitRunId,
+                        })
+                    )
+                        return null // Adjusted condition for amountToRender
 
                     sectionBudget.remember(goalId, amountToRenderForGoal)
 
@@ -593,7 +612,7 @@ export default function MainSection({
                             }
                             isTemplateProject={isTemplateProject}
                             focusedTaskId={effectiveFocusTaskId}
-                            celebrateCompletion={celebrateGoalCompletion}
+                            exitRunId={exitRunId}
                         />
                     )
                 }
