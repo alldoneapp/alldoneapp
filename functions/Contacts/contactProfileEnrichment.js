@@ -12,14 +12,10 @@
 // user's reply reaches it through the ordinary chat path, which is why the contact is switched to
 // assistant-enabled here.
 //
-// Billing is two lines in the Gold history on purpose: a flat `contact_enrichment` fee for the
-// research tooling, then the ordinary metered `assistant_usage` of the run.
+// Billing is the ordinary metered `assistant_usage` of the run and nothing else; the run itself
+// refuses to start on an empty Gold balance.
 
 const admin = require('firebase-admin')
-
-const CONTACT_ENRICHMENT_GOLD_COST = 10
-const CONTACT_ENRICHMENT_SOURCE = 'contact_enrichment'
-const CONTACT_ENRICHMENT_CHANNEL = 'contact'
 
 // Exactly the tools the research needs. Passed explicitly because an assistant's persisted
 // `allowedTools` predates the two new tools and would not carry them.
@@ -85,7 +81,6 @@ async function startContactProfileEnrichment({
     functionEntryTime = null,
 }) {
     const db = admin.firestore()
-    const { deductGold, refundGold } = require('../Gold/goldHelper')
     const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
     const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
     const { postUserRequestComment } = require('../Assistant/assistantHelper')
@@ -124,17 +119,10 @@ async function startContactProfileEnrichment({
         }
     }
 
-    const goldContext = {
-        source: CONTACT_ENRICHMENT_SOURCE,
-        projectId: cleanProjectId,
-        objectId: cleanContactId,
-        objectType: 'contacts',
-        channel: CONTACT_ENRICHMENT_CHANNEL,
-        note: `Profile research for ${cleanId(contact.displayName) || 'a contact'}`,
-    }
-    const goldResult = await deductGold(userId, CONTACT_ENRICHMENT_GOLD_COST, goldContext)
-    if (!goldResult?.success) {
-        return { success: false, error: 'insufficient_gold', message: goldResult?.message || 'Not enough Gold.' }
+    // The run is metered as assistant usage; generatePreConfigTaskResult skips a user with no Gold,
+    // so refuse here before touching the thread.
+    if (!(typeof user.gold === 'number' && user.gold > 0)) {
+        return { success: false, error: 'insufficient_gold', message: 'Not enough Gold.' }
     }
 
     const isPublicFor =
@@ -142,89 +130,66 @@ async function startContactProfileEnrichment({
             ? contact.isPublicFor
             : [FEED_PUBLIC_FOR_ALL, userId]
 
-    try {
-        await ensureChatExists(cleanProjectId, 'contacts', cleanContactId, assistant.uid, [userId], isPublicFor)
-        // The follow-up ("which of these two is it?") arrives through the ordinary chat path, which
-        // only calls the assistant when the parent object says so.
-        await contactDoc.ref.set({ isAssistantEnabled: true }, { merge: true })
+    await ensureChatExists(cleanProjectId, 'contacts', cleanContactId, assistant.uid, [userId], isPublicFor)
+    // The follow-up ("which of these two is it?") arrives through the ordinary chat path, which
+    // only calls the assistant when the parent object says so.
+    await contactDoc.ref.set({ isAssistantEnabled: true }, { merge: true })
 
-        const commentId = await postUserRequestComment({
-            projectId: cleanProjectId,
-            objectType: 'contacts',
-            objectId: cleanContactId,
-            creatorId: userId,
-            text: buildEnrichmentRequestText(contact),
-            commentId: cleanId(requestId),
-        })
+    const commentId = await postUserRequestComment({
+        projectId: cleanProjectId,
+        objectType: 'contacts',
+        objectId: cleanContactId,
+        creatorId: userId,
+        text: buildEnrichmentRequestText(contact),
+        commentId: cleanId(requestId),
+    })
 
-        const prompt = buildContactEnrichmentPrompt({
-            contact,
-            contactId: cleanContactId,
-            project,
-            projectId: cleanProjectId,
-        })
-        // `resolveAssistantReasoningEffort` treats a PRESENT key as an override, so the key is only
-        // set when the assistant actually has a saved effort; otherwise its own default applies.
-        const aiSettings = {
-            model: assistant.model || 'MODEL_GPT5_6_SOL',
-            temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
-            allowedTools: CONTACT_ENRICHMENT_TOOLS,
-            ...(assistant.reasoningEffort ? { reasoningEffort: assistant.reasoningEffort } : {}),
-        }
+    const prompt = buildContactEnrichmentPrompt({
+        contact,
+        contactId: cleanContactId,
+        project,
+        projectId: cleanProjectId,
+    })
+    // `resolveAssistantReasoningEffort` treats a PRESENT key as an override, so the key is only
+    // set when the assistant actually has a saved effort; otherwise its own default applies.
+    const aiSettings = {
+        model: assistant.model || 'MODEL_GPT5_6_SOL',
+        temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
+        allowedTools: CONTACT_ENRICHMENT_TOOLS,
+        ...(assistant.reasoningEffort ? { reasoningEffort: assistant.reasoningEffort } : {}),
+    }
 
-        const runResult = await generatePreConfigTaskResult(
-            userId,
-            cleanProjectId,
-            cleanContactId,
-            [userId],
-            isPublicFor,
-            assistant.uid,
-            prompt,
-            user.language || 'en',
-            aiSettings,
-            { name: `Contact enrichment: ${cleanId(contact.displayName) || cleanContactId}` },
-            functionEntryTime,
-            'contacts',
-            // Unattended once started: the user is watching the chat, not retrying tool searches.
-            // serverGrantedTools is what lets the run EXECUTE fetch_url/find_profile_photo: the
-            // aiSettings list above only shows the model their schemas, while the execution gate
-            // reads the assistant document, which predates both tools.
-            { triggerMessageId: commentId, disableToolSearch: true, serverGrantedTools: CONTACT_ENRICHMENT_TOOLS }
-        )
+    const runResult = await generatePreConfigTaskResult(
+        userId,
+        cleanProjectId,
+        cleanContactId,
+        [userId],
+        isPublicFor,
+        assistant.uid,
+        prompt,
+        user.language || 'en',
+        aiSettings,
+        { name: `Contact enrichment: ${cleanId(contact.displayName) || cleanContactId}` },
+        functionEntryTime,
+        'contacts',
+        // Unattended once started: the user is watching the chat, not retrying tool searches.
+        // serverGrantedTools is what lets the run EXECUTE fetch_url/find_profile_photo: the
+        // aiSettings list above only shows the model their schemas, while the execution gate
+        // reads the assistant document, which predates both tools.
+        { triggerMessageId: commentId, disableToolSearch: true, serverGrantedTools: CONTACT_ENRICHMENT_TOOLS }
+    )
 
-        return {
-            success: true,
-            projectId: cleanProjectId,
-            contactId: cleanContactId,
-            assistantId: assistant.uid,
-            commentId,
-            goldCharged: CONTACT_ENRICHMENT_GOLD_COST,
-            resultCommentId: runResult?.commentId || null,
-        }
-    } catch (error) {
-        // Nothing reached the thread yet or the run died before answering: give the fee back. The
-        // metered assistant usage is charged only for an answer that was actually produced.
-        try {
-            await refundGold(userId, CONTACT_ENRICHMENT_GOLD_COST, {
-                ...goldContext,
-                note: `Refund: profile research failed (${error.message})`,
-            })
-        } catch (refundError) {
-            console.error('[contactProfileEnrichment] refund failed', {
-                userId,
-                projectId: cleanProjectId,
-                contactId: cleanContactId,
-                error: refundError.message,
-            })
-        }
-        throw error
+    return {
+        success: true,
+        projectId: cleanProjectId,
+        contactId: cleanContactId,
+        assistantId: assistant.uid,
+        commentId,
+        resultCommentId: runResult?.commentId || null,
     }
 }
 
 module.exports = {
-    CONTACT_ENRICHMENT_CHANNEL,
-    CONTACT_ENRICHMENT_GOLD_COST,
-    CONTACT_ENRICHMENT_SOURCE,
     CONTACT_ENRICHMENT_TOOLS,
     buildContactEnrichmentPrompt,
     buildEnrichmentRequestText,

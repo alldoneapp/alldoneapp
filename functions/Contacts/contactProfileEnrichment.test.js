@@ -1,5 +1,3 @@
-const mockDeductGold = jest.fn()
-const mockRefundGold = jest.fn(async () => ({ success: true }))
 const mockGetAssistantForChat = jest.fn()
 const mockPostUserRequestComment = jest.fn(async ({ commentId }) => commentId)
 const mockGetDefaultAssistantIdForProject = jest.fn(async () => null)
@@ -24,10 +22,6 @@ jest.mock('firebase-admin', () => ({
             }),
     }),
 }))
-jest.mock('../Gold/goldHelper', () => ({
-    deductGold: (...args) => mockDeductGold(...args),
-    refundGold: (...args) => mockRefundGold(...args),
-}))
 jest.mock('../Utils/HelperFunctionsCloud', () => ({ FEED_PUBLIC_FOR_ALL: 0 }))
 jest.mock('../Assistant/assistantStatusHelper', () => ({
     ensureChatExists: (...args) => mockEnsureChatExists(...args),
@@ -44,7 +38,6 @@ jest.mock('../Assistant/assistantPreConfigTaskTopic', () => ({
 }))
 
 const {
-    CONTACT_ENRICHMENT_GOLD_COST,
     CONTACT_ENRICHMENT_TOOLS,
     buildContactEnrichmentPrompt,
     startContactProfileEnrichment,
@@ -71,26 +64,17 @@ beforeEach(() => {
             isPublicFor: [0, 'user-1'],
         },
         'projects/project-1': { name: 'Sales', assistantId: 'project-assistant' },
-        'users/user-1': { language: 'de', defaultAssistantId: 'user-assistant' },
+        'users/user-1': { language: 'de', defaultAssistantId: 'user-assistant', gold: 250 },
     }
-    mockDeductGold.mockResolvedValue({ success: true })
     mockGetAssistantForChat.mockImplementation(async (projectId, assistantId) =>
         assistantId === 'assistant-1' ? ASSISTANT : null
     )
 })
 
 describe('startContactProfileEnrichment', () => {
-    test('charges the fee, prepares the contact chat and hosts the run inside it', async () => {
+    test('prepares the contact chat and hosts the run inside it', async () => {
         const result = await startContactProfileEnrichment(baseArgs())
 
-        expect(mockDeductGold).toHaveBeenCalledWith('user-1', CONTACT_ENRICHMENT_GOLD_COST, {
-            source: 'contact_enrichment',
-            projectId: 'project-1',
-            objectId: 'contact-1',
-            objectType: 'contacts',
-            channel: 'contact',
-            note: 'Profile research for Anna Somova',
-        })
         expect(mockEnsureChatExists).toHaveBeenCalledWith(
             'project-1',
             'contacts',
@@ -139,10 +123,8 @@ describe('startContactProfileEnrichment', () => {
             contactId: 'contact-1',
             assistantId: 'assistant-1',
             commentId: 'req-123',
-            goldCharged: CONTACT_ENRICHMENT_GOLD_COST,
             resultCommentId: 'answer-1',
         })
-        expect(mockRefundGold).not.toHaveBeenCalled()
     })
 
     test("passes the assistant's saved reasoning effort through when it has one", async () => {
@@ -157,20 +139,20 @@ describe('startContactProfileEnrichment', () => {
         )
     })
 
-    test('reports insufficient gold without touching the thread', async () => {
-        mockDeductGold.mockResolvedValue({ success: false, message: 'Not enough Gold' })
+    test('refuses a user with no Gold without touching the thread (no flat fee, the run is metered)', async () => {
+        mockDocs['users/user-1'].gold = 0
         const result = await startContactProfileEnrichment(baseArgs())
-        expect(result).toEqual({ success: false, error: 'insufficient_gold', message: 'Not enough Gold' })
+        expect(result).toEqual({ success: false, error: 'insufficient_gold', message: 'Not enough Gold.' })
         expect(mockEnsureChatExists).not.toHaveBeenCalled()
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
-    test('a missing contact costs nothing', async () => {
+    test('a missing contact is reported before anything is written', async () => {
         delete mockDocs['projectsContacts/project-1/contacts/contact-1']
         const result = await startContactProfileEnrichment(baseArgs())
         expect(result.error).toBe('contact_not_found')
-        expect(mockDeductGold).not.toHaveBeenCalled()
+        expect(mockEnsureChatExists).not.toHaveBeenCalled()
     })
 
     test('falls back from the requested assistant to the contact assistant, then the project default', async () => {
@@ -193,25 +175,16 @@ describe('startContactProfileEnrichment', () => {
         )
     })
 
-    test('with no assistant anywhere it refuses before charging', async () => {
+    test('with no assistant anywhere it refuses before touching the thread', async () => {
         mockGetAssistantForChat.mockResolvedValue(null)
         const result = await startContactProfileEnrichment(baseArgs())
         expect(result.error).toBe('no_assistant')
-        expect(mockDeductGold).not.toHaveBeenCalled()
+        expect(mockEnsureChatExists).not.toHaveBeenCalled()
     })
 
-    test('refunds the fee and rethrows when the run fails', async () => {
+    test('a failing run surfaces as an error to the callable', async () => {
         mockGeneratePreConfigTaskResult.mockRejectedValueOnce(new Error('model down'))
         await expect(startContactProfileEnrichment(baseArgs())).rejects.toThrow('model down')
-        expect(mockRefundGold).toHaveBeenCalledWith(
-            'user-1',
-            CONTACT_ENRICHMENT_GOLD_COST,
-            expect.objectContaining({
-                source: 'contact_enrichment',
-                objectId: 'contact-1',
-                note: expect.stringMatching(/model down/),
-            })
-        )
     })
 })
 
