@@ -120,7 +120,7 @@ async function ensureChatExists(projectId, objectType, objectId, assistantId, fo
                 const parentDoc = await admin.firestore().doc(parentPath).get()
                 if (parentDoc.exists) {
                     const parentData = parentDoc.data()
-                    title = parentData.extendedName || parentData.name || 'Task'
+                    title = parentData.extendedName || parentData.name || parentData.displayName || 'Task'
                 }
             } catch (error) {
                 console.error('Error getting parent object:', error)
@@ -209,6 +209,8 @@ function getParentObjectPath(projectId, objectType, objectId) {
             return `goals/${projectId}/goals/${objectId}`
         case 'topics':
             return `chatObjects/${projectId}/chats/${objectId}`
+        case 'contacts':
+            return `projectsContacts/${projectId}/contacts/${objectId}`
         default:
             return null
     }
