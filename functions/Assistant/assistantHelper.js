@@ -5173,13 +5173,26 @@ function buildVmRequestImageMediaContext(imageUrls) {
  * its id as a trigger message, which is what makes getOptimizedContextMessages ground it in the
  * full task and thread context instead of the bare prompt.
  */
-async function postUserRequestComment({ projectId, objectType, objectId, creatorId, text, imageUrls }) {
+async function postUserRequestComment({
+    projectId,
+    objectType,
+    objectId,
+    creatorId,
+    text,
+    imageUrls,
+    commentId: requestedCommentId,
+}) {
     const cleanText = typeof text === 'string' ? text.trim() : ''
     const images = normalizeCreateTaskImageUrls(imageUrls)
     if (!cleanText && !images.length) return null
 
     const db = admin.firestore()
-    const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+    // A caller may supply the id (the contact enrichment callable keys its run lock on it, so a
+    // replayed request must land on the same comment); everything else gets a fresh one.
+    const commentId =
+        typeof requestedCommentId === 'string' && requestedCommentId.trim()
+            ? requestedCommentId.trim()
+            : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
     const now = Date.now()
     const commentText = mergeTaskDescriptionWithImages(cleanText, images)
     const mediaContext = buildVmRequestImageMediaContext(images)
@@ -7404,14 +7417,22 @@ async function executeToolNatively(
         case 'update_contact': {
             const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
             const { updateContactFields } = require('../shared/contactUpdateHelper')
+            const { buildContactUpdatesFromToolArgs } = require('../shared/contactEnrichmentFields')
             const db = admin.firestore()
             const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
             const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
             const contactEmail = typeof toolArgs.contactEmail === 'string' ? toolArgs.contactEmail.trim() : ''
             const targetEmail = typeof toolArgs.email === 'string' ? toolArgs.email.trim() : ''
 
-            if (!targetEmail) {
-                throw new Error('email is required for update_contact.')
+            const fieldUpdates = buildContactUpdatesFromToolArgs(toolArgs)
+            if (fieldUpdates.errors.length > 0) {
+                return { success: false, message: fieldUpdates.errors.join(' ') }
+            }
+            const hasFieldUpdates = Object.keys(fieldUpdates.updates).length > 0
+            if (!targetEmail && !hasFieldUpdates && !fieldUpdates.photoUrl && !fieldUpdates.clearPhoto) {
+                throw new Error(
+                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description or photoUrl).'
+                )
             }
 
             const targetProject = await resolveProjectForContactNote({
@@ -7446,6 +7467,37 @@ async function executeToolNatively(
                 }
             }
 
+            const updates = { ...fieldUpdates.updates }
+            if (targetEmail) updates.email = targetEmail
+
+            const warnings = []
+            if (fieldUpdates.photoUrl) {
+                // The photo is copied into our own storage first: a hot-linked avatar changes or
+                // disappears under the contact, and the app expects the three size fields to exist.
+                try {
+                    const { uploadContactPhotoFromUrl } = require('../shared/contactPhotoUpload')
+                    const storedPhotoUrl = await uploadContactPhotoFromUrl(
+                        fieldUpdates.photoUrl,
+                        targetProjectId,
+                        contactResolution.contact.uid
+                    )
+                    updates.photoURL = storedPhotoUrl
+                    updates.photoURL50 = storedPhotoUrl
+                    updates.photoURL300 = storedPhotoUrl
+                } catch (photoError) {
+                    console.warn('update_contact: photo upload failed', {
+                        projectId: targetProjectId,
+                        contactId: contactResolution.contact.uid,
+                        error: photoError.message,
+                    })
+                    warnings.push(`The photo could not be stored: ${photoError.message}`)
+                }
+            } else if (fieldUpdates.clearPhoto) {
+                updates.photoURL = ''
+                updates.photoURL50 = ''
+                updates.photoURL300 = ''
+            }
+
             const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
             const updateResult = await updateContactFields({
                 db,
@@ -7453,25 +7505,34 @@ async function executeToolNatively(
                 contact: contactResolution.contact,
                 userId: feedUser?.uid || creatorId,
                 feedUser,
-                updates: { email: targetEmail },
+                updates,
             })
 
             const finalContact = updateResult.contact
             let message = `Contact "${finalContact.displayName || 'Untitled'}" updated successfully`
             if (updateResult.changes.length > 0) {
                 message += ` (${updateResult.changes.join(', ')})`
+            } else {
+                message = `Contact "${finalContact.displayName || 'Untitled'}" already had these values`
             }
             message += ` in project "${targetProjectName}"`
+            if (warnings.length > 0) message += `. ${warnings.join(' ')}`
 
             return {
                 success: true,
                 message,
                 project: { id: targetProjectId, name: targetProjectName },
                 changes: updateResult.changes,
+                warnings,
                 contact: {
                     contactId: finalContact.uid,
                     displayName: finalContact.displayName || '',
                     email: finalContact.email || '',
+                    company: finalContact.company || '',
+                    role: finalContact.role || '',
+                    phone: finalContact.phone || '',
+                    linkedInUrl: finalContact.linkedInUrl || '',
+                    hasPhoto: !!finalContact.photoURL,
                     created: !!contactResolution.contactCreated,
                     updated: !!updateResult.updated,
                     matchType: contactResolution.matchType || null,
@@ -8322,6 +8383,57 @@ async function executeToolNatively(
                     query: toolArgs.query,
                 }
             }
+        }
+
+        case 'fetch_url': {
+            const { fetchWebPage, DEFAULT_MAX_TEXT_CHARS } = require('./webPageFetcher')
+            const requestedUrl = typeof toolArgs.url === 'string' ? toolArgs.url.trim() : ''
+            if (!requestedUrl) {
+                return { success: false, error: 'url is required for fetch_url.' }
+            }
+            const requestedMax = Number(toolArgs.maxChars)
+            const maxChars =
+                Number.isFinite(requestedMax) && requestedMax > 0
+                    ? Math.min(Math.floor(requestedMax), 40000)
+                    : DEFAULT_MAX_TEXT_CHARS
+            console.log('🌐 FETCH_URL TOOL: reading page', { url: requestedUrl, maxChars })
+            const page = await fetchWebPage(requestedUrl, {
+                maxChars,
+                tavilyApiKey: getCachedEnvFunctions().TAVILY_API_KEY || '',
+            })
+            console.log('🌐 FETCH_URL TOOL: done', {
+                url: requestedUrl,
+                success: page.success,
+                source: page.source || null,
+                status: page.status || null,
+                textLength: page.text ? page.text.length : 0,
+                error: page.error || null,
+            })
+            return page
+        }
+
+        case 'find_profile_photo': {
+            const { findProfilePhotoCandidates } = require('./profilePhotoFinder')
+            const pageUrls = Array.isArray(toolArgs.pageUrls) ? toolArgs.pageUrls : []
+            const email = typeof toolArgs.email === 'string' ? toolArgs.email.trim() : ''
+            const githubUsername = typeof toolArgs.githubUsername === 'string' ? toolArgs.githubUsername.trim() : ''
+            if (!email && !githubUsername && pageUrls.length === 0) {
+                return {
+                    success: false,
+                    error: 'find_profile_photo needs an email, a GitHub username or at least one page URL.',
+                }
+            }
+            console.log('🖼️ FIND_PROFILE_PHOTO TOOL: looking up candidates', {
+                hasEmail: !!email,
+                hasGithub: !!githubUsername,
+                pageUrlCount: pageUrls.length,
+            })
+            const result = await findProfilePhotoCandidates(
+                { email, githubUsername, pageUrls },
+                { tavilyApiKey: getCachedEnvFunctions().TAVILY_API_KEY || '' }
+            )
+            console.log('🖼️ FIND_PROFILE_PHOTO TOOL: done', { candidates: result.candidates.length })
+            return result
         }
 
         case 'get_route_info': {
@@ -13040,7 +13152,7 @@ function getToolSearchNamespaceName(toolName = '') {
     if (/note/.test(name)) return 'notes'
     if (/contact|project|user/.test(name)) return 'people_and_projects'
     if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
-    if (/search|weather|route|recommendation|local/.test(name)) return 'research'
+    if (/search|weather|route|recommendation|local|fetch_url|profile_photo/.test(name)) return 'research'
     return 'other'
 }
 

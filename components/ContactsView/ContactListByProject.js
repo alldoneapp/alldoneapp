@@ -25,8 +25,6 @@ import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
 import usePagedReveal from '../../hooks/usePagedReveal'
 import useProjectData from '../../hooks/useProjectData'
 import { PROJECT_DATA_CONTACTS } from '../../utils/InitialLoad/projectDataLoader'
-import PendingContactItem from './PendingContactItem'
-import { isPendingContact } from '../../utils/backends/Contacts/pendingContact'
 
 const EMPTY_PROJECT_CONTACTS = {}
 
@@ -145,14 +143,7 @@ function ContactListByProject({
                 contactsList.map((contact, index) => {
                     return (
                         contact &&
-                        index < visibleAmount &&
-                        // AT-2508 - a contact that is still being written has no document to
-                        // open, swipe or edit, so it gets an inert row that says it is on its
-                        // way instead of the interactive one. It is replaced by the real row in
-                        // the same snapshot delivery that retires it, so nothing moves.
-                        (isPendingContact(contact) ? (
-                            <PendingContactItem key={contact.uid} contact={contact} />
-                        ) : (
+                        index < visibleAmount && (
                             <DismissibleItem
                                 key={contact.uid}
                                 ref={ref => {
@@ -190,7 +181,7 @@ function ContactListByProject({
                                     />
                                 }
                             />
-                        ))
+                        )
                     )
                 })}
 

@@ -951,7 +951,7 @@ const toolSchemas = {
         function: {
             name: 'update_contact',
             description:
-                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Supports updating the contact email and can optionally create a missing contact.',
+                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Can set the email, name, company, role, phone, LinkedIn profile URL, description and profile photo, and can optionally create a missing contact. Only pass the fields you actually established; omitted fields are left untouched.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -980,7 +980,37 @@ const toolSchemas = {
                     },
                     email: {
                         type: 'string',
-                        description: 'New email address to store on the matched contact.',
+                        description: 'New primary email address to store on the matched contact.',
+                    },
+                    displayName: {
+                        type: 'string',
+                        description: 'Corrected full name of the person (for example fixing capitalization).',
+                    },
+                    company: {
+                        type: 'string',
+                        description: 'The organisation the person currently works for.',
+                    },
+                    role: {
+                        type: 'string',
+                        description: "The person's current job title or role.",
+                    },
+                    phone: {
+                        type: 'string',
+                        description: 'A phone number published by the person or their organisation.',
+                    },
+                    linkedInUrl: {
+                        type: 'string',
+                        description: "The person's LinkedIn profile URL (https://www.linkedin.com/in/...).",
+                    },
+                    description: {
+                        type: 'string',
+                        description:
+                            'A short professional summary of the person (2-4 sentences). Replaces the existing description.',
+                    },
+                    photoUrl: {
+                        type: 'string',
+                        description:
+                            "Absolute URL of a portrait photo of the person (for example a candidate returned by find_profile_photo). The image is copied into the contact's storage; pass only an image that clearly shows this person.",
                     },
                     createIfMissing: {
                         type: 'boolean',
@@ -988,7 +1018,7 @@ const toolSchemas = {
                             'Optional: when true, auto-create the contact if no existing contact matches. Defaults to false for update_contact.',
                     },
                 },
-                required: ['email'],
+                required: [],
             },
         },
     },
@@ -1313,6 +1343,59 @@ const toolSchemas = {
                     },
                 },
                 required: ['name'],
+            },
+        },
+    },
+
+    fetch_url: {
+        type: 'function',
+        function: {
+            name: 'fetch_url',
+            description:
+                'Reads a public web page and returns its title, description, social image (og:image), readable text and outgoing links. Use it to read a page you found with web_search - a company team page, a personal website, a GitHub profile, a conference bio, an article. LinkedIn pages cannot be read (they require a login); for LinkedIn rely on the web_search result title and snippet instead. Private/internal addresses are refused.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: {
+                        type: 'string',
+                        description: 'The absolute http(s) URL of the page to read.',
+                    },
+                    maxChars: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of characters of page text to return (default 12000, maximum 40000).',
+                    },
+                },
+                required: ['url'],
+            },
+        },
+    },
+
+    find_profile_photo: {
+        type: 'function',
+        function: {
+            name: 'find_profile_photo',
+            description:
+                'Finds candidate profile photos of a person from free public sources: Gravatar (by email address), a GitHub account, and the social image of web pages that are about the person (a company team page, a personal site). Returns candidate image URLs with their source; pass the best one as photoUrl to update_contact. Provide whatever you have - all inputs are optional, but at least one is needed.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    email: {
+                        type: 'string',
+                        description: "The person's email address, used for the Gravatar lookup.",
+                    },
+                    githubUsername: {
+                        type: 'string',
+                        description: "The person's GitHub username or profile URL.",
+                    },
+                    pageUrls: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description:
+                            'Up to 4 URLs of pages that are about this person (personal site, company team/about page, speaker profile). Their social image is checked. Do not pass LinkedIn URLs.',
+                    },
+                },
+                required: [],
             },
         },
     },
