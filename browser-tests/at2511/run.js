@@ -35,6 +35,7 @@
  *   node browser-tests/at2511/run.js --reduce-motion
  *   node browser-tests/at2511/run.js --compact
  *   node browser-tests/at2511/run.js --real-chain
+ *   node browser-tests/at2511/run.js --streaming
  *
  * `--real-chain` is the mode that matters most and the one this harness originally lacked. The
  * three modes above render `LastAssistantComment` DIRECTLY with a hand-written `arrivalId`, which
@@ -267,7 +268,186 @@ async function realChainMain() {
     process.exit(failures.length ? 1 : 0)
 }
 
+/**
+ * AT-2511 follow-up — a streamed answer must update IN PLACE and never roll.
+ *
+ * The assistant writes one comment document and rewrites it as tokens accumulate, so every batched
+ * write changed the text, changed the arrival key and armed a fresh roll: the card rolled once per
+ * chunk. This mode drives that exact shape — one id, growing text, `isLoading: true` — and then the
+ * settling write, which is the case a naive "is it live right now?" check misses, because batching
+ * plus the final flush make the settled text longer than the last live one.
+ *
+ * The last check is the one that keeps the fix honest: after the stream settles, an ordinary new
+ * comment must still roll. A fix that simply turned the animation off would pass everything above
+ * it and fail there.
+ *
+ * A/B against master: `outgoing rows during stream: 4` and the first two checks fail.
+ */
+async function streamingMain() {
+    const OUT = path.join(__dirname, '.build-realchain')
+    build({
+        entry: path.join(__dirname, 'realChain.entry.js'),
+        out: OUT,
+        setup: path.join(__dirname, 'realChain.setup.js'),
+    })
+    const server = await serve(OUT)
+    const port = server.address().port
+    const { chromium } = require('playwright')
+    const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, reducedMotion: 'no-preference' })
+    page.on('pageerror', e => console.log('PAGE ERROR:', e.message))
+    await page.goto(`http://127.0.0.1:${port}/`)
+    await page.waitForFunction('window.__ready === true')
+    await sleep(150)
+
+    console.log('\n--- mode: STREAMING (real chain, one document rewritten token by token) ---\n')
+
+    // The slot is already showing a previous answer.
+    await page.evaluate(() => window.__emitComment(window.__texts.FIRST))
+    await sleep(150)
+    const loaded = await page.evaluate(() => window.__measure())
+    check('the slot starts with a comment already on screen', loaded.present && loaded.incomingY === 0, '')
+
+    /**
+     * The stream. One id throughout — that is what makes these five writes one answer rather than
+     * five arrivals — with `isLoading` true and the run `running`, exactly as `storeChunks` writes.
+     */
+    const CHUNKS = [
+        'Sure —',
+        'Sure — let me check',
+        'Sure — let me check the three overdue',
+        'Sure — let me check the three overdue tasks and move',
+        'Sure — let me check the three overdue tasks and move them to today.',
+    ]
+    const streamFrames = []
+    for (const text of CHUNKS) {
+        const frame = await page.evaluate(
+            chunk =>
+                new Promise(resolve => {
+                    window.__emitComment(chunk, {
+                        id: 'answer-1',
+                        isLoading: true,
+                        assistantRun: { status: 'running' },
+                    })
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
+                }),
+            text
+        )
+        streamFrames.push(frame)
+        // Sample through the window a roll would have occupied, so a roll cannot hide between chunks.
+        for (let i = 0; i < 6; i++) {
+            await sleep(25)
+            streamFrames.push(await page.evaluate(() => window.__measure()))
+        }
+    }
+
+    const at = (list, key) => list.map(f => f[key])
+    const spark = values => values.map(v => (v === null || v === undefined ? '-' : v)).join(' ')
+    console.log('    incoming y   :', spark(at(streamFrames, 'incomingY')))
+    console.log('    outgoing rows:', at(streamFrames, 'outgoingPresent').filter(Boolean).length)
+    console.log(
+        '    text grew    :',
+        JSON.stringify((streamFrames[0].incomingText || '').slice(0, 24)),
+        '→',
+        JSON.stringify((streamFrames[streamFrames.length - 1].incomingText || '').slice(0, 44))
+    )
+
+    check(
+        'no outgoing row is EVER mounted while streaming',
+        streamFrames.every(f => !f.outgoingPresent),
+        `${at(streamFrames, 'outgoingPresent').filter(Boolean).length} frames had one`
+    )
+    check(
+        'the comment never travels while streaming',
+        streamFrames.every(f => f.incomingY === 0),
+        `offsets seen: ${[...new Set(at(streamFrames, 'incomingY'))].join(', ')}`
+    )
+    // The point of not animating is that the text still updates — otherwise this would "pass" by
+    // rendering nothing at all.
+    const lastText = streamFrames[streamFrames.length - 1].incomingText || ''
+    check(
+        'the streamed text is updated in place as it grows',
+        lastText.includes('move them to today'),
+        JSON.stringify(lastText.slice(0, 60))
+    )
+    const heights = new Set(at(streamFrames, 'cardHeight').filter(Boolean))
+    check('the card height is constant while streaming', heights.size === 1, `heights: ${[...heights].join(', ')}`)
+
+    /**
+     * The settling write: same id, `isLoading: false`, and MORE text than the last live write —
+     * the shape batching plus the final flush actually produce.
+     */
+    const settlePaint = await page.evaluate(
+        () =>
+            new Promise(resolve => {
+                window.__emitComment(
+                    'Sure — let me check the three overdue tasks and move them to today. All three are moved.',
+                    { id: 'answer-1', isLoading: false, assistantRun: { status: 'completed' } }
+                )
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
+            })
+    )
+    const settleFrames = [settlePaint]
+    for (let i = 0; i < 20; i++) {
+        await sleep(25)
+        settleFrames.push(await page.evaluate(() => window.__measure()))
+    }
+    console.log('    settle y     :', spark(at(settleFrames, 'incomingY')))
+    check(
+        'the run settling does not roll the finished answer away and back',
+        settleFrames.every(f => !f.outgoingPresent && f.incomingY === 0),
+        `outgoing frames ${at(settleFrames, 'outgoingPresent').filter(Boolean).length}, offsets ${[
+            ...new Set(at(settleFrames, 'incomingY')),
+        ].join(', ')}`
+    )
+    check(
+        'the settled answer is the one on screen',
+        (settleFrames[settleFrames.length - 1].incomingText || '').includes('All three are moved'),
+        ''
+    )
+
+    /**
+     * And the flourish is still there for a genuinely new comment. This is what separates the fix
+     * from "the animation was disabled".
+     */
+    const nextPaint = await page.evaluate(
+        () =>
+            new Promise(resolve => {
+                window.__emitComment('A separate later answer that nobody watched being typed.', {
+                    id: 'answer-2',
+                    isLoading: false,
+                })
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
+            })
+    )
+    const nextFrames = [nextPaint]
+    for (let i = 0; i < 20; i++) {
+        await sleep(25)
+        nextFrames.push(await page.evaluate(() => window.__measure()))
+    }
+    console.log('    next out y   :', spark(at(nextFrames, 'outgoingY')))
+    check(
+        'the NEXT genuinely new comment still rolls',
+        nextFrames.some(f => f.outgoingPresent),
+        nextFrames.some(f => f.outgoingPresent) ? '' : 'the fix suppressed a real arrival too'
+    )
+    const outgoingTexts = at(nextFrames, 'outgoingText').filter(Boolean)
+    check(
+        'the row rolling away is the settled streamed answer',
+        outgoingTexts.length > 0 && outgoingTexts.every(t => t.includes('All three are moved')),
+        outgoingTexts.length ? JSON.stringify(outgoingTexts[0].slice(0, 50)) : 'no outgoing row'
+    )
+
+    await browser.close()
+    server.close()
+
+    const failures = results.filter(r => !r.ok)
+    console.log(`\n${results.length - failures.length}/${results.length} checks passed`)
+    process.exit(failures.length ? 1 : 0)
+}
+
 async function main() {
+    if (process.argv.includes('--streaming')) return streamingMain()
     if (process.argv.includes('--real-chain')) return realChainMain()
     const reduceMotion = process.argv.includes('--reduce-motion')
     const compact = process.argv.includes('--compact')
