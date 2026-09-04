@@ -2047,10 +2047,11 @@ Gravatar (SHA-256 of the lower-cased address, `d=404`), the GitHub API with the 
 a rate-limit fallback, and the `og:image` of pages the assistant already trusts; every miss is
 reported in `checked`, never thrown.
 
-Billing is two Gold-history lines on purpose: a flat `contact_enrichment` fee
-(`CONTACT_ENRICHMENT_GOLD_COST`, refunded if the run throws before answering) for the research
-tooling, then the ordinary metered `assistant_usage` of the run. The client mirrors the fee as
-`ENRICH_PROFILE_GOLD_COST` for its pre-check and button label — keep the two in step. Pinned by
+Billing is the ordinary metered `assistant_usage` of the run and nothing else (a flat
+`contact_enrichment` fee shipped for one afternoon and was removed; the Gold-history label stays for
+the entries it wrote). The callable refuses a user with no Gold before touching the thread, matching
+the run's own `userGold > 0` gate. The button lives beside the profile edit button at the top of the
+card, not on the LinkedIn line. Pinned by
 `functions/Contacts/contactProfileEnrichment.test.js`, `functions/Assistant/webPageFetcher.test.js`,
 `functions/Assistant/profilePhotoFinder.test.js`, `functions/shared/contactEnrichmentFields.test.js`
 and the contact-research block in `toolSchemas.test.js`. Known limits: LinkedIn's own picture and
