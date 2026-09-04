@@ -122,7 +122,7 @@ function buildScheduledTaskSourceLabel(taskMetadata) {
 // transport was sized for 25, and the run's own guardrail could never fire before the platform cut
 // it off. The two bags look interchangeable at a call site, so name the mistake instead of
 // tolerating it.
-const RUN_SHAPING_OPTION_KEYS = ['maxRunWallClockMs', 'disableToolSearch', 'triggerMessageId']
+const RUN_SHAPING_OPTION_KEYS = ['maxRunWallClockMs', 'disableToolSearch', 'triggerMessageId', 'serverGrantedTools']
 
 function warnAboutMisplacedRunOptions(taskMetadata) {
     if (!taskMetadata || typeof taskMetadata !== 'object') return
@@ -436,6 +436,13 @@ async function generatePreConfigTaskResult(
             // whole job, reports the tool as unavailable, spends the Gold and is marked done. An
             // interactive run keeps tool search, because there the user simply asks again.
             disableToolSearch: options?.disableToolSearch === true,
+            // Tools this SERVER-authored run may execute on top of the assistant's persisted list.
+            // Listing a tool in aiSettings.allowedTools only puts its schema in front of the model;
+            // the execution gate in storeChunks reads the assistant document, so a run that needs a
+            // tool the owner never enabled has to say so here (contact enrichment does).
+            ...(Array.isArray(options?.serverGrantedTools) && options.serverGrantedTools.length > 0
+                ? { serverGrantedTools: options.serverGrantedTools }
+                : {}),
             // A scheduled/preconfigured run must not be marked successful after its tool loop
             // wrote a visible error and stopped. storeChunks persists the error first, then
             // propagates it so the recurring-task lifecycle can record a real failure and retry.
