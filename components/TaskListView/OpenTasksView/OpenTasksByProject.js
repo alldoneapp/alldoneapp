@@ -209,7 +209,11 @@ function OpenTasksByProject({
                     )}
                     {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
                     {!assistantProfileMode && <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />}
-                    {!assistantProfileMode && <UpcomingMilestoneRow projectId={projectId} />}
+                    {/* Start the milestone exit while the project is held for its sweep. Its open
+                        data may stay unchanged when only today's tasks have been cleared. */}
+                    {!assistantProfileMode && (
+                        <UpcomingMilestoneRow projectId={projectId} hidden={baseHideProjectData} />
+                    )}
                     {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
                     {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
                     {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
