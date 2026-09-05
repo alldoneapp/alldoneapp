@@ -4,7 +4,8 @@ import moment from 'moment'
 import { AccessibilityInfo } from 'react-native'
 
 import OpenTasksByProject from './OpenTasksByProject'
-import { PROJECT_LINE_EXIT_HOLD_MS } from './projectCompletedSweepMotion'
+import { PROJECT_LINE_EXIT_HOLD_MS, SWEEP_LEAD_MS } from './projectCompletedSweepMotion'
+import { MILESTONE_EXIT_MS } from '../Header/MilestoneRowTransition'
 import { PROJECT_SWEEP_PROBE_MS } from './useProjectCompletedSweep'
 import {
     markProjectEmptyInboxDayReached,
@@ -162,6 +163,13 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
              * then vanish.
              */
             expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(true)
+            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(true)
+            // The milestone completes its exit before the project's dissolve starts.
+            expect(MILESTONE_EXIT_MS).toBeLessThan(SWEEP_LEAD_MS)
+            await act(async () => {
+                jest.advanceTimersByTime(MILESTONE_EXIT_MS)
+            })
+            expect(countOf(tree, 'ProjectHeader')).toBe(1)
 
             // And once the sweep is over the board returns to exactly what it renders today.
             await act(async () => {
@@ -198,6 +206,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
             expect(countOf(tree, 'ProjectHeader')).toBe(1)
             expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(false)
+            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
         })
 
         it('never sweeps a project that was already off the board when it mounted', async () => {
@@ -219,6 +228,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
             const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0 }))
 
+            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
             const runId = headerOf(tree).props.completedSweepRunId
             expect(runId).toBe(1)
             // The same run id reaches the date section, which forwards it to the Anna picture — so
