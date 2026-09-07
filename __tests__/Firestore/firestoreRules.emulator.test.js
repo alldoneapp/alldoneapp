@@ -1788,3 +1788,77 @@ describe('explicit client collection coverage', () => {
         }
     )
 })
+
+describe('browser tool approvals', () => {
+    const seedApproval = (approvalId, requestUserId) =>
+        testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `browserApprovals/${approvalId}`), {
+                approvalId,
+                requestUserId,
+                projectId: PROJECT_ID,
+                objectId: 'task-1',
+                status: 'pending',
+                category: 'booking',
+                signature: 'sig-1',
+                allowRunScope: true,
+                expiresAt: Date.now() + 60000,
+            })
+        })
+
+    it('lets the person the request was raised for read it, and nobody else', async () => {
+        await seedApproval('approval-member', MEMBER_ID)
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(memberDb, 'browserApprovals/approval-member')))
+        // A project MEMBER is not automatically the person who started the browsing run.
+        await assertFails(getDoc(doc(teammateDb, 'browserApprovals/approval-member')))
+        await assertFails(getDoc(doc(outsiderDb, 'browserApprovals/approval-member')))
+    })
+
+    it('serves the card query and refuses one that asks for somebody else', async () => {
+        await seedApproval('approval-member', MEMBER_ID)
+        await seedApproval('approval-teammate', TEAMMATE_ID)
+
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const mine = query(
+            collection(memberDb, 'browserApprovals'),
+            where('requestUserId', '==', MEMBER_ID),
+            where('projectId', '==', PROJECT_ID),
+            where('objectId', '==', 'task-1'),
+            where('status', '==', 'pending')
+        )
+        const result = await assertSucceeds(getDocs(mine))
+        expect(result.docs.map(entry => entry.id)).toEqual(['approval-member'])
+
+        await assertFails(
+            getDocs(query(collection(memberDb, 'browserApprovals'), where('requestUserId', '==', TEAMMATE_ID)))
+        )
+    })
+
+    it('lets nobody write one — a grant is minted only by the callable', async () => {
+        await seedApproval('approval-member', MEMBER_ID)
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+
+        // Approving your own payment by editing the request is the thing this closes.
+        await assertFails(updateDoc(doc(memberDb, 'browserApprovals/approval-member'), { status: 'approved' }))
+        await assertFails(
+            setDoc(doc(memberDb, 'browserApprovals/forged'), { requestUserId: MEMBER_ID, status: 'approved' })
+        )
+        await assertFails(deleteDoc(doc(memberDb, 'browserApprovals/approval-member')))
+    })
+
+    it('keeps the browsing run and its audit steps unreadable', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), 'browserRuns/run-1'), {
+                runId: 'run-1',
+                projectId: PROJECT_ID,
+                requestUserId: MEMBER_ID,
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(getDoc(doc(memberDb, 'browserRuns/run-1')))
+    })
+})
