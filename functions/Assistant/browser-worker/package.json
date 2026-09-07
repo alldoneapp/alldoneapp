@@ -6,7 +6,7 @@
     "main": "server.js",
     "scripts": {
         "start": "node server.js",
-        "test": "node --test"
+        "test": "echo 'Run from the repo root: npx jest --config ci/jest.functions.config.js functions/Assistant/browser-worker'"
     },
     "engines": {
         "node": ">=22"

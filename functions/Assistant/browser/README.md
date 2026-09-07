@@ -180,7 +180,7 @@ credentials, and the user's standing with the third-party sites the assistant vi
 ## Tests
 
 ```bash
-npx jest --config ci/jest.functions.config.js functions/Assistant/browser
+npx jest --config ci/jest.functions.config.js functions/Assistant/browser functions/Assistant/browser-worker
 ```
 
 `browserAllowlist.test.js` (default deny, SSRF hosts, entry syntax), `browserLimits.test.js`
@@ -188,4 +188,11 @@ npx jest --config ci/jest.functions.config.js functions/Assistant/browser
 `browserPolicy.test.js` (category detection in three languages, the generic-click bypass, the search
 carve-out, signatures), `browserApprovals.test.js` (ownership, single use, denial stickiness,
 expiry), `browserSession.test.js` (the whole path with a fake worker: allowlist, limits, audit
-evidence, approval gates), `browserToolRegistration.test.js` (the wiring ratchet).
+evidence, approval gates), `browserToolRegistration.test.js` (the wiring ratchet), and
+`../browser-worker/browserWorkerGuard.test.js` (the worker's network guard and its token — the two
+rules Functions structurally cannot enforce).
+
+Playwright itself is covered by nothing: it needs a real Chromium, which jest here does not have.
+`sharedModules.js` resolves the shared modules from both the repository and the image layout so at
+least the guard is testable in place, but the describe step, the snapshot and every action have only
+ever been read, never run.

@@ -16,7 +16,9 @@
 
 const express = require('express')
 
-const { verifyWorkerToken } = require('./shared/browserWorkerClient')
+const { requireShared } = require('./sharedModules')
+
+const { verifyWorkerToken } = requireShared('browserWorkerClient')
 const {
     describeElement,
     ensureNetworkGuard,

@@ -19,7 +19,9 @@
 // tool calls for as long as the node does, and a stale ref resolves to nothing — which the policy
 // turns into a refusal rather than a guess.
 
-const { hostMatchesEntry, pathMatchesEntry } = require('./shared/browserAllowlist')
+const { requireShared } = require('./sharedModules')
+
+const { hostMatchesEntry, pathMatchesEntry } = requireShared('browserAllowlist')
 
 const REF_ATTRIBUTE = 'data-alldone-ref'
 const INTERACTIVE_SELECTOR =
@@ -267,7 +269,24 @@ async function describeElement(page, { ref = '', selector = '' }) {
 }
 
 async function performNavigate(session, { url, waitUntil = 'domcontentloaded', maxChars }) {
-    const response = await session.page.goto(url, { waitUntil })
+    let response
+    try {
+        response = await session.page.goto(url, { waitUntil })
+    } catch (error) {
+        // The guard aborting a hop surfaces here as `net::ERR_BLOCKED_BY_CLIENT`, which on its own
+        // reads like the site being down. Name the host that was refused instead — that is the one
+        // fact the user needs to decide whether to allowlist it.
+        const blocked = session.lastBlockedNavigation
+        if (blocked && /ERR_BLOCKED_BY_CLIENT|ERR_FAILED/i.test(error.message || '')) {
+            session.lastBlockedNavigation = null
+            return {
+                ok: false,
+                reason: 'redirect_off_allowlist',
+                error: `The page tried to send the browser to ${blocked}, which is not on the allowlist. Nothing was loaded.`,
+            }
+        }
+        throw error
+    }
     const finalUrl = session.page.url()
     if (!isUrlAllowed(finalUrl, session.allowlist)) {
         // A redirect chain that ended off-allowlist: the guard aborted the hop, so the page is
