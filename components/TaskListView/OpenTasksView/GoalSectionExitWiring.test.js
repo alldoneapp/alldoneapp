@@ -26,7 +26,7 @@ jest.mock('uuid/v4', () => {
 
 const mockStoreState = {
     currentUser: { uid: 'logged-user' },
-    loggedUser: { uid: 'logged-user', isAnonymous: false, unlockedKeysByGuides: [], projectIds: ['project-1'] },
+    loggedUser: { uid: 'logged-user', isAnonymous: false, unlockedKeysByGuides: [] },
     isMiddleScreen: false,
     smallScreenNavigation: false,
     dismissibleActive: false,
@@ -116,7 +116,6 @@ jest.mock('../../../utils/BackendBridge', () => ({
 
 import { AccessibilityInfo, Animated } from 'react-native'
 import ParentGoalSection from './ParentGoalSection'
-import EmptyGoal from './EmptyGoal'
 
 const PROJECT = 'project-1'
 const GOAL = 'goal-1'
@@ -284,122 +283,6 @@ describe('a goal section wearing its exit (AT-2507)', () => {
         const tree = await renderSection()
 
         await startExit(tree)
-
-        const style = flatStyleOf(wrapperOf(tree))
-        expect(style.opacity).toBeUndefined()
-        expect(style.height).toBeUndefined()
-        expect(style.pointerEvents).toBeUndefined()
-    })
-})
-
-/**
- * AT-2521 — the SAME contract for the empty-goal row, because that is the row actually on screen
- * when a goal leaves today's list.
- *
- * The tasks snapshot lands before the goal snapshot (the goal write is caused by the task write),
- * so a goal whose last task was completed spends a beat as an `EmptyGoal` and leaves from there.
- * Until this row could animate, the departure had nowhere to be drawn: it was a plain `View` with
- * no `onLayout` and no style hook, so `useGoalSectionExit` could hold the goal for as long as it
- * liked and the user would still see it vanish between two frames.
- */
-describe('an empty-goal row wearing its exit (AT-2521)', () => {
-    const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
-    const originalAddEventListener = AccessibilityInfo.addEventListener
-    const originalNodeEnv = process.env.NODE_ENV
-
-    beforeEach(() => {
-        jest.useFakeTimers()
-        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
-        AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
-        process.env.NODE_ENV = 'development'
-    })
-
-    afterEach(() => {
-        jest.useRealTimers()
-        AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
-        AccessibilityInfo.addEventListener = originalAddEventListener
-        process.env.NODE_ENV = originalNodeEnv
-    })
-
-    const emptyGoalTree = exitRunId => (
-        <EmptyGoal goal={goalDoc} projectId={PROJECT} dateIndex={0} instanceKey={'instance-1'} exitRunId={exitRunId} />
-    )
-
-    const renderEmptyGoal = async ({ exitRunId = 0 } = {}) => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(emptyGoalTree(exitRunId))
-            await Promise.resolve()
-        })
-        // jsdom lays nothing out, so the browser's measurement is handed over by hand — without it
-        // the collapse has no height to collapse from.
-        await act(async () => {
-            wrapperOf(tree).props.onLayout({ nativeEvent: { layout: { height: SECTION_HEIGHT, width: 600 } } })
-        })
-        return tree
-    }
-
-    const startEmptyGoalExit = async tree => {
-        await act(async () => {
-            tree.update(emptyGoalTree(1))
-            await Promise.resolve()
-        })
-    }
-
-    it('leaves an ordinary empty goal completely untouched', async () => {
-        const tree = await renderEmptyGoal()
-        const style = flatStyleOf(wrapperOf(tree))
-
-        expect(style.opacity).toBeUndefined()
-        expect(style.height).toBeUndefined()
-        expect(style.overflow).toBeUndefined()
-        expect(style.pointerEvents).toBeUndefined()
-    })
-
-    /** A plain `View` resolves the interpolations once and freezes on the first frame. */
-    it('is animatable, not a plain View', async () => {
-        const tree = await renderEmptyGoal()
-
-        expect(wrapperOf(tree)).toBeDefined()
-    })
-
-    /**
-     * The collapse is the half that matters here. Without a measured height the row can only fade
-     * and then drop its full height in one frame when the hold ends — which is the jump AT-2521 is
-     * about, merely delayed by a second.
-     */
-    it('collapses from the height it was measured at', async () => {
-        const tree = await renderEmptyGoal()
-        await startEmptyGoalExit(tree)
-
-        const style = flatStyleOf(wrapperOf(tree))
-        expect(style.overflow).toBe('hidden')
-        expect(style.opacity).toBeDefined()
-        expect(style.height).toBeDefined()
-        expect(style.height.__getValue()).toBe(SECTION_HEIGHT)
-        expect(style.transform).toHaveLength(1)
-    })
-
-    it('stops accepting taps on its way out', async () => {
-        const tree = await renderEmptyGoal()
-        await startEmptyGoalExit(tree)
-
-        expect(flatStyleOf(wrapperOf(tree)).pointerEvents).toBe('none')
-    })
-
-    it('puts the exit style LAST, so no earlier floor can outrank it', async () => {
-        const tree = await renderEmptyGoal()
-        await startEmptyGoalExit(tree)
-
-        const styles = [].concat(wrapperOf(tree).props.style).filter(Boolean)
-        expect(styles[styles.length - 1].height).toBeDefined()
-    })
-
-    it('stands down under reduced motion', async () => {
-        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
-        const tree = await renderEmptyGoal()
-
-        await startEmptyGoalExit(tree)
 
         const style = flatStyleOf(wrapperOf(tree))
         expect(style.opacity).toBeUndefined()

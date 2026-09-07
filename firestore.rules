@@ -820,6 +820,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // A pending browser-tool approval, so the card can appear in the thread the moment the assistant
+    // stops and asks. READ ONLY, and only for the person the request was raised for: the answer is
+    // minted exclusively by `respondToBrowserApprovalSecondGen`, which is also where the "may this
+    // category be approved for the whole run" rule is enforced. A client that could write here could
+    // approve its own payment.
+    //
+    // The browsing RUN and its steps (`browserRuns`) stay unreadable by design — they hold the audit
+    // trail and the redacted page evidence, which only the server has any business reading.
+    match /browserApprovals/{approvalId} {
+      allow read: if signedIn() && resource.data.get('requestUserId', '') == request.auth.uid;
+      allow write: if false;
+    }
+
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);

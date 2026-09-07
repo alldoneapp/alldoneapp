@@ -4,6 +4,7 @@
  */
 
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+const { BROWSER_TOOL_KEY, BROWSER_TOOL_NAMES } = require('./browser/browserToolContract')
 
 /**
  * Model enums are derived from the shared selector rather than hand-listed, so a model added to the
@@ -1372,6 +1373,141 @@ const toolSchemas = {
         },
     },
 
+    // --- Browsing ---------------------------------------------------------------------------
+    // `fetch_url` reads a page; these six OPEN one. The difference is what the descriptions have to
+    // get across: the model must look before it touches (a click needs a `ref` from a snapshot), and
+    // anything with a consequence pauses for the user instead of happening. The wording is
+    // deliberately explicit about the pause, because a model that does not expect one reads the
+    // refusal as a failure and starts looking for a way around it.
+    browser_navigate: {
+        type: 'function',
+        function: {
+            name: 'browser_navigate',
+            description:
+                'Opens a page in a real browser and returns its text, headings and interactive elements. Use this instead of fetch_url when the page needs JavaScript to render, when you have to interact with it (search a date, pick a filter), or when the user wants to know what the page actually shows right now — availability, opening times, remaining tickets. Only allowlisted sites can be opened; everything else is refused. This starts a browsing session in this thread that the other browser_ tools then work on.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: { type: 'string', description: 'The absolute https URL to open.' },
+                    waitUntil: {
+                        type: 'string',
+                        enum: ['domcontentloaded', 'load'],
+                        description:
+                            'Optional: how long to wait before reading the page. Use "load" for pages that render late.',
+                    },
+                },
+                required: ['url'],
+            },
+        },
+    },
+
+    browser_inspect: {
+        type: 'function',
+        function: {
+            name: 'browser_inspect',
+            description:
+                'Returns a fresh snapshot of the page that is currently open: title, readable text, headings and the interactive elements with a "ref" for each. Call this before every click or type — a ref only refers to the element it was captured for, and a stale one is refused rather than guessed. Elements flagged needsApproval will pause for the user.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    scope: {
+                        type: 'string',
+                        description:
+                            'Optional: a CSS selector to describe what you are looking for. Informational only.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    browser_click: {
+        type: 'function',
+        function: {
+            name: 'browser_click',
+            description:
+                'Clicks one element on the page that is currently open, identified by a ref from the latest browser_inspect snapshot. The element is examined before it is clicked: if it turns out to sign in, upload, book, pay, submit, publish, send or delete, the click is NOT performed and the user is asked to approve it first. When that happens, tell the user what you want to do and stop — there is no alternative element or selector that avoids the check.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    ref: { type: 'string', description: 'The ref of the element, from the latest snapshot.' },
+                    selector: {
+                        type: 'string',
+                        description: 'Optional fallback: a CSS selector, used only when no ref is available.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    browser_type: {
+        type: 'function',
+        function: {
+            name: 'browser_type',
+            description:
+                "Types text into a field on the page that is currently open, identified by a ref from the latest browser_inspect snapshot. Typing into a search field and submitting it is normal. Passwords, credentials, API keys and card numbers are refused: never type a secret into a page, and never ask the user for one. Submitting a form that books, pays, sends or publishes pauses for the user's approval.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    ref: { type: 'string', description: 'The ref of the field, from the latest snapshot.' },
+                    selector: { type: 'string', description: 'Optional fallback CSS selector.' },
+                    text: { type: 'string', description: 'The text to type.' },
+                    submit: {
+                        type: 'boolean',
+                        description: 'Optional: press Enter afterwards to submit the form (default false).',
+                    },
+                    clearFirst: {
+                        type: 'boolean',
+                        description: 'Optional: clear the field before typing (default true).',
+                    },
+                },
+                required: ['text'],
+            },
+        },
+    },
+
+    browser_wait: {
+        type: 'function',
+        function: {
+            name: 'browser_wait',
+            description:
+                'Waits on the page that is currently open, either for a fixed number of milliseconds or until a selector appears or disappears. Use it for content that loads after the page itself, then call browser_inspect again.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    ms: { type: 'number', description: 'Milliseconds to wait (maximum 15000).' },
+                    selector: { type: 'string', description: 'Optional: a CSS selector to wait for.' },
+                    state: {
+                        type: 'string',
+                        enum: ['visible', 'hidden'],
+                        description: 'Optional: whether to wait for the selector to appear or to disappear.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    browser_screenshot: {
+        type: 'function',
+        function: {
+            name: 'browser_screenshot',
+            description:
+                'Captures a screenshot of the page that is currently open and stores it as evidence of what was on screen. Returns a link to it; use it when the user wants to see the page or when a layout matters (a seating plan, a calendar, a price table).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    fullPage: {
+                        type: 'boolean',
+                        description: 'Optional: capture the whole scrollable page instead of the viewport.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     find_profile_photo: {
         type: 'function',
         function: {
@@ -2460,6 +2596,14 @@ function getToolSchemas(allowedTools) {
     const effectiveTools = [...allowedTools]
     if (effectiveTools.includes('get_chat_attachment') && !effectiveTools.includes('list_recent_chat_media')) {
         effectiveTools.push('list_recent_chat_media')
+    }
+
+    // One Tools Access toggle, six tool names: browsing is one capability, and an assistant that
+    // could click but not look would be worse than one that cannot browse at all.
+    if (effectiveTools.includes(BROWSER_TOOL_KEY)) {
+        for (const browserToolName of BROWSER_TOOL_NAMES) {
+            if (!effectiveTools.includes(browserToolName)) effectiveTools.push(browserToolName)
+        }
     }
 
     // Backward compatibility: map old get_note to new get_notes

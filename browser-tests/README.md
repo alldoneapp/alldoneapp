@@ -503,7 +503,7 @@ Four checks carry most of the value:
   rendered text. No positional check can prove this — a roll that animated the same text twice
   would pass every one of them.
 - **The first painted frame is the start of the roll.** This is the check that found the one real
-  defect: the animation's values were reset in a *passive* effect, which runs after paint, so frame
+  defect: the animation's values were reset in a _passive_ effect, which runs after paint, so frame
   0 of every arrival painted the FINISHED state (`outgoing y: -90`) and only frame 1 jumped back to
   the start (`-0.06`). The answer appeared, then visibly fell back down to roll in again. Fixed by
   moving the reset into a `useLayoutEffect` — the same reason AT-2418 claims its celebration marker
@@ -523,3 +523,27 @@ node browser-tests/at2511/run.js
 node browser-tests/at2511/run.js --reduce-motion
 node browser-tests/at2511/run.js --compact
 ```
+
+### `at2518/` — the browser tools against a real Chromium
+
+The only place Playwright is actually executed for the `browser_*` assistant tools. Unlike the other
+cases here it does not build the web app: it starts the **real worker process**
+(`functions/Assistant/browser-worker/server.js`) against a real Chromium and drives the **real**
+`executeBrowserTool` against a fixture site, so policy, worker, allowlist, approvals, evidence, audit
+and billing are all the shipped code.
+
+```bash
+npx playwright install chromium      # into PLAYWRIGHT_HOME, default /home/user/repro
+node browser-tests/at2518/run.js
+```
+
+The fixture is served on loopback but reached under a public-looking NAME
+(`--host-resolver-rules=MAP tickets.example 127.0.0.1:<port>`, passed to the worker as
+`BROWSER_WORKER_HOST_RESOLVER_RULES`). That is required rather than convenient: the allowlist refuses
+IP literals and private hosts by design, so a fixture reachable only as an address could not be
+allowlisted and the test would be exercising a bypass instead of the product.
+
+Checks navigate, inspect, type + submit (the GET-search carve-out), wait, screenshot (real PNG
+bytes), the approval pause on a booking button, approve → resume, a denial sticking for the run, an
+off-allowlist host, a redirect off the allowlist blocked inside the worker, the audit trail and the
+Gold charges. 34 checks; exit code 0 = pass.

@@ -29,6 +29,7 @@ import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/Em
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
+import BrowserApprovalCard from './BrowserApprovalCard'
 import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
 import StopAssistantRunButton from './StopAssistantRunButton'
@@ -482,6 +483,12 @@ export default function MessageItemBody({
                                 </TouchableOpacity>
                             )}
                         </View>
+                    )}
+                    {/* A browser action the policy paused. It hangs off the FINISHED comment, not
+                        the loading one: the assistant's turn has already ended by the time it asks,
+                        unlike a VM run, which parks and is still alive. */}
+                    {creatorData?.isAssistant && (
+                        <BrowserApprovalCard projectId={projectId} objectId={chat?.id} commentId={messageId} />
                     )}
                 </>
             )}
