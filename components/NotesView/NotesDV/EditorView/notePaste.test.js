@@ -31,10 +31,12 @@ import { join } from 'path'
 import Quill from 'quill'
 
 import {
+    applyPastedClipboard,
     applyPastedDeltaToEditor,
     blockAttributesOf,
     countTrailingLineBreaks,
     dropSurplusTrailingLineBreaks,
+    noteEditorOwnsPaste,
     normalizePastedLineEndings,
     settlePastedBlockTail,
 } from './notePaste'
@@ -686,18 +688,130 @@ describe('applyPastedDeltaToEditor — pasting out of another application (AT-25
     })
 })
 
+describe('noteEditorOwnsPaste (AT-2519)', () => {
+    const enabled = { isEnabled: () => true }
+
+    it('takes a paste that carries text', () => {
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: enabled, textData: 'x', htmlData: '' })).toBe(true)
+    })
+
+    it('takes a paste that carries only html', () => {
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: enabled, textData: '', htmlData: '<p>x</p>' })).toBe(true)
+    })
+
+    it('hands back a clipboard with neither, so an image still reaches the uploader', () => {
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: enabled, textData: '', htmlData: '' })).toBe(false)
+    })
+
+    it('hands back a read-only note', () => {
+        expect(noteEditorOwnsPaste({ readOnly: true, editor: enabled, textData: 'x', htmlData: '' })).toBe(false)
+    })
+
+    it('hands back a DISABLED editor, which the read-only flag does not cover', () => {
+        // Quill ignores a `user` update on a disabled editor and reports success, so owning the
+        // paste there means consuming the event and inserting nothing.
+        const disabled = { isEnabled: () => false }
+
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: disabled, textData: 'x', htmlData: '' })).toBe(false)
+    })
+
+    it('survives an editor that cannot answer', () => {
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: null, textData: 'x', htmlData: '' })).toBe(false)
+        expect(noteEditorOwnsPaste({ readOnly: false, editor: {}, textData: 'x', htmlData: '' })).toBe(true)
+    })
+})
+
+describe('applyPastedClipboard (AT-2519)', () => {
+    it('applies what the conversion produced', () => {
+        const editor = buildEditor(new Delta().insert('hello\n'), 5)
+        const convert = () => new Delta().insert('item')
+
+        expect(applyPastedClipboard(editor, { textData: 'item', htmlData: '' }, convert, Delta)).toBe('converted')
+        expect(editor.getText()).toBe('helloitem\n')
+        expect(editor.getSelection().index).toBe(9)
+    })
+
+    it('falls back to the plain text when the conversion throws, caret included', () => {
+        // The failure this exists for: the handler used to call preventDefault() only after the
+        // conversion, so a throw handed the paste to the BROWSER — the text appeared, inserted by
+        // the browser itself, and the caret never moved off the paste position. That is
+        // indistinguishable from a caret bug.
+        const editor = buildEditor(new Delta().insert('hello\n'), 5)
+        const convert = () => {
+            throw new Error('[Parchment] Unable to create nonsense blot')
+        }
+        const reported = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        expect(applyPastedClipboard(editor, { textData: 'item', htmlData: '<x>' }, convert, Delta)).toBe(
+            'plain-text-fallback'
+        )
+        expect(editor.getText()).toBe('helloitem\n')
+        expect(editor.getSelection().index).toBe(9)
+        expect(reported).toHaveBeenCalled()
+
+        reported.mockRestore()
+    })
+
+    it('reports a failure it cannot even degrade, rather than pretending', () => {
+        const editor = buildEditor(new Delta().insert('hello\n'), 5)
+        const convert = () => {
+            throw new Error('boom')
+        }
+        const reported = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        expect(applyPastedClipboard(editor, { textData: '', htmlData: '<x>' }, convert, Delta)).toBe('failed')
+        expect(editor.getText()).toBe('hello\n')
+
+        reported.mockRestore()
+    })
+
+    it('still trims the trailing blank lines on the fallback path', () => {
+        const editor = buildEditor(new Delta().insert('hello\n'), 5)
+        const convert = () => {
+            throw new Error('boom')
+        }
+        const reported = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        applyPastedClipboard(editor, { textData: 'item\n\n', htmlData: '<x>' }, convert, Delta)
+
+        expect(editor.getText()).toBe('helloitem\n')
+        expect(editor.getSelection().index).toBe(9)
+
+        reported.mockRestore()
+    })
+})
+
 describe('the notes paste handler wiring (AT-2519)', () => {
+    const source = () => readFileSync(join(__dirname, 'NotesEditorView.js'), 'utf8')
+
     it('reads the clipboard text through the line-ending normalizer', () => {
         // A source ratchet: the CRLF defect is invisible from notePaste alone, because by the time
         // the delta reaches it `processPastedTextWithBreakLines` has already turned each stray
         // '\r' into a trailing space. The only thing to pin is that the handler never reads the
         // raw string again.
-        const source = readFileSync(join(__dirname, 'NotesEditorView.js'), 'utf8')
-
+        //
         // Whitespace-insensitive: prettier reflows this call as soon as the line grows.
-        expect(source).toMatch(
+        expect(source()).toMatch(
             /normalizePastedLineEndings\(\s*\(event\.clipboardData \|\| window\.clipboardData\)\.getData\('text'\)\s*\)/
         )
-        expect(source).not.toMatch(/const textData = \(event\.clipboardData/)
+    })
+
+    it('claims the event before doing the work, never after', () => {
+        // The ordering IS the fix, and it is not observable from notePaste: a `preventDefault()`
+        // that runs after the conversion is exactly what lets a throw hand the paste back to the
+        // browser. Pin that the listener decides, prevents, and only then converts.
+        const listener = source().slice(source().indexOf("addEventListener('paste'"))
+        const prevent = listener.indexOf('event.preventDefault()')
+        const apply = listener.indexOf('applyPastedClipboard(')
+
+        expect(prevent).toBeGreaterThan(-1)
+        expect(apply).toBeGreaterThan(-1)
+        expect(prevent).toBeLessThan(apply)
+    })
+
+    it('decides ownership through the shared rule rather than its own flag check', () => {
+        const listener = source().slice(source().indexOf("addEventListener('paste'"))
+
+        expect(listener).toMatch(/if \(!noteEditorOwnsPaste\(/)
     })
 })

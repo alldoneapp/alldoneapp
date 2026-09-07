@@ -239,3 +239,53 @@ export const applyPastedDeltaToEditor = (editor, contentDelta, Delta) => {
 
     editor.setSelection(Math.max(selection.index, selection.index + inserted - caretBackstep), 0, 'user')
 }
+
+/**
+ * Whether the notes editor should take this paste over from the browser.
+ *
+ * Two cases hand it back, and both used to be swallowed instead (AT-2519).
+ *
+ * A clipboard carrying no text and no HTML is an image or a file. The handler has never had
+ * anything to contribute there, and quill's uploader is what picks those up.
+ *
+ * A DISABLED editor is the one that mattered. `readOnly` on the component is only one of the five
+ * reasons the editor is disabled — loading, the inactivity modal, revoked access and unavailable
+ * offline content are the others, and the paste listener's ref tracks only the first. Quill ignores
+ * a `user` update on a disabled editor (`modify()` returns an empty delta) and reports success, so
+ * the pipeline would run, insert nothing, measure no growth, leave the caret where it was and then
+ * consume the event: a paste that silently does nothing. A disabled editor is not contenteditable
+ * either, so declining costs nothing.
+ */
+export const noteEditorOwnsPaste = ({ readOnly, editor, textData, htmlData }) => {
+    if (readOnly || !editor) return false
+    if (typeof editor.isEnabled === 'function' && !editor.isEnabled()) return false
+    return !!(textData || htmlData)
+}
+
+/**
+ * Converts a clipboard payload with `convert` and applies it, degrading to the plain text when the
+ * conversion fails.
+ *
+ * AT-2519, and the reason the caller must `preventDefault()` BEFORE calling this: the notes handler
+ * used to call it at the end of each branch, so anything that threw on the way there handed the
+ * paste back to the BROWSER. The browser then inserts the clipboard's raw HTML into the
+ * contenteditable itself, and none of the app's caret placement runs — the user watches the text
+ * arrive and the cursor stay exactly where the paste began. That reads as a caret bug and is really
+ * a swallowed exception, which is why it must not be possible: the clipboard is the least
+ * predictable input this editor has, and the conversion walks user-authored URLs, e-mail addresses,
+ * mentions and embeds on the way through.
+ *
+ * Degrading to the plain text rather than to nothing keeps the paste useful and keeps the caret
+ * correct; the failure is reported rather than left to look like a cursor problem.
+ */
+export const applyPastedClipboard = (editor, { textData, htmlData }, convert, Delta) => {
+    try {
+        applyPastedDeltaToEditor(editor, convert(editor, textData, htmlData), Delta)
+        return 'converted'
+    } catch (error) {
+        console.error('[notes paste] conversion failed, falling back to plain text', error)
+        if (!textData) return 'failed'
+        applyPastedDeltaToEditor(editor, new Delta().insert(textData), Delta)
+        return 'plain-text-fallback'
+    }
+}
