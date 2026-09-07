@@ -2387,5 +2387,6 @@
     "You are offline. Your summary will load when you reconnect.": "Du bist offline. Deine Zusammenfassung wird geladen, sobald du wieder verbunden bist.",
     "Your summary could not be loaded. Please try again.": "Deine Zusammenfassung konnte nicht geladen werden. Bitte versuche es erneut.",
     "Loading your daily summary...": "Deine Tageszusammenfassung wird geladen...",
-    "Your summary could not be loaded. You can start the day and try again later.": "Deine Zusammenfassung konnte nicht geladen werden. Du kannst den Tag starten und es später erneut versuchen."
+    "Your summary could not be loaded. You can start the day and try again later.": "Deine Zusammenfassung konnte nicht geladen werden. Du kannst den Tag starten und es später erneut versuchen.",
+    "The last comment could not be loaded.": "Der letzte Kommentar konnte nicht geladen werden."
 }

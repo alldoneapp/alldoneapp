@@ -61,6 +61,8 @@ const getDirectReadTarget = documentPath => {
         ? `http://127.0.0.1:8080/v1/${databaseName}`
         : `https://firestore.googleapis.com/v1/${databaseName}`
     return {
+        baseUrl,
+        apiKey,
         documentName: `${databaseName}/documents/${normalizedPath}`,
         url: `${baseUrl}/documents:batchGet${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`,
     }
@@ -77,6 +79,7 @@ export const readDocumentDirectlyFromServer = async (documentPath, { signal } = 
     if (!currentUser) throw new Error('Cannot verify a Firestore document without an authenticated user')
 
     const idToken = await currentUser.getIdToken()
+    if (signal?.aborted) throw Object.assign(new Error('Read cancelled'), { name: 'AbortError' })
     const target = getDirectReadTarget(documentPath)
     const response = await fetch(target.url, {
         ...(signal ? { signal } : {}),
@@ -116,4 +119,44 @@ export const readDocumentDirectlyFromServer = async (documentPath, { signal } = 
         exists: true,
         data: decodeFields(result.found.fields || {}),
     }
+}
+
+// Query only the newest preview comment, independently of the Listen stream.
+export const readLatestCommentDirectlyFromServer = async (parentPath, { signal } = {}) => {
+    const currentUser = firebase.auth().currentUser
+    if (!currentUser) throw new Error('Cannot read comments without an authenticated user')
+    const idToken = await currentUser.getIdToken()
+    if (signal?.aborted) throw Object.assign(new Error('Read cancelled'), { name: 'AbortError' })
+    const { baseUrl, apiKey } = getDirectReadTarget(parentPath)
+    const path = parentPath.split('/').map(encodeURIComponent).join('/')
+    const response = await fetch(
+        `${baseUrl}/documents/${path}:runQuery${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`,
+        {
+            ...(signal ? { signal } : {}),
+            method: 'POST',
+            cache: 'no-store',
+            headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                structuredQuery: {
+                    from: [{ collectionId: 'comments' }],
+                    orderBy: [{ field: { fieldPath: 'created' }, direction: 'DESCENDING' }],
+                    limit: 1,
+                },
+            }),
+        }
+    )
+    const payload = await response.json()
+    if (!response.ok)
+        throw Object.assign(new Error(payload?.error?.message || 'Comment read failed'), {
+            code: payload?.error?.status || `http-${response.status}`,
+        })
+    if (!Array.isArray(payload) || !payload.length || payload.some(item => !item.document && !item.readTime)) {
+        throw new Error('Direct comment query returned no valid result')
+    }
+    return payload
+        .filter(item => item.document)
+        .map(({ document }) => ({
+            ...decodeFields(document.fields || {}),
+            id: document.name.split('/').pop(),
+        }))
 }

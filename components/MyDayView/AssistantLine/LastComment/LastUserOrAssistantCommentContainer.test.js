@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { View } from 'react-native'
+import { View, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import LastUserOrAssistantCommentContainer, {
@@ -20,6 +20,14 @@ const mockState = {
     projectChatNotifications: {},
     smallScreenNavigation: true,
 }
+
+jest.mock('../../../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
+jest.mock('../../../../utils/connectionHealth', () => ({ isManualOfflineMode: () => false }))
+jest.mock('../../../../utils/backends/firestoreDirectRead', () => ({
+    readDocumentDirectlyFromServer: jest.fn(() => new Promise(() => {})),
+    readLatestCommentDirectlyFromServer: jest.fn(() => new Promise(() => {})),
+}))
+jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => text }))
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
@@ -118,5 +126,31 @@ describe('LastUserOrAssistantCommentContainer', () => {
         })
 
         expect(tree.root.findByProps({ testID: 'assistant-last-comment-loading-skeleton' })).toBeTruthy()
+        act(() => tree.unmount())
     })
+})
+
+it('replaces the endless skeleton with an accessible retry action', async () => {
+    jest.useFakeTimers()
+    let tree
+    try {
+        await act(async () => {
+            tree = renderer.create(
+                <LastUserOrAssistantCommentContainer
+                    project={{ id: 'project-1' }}
+                    objectId="chat-1"
+                    objectType="topics"
+                />
+            )
+        })
+        await act(async () => jest.advanceTimersByTime(6000))
+        expect(tree.root.findByProps({ testID: 'assistant-last-comment-unavailable' })).toBeTruthy()
+        const retry = tree.root.findByType(TouchableOpacity)
+        expect(retry.props.accessibilityRole).toBe('button')
+        await act(async () => retry.props.onPress())
+        expect(tree.root.findByProps({ testID: 'assistant-last-comment-loading-skeleton' })).toBeTruthy()
+    } finally {
+        act(() => tree?.unmount())
+        jest.useRealTimers()
+    }
 })
