@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 import { subscribeToGoalTaskCompletions } from './goalCompletionSignal'
@@ -305,24 +305,48 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     })
     lastSectionsRef.current = seen
 
-    const exitingIds = Object.keys(exits)
-    if (exitingIds.length === 0) {
-        return { mainTasksWithExits: mainTasks, emptyGoalsWithExits: emptyGoals, exitRunIdByGoalId: EMPTY_EXITS }
-    }
+    /**
+     * AT-2521 — the held lists must keep their IDENTITY for as long as the hold lasts, not just
+     * while nothing is leaving.
+     *
+     * `MainSection` feeds both of these into effect dependency lists, and one of those effects
+     * (`tmpGoalsById` housekeeping) calls `setState` unconditionally with a freshly spread object.
+     * So a list rebuilt on every render is not merely wasteful — the effect re-runs, sets state,
+     * re-renders, rebuilds the list, and React tears the board down with "Maximum update depth
+     * exceeded" after fifty passes.
+     *
+     * AT-2507 memoised only the "nothing is leaving" case, which left that loop live for exactly
+     * the ~1.5s the exit was supposed to be playing — the one moment the feature exists for. The
+     * memo below covers the hold too: `exits` only changes identity when a goal actually starts or
+     * finishes leaving, and both incoming lists are redux slices, so a settled board recomputes
+     * nothing and a departing one recomputes twice.
+     *
+     * `lastSectionsRef` is read inside deliberately and is not a dependency: while `exits` is
+     * unchanged the record of every exiting goal is carried forward verbatim above, so re-reading
+     * it could only ever produce the same answer.
+     */
+    return useMemo(() => {
+        const exitingIds = Object.keys(exits)
+        if (exitingIds.length === 0) {
+            return { mainTasksWithExits: mainTasks, emptyGoalsWithExits: emptyGoals, exitRunIdByGoalId: EMPTY_EXITS }
+        }
 
-    // Put back exactly the row that was on screen — see the header for why the shape matters.
-    const heldSections = []
-    const heldEmptyGoals = []
-    exitingIds.forEach(goalId => {
-        const record = seen.get(goalId)
-        if (record && record.emptyGoal) heldEmptyGoals.push(record.emptyGoal)
-        // Re-injected as an empty section so the existing sort puts it back where it was.
-        else heldSections.push([goalId, []])
-    })
+        // Put back exactly the row that was on screen — see the header for why the shape matters.
+        const heldSections = []
+        const heldEmptyGoals = []
+        exitingIds.forEach(goalId => {
+            const record = lastSectionsRef.current.get(goalId)
+            if (record && record.emptyGoal) heldEmptyGoals.push(record.emptyGoal)
+            // Re-injected as an empty section so the existing sort puts it back where it was.
+            else heldSections.push([goalId, []])
+        })
 
-    return {
-        mainTasksWithExits: heldSections.length > 0 ? liveMainTasks.concat(heldSections) : mainTasks,
-        emptyGoalsWithExits: heldEmptyGoals.length > 0 ? liveEmptyGoals.concat(heldEmptyGoals) : emptyGoals,
-        exitRunIdByGoalId: exits,
-    }
+        const live = Array.isArray(mainTasks) ? mainTasks : []
+        const liveEmpty = Array.isArray(emptyGoals) ? emptyGoals : []
+        return {
+            mainTasksWithExits: heldSections.length > 0 ? live.concat(heldSections) : mainTasks,
+            emptyGoalsWithExits: heldEmptyGoals.length > 0 ? liveEmpty.concat(heldEmptyGoals) : emptyGoals,
+            exitRunIdByGoalId: exits,
+        }
+    }, [mainTasks, emptyGoals, exits])
 }
