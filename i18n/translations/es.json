@@ -2896,5 +2896,6 @@
     "browser_mode_all_public_still_blocked": "Sigue bloqueado: tu propia red, direcciones internas y privadas, direcciones IP y enlaces que no sean web. Reservar, pagar, iniciar sesión, subir, enviar y borrar siguen necesitando tu aprobación cada vez.",
     "browser_allowlist_unused_in_all_public": "No se usa mientras se permitan todos los sitios web públicos.",
     "Blocked websites": "Sitios web bloqueados",
-    "Blocked websites description": "Nunca se abren, sea cual sea la opción elegida arriba."
+    "Blocked websites description": "Nunca se abren, sea cual sea la opción elegida arriba.",
+    "browser_allowlist_no_project": "Esta lista pertenece a un proyecto. Abre el asistente dentro del proyecto que quieras configurar."
 }

@@ -196,6 +196,43 @@ describe('browser tool registration', () => {
         )
     })
 
+    it('drives the shared Switch with the props that component actually takes (AT-2518)', () => {
+        // The production crash: `value`/`onValueChange` are React Native core names, and this repo's
+        // Switch takes `active`/`activeSwitch`/`deactiveSwitch`. The mismatch threw
+        // `TypeError: t is not a function` out of PressResponder on every press and left the toggle
+        // permanently off. A ratchet, because the wrong names look right.
+        const modal = readRepoFile('components/UIComponents/FloatModals/BrowserAllowlistModal/BrowserAllowlistModal.js')
+        expect(modal).toMatch(/<Switch[\s\S]{0,240}activeSwitch=/)
+        expect(modal).toMatch(/<Switch[\s\S]{0,240}deactiveSwitch=/)
+        expect(modal).not.toMatch(/<Switch[\s\S]{0,240}onValueChange=/)
+    })
+
+    it('writes the allowlist to the project on screen, not to the assistant home project', () => {
+        // A global assistant lives in the global project, which is not a workspace and holds no
+        // browsing configuration — writing there is refused, and the server reads the configuration
+        // from the project a browsing run happens in anyway.
+        const customizations = readRepoFile(
+            'components/AssistantDetailedView/Customizations/AssistantCustomizations.js'
+        )
+        expect(customizations).toMatch(/configProjectId=\{projectDetailedId\}/)
+
+        const wrapper = readRepoFile(
+            'components/AssistantDetailedView/Customizations/ToolsAccess/ToolsAccessWrapper.js'
+        )
+        expect(wrapper).toContain('const allowlistProjectId = configProjectId || projectId')
+        expect(wrapper).toMatch(/projectId=\{allowlistProjectId\}/)
+        // And the assistant document keeps being written where it lives.
+        expect(wrapper).toContain('updateAssistant(projectId,')
+    })
+
+    it('writes the configuration with a merge rather than an update', () => {
+        // `update` rejects with `not-found` on a document it has never touched and writes nothing;
+        // a settings field must not depend on somebody else having written it first.
+        const backend = readRepoFile('utils/backends/Projects/projectsFirestore.js')
+        expect(backend).toMatch(/setProjectBrowserAutomation[\s\S]{0,600}\{ merge: true \}/)
+        expect(backend).toMatch(/setProjectBrowserAutomation[\s\S]{0,300}if \(!projectId\)/)
+    })
+
     it('recognises its own tool names and nothing else', () => {
         expect(BROWSER_TOOL_NAMES.every(isBrowserToolName)).toBe(true)
         expect(isBrowserToolName('browser_automation')).toBe(false)

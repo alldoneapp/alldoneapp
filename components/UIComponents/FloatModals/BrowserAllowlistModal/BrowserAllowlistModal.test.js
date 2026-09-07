@@ -1,6 +1,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text, TextInput } from 'react-native'
+import { Text, TextInput, TouchableOpacity } from 'react-native'
+import Switch from '../../../UIControls/Switch'
 
 const mockSave = jest.fn(() => Promise.resolve())
 
@@ -55,6 +56,22 @@ function pressMode(tree, label) {
     act(() => {
         row.props.onPress()
     })
+}
+
+/**
+ * Press the real `Switch`. The production defect was invisible to every test here because none of
+ * them ever pressed it: the modal handed the switch React Native's `value`/`onValueChange` while
+ * this repo's Switch takes `active`/`activeSwitch`/`deactiveSwitch`, so the press called `undefined`
+ * and threw `TypeError: t is not a function` out of PressResponder (AT-2518).
+ */
+function pressSearchFormsSwitch(tree) {
+    const switchRow = tree.root.findAllByType(Switch)[0]
+    if (!switchRow) throw new Error('No Switch rendered')
+    const touchable = switchRow.findAllByType(TouchableOpacity)[0]
+    act(() => {
+        touchable.props.onPress()
+    })
+    return switchRow
 }
 
 function pressSave(tree) {
@@ -229,5 +246,101 @@ describe('BrowserAllowlistModal access modes', () => {
         const texts = textsOf(tree)
         expect(texts).toContain('ads.example')
         expect(texts).not.toContain('127.0.0.1')
+    })
+})
+
+describe('BrowserAllowlistModal — AT-2518 production regression', () => {
+    beforeEach(() => mockSave.mockClear())
+
+    it('turns the search-forms switch on instead of throwing out of the press handler', () => {
+        // The reported symptom, in both halves: the toggle never moved, and every press threw.
+        const tree = render({ allowedDomains: ['eventim.de'], allowSearchSubmit: false })
+        // It starts off, as stored...
+        expect(tree.root.findAllByType(Switch)[0].props.active).toBe(false)
+
+        // ...the press does not throw...
+        expect(() => pressSearchFormsSwitch(tree)).not.toThrow()
+
+        // ...and it actually moved, which is the half the user could see.
+        expect(tree.root.findAllByType(Switch)[0].props.active).toBe(true)
+    })
+
+    it('hands the switch the props this repo really uses', () => {
+        const tree = render({ allowedDomains: [] })
+        const switchProps = tree.root.findAllByType(Switch)[0].props
+
+        expect(typeof switchProps.activeSwitch).toBe('function')
+        expect(typeof switchProps.deactiveSwitch).toBe('function')
+        // `value`/`onValueChange` are React Native core names and mean nothing to this component.
+        expect(switchProps.value).toBeUndefined()
+        expect(switchProps.onValueChange).toBeUndefined()
+    })
+
+    it('persists the toggled search-forms setting', async () => {
+        const tree = render({ allowedDomains: ['eventim.de'], allowSearchSubmit: true })
+        pressSearchFormsSwitch(tree)
+        await pressSave(tree)
+
+        expect(mockSave).toHaveBeenCalledWith('p1', expect.objectContaining({ allowSearchSubmit: false }))
+    })
+
+    it('saves all_public with an empty allowlist — the exact case that was reported', async () => {
+        const tree = render({ allowedDomains: [], deniedDomains: [] })
+        pressMode(tree, 'browser_mode_all_public')
+        await pressSave(tree)
+
+        expect(mockSave).toHaveBeenCalledWith('p1', {
+            enabled: true,
+            accessMode: 'all_public',
+            allowedDomains: [],
+            deniedDomains: [],
+            allowSearchSubmit: true,
+            limits: {},
+        })
+        // Nothing in the payload may be undefined: Firestore rejects the whole write for one.
+        for (const value of Object.values(mockSave.mock.calls[0][1])) expect(value).toBeDefined()
+    })
+
+    it('says WHY a save failed instead of a sentence that names nothing', async () => {
+        // The last report needed a production bundle dump to learn the answer was one word.
+        const error = new Error('Missing or insufficient permissions.')
+        error.code = 'permission-denied'
+        mockSave.mockImplementationOnce(() => Promise.reject(error))
+
+        const tree = render({ allowedDomains: ['eventim.de'] })
+        await pressSave(tree)
+
+        expect(textsOf(tree).some(text => text.includes('permission-denied'))).toBe(true)
+    })
+
+    it('refuses to write when there is no project behind the editor, and says so', async () => {
+        // The global assistant editor: `projectId` there is the global project, which holds no
+        // workspace configuration and refuses every write.
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <BrowserAllowlistModal
+                    projectId="globalProject"
+                    browserAutomation={{}}
+                    canConfigure={false}
+                    closeModal={() => {}}
+                />
+            )
+        })
+        expect(textsOf(tree)).toContain('browser_allowlist_no_project')
+
+        await pressSave(tree)
+        expect(mockSave).not.toHaveBeenCalled()
+    })
+
+    it('does not report a successful save as failed when closeModal is absent', async () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<BrowserAllowlistModal projectId="p1" browserAutomation={{}} />)
+        })
+        await pressSave(tree)
+
+        expect(mockSave).toHaveBeenCalled()
+        expect(textsOf(tree)).not.toContain('browser_allowlist_save_failed')
     })
 })
