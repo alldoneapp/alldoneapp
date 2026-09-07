@@ -27,9 +27,9 @@ import {
  */
 export const CONNECTION_STATUS_COPY = {
     [CONNECTION_HEALTH_SLOW]: {
-        title: 'Slow connection',
+        title: 'Slow loading',
         description:
-            'Alldone is taking longer than usual to receive data from the server. You can stay online or work offline and sync your changes later.',
+            'Alldone is taking longer than usual to load or save data. You can stay online or work offline and sync your changes later.',
     },
     [CONNECTION_HEALTH_RECONNECTING]: {
         title: 'Reconnecting',
