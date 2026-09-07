@@ -51,6 +51,9 @@ jest.mock('../../../../utils/backends/Chats/markChatCommentsAsRead', () => ({
     markAlldoneChatsReadForLinkedEmails: jest.fn(),
 }))
 jest.mock('./VmInteractionCard', () => 'VmInteractionCard')
+// Same reason as the line above: the card subscribes to redux and to a Firestore listener, and this
+// suite renders without a Provider.
+jest.mock('./BrowserApprovalCard', () => 'BrowserApprovalCard')
 jest.mock('./messageLoadingState', () => ({
     isAwaitingVmInteraction: jest.fn(() => false),
 }))

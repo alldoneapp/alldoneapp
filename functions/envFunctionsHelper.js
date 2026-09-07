@@ -69,6 +69,9 @@ const getEnvFunctions = () => {
             E2B_API_KEY: process.env.E2B_API_KEY || '',
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+            BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+            BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+            BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             MENUBAR_APP_WEBHOOK_SECRET: process.env.MENUBAR_APP_WEBHOOK_SECRET || '',
             EXTERNAL_TOOLS_SIGNING_SECRET: process.env.EXTERNAL_TOOLS_SIGNING_SECRET || '',
         }
@@ -121,6 +124,9 @@ const getEnvFunctions = () => {
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
+                    BROWSER_WORKER_URL: envJson.BROWSER_WORKER_URL || '',
+                    BROWSER_WORKER_SIGNING_SECRET: envJson.BROWSER_WORKER_SIGNING_SECRET || '',
+                    BROWSER_ALLOWED_DOMAINS: envJson.BROWSER_ALLOWED_DOMAINS || '',
                     MENUBAR_APP_WEBHOOK_SECRET: envJson.MENUBAR_APP_WEBHOOK_SECRET || '',
                     EXTERNAL_TOOLS_SIGNING_SECRET: envJson.EXTERNAL_TOOLS_SIGNING_SECRET || '',
                     OPENAI_PROJECT_ID: envJson.OPENAI_PROJECT_ID || '',
@@ -180,6 +186,9 @@ const getEnvFunctions = () => {
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
                         VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                         VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                        BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                        BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                        BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                     }
                 }
             } catch (error) {
@@ -220,6 +229,9 @@ const getEnvFunctions = () => {
                     E2B_API_KEY: process.env.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                    BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                    BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                    BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                 }
             }
         } else {
@@ -261,6 +273,9 @@ const getEnvFunctions = () => {
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
+                BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
+                BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
+                BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             }
         }
     }
