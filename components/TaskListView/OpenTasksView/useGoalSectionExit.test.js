@@ -2,7 +2,11 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { AccessibilityInfo } from 'react-native'
 
-import useGoalSectionExit, { COMPLETION_MEMORY_MS, GOAL_SECTION_HOLD_MS } from './useGoalSectionExit'
+import useGoalSectionExit, {
+    COMPLETION_MEMORY_MS,
+    GOAL_SECTION_HOLD_MS,
+    keepDepartingGoalsSortable,
+} from './useGoalSectionExit'
 import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
 
 /**
@@ -150,6 +154,116 @@ describe('useGoalSectionExit (AT-2507)', () => {
         })
     })
 
+    /**
+     * AT-2521 — the departure as it ACTUALLY arrives in production, which is in two snapshots and
+     * not one.
+     *
+     * A goal only ever leaves today's list because its `progress` reached 100 (`isNotCompleted` in
+     * `openTasks.js`); nothing else about completing a task removes a goal from the day. But
+     * `progress` lives on the GOAL document and is delivered by the goals listener, while the task
+     * removal is delivered by the tasks listener — and the goal write is CAUSED by the task write,
+     * so the task snapshot lands first essentially every time.
+     *
+     * So the real sequence is: the section empties, the goal spends a beat in the empty-goals bucket
+     * as a still-active goal, and only then leaves. AT-2507 read that middle frame as "this goal is
+     * staying" and forgot the section, so the departure one snapshot later was invisible to it and
+     * the goal popped away exactly as before. Every test above passes with that defect present,
+     * because they all model the departure as a single step.
+     */
+    describe('a goal that leaves through the empty-goals bucket (the production ordering)', () => {
+        const clearThenLeave = async tree => {
+            await complete('t1')
+            // 1. The tasks listener answers first: no tasks left, but the goal is still active today.
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+            // 2. The goals listener answers: progress is 100, so the goal leaves the day for real.
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+        }
+
+        it('still gets an exit run', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await clearThenLeave(tree)
+
+            expect(exitIdsOf()).toEqual([GOAL])
+        })
+
+        /**
+         * Held in the shape it was LAST RENDERED IN. The row on screen at that moment is an
+         * `EmptyGoal`, already mounted and already measured, so holding it there lets that very node
+         * play the exit. Re-injecting it as a main section instead would swap the component for a
+         * freshly mounted one whose height has never been measured — it would fade, then pop its
+         * full height away at the end of the hold, which is the jump this task is about.
+         */
+        it('is held as an empty goal rather than re-injected as a task section', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await clearThenLeave(tree)
+
+            expect(latest.emptyGoalsWithExits.map(goal => goal.id)).toEqual([GOAL])
+            expect(latest.mainTasksWithExits).toEqual([])
+        })
+
+        it('lets go once the hold expires', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+            await clearThenLeave(tree)
+
+            await act(async () => {
+                jest.advanceTimersByTime(GOAL_SECTION_HOLD_MS)
+            })
+
+            expect(exitIdsOf()).toEqual([])
+            expect(latest.emptyGoalsWithExits).toEqual([])
+        })
+
+        it('says nothing when the goal left the bucket without its work being finished', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            // `t1` was dragged to tomorrow, so the goal emptied and then dropped out of today
+            // because its reminder date moved — no completion was ever published.
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('says nothing once the completion is too old to explain the departure', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await complete('t1')
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+            // The goal sat there as an empty goal all morning and left for some other reason.
+            await act(async () => {
+                jest.advanceTimersByTime(COMPLETION_MEMORY_MS + 1000)
+            })
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        /**
+         * The goal came back — a task was added to it, or the completed one was reopened — before
+         * the goal document caught up. Nothing is leaving, and the section must be judged fresh
+         * against whatever it holds now.
+         */
+        it('forgets the pending departure when tasks come back under the goal', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await complete('t1')
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+            await update(tree, { mainTasks: [section(GOAL, [task('t2')])], emptyGoals: [] })
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('hands back the very same empty-goals list when nothing is leaving', async () => {
+            const live = [emptyGoal(GOAL)]
+            const tree = await mount({ mainTasks: [], emptyGoals: live })
+
+            expect(latest.emptyGoalsWithExits).toBe(live)
+        })
+    })
+
     describe('a goal that does NOT leave', () => {
         /**
          * THE case this design turns on. When a cleared goal is still active for today,
@@ -161,6 +275,20 @@ describe('useGoalSectionExit (AT-2507)', () => {
             const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
 
             await complete('t1')
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        /**
+         * AT-2521 — and it must STAY silent, rather than deciding the goal is gone, because the very
+         * next snapshot may put tasks back under it.
+         */
+        it('stays silent when the goal sits in the empty-goals bucket for several renders', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await complete('t1')
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
             await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
 
             expect(exitIdsOf()).toEqual([])
@@ -250,6 +378,42 @@ describe('useGoalSectionExit (AT-2507)', () => {
 
             await update(tree, { mainTasks: live })
             expect(latest.mainTasksWithExits).toBe(live)
+        })
+
+        it('keeps a departing goal sortable, so the hold can put it back where it was', () => {
+            // `MainSection` drops a section whose goal has no sort position, so a goal in the
+            // BACKLOG milestone — the one branch that refuses a completed goal a slot — would have
+            // its exit computed and never drawn.
+            const goalsById = { [GOAL]: { id: GOAL, progress: 100, dynamicProgress: 100 } }
+
+            const patched = keepDepartingGoalsSortable(goalsById, { [GOAL]: 1 })
+
+            expect(patched[GOAL].progress).toBe(99)
+            expect(patched[GOAL].dynamicProgress).toBe(99)
+            expect(goalsById[GOAL].progress).toBe(100)
+        })
+
+        it('preserves the DYNAMIC_PERCENT sentinel, which says which number counts', () => {
+            const goalsById = { [GOAL]: { id: GOAL, progress: 'DYNAMIC_PERCENT', dynamicProgress: 100 } }
+
+            const patched = keepDepartingGoalsSortable(goalsById, { [GOAL]: 1 })
+
+            expect(patched[GOAL].progress).toBe('DYNAMIC_PERCENT')
+            expect(patched[GOAL].dynamicProgress).toBe(99)
+        })
+
+        it('hands back the very same goals map when nothing is departing', () => {
+            const goalsById = { [GOAL]: { id: GOAL, progress: 100, dynamicProgress: 100 } }
+
+            expect(keepDepartingGoalsSortable(goalsById, {})).toBe(goalsById)
+            expect(keepDepartingGoalsSortable(goalsById, { [OTHER_GOAL]: 1 })).toBe(goalsById)
+        })
+
+        it('leaves an unfinished departing goal alone', () => {
+            // It already has a position; only a completed goal is refused one.
+            const goalsById = { [GOAL]: { id: GOAL, progress: 40, dynamicProgress: 40 } }
+
+            expect(keepDepartingGoalsSortable(goalsById, { [GOAL]: 1 })).toBe(goalsById)
         })
 
         it('drops its timers when the list unmounts', async () => {
