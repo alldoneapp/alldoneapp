@@ -22,6 +22,7 @@ import ChatItem from '../../../ChatsView/ChatItem'
 import SkillPresentation from '../../../SettingsView/Profile/Skills/SkillItem/SkillPresentation'
 import AssistantPresentation from '../../../AdminPanel/Assistants/AssistantPresentation'
 import Header from './Header'
+import { getCommentPopupObjectStringKey } from './commentPopupObjectStrings'
 
 const WATCHED_OBJECT_TYPES = {
     tasks: watchTask,
@@ -120,7 +121,10 @@ export default function CommentPopupObjectHeader({
 
     if (loading) {
         return (
-            <View style={localStyles.loadingContainer} accessibilityLabel={translate('Loading object')}>
+            <View
+                style={localStyles.loadingContainer}
+                accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'loading'))}
+            >
                 <ActivityIndicator size="small" color={colors.UtilityBlue125} />
             </View>
         )
@@ -128,9 +132,9 @@ export default function CommentPopupObjectHeader({
 
     if (!object) {
         return reconnecting ? (
-            <RecoveringObject objectName={objectName} />
+            <RecoveringObject objectName={objectName} objectType={objectType} />
         ) : (
-            <UnavailableObject objectName={objectName} />
+            <UnavailableObject objectName={objectName} objectType={objectType} />
         )
     }
 
@@ -212,19 +216,19 @@ const renderObject = ({
                     onPress={onOpen}
                 />
             ) : (
-                <UnavailableObject objectName={object.displayName} />
+                <UnavailableObject objectName={object.displayName} objectType={objectType} />
             )
         case 'notes':
             return project ? (
                 <NotesItem project={project} note={object} inCommentPopup onPress={onOpen} />
             ) : (
-                <UnavailableObject objectName={object.extendedTitle || object.title} />
+                <UnavailableObject objectName={object.extendedTitle || object.title} objectType={objectType} />
             )
         case 'topics':
             return project ? (
                 <ChatItem project={project} chat={object} inCommentPopup onPress={onOpen} />
             ) : (
-                <UnavailableObject objectName={object.title} />
+                <UnavailableObject objectName={object.title} objectType={objectType} />
             )
         case 'skills':
             return (
@@ -247,22 +251,30 @@ const renderObject = ({
                 />
             )
         default:
-            return <UnavailableObject />
+            return <UnavailableObject objectType={objectType} />
     }
 }
 
-const UnavailableObject = ({ objectName }) => (
-    <View style={localStyles.unavailableContainer} accessibilityLabel={translate('Object unavailable')}>
+const UnavailableObject = ({ objectName, objectType }) => (
+    <View
+        style={localStyles.unavailableContainer}
+        accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'unavailable'))}
+    >
         <Header title={objectName} />
-        <Text style={localStyles.unavailableText}>{translate('This object is no longer available.')}</Text>
+        <Text style={localStyles.unavailableText}>
+            {translate(getCommentPopupObjectStringKey(objectType, 'unavailable_text'))}
+        </Text>
     </View>
 )
 
-const RecoveringObject = ({ objectName }) => (
-    <View style={localStyles.unavailableContainer} accessibilityLabel={translate('Object details reconnecting')}>
+const RecoveringObject = ({ objectName, objectType }) => (
+    <View
+        style={localStyles.unavailableContainer}
+        accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'reconnecting'))}
+    >
         <Header title={objectName} />
         <Text style={localStyles.unavailableText}>
-            {translate('Object details are reconnecting. You can continue commenting.')}
+            {translate(getCommentPopupObjectStringKey(objectType, 'reconnecting_text'))}
         </Text>
     </View>
 )
