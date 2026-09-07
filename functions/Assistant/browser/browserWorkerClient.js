@@ -21,6 +21,34 @@ const TOKEN_PREFIX = 'abw_'
 const DEFAULT_TOKEN_TTL_MS = 2 * 60 * 1000
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000
 
+const cloudRunIdTokenClients = new Map()
+
+/**
+ * Cloud Run IAM authenticates the calling workload before the request reaches the worker. The
+ * application HMAC token still belongs in `Authorization`, so the Google ID token uses Cloud Run's
+ * dedicated `X-Serverless-Authorization` header. IdTokenClient caches and refreshes its token.
+ */
+async function getCloudRunIdentityToken(audience) {
+    let client = cloudRunIdTokenClients.get(audience)
+    if (!client) {
+        const { GoogleAuth } = require('google-auth-library')
+        client = await new GoogleAuth().getIdTokenClient(audience)
+        cloudRunIdTokenClients.set(audience, client)
+    }
+
+    const headers = await client.getRequestHeaders()
+    const authorization =
+        (typeof headers?.get === 'function' && headers.get('authorization')) ||
+        headers?.Authorization ||
+        headers?.authorization ||
+        ''
+    const token = String(authorization)
+        .replace(/^Bearer\s+/i, '')
+        .trim()
+    if (!token) throw new Error('Google Application Default Credentials did not return a Cloud Run ID token')
+    return token
+}
+
 function base64UrlEncode(value) {
     return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -152,6 +180,7 @@ async function callBrowserWorker({
     projectId,
     userId,
     fetchImpl = globalThis.fetch,
+    identityTokenProvider = getCloudRunIdentityToken,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     now = Date.now(),
 }) {
@@ -182,6 +211,17 @@ async function callBrowserWorker({
         return { ok: false, error: error.message, reason: 'token' }
     }
 
+    let cloudRunIdentityToken
+    try {
+        cloudRunIdentityToken = await identityTokenProvider(config.workerBaseUrl)
+    } catch (error) {
+        return {
+            ok: false,
+            error: `The browser worker could not be authenticated with Cloud Run: ${error.message}`,
+            reason: 'cloud_run_auth',
+        }
+    }
+
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -190,6 +230,7 @@ async function callBrowserWorker({
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`,
+                'X-Serverless-Authorization': `Bearer ${cloudRunIdentityToken}`,
             },
             body: JSON.stringify({ runId, sessionId, ...payload }),
             signal: controller.signal,
@@ -230,6 +271,7 @@ module.exports = {
     DEFAULT_TOKEN_TTL_MS,
     TOKEN_PREFIX,
     callBrowserWorker,
+    getCloudRunIdentityToken,
     mintWorkerToken,
     verifyWorkerToken,
 }
