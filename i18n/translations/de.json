@@ -2501,5 +2501,6 @@
     "browser_mode_all_public_still_blocked": "Weiterhin blockiert: dein eigenes Netzwerk, interne und private Adressen, IP-Adressen und Nicht-Web-Links. Buchen, Bezahlen, Anmelden, Hochladen, Senden und Löschen brauchen weiterhin jedes Mal deine Freigabe.",
     "browser_allowlist_unused_in_all_public": "Wird nicht verwendet, solange alle öffentlichen Webseiten erlaubt sind.",
     "Blocked websites": "Blockierte Webseiten",
-    "Blocked websites description": "Werden nie geöffnet, egal welche Einstellung oben gewählt ist."
+    "Blocked websites description": "Werden nie geöffnet, egal welche Einstellung oben gewählt ist.",
+    "browser_allowlist_no_project": "Diese Liste gehört zu einem Projekt. Öffne den Assistenten in dem Projekt, das du einstellen möchtest."
 }

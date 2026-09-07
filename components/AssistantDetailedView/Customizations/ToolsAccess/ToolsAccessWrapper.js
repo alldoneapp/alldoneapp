@@ -12,13 +12,23 @@ import BrowserAllowlistModal from '../../../UIComponents/FloatModals/BrowserAllo
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { BROWSER_TOOL_KEY, TOOL_OPTIONS, normalizeAllowedTools } from './toolOptions'
 
-export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
+export default function ToolsAccessWrapper({ disabled, projectId, configProjectId, assistant }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const mobile = useSelector(state => state.smallScreenNavigation)
+    // `projectId` is where the ASSISTANT document lives; for a global assistant that is the global
+    // project, which is not a workspace and has no browsing configuration to hold. The allowlist
+    // belongs to the project the assistant is being used in, which is the project on screen — and
+    // it is also the project the server reads the configuration from when a browsing run happens
+    // (AT-2518: writing it to the global project was refused, with only "could not be saved" said).
+    const allowlistProjectId = configProjectId || projectId
+    // A project the user actually has is the only one worth offering an editor for. This also keeps
+    // the global assistant editor from writing to a document that has no members and therefore
+    // refuses every write.
+    const canConfigureBrowsing = useSelector(state => !!state.loggedUserProjectsMap?.[allowlistProjectId])
     // The allowlist lives on the project, so the row's count follows a project change without this
     // component owning any copy of it.
-    const browserAutomation = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.browserAutomation)
+    const browserAutomation = useSelector(state => state.loggedUserProjectsMap?.[allowlistProjectId]?.browserAutomation)
 
     const [isOpen, setIsOpen] = useState(false)
     const [allowlistOpen, setAllowlistOpen] = useState(false)
@@ -80,8 +90,9 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
             content={
                 allowlistOpen ? (
                     <BrowserAllowlistModal
-                        projectId={projectId}
+                        projectId={allowlistProjectId}
                         browserAutomation={browserAutomation}
+                        canConfigure={canConfigureBrowsing}
                         closeModal={closeAllowlist}
                     />
                 ) : (
