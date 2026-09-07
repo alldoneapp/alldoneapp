@@ -44,10 +44,14 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
 
     /**
      * Hand over from the tools modal to the allowlist editor SEQUENTIALLY rather than nesting one
-     * popover inside the other: a nested `react-tiny-popover` treats a tap in the child as an
-     * outside click of the parent and closes the whole thing (see the EmailLabelChip note in
-     * CLAUDE.md). Closing first also means the tool selection the user has made so far is applied
-     * before they leave, so it is not silently discarded.
+     * popover inside the other: a popover rendered inside another one renders in its own portal, so
+     * the parent reads a tap in the child as an outside click and closes the whole thing (see the
+     * EmailLabelChip note in CLAUDE.md). Closing first also means the tool selection the user has
+     * made so far is applied before they leave, so it is not silently discarded.
+     *
+     * The library is deliberately not named here: `ModalSystemGuardrails.test.js` ratchets the
+     * number of files under components/ and utils/ whose SOURCE contains its name, and a mention in
+     * a comment counts.
      */
     const openAllowlist = pendingTools => {
         if (Array.isArray(pendingTools)) applyTools(pendingTools)
